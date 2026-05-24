@@ -13,7 +13,7 @@ Latest versions are available through:
 
 Official APKs use the following Android signing certificate:
 
-* Package name: `nu.gpu.nagram` / `nu.gpu.nagramx` (base version)
+* Package name: `nu.gpu.nagramx` / `nu.gpu.nagramxx` (base version)
 * SHA-256: `0D:51:91:56:E8:0C:91:8C:28:C4:80:BF:D1:3F:31:6A:3B:3B:F7:22:DB:53:2F:AB:74:66:0E:C8:E5:C5:06:A1`
 
 ## Compilation Guide
