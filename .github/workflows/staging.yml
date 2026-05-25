@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - dev
+      - dev_dw
     paths-ignore:
       - '**.md'
       - '.github/**'
