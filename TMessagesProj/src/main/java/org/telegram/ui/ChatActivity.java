@@ -7728,7 +7728,7 @@ public class ChatActivity extends BaseFragment implements
                         chatActivityEnterView.replaceWithText(start, len, "@" + UserObject.getPublicUsername(user) + " ", false);
                     } else {
                         String name = UserObject.getFirstName(user, false);
-                        Spannable spannable = new SpannableString(name + " ");
+                        Spannable spannable = new SpannableString("@" + name + " ");
                         spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     }
@@ -7866,7 +7866,7 @@ public class ChatActivity extends BaseFragment implements
             } else if (object instanceof TLRPC.User user) {
                 if (!(searchingForUser && searchContainer.getVisibility() == View.VISIBLE) && user != null) {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString(name + " ");
+                    Spannable spannable = new SpannableString("@" + name + " ");
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     return true;
@@ -9981,7 +9981,7 @@ public class ChatActivity extends BaseFragment implements
 
     private boolean isSelectableBetweenMessage(MessageObject message, int begin, int end) {
         int msgId = message.getId();
-        if (chatMode != MODE_SCHEDULED && (msgId <= begin || msgId >= end)) {
+        if (msgId <= begin || msgId >= end) {
             return false;
         }
         int index = message.getDialogId() == dialog_id ? 0 : 1;
@@ -10000,15 +10000,13 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public boolean canSelectBetweenMessages() {
-        int[] bounds = ChatsHelper.getSelectBetweenBounds(messages, selectedMessagesIds, dialog_id, chatMode == MODE_SCHEDULED);
+        int[] bounds = ChatsHelper.getSelectBetweenBounds(selectedMessagesIds);
         if (bounds == null) {
             return false;
         }
         int begin = bounds[0];
         int end = bounds[1];
-        int startPosition = chatMode == MODE_SCHEDULED ? begin + 1 : 0;
-        int endPosition = chatMode == MODE_SCHEDULED ? end : messages.size();
-        for (int i = startPosition; i < endPosition; i++) {
+        for (int i = 0; i < messages.size(); i++) {
             if (isSelectableBetweenMessage(messages.get(i), begin, end)) {
                 return true;
             }
@@ -10017,25 +10015,19 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void performSelectBetweenMessages() {
-        int[] bounds = ChatsHelper.getSelectBetweenBounds(messages, selectedMessagesIds, dialog_id, chatMode == MODE_SCHEDULED);
+        int[] bounds = ChatsHelper.getSelectBetweenBounds(selectedMessagesIds);
         if (bounds == null) {
             return;
         }
         int begin = bounds[0];
         int end = bounds[1];
-        int startPosition = chatMode == MODE_SCHEDULED ? begin + 1 : 0;
-        int endPosition = chatMode == MODE_SCHEDULED ? end : messages.size();
-        for (int i = startPosition; i < endPosition; i++) {
+        for (int i = 0; i < messages.size(); i++) {
             MessageObject message = messages.get(i);
             if (!isSelectableBetweenMessage(message, begin, end)) {
                 continue;
             }
             if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() >= 100) {
-                if (chatMode == MODE_SCHEDULED) {
-                    MessageObject endMessage = messages.get(end);
-                    addToSelectedMessages(endMessage, false, false);
-                    addToSelectedMessages(message, true);
-                } else if (message.getId() != begin) {
+                if (message.getId() != begin) {
                     for (int x = 0; x < messages.size(); x++) {
                         MessageObject msg = messages.get(x);
                         if (msg.getId() == begin) {
@@ -31858,7 +31850,7 @@ public class ChatActivity extends BaseFragment implements
                 icons.add(idx, R.drawable.msg_log);
             }
 
-            if (!isAyuDeleted && NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) {
+            if (!isAyuDeleted) {
                 if (message.messageOwner.ttl > 0 || message.isVoiceOnce() || message.isRoundOnce()) {
                     boolean isExpiredVideo = AyuMessageUtils.isExpiredDocument(message);
                     boolean isExpiredPhoto = AyuMessageUtils.isExpiredPhoto(message);
@@ -31878,8 +31870,6 @@ public class ChatActivity extends BaseFragment implements
                         icons.add(idx, R.drawable.burn_solar);
                     }
                 }
-            }
-            if (!isAyuDeleted) {
                 if (!NekoConfig.sendReadMessagePackets.Bool()
                         && message.messageOwner.from_id != null
                         && message.messageOwner.from_id.user_id != getAccountInstance().getUserConfig().getClientUserId()
