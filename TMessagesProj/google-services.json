@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:501384004533:android:405c7197ede20bb7df0ffc",
+        "mobilesdk_app_id": "1:501384004533:android:3e68d52161795c8bdf0ffc",
         "android_client_info": {
-          "package_name": "nu.gpu.nagramx"
+          "package_name": "nekox.messenger"
         }
       },
       "oauth_client": [],
@@ -26,9 +26,9 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:501384004533:android:1700dbe5ebf47e05df0ffc",
+        "mobilesdk_app_id": "1:501384004533:android:405c7197ede20bb7df0ffc",
         "android_client_info": {
-          "package_name": "nu.gpu.nagramxx"
+          "package_name": "nu.gpu.nagram"
         }
       },
       "oauth_client": [],
