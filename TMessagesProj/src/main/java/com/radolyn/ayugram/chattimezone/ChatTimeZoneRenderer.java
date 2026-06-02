@@ -1,23 +1,18 @@
 package com.radolyn.ayugram.chattimezone;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
-import static org.telegram.messenger.AndroidUtilities.dpf2;
 
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
-import android.text.SpannableString;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
-import android.text.TextUtils;
 import android.text.style.ForegroundColorSpan;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.Theme;
 
 import java.util.Calendar;
