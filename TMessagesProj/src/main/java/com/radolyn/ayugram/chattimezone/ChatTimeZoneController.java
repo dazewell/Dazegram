@@ -7,13 +7,11 @@ import androidx.annotation.Nullable;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
-import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.Locale;
 import java.util.TimeZone;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,16 +35,7 @@ public final class ChatTimeZoneController {
 
     private static final Pattern OFFSET_PATTERN = Pattern.compile("^([+\\-])(\\d{2}):?(\\d{2})?$");
 
-    /** Cache of {@code userId -> resolved TimeZone} (or null = no TZ set). */
-    private static final ConcurrentHashMap<Long, TimeZone> CACHE = new ConcurrentHashMap<>();
-    private static final TimeZone NONE = TimeZone.getTimeZone("UTC"); // sentinel for "checked, none"
-
     private ChatTimeZoneController() {}
-
-    /** Invalidate cache for a single user (e.g. on userInfoDidLoad). */
-    public static void invalidate(long userId) {
-        CACHE.remove(userId);
-    }
 
     /** Strip the time-zone marker and payload from a note text for user display. */
     public static CharSequence stripMarker(@Nullable CharSequence noteText) {
@@ -118,19 +107,13 @@ public final class ChatTimeZoneController {
         return id;
     }
 
-    /** Look up the TZ for a user dialog id (peer userId). Cached. */
+    /** Look up the TZ for a user dialog id (peer userId). */
     @Nullable
     public static TimeZone getForUser(int currentAccount, long userId) {
         if (userId <= 0) return null; // 1:1 only
-        TimeZone cached = CACHE.get(userId);
-        if (cached != null) return cached == NONE ? null : cached;
         TLRPC.UserFull full = MessagesController.getInstance(currentAccount).getUserFull(userId);
-        if (full == null || full.note == null) {
-            return null; // do not cache: full info may load later
-        }
-        TimeZone tz = parsePayload(extractPayload(full.note.text));
-        CACHE.put(userId, tz != null ? tz : NONE);
-        return tz;
+        if (full == null || full.note == null) return null;
+        return parsePayload(extractPayload(full.note.text));
     }
 
     @Nullable
@@ -179,7 +162,6 @@ public final class ChatTimeZoneController {
             full.note = null;
         }
         MessagesStorage.getInstance(currentAccount).updateUserInfo(full, true);
-        invalidate(userId);
 
         TLRPC.TL_updateContactNote req = new TLRPC.TL_updateContactNote();
         req.id = MessagesController.getInstance(currentAccount).getInputUser(userId);
