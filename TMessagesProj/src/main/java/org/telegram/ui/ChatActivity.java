@@ -21562,45 +21562,23 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 if (!pendingSendMessages.isEmpty()) {
-                    messArr = new ArrayList<>(messArr);
-                    if (chatMode == MODE_SCHEDULED) {
-                        for (int i = 0; i < pendingSendMessages.size(); i++) {
-                            MessageObject pendingMessage = pendingSendMessages.get(i);
-                            int pasteIndex = 0;
-                            int date = pendingMessage.messageOwner.date;
-                            if (!messArr.isEmpty()) {
-                                if (date >= messArr.get(0).messageOwner.date) {
-                                    pasteIndex = 0;
-                                } else if (date <= messArr.get(messArr.size() - 1).messageOwner.date) {
-                                    pasteIndex = messArr.size();
-                                } else {
-                                    for (int a = 0, N = messArr.size(); a < N - 1; a++) {
-                                        if (messArr.get(a).messageOwner.date >= date && messArr.get(a + 1).messageOwner.date <= date) {
-                                            pasteIndex = a + 1;
-                                        }
-                                    }
-                                }
-                            }
-                            messArr.add(pasteIndex, pendingMessage);
-                        }
-                    } else {
-                        int pasteIndex = 0;
-                        int date = pendingSendMessages.get(0).messageOwner.date;
-                        if (!messArr.isEmpty()) {
-                            if (date >= messArr.get(0).messageOwner.date) {
-                                pasteIndex = 0;
-                            } else if (date <= messArr.get(messArr.size() - 1).messageOwner.date) {
-                                pasteIndex = messArr.size();
-                            } else {
-                                for (int a = 0, N = messArr.size(); a < N - 1; a++) {
-                                    if (messArr.get(a).messageOwner.date >= date && messArr.get(a + 1).messageOwner.date <= date) {
-                                        pasteIndex = a + 1;
-                                    }
+                    int pasteIndex = 0;
+                    int date = pendingSendMessages.get(0).messageOwner.date;
+                    if (!messArr.isEmpty()) {
+                        if (date >= messArr.get(0).messageOwner.date) {
+                            pasteIndex = 0;
+                        } else if (date <= messArr.get(messArr.size() - 1).messageOwner.date) {
+                            pasteIndex = messArr.size();
+                        } else {
+                            for (int a = 0, N = messArr.size(); a < N - 1; a++) {
+                                if (messArr.get(a).messageOwner.date >= date && messArr.get(a + 1).messageOwner.date <= date) {
+                                    pasteIndex = a + 1;
                                 }
                             }
                         }
-                        messArr.addAll(pasteIndex, pendingSendMessages);
                     }
+                    messArr = new ArrayList<>(messArr);
+                    messArr.addAll(pasteIndex, pendingSendMessages);
                     pendingSendMessages.clear();
                     pendingSendMessagesDict.clear();
                 }
@@ -26172,11 +26150,7 @@ public class ChatActivity extends BaseFragment implements
             }
             if (currentEncryptedChat == null && !forwardEndReached[0] && messageId < 0) {
                 pendingSendMessagesDict.put(messageId, messageObject);
-                if (chatMode == MODE_SCHEDULED) {
-                    pendingSendMessages.add(messageObject);
-                } else {
-                    pendingSendMessages.add(0, messageObject);
-                }
+                pendingSendMessages.add(0, messageObject);
             }
             if ((messageObject.isDice() && !messageObject.isForwarded()) || TlUtils.isInstance(messageObject.messageOwner.action,
                     TLRPC.TL_messageActionGiftPremium.class,
