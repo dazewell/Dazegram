@@ -18532,6 +18532,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             }
             ((SpannableStringBuilder) timeString).append(" | ").append(String.valueOf(messageObject.messageOwner.id));
         }
+        // Append peer's local time when a chat time-zone is configured for this dialog (no-op otherwise).
+        timeString = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentMessageTime(
+                timeString, currentAccount, currentMessageObject.getDialogId(),
+                messageObject.messageOwner != null ? messageObject.messageOwner.date : 0);
         currentTimeString = new SpannableStringBuilder(timeString);
         if (signString != null) {
             if (messageObject.messageOwner.via_business_bot_id != 0) {
