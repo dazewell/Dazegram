@@ -695,6 +695,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int infoEndRowEmpty;
     private int phoneRow;
     private int noteRow;
+    private int chatTimeZoneRow;
     private int locationRow;
     private int userInfoRow;
     private int channelInfoRow;
@@ -4899,6 +4900,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (position == noteRow) {
                 editNotes(view, position);
+            } else if (position == chatTimeZoneRow) {
+                openChatTimeZonePicker();
             } else {
                 processOnClickOrPress(position, view, x, y);
             }
@@ -5286,6 +5289,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     return true;
                 } else if (position == noteRow) {
                     editNotes(view, position);
+                    return true;
+                } else if (position == chatTimeZoneRow) {
+                    openChatTimeZonePicker();
                     return true;
                 } else {
                     if (editRow(view, position)) return true;
@@ -10776,6 +10782,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         infoEndRowEmpty = -1;
         phoneRow = -1;
         noteRow = -1;
+        chatTimeZoneRow = -1;
         userInfoRow = -1;
         locationRow = -1;
         channelInfoRow = -1;
@@ -11007,9 +11014,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (userInfo.business_location != null) {
                         bizLocationRow = rowCount++;
                     }
-                    if (userInfo.note != null) {
+                    if (userInfo.note != null
+                            && !TextUtils.isEmpty(com.radolyn.ayugram.chattimezone.ChatTimeZoneController.stripMarker(userInfo.note.text))) {
                         noteRow = rowCount++;
                     }
+                }
+                // Chat time zone — visible for any 1:1 user chat (except self/bot)
+                if (userId != 0 && userId != getUserConfig().getClientUserId() && !isBot) {
+                    chatTimeZoneRow = rowCount++;
                 }
                 if (actionsView == null && userId != getUserConfig().getClientUserId()) {
                     notificationsRow = rowCount++;
@@ -13869,11 +13881,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         final TLRPC.UserFull userInfo = getMessagesController().getUserFull(userId);
                         if (userInfo == null) return;
                         TLRPC.TL_textWithEntities note = userInfo.note;
+                        // Strip the chat-time-zone marker (and its leading newline) from the displayed text.
+                        TLRPC.TL_textWithEntities displayNote = note;
+                        if (note != null && note.text != null && note.text.indexOf(com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER) >= 0) {
+                            displayNote = new TLRPC.TL_textWithEntities();
+                            displayNote.text = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.stripMarker(note.text).toString();
+                            displayNote.entities = note.entities;
+                        }
                         CharSequence text;
                         if (!UserConfig.getInstance(currentAccount).isPremium()) {
-                            text = MessageObject.formatTextWithEntities(MessageObject.removeLinks(note));
+                            text = MessageObject.formatTextWithEntities(MessageObject.removeLinks(displayNote));
                         } else {
-                            text = MessageObject.formatTextWithEntities(note);
+                            text = MessageObject.formatTextWithEntities(displayNote);
                             if (!(text instanceof SpannableStringBuilder)) {
                                 text = new SpannableStringBuilder(text);
                             }
@@ -13885,6 +13904,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             getString(R.string.ProfileNotesInfo),
                             false
                         );
+                    } else if (position == chatTimeZoneRow) {
+                        java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+                        CharSequence value;
+                        if (tz != null) {
+                            value = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz)
+                                    + "  \u00B7  " + tz.getID();
+                        } else {
+                            value = getString(R.string.ChatTimeZoneNotSet);
+                        }
+                        detailCell.setTextAndValue(value, getString(R.string.ChatTimeZone), false);
                     } else if (position == usernameRow) {
                         String username = null;
                         CharSequence text;
@@ -14705,7 +14734,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                     position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == restrictionReasonRow || position == idDcRow) {
+            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == restrictionReasonRow || position == idDcRow || position == chatTimeZoneRow) {
                 return VIEW_TYPE_TEXT_DETAIL;
             } else if (position == usernameRow || position == setUsernameRow) {
                 return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
@@ -16710,6 +16739,22 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         });
         o.show();
         return true;
+    }
+
+    private void openChatTimeZonePicker() {
+        if (getParentActivity() == null) return;
+        com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet sheet =
+                new com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet(
+                        getParentActivity(),
+                        tz -> {
+                            if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, tz)) {
+                                if (listAdapter != null && chatTimeZoneRow >= 0) {
+                                    listAdapter.notifyItemChanged(chatTimeZoneRow);
+                                }
+                            }
+                        },
+                        resourcesProvider);
+        showDialog(sheet);
     }
 
     private boolean editRow(View view, int position) {

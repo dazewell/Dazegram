@@ -203,6 +203,15 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                         user.last_name = lastNameField.getText().toString();
                         user.contact = true;
                         final TLRPC.TL_textWithEntities note = noteField.getTextWithEntities();
+                        // Preserve any chat-time-zone marker the user had configured.
+                        String existingPayload = userInfo != null && userInfo.note != null
+                                ? com.radolyn.ayugram.chattimezone.ChatTimeZoneController.extractPayload(userInfo.note.text)
+                                : null;
+                        if (existingPayload != null) {
+                            String suffix = (note.text != null && note.text.length() > 0 ? "\n" : "")
+                                    + com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER + existingPayload;
+                            note.text = (note.text != null ? note.text : "") + suffix;
+                        }
                         getMessagesController().putUser(user, false);
                         getContactsController().addContact(user, note, needAddException && checkShare);
                         SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
@@ -327,7 +336,11 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
         });
         lastNameField.setText(lastNameFromCard);
 
-        noteField = new EditTextCell(context, getString(R.string.AddNotes), true, true, getMessagesController().config.contactNoteLengthLimit.get(), resourcesProvider);
+        noteField = new EditTextCell(context, getString(R.string.AddNotes), true, true,
+                com.radolyn.ayugram.chattimezone.ChatTimeZoneController.adjustedNoteLimit(
+                        currentAccount, user_id,
+                        getMessagesController().config.contactNoteLengthLimit.get()),
+                resourcesProvider);
         noteField.editText.setLinkTextColor(getThemedColor(Theme.key_chat_messageLinkIn));
         noteField.editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
         noteField.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
@@ -584,7 +597,14 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                 final TLRPC.UserFull userInfo = getMessagesController().getUserFull(user_id);
                 if (userInfo != null) {
                     if (userInfo.note != null) {
-                        noteField.setText(userInfo.note);
+                        // Strip the chat-time-zone marker before showing the note for editing.
+                        TLRPC.TL_textWithEntities clean = userInfo.note;
+                        if (userInfo.note.text != null && userInfo.note.text.indexOf(com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER) >= 0) {
+                            clean = new TLRPC.TL_textWithEntities();
+                            clean.text = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.stripMarker(userInfo.note.text).toString();
+                            clean.entities = userInfo.note.entities;
+                        }
+                        noteField.setText(clean);
                     } else {
                         noteField.setText("");
                     }
