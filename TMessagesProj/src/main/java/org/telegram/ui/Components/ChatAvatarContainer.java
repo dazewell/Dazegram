@@ -1391,6 +1391,9 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             setTypingAnimation(true);
         }
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
+        // Append peer time-zone clock when configured (no-op otherwise).
+        newSubtitle = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.appendSubtitle(
+                newSubtitle, currentAccount, parentFragment.getDialogId());
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
                 subtitleTextView.setText(newSubtitle);
