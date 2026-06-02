@@ -2204,6 +2204,14 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             nameWidth = getMeasuredWidth() - nameLeft - dp(messagePaddingStart + 5 + 8) - timeWidth;
             nameLeft += timeWidth;
         }
+        // Reserve room for the chat-time-zone pill (no-op when not configured).
+        int tzPillWidth = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+        if (tzPillWidth > 0) {
+            nameWidth -= tzPillWidth;
+            if (LocaleController.isRTL) {
+                nameLeft += tzPillWidth;
+            }
+        }
         if (drawNameLock) {
             nameWidth -= dp(LocaleController.isRTL ? 8 : 4) + Theme.dialogs_lockDrawable.getIntrinsicWidth();
         }
@@ -4062,6 +4070,13 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 SpoilerEffect.layoutDrawMaybe(nameLayout, canvas);
                 AnimatedEmojiSpan.drawAnimatedEmojis(canvas, nameLayout, animatedEmojiStackName, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(0, nameLayout.getPaint().getColor()));
                 canvas.restore();
+                // Chat time-zone pill drawn just to the right of the rendered name (no-op when not configured).
+                if (!LocaleController.isRTL && currentDialogId > 0) {
+                    int nameRendered = (int) Math.ceil(nameLayout.getLineWidth(0));
+                    int pillX = (int) (nameLeft + nameLayoutTranslateX) + Math.min(nameRendered, nameWidth) + dp(6);
+                    int baselineY = nameTop + (int) (-nameLayout.getPaint().ascent());
+                    com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, baselineY, resourcesProvider);
+                }
                 if (nameLayoutEllipsizeByGradient && !nameLayoutFits) {
                     canvas.save();
                     if (nameLayoutEllipsizeLeft) {
