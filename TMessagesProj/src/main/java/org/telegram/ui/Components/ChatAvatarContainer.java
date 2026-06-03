@@ -958,9 +958,12 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             int titleAvailable = titleTextView.getMeasuredWidth() - titleTextView.getPaddingLeft() - titleTextView.getPaddingRight();
             int rendered = Math.min(titleTextWidth, titleAvailable);
             int pillL = l + rendered + dp(6);
-            int pillT = viewTop + dp(6);
+            int pillH = tzClockPill.getMeasuredHeight();
+            // Vertically center the pill relative to the actual laid-out title text view.
+            int titleCenter = (titleTextView.getTop() + titleTextView.getBottom()) / 2;
+            int pillT = titleCenter - pillH / 2;
             int pillR = Math.min(pillL + tzClockPill.getMeasuredWidth(), getMeasuredWidth() - dp(8));
-            int pillB = pillT + tzClockPill.getMeasuredHeight();
+            int pillB = pillT + pillH;
             tzClockPill.layout(pillL, pillT, pillR, pillB);
         }
         SimpleTextView subtitleTextLargerCopyView = this.subtitleTextLargerCopyView.get();

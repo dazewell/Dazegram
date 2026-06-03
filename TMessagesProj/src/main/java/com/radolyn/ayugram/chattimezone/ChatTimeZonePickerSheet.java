@@ -57,7 +57,8 @@ public final class ChatTimeZonePickerSheet {
         Collections.sort(all, (a, b) -> a.utc_offset - b.utc_offset);
         final ArrayList<TLRPC.TL_timezone> filtered = new ArrayList<>(all);
 
-        BottomSheet.Builder builder = new BottomSheet.Builder(context, false, null);
+        // needFocus=true is required so the soft keyboard can be shown for the search EditText.
+        BottomSheet.Builder builder = new BottomSheet.Builder(context, true, null);
         builder.setApplyBottomPadding(false);
 
         final NumberPicker picker = new NumberPicker(context) {
@@ -129,6 +130,17 @@ public final class ChatTimeZonePickerSheet {
         searchField.setInputType(InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS | InputType.TYPE_CLASS_TEXT);
         searchField.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         searchField.setPadding(0, 0, 0, 0);
+        searchField.setFocusable(true);
+        searchField.setFocusableInTouchMode(true);
+        searchField.setClickable(true);
+        searchField.setOnClickListener(v -> {
+            v.requestFocus();
+            AndroidUtilities.showKeyboard(v);
+        });
+        searchContainer.setOnClickListener(v -> {
+            searchField.requestFocus();
+            AndroidUtilities.showKeyboard(searchField);
+        });
         searchContainer.addView(searchField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT,
                 Gravity.LEFT | Gravity.CENTER_VERTICAL, 40, 0, 12, 0));
 
@@ -194,6 +206,11 @@ public final class ChatTimeZonePickerSheet {
         sheetRef[0] = sheet;
         sheet.setBackgroundColor(Theme.getColor(Theme.key_dialogBackground));
         sheet.fixNavigationBar(Theme.getColor(Theme.key_dialogBackground));
+        if (sheet.getWindow() != null) {
+            sheet.getWindow().setSoftInputMode(
+                    android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                            | android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN);
+        }
         return sheet;
     }
 
