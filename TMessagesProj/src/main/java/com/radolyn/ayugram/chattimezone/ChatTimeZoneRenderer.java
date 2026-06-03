@@ -94,10 +94,9 @@ public final class ChatTimeZoneRenderer {
         int top = textBaselinePx - (int) (-p.ascent()) - padV;
         pillRect.set(leftPx, top, leftPx + pillW, top + pillH);
         Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
-        bg.setColor(Theme.getColor(Theme.key_chats_archivePullDownBackground, rp));
-        bg.setAlpha(70);
-        canvas.drawRoundRect(pillRect, dp(8), dp(8), bg);
-        p.setColor(Theme.getColor(Theme.key_chats_nameMessage, rp));
+        bg.setColor(Theme.getColor(Theme.key_chats_unreadCounterMuted, rp));
+        canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, bg);
+        p.setColor(Theme.getColor(Theme.key_chats_unreadCounterText, rp));
         canvas.drawText(text, leftPx + padH, textBaselinePx, p);
         return pillW + dp(6);
     }
