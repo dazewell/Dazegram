@@ -51,12 +51,15 @@ public final class ChatTimeZoneRenderer {
         return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
-    private static boolean sameAsLocal(@Nullable TimeZone tz) {
+    /**
+     * Returns true when the configured zone is operationally identical to the
+     * device zone (same id, or fully equivalent rules across the year).
+     * Single-instant offset compares would mis-classify zones that diverge under DST.
+     */
+    public static boolean sameAsLocal(@Nullable TimeZone tz) {
         if (tz == null) return true;
         TimeZone local = TimeZone.getDefault();
         if (tz.getID().equals(local.getID())) return true;
-        // Two zones can share the current offset but diverge across the year
-        // (DST), so require full rule equivalence -- not a single-instant compare.
         return tz.hasSameRules(local);
     }
 
@@ -84,13 +87,16 @@ public final class ChatTimeZoneRenderer {
 
     /**
      * Draws a small rounded "HH:mm" pill at the given anchor.
+     * @param leftPx left edge of the pill
+     * @param centerYPx vertical center the pill should align to (typically the
+     *                  vertical center of the rendered name text)
      * @return the width consumed (including margin) so callers can adjust layout. 0 if not drawn.
      */
     public static int drawPillForDialog(@NonNull Canvas canvas,
                                         int currentAccount,
                                         long dialogId,
                                         int leftPx,
-                                        int textBaselinePx,
+                                        int centerYPx,
                                         @Nullable Theme.ResourcesProvider rp) {
         TimeZone tz = ChatTimeZoneController.getForDialog(currentAccount, dialogId);
         if (tz == null || sameAsLocal(tz)) return 0;
@@ -100,8 +106,10 @@ public final class ChatTimeZoneRenderer {
         int padH = dp(5);
         int padV = dp(2);
         int pillW = textW + padH * 2;
-        int pillH = (int) (p.descent() - p.ascent()) + padV * 2;
-        int top = textBaselinePx - (int) (-p.ascent()) - padV;
+        int textH = (int) Math.ceil(p.descent() - p.ascent());
+        int pillH = textH + padV * 2;
+        int top = centerYPx - pillH / 2;
+        int textBaselinePx = top + padV + (int) (-p.ascent());
         pillRect.set(leftPx, top, leftPx + pillW, top + pillH);
         Paint bg = pillBgPaint();
         bg.setColor(Theme.getColor(Theme.key_chats_unreadCounterMuted, rp));
