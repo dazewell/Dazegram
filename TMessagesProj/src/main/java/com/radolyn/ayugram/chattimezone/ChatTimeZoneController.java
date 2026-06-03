@@ -97,17 +97,31 @@ public final class ChatTimeZoneController {
 
     /**
      * Locate the last U+200B in the note that is followed by a parseable timezone
-     * payload. U+200B can legitimately appear in user-pasted text, so we anchor on
-     * the LAST occurrence and require the trailing slice to parse as a TZ.
+     * payload AND nothing else (only trailing whitespace allowed). U+200B can
+     * legitimately appear in user-pasted text, so we anchor on the LAST occurrence
+     * and require the rest of the note to be just the payload -- otherwise stripping
+     * the marker would silently truncate user content following it.
      * Returns the marker index, or -1 if no valid marker is found.
      */
     private static int findValidMarkerIndex(@Nullable CharSequence noteText) {
         if (noteText == null) return -1;
         int idx = TextUtils.lastIndexOf(noteText, MARKER);
         while (idx >= 0) {
-            String payload = noteText.subSequence(idx + 1, noteText.length()).toString();
-            int nl = payload.indexOf('\n');
-            if (nl >= 0) payload = payload.substring(0, nl);
+            String tail = noteText.subSequence(idx + 1, noteText.length()).toString();
+            // Reject when there is non-whitespace content after the payload line --
+            // we never write such notes, so this protects against accidental truncation.
+            String payload;
+            int nl = tail.indexOf('\n');
+            if (nl >= 0) {
+                payload = tail.substring(0, nl);
+                String rest = tail.substring(nl + 1);
+                if (!rest.trim().isEmpty()) {
+                    idx = idx > 0 ? TextUtils.lastIndexOf(noteText, MARKER, idx - 1) : -1;
+                    continue;
+                }
+            } else {
+                payload = tail;
+            }
             payload = payload.trim();
             if (!payload.isEmpty() && parsePayload(payload) != null) {
                 return idx;

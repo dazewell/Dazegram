@@ -598,6 +598,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
                 String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
                 if (!text.contentEquals(tzClockPill.getText())) {
                     tzClockPill.setText(text);
+                    // Proportional digits can change measured width; re-measure/layout.
+                    tzClockPill.requestLayout();
                 }
                 int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
                 tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));

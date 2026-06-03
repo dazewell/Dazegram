@@ -16745,10 +16745,27 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void openChatTimeZonePicker() {
         if (getParentActivity() == null) return;
         java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+        // Synthetic fixed-offset zones (id "GMT+05:30") aren't entries in TimezonesController,
+        // so passing them as the picker's selected id leaves nothing highlighted. Try to
+        // resolve to an IANA id with the same UTC offset; otherwise fall back to system.
+        String initialId;
+        if (current == null) {
+            initialId = org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getSystemTimezoneId();
+        } else if (current.getID().startsWith("GMT")) {
+            int offsetSec = current.getRawOffset() / 1000;
+            String matchedId = null;
+            java.util.ArrayList<org.telegram.tgnet.TLRPC.TL_timezone> all = org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getTimezones();
+            for (int i = 0; i < all.size(); ++i) {
+                if (all.get(i).utc_offset == offsetSec) { matchedId = all.get(i).id; break; }
+            }
+            initialId = matchedId != null ? matchedId : org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getSystemTimezoneId();
+        } else {
+            initialId = current.getID();
+        }
         org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet.show(
                 getParentActivity(),
                 getString(R.string.ChatTimeZoneTitle),
-                current != null ? current.getID() : org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getSystemTimezoneId(),
+                initialId,
                 tzId -> {
                     java.util.TimeZone picked = tzId != null ? java.util.TimeZone.getTimeZone(tzId) : null;
                     if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, picked)) {

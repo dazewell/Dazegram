@@ -86,6 +86,24 @@ public final class ChatTimeZoneRenderer {
     }
 
     /**
+     * Worst-case width of an "HH:mm" string with the current pill paint. Cached so we
+     * don't re-measure on every draw, and re-derived when the cached text size changes
+     * (defensive -- normally constant). Using a fixed sample ("00:00") keeps the
+     * reserved layout width stable as minutes tick over -- proportional digits would
+     * otherwise cause the pill to shift width and overlap the title.
+     */
+    private static int cachedPillTextWidth = -1;
+    private static float cachedPillTextSize = -1f;
+    private static int pillTextWidth() {
+        TextPaint p = pillPaint();
+        if (cachedPillTextWidth < 0 || cachedPillTextSize != p.getTextSize()) {
+            cachedPillTextWidth = (int) Math.ceil(p.measureText("00:00"));
+            cachedPillTextSize = p.getTextSize();
+        }
+        return cachedPillTextWidth;
+    }
+
+    /**
      * Draws a small rounded "HH:mm" pill at the given anchor.
      * @param leftPx left edge of the pill
      * @param centerYPx vertical center the pill should align to (typically the
@@ -102,7 +120,8 @@ public final class ChatTimeZoneRenderer {
         if (tz == null || sameAsLocal(tz)) return 0;
         String text = formatNow(tz);
         TextPaint p = pillPaint();
-        int textW = (int) Math.ceil(p.measureText(text));
+        int textW = pillTextWidth(); // fixed worst-case width to keep layout stable
+        int actualW = (int) Math.ceil(p.measureText(text));
         int padH = dp(5);
         int padV = dp(2);
         int pillW = textW + padH * 2;
@@ -115,17 +134,16 @@ public final class ChatTimeZoneRenderer {
         bg.setColor(Theme.getColor(Theme.key_chats_unreadCounterMuted, rp));
         canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, bg);
         p.setColor(Theme.getColor(Theme.key_chats_unreadCounterText, rp));
-        canvas.drawText(text, leftPx + padH, textBaselinePx, p);
+        // Center the (possibly narrower) text within the fixed pill box.
+        canvas.drawText(text, leftPx + padH + (textW - actualW) / 2f, textBaselinePx, p);
         return pillW + dp(6);
     }
 
-    /** Width the pill would consume (used for layout reservations). */
+    /** Width the pill would consume (used for layout reservations). Stable across minutes. */
     public static int measurePillForDialog(int currentAccount, long dialogId) {
         TimeZone tz = ChatTimeZoneController.getForDialog(currentAccount, dialogId);
         if (tz == null || sameAsLocal(tz)) return 0;
-        TextPaint p = pillPaint();
-        int textW = (int) Math.ceil(p.measureText(formatNow(tz)));
-        return textW + dp(5) * 2 + dp(6);
+        return pillTextWidth() + dp(5) * 2 + dp(6);
     }
 
     // ---------- ChatMessageCell time ----------
