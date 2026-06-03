@@ -1,15 +1,18 @@
 package com.radolyn.ayugram.chattimezone;
 
+import android.content.SharedPreferences;
 import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
 
+import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.util.regex.Matcher;
@@ -35,7 +38,55 @@ public final class ChatTimeZoneController {
 
     private static final Pattern OFFSET_PATTERN = Pattern.compile("^([+\\-])(\\d{2}):?(\\d{2})?$");
 
+    /** Lightweight per-account cache of {@code userId -> payload}. Backed by
+     *  SharedPreferences so dialog-list pills can render before UserFull is
+     *  loaded, and avoids re-parsing the marker on every redraw. */
+    private static final HashMap<Integer, HashMap<Long, String>> CACHE = new HashMap<>();
+    private static final HashMap<Integer, Boolean> CACHE_LOADED = new HashMap<>();
+
     private ChatTimeZoneController() {}
+
+    private static String prefsName(int account) {
+        return "chattimezone_" + account;
+    }
+
+    private static synchronized HashMap<Long, String> cache(int account) {
+        HashMap<Long, String> m = CACHE.get(account);
+        if (m == null) {
+            m = new HashMap<>();
+            CACHE.put(account, m);
+        }
+        if (!Boolean.TRUE.equals(CACHE_LOADED.get(account))) {
+            try {
+                SharedPreferences sp = ApplicationLoader.applicationContext
+                        .getSharedPreferences(prefsName(account), 0);
+                for (java.util.Map.Entry<String, ?> e : sp.getAll().entrySet()) {
+                    Object v = e.getValue();
+                    if (v instanceof String) {
+                        try { m.put(Long.parseLong(e.getKey()), (String) v); } catch (NumberFormatException ignore) {}
+                    }
+                }
+            } catch (Throwable ignore) {}
+            CACHE_LOADED.put(account, Boolean.TRUE);
+        }
+        return m;
+    }
+
+    private static synchronized void putCache(int account, long userId, @Nullable String payload) {
+        HashMap<Long, String> m = cache(account);
+        SharedPreferences.Editor ed;
+        try {
+            ed = ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0).edit();
+        } catch (Throwable t) { ed = null; }
+        if (payload == null || payload.isEmpty()) {
+            m.remove(userId);
+            if (ed != null) ed.remove(Long.toString(userId));
+        } else {
+            m.put(userId, payload);
+            if (ed != null) ed.putString(Long.toString(userId), payload);
+        }
+        if (ed != null) ed.apply();
+    }
 
     /** Strip the time-zone marker and payload from a note text for user display. */
     public static CharSequence stripMarker(@Nullable CharSequence noteText) {
@@ -112,8 +163,17 @@ public final class ChatTimeZoneController {
     public static TimeZone getForUser(int currentAccount, long userId) {
         if (userId <= 0) return null; // 1:1 only
         TLRPC.UserFull full = MessagesController.getInstance(currentAccount).getUserFull(userId);
-        if (full == null || full.note == null) return null;
-        return parsePayload(extractPayload(full.note.text));
+        if (full != null && full.note != null) {
+            String payload = extractPayload(full.note.text);
+            // Opportunistically refresh the cache so cold-start renders without UserFull.
+            String cached = cache(currentAccount).get(userId);
+            if (!TextUtils.equals(payload, cached)) {
+                putCache(currentAccount, userId, payload);
+            }
+            return parsePayload(payload);
+        }
+        // Fall back to the persisted cache while UserFull is not yet loaded.
+        return parsePayload(cache(currentAccount).get(userId));
     }
 
     @Nullable
@@ -162,6 +222,9 @@ public final class ChatTimeZoneController {
             full.note = null;
         }
         MessagesStorage.getInstance(currentAccount).updateUserInfo(full, true);
+        // Update the persistent payload cache so dialog cells render immediately
+        // and survive an app restart even before UserFull is reloaded.
+        putCache(currentAccount, userId, tz != null ? encodePayload(tz) : null);
 
         TLRPC.TL_updateContactNote req = new TLRPC.TL_updateContactNote();
         req.id = MessagesController.getInstance(currentAccount).getInputUser(userId);
