@@ -16744,8 +16744,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private void openChatTimeZonePicker() {
         if (getParentActivity() == null) return;
         java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
-        org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).load();
-        org.telegram.ui.ActionBar.BottomSheet sheet = AlertsCreator.createTimezonePickerDialog(
+        org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet.show(
                 getParentActivity(),
                 getString(R.string.ChatTimeZoneTitle),
                 current != null ? current.getID() : org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getSystemTimezoneId(),
