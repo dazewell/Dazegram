@@ -2903,7 +2903,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 .add(NotificationCenter.forceImportContactsStart)
                 .add(NotificationCenter.userEmojiStatusUpdated)
                 .add(NotificationCenter.currentUserPremiumStatusChanged)
-                .add(NotificationCenter.mainUserInfoChanged);
+                .add(NotificationCenter.mainUserInfoChanged)
+                .add(NotificationCenter.userInfoDidLoad);
 
             globalObserversGroup.add(NotificationCenter.didSetPasscode);
         }
@@ -10744,6 +10745,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateStoriesPosting();
         } else if (id == NotificationCenter.mainUserInfoChanged) {
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
+        } else if (id == NotificationCenter.userInfoDidLoad) {
+            // Refresh chat-time-zone pills on dialog cells when a peer's UserFull
+            // arrives (or after our own save). Only invalidates rows -- no re-measure.
+            if (viewPages != null) {
+                for (int a = 0; a < viewPages.length; a++) {
+                    if (viewPages[a] != null && viewPages[a].listView != null) {
+                        viewPages[a].listView.invalidateViews();
+                    }
+                }
+            }
         } else if (id == NotificationCenter.onDatabaseReset) {
             dialogsLoaded[currentAccount] = false;
             loadDialogs(getAccountInstance());
