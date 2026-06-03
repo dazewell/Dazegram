@@ -6,9 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.text.SpannableStringBuilder;
-import android.text.Spanned;
 import android.text.TextPaint;
-import android.text.style.ForegroundColorSpan;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -111,27 +109,6 @@ public final class ChatTimeZoneRenderer {
         TextPaint p = pillPaint();
         int textW = (int) Math.ceil(p.measureText(formatNow(tz)));
         return textW + dp(5) * 2 + dp(6);
-    }
-
-    // ---------- ChatActivity subtitle ----------
-
-    /**
-     * Appends " · HH:mm" to the action-bar subtitle when the peer's TZ differs
-     * from the device's. Returns the original sequence unchanged otherwise.
-     */
-    public static CharSequence appendSubtitle(@Nullable CharSequence base,
-                                              int currentAccount,
-                                              long dialogId) {
-        TimeZone tz = ChatTimeZoneController.getForDialog(currentAccount, dialogId);
-        if (tz == null || sameAsLocal(tz)) return base;
-        String pill = " \u00B7 " + formatNow(tz);
-        SpannableStringBuilder ssb = new SpannableStringBuilder();
-        if (base != null) ssb.append(base);
-        int start = ssb.length();
-        ssb.append(pill);
-        int color = Theme.getColor(Theme.key_chat_status);
-        ssb.setSpan(new ForegroundColorSpan(color), start, ssb.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        return ssb;
     }
 
     // ---------- ChatMessageCell time ----------

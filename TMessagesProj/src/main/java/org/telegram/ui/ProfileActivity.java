@@ -4901,7 +4901,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             } else if (position == noteRow) {
                 editNotes(view, position);
             } else if (position == chatTimeZoneRow) {
-                openChatTimeZonePicker();
+                editChatTimeZone(view);
             } else {
                 processOnClickOrPress(position, view, x, y);
             }
@@ -5291,7 +5291,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     editNotes(view, position);
                     return true;
                 } else if (position == chatTimeZoneRow) {
-                    openChatTimeZonePicker();
+                    editChatTimeZone(view);
                     return true;
                 } else {
                     if (editRow(view, position)) return true;
@@ -16743,18 +16743,39 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
 
     private void openChatTimeZonePicker() {
         if (getParentActivity() == null) return;
-        com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet sheet =
-                new com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet(
-                        getParentActivity(),
-                        tz -> {
-                            if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, tz)) {
-                                if (listAdapter != null && chatTimeZoneRow >= 0) {
-                                    listAdapter.notifyItemChanged(chatTimeZoneRow);
-                                }
-                            }
-                        },
-                        resourcesProvider);
-        showDialog(sheet);
+        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+        org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).load();
+        org.telegram.ui.ActionBar.BottomSheet sheet = AlertsCreator.createTimezonePickerDialog(
+                getParentActivity(),
+                getString(R.string.ChatTimeZoneTitle),
+                current != null ? current.getID() : org.telegram.ui.Business.TimezonesController.getInstance(currentAccount).getSystemTimezoneId(),
+                tzId -> {
+                    java.util.TimeZone picked = tzId != null ? java.util.TimeZone.getTimeZone(tzId) : null;
+                    if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, picked)) {
+                        if (listAdapter != null && chatTimeZoneRow >= 0) {
+                            listAdapter.notifyItemChanged(chatTimeZoneRow);
+                        }
+                    }
+                });
+        if (sheet != null) showDialog(sheet);
+    }
+
+    private void editChatTimeZone(View view) {
+        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+        if (current == null) {
+            openChatTimeZonePicker();
+            return;
+        }
+        final ItemOptions o = ItemOptions.makeOptions(this, view);
+        o.setScrimViewBackground(listView.getClipBackground(view));
+        o.add(R.drawable.msg_edit, getString(R.string.Edit), this::openChatTimeZonePicker);
+        o.add(R.drawable.msg_delete, getString(R.string.Remove), true, () -> {
+            com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, null);
+            if (listAdapter != null && chatTimeZoneRow >= 0) {
+                listAdapter.notifyItemChanged(chatTimeZoneRow);
+            }
+        });
+        o.show();
     }
 
     private boolean editRow(View view, int position) {
