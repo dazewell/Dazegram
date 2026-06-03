@@ -10746,8 +10746,9 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.mainUserInfoChanged) {
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
         } else if (id == NotificationCenter.userInfoDidLoad) {
-            // Refresh chat-time-zone pills only on the affected DialogCell rather
-            // than invalidating every visible row -- userInfoDidLoad fires often.
+            // Refresh chat-time-zone pill on the affected DialogCell. Rebuild the
+            // layout (not just invalidate) so reserved nameWidth follows the new
+            // pill width and the title doesn't overlap or leave a gap.
             if (viewPages != null && args != null && args.length > 0 && args[0] instanceof Long) {
                 long affectedDialogId = (Long) args[0];
                 for (int a = 0; a < viewPages.length; a++) {
@@ -10758,6 +10759,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         android.view.View ch = lv.getChildAt(i);
                         if (ch instanceof org.telegram.ui.Cells.DialogCell
                                 && ((org.telegram.ui.Cells.DialogCell) ch).getDialogId() == affectedDialogId) {
+                            ((org.telegram.ui.Cells.DialogCell) ch).buildLayout();
                             ch.invalidate();
                         }
                     }

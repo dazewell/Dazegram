@@ -203,10 +203,16 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                         user.last_name = lastNameField.getText().toString();
                         user.contact = true;
                         final TLRPC.TL_textWithEntities note = noteField.getTextWithEntities();
-                        // Preserve any chat-time-zone marker the user had configured.
+                        // Preserve any chat-time-zone marker the user had configured. Fall
+                        // back to the persisted cache when UserFull is not yet loaded so the
+                        // marker isn't silently dropped on save.
                         String existingPayload = userInfo != null && userInfo.note != null
                                 ? com.radolyn.ayugram.chattimezone.ChatTimeZoneController.extractPayload(userInfo.note.text)
                                 : null;
+                        if (existingPayload == null) {
+                            existingPayload = com.radolyn.ayugram.chattimezone.ChatTimeZoneController
+                                    .getCachedPayload(currentAccount, user_id);
+                        }
                         if (existingPayload != null) {
                             String suffix = (note.text != null && note.text.length() > 0 ? "\n" : "")
                                     + com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER + existingPayload;

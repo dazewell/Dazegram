@@ -16769,7 +16769,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         final ItemOptions o = ItemOptions.makeOptions(this, view);
         o.setScrimViewBackground(listView.getClipBackground(view));
         o.add(R.drawable.msg_edit, getString(R.string.Edit), this::openChatTimeZonePicker);
-        o.add(R.drawable.msg_delete, getString(R.string.Remove), true, () -> {
+        o.add(R.drawable.msg_delete, getString(R.string.ChatTimeZoneRemove), true, () -> {
             com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, null);
             if (listAdapter != null && chatTimeZoneRow >= 0) {
                 listAdapter.notifyItemChanged(chatTimeZoneRow);

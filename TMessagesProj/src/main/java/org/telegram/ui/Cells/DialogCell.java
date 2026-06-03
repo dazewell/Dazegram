@@ -4082,8 +4082,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             int nameRendered = (int) Math.ceil(nameLayout.getLineWidth(0));
                             pillX = (int) (nameLeft + nameLayoutTranslateX) + Math.min(nameRendered, nameWidth) + dp(6);
                         }
-                        int baselineY = nameTop + (int) (-nameLayout.getPaint().ascent());
-                        com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, baselineY, resourcesProvider);
+                        // Center the pill vertically on the name text, not on the baseline (pill text is smaller than name text).
+                        int nameCenterY = nameTop + nameLayout.getHeight() / 2;
+                        com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, nameCenterY, resourcesProvider);
                     }
                 }
                 if (nameLayoutEllipsizeByGradient && !nameLayoutFits) {

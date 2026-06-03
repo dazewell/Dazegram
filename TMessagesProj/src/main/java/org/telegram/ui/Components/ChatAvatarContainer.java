@@ -585,14 +585,23 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
 
     public void updateTimeZonePill() {
         if (tzClockPill == null || parentFragment == null) return;
-        long dialogId = parentFragment.getDialogId();
-        java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
-        boolean show = tz != null;
-        if (show) {
-            // Hide when peer TZ matches device TZ.
-            long now = System.currentTimeMillis();
-            if (tz.getOffset(now) == java.util.TimeZone.getDefault().getOffset(now)) {
-                show = false;
+        // Only show the pill in the regular chat view -- not in scheduled, quick-replies,
+        // business-link or other auxiliary modes where the title isn't the peer name.
+        boolean show;
+        if (parentFragment.getChatMode() != 0) {
+            show = false;
+        } else {
+            long dialogId = parentFragment.getDialogId();
+            java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
+            show = tz != null && !com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.sameAsLocal(tz);
+            if (show) {
+                String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
+                if (!text.contentEquals(tzClockPill.getText())) {
+                    tzClockPill.setText(text);
+                }
+                int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
+                tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
+                tzClockPill.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
             }
         }
         if (!show) {
@@ -602,13 +611,6 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             }
             return;
         }
-        String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
-        if (!text.contentEquals(tzClockPill.getText())) {
-            tzClockPill.setText(text);
-        }
-        int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
-        tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
-        tzClockPill.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
         if (tzClockPill.getVisibility() != VISIBLE) {
             tzClockPill.setVisibility(VISIBLE);
             requestLayout();
@@ -959,12 +961,19 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             int rendered = Math.min(titleTextWidth, titleAvailable);
             int pillL = l + rendered + dp(6);
             int pillH = tzClockPill.getMeasuredHeight();
-            // Vertically center the pill relative to the actual laid-out title text view.
-            int titleCenter = (titleTextView.getTop() + titleTextView.getBottom()) / 2;
-            int pillT = titleCenter - pillH / 2;
-            int pillR = Math.min(pillL + tzClockPill.getMeasuredWidth(), getMeasuredWidth() - dp(8));
-            int pillB = pillT + pillH;
-            tzClockPill.layout(pillL, pillT, pillR, pillB);
+            int pillW = tzClockPill.getMeasuredWidth();
+            int rightLimit = getMeasuredWidth() - dp(8);
+            if (pillL + pillW > rightLimit) {
+                // Not enough room next to the title -- hide rather than draw a clipped/zero-width pill.
+                tzClockPill.layout(0, 0, 0, 0);
+            } else {
+                // Vertically center the pill on the title TEXT (not the padded title view bounds).
+                int titleTextTop = titleTextView.getTop() + titleTextView.getPaddingTop();
+                int titleTextCenter = titleTextTop + titleTextView.getTextHeight() / 2;
+                int pillT = titleTextCenter - pillH / 2;
+                int pillB = pillT + pillH;
+                tzClockPill.layout(pillL, pillT, pillL + pillW, pillB);
+            }
         }
         SimpleTextView subtitleTextLargerCopyView = this.subtitleTextLargerCopyView.get();
         if (subtitleTextLargerCopyView != null) {

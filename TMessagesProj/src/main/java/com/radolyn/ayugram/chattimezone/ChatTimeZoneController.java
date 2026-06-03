@@ -88,6 +88,13 @@ public final class ChatTimeZoneController {
         if (ed != null) ed.apply();
     }
 
+    /** Returns the persisted payload string for a user, or {@code null} if not configured. */
+    @Nullable
+    public static synchronized String getCachedPayload(int account, long userId) {
+        if (userId <= 0) return null;
+        return cache(account).get(userId);
+    }
+
     /**
      * Locate the last U+200B in the note that is followed by a parseable timezone
      * payload. U+200B can legitimately appear in user-pasted text, so we anchor on
