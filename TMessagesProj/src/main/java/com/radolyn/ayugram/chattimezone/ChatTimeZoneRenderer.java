@@ -54,14 +54,17 @@ public final class ChatTimeZoneRenderer {
     private static boolean sameAsLocal(@Nullable TimeZone tz) {
         if (tz == null) return true;
         TimeZone local = TimeZone.getDefault();
-        long now = System.currentTimeMillis();
-        return tz.getOffset(now) == local.getOffset(now);
+        if (tz.getID().equals(local.getID())) return true;
+        // Two zones can share the current offset but diverge across the year
+        // (DST), so require full rule equivalence -- not a single-instant compare.
+        return tz.hasSameRules(local);
     }
 
     // ---------- DialogCell pill ----------
 
     private static final RectF pillRect = new RectF();
     private static TextPaint pillPaint;
+    private static Paint pillBgPaint;
 
     private static TextPaint pillPaint() {
         if (pillPaint == null) {
@@ -70,6 +73,13 @@ public final class ChatTimeZoneRenderer {
             pillPaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         }
         return pillPaint;
+    }
+
+    private static Paint pillBgPaint() {
+        if (pillBgPaint == null) {
+            pillBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        }
+        return pillBgPaint;
     }
 
     /**
@@ -93,7 +103,7 @@ public final class ChatTimeZoneRenderer {
         int pillH = (int) (p.descent() - p.ascent()) + padV * 2;
         int top = textBaselinePx - (int) (-p.ascent()) - padV;
         pillRect.set(leftPx, top, leftPx + pillW, top + pillH);
-        Paint bg = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint bg = pillBgPaint();
         bg.setColor(Theme.getColor(Theme.key_chats_unreadCounterMuted, rp));
         canvas.drawRoundRect(pillRect, pillH / 2f, pillH / 2f, bg);
         p.setColor(Theme.getColor(Theme.key_chats_unreadCounterText, rp));

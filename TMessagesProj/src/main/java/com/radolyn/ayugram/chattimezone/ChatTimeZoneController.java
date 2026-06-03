@@ -33,8 +33,8 @@ import java.util.regex.Pattern;
 public final class ChatTimeZoneController {
 
     public static final char MARKER = '\u200B';
-    private static final int IANA_MAX_LEN = 32;
-    public static final int MARKER_RESERVED_BYTES = 1 + IANA_MAX_LEN;
+    /** Conservative reservation hint used by note-length budgeting when no TZ is set yet. */
+    public static final int MARKER_RESERVED_BYTES = 1 + 32;
 
     private static final Pattern OFFSET_PATTERN = Pattern.compile("^([+\\-])(\\d{2}):?(\\d{2})?$");
 
@@ -88,10 +88,33 @@ public final class ChatTimeZoneController {
         if (ed != null) ed.apply();
     }
 
+    /**
+     * Locate the last U+200B in the note that is followed by a parseable timezone
+     * payload. U+200B can legitimately appear in user-pasted text, so we anchor on
+     * the LAST occurrence and require the trailing slice to parse as a TZ.
+     * Returns the marker index, or -1 if no valid marker is found.
+     */
+    private static int findValidMarkerIndex(@Nullable CharSequence noteText) {
+        if (noteText == null) return -1;
+        int idx = TextUtils.lastIndexOf(noteText, MARKER);
+        while (idx >= 0) {
+            String payload = noteText.subSequence(idx + 1, noteText.length()).toString();
+            int nl = payload.indexOf('\n');
+            if (nl >= 0) payload = payload.substring(0, nl);
+            payload = payload.trim();
+            if (!payload.isEmpty() && parsePayload(payload) != null) {
+                return idx;
+            }
+            // Try an earlier occurrence (rare: pasted ZWSP after a real marker).
+            idx = idx > 0 ? TextUtils.lastIndexOf(noteText, MARKER, idx - 1) : -1;
+        }
+        return -1;
+    }
+
     /** Strip the time-zone marker and payload from a note text for user display. */
     public static CharSequence stripMarker(@Nullable CharSequence noteText) {
         if (noteText == null) return null;
-        int idx = TextUtils.indexOf(noteText, MARKER);
+        int idx = findValidMarkerIndex(noteText);
         if (idx < 0) return noteText;
         // trim a leading newline before the marker if present
         int cut = idx;
@@ -99,16 +122,16 @@ public final class ChatTimeZoneController {
         return noteText.subSequence(0, cut);
     }
 
-    /** Extracts the raw payload after the marker; returns null if absent. */
+    /** Extracts the raw payload after the marker; returns null if absent or invalid. */
     @Nullable
     public static String extractPayload(@Nullable CharSequence noteText) {
         if (noteText == null) return null;
-        int idx = TextUtils.indexOf(noteText, MARKER);
+        int idx = findValidMarkerIndex(noteText);
         if (idx < 0) return null;
-        String payload = noteText.subSequence(idx + 1, noteText.length()).toString().trim();
-        // payload ends at first newline if any
+        String payload = noteText.subSequence(idx + 1, noteText.length()).toString();
         int nl = payload.indexOf('\n');
         if (nl >= 0) payload = payload.substring(0, nl);
+        payload = payload.trim();
         return payload.isEmpty() ? null : payload;
     }
 
@@ -141,7 +164,9 @@ public final class ChatTimeZoneController {
 
     /**
      * Encodes a {@link TimeZone} for storage. Prefers fixed-offset form when
-     * the zone has no DST, otherwise stores the IANA id (truncated if too long).
+     * the zone has no DST, otherwise stores the full IANA id verbatim. Truncating
+     * the id would yield an unparseable value, so length budgeting is left to the
+     * caller via {@link #adjustedNoteLimit(int, long, int)}.
      */
     public static String encodePayload(TimeZone tz) {
         if (tz == null) return "";
@@ -153,9 +178,7 @@ public final class ChatTimeZoneController {
             int mm = abs % 60;
             return String.format(Locale.US, "%s%02d%02d", sign < 0 ? "-" : "+", hh, mm);
         }
-        String id = tz.getID();
-        if (id.length() > IANA_MAX_LEN) id = id.substring(0, IANA_MAX_LEN);
-        return id;
+        return tz.getID();
     }
 
     /** Look up the TZ for a user dialog id (peer userId). */

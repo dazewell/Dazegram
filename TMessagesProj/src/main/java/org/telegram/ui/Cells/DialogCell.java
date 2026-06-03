@@ -4070,12 +4070,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 SpoilerEffect.layoutDrawMaybe(nameLayout, canvas);
                 AnimatedEmojiSpan.drawAnimatedEmojis(canvas, nameLayout, animatedEmojiStackName, -.075f, null, 0, 0, 0, 1f, getAdaptiveEmojiColorFilter(0, nameLayout.getPaint().getColor()));
                 canvas.restore();
-                // Chat time-zone pill drawn just to the right of the rendered name (no-op when not configured).
-                if (!LocaleController.isRTL && currentDialogId > 0) {
-                    int nameRendered = (int) Math.ceil(nameLayout.getLineWidth(0));
-                    int pillX = (int) (nameLeft + nameLayoutTranslateX) + Math.min(nameRendered, nameWidth) + dp(6);
-                    int baselineY = nameTop + (int) (-nameLayout.getPaint().ascent());
-                    com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, baselineY, resourcesProvider);
+                // Chat time-zone pill drawn next to the rendered name (no-op when not configured).
+                if (currentDialogId > 0) {
+                    int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+                    if (reserved > 0) {
+                        int pillX;
+                        if (LocaleController.isRTL) {
+                            // buildLayout shifts nameLeft right by `reserved`; reserved area sits to the left of the name.
+                            pillX = nameLeft - reserved;
+                        } else {
+                            int nameRendered = (int) Math.ceil(nameLayout.getLineWidth(0));
+                            pillX = (int) (nameLeft + nameLayoutTranslateX) + Math.min(nameRendered, nameWidth) + dp(6);
+                        }
+                        int baselineY = nameTop + (int) (-nameLayout.getPaint().ascent());
+                        com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, baselineY, resourcesProvider);
+                    }
                 }
                 if (nameLayoutEllipsizeByGradient && !nameLayoutFits) {
                     canvas.save();

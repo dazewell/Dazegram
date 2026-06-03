@@ -11020,7 +11020,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     }
                 }
                 // Chat time zone — visible for any 1:1 user chat (except self/bot)
-                if (userId != 0 && userId != getUserConfig().getClientUserId() && !isBot) {
+                // and only after UserFull is loaded so saving cannot no-op.
+                if (userId != 0 && userId != getUserConfig().getClientUserId() && !isBot && userInfo != null) {
                     chatTimeZoneRow = rowCount++;
                 }
                 if (actionsView == null && userId != getUserConfig().getClientUserId()) {

@@ -10746,12 +10746,20 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         } else if (id == NotificationCenter.mainUserInfoChanged) {
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
         } else if (id == NotificationCenter.userInfoDidLoad) {
-            // Refresh chat-time-zone pills on dialog cells when a peer's UserFull
-            // arrives (or after our own save). Only invalidates rows -- no re-measure.
-            if (viewPages != null) {
+            // Refresh chat-time-zone pills only on the affected DialogCell rather
+            // than invalidating every visible row -- userInfoDidLoad fires often.
+            if (viewPages != null && args != null && args.length > 0 && args[0] instanceof Long) {
+                long affectedDialogId = (Long) args[0];
                 for (int a = 0; a < viewPages.length; a++) {
-                    if (viewPages[a] != null && viewPages[a].listView != null) {
-                        viewPages[a].listView.invalidateViews();
+                    if (viewPages[a] == null || viewPages[a].listView == null) continue;
+                    org.telegram.ui.Components.RecyclerListView lv = viewPages[a].listView;
+                    int childCount = lv.getChildCount();
+                    for (int i = 0; i < childCount; i++) {
+                        android.view.View ch = lv.getChildAt(i);
+                        if (ch instanceof org.telegram.ui.Cells.DialogCell
+                                && ((org.telegram.ui.Cells.DialogCell) ch).getDialogId() == affectedDialogId) {
+                            ch.invalidate();
+                        }
                     }
                 }
             }
