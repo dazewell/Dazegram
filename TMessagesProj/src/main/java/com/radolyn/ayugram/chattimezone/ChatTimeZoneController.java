@@ -173,7 +173,8 @@ public final class ChatTimeZoneController {
             int sign = "-".equals(m.group(1)) ? -1 : 1;
             int hh = Integer.parseInt(m.group(2));
             int mm = m.group(3) != null ? Integer.parseInt(m.group(3)) : 0;
-            if (hh > 14 || mm >= 60) return null;
+            // UTC offset range is ±14:00 exactly; +14:30 etc. don't exist.
+            if (hh > 14 || (hh == 14 && mm > 0) || mm >= 60) return null;
             String id = String.format(Locale.US, "GMT%s%02d:%02d", sign < 0 ? "-" : "+", hh, mm);
             return TimeZone.getTimeZone(id);
         }
@@ -285,7 +286,7 @@ public final class ChatTimeZoneController {
         return true;
     }
 
-    /** Returns the number of bytes the marker currently consumes for a given TZ. */
+    /** Returns the number of characters (not bytes) the marker currently consumes for a given TZ. */
     public static int markerLength(@Nullable TimeZone tz) {
         if (tz == null) return 0;
         return 1 /* ZWSP */ + 1 /* preceding newline if note non-empty */ + encodePayload(tz).length();

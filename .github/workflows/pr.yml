@@ -74,7 +74,8 @@ jobs:
         id: prepare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
+          # head_commit is not populated for pull_request events; use the PR title instead.
+          HEAD_MSG: ${{ github.event.pull_request.title }}
         run: |
           set -e
           AI_SUMMARY_ENABLED="${{ vars.AI_SUMMARY_ENABLED }}"
@@ -91,9 +92,11 @@ jobs:
             sudo apt-get install -y jq
           fi
 
-          BRANCH="${{ github.ref_name }}"
+          # github.ref_name on pull_request gives "<number>/merge"; use the source branch ref.
+          BRANCH="${{ github.event.pull_request.head.ref }}"
           REPO="${{ github.repository }}"
-          HEAD_SHA="${{ github.sha }}"
+          # github.sha on pull_request is the synthetic merge commit; use the actual PR head sha.
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           # HEAD_MSG is provided through the step environment (see 'env' above)
 
           LAST_SHA=$(curl -s -H "Accept: application/vnd.github+json" \
@@ -169,9 +172,10 @@ jobs:
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_HASH: ${{ secrets.APP_HASH }}
-          COMMIT_ID: ${{ github.event.head_commit.id }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          # head_commit.* is not populated on pull_request; derive from PR event context.
+          COMMIT_ID: ${{ github.event.pull_request.head.sha }}
+          COMMIT_URL: "https://github.com/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}"
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
         run: |

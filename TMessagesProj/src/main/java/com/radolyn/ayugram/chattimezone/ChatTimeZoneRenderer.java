@@ -23,8 +23,7 @@ import java.util.TimeZone;
  */
 public final class ChatTimeZoneRenderer {
 
-    private static final int CACHE_TTL_MS = 30_000;
-    private static long lastCacheTimeMin = -1;
+    private static long lastCacheTimeMin = -1; // invalidated each minute
     private static final java.util.HashMap<TimeZone, String> NOW_CACHE = new java.util.HashMap<>();
 
     private ChatTimeZoneRenderer() {}
