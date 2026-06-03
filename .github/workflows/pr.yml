@@ -42,9 +42,13 @@ jobs:
           cat gradle.properties
       - name: Debug Build
         run: |
+          # Pass LOCAL_PROPERTIES as env var so build.gradle can decode the base64 keystore
+          # credentials. The previous approach stripped signingConfig from build.gradle, which
+          # caused the APK to be signed with the Android debug keystore instead of the release
+          # key -- making it impossible to install over a release-signed build
+          # (INSTALL_FAILED_UPDATE_INCOMPATIBLE).
           export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
           export DEBUG_BUILD=true
-          sed -i 's/signingConfig = signingConfigs.release//g' TMessagesProj/build.gradle
           ./gradlew TMessagesProj:assembleDebug
 
           APK=$(find TMessagesProj/build/outputs/apk -name '*arm64-v8a*.apk')
