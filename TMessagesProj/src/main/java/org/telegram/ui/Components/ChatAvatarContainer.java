@@ -94,6 +94,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
     private ImageView timeItem;
     private ImageView starBgItem, starFgItem;
     private TimerDrawable timerDrawable;
+    // Per-peer time-zone clock pill (next to the title).
+    private android.widget.TextView tzClockPill;
     private ChatActivity parentFragment;
     private StatusDrawable[] statusDrawables = new StatusDrawable[6];
     private AvatarDrawable avatarDrawable = new AvatarDrawable();
@@ -400,6 +402,15 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             addView(subtitleTextView);
         }
 
+        // Time-zone pill (initially hidden; populated by updateTimeZonePill()).
+        tzClockPill = new android.widget.TextView(context);
+        tzClockPill.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 12);
+        tzClockPill.setTypeface(AndroidUtilities.bold());
+        tzClockPill.setIncludeFontPadding(false);
+        tzClockPill.setPadding(dp(7), dp(2), dp(7), dp(2));
+        tzClockPill.setVisibility(GONE);
+        addView(tzClockPill);
+
         if (parentFragment != null) {
             timeItem = new ImageView(context);
             timeItem.setScaleType(ImageView.ScaleType.CENTER);
@@ -570,6 +581,42 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
 
     public void setOverrideSubtitleColor(Integer overrideSubtitleColor) {
         this.overrideSubtitleColor = overrideSubtitleColor;
+    }
+
+    public void updateTimeZonePill() {
+        if (tzClockPill == null || parentFragment == null) return;
+        // Only show the pill in the regular chat view -- not in scheduled, quick-replies,
+        // business-link or other auxiliary modes where the title isn't the peer name.
+        boolean show;
+        if (parentFragment.getChatMode() != 0) {
+            show = false;
+        } else {
+            long dialogId = parentFragment.getDialogId();
+            java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
+            show = tz != null && !com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.sameAsLocal(tz);
+            if (show) {
+                String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
+                if (!text.contentEquals(tzClockPill.getText())) {
+                    tzClockPill.setText(text);
+                    // Proportional digits can change measured width; re-measure/layout.
+                    tzClockPill.requestLayout();
+                }
+                int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
+                tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
+                tzClockPill.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
+            }
+        }
+        if (!show) {
+            if (tzClockPill.getVisibility() != GONE) {
+                tzClockPill.setVisibility(GONE);
+                requestLayout();
+            }
+            return;
+        }
+        if (tzClockPill.getVisibility() != VISIBLE) {
+            tzClockPill.setVisibility(VISIBLE);
+            requestLayout();
+        }
     }
 
     public boolean openSetTimer() {
@@ -775,6 +822,11 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         if (timeItem != null) {
             timeItem.measure(MeasureSpec.makeMeasureSpec(dp(34), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(34), MeasureSpec.EXACTLY));
         }
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            tzClockPill.measure(
+                    MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.AT_MOST));
+        }
         if (starBgItem != null) {
             starBgItem.measure(MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.EXACTLY));
         }
@@ -904,6 +956,35 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             subtitleTextView.layout(l, viewTop + dp(24), l + subtitleTextView.getMeasuredWidth(), viewTop + subtitleTextView.getTextHeight() + dp(24));
         } else if (animatedSubtitleTextView != null) {
             animatedSubtitleTextView.layout(l, viewTop + dp(24), l + animatedSubtitleTextView.getMeasuredWidth(), viewTop + animatedSubtitleTextView.getTextHeight() + dp(24));
+        }
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            int titleTextWidth = (int) Math.ceil(titleTextView.getPaint().measureText(titleTextView.getText() == null ? "" : titleTextView.getText().toString()));
+            int titleAvailable = titleTextView.getMeasuredWidth() - titleTextView.getPaddingLeft() - titleTextView.getPaddingRight();
+            int rendered = Math.min(titleTextWidth, titleAvailable);
+            // Clear the title's trailing right drawables (premium/emoji-status, verified, scam/fake,
+            // muted) so the pill doesn't overlap them.
+            int titleDecorations = 0;
+            if (titleTextView.getRightDrawable() != null) {
+                titleDecorations += titleTextView.getRightDrawableWidth();
+            }
+            if (titleTextView.getRightDrawable2() != null) {
+                titleDecorations += titleTextView.getRightDrawable2().getIntrinsicWidth() + dp(2);
+            }
+            int pillL = l + rendered + titleDecorations + dp(6);
+            int pillH = tzClockPill.getMeasuredHeight();
+            int pillW = tzClockPill.getMeasuredWidth();
+            int rightLimit = getMeasuredWidth() - dp(8);
+            if (pillL + pillW > rightLimit) {
+                // Not enough room next to the title -- hide rather than draw a clipped/zero-width pill.
+                tzClockPill.layout(0, 0, 0, 0);
+            } else {
+                // Vertically center the pill on the title TEXT (not the padded title view bounds).
+                int titleTextTop = titleTextView.getTop() + titleTextView.getPaddingTop();
+                int titleTextCenter = titleTextTop + titleTextView.getTextHeight() / 2;
+                int pillT = titleTextCenter - pillH / 2;
+                int pillB = pillT + pillH;
+                tzClockPill.layout(pillL, pillT, pillL + pillW, pillB);
+            }
         }
         SimpleTextView subtitleTextLargerCopyView = this.subtitleTextLargerCopyView.get();
         if (subtitleTextLargerCopyView != null) {
@@ -1349,6 +1430,9 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
                     isOnline[0] = false;
                     newStatus = LocaleController.formatUserStatus(currentAccount, user, isOnline, allowShorterStatus ? statusMadeShorter : null);
                     useOnlineColor = isOnline[0];
+                    // Append the peer's local time of their last-seen moment (no-op when not configured
+                    // or when the status has no concrete timestamp, e.g. online/recently/week/month).
+                    newStatus = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentLastSeen(newStatus, currentAccount, user);
                 }
                 newSubtitle = newStatus;
             } else {
@@ -1391,6 +1475,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             setTypingAnimation(true);
         }
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
+        // Refresh peer time-zone clock pill (no-op when not configured).
+        updateTimeZonePill();
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
                 subtitleTextView.setText(newSubtitle);
