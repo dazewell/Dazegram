@@ -44,9 +44,8 @@ public final class ChatTimeZonePickerSheet {
 
     private ChatTimeZonePickerSheet() {}
 
-    public static BottomSheet show(Context context, String title, String currentTimezoneId,
+    public static BottomSheet show(Context context, int currentAccount, String title, String currentTimezoneId,
                                    Utilities.Callback<String> whenPicked) {
-        final int currentAccount = UserConfig.selectedAccount;
         TimezonesController controller = TimezonesController.getInstance(currentAccount);
         controller.load();
         if (controller.getTimezones().isEmpty()) {

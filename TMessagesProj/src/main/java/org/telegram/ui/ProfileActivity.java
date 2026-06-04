@@ -16764,6 +16764,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         }
         org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet.show(
                 getParentActivity(),
+                currentAccount,
                 getString(R.string.ChatTimeZoneTitle),
                 initialId,
                 tzId -> {

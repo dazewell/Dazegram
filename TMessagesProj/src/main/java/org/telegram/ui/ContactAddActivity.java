@@ -214,8 +214,15 @@ public class ContactAddActivity extends BaseFragment implements NotificationCent
                                     .getCachedPayload(currentAccount, user_id);
                         }
                         if (existingPayload != null) {
+                            // Normalize through encodePayload so the appended marker matches
+                            // the length that adjustedNoteLimit budgeted (e.g. "Asia/Kolkata"
+                            // becomes "+0530" to avoid exceeding the server character limit).
+                            java.util.TimeZone parsedTz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.parsePayload(existingPayload);
+                            String normalizedPayload = parsedTz != null
+                                    ? com.radolyn.ayugram.chattimezone.ChatTimeZoneController.encodePayload(parsedTz)
+                                    : existingPayload;
                             String suffix = (note.text != null && note.text.length() > 0 ? "\n" : "")
-                                    + com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER + existingPayload;
+                                    + com.radolyn.ayugram.chattimezone.ChatTimeZoneController.MARKER + normalizedPayload;
                             note.text = (note.text != null ? note.text : "") + suffix;
                         }
                         getMessagesController().putUser(user, false);

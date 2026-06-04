@@ -223,7 +223,9 @@ public final class ChatTimeZoneController {
 
     @Nullable
     public static TimeZone getForDialog(int currentAccount, long dialogId) {
-        if (dialogId <= 0) return null;
+        // Only 1:1 user dialogs carry a UserFull note; reject groups, channels, and
+        // encrypted/secret chats (which have bit 62 set in their encoded dialog id).
+        if (!org.telegram.messenger.DialogObject.isUserDialog(dialogId)) return null;
         return getForUser(currentAccount, dialogId);
     }
 
@@ -298,6 +300,9 @@ public final class ChatTimeZoneController {
      */
     public static int adjustedNoteLimit(int currentAccount, long userId, int serverLimit) {
         TimeZone tz = getForUser(currentAccount, userId);
-        return Math.max(0, serverLimit - markerLength(tz));
+        // When no TZ is set yet we still reserve MARKER_RESERVED_BYTES so the user
+        // can always set a TZ later without the appended marker exceeding serverLimit.
+        int reserved = tz != null ? markerLength(tz) : MARKER_RESERVED_BYTES;
+        return Math.max(0, serverLimit - reserved);
     }
 }
