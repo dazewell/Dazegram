@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   sync:
@@ -41,3 +42,8 @@ jobs:
 
       - name: Push updated dev
         run: git push origin dev --force-with-lease
+
+      - name: Trigger staging build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run staging.yml --ref dev --repo ${{ github.repository }}
