@@ -409,6 +409,15 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         tzClockPill.setIncludeFontPadding(false);
         tzClockPill.setPadding(dp(7), dp(2), dp(7), dp(2));
         tzClockPill.setVisibility(GONE);
+        // Tapping the pill opens the hour-comparison sheet (local vs peer time zone).
+        tzClockPill.setOnClickListener(v -> {
+            if (parentFragment == null) return;
+            org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZoneHoursSheet.show(
+                    getContext(), currentAccount, parentFragment.getDialogId(), parentFragment.getResourceProvider());
+            if (sheet != null) {
+                parentFragment.showDialog(sheet);
+            }
+        });
         addView(tzClockPill);
 
         if (parentFragment != null) {
