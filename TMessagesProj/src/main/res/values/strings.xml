@@ -10184,6 +10184,8 @@
     <string name="ChatTimeZoneRemove">Clear Time Zone</string>
     <string name="ChatTimeZoneLegendNight">night</string>
     <string name="ChatTimeZoneLegendAwake">awake</string>
+    <string name="ChatTimeZoneInsertTime">Insert into message</string>
+    <string name="ChatTimeZoneInsertPattern">%1$s my time (%2$s your time)</string>
     <string name="AddContactShareNumber">Share My Phone Number</string>
     <string name="AddContactShareNumberInfo">Turn this off to prevent %s from seeing your phone number.</string>
     <string name="UserSuggestBirthday">Suggest Date of Birth</string>

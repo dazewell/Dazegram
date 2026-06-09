@@ -29,11 +29,13 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserObject;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Business.TimezonesController;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
 import java.util.Calendar;
 import java.util.Locale;
@@ -61,9 +63,15 @@ public final class ChatTimeZoneHoursSheet {
 
     private ChatTimeZoneHoursSheet() {}
 
+    /**
+     * @param insertHandler when non-null, an "insert into message" button is shown
+     *                      that hands the selected mapping (e.g. "Tue 18:00 my time
+     *                      (Wed 03:00 your time)") to the caller and closes the sheet.
+     */
     @Nullable
     public static BottomSheet show(Context context, int currentAccount, long dialogId,
-                                   @Nullable Theme.ResourcesProvider rp) {
+                                   @Nullable Theme.ResourcesProvider rp,
+                                   @Nullable Utilities.Callback<CharSequence> insertHandler) {
         final TimeZone peerTz = ChatTimeZoneController.getForDialog(currentAccount, dialogId);
         if (peerTz == null || ChatTimeZoneRenderer.sameAsLocal(peerTz)) {
             return null;
@@ -169,10 +177,24 @@ public final class ChatTimeZoneHoursSheet {
             }
         });
 
+        final BottomSheet[] sheetRef = new BottomSheet[1];
+        if (insertHandler != null) {
+            ButtonWithCounterView button = new ButtonWithCounterView(context, rp);
+            button.setText(LocaleController.getString(R.string.ChatTimeZoneInsertTime), false);
+            button.setOnClickListener(v -> {
+                insertHandler.run(buildInsertText(strip.getSelected(), nowIndex, startMs, peerTz));
+                if (sheetRef[0] != null) {
+                    sheetRef[0].dismiss();
+                }
+            });
+            container.addView(button, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 0, 16, 4, 16, 12));
+        }
+
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, rp);
         builder.setApplyBottomPadding(false);
         builder.setCustomView(container);
         BottomSheet sheet = builder.create();
+        sheetRef[0] = sheet;
         sheet.setBackgroundColor(Theme.getColor(Theme.key_dialogBackground, rp));
         sheet.fixNavigationBar(Theme.getColor(Theme.key_dialogBackground, rp));
         return sheet;
@@ -238,13 +260,9 @@ public final class ChatTimeZoneHoursSheet {
         peer.setTimeInMillis(t);
 
         SpannableStringBuilder ssb = new SpannableStringBuilder();
-        ssb.append(youLabel).append(" ∙ ")
-                .append(weekday(local))
-                .append(String.format(Locale.US, " %02d:%02d", local.get(Calendar.HOUR_OF_DAY), local.get(Calendar.MINUTE)))
+        ssb.append(youLabel).append(" ∙ ").append(formatSide(local))
                 .append("  →  ")
-                .append(peerLabel).append(" ∙ ")
-                .append(weekday(peer))
-                .append(String.format(Locale.US, " %02d:%02d", peer.get(Calendar.HOUR_OF_DAY), peer.get(Calendar.MINUTE)));
+                .append(peerLabel).append(" ∙ ").append(formatSide(peer));
 
         int dayDiff = compareDay(peer, local);
         if (dayDiff != 0) {
@@ -254,6 +272,25 @@ public final class ChatTimeZoneHoursSheet {
                     Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         return ssb;
+    }
+
+    /** "Tue 18:00" in the given calendar's zone. */
+    private static String formatSide(Calendar c) {
+        return weekday(c) + String.format(Locale.US, " %02d:%02d",
+                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+    }
+
+    /**
+     * Text handed to the insert button's callback, phrased from the recipient's
+     * perspective: "Tue 18:00 my time (Wed 03:00 your time)".
+     */
+    private static CharSequence buildInsertText(int index, int nowIndex, long startMs, TimeZone peerTz) {
+        long t = index == nowIndex ? System.currentTimeMillis() : startMs + index * HOUR_MS;
+        Calendar local = Calendar.getInstance();
+        local.setTimeInMillis(t);
+        Calendar peer = Calendar.getInstance(peerTz);
+        peer.setTimeInMillis(t);
+        return LocaleController.formatString(R.string.ChatTimeZoneInsertPattern, formatSide(local), formatSide(peer));
     }
 
     /** -1, 0 or +1: calendar-date difference of {@code a} relative to {@code b}. */
@@ -372,6 +409,10 @@ public final class ChatTimeZoneHoursSheet {
                 listener.onSelected(index);
             }
             invalidate();
+        }
+
+        int getSelected() {
+            return selected;
         }
 
         @Override

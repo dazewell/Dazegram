@@ -413,7 +413,15 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         tzClockPill.setOnClickListener(v -> {
             if (parentFragment == null) return;
             org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZoneHoursSheet.show(
-                    getContext(), currentAccount, parentFragment.getDialogId(), parentFragment.getResourceProvider());
+                    getContext(), currentAccount, parentFragment.getDialogId(), parentFragment.getResourceProvider(),
+                    text -> {
+                        ChatActivityEnterView enterView = parentFragment.getChatActivityEnterView();
+                        if (enterView == null || enterView.getEditField() == null) return;
+                        // Insert at the cursor (or append) rather than replacing any draft.
+                        int selection = enterView.getEditField().getSelectionEnd();
+                        if (selection < 0) selection = enterView.getEditField().length();
+                        enterView.getEditField().getText().insert(selection, text);
+                    });
             if (sheet != null) {
                 parentFragment.showDialog(sheet);
             }
