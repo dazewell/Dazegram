@@ -107,7 +107,6 @@ jobs:
         id: prepare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
         run: |
           set -e
           AI_SUMMARY_ENABLED="${{ vars.AI_SUMMARY_ENABLED }}"
@@ -127,7 +126,7 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
           HEAD_SHA="${{ github.sha }}"
-          # HEAD_MSG is provided through the step environment (see 'env' above)
+          HEAD_MSG=$(git log -1 --pretty=%B HEAD)
 
           LAST_SHA=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -202,14 +201,14 @@ jobs:
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_HASH: ${{ secrets.APP_HASH }}
-          COMMIT_ID: ${{ github.event.head_commit.id }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_ID: ${{ github.sha }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
         run: |
           # send apk via telegram bot api
+          export COMMIT_MESSAGE=$(git log -1 --pretty=%B HEAD)
           export mini64=$(find artifacts -name "*arm64-v8a.apk")
           echo $mini64
           python -m pip install -r Tools/scripts/requirements.txt
-          python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} test ${{ secrets.HELPER_BOT_CANARY_TARGET }}
+          python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} test
