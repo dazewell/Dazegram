@@ -57,6 +57,24 @@ public class HotkeyController {
     private HotkeyController() {
     }
 
+    // TEMPORARY diagnostics for hotkey troubleshooting — remove before merge.
+    // Capture with: adb logcat -s HotkeyDiag:D
+    private static final String DIAG_TAG = "HotkeyDiag";
+
+    private static void diag(String where, KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            return;
+        }
+        InputDevice device = event.getDevice();
+        android.util.Log.d(DIAG_TAG, where + " " + KeyEvent.keyCodeToString(event.getKeyCode())
+                + " meta=0x" + Integer.toHexString(event.getMetaState())
+                + " flags=0x" + Integer.toHexString(event.getFlags())
+                + " repeat=" + event.getRepeatCount()
+                + " source=0x" + Integer.toHexString(event.getSource())
+                + " device=" + (device == null ? "null" : ("'" + device.getName() + "' virtual=" + device.isVirtual() + " kbType=" + device.getKeyboardType()))
+                + " enabled=" + enabled());
+    }
+
     public static boolean enabled() {
         return NaConfig.INSTANCE.getPhysicalKeyboardHotkeys().Bool();
     }
@@ -70,6 +88,7 @@ public class HotkeyController {
     }
 
     public static boolean handleGlobalKey(LaunchActivity activity, KeyEvent event) {
+        diag("global", event);
         if (!enabled() || event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0 || !isPhysicalKeyboard(event)) {
             return false;
         }
@@ -176,6 +195,7 @@ public class HotkeyController {
     }
 
     public static boolean handleTextStyleShortcut(EditTextCaption editText, int keyCode, KeyEvent event) {
+        diag("textStyle", event);
         if (!enabled() || !isPhysicalKeyboard(event) || editText.getSelectionStart() == editText.getSelectionEnd()) {
             return false;
         }
