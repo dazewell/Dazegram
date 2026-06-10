@@ -10225,6 +10225,15 @@
     <string name="ProfileNotesRemoveText">Are you sure you want to remove the note?</string>
     <string name="ProfileNotes">Notes</string>
     <string name="ProfileNotesInfo">only visible to you</string>
+    <string name="ChatTimeZone">Time Zone</string>
+    <string name="ChatTimeZoneNotSet">Not set</string>
+    <string name="ChatTimeZoneTitle">Select Time Zone</string>
+    <string name="ChatTimeZoneRemove">Clear Time Zone</string>
+    <string name="ChatTimeZoneLegendNight">night</string>
+    <string name="ChatTimeZoneLegendAwake">awake</string>
+    <string name="ChatTimeZoneInsertTime">Insert into message</string>
+    <string name="ChatTimeZoneInsertPattern">%1$s my time (%2$s your time)</string>
+    <string name="ChatTimeZoneScheduleTime">%1$s\'s time: %2$s</string>
     <string name="AddContactShareNumber">Share My Phone Number</string>
     <string name="AddContactShareNumberInfo">Turn this off to prevent %s from seeing your phone number.</string>
     <string name="UserSuggestBirthday">Suggest Date of Birth</string>
