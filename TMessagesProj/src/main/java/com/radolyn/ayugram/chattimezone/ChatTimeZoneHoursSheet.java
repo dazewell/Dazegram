@@ -26,11 +26,8 @@ import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Business.TimezonesController;
@@ -76,8 +73,7 @@ public final class ChatTimeZoneHoursSheet {
         if (peerTz == null || ChatTimeZoneRenderer.sameAsLocal(peerTz)) {
             return null;
         }
-        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
-        String peerName = user != null ? UserObject.getFirstName(user) : "";
+        String peerName = ChatTimeZoneController.getDialogName(currentAccount, dialogId);
         if (TextUtils.isEmpty(peerName)) {
             peerName = LocaleController.getString(R.string.ChatTimeZone);
         }
