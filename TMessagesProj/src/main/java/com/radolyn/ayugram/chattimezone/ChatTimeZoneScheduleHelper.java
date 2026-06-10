@@ -13,10 +13,7 @@ import android.widget.TextView;
 import androidx.annotation.Nullable;
 
 import org.telegram.messenger.LocaleController;
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserObject;
-import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
@@ -37,8 +34,8 @@ public final class ChatTimeZoneScheduleHelper {
 
     /**
      * Appends the readout line to {@code container}. No-op (returns null) when
-     * the dialog is not a 1:1 user chat, has no configured time zone, or the
-     * zone matches the device's.
+     * the dialog has no configured time zone (1:1 user chats and groups are
+     * supported) or the zone matches the device's.
      *
      * @return runnable that re-renders the line from the pickers' current
      *         values; invoke it whenever a picker value may have changed.
@@ -52,8 +49,7 @@ public final class ChatTimeZoneScheduleHelper {
         if (tz == null || ChatTimeZoneRenderer.sameAsLocal(tz)) {
             return null;
         }
-        TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
-        String name = user != null ? UserObject.getFirstName(user) : "";
+        String name = ChatTimeZoneController.getDialogName(currentAccount, dialogId);
         if (TextUtils.isEmpty(name)) {
             name = LocaleController.getString(R.string.ChatTimeZone);
         }

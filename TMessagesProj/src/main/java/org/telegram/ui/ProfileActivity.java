@@ -11176,6 +11176,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (NaConfig.INSTANCE.getIdDcType().Int() != 0) {
                 idDcRow = rowCount++;
             }
+            // Chat time zone — groups only (stored locally; groups have no Notes
+            // to embed it in). Broadcast channels are excluded by isGroupDialog.
+            if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.isGroupDialog(currentAccount, -chatId)) {
+                chatTimeZoneRow = rowCount++;
+            }
             if (actionsView == null) {
                 if (infoHeaderRow != -1) {
                     notificationsDividerRow = rowCount++;
@@ -13903,7 +13908,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             false
                         );
                     } else if (position == chatTimeZoneRow) {
-                        java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+                        java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
                         CharSequence value;
                         if (tz != null) {
                             value = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz)
@@ -16739,9 +16744,14 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         return true;
     }
 
+    /** Dialog the chat-time-zone row operates on: the user for 1:1 profiles, the group otherwise. */
+    private long getChatTimeZoneDialogId() {
+        return userId != 0 ? userId : -chatId;
+    }
+
     private void openChatTimeZonePicker() {
         if (getParentActivity() == null) return;
-        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
         // Synthetic fixed-offset zones (id "GMT+05:30") aren't entries in TimezonesController,
         // so passing them as the picker's selected id leaves nothing highlighted. Try to
         // resolve to an IANA id with the same UTC offset; otherwise fall back to system.
@@ -16766,7 +16776,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 initialId,
                 tzId -> {
                     java.util.TimeZone picked = tzId != null ? java.util.TimeZone.getTimeZone(tzId) : null;
-                    if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, picked)) {
+                    if (com.radolyn.ayugram.chattimezone.ChatTimeZoneController.saveForDialog(currentAccount, getChatTimeZoneDialogId(), picked)) {
                         if (listAdapter != null && chatTimeZoneRow >= 0) {
                             listAdapter.notifyItemChanged(chatTimeZoneRow);
                         }
@@ -16776,7 +16786,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     }
 
     private void editChatTimeZone(View view) {
-        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForUser(currentAccount, userId);
+        java.util.TimeZone current = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
         if (current == null) {
             openChatTimeZonePicker();
             return;
@@ -16785,7 +16795,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         o.setScrimViewBackground(listView.getClipBackground(view));
         o.add(R.drawable.msg_edit, getString(R.string.Edit), this::openChatTimeZonePicker);
         o.add(R.drawable.msg_delete, getString(R.string.ChatTimeZoneRemove), true, () -> {
-            com.radolyn.ayugram.chattimezone.ChatTimeZoneController.save(currentAccount, userId, null);
+            com.radolyn.ayugram.chattimezone.ChatTimeZoneController.saveForDialog(currentAccount, getChatTimeZoneDialogId(), null);
             if (listAdapter != null && chatTimeZoneRow >= 0) {
                 listAdapter.notifyItemChanged(chatTimeZoneRow);
             }
