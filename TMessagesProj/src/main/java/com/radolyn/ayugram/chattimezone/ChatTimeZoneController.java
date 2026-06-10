@@ -29,6 +29,12 @@ import java.util.regex.Pattern;
  *   - {@code +HHMM} / {@code -HHMM} fixed offset (5 chars, e.g. {@code +0530})
  *   - {@code Z} / {@code UTC}
  *   - any IANA id (e.g. {@code Europe/Berlin})
+ *
+ * <p>Group chats (basic groups and megagroups) have no Notes, so their time
+ * zone is stored locally only, in the same SharedPreferences store keyed by
+ * dialog id (negative for groups, so the key spaces never collide). Broadcast
+ * channels are not supported -- there is no single counterpart whose local
+ * time would be meaningful.
  */
 public final class ChatTimeZoneController {
 
@@ -38,9 +44,10 @@ public final class ChatTimeZoneController {
 
     private static final Pattern OFFSET_PATTERN = Pattern.compile("^([+\\-])(\\d{2}):?(\\d{2})?$");
 
-    /** Lightweight per-account cache of {@code userId -> payload}. Backed by
-     *  SharedPreferences so dialog-list pills can render before UserFull is
-     *  loaded, and avoids re-parsing the marker on every redraw. */
+    /** Lightweight per-account map of {@code dialogId -> payload}. Backed by
+     *  SharedPreferences. For users (positive keys) this is a cache of the
+     *  note-embedded payload so dialog-list pills can render before UserFull is
+     *  loaded; for groups (negative keys) it is the source of truth. */
     private static final HashMap<Integer, HashMap<Long, String>> CACHE = new HashMap<>();
     private static final HashMap<Integer, Boolean> CACHE_LOADED = new HashMap<>();
 
@@ -72,18 +79,18 @@ public final class ChatTimeZoneController {
         return m;
     }
 
-    private static synchronized void putCache(int account, long userId, @Nullable String payload) {
+    private static synchronized void putCache(int account, long dialogId, @Nullable String payload) {
         HashMap<Long, String> m = cache(account);
         SharedPreferences.Editor ed;
         try {
             ed = ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0).edit();
         } catch (Throwable t) { ed = null; }
         if (payload == null || payload.isEmpty()) {
-            m.remove(userId);
-            if (ed != null) ed.remove(Long.toString(userId));
+            m.remove(dialogId);
+            if (ed != null) ed.remove(Long.toString(dialogId));
         } else {
-            m.put(userId, payload);
-            if (ed != null) ed.putString(Long.toString(userId), payload);
+            m.put(dialogId, payload);
+            if (ed != null) ed.putString(Long.toString(dialogId), payload);
         }
         if (ed != null) ed.apply();
     }
@@ -221,12 +228,67 @@ public final class ChatTimeZoneController {
         return parsePayload(cache(currentAccount).get(userId));
     }
 
+    /**
+     * True when the dialog is a group chat eligible for a (local-only) time
+     * zone: a basic group or a megagroup. Broadcast channels and encrypted
+     * chats (bit 62 set in their encoded dialog id) are rejected.
+     */
+    public static boolean isGroupDialog(int currentAccount, long dialogId) {
+        if (dialogId >= 0 || org.telegram.messenger.DialogObject.isEncryptedDialog(dialogId)) return false;
+        TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-dialogId);
+        return chat != null && !org.telegram.messenger.ChatObject.isChannelAndNotMegaGroup(chat);
+    }
+
     @Nullable
     public static TimeZone getForDialog(int currentAccount, long dialogId) {
-        // Only 1:1 user dialogs carry a UserFull note; reject groups, channels, and
-        // encrypted/secret chats (which have bit 62 set in their encoded dialog id).
-        if (!org.telegram.messenger.DialogObject.isUserDialog(dialogId)) return null;
-        return getForUser(currentAccount, dialogId);
+        if (org.telegram.messenger.DialogObject.isUserDialog(dialogId)) {
+            // 1:1 user dialogs carry the payload inside the UserFull note.
+            return getForUser(currentAccount, dialogId);
+        }
+        if (isGroupDialog(currentAccount, dialogId)) {
+            // Groups have no Notes -- the local store is the source of truth.
+            return parsePayload(cache(currentAccount).get(dialogId));
+        }
+        return null;
+    }
+
+    /**
+     * Persists a group's time zone in the local store. Pass {@code null} to
+     * remove. Unlike {@link #save}, nothing is synced to Telegram -- groups
+     * have no Notes to embed the payload in.
+     */
+    public static void saveLocal(int currentAccount, long dialogId, @Nullable TimeZone tz) {
+        putCache(currentAccount, dialogId, tz != null ? encodePayload(tz) : null);
+        NotificationCenter.getInstance(currentAccount).postNotificationName(
+                NotificationCenter.chatTimeZoneChanged, dialogId);
+    }
+
+    /**
+     * Saves a time zone for any supported dialog, routing to the note-backed
+     * store for users and the local store for groups. Returns false when the
+     * dialog is unsupported or the user save could not be issued yet.
+     */
+    public static boolean saveForDialog(int currentAccount, long dialogId, @Nullable TimeZone tz) {
+        if (org.telegram.messenger.DialogObject.isUserDialog(dialogId)) {
+            return save(currentAccount, dialogId, tz);
+        }
+        if (isGroupDialog(currentAccount, dialogId)) {
+            saveLocal(currentAccount, dialogId, tz);
+            return true;
+        }
+        return false;
+    }
+
+    /** Display name of the dialog's counterpart: user first name or group title. */
+    public static String getDialogName(int currentAccount, long dialogId) {
+        if (dialogId > 0) {
+            TLRPC.User user = MessagesController.getInstance(currentAccount).getUser(dialogId);
+            if (user != null) return org.telegram.messenger.UserObject.getFirstName(user);
+        } else {
+            TLRPC.Chat chat = MessagesController.getInstance(currentAccount).getChat(-dialogId);
+            if (chat != null && chat.title != null) return chat.title;
+        }
+        return "";
     }
 
     /**

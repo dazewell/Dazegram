@@ -378,6 +378,8 @@ public class NotificationCenter {
     // custom
     public static final int updateLoginToken = totalEvents++;
     public static final int accountLogin = totalEvents++;
+    // posted with (Long dialogId) when a locally stored chat time zone changes
+    public static final int chatTimeZoneChanged = totalEvents++;
 
     private final SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();
     private final SparseArray<ArrayList<NotificationCenterDelegate>> removeAfterBroadcast = new SparseArray<>();
