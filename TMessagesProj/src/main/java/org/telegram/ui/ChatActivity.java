@@ -3212,6 +3212,7 @@ public class ChatActivity extends BaseFragment implements
             .add(NotificationCenter.botInfoDidLoad)
             .add(NotificationCenter.chatInfoCantLoad)
             .add(NotificationCenter.userInfoDidLoad)
+            .add(NotificationCenter.chatTimeZoneChanged)
             .add(NotificationCenter.pinnedInfoDidLoad)
             .add(NotificationCenter.topicsDidLoaded)
             .add(NotificationCenter.chatWasBoostedByUser)
@@ -25081,6 +25082,14 @@ public class ChatActivity extends BaseFragment implements
                 updateTopPanel(true);
                 if (flagSecure != null) {
                     flagSecure.invalidate();
+                }
+            }
+        } else if (id == NotificationCenter.chatTimeZoneChanged) {
+            // Locally stored group time zone changed (e.g. from the group profile);
+            // refresh the title clock pill.
+            if (args != null && args.length > 0 && args[0] instanceof Long && (Long) args[0] == dialog_id) {
+                if (avatarContainer != null) {
+                    avatarContainer.updateTimeZonePill();
                 }
             }
         } else if (id == NotificationCenter.didSetNewWallpapper) {

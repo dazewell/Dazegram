@@ -4087,7 +4087,10 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 // Chat time-zone pill drawn next to the rendered name + status icons (no-op when not configured).
                 // Must stay outside the gradient-fade layer above: its clip ends at nameLeft + nameWidth,
                 // which is exactly where the pill begins when a long name is fully ellipsized.
-                if (currentDialogId > 0) {
+                // No dialog-type gate here: measurePillForDialog already returns 0 for unsupported
+                // dialogs, and it MUST match the reservation made in buildLayout() -- reserving
+                // width without drawing leaves a trimmed name with a missing pill.
+                {
                     int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
                     if (reserved > 0) {
                         boolean hasMute = dialogMuted || drawUnmute || dialogMutedProgress > 0;
