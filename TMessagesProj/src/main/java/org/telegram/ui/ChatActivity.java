@@ -25015,6 +25015,9 @@ public class ChatActivity extends BaseFragment implements
                 updateGreetInfo();
                 updateBottomOverlay();
                 checkThemeEmoticonOrWallpaper();
+                if (avatarContainer != null) {
+                    avatarContainer.updateTimeZonePill();
+                }
                 if (chatActivityEnterView != null) {
                     chatActivityEnterView.checkChannelRights();
                     chatActivityEnterView.updateGiftButton(true);

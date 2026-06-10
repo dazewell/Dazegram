@@ -4498,8 +4498,14 @@ public class AlertsCreator {
                 }
             }
         });
+        // Peer time-zone readout under the pickers (no-op when not configured). Holder because
+        // the line is created only after the pickers are populated, below.
+        final Runnable[] tzPeerTimeUpdater = new Runnable[1];
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
             checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+            if (tzPeerTimeUpdater[0] != null) {
+                tzPeerTimeUpdater[0].run();
+            }
         };
         dayPicker.setOnValueChangedListener(onValueChangeListener);
 
@@ -4518,6 +4524,12 @@ public class AlertsCreator {
 
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
+        // Show the selected moment in the peer's time zone, right under the pickers (no-op when not configured).
+        tzPeerTimeUpdater[0] = com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.addPeerTimeLine(
+                context, container, UserConfig.selectedAccount, dialogId,
+                datePickerColors.textColor, datePickerColors.buttonBackgroundColor,
+                dayPicker, hourPicker, minutePicker);
+
         if (ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
@@ -4527,12 +4539,21 @@ public class AlertsCreator {
                     dayPicker,
                     hourPicker,
                     minutePicker,
-                    () -> checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker)
+                    () -> {
+                        checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+                        if (tzPeerTimeUpdater[0] != null) {
+                            tzPeerTimeUpdater[0].run();
+                        }
+                    }
             );
         }
         final boolean[] canceled = {true};
 
         checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+        // The initial validation above may have snapped the pickers forward; re-render the peer time line.
+        if (tzPeerTimeUpdater[0] != null) {
+            tzPeerTimeUpdater[0].run();
+        }
 
         final boolean testBackend = ConnectionsManager.getInstance(UserConfig.selectedAccount).isTestBackend();
         final int[] repeatValues =
