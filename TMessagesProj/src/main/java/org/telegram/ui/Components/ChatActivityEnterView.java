@@ -5080,6 +5080,22 @@ public class ChatActivityEnterView extends FrameLayout implements
         return true;
     }
 
+    // NagramX: physical keyboard hotkeys, Alt+; — emoji search with keyboard navigation
+    public boolean openEmojiSearchFromHotkey() {
+        showEmojiView();
+        if (emojiView == null) {
+            return false;
+        }
+        return emojiView.openSearchFromHotkey(() -> {
+            if (isPopupShowing()) {
+                showPopup(0, POPUP_CONTENT_EMOJI_KEYBOARD, true, false);
+            }
+            if (messageEditText != null) {
+                messageEditText.requestFocus();
+            }
+        });
+    }
+
     private ActionBarMenuSubItem actionScheduleButton;
     private boolean onSendLongClick(View view) {
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES) {

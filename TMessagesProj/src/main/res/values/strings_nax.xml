@@ -352,5 +352,5 @@
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
     <string name="PhysicalKeyboardHotkeys">Physical keyboard shortcuts</string>
-    <string name="PhysicalKeyboardHotkeysNotice">Telegram Desktop hotkeys with a hardware keyboard: Ctrl+F search, Esc back, Ctrl+W close chat, Ctrl+PgUp/PgDn switch chats, Ctrl+Shift+↑/↓ switch folders, Ctrl+0 Saved Messages, Ctrl+1–8 pinned chats, Ctrl+9 archive, Ctrl+J contacts, Ctrl+L lock, Ctrl+R read chat, Alt+Enter schedule message, Alt+↑/↓ pick reply target, ↑ edit last message, Ctrl+B/I/U/K and Ctrl+Shift+X/M/P/N text formatting</string>
+    <string name="PhysicalKeyboardHotkeysNotice">Telegram Desktop hotkeys with a hardware keyboard: Ctrl+F search, Esc back, Ctrl+W close chat, Ctrl+PgUp/PgDn switch chats, Ctrl+Shift+↑/↓ switch folders, Ctrl+0 Saved Messages, Ctrl+1–8 pinned chats, Ctrl+9 archive, Ctrl+J contacts, Ctrl+L lock, Ctrl+R read chat, Alt+Enter schedule message, Alt+; emoji search, Alt+↑/↓ pick reply target, ↑ edit last message, Ctrl+B/I/U/K, Ctrl+Shift+X/M/P/N/. text formatting</string>
 </resources>

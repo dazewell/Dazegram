@@ -58,6 +58,7 @@ import android.util.SparseIntArray;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.VelocityTracker;
 import android.view.View;
@@ -4691,6 +4692,141 @@ public class EmojiView extends FrameLayout implements
         if (emojiSearchField != null) {
             emojiSearchField.hideKeyboard();
         }
+    }
+
+    // NagramX: physical keyboard hotkeys — Alt+; emoji search with arrow-key navigation
+    // (com.radolyn.ayugram.hotkeys.HotkeyController). The search field keeps input focus the
+    // whole time; the "selection" is a highlighted grid cell moved with arrow keys.
+    private int hotkeyEmojiPosition = -1;
+    private Runnable hotkeyOnEmojiSent;
+
+    public boolean openSearchFromHotkey(Runnable onEmojiSent) {
+        if (emojiSearchField == null || emojiSearchField.searchEditText == null || emojiGridView == null) {
+            return false;
+        }
+        hotkeyOnEmojiSent = onEmojiSent;
+        hotkeySetEmojiSelection(-1);
+        openSearch(emojiSearchField);
+        EditTextBoldCursor editText = emojiSearchField.searchEditText;
+        editText.setText("");
+        editText.requestFocus();
+        editText.setOnKeyListener((v, keyCode, event) -> hotkeyHandleSearchKey(keyCode, event));
+        return true;
+    }
+
+    private boolean hotkeyHandleSearchKey(int keyCode, KeyEvent event) {
+        if (event == null || event.getAction() != KeyEvent.ACTION_DOWN
+                || !com.radolyn.ayugram.hotkeys.HotkeyController.enabled()
+                || !com.radolyn.ayugram.hotkeys.HotkeyController.isPhysicalKeyboard(event)) {
+            return false;
+        }
+        if (keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER) {
+            return hotkeySendSelectedEmoji();
+        }
+        int spanCount = emojiLayoutManager != null ? emojiLayoutManager.getSpanCount() : 8;
+        boolean selecting = hotkeyEmojiPosition >= 0;
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            return hotkeyMoveEmojiSelection(selecting ? spanCount : 0);
+        }
+        if (selecting) {
+            if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+                return hotkeyMoveEmojiSelection(-spanCount);
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+                return hotkeyMoveEmojiSelection(-1);
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                return hotkeyMoveEmojiSelection(1);
+            }
+        }
+        if (event.getUnicodeChar() != 0) {
+            // typing edits the query — drop the cell selection
+            hotkeySetEmojiSelection(-1);
+        }
+        return false;
+    }
+
+    private ArrayList<Integer> hotkeyVisibleEmojiPositions() {
+        ArrayList<Integer> positions = new ArrayList<>();
+        for (int i = 0; i < emojiGridView.getChildCount(); i++) {
+            View child = emojiGridView.getChildAt(i);
+            if (child instanceof ImageViewEmoji) {
+                int position = emojiGridView.getChildAdapterPosition(child);
+                if (position >= 0) {
+                    positions.add(position);
+                }
+            }
+        }
+        Collections.sort(positions);
+        return positions;
+    }
+
+    private boolean hotkeyMoveEmojiSelection(int delta) {
+        ArrayList<Integer> positions = hotkeyVisibleEmojiPositions();
+        if (positions.isEmpty()) {
+            return false;
+        }
+        int index = positions.indexOf(hotkeyEmojiPosition);
+        int newIndex;
+        if (index < 0) {
+            newIndex = 0;
+        } else {
+            newIndex = index + delta;
+            if (newIndex < 0) {
+                // moved above the top row — back to plain typing
+                hotkeySetEmojiSelection(-1);
+                return true;
+            }
+            newIndex = Math.min(newIndex, positions.size() - 1);
+        }
+        int position = positions.get(newIndex);
+        hotkeySetEmojiSelection(position);
+        emojiGridView.smoothScrollToPosition(position);
+        return true;
+    }
+
+    private void hotkeySetEmojiSelection(int position) {
+        View old = hotkeyFindEmojiView(hotkeyEmojiPosition);
+        if (old != null) {
+            old.setPressed(false);
+        }
+        hotkeyEmojiPosition = position;
+        View selected = hotkeyFindEmojiView(position);
+        if (selected != null) {
+            selected.setPressed(true);
+        }
+    }
+
+    private View hotkeyFindEmojiView(int position) {
+        if (position < 0 || emojiGridView == null) {
+            return null;
+        }
+        for (int i = 0; i < emojiGridView.getChildCount(); i++) {
+            View child = emojiGridView.getChildAt(i);
+            if (child instanceof ImageViewEmoji && emojiGridView.getChildAdapterPosition(child) == position) {
+                return child;
+            }
+        }
+        return null;
+    }
+
+    private boolean hotkeySendSelectedEmoji() {
+        View view = hotkeyFindEmojiView(hotkeyEmojiPosition);
+        if (view == null) {
+            ArrayList<Integer> positions = hotkeyVisibleEmojiPositions();
+            if (!positions.isEmpty()) {
+                view = hotkeyFindEmojiView(positions.get(0));
+            }
+        }
+        if (!(view instanceof ImageViewEmoji)) {
+            return false;
+        }
+        sendEmoji((ImageViewEmoji) view, null);
+        hotkeySetEmojiSelection(-1);
+        if (hotkeyOnEmojiSent != null) {
+            hotkeyOnEmojiSent.run();
+        }
+        return true;
     }
 
     private void openSearch(SearchField searchField) {

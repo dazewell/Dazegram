@@ -1,8 +1,10 @@
 package com.radolyn.ayugram.hotkeys;
 
+import android.app.Dialog;
 import android.os.Bundle;
 import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.View;
 
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessageObject;
@@ -45,34 +47,19 @@ import xyz.nextalone.nagram.NaConfig;
  *   Ctrl+L                    - lock app (when passcode is set)
  *   Ctrl+M                    - minimize app
  *   Ctrl+R                    - mark current chat as read
- *   Alt+Enter                 - schedule message (NagramX custom)
+ *   Alt+Enter                 - schedule message; Enter confirms the picker (NagramX custom)
+ *   Alt+;                     - emoji panel with search focused: type to filter, arrows to pick,
+ *                               Enter to insert and close (NagramX custom)
  *   Up (empty input)          - edit last sent message
  *
  * Text formatting (EditTextCaption.onKeyShortcut, selection required):
  *   Ctrl+B / I / U / K        - bold / italic / underline / link
  *   Ctrl+Shift+X / M / P / N  - strikethrough / monospace / spoiler / plain
+ *   Ctrl+Shift+.              - quote
  */
 public class HotkeyController {
 
     private HotkeyController() {
-    }
-
-    // TEMPORARY diagnostics for hotkey troubleshooting — remove before merge.
-    // Capture with: adb logcat -s HotkeyDiag:D
-    private static final String DIAG_TAG = "HotkeyDiag";
-
-    private static void diag(String where, KeyEvent event) {
-        if (event.getAction() != KeyEvent.ACTION_DOWN) {
-            return;
-        }
-        InputDevice device = event.getDevice();
-        android.util.Log.d(DIAG_TAG, where + " " + KeyEvent.keyCodeToString(event.getKeyCode())
-                + " meta=0x" + Integer.toHexString(event.getMetaState())
-                + " flags=0x" + Integer.toHexString(event.getFlags())
-                + " repeat=" + event.getRepeatCount()
-                + " source=0x" + Integer.toHexString(event.getSource())
-                + " device=" + (device == null ? "null" : ("'" + device.getName() + "' virtual=" + device.isVirtual() + " kbType=" + device.getKeyboardType()))
-                + " enabled=" + enabled());
     }
 
     public static boolean enabled() {
@@ -88,7 +75,6 @@ public class HotkeyController {
     }
 
     public static boolean handleGlobalKey(LaunchActivity activity, KeyEvent event) {
-        diag("global", event);
         if (!enabled() || event.getAction() != KeyEvent.ACTION_DOWN || event.getRepeatCount() != 0 || !isPhysicalKeyboard(event)) {
             return false;
         }
@@ -165,6 +151,10 @@ public class HotkeyController {
                 ChatActivityEnterView enterView = chat.getChatActivityEnterView();
                 return enterView != null && enterView.scheduleMessageFromHotkey();
             }
+            if (keyCode == KeyEvent.KEYCODE_SEMICOLON && chat != null) {
+                ChatActivityEnterView enterView = chat.getChatActivityEnterView();
+                return enterView != null && enterView.openEmojiSearchFromHotkey();
+            }
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                 return chat != null && chat.hotkeyMoveReplyTarget(true);
             }
@@ -194,8 +184,23 @@ public class HotkeyController {
         return false;
     }
 
+    /**
+     * Makes Enter on a physical keyboard trigger the given confirm button while the dialog is
+     * showing (e.g. the schedule date picker opened with Alt+Enter).
+     */
+    public static void confirmOnEnter(Dialog dialog, View button) {
+        dialog.setOnKeyListener((d, keyCode, event) -> {
+            if ((keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+                    && event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0
+                    && enabled() && isPhysicalKeyboard(event)) {
+                button.callOnClick();
+                return true;
+            }
+            return false;
+        });
+    }
+
     public static boolean handleTextStyleShortcut(EditTextCaption editText, int keyCode, KeyEvent event) {
-        diag("textStyle", event);
         if (!enabled() || !isPhysicalKeyboard(event) || editText.getSelectionStart() == editText.getSelectionEnd()) {
             return false;
         }
@@ -219,6 +224,8 @@ public class HotkeyController {
                 itemId = R.id.menu_spoiler;
             } else if (keyCode == KeyEvent.KEYCODE_N) {
                 itemId = R.id.menu_regular;
+            } else if (keyCode == KeyEvent.KEYCODE_PERIOD) {
+                itemId = R.id.menu_quote;
             }
         }
         return itemId != 0 && editText.performMenuAction(itemId);
