@@ -2904,7 +2904,8 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 .add(NotificationCenter.userEmojiStatusUpdated)
                 .add(NotificationCenter.currentUserPremiumStatusChanged)
                 .add(NotificationCenter.mainUserInfoChanged)
-                .add(NotificationCenter.userInfoDidLoad);
+                .add(NotificationCenter.userInfoDidLoad)
+                .add(NotificationCenter.chatTimeZoneChanged);
 
             globalObserversGroup.add(NotificationCenter.didSetPasscode);
         }
@@ -10745,10 +10746,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             updateStoriesPosting();
         } else if (id == NotificationCenter.mainUserInfoChanged) {
             updateStatus(UserConfig.getInstance(account).getCurrentUser(), true);
-        } else if (id == NotificationCenter.userInfoDidLoad) {
-            // Refresh chat-time-zone pill on the affected DialogCell. Rebuild the
-            // layout (not just invalidate) so reserved nameWidth follows the new
-            // pill width and the title doesn't overlap or leave a gap.
+        } else if (id == NotificationCenter.userInfoDidLoad || id == NotificationCenter.chatTimeZoneChanged) {
+            // Refresh chat-time-zone pill on the affected DialogCell (userInfoDidLoad
+            // covers note-backed user TZs, chatTimeZoneChanged the local group TZs).
+            // Rebuild the layout (not just invalidate) so reserved nameWidth follows
+            // the new pill width and the title doesn't overlap or leave a gap.
             if (viewPages != null && args != null && args.length > 0 && args[0] instanceof Long) {
                 long affectedDialogId = (Long) args[0];
                 for (int a = 0; a < viewPages.length; a++) {
