@@ -36655,6 +36655,35 @@ public class ChatActivity extends BaseFragment implements
         return currentEncryptedChat == null && (bottomChannelButtonsLayout == null || bottomChannelButtonsLayout.getVisibility() != View.VISIBLE);
     }
 
+    // NagramX: physical keyboard hotkeys (com.radolyn.ayugram.hotkeys.HotkeyController)
+    public boolean hotkeyOpenSearch() {
+        if (actionBar == null || actionBar.isSearchFieldVisible() || searchItem == null) {
+            return false;
+        }
+        openSearchWithText(isSupportedTags() ? "" : null);
+        return true;
+    }
+
+    public boolean hotkeyCancelFieldPanel() {
+        if (fieldPanelShown == 0 || replyCloseImageView == null) {
+            return false;
+        }
+        replyCloseImageView.performClick();
+        return true;
+    }
+
+    public boolean hotkeyEditLastOutgoingMessage() {
+        if (chatMode != 0 || chatActivityEnterView == null || chatActivityEnterView.isEditingMessage() || chatActivityEnterView.hasAudioToSend()) {
+            return false;
+        }
+        MessageObject message = com.radolyn.ayugram.hotkeys.HotkeyController.findLastEditableOutgoingMessage(messages, currentChat, mergeDialogId);
+        if (message == null) {
+            return false;
+        }
+        startEditingMessageObject(message);
+        return true;
+    }
+
     public boolean isInScheduleMode() {
         return chatMode == MODE_SCHEDULED;
     }

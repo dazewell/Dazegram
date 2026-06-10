@@ -33,6 +33,7 @@ import android.text.style.CharacterStyle;
 import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -947,6 +948,15 @@ public class EditTextCaption extends EditTextBoldCursor {
             return true;
         }
         return false;
+    }
+
+    // NagramX: physical keyboard hotkeys
+    @Override
+    public boolean onKeyShortcut(int keyCode, KeyEvent event) {
+        if (com.radolyn.ayugram.hotkeys.HotkeyController.handleTextStyleShortcut(this, keyCode, event)) {
+            return true;
+        }
+        return super.onKeyShortcut(keyCode, event);
     }
 
     @Override

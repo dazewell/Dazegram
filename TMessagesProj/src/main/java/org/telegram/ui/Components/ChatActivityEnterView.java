@@ -5067,6 +5067,19 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     }
 
+    // NagramX: physical keyboard hotkeys, Alt+Enter (com.radolyn.ayugram.hotkeys.HotkeyController)
+    public boolean scheduleMessageFromHotkey() {
+        if (parentFragment == null || parentActivity == null || !parentFragment.canScheduleMessage() || isInScheduleMode() || editingMessageObject != null) {
+            return false;
+        }
+        CharSequence message = messageEditText != null ? messageEditText.getTextToUse() : null;
+        if (!hasAudioToSend() && (message == null || AndroidUtilities.getTrimmedString(message).length() == 0)) {
+            return false;
+        }
+        AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true), resourcesProvider);
+        return true;
+    }
+
     private ActionBarMenuSubItem actionScheduleButton;
     private boolean onSendLongClick(View view) {
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES) {
