@@ -34,8 +34,8 @@ import xyz.nextalone.nagram.NaConfig;
  *   Esc                       - cancel reply/edit, close search, go back
  *   Ctrl+F                    - search in current chat / chat list
  *   Ctrl+W                    - close current chat
- *   Ctrl+PgDn / Alt+Down      - next chat
- *   Ctrl+PgUp / Alt+Up        - previous chat
+ *   Ctrl+PgDn / Ctrl+PgUp     - next / previous chat
+ *   Alt+Up / Alt+Down         - select reply target message (older / newer; past newest clears)
  *   Ctrl+Alt+Home / End       - first / last chat
  *   Ctrl+Shift+Down / Up      - next / previous folder
  *   Ctrl+0                    - Saved Messages
@@ -146,11 +146,11 @@ public class HotkeyController {
                 ChatActivityEnterView enterView = chat.getChatActivityEnterView();
                 return enterView != null && enterView.scheduleMessageFromHotkey();
             }
-            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                return chat != null && openAdjacentChat(chat, 1, false);
-            }
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-                return chat != null && openAdjacentChat(chat, -1, false);
+                return chat != null && chat.hotkeyMoveReplyTarget(true);
+            }
+            if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                return chat != null && chat.hotkeyMoveReplyTarget(false);
             }
             return false;
         }
@@ -202,6 +202,51 @@ public class HotkeyController {
             }
         }
         return itemId != 0 && editText.performMenuAction(itemId);
+    }
+
+    public static MessageObject findAdjacentReplyTarget(List<MessageObject> messages, MessageObject current, boolean older, List<MessageObject> threadMessages, boolean isEncryptedChat) {
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+        // messages are ordered newest first; "older" moves up the screen
+        int start = -1;
+        if (current != null) {
+            start = messages.indexOf(current);
+            if (start < 0) {
+                for (int i = 0; i < messages.size(); i++) {
+                    if (messages.get(i) != null && messages.get(i).getId() == current.getId()) {
+                        start = i;
+                        break;
+                    }
+                }
+            }
+            if (start < 0) {
+                return null;
+            }
+        } else if (!older) {
+            return null;
+        }
+        int step = older ? 1 : -1;
+        for (int i = start + step; i >= 0 && i < messages.size(); i += step) {
+            MessageObject message = messages.get(i);
+            if (canReplyTo(message, threadMessages, isEncryptedChat)) {
+                return message;
+            }
+        }
+        return null;
+    }
+
+    private static boolean canReplyTo(MessageObject message, List<MessageObject> threadMessages, boolean isEncryptedChat) {
+        if (message == null || message.isDateObject || message.contentType != 0 || message.isSponsored() || message.isAyuDeleted()) {
+            return false;
+        }
+        if (!isEncryptedChat && message.getId() <= 0) {
+            return false;
+        }
+        if (threadMessages != null && threadMessages.contains(message)) {
+            return false;
+        }
+        return !(message.messageOwner != null && message.messageOwner.action instanceof TLRPC.TL_messageActionSecureValuesSent);
     }
 
     public static MessageObject findLastEditableOutgoingMessage(List<MessageObject> messages, TLRPC.Chat currentChat, long mergeDialogId) {

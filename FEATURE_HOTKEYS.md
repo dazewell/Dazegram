@@ -10,8 +10,7 @@ Telegram Desktop-style keyboard shortcuts for Android when a hardware keyboard i
 | `Esc` | Cancel reply/edit panel → close search → back | everywhere |
 | `Ctrl+W` | Close current chat | chat |
 | `Ctrl+F` | Search in chat / chat list | chat, dialogs |
-| `Ctrl+PgDn` / `Alt+↓` | Next chat (same folder order) | chat |
-| `Ctrl+PgUp` / `Alt+↑` | Previous chat | chat |
+| `Ctrl+PgDn` / `Ctrl+PgUp` | Next / previous chat (same folder order) | chat |
 | `Ctrl+Alt+Home` / `Ctrl+Alt+End` | First / last chat | chat |
 | `Ctrl+Shift+↓` / `Ctrl+Shift+↑` | Next / previous folder tab | dialogs |
 | `Ctrl+0` | Saved Messages | chat, dialogs |
@@ -26,6 +25,7 @@ Telegram Desktop-style keyboard shortcuts for Android when a hardware keyboard i
 | Keys | Action |
 |---|---|
 | `Alt+Enter` | **Schedule message** — opens schedule date picker for typed text (NagramX custom) |
+| `Alt+↑` / `Alt+↓` | **Select reply target** — steps the reply selection to an older / newer message, highlighting it; `Alt+↓` past the newest message clears the selection (NagramX custom; tdesktop binds this to Ctrl+↑/↓) |
 | `↑` (empty, focused input) | Edit your last sent message |
 
 ### Text formatting (selection required, any `EditTextCaption`)
@@ -45,7 +45,7 @@ Desktop bindings intentionally not ported: `Ctrl+Q` (quit), media-key bindings (
 Core logic lives in `TMessagesProj/src/main/java/com/radolyn/ayugram/hotkeys/HotkeyController.java` (static, stateless). Hooks injected into base code:
 
 - `LaunchActivity.dispatchKeyEvent` → `HotkeyController.handleGlobalKey(...)` — single entry point for all global/navigation keys; runs before the view tree sees the event. Skipped while passcode lock, PhotoViewer or ArticleViewer is active.
-- `ChatActivity` → `hotkeyOpenSearch()`, `hotkeyCancelFieldPanel()` (clicks the reply-panel ✕), `hotkeyEditLastOutgoingMessage()` (find logic in `HotkeyController.findLastEditableOutgoingMessage`, mirrors the context-menu `allowEdit` conditions).
+- `ChatActivity` → `hotkeyOpenSearch()`, `hotkeyCancelFieldPanel()` (clicks the reply-panel ✕), `hotkeyEditLastOutgoingMessage()` (find logic in `HotkeyController.findLastEditableOutgoingMessage`, mirrors the context-menu `allowEdit` conditions), `hotkeyMoveReplyTarget(older)` (candidate walk in `HotkeyController.findAdjacentReplyTarget`, mirrors the context-menu `allowChatActions` gating; selects via `showFieldPanelForReply` + `scrollToMessageId` highlight).
 - `ChatActivityEnterView.scheduleMessageFromHotkey()` — reuses the quick-schedule path (`AlertsCreator.createScheduleDatePickerDialog` → `sendMessageInternal`); requires `canScheduleMessage()` and non-empty input.
 - `EditTextCaption.onKeyShortcut` → `HotkeyController.handleTextStyleShortcut(...)` — maps Ctrl combos to existing `performMenuAction` ids.
 - `DialogsActivity` → `hotkeyOpenSearch()` (mirrors the action-bar search button), `hotkeySwitchFolder(forward)`.

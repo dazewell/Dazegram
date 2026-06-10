@@ -36684,6 +36684,29 @@ public class ChatActivity extends BaseFragment implements
         return true;
     }
 
+    public boolean hotkeyMoveReplyTarget(boolean older) {
+        if (chatMode != 0 || chatActivityEnterView == null || chatActivityEnterView.isEditingMessage() || messages.isEmpty()) {
+            return false;
+        }
+        if (bottomChannelButtonsLayout != null && bottomChannelButtonsLayout.getVisibility() == View.VISIBLE) {
+            return false;
+        }
+        if (currentChat != null && (ChatObject.isNotInChat(currentChat) && !ChatObject.isMonoForum(currentChat) && !isThreadChat()
+                || ChatObject.isChannel(currentChat) && !ChatObject.canPost(currentChat) && !currentChat.megagroup
+                || !ChatObject.canSendMessages(currentChat))) {
+            return false;
+        }
+        MessageObject current = fieldPanelShown == 2 && replyingMessageObject != threadMessageObject ? replyingMessageObject : null;
+        MessageObject target = com.radolyn.ayugram.hotkeys.HotkeyController.findAdjacentReplyTarget(messages, current, older, threadMessageObjects, currentEncryptedChat != null);
+        if (target == null) {
+            // stepping below the newest message clears the reply selection
+            return !older && current != null && hotkeyCancelFieldPanel();
+        }
+        showFieldPanelForReply(target);
+        scrollToMessageId(target.getId(), 0, true, target.getDialogId() == mergeDialogId ? 1 : 0, false, 0);
+        return true;
+    }
+
     public boolean isInScheduleMode() {
         return chatMode == MODE_SCHEDULED;
     }
