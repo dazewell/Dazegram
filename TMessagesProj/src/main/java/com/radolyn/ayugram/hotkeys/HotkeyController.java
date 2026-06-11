@@ -55,7 +55,7 @@ import xyz.nextalone.nagram.NaConfig;
  * Text formatting (EditTextCaption.onKeyShortcut, selection required):
  *   Ctrl+B / I / U / K        - bold / italic / underline / link
  *   Ctrl+Shift+X / M / P / N  - strikethrough / monospace / spoiler / plain
- *   Ctrl+Shift+.              - quote
+ *   Ctrl+Shift+.              - quote (also works at the cursor, without a selection)
  */
 public class HotkeyController {
 
@@ -88,7 +88,7 @@ public class HotkeyController {
             return false;
         }
         BaseFragment fragment = LaunchActivity.getLastFragment();
-        if (fragment == null || fragment.getParentActivity() == null) {
+        if (fragment == null || fragment.getParentActivity() == null || BaseFragment.hasSheets(fragment)) {
             return false;
         }
         ChatActivity chat = fragment instanceof ChatActivity ? (ChatActivity) fragment : null;
@@ -118,6 +118,9 @@ public class HotkeyController {
                     }
                     return false;
                 case KeyEvent.KEYCODE_J:
+                    if (dialogs != null && !dialogs.hotkeyAllowsChatNavigation()) {
+                        return false;
+                    }
                     fragment.presentFragment(new ContactsActivity(null));
                     return true;
                 case KeyEvent.KEYCODE_L:
@@ -135,6 +138,9 @@ public class HotkeyController {
                     return chat != null && openAdjacentChat(chat, 1, false);
                 case KeyEvent.KEYCODE_PAGE_UP:
                     return chat != null && openAdjacentChat(chat, -1, false);
+            }
+            if (dialogs != null && !dialogs.hotkeyAllowsChatNavigation()) {
+                return false;
             }
             int digit = digitForKey(keyCode);
             if (digit == 0) {
@@ -201,10 +207,11 @@ public class HotkeyController {
     }
 
     public static boolean handleTextStyleShortcut(EditTextCaption editText, int keyCode, KeyEvent event) {
-        if (!enabled() || !isPhysicalKeyboard(event) || editText.getSelectionStart() == editText.getSelectionEnd()) {
+        if (!enabled() || !isPhysicalKeyboard(event)) {
             return false;
         }
         int itemId = 0;
+        boolean needsSelection = true;
         if (event.hasModifiers(KeyEvent.META_CTRL_ON)) {
             if (keyCode == KeyEvent.KEYCODE_B) {
                 itemId = R.id.menu_bold;
@@ -225,10 +232,15 @@ public class HotkeyController {
             } else if (keyCode == KeyEvent.KEYCODE_N) {
                 itemId = R.id.menu_regular;
             } else if (keyCode == KeyEvent.KEYCODE_PERIOD) {
+                // quote also works at the cursor, like the context menu item
                 itemId = R.id.menu_quote;
+                needsSelection = false;
             }
         }
-        return itemId != 0 && editText.performMenuAction(itemId);
+        if (itemId == 0 || needsSelection && editText.getSelectionStart() == editText.getSelectionEnd()) {
+            return false;
+        }
+        return editText.performMenuAction(itemId);
     }
 
     public static MessageObject findAdjacentReplyTarget(List<MessageObject> messages, MessageObject current, boolean older, List<MessageObject> threadMessages, boolean isEncryptedChat) {
@@ -385,8 +397,10 @@ public class HotkeyController {
         if (!(fragment instanceof ChatActivity) && !(fragment instanceof DialogsActivity)) {
             return false;
         }
-        if (fragment.getMessagesController().getDialogs(1).isEmpty()) {
-            return false;
+        MessagesController controller = fragment.getMessagesController();
+        if (controller.getDialogs(1).isEmpty()) {
+            // empty usually means "not loaded yet" — kick a load so the folder populates on open
+            controller.loadDialogs(1, -1, 100, true);
         }
         Bundle args = new Bundle();
         args.putInt("folderId", 1);

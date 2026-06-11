@@ -36668,6 +36668,15 @@ public class ChatActivity extends BaseFragment implements
         if (fieldPanelShown == 0 || replyCloseImageView == null) {
             return false;
         }
+        if (fieldPanelShown == 3) {
+            // cancel the pending forward outright instead of the close button's confirmation dialog
+            forbidForwardingWithDismiss = false;
+            if (messagePreviewParams != null) {
+                messagePreviewParams.updateForward(null, dialog_id);
+            }
+            fallbackFieldPanel();
+            return true;
+        }
         replyCloseImageView.performClick();
         return true;
     }

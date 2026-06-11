@@ -4699,10 +4699,31 @@ public class EmojiView extends FrameLayout implements
     // whole time; the "selection" is a highlighted grid cell moved with arrow keys.
     private int hotkeyEmojiPosition = -1;
     private Runnable hotkeyOnEmojiSent;
+    private boolean hotkeyEmojiAttachListenerSet;
 
     public boolean openSearchFromHotkey(Runnable onEmojiSent) {
         if (emojiSearchField == null || emojiSearchField.searchEditText == null || emojiGridView == null || delegate == null) {
             return false;
+        }
+        if (!hotkeyEmojiAttachListenerSet) {
+            hotkeyEmojiAttachListenerSet = true;
+            // cells are recycled with their pressed state — keep the highlight in sync with
+            // hotkeyEmojiPosition as views get rebound or scrolled into view
+            emojiGridView.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+                @Override
+                public void onChildViewAttachedToWindow(View view) {
+                    if (view instanceof ImageViewEmoji) {
+                        view.setPressed(hotkeyEmojiPosition >= 0 && emojiGridView.getChildAdapterPosition(view) == hotkeyEmojiPosition);
+                    }
+                }
+
+                @Override
+                public void onChildViewDetachedFromWindow(View view) {
+                    if (view instanceof ImageViewEmoji && view.isPressed()) {
+                        view.setPressed(false);
+                    }
+                }
+            });
         }
         hotkeyOnEmojiSent = onEmojiSent;
         hotkeySetEmojiSelection(-1);
@@ -5016,6 +5037,9 @@ public class EmojiView extends FrameLayout implements
     }
 
     public void closeSearch(boolean animated, long scrollToSet) {
+        // NagramX: physical keyboard hotkeys — drop the keyboard-driven emoji selection
+        hotkeySetEmojiSelection(-1);
+        hotkeyOnEmojiSent = null;
         if (searchAnimation != null) {
             searchAnimation.cancel();
             searchAnimation = null;
