@@ -4701,12 +4701,18 @@ public class EmojiView extends FrameLayout implements
     private Runnable hotkeyOnEmojiSent;
 
     public boolean openSearchFromHotkey(Runnable onEmojiSent) {
-        if (emojiSearchField == null || emojiSearchField.searchEditText == null || emojiGridView == null) {
+        if (emojiSearchField == null || emojiSearchField.searchEditText == null || emojiGridView == null || delegate == null) {
             return false;
         }
         hotkeyOnEmojiSent = onEmojiSent;
         hotkeySetEmojiSelection(-1);
-        openSearch(emojiSearchField);
+        // the pager restores the last used page (stickers/GIFs) — force the emoji page,
+        // then go through the same flow as tapping the search box so the panel expands
+        onOpen(true, false);
+        if (!delegate.isSearchOpened()) {
+            openSearch(emojiSearchField);
+        }
+        delegate.onSearchOpenClose(2);
         EditTextBoldCursor editText = emojiSearchField.searchEditText;
         editText.setText("");
         editText.requestFocus();
