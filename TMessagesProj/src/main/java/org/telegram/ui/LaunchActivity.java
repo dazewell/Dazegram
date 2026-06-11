@@ -8594,6 +8594,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         int keyCode = event.getKeyCode();
+        // NagramX: physical keyboard hotkeys
+        if (com.radolyn.ayugram.hotkeys.HotkeyController.handleGlobalKey(this, event)) {
+            return true;
+        }
         if (event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_UP || event.getKeyCode() == KeyEvent.KEYCODE_VOLUME_DOWN) {
             BaseFragment baseFragment = getLastFragment();
             if (baseFragment != null && baseFragment.getLastStoryViewer() != null) {

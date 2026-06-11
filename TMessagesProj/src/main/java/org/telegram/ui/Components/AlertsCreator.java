@@ -4682,6 +4682,8 @@ public class AlertsCreator {
 
         builder.setCustomView(frameLayout);
         BottomSheet bottomSheet = builder.show();
+        // NagramX: physical keyboard hotkeys — Enter confirms the schedule
+        com.radolyn.ayugram.hotkeys.HotkeyController.confirmOnEnter(bottomSheet, buttonTextView);
         bottomSheet.setOnDismissListener(dialog -> {
             if (cancelRunnable != null && canceled[0]) {
                 cancelRunnable.run();

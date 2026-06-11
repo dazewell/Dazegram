@@ -33,6 +33,7 @@ import android.text.style.CharacterStyle;
 import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -804,6 +805,24 @@ public class EditTextCaption extends EditTextBoldCursor {
             if (quotes.length > 0) {
                 invalidateQuotes(true);
             }
+            // NagramX: when allowTextEntitiesIntersection is on, addStyleToText merges
+            // (never clears) a style span that sits strictly inside the selection, so
+            // "Regular" left an interior spoiler/format untouched (e.g. spoiler a word,
+            // then Select All + Regular). Drop the format spans fully covered by the
+            // cleared range, then refresh the spoiler overlay (only spoiler/quote did before).
+            TextStyleSpan[] styleSpans = editable.getSpans(start, end, TextStyleSpan.class);
+            for (TextStyleSpan styleSpan : styleSpans) {
+                if (editable.getSpanStart(styleSpan) >= start && editable.getSpanEnd(styleSpan) <= end) {
+                    editable.removeSpan(styleSpan);
+                }
+            }
+            URLSpanReplacement[] urlSpans = editable.getSpans(start, end, URLSpanReplacement.class);
+            for (URLSpanReplacement urlSpan : urlSpans) {
+                if (editable.getSpanStart(urlSpan) >= start && editable.getSpanEnd(urlSpan) <= end) {
+                    editable.removeSpan(urlSpan);
+                }
+            }
+            invalidateSpoilers();
         }
 
         if (delegate != null) {
@@ -947,6 +966,15 @@ public class EditTextCaption extends EditTextBoldCursor {
             return true;
         }
         return false;
+    }
+
+    // NagramX: physical keyboard hotkeys
+    @Override
+    public boolean onKeyShortcut(int keyCode, KeyEvent event) {
+        if (com.radolyn.ayugram.hotkeys.HotkeyController.handleTextStyleShortcut(this, keyCode, event)) {
+            return true;
+        }
+        return super.onKeyShortcut(keyCode, event);
     }
 
     @Override
