@@ -1253,6 +1253,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val physicalKeyboardHotkeys =
+        addConfig(
+            "PhysicalKeyboardHotkeys",
+            ConfigItem.configTypeBool,
+            true
+        )
     val defaultScheduledTime =
         addConfig(
             "DefaultScheduledTime",

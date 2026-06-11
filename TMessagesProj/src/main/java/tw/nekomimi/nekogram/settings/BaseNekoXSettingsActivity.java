@@ -54,6 +54,7 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellSelectBox;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheck2;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckIcon;
+import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckPage;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextDetail;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput2;
@@ -266,6 +267,7 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
         AbstractConfigCell cell = cellGroup.rows.get(position);
         switch (cell) {
             case ConfigCellTextCheck c -> c.onClick((TextCheckCell) view);
+            case ConfigCellTextCheckPage c -> c.onClick((NotificationsCheckCell) view, x);
             case ConfigCellTextCheck2 c -> c.onClick();
             case ConfigCellTextCheckIcon c -> c.onClick();
             case ConfigCellSelectBox c -> c.onClick(view);
@@ -506,6 +508,9 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
                     break;
                 case CellGroup.ITEM_TYPE_TEXT_CHECK:
                     view = new TextCheckCell(mContext);
+                    break;
+                case CellGroup.ITEM_TYPE_TEXT_CHECK_PAGE:
+                    view = new ConfigCellTextCheckPage.Cell(mContext);
                     break;
                 case CellGroup.ITEM_TYPE_HEADER:
                     view = new HeaderCell(mContext);

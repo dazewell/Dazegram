@@ -71,6 +71,12 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
     private RecyclerListView.OnItemClickListener mentionsOnItemClickListener;
     private Delegate delegate;
 
+    // NagramX: physical keyboard hotkeys — highlighted row for arrow/Enter navigation of the
+    // inline autocomplete strip; -1 means no highlight. Drawn as an ItemDecoration because a
+    // programmatic ripple/setPressed is invisible.
+    private int hotkeySelected = -1;
+    private Paint hotkeyHighlightPaint;
+
     public MentionsContainerView(@NonNull Context context, long dialogId, long threadMessageId, BaseFragment baseFragment, Theme.ResourcesProvider resourcesProvider) {
         super(context);
         this.baseFragment = baseFragment;
@@ -239,6 +245,23 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
             }
 
         }, resourcesProvider, isStories());
+        // NagramX: re-anchor the keyboard highlight to the best match whenever results rebuild
+        adapter.registerAdapterDataObserver(new RecyclerView.AdapterDataObserver() {
+            @Override
+            public void onChanged() {
+                hotkeyOnResultsChanged();
+            }
+
+            @Override
+            public void onItemRangeInserted(int positionStart, int itemCount) {
+                hotkeyOnResultsChanged();
+            }
+
+            @Override
+            public void onItemRangeRemoved(int positionStart, int itemCount) {
+                hotkeyOnResultsChanged();
+            }
+        });
         paddedAdapter = new PaddedListAdapter(adapter);
         listView.setAdapter(paddedAdapter);
         listView.setTranslationY(AndroidUtilities.dp(6));
@@ -440,13 +463,154 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
         AndroidUtilities.runOnUIThread(updateVisibilityRunnable, (baseFragment != null && baseFragment.getFragmentBeginToShow()) ? 0 : 100);
         if (show) {
             onOpen();
+            hotkeyOnResultsChanged();
         } else {
             onClose();
+            hotkeyReset();
         }
     }
 
     public boolean isOpen() {
         return shown;
+    }
+
+    // NagramX: physical keyboard hotkeys — arrow/Enter navigation of the inline autocomplete strip.
+    // Only the linear text suggestions (emoji keywords, @mentions, #hashtags, /commands) are
+    // navigable; sticker / bot-inline grids are excluded.
+    public boolean hotkeyNavigable() {
+        return getVisibility() == View.VISIBLE && shown
+                && listView != null && listView.getLayoutManager() == linearLayoutManager
+                && adapter != null && !adapter.isStickers() && !adapter.isBotContext()
+                && adapter.getItemCountInternal() > 0;
+    }
+
+    public boolean hotkeyMove(int visualDir) {
+        if (!hotkeyNavigable()) {
+            return false;
+        }
+        int count = adapter.getItemCountInternal();
+        // in a reversed (above-the-input) layout the adapter order is flipped, so map the visual
+        // direction to the adapter so "Down" always moves the highlight visually downward. A reset
+        // (-1) highlight simply clamps back to the best match on the first keypress.
+        int next = Math.max(0, hotkeySelected) + (isReversed() ? -visualDir : visualDir);
+        hotkeySelected = Math.max(0, Math.min(count - 1, next));
+        hotkeyScrollIntoView(hotkeySelected + 1);
+        listView.invalidate();
+        return true;
+    }
+
+    public int hotkeySelectedListPosition() {
+        hotkeyEnsureHighlight();
+        return hotkeySelected >= 0 ? hotkeySelected + 1 : -1;
+    }
+
+    public void hotkeyReset() {
+        if (hotkeySelected != -1) {
+            hotkeySelected = -1;
+            if (listView != null) {
+                listView.invalidate();
+            }
+        }
+    }
+
+    private void hotkeyEnsureHighlight() {
+        if (!hotkeyNavigable()) {
+            hotkeyReset();
+            return;
+        }
+        int count = adapter.getItemCountInternal();
+        if (hotkeySelected < 0 || hotkeySelected > count - 1) {
+            hotkeySelected = 0;
+            listView.invalidate();
+        }
+    }
+
+    private void hotkeyOnResultsChanged() {
+        if (!hotkeyNavigable()) {
+            hotkeyReset();
+            return;
+        }
+        // a fresh result set highlights the best match so Enter accepts it (Telegram Desktop parity)
+        hotkeySelected = 0;
+        if (listView != null) {
+            listView.invalidate();
+        }
+    }
+
+    // containerTop is the strip's top edge, but the strip is laid out full height behind the action
+    // bar, so that edge can sit under the title bar. Return the first y below the action bar instead.
+    private float hotkeyVisibleTop() {
+        View actionBar = baseFragment != null ? baseFragment.getActionBar() : null;
+        if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
+            int[] loc = new int[2];
+            actionBar.getLocationOnScreen(loc);
+            float actionBarBottom = loc[1] + actionBar.getMeasuredHeight();
+            getLocationOnScreen(loc);
+            return Math.max(containerTop, actionBarBottom - loc[1]);
+        }
+        return containerTop;
+    }
+
+    private void hotkeyScrollIntoView(int listPosition) {
+        if (listView == null) {
+            return;
+        }
+        RecyclerView.LayoutManager lm = listView.getLayoutManager();
+        if (lm == null) {
+            return;
+        }
+        View child = lm.findViewByPosition(listPosition);
+        if (child == null) {
+            // not laid out yet: let the layout manager bring it in with its own clamped, minimal scroll
+            if (lm instanceof LinearLayoutManager) {
+                ((LinearLayoutManager) lm).scrollToPosition(listPosition);
+            }
+            return;
+        }
+        // [effectiveTop, containerBottom] is the visible content window in container coordinates; the
+        // list view shares the container origin and is offset only by its translationY. The list view
+        // is taller than this window, so RecyclerView's own "fully visible" check would report rows
+        // that are actually clipped under the action bar.
+        float effectiveTop = hotkeyVisibleTop();
+        float ty = listView.getTranslationY();
+        float childTop = child.getTop() + ty;
+        float childBottom = child.getBottom() + ty;
+        int delta;
+        if (childTop < effectiveTop) {
+            delta = (int) (childTop - effectiveTop);
+        } else if (childBottom > containerBottom) {
+            delta = (int) (childBottom - containerBottom);
+        } else {
+            return;
+        }
+        // The padding spacer (list position 0) is far taller than the window; if a scroll drags it
+        // into [containerTop, containerBottom] those bounds — which are derived from the spacer's
+        // position — balloon and the strip grows to full screen, hiding rows under the action bar.
+        // Clamp the scroll so the spacer can never enter the window, but otherwise allow it to move
+        // as far as needed to bring the highlighted row fully into view (positive delta scrolls
+        // content up; a scrollBy of d shifts every child by -d).
+        View spacer = lm.findViewByPosition(0);
+        if (spacer != null) {
+            float spacerTop = spacer.getTop() + ty;
+            float spacerBottom = spacer.getBottom() + ty;
+            if (spacerBottom <= containerTop) {
+                // spacer sits above the window: don't scroll content down far enough to pull it in
+                delta = Math.max(delta, (int) (spacerBottom - containerTop));
+            } else if (spacerTop >= containerBottom) {
+                // spacer sits below the window: don't scroll content up far enough to pull it in
+                delta = Math.min(delta, (int) (spacerTop - containerBottom));
+            }
+        } else {
+            // spacer recycled off-screen (long list): it can't be reached by a single-step scroll, but
+            // guard against a stale containerBottom producing an oversized delta by capping to one window
+            int window = (int) (containerBottom - containerTop);
+            if (window > 0) {
+                delta = Math.max(-window, Math.min(window, delta));
+            }
+        }
+        if (delta != 0) {
+            listView.scrollBy(0, delta);
+        }
     }
 
     @Override
@@ -754,6 +918,40 @@ public class MentionsContainerView extends FrameLayout implements NotificationCe
                             outRect.top = AndroidUtilities.dp(2);
                         }
                         outRect.right = gridLayoutManager.isLastInRow(position) ? 0 : AndroidUtilities.dp(2);
+                    }
+                }
+            });
+            // NagramX: physical keyboard hotkeys — highlight the keyboard-selected row
+            addItemDecoration(new RecyclerView.ItemDecoration() {
+                @Override
+                public void onDraw(@NonNull Canvas canvas, @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+                    if (hotkeySelected < 0) {
+                        return;
+                    }
+                    int listPosition = hotkeySelected + 1;
+                    for (int i = 0; i < parent.getChildCount(); i++) {
+                        View child = parent.getChildAt(i);
+                        if (parent.getChildAdapterPosition(child) != listPosition) {
+                            continue;
+                        }
+                        if (hotkeyHighlightPaint == null) {
+                            hotkeyHighlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                        }
+                        AndroidUtilities.rectTmp.set(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+                        // inset enough to keep the dp(1.5) stroke clear of the row edges
+                        AndroidUtilities.rectTmp.inset(AndroidUtilities.dp(4), AndroidUtilities.dp(2));
+                        // The sheet is clipped to a large rounded path; a small (dp 8) outline radius
+                        // pokes into that curve on the top/bottom rows and gets trimmed. Use a pill
+                        // radius so the outline nests inside the sheet's corners and reads as unified.
+                        float rad = AndroidUtilities.rectTmp.height() / 2f;
+                        hotkeyHighlightPaint.setStyle(Paint.Style.FILL);
+                        hotkeyHighlightPaint.setColor(getThemedColor(Theme.key_listSelector));
+                        canvas.drawRoundRect(AndroidUtilities.rectTmp, rad, rad, hotkeyHighlightPaint);
+                        hotkeyHighlightPaint.setStyle(Paint.Style.STROKE);
+                        hotkeyHighlightPaint.setStrokeWidth(AndroidUtilities.dp(1.5f));
+                        hotkeyHighlightPaint.setColor(getThemedColor(Theme.key_chat_emojiPanelIconSelected));
+                        canvas.drawRoundRect(AndroidUtilities.rectTmp, rad, rad, hotkeyHighlightPaint);
+                        break;
                     }
                 }
             });

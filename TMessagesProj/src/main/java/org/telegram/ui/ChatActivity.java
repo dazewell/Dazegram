@@ -37041,6 +37041,101 @@ public class ChatActivity extends BaseFragment implements
         return currentEncryptedChat == null && (bottomChannelButtonsLayout == null || bottomChannelButtonsLayout.getVisibility() != View.VISIBLE);
     }
 
+    // NagramX: physical keyboard hotkeys (com.radolyn.ayugram.hotkeys.HotkeyController)
+    public boolean hotkeyOpenSearch() {
+        if (actionBar == null || actionBar.isSearchFieldVisible() || searchItem == null) {
+            return false;
+        }
+        openSearchWithText(isSupportedTags() ? "" : null);
+        return true;
+    }
+
+    public boolean hotkeyCancelFieldPanel() {
+        if (fieldPanelShown == 0 || replyCloseImageView == null) {
+            return false;
+        }
+        if (fieldPanelShown == 3) {
+            // cancel the pending forward outright instead of the close button's confirmation dialog
+            forbidForwardingWithDismiss = false;
+            if (messagePreviewParams != null) {
+                messagePreviewParams.updateForward(null, dialog_id);
+            }
+            fallbackFieldPanel();
+            return true;
+        }
+        replyCloseImageView.performClick();
+        return true;
+    }
+
+    public boolean hotkeyEditLastOutgoingMessage() {
+        if (chatMode != 0 || chatActivityEnterView == null || chatActivityEnterView.isEditingMessage() || chatActivityEnterView.hasAudioToSend()) {
+            return false;
+        }
+        MessageObject message = com.radolyn.ayugram.hotkeys.HotkeyController.findLastEditableOutgoingMessage(messages, currentChat, mergeDialogId);
+        if (message == null) {
+            return false;
+        }
+        startEditingMessageObject(message);
+        return true;
+    }
+
+    public boolean hotkeyMoveReplyTarget(boolean older) {
+        if (chatMode != 0 || chatActivityEnterView == null || chatActivityEnterView.isEditingMessage() || messages.isEmpty()) {
+            return false;
+        }
+        if (bottomChannelButtonsLayout != null && bottomChannelButtonsLayout.getVisibility() == View.VISIBLE) {
+            return false;
+        }
+        if (currentChat != null && (ChatObject.isNotInChat(currentChat) && !ChatObject.isMonoForum(currentChat) && !isThreadChat()
+                || ChatObject.isChannel(currentChat) && !ChatObject.canPost(currentChat) && !currentChat.megagroup
+                || !ChatObject.canSendMessages(currentChat))) {
+            return false;
+        }
+        MessageObject current = fieldPanelShown == 2 && replyingMessageObject != threadMessageObject ? replyingMessageObject : null;
+        MessageObject target = com.radolyn.ayugram.hotkeys.HotkeyController.findAdjacentReplyTarget(messages, current, older, threadMessageObjects, currentEncryptedChat != null);
+        if (target == null) {
+            // stepping below the newest message clears the reply selection
+            return !older && current != null && hotkeyCancelFieldPanel();
+        }
+        showFieldPanelForReply(target);
+        scrollToMessageId(target.getId(), 0, true, target.getDialogId() == mergeDialogId ? 1 : 0, false, 0);
+        return true;
+    }
+
+    // NagramX: physical keyboard hotkeys — arrow/Enter navigation inside the inline
+    // autocomplete strip (:emoji / @mentions / #hashtags / /commands). Routed globally from
+    // HotkeyController.handleGlobalKey so it runs before the focused message field sees the key.
+    public boolean hotkeyHandleMentionsKey(KeyEvent event) {
+        if (mentionContainer == null || !mentionContainer.hotkeyNavigable()) {
+            return false;
+        }
+        // only plain arrows/Enter drive the popup; modified combos (Ctrl+Enter send,
+        // Alt+Up/Down reply target, etc.) must keep flowing to their own handlers
+        if (!event.hasNoModifiers()) {
+            return false;
+        }
+        int keyCode = event.getKeyCode();
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            return mentionContainer.hotkeyMove(1);
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
+            return mentionContainer.hotkeyMove(-1);
+        }
+        if ((keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)
+                && event.getRepeatCount() == 0) {
+            int listPosition = mentionContainer.hotkeySelectedListPosition();
+            if (listPosition <= 0 || mentionsOnItemClickListener == null) {
+                return false;
+            }
+            View child = mentionContainer.getListView().getLayoutManager() != null
+                    ? mentionContainer.getListView().getLayoutManager().findViewByPosition(listPosition)
+                    : null;
+            mentionsOnItemClickListener.onItemClick(child, listPosition);
+            return true;
+        }
+        return false;
+    }
+
     public boolean isInScheduleMode() {
         return chatMode == MODE_SCHEDULED;
     }
