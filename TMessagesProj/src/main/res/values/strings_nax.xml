@@ -351,5 +351,24 @@
     <string name="DefaultScheduleDelay">Default delay</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
+    <string name="PhysicalKeyboardHotkeys">Physical keyboard shortcuts</string>
+    <string name="PhysicalKeyboardHotkeysValue">Click to see all Telegram Desktop-style hotkeys</string>
+    <string name="HotkeysHeaderGlobal">Anywhere</string>
+    <string name="HotkeysHeaderChat">In chats</string>
+    <string name="HotkeysHeaderText">Text editing</string>
+    <string name="HotkeyBackCancel">Back / cancel</string>
+    <string name="HotkeyPinnedChats">Pinned chats</string>
+    <string name="HotkeyNextPrevFolder">Next / previous folder</string>
+    <string name="HotkeyLockApp">Lock app</string>
+    <string name="HotkeyMinimizeApp">Minimize app</string>
+    <string name="HotkeyCloseChat">Close chat</string>
+    <string name="HotkeyNextPrevChat">Next / previous chat</string>
+    <string name="HotkeyFirstLastChat">First / last chat</string>
+    <string name="HotkeyEditLastMessage">Edit last message</string>
+    <string name="HotkeyChooseReplyTarget">Choose message to reply to</string>
+    <string name="HotkeyEmojiSearch">Emoji search</string>
+    <string name="HotkeysGlobalNotice">Shortcuts only work with a physical keyboard connected to the device.</string>
+    <string name="HotkeysChatNotice">↑ edits your last message when the input field is empty. Enter confirms the schedule picker. In emoji search: arrow keys navigate, Enter inserts the emoji, Ctrl+Enter sends the message, Esc closes the panel.</string>
+    <string name="HotkeysTextNotice">Formatting shortcuts apply to the selected text. Quote also works at the cursor without a selection.</string>
     <string name="ExportAyuDB">Export Database</string>
 </resources>
