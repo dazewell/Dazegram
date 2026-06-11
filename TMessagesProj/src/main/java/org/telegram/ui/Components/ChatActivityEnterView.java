@@ -5067,6 +5067,60 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     }
 
+    // NagramX: physical keyboard hotkeys, Alt+Enter (com.radolyn.ayugram.hotkeys.HotkeyController)
+    public boolean scheduleMessageFromHotkey() {
+        if (parentFragment == null || parentActivity == null || !parentFragment.canScheduleMessage() || isInScheduleMode() || editingMessageObject != null) {
+            return false;
+        }
+        CharSequence message = messageEditText != null ? messageEditText.getTextToUse() : null;
+        if (!hasAudioToSend() && (message == null || AndroidUtilities.getTrimmedString(message).length() == 0)) {
+            return false;
+        }
+        AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true), resourcesProvider);
+        return true;
+    }
+
+    // NagramX: physical keyboard hotkeys, Alt+; — emoji search with keyboard navigation
+    public boolean openEmojiSearchFromHotkey() {
+        showEmojiView();
+        if (emojiView == null) {
+            return false;
+        }
+        return emojiView.openSearchFromHotkey(this::closeEmojiPanelFromHotkey, () -> {
+            closeEmojiPanelFromHotkey();
+            if (editingMessageObject == null) {
+                sendMessage();
+            }
+        });
+    }
+
+    // keys for the active Alt+; session (arrows, Enter, Ctrl+Enter, Esc), routed from the
+    // global dispatch so they work regardless of which view holds focus; the popup check
+    // keeps a stale session (panel dismissed by touch/back) from eating keys
+    public boolean handleEmojiSearchHotkey(KeyEvent event) {
+        return isPopupShowing() && emojiView != null && emojiView.handleSearchHotkey(event);
+    }
+
+    private void closeEmojiPanelFromHotkey() {
+        // mirror of hidePopup's search branch: collapse the search and the expanded panel
+        // before hiding the popup, otherwise the expanded background is left behind
+        if (searchingType != 0) {
+            setSearchingTypeInternal(0, false);
+            if (emojiView != null) {
+                emojiView.closeSearch(false);
+            }
+        }
+        if (stickersExpanded) {
+            setStickersExpanded(false, false, false);
+        }
+        if (isPopupShowing()) {
+            showPopup(0, POPUP_CONTENT_EMOJI_KEYBOARD, true, false);
+        }
+        if (messageEditText != null) {
+            messageEditText.requestFocus();
+        }
+    }
+
     private ActionBarMenuSubItem actionScheduleButton;
     private boolean onSendLongClick(View view) {
         if (isInScheduleMode() || parentFragment != null && parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES) {

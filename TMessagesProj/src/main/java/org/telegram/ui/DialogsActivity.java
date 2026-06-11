@@ -6796,6 +6796,28 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
     }
 
+    // NagramX: physical keyboard hotkeys (com.radolyn.ayugram.hotkeys.HotkeyController)
+    public boolean hotkeyOpenSearch() {
+        if (onlySelect || searchIsShowed || fragmentSearchFieldWatcher == null) {
+            return false;
+        }
+        showSearch(true, false, true);
+        fragmentSearchFieldWatcher.toggleSearch(true);
+        return true;
+    }
+
+    public boolean hotkeySwitchFolder(boolean forward) {
+        if (searchIsShowed || filterTabsView == null || filterTabsView.getVisibility() != View.VISIBLE || filterTabsView.isEditing()
+                || tabsAnimationInProgress || startedTracking || filterTabsView.isAnimatingIndicator()) {
+            return false;
+        }
+        return filterTabsView.selectTabWithOffset(forward ? 1 : -1);
+    }
+
+    public boolean hotkeyAllowsChatNavigation() {
+        return !onlySelect;
+    }
+
     public void scrollToFolder(int fid) {
         if (filterTabsView == null) {
             updateFilterTabs(true, true);
