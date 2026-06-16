@@ -2648,6 +2648,11 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         try {
             CharSequence messageStringFinal;
+            // NagramX: hide last message preview in the chat list (keeps sender name, drops media thumbs)
+            if (com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
+                messageString = com.radolyn.ayugram.hidelastmessage.HideLastMessageController.getPlaceholder(currentAccount, getDialogId());
+                thumbsCount = 0;
+            }
             // Removing links and bold spans to get rid of underlining and boldness
             if (messageString instanceof Spannable) {
                 Spannable messageStringSpannable = (Spannable) messageString;

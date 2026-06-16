@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="NagramX" translatable="false">Nagram X</string>
+    <string name="HideLastMessage">Hide Last Message</string>
+    <string name="HideLastMessageTitle">Hide last message</string>
+    <string name="HideLastMessageInfo">Replace this chat\'s last message in the chat list with a placeholder, so it can\'t be read at a glance. The real message is still shown when you open the chat.</string>
+    <string name="HideLastMessageEnable">Hide</string>
+    <string name="HideLastMessageDisable">Don\'t hide</string>
+    <string name="HideLastMessageDefault">Hidden message</string>
     <string name="XChannel">Nagram X Channel</string>
     <string name="EnableSaveDeletedMessages">Save Deleted Messages</string>
     <string name="DeletedMessage">deleted</string>
