@@ -470,6 +470,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkactionbarbtn_send_now = 2042;
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
+    private final static int nkheaderbtn_hide_last_message = 2102;
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -4835,6 +4836,8 @@ public class ChatActivity extends BaseFragment implements
                 clearHistoryItem = headerItem.lazilyAddSubItem(clear_history, R.drawable.msg_clear,
                     LocaleController.getString(UserObject.isBotForum(currentUser) ? R.string.ClearAllHistory : R.string.ClearHistory));
             }
+            // NagramX: hide this chat's last message preview in the chat list
+            headerItem.lazilyAddSubItem(nkheaderbtn_hide_last_message, R.drawable.menu_hide_gift, getString(R.string.HideLastMessage));
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
@@ -45828,6 +45831,8 @@ public class ChatActivity extends BaseFragment implements
             }
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
+        } else if (id == nkheaderbtn_hide_last_message) {
+            com.radolyn.ayugram.hidelastmessage.HideLastMessageDialog.show(ChatActivity.this, dialog_id);
         } else if (id == nkbtn_bookmarks_manager) {
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {
