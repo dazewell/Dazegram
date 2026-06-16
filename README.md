@@ -37,6 +37,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
    | `Ctrl+Shift+X` / `M` / `P` / `N` | Strikethrough / monospace / spoiler / plain |
    | `Ctrl+Shift+.` | Quote (works at cursor without a selection too) |
 
+ - **Hide last message:** flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
+
 ## Download
 
 Latest versions are available through:
