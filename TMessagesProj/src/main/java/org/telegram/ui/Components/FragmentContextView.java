@@ -111,6 +111,7 @@ import me.vkryl.android.animator.ReplaceAnimator;
 import me.vkryl.core.lambda.Destroyable;
 
 import tw.nekomimi.nekogram.NekoConfig;
+import xyz.nextalone.nagram.NaConfig;
 
 public class FragmentContextView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, VoIPService.StateListener, GroupCallMessagesController.CallMessageListener  {
     public final static int STYLE_NOT_SET = -1,
@@ -151,6 +152,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
     private RLottieImageView muteButton;
     private RLottieDrawable muteDrawable;
     private ImageView closeButton;
+    private ImageView videoPlayModeButton; // NagramX: video message play mode toggle
     private ActionBarMenuItem playbackSpeedButton;
     private SpeedIconDrawable speedIcon;
     private ActionBarMenuSlider.SpeedSlider speedSlider;
@@ -747,6 +749,29 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             }
         });
 
+        // NagramX: video message play mode toggle (Play once / Play all / Repeat one)
+        videoPlayModeButton = new ImageView(context);
+        videoPlayModeButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        videoPlayModeButton.setPadding(dp(7), dp(7), dp(7), dp(7));
+        videoPlayModeButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.SRC_IN));
+        videoPlayModeButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
+        videoPlayModeButton.setVisibility(GONE);
+        addView(videoPlayModeButton, LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, 0, 0, 68, 0));
+        videoPlayModeButton.setOnClickListener(v -> {
+            int mode = NaConfig.INSTANCE.getVideoMessagesPlayMode().Int();
+            int next;
+            if (mode == NaConfig.VIDEO_PLAY_ALL) {
+                next = NaConfig.VIDEO_PLAY_ONCE;
+            } else if (mode == NaConfig.VIDEO_PLAY_ONCE) {
+                next = NaConfig.VIDEO_REPEAT_ONE;
+            } else {
+                next = NaConfig.VIDEO_PLAY_ALL;
+            }
+            NaConfig.INSTANCE.getVideoMessagesPlayMode().setConfigInt(next);
+            updateVideoPlayModeButton();
+        });
+        updateVideoPlayModeButton();
+
         groupCallMessagesContainer = new FrameLayout(getContext()) {
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
@@ -1024,6 +1049,10 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         if (closeButton != null) {
             closeButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.MULTIPLY));
         }
+        if (videoPlayModeButton != null) { // NagramX
+            videoPlayModeButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.SRC_IN));
+            videoPlayModeButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
+        }
         if (subtitleTextView != null) {
             for (int i = 0; i < 2; i++) {
                 TextView textView = i == 0 ? subtitleTextView.getTextView() : subtitleTextView.getNextTextView();
@@ -1157,6 +1186,28 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         bulletin.show();
     }
 
+    // NagramX: reflect the persisted video message play mode on the toggle button
+    private void updateVideoPlayModeButton() {
+        if (videoPlayModeButton == null) {
+            return;
+        }
+        int mode = NaConfig.INSTANCE.getVideoMessagesPlayMode().Int();
+        int icon;
+        String desc;
+        if (mode == NaConfig.VIDEO_PLAY_ONCE) {
+            icon = R.drawable.baseline_play_circle_outline_48;
+            desc = getString(R.string.PlayOnce);
+        } else if (mode == NaConfig.VIDEO_REPEAT_ONE) {
+            icon = R.drawable.player_new_repeatone;
+            desc = getString(R.string.AccDescrRepeatOne);
+        } else {
+            icon = R.drawable.round_skip_next_36;
+            desc = getString(R.string.VideoMessagesPlayAll);
+        }
+        videoPlayModeButton.setImageResource(icon);
+        videoPlayModeButton.setContentDescription(desc);
+    }
+
     private void updateSilent() {
         if (currentStyle == STYLE_AUDIO_PLAYER) {
             boolean isSilent = MediaController.getInstance().isSilent;
@@ -1260,6 +1311,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 playbackSpeedButton.setVisibility(GONE);
                 playbackSpeedButton.setTag(null);
             }
+            if (videoPlayModeButton != null) { // NagramX
+                videoPlayModeButton.setVisibility(GONE);
+            }
             titleTextView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36, Gravity.LEFT | Gravity.TOP, 35, 0, (isSideMenued ? 64 : 0) + 36, 0));
         } else if (style == STYLE_AUDIO_PLAYER || style == STYLE_LIVE_LOCATION) {
             selector.setBackground(Theme.getSelectorDrawable(false));
@@ -1345,6 +1399,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 playbackSpeedButton.setVisibility(GONE);
                 playbackSpeedButton.setTag(null);
             }
+            if (videoPlayModeButton != null) { // NagramX
+                videoPlayModeButton.setVisibility(GONE);
+            }
         } else if (style == STYLE_CONNECTING_GROUP_CALL || style == STYLE_ACTIVE_GROUP_CALL) {
             selector.setBackground(null);
             updateCallTitle();
@@ -1396,6 +1453,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             if (playbackSpeedButton != null) {
                 playbackSpeedButton.setVisibility(GONE);
                 playbackSpeedButton.setTag(null);
+            }
+            if (videoPlayModeButton != null) { // NagramX
+                videoPlayModeButton.setVisibility(GONE);
             }
         }
     }
@@ -1977,7 +2037,14 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                         playbackSpeedButton.setAlpha(1.0f);
                         playbackSpeedButton.setEnabled(true);
                     }
-                    titleTextView.setPadding(0, 0, dp(44) + joinButtonWidth, 0);
+                    if (lastMessageObject.isRoundVideo()) { // NagramX: play mode toggle only for video messages
+                        videoPlayModeButton.setVisibility(VISIBLE);
+                        updateVideoPlayModeButton();
+                        titleTextView.setPadding(0, 0, dp(44 + 36) + joinButtonWidth, 0);
+                    } else {
+                        videoPlayModeButton.setVisibility(GONE);
+                        titleTextView.setPadding(0, 0, dp(44) + joinButtonWidth, 0);
+                    }
                     stringBuilder = new SpannableStringBuilder(String.format("%s %s", messageObject.getMusicAuthor(), messageObject.getMusicTitle()));
 
                     for (int i = 0; i < 2; i++) {
@@ -1991,6 +2058,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                     updatePlaybackButton(false);
                 } else {
                     isMusic = true;
+                    videoPlayModeButton.setVisibility(GONE); // NagramX
                     if (playbackSpeedButton != null) {
                         if (messageObject.getDuration() >= 10 * 60) {
                             playbackSpeedButton.setAlpha(1.0f);

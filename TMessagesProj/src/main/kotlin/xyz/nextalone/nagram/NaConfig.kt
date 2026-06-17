@@ -17,6 +17,11 @@ import java.io.ObjectInputStream
 
 
 object NaConfig {
+    // Video message playback modes (see videoMessagesPlayMode)
+    const val VIDEO_PLAY_ONCE = 0
+    const val VIDEO_PLAY_ALL = 1
+    const val VIDEO_REPEAT_ONE = 2
+
     @Volatile
     private var initialized = false
 
@@ -910,6 +915,12 @@ object NaConfig {
             "DontAutoPlayNextVoice",
             ConfigItem.configTypeBool,
             false
+        )
+    val videoMessagesPlayMode =
+        addConfig(
+            "VideoMessagesPlayMode",
+            ConfigItem.configTypeInt,
+            VIDEO_PLAY_ALL
         )
     val messageColoredBackground =
         addConfig(
