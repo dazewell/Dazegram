@@ -3409,7 +3409,20 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             } else {
                 final boolean restored = restoreMusicPlaylistState();
                 if (!restored) {
-                    cleanupPlayer(true, hasNoNextVoiceOrRoundVideoMessage(), true, false);
+                    // NagramX: video message playback mode (Play once / Play all / Repeat one)
+                    int vmMode = (playingMessageObject != null && playingMessageObject.isRoundVideo() && !playingMessageObject.isRoundOnce())
+                            ? NaConfig.INSTANCE.getVideoMessagesPlayMode().Int()
+                            : NaConfig.VIDEO_PLAY_ALL;
+                    if (vmMode == NaConfig.VIDEO_REPEAT_ONE) {
+                        playingMessageObject.audioProgress = 0;
+                        playingMessageObject.audioProgressSec = 0;
+                        videoPlayer.seekTo(0);
+                        NotificationCenter.getInstance(playingMessageObject.currentAccount).postNotificationName(NotificationCenter.messagePlayingProgressDidChanged, playingMessageObject.getId(), 0);
+                    } else if (vmMode == NaConfig.VIDEO_PLAY_ONCE) {
+                        cleanupPlayer(true, true, false, false);
+                    } else {
+                        cleanupPlayer(true, hasNoNextVoiceOrRoundVideoMessage(), true, false);
+                    }
                 }
             }
         }

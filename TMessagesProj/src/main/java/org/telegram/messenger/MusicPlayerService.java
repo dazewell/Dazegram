@@ -709,6 +709,23 @@ public class MusicPlayerService extends Service implements NotificationCenter.No
         unregisterReceiver(headsetPlugReceiver);
         super.onDestroy();
         stopForeground(true);
+        // NagramX: the media session is a process singleton that stays active; on dismissal mark
+        // playback stopped, deactivate it, and clear the metadata. Leaving metadata behind keeps the
+        // system's media-resumption chip in the shade (ColorOS/AOSP) even with an inactive session,
+        // so we clear it like other media apps do. onCreate()/createNotification() repopulate it on
+        // the next playback.
+        TelegramMediaSession sessionSingleton = TelegramMediaSession.peekInstance();
+        if (sessionSingleton != null) {
+            try {
+                sessionSingleton.publishPlaybackState(new PlaybackStateCompat.Builder()
+                        .setState(PlaybackStateCompat.STATE_NONE, 0, 0f)
+                        .setActions(0)
+                        .build());
+                sessionSingleton.getSession().setMetadata(null);
+                sessionSingleton.getSession().setActive(false);
+            } catch (Throwable ignored) {
+            }
+        }
         if (remoteControlClient != null) {
             RemoteControlClient.MetadataEditor metadataEditor = remoteControlClient.editMetadata(true);
             metadataEditor.clear();
