@@ -472,6 +472,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_bookmarks_manager = 2040;
     private final static int nkbtn_report = 2041;
     private final static int nkactionbarbtn_send_now = 2042;
+    private final static int nkactionbarbtn_reschedule = 2043;
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
     private final static int nkheaderbtn_hide_last_message = 2102;
@@ -4123,6 +4124,8 @@ public class ChatActivity extends BaseFragment implements
                     clearSelectionMode();
                 } else if (id == nkactionbarbtn_send_now) {
                     performSendNowSelectedMessages();
+                } else if (id == nkactionbarbtn_reschedule) {
+                    performRescheduleSpreadSelectedMessages();
                 } else if (id == delete) {
                     if (getParentActivity() == null) {
                         return;
@@ -10930,6 +10933,7 @@ public class ChatActivity extends BaseFragment implements
         }
         actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), LocaleController.getString(R.string.Delete)));
         actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_send_now, R.drawable.msg_send, AndroidUtilities.dp(54), LocaleController.getString(R.string.MessageScheduleSend)));
+        actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_reschedule, R.drawable.msg_calendar2, AndroidUtilities.dp(54), LocaleController.getString(R.string.Reschedule)));
 
         if (currentEncryptedChat == null) {
             final boolean isSavedMessages = getDialogId() == getUserConfig().getClientUserId() && (chatMode == 0 || chatMode == MODE_SAVED);
@@ -10969,6 +10973,7 @@ public class ChatActivity extends BaseFragment implements
         actionMode.setItemVisibility(forward, NaConfig.INSTANCE.getActionBarButtonForward().Bool() ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(delete, cantDeleteMessagesCount == 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(nkactionbarbtn_send_now, chatMode == MODE_SCHEDULED && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0 ? View.VISIBLE : View.GONE);
+        actionMode.setItemVisibility(nkactionbarbtn_reschedule, chatMode == MODE_SCHEDULED && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(tag_message, getUserConfig().isPremium() ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(share, View.GONE);
 
@@ -20034,6 +20039,7 @@ public class ChatActivity extends BaseFragment implements
                 ActionBarMenuItem forwardItem = actionBar.createActionMode().getItem(forward);
                 ActionBarMenuItem deleteItem = actionBar.createActionMode().getItem(delete);
                 ActionBarMenuItem sendNowItem = actionBar.createActionMode().getItem(nkactionbarbtn_send_now);
+                ActionBarMenuItem rescheduleItem = actionBar.createActionMode().getItem(nkactionbarbtn_reschedule);
                 ActionBarMenuItem tagItem = actionBar.createActionMode().getItem(tag_message);
                 ActionBarMenuItem shareItem = actionBar.createActionMode().getItem(share);
 
@@ -20160,6 +20166,9 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (sendNowItem != null) {
                     sendNowItem.setVisibility(chatMode == MODE_SCHEDULED && selectedCount > 0 ? View.VISIBLE : View.GONE);
+                }
+                if (rescheduleItem != null) {
+                    rescheduleItem.setVisibility(chatMode == MODE_SCHEDULED && selectedCount > 0 ? View.VISIBLE : View.GONE);
                 }
                 hasUnfavedSelected = false;
                 for (int a = 0; a < 2; a++) {
@@ -36343,6 +36352,58 @@ public class ChatActivity extends BaseFragment implements
 
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> handleSendScheduledNowResponse(req, response, error));
         clearSelectionMode();
+    }
+
+    // NagramX: bulk "Reschedule selected" — move the selected scheduled messages to a new base time,
+    // spreading them out one-by-one (in ascending current-schedule order) by a user-chosen interval.
+    private void performRescheduleSpreadSelectedMessages() {
+        if (chatMode != MODE_SCHEDULED) return;
+        if (getParentActivity() == null) return;
+        if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 0) return;
+
+        // One entry per message or album, deduped the same way as performSendNowSelectedMessages.
+        // For an album we keep its first member: editing it reschedules the whole group.
+        final ArrayList<MessageObject> items = new ArrayList<>();
+        long lastGroupId = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            MessageObject m = messages.get(i);
+            if (m == null) continue;
+            int mid = m.getId();
+            if (selectedMessagesIds[0].indexOfKey(mid) < 0 && selectedMessagesIds[1].indexOfKey(mid) < 0)
+                continue;
+            long gid = m.getGroupId();
+            if (gid != 0 && gid == lastGroupId) continue;
+            lastGroupId = gid;
+            MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
+            items.add(group != null && !group.messages.isEmpty() ? group.messages.get(0) : m);
+        }
+        if (items.isEmpty()) return;
+
+        // Spread in ascending current schedule order: the earliest message takes the base time.
+        Collections.sort(items, (a, b) -> Integer.compare(a.messageOwner.date, b.messageOwner.date));
+
+        final int count = items.size();
+        final long currentDate = items.get(0).messageOwner.date;
+        AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, (baseScheduleDate, intervalSeconds) -> {
+            final Runnable apply = () -> {
+                for (int i = 0; i < count; i++) {
+                    MessageObject m = items.get(i);
+                    int scheduleDate = baseScheduleDate + i * intervalSeconds;
+                    SendMessagesHelper.getInstance(currentAccount).editMessage(m, null, false, ChatActivity.this, null, scheduleDate, m.messageOwner.schedule_repeat_period);
+                }
+                clearSelectionMode();
+            };
+            if (count > 50) {
+                new AlertDialog.Builder(getParentActivity(), themeDelegate)
+                        .setTitle(LocaleController.getString(R.string.RescheduleMessages))
+                        .setMessage(LocaleController.formatPluralString("RescheduleConfirmCount", count))
+                        .setPositiveButton(LocaleController.getString(R.string.Reschedule), (d, w) -> apply.run())
+                        .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                        .show();
+            } else {
+                apply.run();
+            }
+        }, null, themeDelegate);
     }
 
     public void clearSelectionMode() {
