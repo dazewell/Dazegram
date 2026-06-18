@@ -4228,6 +4228,24 @@ public class AlertsCreator {
         void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod);
     }
 
+    // NagramX: bulk "Reschedule selected" — the schedule sheet returns the chosen base time plus
+    // the per-message interval, so the caller can spread the selected messages out from the base.
+    public interface RescheduleDatePickerDelegate {
+        void didSelectReschedule(int baseScheduleDate, int intervalSeconds);
+    }
+
+    // NagramX: marks the schedule sheet as a bulk-reschedule sheet (carries how many messages are
+    // being rescheduled, so the interval row can preview/validate the resulting span).
+    public static class RescheduleSpread {
+        public final int messageCount;
+        public final RescheduleDatePickerDelegate delegate;
+
+        public RescheduleSpread(int messageCount, RescheduleDatePickerDelegate delegate) {
+            this.messageCount = messageCount;
+            this.delegate = delegate;
+        }
+    }
+
     public static class ScheduleDatePickerColors {
 
         public final int textColor;
@@ -4296,7 +4314,7 @@ public class AlertsCreator {
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, boolean  doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable) {
-        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, 0, doNotShowReminder, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(), null);
+        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, 0, doNotShowReminder, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(), null, null);
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, long dialogId, long currentDate, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable) {
@@ -4312,14 +4330,25 @@ public class AlertsCreator {
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider) {
-        return createScheduleDatePickerDialog(context, null, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider);
+        return createScheduleDatePickerDialog(context, null, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, null);
     }
 
-    public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider) {
+    // NagramX: bulk "Reschedule selected" entry point. Reuses the schedule sheet (so the base-time
+    // wheels and past-time validation are identical) but injects an interval row + preview and
+    // returns base + interval via the reschedule delegate. See RescheduleSpreadHelper.
+    public static BottomSheet.Builder createRescheduleDatePickerDialog(Context context, long dialogId, long currentDate, int messageCount, final RescheduleDatePickerDelegate rescheduleDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
+        return createScheduleDatePickerDialog(context, getString(R.string.RescheduleMessages), dialogId, currentDate, 0, true, null, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, new RescheduleSpread(messageCount, rescheduleDelegate));
+    }
+
+    public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule) {
         if (context == null) {
             return null;
         }
         final int[] repeat = new int[] { currentRepeatPeriod };
+
+        // NagramX: bulk reschedule reuses this sheet but spreads the selection over base + interval.
+        final boolean isReschedule = reschedule != null;
+        final com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[] intervalControls = new com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[1];
 
         long selfUserId = UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
 
@@ -4413,7 +4442,7 @@ public class AlertsCreator {
 
         final boolean[] notify = new boolean[] { true };
         ActionBarMenuItem optionsButton = null;
-        if (DialogObject.isUserDialog(dialogId) && dialogId != selfUserId) {
+        if (!isReschedule && DialogObject.isUserDialog(dialogId) && dialogId != selfUserId) {
             TLRPC.User user = MessagesController.getInstance(UserConfig.selectedAccount).getUser(dialogId);
             if (user != null && !user.bot && user.status != null && user.status.expires > 0) {
                 String name = UserObject.getFirstName(user);
@@ -4459,6 +4488,10 @@ public class AlertsCreator {
         notifyItem.setColorFilter(new PorterDuffColorFilter(datePickerColors.textColor, PorterDuff.Mode.SRC_IN));
         notifyItem.setBackground(Theme.createSelectorDrawable(datePickerColors.iconSelectorColor, 1));
         titleLayout.addView(notifyItem, LayoutHelper.createFrame(40, 40, Gravity.TOP | Gravity.RIGHT, 0, 8, 8 + (optionsButton != null ? 42 : 0), 0));
+        // editMessage ignores the notify flag, so the silent toggle is meaningless when rescheduling.
+        if (isReschedule) {
+            notifyItem.setVisibility(View.GONE);
+        }
 
         LinearLayout linearLayout = new LinearLayout(context);
         linearLayout.setOrientation(LinearLayout.HORIZONTAL);
@@ -4502,9 +4535,13 @@ public class AlertsCreator {
         // the line is created only after the pickers are populated, below.
         final Runnable[] tzPeerTimeUpdater = new Runnable[1];
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
-            checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+            // In reschedule mode the button keeps its "Reschedule" label, so don't let checkScheduleDate rewrite it.
+            checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
             if (tzPeerTimeUpdater[0] != null) {
                 tzPeerTimeUpdater[0].run();
+            }
+            if (intervalControls[0] != null) {
+                intervalControls[0].update();
             }
         };
         dayPicker.setOnValueChangedListener(onValueChangeListener);
@@ -4530,6 +4567,13 @@ public class AlertsCreator {
                 datePickerColors.textColor, datePickerColors.buttonBackgroundColor,
                 dayPicker, hourPicker, minutePicker);
 
+        // NagramX: interval [value][unit] row + live preview for bulk reschedule (>= 2 messages).
+        if (isReschedule && reschedule.messageCount >= 2) {
+            intervalControls[0] = com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.addIntervalControls(
+                    context, container, reschedule.messageCount, datePickerColors.textColor,
+                    dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
+        }
+
         if (ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
@@ -4540,17 +4584,23 @@ public class AlertsCreator {
                     hourPicker,
                     minutePicker,
                     () -> {
-                        checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+                        checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
                         if (tzPeerTimeUpdater[0] != null) {
                             tzPeerTimeUpdater[0].run();
+                        }
+                        if (intervalControls[0] != null) {
+                            intervalControls[0].update();
                         }
                     }
             );
         }
         final boolean[] canceled = {true};
 
-        checkScheduleDate(buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+        checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
         // The initial validation above may have snapped the pickers forward; re-render the peer time line.
+        if (intervalControls[0] != null) {
+            intervalControls[0].update();
+        }
         if (tzPeerTimeUpdater[0] != null) {
             tzPeerTimeUpdater[0].run();
         }
@@ -4664,6 +4714,9 @@ public class AlertsCreator {
         buttonTextView.setTypeface(AndroidUtilities.bold());
         buttonTextView.setBackground(Theme.AdaptiveRipple.filledRect(datePickerColors.buttonBackgroundColor, 24));
         ScaleStateListAnimator.apply(buttonTextView, .02f, 1.2f);
+        if (isReschedule) {
+            buttonTextView.setText(getString(R.string.Reschedule));
+        }
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             canceled[0] = false;
@@ -4672,6 +4725,18 @@ public class AlertsCreator {
             calendar.add(Calendar.DAY_OF_YEAR, dayPicker.getValue());
             calendar.set(Calendar.HOUR_OF_DAY, hourPicker.getValue());
             calendar.set(Calendar.MINUTE, minutePicker.getValue());
+            if (isReschedule) {
+                // The base time is always minute-aligned; the interval supplies any sub-minute spread.
+                if (intervalControls[0] != null && !intervalControls[0].isValid()) {
+                    return;
+                }
+                calendar.set(Calendar.SECOND, 0);
+                calendar.set(Calendar.MILLISECOND, 0);
+                final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
+                reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds);
+                builder.getDismissRunnable().run();
+                return;
+            }
             if (setSeconds) {
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);

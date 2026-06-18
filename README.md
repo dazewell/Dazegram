@@ -41,6 +41,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Video message playback modes:** a button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
 
+ - **Reschedule selected messages:** pick several scheduled messages and move them all to a new time at once. Set a base time and an interval: the first message lands on the base time, the next one an interval later, and so on in their current order. Intervals run from 15 seconds up to days. There's a live preview of the resulting span before you confirm, so you can re-queue a whole batch without editing each one by hand.
+
 ## Download
 
 Latest versions are available through:
