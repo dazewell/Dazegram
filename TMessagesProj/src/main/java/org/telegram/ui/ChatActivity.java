@@ -205,6 +205,8 @@ import org.telegram.messenger.VideoEditedInfo;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.messenger.camera.CameraView;
 import org.telegram.messenger.support.LongSparseIntArray;
+import org.telegram.messenger.utils.CopyUtilities;
+import org.telegram.messenger.utils.CustomHtml;
 import org.telegram.messenger.utils.FBool;
 import org.telegram.messenger.utils.OnPostDrawView;
 import org.telegram.messenger.utils.PhotoUtilities;
@@ -3877,6 +3879,60 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
             }
+        }
+
+        @Override
+        protected boolean canShowCite() {
+            return chatActivity != null
+                && chatActivity.chatActivityEnterView != null
+                && chatActivity.chatActivityEnterView.getVisibility() == View.VISIBLE
+                && !chatActivity.textSelectionHelper.isDescription
+                && selectedView != null && selectedView.getMessageObject() != null
+                && !selectedView.getMessageObject().isAyuDeleted();
+        }
+
+        @Override
+        protected void onCiteClick(CharSequence text) {
+            if (chatActivity == null || TextUtils.isEmpty(text)) {
+                return;
+            }
+            ChatActivityEnterView enterView = chatActivity.chatActivityEnterView;
+            if (enterView == null || enterView.getEditField() == null) {
+                return;
+            }
+            EditTextCaption editField = enterView.getEditField();
+            // Round-trip the selection through HTML, exactly like a manual Copy + Paste,
+            // so message formatting (bold, italic, links, custom emoji, ...) is preserved.
+            CharSequence cite = text.toString();
+            if (text instanceof Spanned) {
+                try {
+                    SpannableStringBuilder pasted = new SpannableStringBuilder(CopyUtilities.fromHTML(CustomHtml.toHtml((Spanned) text)));
+                    Emoji.replaceEmoji(pasted, editField.getPaint().getFontMetricsInt(), false, null);
+                    AnimatedEmojiSpan[] spans = pasted.getSpans(0, pasted.length(), AnimatedEmojiSpan.class);
+                    for (int k = 0; k < spans.length; ++k) {
+                        spans[k].applyFontMetrics(editField.getPaint().getFontMetricsInt(), AnimatedEmojiDrawable.getCacheTypeForEnterView());
+                    }
+                    // The whole block becomes one quote, so drop any inner quote spans (as paste-into-quote does).
+                    QuoteSpan.QuoteStyleSpan[] innerQuotes = pasted.getSpans(0, pasted.length(), QuoteSpan.QuoteStyleSpan.class);
+                    for (int i = 0; i < innerQuotes.length; ++i) {
+                        pasted.removeSpan(innerQuotes[i]);
+                        pasted.removeSpan(innerQuotes[i].span);
+                    }
+                    cite = pasted;
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+            SpannableStringBuilder builder = new SpannableStringBuilder(editField.getText());
+            // A single line break before the quote; putQuoteToEditable inserts it when needed.
+            int start = builder.length();
+            builder.append(cite);
+            QuoteSpan.putQuoteToEditable(builder, start, builder.length(), false);
+            if (chatActivity.actionBar != null && chatActivity.actionBar.isActionModeShowed()) {
+                chatActivity.clearSelectionMode();
+            }
+            enterView.setFieldText(builder);
+            enterView.openKeyboard();
         }
 
         @Override

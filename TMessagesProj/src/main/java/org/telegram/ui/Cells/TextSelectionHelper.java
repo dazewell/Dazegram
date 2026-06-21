@@ -624,6 +624,14 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
 
     }
 
+    protected boolean canShowCite() {
+        return false;
+    }
+
+    protected void onCiteClick(CharSequence text) {
+
+    }
+
     //fast way hide floating action mode for long time
     private final Runnable hideActionsRunnable = new Runnable() {
         @Override
@@ -1447,35 +1455,42 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
 
     private static final int TRANSLATE = 3;
     private static final int ADD_TO_FILTER = 4;
+    private static final int CITE = 5;
     private ActionMode.Callback createActionCallback() {
         final ActionMode.Callback callback = new ActionMode.Callback() {
             @Override
             public boolean onCreateActionMode(ActionMode mode, Menu menu) {
                 menu.add(Menu.NONE, android.R.id.copy, 0, android.R.string.copy);
                 menu.add(Menu.NONE, R.id.menu_quote, 1, LocaleController.getString(R.string.Quote));
-                menu.add(Menu.NONE, android.R.id.selectAll, 2, android.R.string.selectAll);
-                menu.add(Menu.NONE, TRANSLATE, 3, LlmConfig.isLLMTranslatorAvailable() ? getString(R.string.TranslateMessageLLM) : getString(R.string.TranslateMessage));
-                menu.add(Menu.NONE, ADD_TO_FILTER, 4, getString(R.string.AddToFilter));
+                menu.add(Menu.NONE, CITE, 2, getString(R.string.Cite));
+                menu.add(Menu.NONE, android.R.id.selectAll, 3, android.R.string.selectAll);
+                menu.add(Menu.NONE, TRANSLATE, 4, LlmConfig.isLLMTranslatorAvailable() ? getString(R.string.TranslateMessageLLM) : getString(R.string.TranslateMessage));
+                menu.add(Menu.NONE, ADD_TO_FILTER, 5, getString(R.string.AddToFilter));
                 return true;
             }
 
             @Override
             public boolean onPrepareActionMode(ActionMode mode, Menu menu) {
                 menu.getItem(1).setVisible(canShowQuote());
+                MenuItem citeItem = menu.findItem(CITE);
+                if (citeItem != null) {
+                    citeItem.setVisible(canShowCite());
+                }
                 MenuItem copyItem = menu.findItem(android.R.id.copy);
                 if (copyItem != null) {
                     copyItem.setVisible(true || canCopy());
                 }
-                if (selectedView != null) {
+                MenuItem selectAllItem = menu.findItem(android.R.id.selectAll);
+                if (selectAllItem != null && selectedView != null) {
                     CharSequence charSequence = getText(selectedView, false);
                     if (false && !canCopy()) {
-                        menu.getItem(2).setVisible(false);
+                        selectAllItem.setVisible(false);
                     } else if (multiselect || selectionStart <= 0 && selectionEnd >= charSequence.length() - 1) {
-                        menu.getItem(2).setVisible(false);
+                        selectAllItem.setVisible(false);
                     } else {
-                        menu.getItem(2).setVisible(true);
+                        selectAllItem.setVisible(true);
                     }
-                    menu.getItem(2).setVisible(selectedView instanceof View);
+                    selectAllItem.setVisible(selectedView instanceof View);
                 }
                 // NekoX: Merge 8.5.0, remove due to removing LanguageDetector
                 MenuItem addToFilterItem = menu.findItem(ADD_TO_FILTER);
@@ -1547,6 +1562,10 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
                     return true;
                 } else if (itemId == R.id.menu_quote) {
                     quoteText();
+                    hideActions();
+                    return true;
+                } else if (itemId == CITE) {
+                    citeText();
                     hideActions();
                     return true;
                 } else if (itemId == ADD_TO_FILTER) {
@@ -1655,6 +1674,18 @@ public abstract class TextSelectionHelper<Cell extends TextSelectionHelper.Selec
             return;
         }
         onQuoteClick(messageObject, selectionStart, selectionEnd, str);
+        clear(true);
+    }
+
+    private void citeText() {
+        if (!isInSelectionMode()) {
+            return;
+        }
+        CharSequence str = getSelectedText();
+        if (str == null) {
+            return;
+        }
+        onCiteClick(str);
         clear(true);
     }
 
