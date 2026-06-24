@@ -922,6 +922,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             VIDEO_PLAY_ALL
         )
+    val videoMessagesMuted =
+        addConfig(
+            "VideoMessagesMuted",
+            ConfigItem.configTypeBool,
+            false
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",
