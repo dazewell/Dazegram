@@ -153,6 +153,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
     private RLottieDrawable muteDrawable;
     private ImageView closeButton;
     private ImageView videoPlayModeButton; // NagramX: video message play mode toggle
+    private ImageView videoMuteButton; // NagramX: video message mute toggle
     private ActionBarMenuItem playbackSpeedButton;
     private SpeedIconDrawable speedIcon;
     private ActionBarMenuSlider.SpeedSlider speedSlider;
@@ -767,6 +768,22 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         });
         updateVideoPlayModeButton();
 
+        // NagramX: video message mute toggle
+        videoMuteButton = new ImageView(context);
+        videoMuteButton.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        videoMuteButton.setPadding(dp(7), dp(7), dp(7), dp(7));
+        videoMuteButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.SRC_IN));
+        videoMuteButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
+        videoMuteButton.setVisibility(GONE);
+        addView(videoMuteButton, LayoutHelper.createFrame(36, 36, Gravity.RIGHT | Gravity.TOP, 0, 0, 100, 0));
+        videoMuteButton.setOnClickListener(v -> {
+            boolean muted = !NaConfig.INSTANCE.getVideoMessagesMuted().Bool();
+            NaConfig.INSTANCE.getVideoMessagesMuted().setConfigBool(muted);
+            MediaController.getInstance().setPlayerVolume();
+            updateVideoMuteButton();
+        });
+        updateVideoMuteButton();
+
         groupCallMessagesContainer = new FrameLayout(getContext()) {
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
@@ -1048,6 +1065,10 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             videoPlayModeButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.SRC_IN));
             videoPlayModeButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
         }
+        if (videoMuteButton != null) { // NagramX
+            videoMuteButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_inappPlayerClose), PorterDuff.Mode.SRC_IN));
+            videoMuteButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_inappPlayerClose) & 0x19ffffff, 1, dp(14)));
+        }
         if (subtitleTextView != null) {
             for (int i = 0; i < 2; i++) {
                 TextView textView = i == 0 ? subtitleTextView.getTextView() : subtitleTextView.getNextTextView();
@@ -1203,6 +1224,16 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         videoPlayModeButton.setContentDescription(desc);
     }
 
+    // NagramX: reflect the persisted video message mute state on the toggle button
+    private void updateVideoMuteButton() {
+        if (videoMuteButton == null) {
+            return;
+        }
+        boolean muted = NaConfig.INSTANCE.getVideoMessagesMuted().Bool();
+        videoMuteButton.setImageResource(muted ? R.drawable.baseline_volume_off_24_white : R.drawable.baseline_volume_up_24);
+        videoMuteButton.setContentDescription(getString(muted ? R.string.VideoMessagesUnmute : R.string.VideoMessagesMute));
+    }
+
     private void updateSilent() {
         if (currentStyle == STYLE_AUDIO_PLAYER) {
             boolean isSilent = MediaController.getInstance().isSilent;
@@ -1309,6 +1340,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             if (videoPlayModeButton != null) { // NagramX
                 videoPlayModeButton.setVisibility(GONE);
             }
+            if (videoMuteButton != null) { // NagramX
+                videoMuteButton.setVisibility(GONE);
+            }
             titleTextView.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 36, Gravity.LEFT | Gravity.TOP, 35, 0, (isSideMenued ? 64 : 0) + 36, 0));
         } else if (style == STYLE_AUDIO_PLAYER || style == STYLE_LIVE_LOCATION) {
             selector.setBackground(Theme.getSelectorDrawable(false));
@@ -1397,6 +1431,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             if (videoPlayModeButton != null) { // NagramX
                 videoPlayModeButton.setVisibility(GONE);
             }
+            if (videoMuteButton != null) { // NagramX
+                videoMuteButton.setVisibility(GONE);
+            }
         } else if (style == STYLE_CONNECTING_GROUP_CALL || style == STYLE_ACTIVE_GROUP_CALL) {
             selector.setBackground(null);
             updateCallTitle();
@@ -1451,6 +1488,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             }
             if (videoPlayModeButton != null) { // NagramX
                 videoPlayModeButton.setVisibility(GONE);
+            }
+            if (videoMuteButton != null) { // NagramX
+                videoMuteButton.setVisibility(GONE);
             }
         }
     }
@@ -2032,12 +2072,15 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                         playbackSpeedButton.setAlpha(1.0f);
                         playbackSpeedButton.setEnabled(true);
                     }
-                    if (lastMessageObject.isRoundVideo()) { // NagramX: play mode toggle only for video messages
+                    if (lastMessageObject.isRoundVideo()) { // NagramX: play mode + mute toggles only for video messages
                         videoPlayModeButton.setVisibility(VISIBLE);
                         updateVideoPlayModeButton();
-                        titleTextView.setPadding(0, 0, dp(44 + 36) + joinButtonWidth, 0);
+                        videoMuteButton.setVisibility(VISIBLE);
+                        updateVideoMuteButton();
+                        titleTextView.setPadding(0, 0, dp(44 + 36 + 36) + joinButtonWidth, 0);
                     } else {
                         videoPlayModeButton.setVisibility(GONE);
+                        videoMuteButton.setVisibility(GONE);
                         titleTextView.setPadding(0, 0, dp(44) + joinButtonWidth, 0);
                     }
                     stringBuilder = new SpannableStringBuilder(String.format("%s %s", messageObject.getMusicAuthor(), messageObject.getMusicTitle()));
@@ -2054,6 +2097,7 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
                 } else {
                     isMusic = true;
                     videoPlayModeButton.setVisibility(GONE); // NagramX
+                    videoMuteButton.setVisibility(GONE); // NagramX
                     if (playbackSpeedButton != null) {
                         if (messageObject.getDuration() >= 10 * 60) {
                             playbackSpeedButton.setAlpha(1.0f);
