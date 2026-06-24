@@ -1606,7 +1606,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         });
     }
 
-    private void setPlayerVolume() {
+    public void setPlayerVolume() {
         try {
             float volume;
             if (isSilent) {
@@ -1619,6 +1619,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             if (audioPlayer != null) {
                 audioPlayer.setVolume(CastSync.isActive() ? 0.0f : volume * audioVolume);
             } else if (videoPlayer != null) {
+                // NagramX: mute video messages (round videos) when enabled
+                if (playingMessageObject != null && playingMessageObject.isRoundVideo() && NaConfig.INSTANCE.getVideoMessagesMuted().Bool()) {
+                    volume = 0;
+                }
                 videoPlayer.setVolume(CastSync.isActive() ? 0.0f : volume);
             }
         } catch (Exception e) {
@@ -4142,11 +4146,11 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
         }
         checkAudioFocus(messageObject);
-        setPlayerVolume();
 
         isPaused = false;
         lastProgress = 0;
         playingMessageObject = messageObject;
+        setPlayerVolume(); // NagramX: after playingMessageObject is set, so round-video mute applies on the first play after launch
         if (!SharedConfig.enabledRaiseTo(true)) {
             startRaiseToEarSensors(raiseChat);
         }
