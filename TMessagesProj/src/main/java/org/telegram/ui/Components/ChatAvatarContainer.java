@@ -1958,23 +1958,23 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         }
     }
 
-    public boolean hasVisibleAvatar() {
-        return avatarImageView != null && avatarImageView.getVisibility() == VISIBLE;
+    public boolean isCenteredTitle() {
+        return isCentered();
     }
 
-    public int getVisualWidth() {
-        float width = 0;
+    // Horizontal centre of the centered title text, in this view's own coordinates. The title is
+    // centered inside a wide box, so the box centre is where the text sits. That centre stays
+    // fixed as the status grows or shrinks, which gives the bubble a stable point to hug.
+    public int getCenteredTitleCenterX() {
+        return titleTextView.getLeft() + titleTextView.getMeasuredWidth() / 2;
+    }
 
-        if (titleTextView != null) {
-            width = Math.max(width, titleTextView.getExactWidthIncludeDrawables());
-        }
+    // Widest of the title and status text, with no avatar width added: in centered mode the
+    // avatar keeps its own bubble on the right.
+    public int getCenteredContentWidth() {
+        float width = titleTextView.getExactWidthIncludeDrawables();
         if (subtitleTextView != null) {
             width = Math.max(width, subtitleTextView.getExactWidthIncludeDrawables());
-        }
-        if (hasVisibleAvatar()) {
-            width += dp(52 + 12);
-        } else {
-            width += dp(30);
         }
         return (int) width;
     }
