@@ -840,6 +840,12 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         int padding = isCentered() ? dp(isPreviewMode() ? 35 : 10) : 0;
         int width = MeasureSpec.getSize(widthMeasureSpec) + (isCentered() ? 0 : titleTextView.getPaddingRight());
         int availableWidth = width - dp(((avatarImageView.getVisibility() == VISIBLE || isCentered()) ? 54 : 0) + 16);
+        if (glassMode && isCentered()) {
+            // Reserve the two glass side bubbles (back on the left, menu/avatar on the right),
+            // dp(58) each, so the title box stays symmetric and clears them on both sides
+            // instead of leaning into the avatar.
+            availableWidth = width - 2 * dp(58);
+        }
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp), MeasureSpec.EXACTLY));
         int tzPillReserve = 0;
         if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
@@ -959,6 +965,22 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         avatarImageView.layout(avatarLeft, viewTop, avatarLeft + avatarImageView.getMeasuredWidth(), viewTop + avatarImageView.getMeasuredHeight());
 
         int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE && !isCentered() ? dp(glassMode ? 48.66f : 54) : (isCentered() ? 0 : dp(glassMode ? 12 : 0))) + (isCentered() ? 0 : rightAvatarPadding);
+        if (glassMode && isCentered() && !isPreviewMode()) {
+            int tzPillReserve = (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE)
+                    ? tzClockPill.getMeasuredWidth() + dp(6) : 0;
+            // Centre the title (plus the time-zone pill, when it's there) on the action bar, not
+            // on this container: the container is pushed in by a left margin with nothing matching
+            // it on the right, so its own centre sits right of the bar's. Pull the title+pill group
+            // back by half that margin gap so it lands dead centre between the back and menu
+            // bubbles. The box is measured narrower than the bar to clear those bubbles, so pinning
+            // it left (or to the container's own centre) would lean it off to one side.
+            int marginShift = 0;
+            if (getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+                android.view.ViewGroup.MarginLayoutParams lp = (android.view.ViewGroup.MarginLayoutParams) getLayoutParams();
+                marginShift = (lp.leftMargin - lp.rightMargin) / 2;
+            }
+            l = (getWidth() - titleTextView.getMeasuredWidth() - tzPillReserve) / 2 - marginShift;
+        }
         if (isPreviewMode() && isCentered()) {
             l += dp(AndroidUtilities.isTablet() ? 80 : 72) / 2;
         }
@@ -1958,23 +1980,36 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         }
     }
 
-    public boolean hasVisibleAvatar() {
-        return avatarImageView != null && avatarImageView.getVisibility() == VISIBLE;
+    public boolean isCenteredTitle() {
+        return isCentered();
     }
 
-    public int getVisualWidth() {
-        float width = 0;
+    // Horizontal centre of the centered content (title + time-zone pill), in this view's own
+    // coordinates. The title is centered inside a wide box, so the box centre is where the text
+    // sits, and it stays fixed as the status grows or shrinks. When the time-zone pill is shown,
+    // onMeasure shrinks the title box by the reserved pill width and shifts the title left so
+    // title + pill sit centered as a group, so add half that reserve back to recover the group's
+    // centre. Either way this is the stable point the bubble hugs.
+    public int getCenteredTitleCenterX() {
+        int center = titleTextView.getLeft() + titleTextView.getMeasuredWidth() / 2;
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            center += (tzClockPill.getMeasuredWidth() + dp(6)) / 2;
+        }
+        return center;
+    }
 
-        if (titleTextView != null) {
-            width = Math.max(width, titleTextView.getExactWidthIncludeDrawables());
+    // Widest of the title (with its right drawables, e.g. premium/emoji status) plus the time-zone
+    // pill, or the status line. No avatar: in centered mode it keeps its own bubble on the right.
+    // getExactWidth() already counts the right drawables once via getSideDrawablesSize(), so don't
+    // use getExactWidthIncludeDrawables() here, which would add them a second time.
+    public int getCenteredContentWidth() {
+        float titleWidth = titleTextView.getExactWidth();
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            titleWidth += dp(6) + tzClockPill.getMeasuredWidth();
         }
+        float width = titleWidth;
         if (subtitleTextView != null) {
-            width = Math.max(width, subtitleTextView.getExactWidthIncludeDrawables());
-        }
-        if (hasVisibleAvatar()) {
-            width += dp(52 + 12);
-        } else {
-            width += dp(30);
+            width = Math.max(width, subtitleTextView.getExactWidth());
         }
         return (int) width;
     }
