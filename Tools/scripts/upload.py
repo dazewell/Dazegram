@@ -9,7 +9,7 @@ from pyrogram.types import InputMediaDocument, LinkPreviewOptions
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
 artifacts_path = Path("artifacts")
-test_version = argv[3] == "test" if len(argv) > 2 else None
+build_type = argv[3] if len(argv) > 3 else None
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 
 def find_apk(abi: str) -> Path:
@@ -30,8 +30,9 @@ def get_commit_info():
 
 def get_caption() -> str:
     commit_id, commit_url, commit_message = get_commit_info()
-    pre = "Test version." if test_version else "Release version."
-    caption = f"{pre}\n\n"
+    labels = {"test": "Test", "staging": "Staging", "release": "Release"}
+    pre = labels.get(build_type, "Release")
+    caption = f"{pre} version.\n\n"
     caption += f"Commit Message:\n<blockquote expandable>{commit_message}</blockquote>\n\n"
     caption += f"See commit details [{commit_id}]({commit_url})"
     return caption
