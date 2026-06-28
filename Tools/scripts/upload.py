@@ -4,22 +4,18 @@ from pathlib import Path
 from sys import argv
 
 from pyrogram import Client
-from pyrogram.types import InputMediaDocument, LinkPreviewOptions
+from pyrogram.types import InputMediaDocument
 
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
-artifacts_path = Path("artifacts")
+artifacts_path = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
 build_type = argv[3] if len(argv) > 3 else None
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 
 def find_apk(abi: str) -> Path:
-    dirs = list(artifacts_path.glob("*"))
-    for dir in dirs:
-        if dir.is_dir():
-            apks = list(dir.glob("*.apk"))
-            for apk in apks:
-                if abi in apk.name:
-                    return apk
+    for apk in artifacts_path.rglob("*.apk"):
+        if abi in apk.name:
+            return apk
 
 def get_commit_info():
     commit_id_raw = os.environ.get("COMMIT_ID") or "unknown"
@@ -33,6 +29,13 @@ def get_caption() -> str:
     labels = {"test": "Test", "staging": "Staging", "release": "Release"}
     pre = labels.get(build_type, "Release")
     caption = f"{pre} version.\n\n"
+    header = ""
+    if build_label := os.environ.get("BUILD_LABEL"):
+        header += f"{build_label} build\n"
+    if package_name := os.environ.get("PACKAGE_NAME"):
+        header += f"Package: <code>{package_name}</code>\n"
+    if header:
+        caption += header + "\n"
     caption += f"Commit Message:\n<blockquote expandable>{commit_message}</blockquote>\n\n"
     caption += f"See commit details [{commit_id}]({commit_url})"
     return caption

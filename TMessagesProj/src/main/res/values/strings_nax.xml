@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="NagramX" translatable="false">Nagram X</string>
+    <!-- NagramX (app display name) is generated per package variant via resValue in build.gradle -->
     <string name="VideoMessagesPlayAll">Play all video messages</string>
     <string name="VideoMessagesMute">Mute video messages</string>
     <string name="VideoMessagesUnmute">Unmute video messages</string>
