@@ -10,6 +10,9 @@
     <string name="HideLastMessageEnable">Hide</string>
     <string name="HideLastMessageDisable">Don\'t hide</string>
     <string name="HideLastMessageDefault">Hidden message</string>
+    <string name="ChatLockEnable">Require Password</string>
+    <string name="ChatLockDisable">Don\'t Require Password</string>
+    <string name="ChatLockEnabledHint">This chat will now ask for your passcode before it opens.</string>
     <string name="XChannel">Nagram X Channel</string>
     <string name="EnableSaveDeletedMessages">Save Deleted Messages</string>
     <string name="DeletedMessage">deleted</string>

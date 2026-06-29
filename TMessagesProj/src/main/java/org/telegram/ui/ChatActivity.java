@@ -479,6 +479,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
     private final static int nkheaderbtn_hide_last_message = 2102;
+    private final static int nkheaderbtn_chat_lock = 2103;
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -555,6 +556,8 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item toTheBeginning;
     private ActionBarMenuItem.Item toTheMessage;
     private ActionBarMenuItem.Item hideTitleItem;
+    private ActionBarMenuItem.Item chatLockItem;
+    private PasscodeView chatLockPasscodeView;
     private ActionBarMenuItem.Item bookmarksItem;
     private ClippingImageView animatingImageView;
     private ThanosEffect chatListThanosEffect;
@@ -3621,9 +3624,53 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX: cover a "require password" chat with the native passcode screen until it's unlocked.
+    // Added at the window level (like the app's own lock) so the glass action bar -- whose blur samples
+    // the message list directly -- can't leak content through a child overlay. Called from createView and
+    // from onResume, so an already-open chat is re-covered after the app was backgrounded (which clears
+    // the unlock).
+    private void showChatLockPasscodeView() {
+        if (chatLockPasscodeView != null) {
+            return;
+        }
+        if (!com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id)
+                || com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(currentAccount, dialog_id)) {
+            return;
+        }
+        Context context = getContext();
+        if (context == null) {
+            return;
+        }
+        chatLockPasscodeView = new PasscodeView(context);
+        // verify-only: checks just the app passcode, never touches the global app lock / account switch,
+        // and stays out of the overlay-passcode stack so it can't be hijacked by (or hijack) the app lock
+        chatLockPasscodeView.verifyOnly = true;
+        ViewGroup lockParent = LaunchActivity.instance != null && LaunchActivity.instance.drawerLayoutContainer != null
+                ? LaunchActivity.instance.drawerLayoutContainer : contentView;
+        lockParent.addView(chatLockPasscodeView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        chatLockPasscodeView.setDelegate(view -> {
+            com.radolyn.ayugram.chatlock.ChatLockController.markUnlocked(currentAccount, dialog_id);
+            removeChatLockPasscodeView();
+        });
+        chatLockPasscodeView.onShow(true, false);
+    }
+
+    // NagramX: detach the chat-lock passcode cover from wherever it was attached
+    private void removeChatLockPasscodeView() {
+        if (chatLockPasscodeView == null) {
+            return;
+        }
+        if (chatLockPasscodeView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) chatLockPasscodeView.getParent()).removeView(chatLockPasscodeView);
+        }
+        chatLockPasscodeView = null;
+    }
+
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // NagramX: drop the chat-lock passcode cover if it never got unlocked
+        removeChatLockPasscodeView();
         if (messageMetricsView != null) {
             messageMetricsView.finish();
         }
@@ -4971,6 +5018,11 @@ public class ChatActivity extends BaseFragment implements
             }
             // NagramX: hide this chat's last message preview in the chat list
             headerItem.lazilyAddSubItem(nkheaderbtn_hide_last_message, R.drawable.menu_hide_gift, getString(R.string.HideLastMessage));
+            // NagramX: require the app passcode to open this chat (only offered when a passcode is set)
+            if (SharedConfig.passcodeHash.length() > 0) {
+                chatLockItem = headerItem.lazilyAddSubItem(nkheaderbtn_chat_lock, R.drawable.outline_header_lock_24,
+                        getString(com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id) ? R.string.ChatLockDisable : R.string.ChatLockEnable));
+            }
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
@@ -9574,6 +9626,9 @@ public class ChatActivity extends BaseFragment implements
         onBottomItemsVisibilityChanged();
         ViewCompat.setOnApplyWindowInsetsListener(fragmentView, this::onApplyWindowInsets);
         Timer.finish(t);
+
+        // NagramX: cover a "require password" chat until it's unlocked
+        showChatLockPasscodeView();
 
         return fragmentView;
     }
@@ -31091,6 +31146,12 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
+        // NagramX: re-cover a "require password" chat if backgrounding cleared its unlock, and drive the
+        // cover's lifecycle so it auto-prompts fingerprint like the app lock
+        showChatLockPasscodeView();
+        if (chatLockPasscodeView != null) {
+            chatLockPasscodeView.onResume();
+        }
         cachedIsGestureNavigation = AndroidUtil.isGestureNavigation(getContext());
         checkShowBlur(false);
         activityResumeTime = System.currentTimeMillis();
@@ -31292,6 +31353,9 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onPause() {
         super.onPause();
+        if (chatLockPasscodeView != null) {
+            chatLockPasscodeView.onPause();
+        }
         scrolling = false;
         if (scrimPopupWindow != null) {
             scrimPopupWindow.setPauseNotifications(false);
@@ -46394,6 +46458,20 @@ public class ChatActivity extends BaseFragment implements
             presentFragment(new AyuViewDeleted(dialog_id));
         } else if (id == nkheaderbtn_hide_last_message) {
             com.radolyn.ayugram.hidelastmessage.HideLastMessageDialog.show(ChatActivity.this, dialog_id);
+        } else if (id == nkheaderbtn_chat_lock) {
+            boolean nowLocked = !com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id);
+            com.radolyn.ayugram.chatlock.ChatLockController.setLocked(currentAccount, dialog_id, nowLocked);
+            if (nowLocked) {
+                // requiring a password also hides this chat's last message in the list -- but keep any
+                // placeholder the user already set instead of resetting it to the default
+                if (!com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, dialog_id)) {
+                    com.radolyn.ayugram.hidelastmessage.HideLastMessageController.setHidden(currentAccount, dialog_id, true, null);
+                }
+                BulletinFactory.of(this).createSimpleBulletin(R.raw.passcode_lock, getString(R.string.ChatLockEnabledHint)).show();
+            }
+            if (chatLockItem != null) {
+                chatLockItem.setText(getString(nowLocked ? R.string.ChatLockDisable : R.string.ChatLockEnable));
+            }
         } else if (id == nkbtn_bookmarks_manager) {
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {

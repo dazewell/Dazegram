@@ -8503,6 +8503,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             return false;
         }
         long dialogId = cell.getDialogId();
+        // NagramX: never peek a "require password" chat -- the long-press preview would leak its content
+        if (com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialogId)
+                && !com.radolyn.ayugram.chatlock.ChatLockController.isUnlocked(currentAccount, dialogId)) {
+            return false;
+        }
         Bundle args = new Bundle();
         int message_id = cell.getMessageId();
         if (DialogObject.isEncryptedDialog(dialogId)) {
