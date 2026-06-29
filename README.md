@@ -49,6 +49,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Cite:** select text in a message and tap *Cite* to drop it into your input box as a quote block on a new line. Formatting from the original (bold, italic, links, custom emoji) is kept, the same as if you'd copied and pasted it yourself. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few different messages and answer all of them in one long message.
 
+ - **Ayu Mode shortcut:** a launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline right away, then the app opens as normal. It only ever turns Ghost on, so it's safe to tap when you're already in Ghost. It's named "Ayu Mode" rather than anything obvious so it doesn't give itself away on your home screen. If it doesn't show up right after install, flip Settings → Privacy and Security → "Suggest frequent contacts" off (and back on if you want it) once to make it appear.
+
 ## Download
 
 Latest versions are available through:

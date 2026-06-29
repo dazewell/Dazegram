@@ -2995,6 +2995,15 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                     open_settings = 1;
                 } else if (intent.getAction().equals("new_dialog")) {
                     open_new_dialog = 1;
+                } else if (intent.getAction().equals("enable_ayu_mode")) {
+                    // NagramX: "Ayu Mode" launcher shortcut flips Ghost Mode on (and pushes us offline now), then the app opens as usual
+                    if (!NekoConfig.isGhostModeActive()) {
+                        NekoConfig.toggleGhostMode();
+                        BaseFragment lastFragment = getSafeLastFragment();
+                        if (lastFragment != null) {
+                            BulletinFactory.of(lastFragment).createSuccessBulletin(LocaleController.getString(R.string.GhostModeEnabled)).show();
+                        }
+                    }
                 } else if (intent.getAction().startsWith("com.tmessages.openchat")) {
 //                    Integer chatIdInt = intent.getIntExtra("chatId", 0);
                     long chatId = intent.getLongExtra("chatId", 0);
