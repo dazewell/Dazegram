@@ -487,6 +487,9 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
     private Rect rect = new Rect();
 
     private PasscodeViewDelegate delegate;
+    // NagramX: standalone "verify the app passcode" mode (per-chat lock cover). Checks only the app
+    // passcode, never touches the global app-lock state, account switch / panic, or the overlay stack.
+    public boolean verifyOnly;
 
     private final static int id_fingerprint_textview = 1000;
     private final static int id_fingerprint_imageview = 1001;
@@ -959,7 +962,11 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
                 onPasscodeError();
                 return;
             }
-            if (!PasscodeHelper.checkPasscode((Activity) getContext(), password) && !SharedConfig.checkPasscode(password)) {
+            // NagramX: in verify-only mode skip the per-account/panic passcode path -- only the app passcode unlocks a chat
+            boolean correct = verifyOnly
+                    ? SharedConfig.checkPasscode(password)
+                    : (PasscodeHelper.checkPasscode((Activity) getContext(), password) || SharedConfig.checkPasscode(password));
+            if (!correct) {
                 SharedConfig.increaseBadPasscodeTries();
                 if (SharedConfig.passcodeRetryInMs > 0) {
                     checkRetryTextView();
@@ -988,9 +995,12 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
             FingerprintController.deleteInvalidKey();
         }
 
-        SharedConfig.appLocked = false;
-        SharedConfig.saveConfig();
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetPasscode);
+        // NagramX: verify-only mode must not clear the global app lock or broadcast a passcode change
+        if (!verifyOnly) {
+            SharedConfig.appLocked = false;
+            SharedConfig.saveConfig();
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.didSetPasscode);
+        }
         setOnTouchListener(null);
         if (delegate != null) {
             delegate.didAcceptedPassword(this);
@@ -1196,7 +1206,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
             return;
         }
         Activity parentActivity = AndroidUtilities.findActivity(getContext());
-        if (parentActivity != null && fingerprintView.getVisibility() == VISIBLE && !ApplicationLoader.mainInterfacePaused && (!(parentActivity instanceof LaunchActivity) || ((LaunchActivity) parentActivity).allowShowFingerprintDialog(this))) {
+        if (parentActivity != null && fingerprintView.getVisibility() == VISIBLE && !ApplicationLoader.mainInterfacePaused && (verifyOnly || !(parentActivity instanceof LaunchActivity) || ((LaunchActivity) parentActivity).allowShowFingerprintDialog(this))) {
             try {
                 if (BiometricManager.from(getContext()).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS && FingerprintController.isKeyReady() && !FingerprintController.checkDeviceFingerprintsChanged()) {
                     final Executor executor = ContextCompat.getMainExecutor(getContext());

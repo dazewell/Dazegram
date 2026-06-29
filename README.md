@@ -39,6 +39,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Hide last message:** flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
 
+ - **Require password:** when an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens. It doesn't matter how you get there: a tap, a notification, a shortcut, a search result, or a long-press peek all hit the same lock. Turning this on also hides the chat's last message in the list. Once you unlock the chat it stays open until you put the app in the background, then it asks again. Since the lock leans on the app passcode, removing that passcode leaves the flagged chats open again; they lock back up on their own once you set a passcode.
+
  - **Video message playback modes:** a button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
 
  - **Mute video messages:** a mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
