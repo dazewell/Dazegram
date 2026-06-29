@@ -5081,6 +5081,7 @@ public class MediaDataController extends BaseController {
                     List<ShortcutInfoCompat> currentShortcuts = ShortcutManagerCompat.getDynamicShortcuts(ApplicationLoader.applicationContext);
                     if (currentShortcuts != null && !currentShortcuts.isEmpty()) {
                         newShortcutsIds.add("compose");
+                        newShortcutsIds.add("ayu_mode"); // NagramX: keep the Ghost Mode launcher shortcut from being pruned as stale
                         for (int a = 0; a < hintsFinal.size(); a++) {
                             TLRPC.TL_topPeer hint = hintsFinal.get(a);
                             newShortcutsIds.add("did3_" + MessageObject.getPeerId(hint.peer));
@@ -5122,6 +5123,39 @@ public class MediaDataController extends BaseController {
                         ShortcutManagerCompat.addDynamicShortcuts(ApplicationLoader.applicationContext, arrayList);
                     }
                     arrayList.clear();
+                }
+
+                // NagramX: launcher shortcut that turns Ghost Mode on at startup, labeled "Ayu Mode" so it doesn't advertise itself.
+                // Rasterize the icon and push it in its own try: some OEM launchers (e.g. ColorOS) reject a vector resource passed
+                // straight to setIcon, and a throw here would otherwise abort the rest of buildShortcuts.
+                try {
+                    Intent ayuIntent = new Intent(ApplicationLoader.applicationContext, LaunchActivity.class);
+                    ayuIntent.setAction("enable_ayu_mode");
+                    int ayuIconSize = AndroidUtilities.dp(48);
+                    Bitmap ayuBitmap = Bitmap.createBitmap(ayuIconSize, ayuIconSize, Bitmap.Config.ARGB_8888);
+                    android.graphics.drawable.Drawable ayuDrawable = ApplicationLoader.applicationContext.getResources().getDrawable(R.drawable.shortcut_ayu, null);
+                    ayuDrawable.setBounds(0, 0, ayuIconSize, ayuIconSize);
+                    ayuDrawable.draw(new Canvas(ayuBitmap));
+                    ShortcutInfoCompat ayuShortcut = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, "ayu_mode")
+                            .setShortLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                            .setLongLabel(LocaleController.getString(R.string.AyuModeShortcut))
+                            .setIcon(IconCompat.createWithBitmap(ayuBitmap))
+                            .setRank(1)
+                            .setIntent(ayuIntent)
+                            .build();
+                    if (recreateShortcuts) {
+                        ShortcutManagerCompat.pushDynamicShortcut(ApplicationLoader.applicationContext, ayuShortcut);
+                    } else {
+                        arrayList.add(ayuShortcut);
+                        if (shortcutsToUpdate.contains("ayu_mode")) {
+                            ShortcutManagerCompat.updateShortcuts(ApplicationLoader.applicationContext, arrayList);
+                        } else {
+                            ShortcutManagerCompat.addDynamicShortcuts(ApplicationLoader.applicationContext, arrayList);
+                        }
+                        arrayList.clear();
+                    }
+                } catch (Throwable e) {
+                    FileLog.e(e);
                 }
 
 
@@ -5207,7 +5241,7 @@ public class MediaDataController extends BaseController {
                     ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(ApplicationLoader.applicationContext, id)
                             .setShortLabel(name)
                             .setLongLabel(name)
-                            .setRank(1 + a)
+                            .setRank(2 + a)
                             .setIntent(shortcutIntent);
                     if (SharedConfig.directShare) {
                         builder.setCategories(category);
