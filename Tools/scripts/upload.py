@@ -15,7 +15,16 @@ metadata_chat_id = argv[4] if len(argv) > 4 else None
 def find_apk(abi: str) -> Path:
     for apk in artifacts_path.rglob("*.apk"):
         if abi in apk.name:
-            return apk
+            return tag_with_commit(apk)
+
+def tag_with_commit(apk: Path) -> Path:
+    # put the short commit hash in the filename so the Telegram document name shows it
+    commit_id = (os.environ.get("COMMIT_ID") or "")[:7]
+    if not commit_id or commit_id in apk.stem:
+        return apk
+    renamed = apk.with_name(f"{apk.stem}-{commit_id}{apk.suffix}")
+    apk.rename(renamed)
+    return renamed
 
 def get_commit_info():
     commit_id_raw = os.environ.get("COMMIT_ID") or "unknown"
