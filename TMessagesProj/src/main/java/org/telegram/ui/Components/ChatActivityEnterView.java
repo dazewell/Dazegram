@@ -8,14 +8,14 @@
 
 package org.telegram.ui.Components;
 
-import static tw.nekomimi.nekogram.helpers.MessageHelper.canSendAsDice;
-import static tw.nekomimi.nekogram.helpers.MessageHelper.containsMarkdown;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.AndroidUtilities.dpf2;
 import static org.telegram.messenger.AndroidUtilities.lerp;
 import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 import static org.telegram.ui.LaunchActivity.getLastFragment;
+import static tw.nekomimi.nekogram.helpers.MessageHelper.canSendAsDice;
+import static tw.nekomimi.nekogram.helpers.MessageHelper.containsMarkdown;
 
 import android.Manifest;
 import android.animation.Animator;
@@ -225,19 +225,18 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import kotlin.Unit;
+import me.vkryl.android.animator.BoolAnimator;
+import me.vkryl.android.animator.FactorAnimator;
+import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.helpers.ChatsHelper;
 import tw.nekomimi.nekogram.llm.LlmConfig;
-import tw.nekomimi.nekogram.utils.AndroidUtil;
-import tw.nekomimi.nekogram.utils.StringUtils;
-import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.translate.Translator;
 import tw.nekomimi.nekogram.translate.TranslatorKt;
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
+import tw.nekomimi.nekogram.utils.AndroidUtil;
+import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
-
-import me.vkryl.android.animator.BoolAnimator;
-import me.vkryl.android.animator.FactorAnimator;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -16238,6 +16237,62 @@ public class ChatActivityEnterView extends FrameLayout implements
         ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(parentActivity, R.drawable.popup_fixed_alert4, resourcesProvider);
         popupLayout.setAnimationEnabled(false);
 
+        // NagramX: external mic toggle (its own section above the camera choices)
+        // custom row so the label takes the leftover width (weight 1) and the switch sits
+        // in a fixed zone behind a divider, instead of overlapping like a frame-positioned item
+        LinearLayout micRow = new LinearLayout(getContext());
+        micRow.setOrientation(LinearLayout.HORIZONTAL);
+        micRow.setGravity(Gravity.CENTER_VERTICAL);
+        micRow.setPadding(dp(18), 0, dp(14), 0);
+        micRow.setMinimumWidth(dp(220));
+        micRow.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
+
+        ImageView micIcon = new ImageView(getContext());
+        micIcon.setScaleType(ImageView.ScaleType.CENTER);
+        micIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+        micIcon.setImageResource(R.drawable.msg_voice_headphones_solar);
+        micRow.addView(micIcon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, 0, 0, 12, 0));
+
+        TextView micLabel = new TextView(getContext());
+        micLabel.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
+        micLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        micLabel.setSingleLine(true);
+        micLabel.setEllipsize(TextUtils.TruncateAt.END);
+        micLabel.setText(getString(R.string.CameraInVideoMessagesExternalMic));
+        micRow.addView(micLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+
+        View micDivider = new View(getContext());
+        micDivider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
+        micRow.addView(micDivider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, 10, 0, 12, 0));
+
+        Switch micSwitch = new Switch(getContext(), resourcesProvider);
+        micSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+        micSwitch.setChecked(SharedConfig.recordViaSco, false);
+        micRow.addView(micSwitch, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
+
+        micRow.setOnClickListener(v -> {
+            boolean enable = !SharedConfig.recordViaSco;
+            SharedConfig.recordViaSco = enable;
+            SharedConfig.saveConfig();
+            micSwitch.setChecked(enable, true);
+            // only bother with the BT permission when the device actually has Bluetooth (mirrors ThemeActivity SCO flow); revert if denied
+            if (enable && getContext().getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH)) {
+                PermissionRequest.ensurePermission(R.raw.permission_request_microphone, R.string.PermissionNoBluetoothWithHint, Manifest.permission.BLUETOOTH_CONNECT, granted -> {
+                    if (!granted) {
+                        SharedConfig.recordViaSco = false;
+                        SharedConfig.saveConfig();
+                        micSwitch.setChecked(false, true);
+                    }
+                });
+            }
+        });
+        popupLayout.addView(micRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+
+        // section separator
+        ActionBarPopupWindow.GapView gapView = new ActionBarPopupWindow.GapView(getContext(), resourcesProvider);
+        gapView.setTag(R.id.object_tag, 1);
+        popupLayout.addView(gapView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+
         // front camera option
         ActionBarMenuSubItem frontItem = new ActionBarMenuSubItem(getContext(), true, false);
         frontItem.setTextAndIcon(getString(R.string.CameraInVideoMessagesFront), R.drawable.msg_openprofile_solar);
@@ -16249,7 +16304,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             onFrontSelected.run();
         });
         frontItem.setMinimumWidth(dp(196));
-        popupLayout.addView(frontItem, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 0, 0, 0, 0));
+        popupLayout.addView(frontItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
         // rear camera option
         ActionBarMenuSubItem rearItem = new ActionBarMenuSubItem(getContext(), false, true);
         rearItem.setTextAndIcon(getString(R.string.CameraInVideoMessagesRear), R.drawable.msg_rear_camera_solar);
@@ -16261,7 +16316,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             onRearSelected.run();
         });
         rearItem.setMinimumWidth(dp(196));
-        popupLayout.addView(rearItem, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT, 0, 48, 0, 0));
+        popupLayout.addView(rearItem, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
         popupLayout.updateRadialSelectors();
 
         cameraSelectionPopup = new ActionBarPopupWindow(popupLayout, LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT);

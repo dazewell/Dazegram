@@ -45,6 +45,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Mute video messages:** a mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
 
+ - **External microphone toggle in video message popup:** when camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. The switch reflects the same setting as the one in Settings and persists across recordings.
+
  - **Reschedule selected messages:** pick several scheduled messages and move them all to a new time at once. Set a base time and an interval: the first message lands on the base time, the next one an interval later, and so on in their current order. Intervals run from 15 seconds up to days. There's a live preview of the resulting span before you confirm, so you can re-queue a whole batch without editing each one by hand.
 
  - **Cite:** select text in a message and tap *Cite* to drop it into your input box as a quote block on a new line. Formatting from the original (bold, italic, links, custom emoji) is kept, the same as if you'd copied and pasted it yourself. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few different messages and answer all of them in one long message.

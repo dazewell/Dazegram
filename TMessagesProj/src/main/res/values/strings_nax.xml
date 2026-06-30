@@ -319,6 +319,7 @@
     <string name="CameraInVideoMessagesFront">Front Camera</string>
     <string name="CameraInVideoMessagesRear">Rear Camera</string>
     <string name="CameraInVideoMessagesAsk">Ask</string>
+    <string name="CameraInVideoMessagesExternalMic">External Microphone</string>
     <string name="CameraSettings">Camera</string>
     <string name="ContactNotes">Notes</string>
     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>
