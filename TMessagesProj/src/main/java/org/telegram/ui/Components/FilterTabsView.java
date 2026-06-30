@@ -1337,6 +1337,16 @@ public class FilterTabsView extends FrameLayout {
         scrollToTab(tabs.get(tabs.size() - 1), tabs.size() - 1);
     }
 
+    // NagramX: physical keyboard hotkeys
+    public boolean selectTabWithOffset(int offset) {
+        int position = currentPosition + offset;
+        if (position < 0 || position >= tabs.size()) {
+            return false;
+        }
+        scrollToTab(tabs.get(position), position);
+        return true;
+    }
+
     public void setAnimationIdicatorProgress(float value) {
         animatingIndicatorProgress = value;
         listView.invalidateViews();
