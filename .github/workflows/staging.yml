@@ -21,8 +21,16 @@ permissions:
 
 jobs:
   build:
-    name: Gradle Build
+    name: Gradle Build (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: nekox.messenger
+            artifact: Unofficial
+          - package: org.telegram.messenger.beta
+            artifact: Official
     outputs:
       build_timestamp: ${{ steps.staging_build_step.outputs.build_timestamp }}
     env:
@@ -77,14 +85,14 @@ jobs:
           export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
           export BUILD_TIMESTAMP=$(date +%s)
           echo "build_timestamp=$BUILD_TIMESTAMP" >> "$GITHUB_OUTPUT"
-          ./gradlew TMessagesProj:assembleStaging
+          ./gradlew TMessagesProj:assembleStaging -PAPP_PACKAGE=${{ matrix.package }}
 
           APK=$(find TMessagesProj/build/outputs/apk -name '*arm64-v8a*.apk')
           APK=$(dirname $APK)
           echo "APK=$APK" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         with:
-          name: Staging
+          name: ${{ matrix.artifact }}
           path: ${{ env.APK }}
   upload:
     name: Upload staging
@@ -203,12 +211,18 @@ jobs:
           APP_HASH: ${{ secrets.APP_HASH }}
           COMMIT_ID: ${{ github.sha }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
         run: |
-          # send apk via telegram bot api
+          set -e
+          # send each package variant via telegram bot api
           export COMMIT_MESSAGE=$(git log -1 --pretty=%B HEAD)
-          export mini64=$(find artifacts -name "*arm64-v8a.apk")
-          echo $mini64
           python -m pip install -r Tools/scripts/requirements.txt
-          python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} test
+          for entry in "nekox.messenger:Unofficial" "org.telegram.messenger.beta:Official"; do
+            export PACKAGE_NAME="${entry%%:*}"
+            export BUILD_LABEL="${entry##*:}"
+            export ARTIFACTS_PATH="artifacts/$BUILD_LABEL"
+            echo "Uploading $BUILD_LABEL ($PACKAGE_NAME) from $ARTIFACTS_PATH"
+            python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} staging
+          done
