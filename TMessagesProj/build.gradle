@@ -8,8 +8,8 @@ plugins {
 }
 
 def buildTimestamp = System.getenv('BUILD_TIMESTAMP') ?: '0'
-def commitId = System.getenv('COMMIT_ID')
-def verName = "${APP_VERSION_NAME}${commitId?.take(7) ? "-${commitId.take(7)}" : ''}"
+def commitHash = System.getenv('COMMIT_ID')?.take(7)
+def verName = APP_VERSION_NAME
 def verCode = 1253
 
 def officialVer = APP_VERSION_NAME
@@ -78,6 +78,15 @@ android {
     defaultConfig {
         versionName verName
         versionCode verCode
+
+        // app display name per package variant
+        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'Dazegram X'
+
+        // account type and contact mime types must track applicationId so the two package variants don't collide
+        resValue 'string', 'account_type', APP_PACKAGE
+        resValue 'string', 'contacts_mime_profile', 'vnd.android.cursor.item/vnd.' + APP_PACKAGE + '.android.profile'
+        resValue 'string', 'contacts_mime_call', 'vnd.android.cursor.item/vnd.' + APP_PACKAGE + '.android.call'
+        resValue 'string', 'contacts_mime_call_video', 'vnd.android.cursor.item/vnd.' + APP_PACKAGE + '.android.call.video'
 
         // obtain your own keys at https://core.telegram.org/api/obtaining_api_id
         def appId = '6'
@@ -182,8 +191,10 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            String gramName = 'NagramX'
-            String first = String.format('%s-v%s(%s)', gramName, verName, verCode)
+            String gramName = APP_PACKAGE.endsWith('.beta') ? 'NagramX-Official' : 'NagramX-Unofficial'
+            // commit hash goes right after the package label so it's easy to spot in the filename
+            String prefix = commitHash ? "${gramName}-${commitHash}" : gramName
+            String first = String.format('%s-v%s(%s)', prefix, verName, verCode)
             output.outputFileName.set(
                 output.outputFileName.get()
                     .replace('TMessagesProj', first)

@@ -45,6 +45,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Mute video messages:** a mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
 
+ - **External microphone toggle in video message popup:** when camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. The switch reflects the same setting as the one in Settings and persists across recordings.
+
  - **Reschedule selected messages:** pick several scheduled messages and move them all to a new time at once. Set a base time and an interval: the first message lands on the base time, the next one an interval later, and so on in their current order. Intervals run from 15 seconds up to days. There's a live preview of the resulting span before you confirm, so you can re-queue a whole batch without editing each one by hand.
 
  - **Cite:** select text in a message and tap *Cite* to drop it into your input box as a quote block on a new line. Formatting from the original (bold, italic, links, custom emoji) is kept, the same as if you'd copied and pasted it yourself. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few different messages and answer all of them in one long message.
@@ -58,12 +60,20 @@ Latest versions are available through:
 * [GitHub Actions](https://github.com/risin42/NagramX/actions/workflows/staging.yml) (CI Artifacts)
 * [GitHub Releases](https://github.com/risin42/NagramX/releases) (Latest Stable)
 
+## Package names
+
+I ship two builds, and each one deliberately borrows another app's package name:
+
+* **Dazegram** — `org.telegram.messenger.beta` (Telegram Beta's package)
+* **Dazegram X** — `nekox.messenger` (NekoX's package)
+
+This is on purpose. Icon packs already ship custom icons for Telegram Beta and NekoX, so by parasiting on their package names my builds get themed icons out of the box instead of waiting for any pack to add me. The catch is that you can't keep the app I'm borrowing from installed at the same time, since Android won't allow two apps to share one package name.
+
 ## Verify APK
 
-Official APKs use the following Android signing certificate:
+Both builds are signed with my certificate:
 
-* Package name: `nekox.messenger` / `nekox.messengerx` (base version)
-* SHA-256: `0D:51:91:56:E8:0C:91:8C:28:C4:80:BF:D1:3F:31:6A:3B:3B:F7:22:DB:53:2F:AB:74:66:0E:C8:E5:C5:06:A1`
+* SHA-256: `40:56:B5:DF:0C:20:58:46:51:EE:AF:70:95:A8:EF:5A:A4:73:02:4D:8A:22:57:7E:89:F0:85:A8:EF:3A:24:4C`
 
 ## Compilation Guide
 
