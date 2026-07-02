@@ -355,6 +355,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         emojiStatusView.setScaleType(ImageView.ScaleType.CENTER);
         emojiStatusView.setImageDrawable(statusDrawable);
         addView(emojiStatusView, LayoutHelper.createFrame(40, 40));
+        // NagramX: give the swap drawable a parent view so its change animation can self-invalidate; without this the status crossfade freezes on a static (non-scrolling) header
+        statusDrawable.setParentView(emojiStatusView);
 
         subtitleOverlayContainer = new ActionBarAnimatedSubtitleOverlayContainer(context, null, ellipsizeSpanAnimator) {
             @Override
@@ -951,8 +953,10 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             telegramLogoView.setTranslationX(titleView.getTranslationX() + dp(1));
             telegramLogoView.setTranslationY(bottomY + dp(14) - offset + AndroidUtilities.dp(FAKE_TOP_PADDING) + translationOffset /*titleView.getTranslationY() + dpf2(37.33f)*/);
 
-            emojiStatusView.setTranslationX(titleView.getTranslationX() - dpf2(3.33f) + telegramLogoView.getMeasuredWidth());
-            emojiStatusView.setTranslationY(bottomY + dp(14 - 11 + FAKE_TOP_PADDING + 4.333f) + translationOffset);
+            // NagramX: anchor the status icon to whichever collapsed text is showing (logo or the "N stories" title) so the ghost stays beside it in the stories-count state too. width() is the rendered text width; getMeasuredWidth() here is the full container width.
+            emojiStatusView.setTranslationX(titleView.getTranslationX() - dpf2(3.33f) + lerp(telegramLogoView.width(), titleView.width(), animatorHasTitleText.getFloatValue()));
+            // NagramX: vertically center the icon on the title text instead of the untuned constant (the icon used to sit off-screen, so this Y was never validated)
+            emojiStatusView.setTranslationY(titleView.getTranslationY() + (titleView.getMeasuredHeight() - emojiStatusView.getMeasuredHeight()) / 2f);
 
             subtitleOverlayContainer.setTranslationX(titleView.getTranslationX());
             subtitleOverlayContainer.setTranslationY(bottomY + dp(15 + FAKE_TOP_PADDING + 4.333f + 8));
@@ -1001,6 +1005,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.storiesUpdated);
         ellipsizeSpanAnimator.onAttachedToWindow();
         statusDrawable.attach();
+        // NagramX: re-apply the status on attach (instantly) so the ghost indicator is correct after a cold start or returning from the passcode lock, when the external updateStatus may have fired while this cell was detached
+        updateStatus(UserConfig.getInstance(currentAccount).getCurrentUser(), false);
     }
 
     @Override
@@ -2163,9 +2169,24 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     }
 
     private Drawable premiumStar;
+    private Drawable ghostDrawable;
 
     public void updateStatus(TLRPC.User user, boolean animated) {
         if (statusDrawable == null || actionBar == null) {
+            return;
+        }
+        // NagramX: keep the ghost-mode indicator visible in the collapsed stories header, matching the action bar title
+        if (NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool()) {
+            if (ghostDrawable == null) {
+                ghostDrawable = com.radolyn.ayugram.utils.AyuGhostUtils.createGhostStatusDrawable(getContext(), 20, -1, 1);
+            }
+            ghostDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_profile_verifiedBackground), PorterDuff.Mode.SRC_IN));
+            statusDrawable.set(ghostDrawable, animated);
+            statusDrawable.setParticles(false, animated);
+            statusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
+            emojiStatusView.invalidate();
+            checkUi_titleVisibility();
+            invalidate();
             return;
         }
         Long emojiStatusId = UserObject.getEmojiStatusDocumentId(user);
@@ -2195,6 +2216,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         }
         statusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
         emojiStatusView.invalidate();
+        checkUi_titleVisibility();
+        invalidate();
     }
 
     private int getThemedColor(int key) {
@@ -2228,8 +2251,10 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             telegramLogoView.setVisibility(logoAlpha > 0 ? VISIBLE : GONE);
         }
         if (emojiStatusView != null) {
-            emojiStatusView.setAlpha(logoAlpha);
-            emojiStatusView.setVisibility(logoAlpha > 0 ? VISIBLE : GONE);
+            // NagramX: with ghost mode on, keep the indicator visible even when a stories-count title replaces the logo
+            final float statusAlpha = (NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool()) ? progress : logoAlpha;
+            emojiStatusView.setAlpha(statusAlpha);
+            emojiStatusView.setVisibility(statusAlpha > 0 ? VISIBLE : GONE);
         }
         if (subtitleOverlayContainer != null) {
             subtitleOverlayContainer.setAlpha(progress);
