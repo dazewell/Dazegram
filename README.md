@@ -53,6 +53,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Ayu Mode shortcut:** a launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline right away, then the app opens as normal. It only ever turns Ghost on, so it's safe to tap when you're already in Ghost. It's named "Ayu Mode" rather than anything obvious so it doesn't give itself away on your home screen. If it doesn't show up right after install, flip Settings → Privacy and Security → "Suggest frequent contacts" off (and back on if you want it) once to make it appear.
 
+ - **Ghost icon stays put under stories:** with Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header, and only came back when you pulled the list down. Now it stays visible in the collapsed header too, sitting where your emoji or premium status would be. It follows the same Ghost mode status toggle, so it shows in both spots or neither.
+
 ## Download
 
 Latest versions are available through:

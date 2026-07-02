@@ -1,10 +1,19 @@
 package com.radolyn.ayugram.utils;
 
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
+
+import androidx.annotation.NonNull;
+
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
+import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
@@ -13,6 +22,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_stories;
+import org.telegram.ui.Components.AnimatedEmojiDrawable;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
@@ -301,6 +311,23 @@ public class AyuGhostUtils {
         return object instanceof TLRPC.TL_messages_sendMessage ||
                 object instanceof TLRPC.TL_messages_sendMedia ||
                 object instanceof TLRPC.TL_messages_sendMultiMedia;
+    }
+
+    // Ghost-mode title indicator shown on the Dialogs action bar and, when the header
+    // collapses under stories, on DialogStoriesCell. Caller applies the color filter each
+    // refresh so it tracks theme changes; size/offset are per-surface parameters.
+    @SuppressLint("UseCompatLoadingForDrawables")
+    public static Drawable createGhostStatusDrawable(Context context, int sizeDp, float offsetXDp, float offsetYDp) {
+        Drawable ghost = context.getResources().getDrawable(R.drawable.ayu_ghost).mutate();
+        return new AnimatedEmojiDrawable.WrapSizeDrawable(ghost, AndroidUtilities.dp(sizeDp), AndroidUtilities.dp(sizeDp)) {
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                canvas.save();
+                canvas.translate(AndroidUtilities.dp(offsetXDp), AndroidUtilities.dp(offsetYDp));
+                super.draw(canvas);
+                canvas.restore();
+            }
+        };
     }
 
     public record InterceptResult(boolean blockRequest, RequestDelegate effectiveOnComplete) {
