@@ -126,6 +126,9 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.viewpager.widget.ViewPager;
 
+import com.radolyn.ayugram.chattimezone.ChatTimeZoneController;
+import com.radolyn.ayugram.chattimezone.ChatTimeZonePickerSheet;
+
 import org.telegram.PhoneFormat.PhoneFormat;
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
@@ -192,6 +195,7 @@ import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Business.OpeningHoursActivity;
 import org.telegram.ui.Business.ProfileHoursCell;
 import org.telegram.ui.Business.ProfileLocationCell;
+import org.telegram.ui.Business.TimezonesController;
 import org.telegram.ui.Cells.AboutLinkCell;
 import org.telegram.ui.Cells.AnimatedStatusView;
 import org.telegram.ui.Cells.CheckBoxCell;
@@ -339,6 +343,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -695,6 +700,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
     private int infoEndRowEmpty;
     private int phoneRow;
     private int noteRow;
+    private int chatTimeZoneRow;
+    private boolean pendingChatTimeZoneSave;
+    private TimeZone pendingChatTimeZoneValue;
     private int locationRow;
     private int userInfoRow;
     private int channelInfoRow;
@@ -4886,6 +4894,8 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                 }
             } else if (position == noteRow) {
                 editNotes(view, position);
+            } else if (position == chatTimeZoneRow) {
+                editChatTimeZone(view);
             } else {
                 processOnClickOrPress(position, view, x, y);
             }
@@ -5273,6 +5283,9 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     return true;
                 } else if (position == noteRow) {
                     editNotes(view, position);
+                    return true;
+                } else if (position == chatTimeZoneRow) {
+                    editChatTimeZone(view);
                     return true;
                 } else {
                     if (editRow(view, position)) return true;
@@ -9495,6 +9508,13 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             final long uid = (Long) args[0];
             if (uid == userId) {
                 userInfo = (TLRPC.UserFull) args[1];
+                if (pendingChatTimeZoneSave) {
+                    pendingChatTimeZoneSave = false;
+                    ChatTimeZoneController.saveForDialog(currentAccount, getChatTimeZoneDialogId(), pendingChatTimeZoneValue);
+                    if (listAdapter != null && chatTimeZoneRow >= 0) {
+                        listAdapter.notifyItemChanged(chatTimeZoneRow);
+                    }
+                }
                 if (ratingView != null) {
                     ratingView.set(userInfo.stars_rating);
                 }
@@ -10769,6 +10789,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         infoEndRowEmpty = -1;
         phoneRow = -1;
         noteRow = -1;
+        chatTimeZoneRow = -1;
         userInfoRow = -1;
         locationRow = -1;
         channelInfoRow = -1;
@@ -11000,9 +11021,17 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                     if (userInfo.business_location != null) {
                         bizLocationRow = rowCount++;
                     }
-                    if (userInfo.note != null) {
+                    if (userInfo.note != null
+                            && !TextUtils.isEmpty(ChatTimeZoneController.stripMarker(userInfo.note.text))) {
                         noteRow = rowCount++;
                     }
+                }
+                // Chat time zone — visible for any 1:1 user chat (except self/bot). Shown
+                // regardless of whether UserFull has finished loading yet (it renders from
+                // the persisted cache in the meantime) so the row doesn't pop in a moment
+                // after the rest of this section and make it visibly jump/resize.
+                if (userId != 0 && userId != getUserConfig().getClientUserId() && !isBot) {
+                    chatTimeZoneRow = rowCount++;
                 }
                 if (actionsView == null && userId != getUserConfig().getClientUserId()) {
                     notificationsRow = rowCount++;
@@ -11162,6 +11191,11 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             }
             if (NaConfig.INSTANCE.getIdDcType().Int() != 0) {
                 idDcRow = rowCount++;
+            }
+            // Chat time zone — groups only (stored locally; groups have no Notes
+            // to embed it in). Broadcast channels are excluded by isGroupDialog.
+            if (ChatTimeZoneController.isGroupDialog(currentAccount, -chatId)) {
+                chatTimeZoneRow = rowCount++;
             }
             if (actionsView == null) {
                 if (infoHeaderRow != -1) {
@@ -13866,11 +13900,18 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                         final TLRPC.UserFull userInfo = getMessagesController().getUserFull(userId);
                         if (userInfo == null) return;
                         TLRPC.TL_textWithEntities note = userInfo.note;
+                        // Strip the chat-time-zone marker (and its leading newline) from the displayed text.
+                        TLRPC.TL_textWithEntities displayNote = note;
+                        if (note != null && note.text != null && note.text.indexOf(ChatTimeZoneController.MARKER) >= 0) {
+                            displayNote = new TLRPC.TL_textWithEntities();
+                            displayNote.text = ChatTimeZoneController.stripMarker(note.text).toString();
+                            displayNote.entities = note.entities;
+                        }
                         CharSequence text;
                         if (!UserConfig.getInstance(currentAccount).isPremium()) {
-                            text = MessageObject.formatTextWithEntities(MessageObject.removeLinks(note));
+                            text = MessageObject.formatTextWithEntities(MessageObject.removeLinks(displayNote));
                         } else {
-                            text = MessageObject.formatTextWithEntities(note);
+                            text = MessageObject.formatTextWithEntities(displayNote);
                             if (!(text instanceof SpannableStringBuilder)) {
                                 text = new SpannableStringBuilder(text);
                             }
@@ -13882,6 +13923,16 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
                             getString(R.string.ProfileNotesInfo),
                             false
                         );
+                    } else if (position == chatTimeZoneRow) {
+                        TimeZone tz = ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
+                        CharSequence value;
+                        if (tz != null) {
+                            value = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz)
+                                    + "  \u00B7  " + tz.getID();
+                        } else {
+                            value = getString(R.string.ChatTimeZoneNotSet);
+                        }
+                        detailCell.setTextAndValue(value, getString(R.string.ChatTimeZone), false);
                     } else if (position == usernameRow) {
                         String username = null;
                         CharSequence text;
@@ -14702,7 +14753,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             if (position == infoHeaderRow || position == membersHeaderRow || position == settingsSectionRow2 ||
                     position == numberSectionRow || position == helpHeaderRow || position == debugHeaderRow || position == botPermissionsHeader) {
                 return VIEW_TYPE_HEADER;
-            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == restrictionReasonRow || position == idDcRow) {
+            } else if (position == phoneRow || position == locationRow || position == numberRow || position == birthdayRow || position == restrictionReasonRow || position == idDcRow || position == chatTimeZoneRow) {
                 return VIEW_TYPE_TEXT_DETAIL;
             } else if (position == usernameRow || position == setUsernameRow) {
                 return VIEW_TYPE_TEXT_DETAIL_MULTILINE;
@@ -16132,6 +16183,7 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
             put(++pointer, infoEndRowEmpty, sparseIntArray);
             put(++pointer, phoneRow, sparseIntArray);
             put(++pointer, noteRow, sparseIntArray);
+            put(++pointer, chatTimeZoneRow, sparseIntArray);
             put(++pointer, locationRow, sparseIntArray);
             put(++pointer, userInfoRow, sparseIntArray);
             put(++pointer, channelInfoRow, sparseIntArray);
@@ -16707,6 +16759,73 @@ public class ProfileActivity extends BaseFragment implements NotificationCenter.
         });
         o.show();
         return true;
+    }
+
+    /** Dialog the chat-time-zone row operates on: the user for 1:1 profiles, the group otherwise. */
+    private long getChatTimeZoneDialogId() {
+        return userId != 0 ? userId : -chatId;
+    }
+
+    private void openChatTimeZonePicker() {
+        if (getParentActivity() == null) return;
+        TimeZone current = ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
+        // Synthetic fixed-offset zones (id "GMT+05:30") aren't entries in TimezonesController,
+        // so passing them as the picker's selected id leaves nothing highlighted. Try to
+        // resolve to an IANA id with the same UTC offset; otherwise fall back to system.
+        String initialId;
+        if (current == null) {
+            initialId = TimezonesController.getInstance(currentAccount).getSystemTimezoneId();
+        } else if (current.getID().startsWith("GMT")) {
+            int offsetSec = current.getRawOffset() / 1000;
+            String matchedId = null;
+            ArrayList<TLRPC.TL_timezone> all = TimezonesController.getInstance(currentAccount).getTimezones();
+            for (int i = 0; i < all.size(); ++i) {
+                if (all.get(i).utc_offset == offsetSec) { matchedId = all.get(i).id; break; }
+            }
+            initialId = matchedId != null ? matchedId : TimezonesController.getInstance(currentAccount).getSystemTimezoneId();
+        } else {
+            initialId = current.getID();
+        }
+        BottomSheet sheet = ChatTimeZonePickerSheet.show(
+                getParentActivity(),
+                currentAccount,
+                getString(R.string.ChatTimeZoneTitle),
+                initialId,
+                tzId -> {
+                    TimeZone picked = tzId != null ? TimeZone.getTimeZone(tzId) : null;
+                    if (ChatTimeZoneController.saveForDialog(currentAccount, getChatTimeZoneDialogId(), picked)) {
+                        if (listAdapter != null && chatTimeZoneRow >= 0) {
+                            listAdapter.notifyItemChanged(chatTimeZoneRow);
+                        }
+                    } else if (userId != 0) {
+                        // UserFull hasn't arrived yet -- apply once userInfoDidLoad delivers it
+                        // instead of silently discarding the pick.
+                        pendingChatTimeZoneSave = true;
+                        pendingChatTimeZoneValue = picked;
+                    }
+                });
+        if (sheet != null) showDialog(sheet);
+    }
+
+    private void editChatTimeZone(View view) {
+        TimeZone current = ChatTimeZoneController.getForDialog(currentAccount, getChatTimeZoneDialogId());
+        if (current == null) {
+            openChatTimeZonePicker();
+            return;
+        }
+        final ItemOptions o = ItemOptions.makeOptions(this, view);
+        o.setScrimViewBackground(listView.getClipBackground(view));
+        o.add(R.drawable.msg_edit, getString(R.string.Edit), this::openChatTimeZonePicker);
+        o.add(R.drawable.msg_delete, getString(R.string.ChatTimeZoneRemove), true, () -> {
+            if (!ChatTimeZoneController.saveForDialog(currentAccount, getChatTimeZoneDialogId(), null) && userId != 0) {
+                pendingChatTimeZoneSave = true;
+                pendingChatTimeZoneValue = null;
+            }
+            if (listAdapter != null && chatTimeZoneRow >= 0) {
+                listAdapter.notifyItemChanged(chatTimeZoneRow);
+            }
+        });
+        o.show();
     }
 
     private boolean editRow(View view, int position) {

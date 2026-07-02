@@ -2206,6 +2206,14 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
             nameWidth = getMeasuredWidth() - nameLeft - dp(messagePaddingStart + 5 + 8) - timeWidth;
             nameLeft += timeWidth;
         }
+        // Reserve room for the chat-time-zone pill (no-op when not configured).
+        int tzPillWidth = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+        if (tzPillWidth > 0) {
+            nameWidth -= tzPillWidth;
+            if (LocaleController.isRTL) {
+                nameLeft += tzPillWidth;
+            }
+        }
         if (drawNameLock) {
             nameWidth -= dp(LocaleController.isRTL ? 8 : 4) + Theme.dialogs_lockDrawable.getIntrinsicWidth();
         }
@@ -4075,6 +4083,67 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     }
                     canvas.restore();
                     canvas.restore();
+                }
+                // Chat time-zone pill drawn next to the rendered name + status icons (no-op when not configured).
+                // Must stay outside the gradient-fade layer above: its clip ends at nameLeft + nameWidth,
+                // which is exactly where the pill begins when a long name is fully ellipsized.
+                // No dialog-type gate here: measurePillForDialog already returns 0 for unsupported
+                // dialogs, and it MUST match the reservation made in buildLayout() -- reserving
+                // width without drawing leaves a trimmed name with a missing pill.
+                {
+                    int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
+                    if (reserved > 0) {
+                        boolean hasMute = dialogMuted || drawUnmute || dialogMutedProgress > 0;
+                        int pillX;
+                        // Hug the pill to a lone trailing emoji status / premium star with the same
+                        // dp(4) the chat header uses; mute/verified/scam (and a mute drawn after the
+                        // status) keep the roomier dp(6).
+                        int pillGap = dp(6);
+                        if (!drawVerified && drawScam == 0 && drawPremium && !(hasMute && nameMutedIconLeft != 0)) {
+                            pillGap = dp(4);
+                        }
+                        if (LocaleController.isRTL) {
+                            // In RTL the decorations sit to the LEFT of the name (at nameMuteLeft, or the
+                            // even-further-left nameMutedIconLeft when a premium icon precedes a mute icon).
+                            // Place the pill to the left of whichever is leftmost.
+                            int iconsLeft = nameLeft;
+                            if (nameAdditionalsForChannelSubscriber > 0) {
+                                iconsLeft = nameMuteLeft;
+                                if (drawPremium && nameMutedIconLeft != 0 && nameMutedIconLeft < iconsLeft) {
+                                    iconsLeft = nameMutedIconLeft;
+                                }
+                            }
+                            // reserved == bare pill width + dp(6); subtract the baked-in dp(6) and
+                            // re-add the contextual gap so RTL mirrors the LTR spacing exactly.
+                            pillX = iconsLeft - (reserved - dp(6)) - pillGap;
+                        } else {
+                            // In LTR the decorations are drawn starting at nameMuteLeft (which is set to the
+                            // end of the rendered name + dp(6)). Anchor the pill just past the actual icon's
+                            // right edge -- using the tight icon width, not the generously reserved slot.
+                            int iconsRight;
+                            if (drawVerified) {
+                                iconsRight = nameMuteLeft - dp(1) + Theme.dialogs_verifiedDrawable.getIntrinsicWidth();
+                            } else if (drawPremium) {
+                                // Anchor to the status glyph's real right edge, not the fixed box: the default
+                                // premium star is a ~14dp bitmap left-pinned in a dp(22) box drawn at nameMuteLeft - dp(2).
+                                iconsRight = nameMuteLeft - dp(2) + com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus);
+                                if (hasMute && nameMutedIconLeft != 0) {
+                                    iconsRight = nameMutedIconLeft + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                                }
+                            } else if (drawScam != 0) {
+                                iconsRight = nameMuteLeft + (drawScam == 1 ? Theme.dialogs_scamDrawable : Theme.dialogs_fakeDrawable).getIntrinsicWidth();
+                            } else if (hasMute) {
+                                iconsRight = nameMuteLeft + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                            } else {
+                                // No trailing decorations: nameMuteLeft already sits at name end + dp(6).
+                                iconsRight = nameMuteLeft - dp(6);
+                            }
+                            pillX = iconsRight + pillGap;
+                        }
+                        // Center the pill vertically on the name text, not on the baseline (pill text is smaller than name text).
+                        int nameCenterY = nameTop + nameLayout.getHeight() / 2;
+                        com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.drawPillForDialog(canvas, currentAccount, currentDialogId, pillX, nameCenterY, resourcesProvider);
+                    }
                 }
             }
 

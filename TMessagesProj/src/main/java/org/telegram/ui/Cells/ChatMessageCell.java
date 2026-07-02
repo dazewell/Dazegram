@@ -18565,6 +18565,13 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             }
             ((SpannableStringBuilder) timeString).append(" | ").append(String.valueOf(messageObject.messageOwner.id));
         }
+        // Append peer's local time when a chat time-zone is configured for this dialog (no-op otherwise).
+        // Use messageObject (the method parameter) -- not currentMessageObject (the field) -- so that
+        // callers that pass a different MessageObject instance (e.g. pinned messages) get the right
+        // dialog id and timestamp.
+        timeString = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentMessageTime(
+                timeString, currentAccount, messageObject.getDialogId(),
+                messageObject.messageOwner != null ? messageObject.messageOwner.date : 0);
         currentTimeString = new SpannableStringBuilder(timeString);
         if (signString != null) {
             if (messageObject.messageOwner.via_business_bot_id != 0) {
@@ -18612,6 +18619,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             }
         }
         timeTextWidth = timeWidth = (int) Math.ceil(Theme.chat_timePaint.measureText(currentTimeString, 0, currentTimeString == null ? 0 : currentTimeString.length()));
+        // NagramX: measureText ignores the peer-time globe (rides a zero-width char), so reserve
+        // its width or the status ticks collide with it and the time overflows a tick-less bubble.
+        timeTextWidth = timeWidth += com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.peerTimeGlyphReserve(currentAccount, messageObject.getDialogId());
         if (timeString instanceof SpannableStringBuilder) {
             if (edited && NaConfig.INSTANCE.getUseEditedIcon().Bool() && TimeStringHelper.editedDrawable != null) {
                 timeTextWidth = timeWidth += TimeStringHelper.editedDrawable.getIntrinsicWidth();
