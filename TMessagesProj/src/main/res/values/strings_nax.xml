@@ -178,6 +178,8 @@
     <string name="PerformanceClassLow">Low</string>
     <string name="PerformanceClassUnknown">Unknown</string>
     <string name="TranscribeProviderShort">Provider</string>
+    <string name="RetryWith">Retry with…</string>
+    <string name="TranscribeProviderCurrentSuffix">(current)</string>
     <string name="TranscribeProviderAuto">Auto-select</string>
     <string name="TranscribeProviderWorkersAI">Whisper (Workers AI)</string>
     <string name="TranscribeProviderGemini">Gemini</string>

@@ -59,6 +59,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Groq transcription provider:** a new free voice-to-text option that runs Whisper on Groq, which is fast and does well with Russian. Pick "Groq (Whisper)" as the provider and paste an API key (the key row links straight to console.groq.com where you get one). Groq says it doesn't train on your audio and only holds requests briefly for abuse checks, so it sits better with private messages than the free tiers that learn from whatever you send. Two extra rows show up while it's selected: a model choice between accurate (whisper-large-v3) and faster (the turbo variant), and a language you can pin or leave on Auto-detect for a small accuracy and speed gain. Free-tier uploads stop at 25 MB, so a very long voice message will ask you to trim it or switch providers. Whisper likes to invent subtitle-style lines ("captions by ...") over silent stretches, so segments it scores as non-speech get dropped before you see the text.
 
+ - **Retry a transcription with another provider:** the Retry option on a voice or video message's transcription used to quietly re-run whichever provider is picked in settings. Now, if you have two or more providers set up with working credentials, it reads "Retry with…" and opens a short list of just those configured providers, so you can bounce a garbled message off a different service without opening settings first. With one provider (or none) set up it stays a plain "Retry" that re-runs straight away.
+
 ## Download
 
 Latest versions are available through:
