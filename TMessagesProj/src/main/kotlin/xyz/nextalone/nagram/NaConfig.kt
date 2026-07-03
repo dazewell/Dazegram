@@ -1078,6 +1078,24 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val transcribeProviderGroqApiKey =
+        addConfig(
+            "TranscribeProviderGroqApiKey",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val transcribeProviderGroqModel =
+        addConfig(
+            "TranscribeProviderGroqModel",
+            ConfigItem.configTypeInt,
+            0
+        )
+    val transcribeProviderGroqLanguage =
+        addConfig(
+            "TranscribeProviderGroqLanguage",
+            ConfigItem.configTypeInt,
+            0
+        )
     val transcribeProviderOpenAiApiBase =
         addConfig(
             "TranscribeProviderOpenAiApiBase",
