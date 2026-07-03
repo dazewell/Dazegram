@@ -928,6 +928,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val videoMessagesResetZoomOnSwitch =
+        addConfig(
+            "VideoMessagesResetZoomOnSwitch",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val videoMessagesHalSmoothZoom =
+        addConfig(
+            "VideoMessagesHalSmoothZoom",
+            ConfigItem.configTypeBool,
+            false
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",

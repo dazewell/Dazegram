@@ -22,9 +22,12 @@ import android.view.OrientationEventListener;
 import android.view.Surface;
 import android.view.WindowManager;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
+
+import xyz.nextalone.nagram.NaConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +45,8 @@ public class CameraSession {
     private final int pictureFormat;
     private boolean initied;
     private int maxZoom;
+    private List<Integer> zoomRatios;
+    private boolean smoothZoomSupported;
     private boolean meteringAreaSupported;
     private int currentOrientation;
     private int diffOrientation;
@@ -249,6 +254,11 @@ public class CameraSession {
                     params.setPictureFormat(pictureFormat);
                     params.setRecordingHint(true);
                     maxZoom = params.getMaxZoom();
+                    zoomRatios = maxZoom > 0 ? params.getZoomRatios() : null;
+                    smoothZoomSupported = maxZoom > 0 && params.isSmoothZoomSupported();
+                    if (initial && BuildVars.LOGS_ENABLED) {
+                        FileLog.d("camera1 zoom levels " + maxZoom + " smooth " + smoothZoomSupported + " ratios " + zoomRatios);
+                    }
 
                     String desiredMode = Camera.Parameters.FOCUS_MODE_CONTINUOUS_VIDEO;
                     if (params.getSupportedFocusModes().contains(desiredMode)) {
@@ -383,6 +393,8 @@ public class CameraSession {
                     params.setJpegQuality(100);
                     params.setJpegThumbnailQuality(100);
                     maxZoom = params.getMaxZoom();
+                    zoomRatios = maxZoom > 0 ? params.getZoomRatios() : null;
+                    smoothZoomSupported = maxZoom > 0 && params.isSmoothZoomSupported();
                     params.setZoom((int) (currentZoom * maxZoom));
 
                     if (optimizeForBarcode) {
@@ -487,6 +499,114 @@ public class CameraSession {
             configureRoundCamera(false);
         } else {
             configurePhotoCamera();
+        }
+    }
+
+    // NagramX: top of the camera1 zoom range as a ratio; levels index into a per-device ratio table
+    public float getMaxZoomRatio() {
+        return zoomRatios == null || zoomRatios.isEmpty() ? 1f : zoomRatios.get(zoomRatios.size() - 1) / 100f;
+    }
+
+    // NagramX: camera1 zoom levels are coarse (a few percent of ratio each), so slamming the target level in
+    // directly reads as visible jumps. Instead the target is remembered and a self-paced ramp walks the
+    // hardware one level per tick toward it; ~25 levels/sec lands close to the slider's own glide rate.
+    // Only a zoom-only parameter update is used: a full configureRoundCamera per change rebuilds every
+    // parameter and can freeze the preview mid-recording on some camera1 HALs.
+    private int zoomTargetLevel = -1;
+    private int appliedZoomLevel = -1;
+    private boolean zoomStepping;
+    private final Runnable zoomStepper = this::stepZoomLevel;
+
+    public void setZoomRatio(float ratio) {
+        if (maxZoom <= 0 || zoomRatios == null || zoomRatios.isEmpty()) {
+            return;
+        }
+        final int target = Math.round(ratio * 100);
+        // highest level that doesn't exceed the ratio, since levels aren't spaced evenly on every device
+        int level = 0;
+        while (level + 1 < zoomRatios.size() && zoomRatios.get(level + 1) <= target) {
+            level++;
+        }
+        // mid-step fraction so the (int) (currentZoom * maxZoom) reapply in configure can't truncate a level down
+        currentZoom = (level + 0.5f) / maxZoom;
+        zoomTargetLevel = level;
+        if (smoothZoomSupported && NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom().Bool()) {
+            kickSmoothZoom();
+        } else if (!zoomStepping && level != appliedZoomLevel) {
+            stepZoomLevel();
+        }
+    }
+
+    // NagramX: HAL-animated zoom (opt-in): the camera ramps to the target itself, interpolating smoother than
+    // one-level software steps can. startSmoothZoom must not be called again until the ramp reports stopped,
+    // so targets that arrive mid-ramp are chased from the listener; only a direction reversal stops it early.
+    private boolean smoothZooming;
+    private int smoothZoomStartedTo = -1;
+
+    private void kickSmoothZoom() {
+        try {
+            Camera camera = cameraInfo != null ? cameraInfo.camera : null;
+            if (camera == null) {
+                return;
+            }
+            if (appliedZoomLevel < 0) {
+                appliedZoomLevel = camera.getParameters().getZoom();
+            }
+            if (smoothZooming) {
+                if ((zoomTargetLevel - appliedZoomLevel) * (smoothZoomStartedTo - appliedZoomLevel) < 0) {
+                    camera.stopSmoothZoom();
+                }
+                return;
+            }
+            if (appliedZoomLevel == zoomTargetLevel) {
+                return;
+            }
+            smoothZooming = true;
+            smoothZoomStartedTo = zoomTargetLevel;
+            camera.setZoomChangeListener((value, stopped, cam) -> AndroidUtilities.runOnUIThread(() -> {
+                appliedZoomLevel = value;
+                if (stopped) {
+                    smoothZooming = false;
+                    if (value != zoomTargetLevel) {
+                        kickSmoothZoom();
+                    }
+                }
+            }));
+            camera.startSmoothZoom(zoomTargetLevel);
+        } catch (Exception e) {
+            // the HAL advertised smooth zoom but won't run it: use the software ramp for the rest of the session
+            FileLog.e(e);
+            smoothZooming = false;
+            smoothZoomSupported = false;
+            if (!zoomStepping && appliedZoomLevel != zoomTargetLevel) {
+                stepZoomLevel();
+            }
+        }
+    }
+
+    private void stepZoomLevel() {
+        zoomStepping = false;
+        try {
+            Camera camera = cameraInfo != null ? cameraInfo.camera : null;
+            if (camera == null || zoomTargetLevel < 0) {
+                return;
+            }
+            Camera.Parameters params = camera.getParameters();
+            int level = params.getZoom();
+            if (level == zoomTargetLevel) {
+                appliedZoomLevel = level;
+                return;
+            }
+            level += zoomTargetLevel > level ? 1 : -1;
+            params.setZoom(level);
+            camera.setParameters(params);
+            appliedZoomLevel = level;
+            if (level != zoomTargetLevel) {
+                zoomStepping = true;
+                AndroidUtilities.runOnUIThread(zoomStepper, 40);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
         }
     }
 
