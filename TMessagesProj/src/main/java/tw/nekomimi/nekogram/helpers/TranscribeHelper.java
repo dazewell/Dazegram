@@ -713,8 +713,35 @@ public class TranscribeHelper {
         @Expose
         public List<Content> contents;
 
+        @SerializedName("safetySettings")
+        @Expose
+        public List<SafetySetting> safetySettings;
+
         public GeminiRequest(List<Content> contents) {
             this.contents = contents;
+            // These are private personal messages, so turn off the adjustable content filters that
+            // otherwise refuse intimate or blunt speech. Core-harm blocks (e.g. child safety) can't be disabled.
+            this.safetySettings = List.of(
+                    new SafetySetting("HARM_CATEGORY_HARASSMENT", "BLOCK_NONE"),
+                    new SafetySetting("HARM_CATEGORY_HATE_SPEECH", "BLOCK_NONE"),
+                    new SafetySetting("HARM_CATEGORY_SEXUALLY_EXPLICIT", "BLOCK_NONE"),
+                    new SafetySetting("HARM_CATEGORY_DANGEROUS_CONTENT", "BLOCK_NONE")
+            );
+        }
+
+        public static class SafetySetting {
+            @SerializedName("category")
+            @Expose
+            public String category;
+
+            @SerializedName("threshold")
+            @Expose
+            public String threshold;
+
+            public SafetySetting(String category, String threshold) {
+                this.category = category;
+                this.threshold = threshold;
+            }
         }
 
         public static class Content {
