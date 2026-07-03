@@ -666,7 +666,8 @@ public class TranscribeHelper {
                         .setType(MultipartBody.FORM)
                         .addFormDataPart("file", fileName, fileBody)
                         .addFormDataPart("model", model)
-                        .addFormDataPart("response_format", "json");
+                        // verbose_json gives per-segment scores so we can drop Whisper's silence hallucinations.
+                        .addFormDataPart("response_format", "verbose_json");
                 // A language hint improves accuracy and latency; index 0 leaves it to auto-detect.
                 int langIndex = NaConfig.INSTANCE.getTranscribeProviderGroqLanguage().Int();
                 if (langIndex > 0 && langIndex < CF_LANGUAGE_CODES.length) {
@@ -694,9 +695,10 @@ public class TranscribeHelper {
                         String message = "Groq API request failed: " + response.code() + " " + response.message();
                         throw new IOException(TextUtils.isEmpty(detail) ? message + "\nBody: " + responseBody : message + " - " + detail);
                     }
-                    Result result = gson.fromJson(responseBody, Result.class);
-                    if (result != null && !TextUtils.isEmpty(result.text)) {
-                        callback.accept(result.text.trim(), null);
+                    GroqVerboseResponse result = gson.fromJson(responseBody, GroqVerboseResponse.class);
+                    String text = result == null ? null : dropGroqSilenceHallucinations(result);
+                    if (!TextUtils.isEmpty(text)) {
+                        callback.accept(text, null);
                     } else {
                         callback.accept(null, new Exception("Invalid or empty response from Groq API: " + responseBody));
                     }
@@ -706,6 +708,27 @@ public class TranscribeHelper {
                 callback.accept(null, e);
             }
         });
+    }
+
+    // Whisper (trained on subtitles) invents lines like "captions by ..." over silent or non-speech audio.
+    // verbose_json scores each segment, so drop the ones Whisper itself would treat as non-speech: high
+    // no_speech_prob paired with low avg_logprob (its own default thresholds). Falls back to the raw text
+    // if every segment looked like silence, so a normal message never comes back empty.
+    private static String dropGroqSilenceHallucinations(GroqVerboseResponse response) {
+        if (response.segments == null || response.segments.isEmpty()) {
+            return response.text == null ? null : response.text.trim();
+        }
+        StringBuilder sb = new StringBuilder();
+        for (GroqVerboseResponse.Segment segment : response.segments) {
+            if (segment.text == null) continue;
+            if (segment.noSpeechProb > 0.6f && segment.avgLogprob < -1.0f) continue;
+            sb.append(segment.text);
+        }
+        String filtered = sb.toString().trim();
+        if (!filtered.isEmpty()) {
+            return filtered;
+        }
+        return response.text == null ? null : response.text.trim();
     }
 
     private static void requestOpenAiCompatible(String path, boolean video, BiConsumer<String, Exception> callback) {
@@ -813,6 +836,27 @@ public class TranscribeHelper {
         @SerializedName("text")
         @Expose
         public String text;
+    }
+
+    private static class GroqVerboseResponse {
+        @SerializedName("text")
+        @Expose
+        public String text;
+        @SerializedName("segments")
+        @Expose
+        public List<Segment> segments;
+
+        private static class Segment {
+            @SerializedName("text")
+            @Expose
+            public String text;
+            @SerializedName("avg_logprob")
+            @Expose
+            public float avgLogprob;
+            @SerializedName("no_speech_prob")
+            @Expose
+            public float noSpeechProb;
+        }
     }
 
     private static class WhisperRequest {
