@@ -14,6 +14,36 @@ the branch topology, upstream sync, and the phone-triggered automation.
 Read `nagramx-workflow` for the change itself; read this for the git
 choreography around it.
 
+## Quick refresh (30-second version)
+
+Forgot how this works? Start here, then jump to the section you need.
+
+**The one mental model:** upstream and your features meet in `dev`, *never*
+on the feature branches. When upstream moves, `dev` catches up — the feature
+branches sit still.
+
+**Three branches, three jobs:**
+- `base` — mirror of the base fork (`source/dev`). Only fast-forwards.
+- `dazewell/<slug>` — one per feature, cut from `base`, **append-only**
+  (later fixes = more commits here). Whole feature = `git log base..dazewell/<slug>`.
+- `dev` — disposable build branch = `base` + all topics **merged** in.
+
+**The three rules that keep it safe:**
+1. Never rebase a topic in daily work — just append commits to it.
+2. Land into `dev` by **merge** (local or a PR merged with a merge commit),
+   **never squash**.
+3. Squashing / rebasing onto fresh upstream happens **only** when proposing a
+   feature to the base fork, on a throwaway `dazewell/<slug>-pr` copy.
+
+**"Which command do I need?"** → jump to *Case-by-case procedures* below.
+**"Something on `dev` broke my feature"** → jump to *When something on `dev`
+breaks my feature*.
+**"I need the whole rationale"** → keep reading from *Why this model exists*.
+
+Fastest way to reload all of this later: ask the assistant *"how does the
+NagramX branch flow work?"* (it opens this skill), or just open this file and
+read this box.
+
 ## Why this model exists (the problem it solves)
 
 The old model kept **one branch (`dev`) doing two conflicting jobs**: it was
