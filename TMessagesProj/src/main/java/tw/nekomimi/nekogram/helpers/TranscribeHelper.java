@@ -46,6 +46,7 @@ import java.util.concurrent.Executors;
 import java.util.function.BiConsumer;
 
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -61,6 +62,14 @@ public class TranscribeHelper {
     public static final int TRANSCRIBE_WORKERSAI = 2;
     public static final int TRANSCRIBE_GEMINI = 3;
     public static final int TRANSCRIBE_OPENAI = 4;
+    public static final int TRANSCRIBE_GROQ = 5;
+    // These ints are stored as-is and map 1:1 to the provider select box order in
+    // NekoChatSettingsActivity (index 1 is the Premium placeholder). Only append new providers.
+    private static final String GROQ_TRANSCRIBE_ENDPOINT = "https://api.groq.com/openai/v1/audio/transcriptions";
+    // Index maps 1:1 to the Groq model select box: 0 = best accuracy, 1 = faster/cheaper.
+    public static final String[] GROQ_MODELS = {"whisper-large-v3", "whisper-large-v3-turbo"};
+    // Groq's free tier caps uploads at 25 MB.
+    private static final long GROQ_MAX_AUDIO_BYTES = 25L * 1024 * 1024;
     private static final String GEMINI_API_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/" + getString(R.string.LlmModelNameDefault) + ":generateContent?key=%s";
     private static final String GEMINI_PROMPT = """
     Your task is to create a detailed, verbatim transcription of the provided audio, formatted like closed captions for the hard of hearing. Follow these instructions strictly:
@@ -92,7 +101,7 @@ public class TranscribeHelper {
 
     public static boolean useTranscribeAI(int account) {
         int provider = NaConfig.INSTANCE.getTranscribeProvider().Int();
-        return provider == TRANSCRIBE_WORKERSAI || provider == TRANSCRIBE_GEMINI || provider == TRANSCRIBE_OPENAI ||
+        return provider == TRANSCRIBE_WORKERSAI || provider == TRANSCRIBE_GEMINI || provider == TRANSCRIBE_OPENAI || provider == TRANSCRIBE_GROQ ||
                 (!UserConfig.getInstance(account).isPremium() && provider == TRANSCRIBE_AUTO);
     }
 
@@ -245,6 +254,50 @@ public class TranscribeHelper {
                 }
                 var prompt = editTextPrompt.getText();
                 NaConfig.INSTANCE.getTranscribeProviderGeminiPrompt().setConfigString(prompt == null ? "" : prompt.toString());
+                dialog.dismiss();
+            });
+        }
+    }
+
+    public static void showGroqApiKeyDialog(BaseFragment fragment) {
+        if (fragment == null || fragment.getParentActivity() == null) return;
+        var resourcesProvider = fragment.getResourceProvider();
+        var context = fragment.getParentActivity();
+        var builder = new AlertDialog.Builder(context, resourcesProvider);
+        builder.setTitle(getString(R.string.TranscribeProviderGroq));
+        builder.setMessage(AndroidUtilities.replaceSingleTag(getString(R.string.GroqApiKeyDialog),
+                -1,
+                AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                () -> {
+                    fragment.dismissCurrentDialog();
+                    Browser.openUrl(context, "https://console.groq.com/keys");
+                },
+                resourcesProvider));
+        builder.setCustomViewOffset(0);
+
+        var ll = new LinearLayout(context);
+        ll.setOrientation(LinearLayout.VERTICAL);
+
+        var editTextApiKey = createAndSetupEditText(
+                context,
+                resourcesProvider,
+                NaConfig.INSTANCE.getTranscribeProviderGroqApiKey().String(),
+                getString(R.string.LlmApiKey),
+                EditorInfo.IME_ACTION_DONE,
+                true
+        );
+        ll.addView(editTextApiKey, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 24, 0, 24, 0));
+
+        builder.setView(ll);
+        builder.setNegativeButton(getString(R.string.Cancel), null);
+        builder.setPositiveButton(getString(R.string.OK), null);
+        var dialog = builder.create();
+        fragment.showDialog(dialog);
+        var button = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        if (button != null) {
+            button.setOnClickListener(v -> {
+                var apiKey = editTextApiKey.getText();
+                NaConfig.INSTANCE.getTranscribeProviderGroqApiKey().setConfigString(apiKey == null ? "" : apiKey.toString().trim());
                 dialog.dismiss();
             });
         }
@@ -407,6 +460,9 @@ public class TranscribeHelper {
             case TRANSCRIBE_OPENAI:
                 requestOpenAiCompatible(path, video, callback);
                 break;
+            case TRANSCRIBE_GROQ:
+                requestGroq(path, video, callback);
+                break;
             default:
                 requestWorkersAi(path, video, callback);
         }
@@ -554,6 +610,99 @@ public class TranscribeHelper {
                 }
             } catch (Exception e) {
                 FileLog.e("Gemini transcription error", e);
+                callback.accept(null, e);
+            }
+        });
+    }
+
+    private static void requestGroq(String path, boolean video, BiConsumer<String, Exception> callback) {
+        String apiKey = NaConfig.INSTANCE.getTranscribeProviderGroqApiKey().String();
+        if (TextUtils.isEmpty(apiKey)) {
+            callback.accept(null, new Exception(getString(R.string.GroqApiKeyNotSet)));
+            return;
+        }
+        executorService.submit(() -> {
+            try {
+                String audioPath;
+                String fileName;
+                String mimeType;
+                if (video) {
+                    var extracted = new File(path + ".m4a");
+                    try {
+                        extractAudio(path, extracted.getAbsolutePath());
+                    } catch (IOException e) {
+                        FileLog.e("Groq: audio extraction failed", e);
+                    }
+                    // Whisper keys format detection off the filename, so label it to match what we actually send.
+                    if (extracted.exists()) {
+                        audioPath = extracted.getAbsolutePath();
+                        fileName = "audio.m4a";
+                        mimeType = "audio/mp4";
+                    } else {
+                        audioPath = path;
+                        fileName = "audio.mp4";
+                        mimeType = "video/mp4";
+                    }
+                } else {
+                    // Voice notes are ogg/opus.
+                    audioPath = path;
+                    fileName = "audio.ogg";
+                    mimeType = "audio/ogg";
+                }
+
+                File audioFile = new File(audioPath);
+                if (!audioFile.exists()) {
+                    throw new IOException("Audio file not found: " + audioPath);
+                }
+                if (audioFile.length() > GROQ_MAX_AUDIO_BYTES) {
+                    callback.accept(null, new Exception(getString(R.string.GroqAudioTooLarge)));
+                    return;
+                }
+
+                RequestBody fileBody = RequestBody.create(audioFile, MediaType.get(mimeType));
+                int modelIndex = NaConfig.INSTANCE.getTranscribeProviderGroqModel().Int();
+                String model = GROQ_MODELS[modelIndex >= 0 && modelIndex < GROQ_MODELS.length ? modelIndex : 0];
+                MultipartBody.Builder bodyBuilder = new MultipartBody.Builder()
+                        .setType(MultipartBody.FORM)
+                        .addFormDataPart("file", fileName, fileBody)
+                        .addFormDataPart("model", model)
+                        .addFormDataPart("response_format", "json");
+                // A language hint improves accuracy and latency; index 0 leaves it to auto-detect.
+                int langIndex = NaConfig.INSTANCE.getTranscribeProviderGroqLanguage().Int();
+                if (langIndex > 0 && langIndex < CF_LANGUAGE_CODES.length) {
+                    bodyBuilder.addFormDataPart("language", CF_LANGUAGE_CODES[langIndex]);
+                }
+                RequestBody multipartBody = bodyBuilder.build();
+
+                OkHttpClient client = getOkHttpClient();
+                Request request = new Request.Builder()
+                        .url(GROQ_TRANSCRIBE_ENDPOINT)
+                        .header("Authorization", "Bearer " + apiKey)
+                        .post(multipartBody)
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    String responseBody = response.body().string();
+                    if (!response.isSuccessful()) {
+                        String detail = null;
+                        try {
+                            OpenAiErrorResponse errorResponse = gson.fromJson(responseBody, OpenAiErrorResponse.class);
+                            if (errorResponse != null && errorResponse.error != null) {
+                                detail = errorResponse.error.message;
+                            }
+                        } catch (Exception ignored) {}
+                        String message = "Groq API request failed: " + response.code() + " " + response.message();
+                        throw new IOException(TextUtils.isEmpty(detail) ? message + "\nBody: " + responseBody : message + " - " + detail);
+                    }
+                    Result result = gson.fromJson(responseBody, Result.class);
+                    if (result != null && !TextUtils.isEmpty(result.text)) {
+                        callback.accept(result.text.trim(), null);
+                    } else {
+                        callback.accept(null, new Exception("Invalid or empty response from Groq API: " + responseBody));
+                    }
+                }
+            } catch (Exception e) {
+                FileLog.e("Groq transcription error", e);
                 callback.accept(null, e);
             }
         });

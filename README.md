@@ -57,6 +57,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Whisper transcription controls:** the Whisper (Workers AI) voice-to-text provider kept inventing names and stray comments during quiet parts of a message, which is just how the model behaves on silence. Its settings now carry a few knobs Cloudflare exposes for exactly this, and they only appear while Whisper (or Auto, which can fall back to it) is the selected provider. You can pick a language or leave it on Auto-detect, switch on voice activity detection to skip silent and non-speech audio, switch off "use previous context" so it stops repeating or making up phrases, and drag a slider to skip silences longer than a set number of seconds (off by default). Voice activity detection starts on and previous-context starts off, since that pairing is what keeps most of the made-up text out.
 
+ - **Groq transcription provider:** a new free voice-to-text option that runs Whisper on Groq, which is fast and does well with Russian. Pick "Groq (Whisper)" as the provider and paste an API key (the key row links straight to console.groq.com where you get one). Groq says it doesn't train on your audio and only holds requests briefly for abuse checks, so it sits better with private messages than the free tiers that learn from whatever you send. Two extra rows show up while it's selected: a model choice between accurate (whisper-large-v3) and faster (the turbo variant), and a language you can pin or leave on Auto-detect for a small accuracy and speed gain. Free-tier uploads stop at 25 MB, so a very long voice message will ask you to trim it or switch providers.
+
 ## Download
 
 Latest versions are available through:
