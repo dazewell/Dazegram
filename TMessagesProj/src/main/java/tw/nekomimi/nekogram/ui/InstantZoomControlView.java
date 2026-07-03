@@ -173,11 +173,16 @@ public class InstantZoomControlView extends View {
 
     private void updateGeometry() {
         final float w = getMeasuredWidth();
+        // roomy centers on the full width: the slider sits a row above the recorder's view-once "(1)"
+        // button and the rocker is a centered pair, so nothing reaches the right edge the button lives on.
+        // compact keeps a right column clear of that button (the recorder draws it hard against the right
+        // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
+        final float compactW = w - AndroidUtilities.dp(56);
         // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart
         final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300));
         final float roomyLeft = (w - roomyWidth) / 2f;
         // compact: one row at 52dp, 20dp side margins, [slider] 16dp [-] 10dp [+], 40dp buttons
-        final float compactPlusCx = w - AndroidUtilities.dp(20 + 20);
+        final float compactPlusCx = compactW - AndroidUtilities.dp(20 + 20);
         final float compactMinusCx = compactPlusCx - AndroidUtilities.dp(50);
         trackLeft = lerp(roomyLeft, AndroidUtilities.dp(20), compact);
         trackRight = lerp(roomyLeft + roomyWidth, compactMinusCx - AndroidUtilities.dp(20 + 16), compact);

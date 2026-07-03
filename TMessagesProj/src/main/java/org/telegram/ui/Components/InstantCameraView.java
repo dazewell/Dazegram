@@ -1008,25 +1008,47 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private void updateTranslationY() {
-        final float translationY = animationTranslationY + panTranslationY;
+        final float bottomControlsTop = getMeasuredHeight() / 2f - internalPaddingBottom;
+
+        // when the keyboard squeezes the room below the circle, lift the circle up so the two-row
+        // control fits beneath it instead of being crammed over the preview. measured from the
+        // settled (fully-open) position, so the lift stays constant through the open/close slide
+        // rather than yanking the circle while animationTranslationY runs.
+        // 156dp clears the roomy layout (104dp of rows + margins); lift toward it as far as the top
+        // chrome allows, then let whatever room is left pick roomy vs compact.
+        final float restingGap = bottomControlsTop - (panTranslationY + textureViewSize / 2f + dp(8));
+        // don't let the lift push the circle up under the top chrome
+        final float maxLift = Math.max(0f, panTranslationY + getMeasuredHeight() / 2f - textureViewSize / 2f - dp(80));
+        final float liftForRoomy = Math.max(0f, dp(156) - restingGap);
+        final float lift = Math.min(liftForRoomy, maxLift);
+        final float gapAfterLift = restingGap + lift;
+
+        final float translationY = animationTranslationY + panTranslationY - lift;
         textureOverlayView.setTranslationY(translationY);
         cameraContainer.setTranslationY(translationY);
 
-        final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
-        final float bottomControlsTop = getMeasuredHeight() / 2f - internalPaddingBottom;
-        final float gap = bottomControlsTop - cameraBottom;
-        zoomControlView.setAvailableGap(gap);
+        // snap the fed gap clear of the 140..152 hysteresis band so the keyboard slide can't flip the
+        // layout back and forth; gapAfterLift is continuous across the maxLift cap, so it crosses once
+        zoomControlView.setAvailableGap(gapAfterLift >= dp(146) ? dp(156) : Math.min(gapAfterLift, dp(139)));
         final boolean compact = zoomControlView.isCompact();
+
+        final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
         // the drawn rows sit at the view's own center in both layouts, so translationY is the content center
         final float contentHalf = dp(compact ? 24 : 52);
-        float zoomControlCenterY = (cameraBottom + bottomControlsTop) / 2f;
-        zoomControlCenterY = Math.max(zoomControlCenterY, cameraBottom + dp(8) + contentHalf);
-        zoomControlCenterY = Math.min(zoomControlCenterY, bottomControlsTop - dp(12) - contentHalf);
-        if (compact && gap < dp(64)) {
+        final float lo = cameraBottom + dp(8) + contentHalf;
+        final float hi = bottomControlsTop - dp(12) - contentHalf;
+        float zoomControlCenterY;
+        if (compact && gapAfterLift < dp(64)) {
             // almost no room left: hug the record controls and let the scrims ride over the preview edge
             zoomControlCenterY = bottomControlsTop - dp(36);
-        } else if (!compact) {
-            zoomControlCenterY = Math.min(zoomControlCenterY, getMeasuredHeight() / 2f - dp(89));
+        } else if (lo > hi) {
+            // vertical budget too tight for the row to clear both edges: sit it centered in the gap
+            zoomControlCenterY = (cameraBottom + bottomControlsTop) / 2f;
+        } else {
+            zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
+            if (!compact) {
+                zoomControlCenterY = Math.min(zoomControlCenterY, getMeasuredHeight() / 2f - dp(89));
+            }
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
         if (compact) {
