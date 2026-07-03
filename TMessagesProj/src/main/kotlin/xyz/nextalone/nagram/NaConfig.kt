@@ -1048,6 +1048,30 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val transcribeProviderCfLanguage =
+        addConfig(
+            "TranscribeProviderCfLanguage",
+            ConfigItem.configTypeInt,
+            0
+        )
+    val transcribeProviderCfVadFilter =
+        addConfig(
+            "TranscribeProviderCfVadFilter",
+            ConfigItem.configTypeBool,
+            true
+        )
+    val transcribeProviderCfConditionOnPreviousText =
+        addConfig(
+            "TranscribeProviderCfConditionOnPreviousText",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val transcribeProviderCfHallucinationSilenceThreshold =
+        addConfig(
+            "TranscribeProviderCfHallucinationSilenceThreshold",
+            ConfigItem.configTypeFloat,
+            0f
+        )
     val transcribeProviderGeminiApiKey =
         addConfig(
             "TranscribeProviderGeminiApiKey",

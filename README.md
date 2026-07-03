@@ -55,6 +55,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Ghost icon stays put under stories:** with Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header, and only came back when you pulled the list down. Now it stays visible in the collapsed header too, sitting where your emoji or premium status would be. It follows the same Ghost mode status toggle, so it shows in both spots or neither.
 
+ - **Whisper transcription controls:** the Whisper (Workers AI) voice-to-text provider kept inventing names and stray comments during quiet parts of a message, which is just how the model behaves on silence. Its settings now carry a few knobs Cloudflare exposes for exactly this, and they only appear while Whisper (or Auto, which can fall back to it) is the selected provider. You can pick a language or leave it on Auto-detect, switch on voice activity detection to skip silent and non-speech audio, switch off "use previous context" so it stops repeating or making up phrases, and drag a slider to skip silences longer than a set number of seconds (off by default). Voice activity detection starts on and previous-context starts off, since that pairing is what keeps most of the made-up text out.
+
 ## Download
 
 Latest versions are available through:
