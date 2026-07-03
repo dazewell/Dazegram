@@ -186,6 +186,14 @@
     <string name="CloudflareAccountID">Account ID</string>
     <string name="CloudflareAPIToken">API Token</string>
     <string name="CloudflareCredentialsDialog">Configure Cloudflare Account ID and API Token.\n**How to obtain?**\n</string>
+    <string name="TranscribeProviderCfLanguage">Language</string>
+    <string name="TranscribeProviderCfLanguageAuto">Auto-detect</string>
+    <string name="TranscribeProviderCfVadFilter">Voice activity detection</string>
+    <string name="TranscribeProviderCfVadFilterInfo">Skip silent and non-speech parts of the audio. Cuts down on words the model makes up during quiet stretches.</string>
+    <string name="TranscribeProviderCfCondition">Use previous context</string>
+    <string name="TranscribeProviderCfConditionInfo">Feed earlier text back into the model as it goes. Leave off to avoid repeated or invented phrases.</string>
+    <string name="TranscribeProviderCfThreshold">Skip silences longer than</string>
+    <string name="TranscribeProviderCfThresholdOff">Off</string>
     <string name="GeminiApiKeyNotSet">Gemini API Key is not configured.</string>
     <string name="GeminiApiKeyDialog">Configure Gemini API Key, using the one from translator settings if left blank.\n**How to obtain?**\n</string>
     <string name="GeminiNotSupport">Gemini is not supported on this device.</string>

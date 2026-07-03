@@ -83,6 +83,13 @@ public class TranscribeHelper {
 
     private static final String OPENAI_COMPATIBLE_DEFAULT_PROMPT = GEMINI_PROMPT;
 
+    // Whisper (Workers AI) language options; index 0 = auto-detect (no language sent).
+    // Index maps 1:1 to the language select box in NekoChatSettingsActivity.
+    public static final String[] CF_LANGUAGE_CODES = {
+            "", "en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja", "ko",
+            "ar", "hi", "tr", "nl", "pl", "uk", "id", "vi", "th"
+    };
+
     public static boolean useTranscribeAI(int account) {
         int provider = NaConfig.INSTANCE.getTranscribeProvider().Int();
         return provider == TRANSCRIBE_WORKERSAI || provider == TRANSCRIBE_GEMINI || provider == TRANSCRIBE_OPENAI ||
@@ -432,7 +439,19 @@ public class TranscribeHelper {
                 return;
             }
             String base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP);
-            String jsonBody = "{\"audio\":\"" + base64Audio + "\"}";
+            var whisperRequest = new WhisperRequest();
+            whisperRequest.audio = base64Audio;
+            whisperRequest.vadFilter = NaConfig.INSTANCE.getTranscribeProviderCfVadFilter().Bool();
+            whisperRequest.conditionOnPreviousText = NaConfig.INSTANCE.getTranscribeProviderCfConditionOnPreviousText().Bool();
+            float silenceThreshold = NaConfig.INSTANCE.getTranscribeProviderCfHallucinationSilenceThreshold().Float();
+            if (silenceThreshold > 0f) {
+                whisperRequest.hallucinationSilenceThreshold = silenceThreshold;
+            }
+            int langIndex = NaConfig.INSTANCE.getTranscribeProviderCfLanguage().Int();
+            if (langIndex > 0 && langIndex < CF_LANGUAGE_CODES.length) {
+                whisperRequest.language = CF_LANGUAGE_CODES[langIndex];
+            }
+            String jsonBody = gson.toJson(whisperRequest);
 
             var client = getOkHttpClient();
             var request = new Request.Builder()
@@ -645,6 +664,24 @@ public class TranscribeHelper {
         @SerializedName("text")
         @Expose
         public String text;
+    }
+
+    private static class WhisperRequest {
+        @SerializedName("audio")
+        @Expose
+        public String audio;
+        @SerializedName("language")
+        @Expose
+        public String language;
+        @SerializedName("vad_filter")
+        @Expose
+        public boolean vadFilter;
+        @SerializedName("condition_on_previous_text")
+        @Expose
+        public boolean conditionOnPreviousText;
+        @SerializedName("hallucination_silence_threshold")
+        @Expose
+        public Float hallucinationSilenceThreshold;
     }
 
     private static class WhisperResponse {
