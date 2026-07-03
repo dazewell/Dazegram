@@ -438,7 +438,11 @@ public class TranscribeHelper {
     }
 
     public static void sendRequest(String path, boolean video, BiConsumer<String, Exception> callback) {
-        switch (NaConfig.INSTANCE.getTranscribeProvider().Int()) {
+        sendRequest(path, video, NaConfig.INSTANCE.getTranscribeProvider().Int(), callback);
+    }
+
+    public static void sendRequest(String path, boolean video, int provider, BiConsumer<String, Exception> callback) {
+        switch (provider) {
             case TRANSCRIBE_AUTO:
                 if (!TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderGeminiApiKey().String()) ||
                         !TextUtils.isEmpty(NaConfig.INSTANCE.getLlmProviderGeminiKey().String())
@@ -466,6 +470,72 @@ public class TranscribeHelper {
             default:
                 requestWorkersAi(path, video, callback);
         }
+    }
+
+    // A concrete provider counts as configured only once its credentials are filled in, so the
+    // "Retry with" picker never offers something that would just fail. Auto/Premium are omitted:
+    // neither is a concrete provider the user can retry against directly.
+    public static boolean isProviderConfigured(int provider) {
+        switch (provider) {
+            case TRANSCRIBE_WORKERSAI:
+                return !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderCfAccountID().String()) &&
+                        !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderCfApiToken().String());
+            case TRANSCRIBE_GEMINI:
+                return !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderGeminiApiKey().String()) ||
+                        !TextUtils.isEmpty(NaConfig.INSTANCE.getLlmProviderGeminiKey().String());
+            case TRANSCRIBE_OPENAI:
+                return !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiApiBase().String()) &&
+                        !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiModel().String()) &&
+                        !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiApiKey().String());
+            case TRANSCRIBE_GROQ:
+                return !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderGroqApiKey().String());
+            default:
+                return false;
+        }
+    }
+
+    public static List<Integer> getConfiguredProviders() {
+        List<Integer> providers = new ArrayList<>();
+        for (int provider : new int[]{TRANSCRIBE_WORKERSAI, TRANSCRIBE_GEMINI, TRANSCRIBE_OPENAI, TRANSCRIBE_GROQ}) {
+            if (isProviderConfigured(provider)) {
+                providers.add(provider);
+            }
+        }
+        return providers;
+    }
+
+    public static String getProviderName(int provider) {
+        switch (provider) {
+            case TRANSCRIBE_WORKERSAI:
+                return getString(R.string.TranscribeProviderWorkersAI);
+            case TRANSCRIBE_GEMINI:
+                return getString(R.string.TranscribeProviderGemini);
+            case TRANSCRIBE_OPENAI:
+                return getString(R.string.TranscribeProviderOpenAI);
+            case TRANSCRIBE_GROQ:
+                return getString(R.string.TranscribeProviderGroq);
+            default:
+                return "";
+        }
+    }
+
+    // The concrete provider a default retry would hit right now, mirroring the Auto fallback in
+    // sendRequest so the "Retry with" picker can flag which entry is the current one.
+    public static int getEffectiveProvider() {
+        int provider = NaConfig.INSTANCE.getTranscribeProvider().Int();
+        if (provider != TRANSCRIBE_AUTO) {
+            return provider;
+        }
+        if (!TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderGeminiApiKey().String()) ||
+                !TextUtils.isEmpty(NaConfig.INSTANCE.getLlmProviderGeminiKey().String())) {
+            return TRANSCRIBE_GEMINI;
+        }
+        if (!TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiApiBase().String()) &&
+                !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiModel().String()) &&
+                !TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderOpenAiApiKey().String())) {
+            return TRANSCRIBE_OPENAI;
+        }
+        return TRANSCRIBE_WORKERSAI;
     }
 
     private static void requestWorkersAi(String path, boolean video, BiConsumer<String, Exception> callback) {
