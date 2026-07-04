@@ -414,9 +414,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             flashButton.setInvert(0.6f);
         }
 
-        // the flip button now lives in the zoom control's button row; keep this one laid out but hidden
-        // (INVISIBLE, not GONE) so the flash button stays exactly where it is
-        switchCameraButton.setVisibility(INVISIBLE);
+        // the flip button now lives in the zoom control's button row; drop this one from the layout
+        // (GONE, not INVISIBLE) so its slot collapses and the flash button isn't left with an empty gap
+        switchCameraButton.setVisibility(GONE);
 
         muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -1026,15 +1026,21 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // control fits beneath it instead of being crammed over the preview. measured from the
         // settled (fully-open) position, so the lift stays constant through the open/close slide
         // rather than yanking the circle while animationTranslationY runs.
-        // 156dp clears the roomy layout (104dp of rows + margins); lift toward it as far as the top
-        // chrome allows, then let whatever room is left pick roomy vs compact.
+        // the roomy layout needs ~124dp (104dp of rows + margins); lift toward a hair more (dp132) as
+        // far as the top chrome allows, then let whatever room is left pick roomy vs compact.
         final float restingGap = bottomControlsTop - (panTranslationY + textureViewSize / 2f + dp(8));
-        // cap the lift so the circle top stays clear of the top chrome. while the keyboard pans, the
-        // parent view itself is shifted up by 2*panTranslationY (this view only carries +panTranslationY),
-        // so the circle's on-screen top is panTranslationY higher than its view position: subtract it here
-        // or the two stack and throw the preview off the top. Math.max(0) guards any downward pan.
-        final float maxLift = Math.max(0f, getMeasuredHeight() / 2f - Math.max(0f, panTranslationY) - textureViewSize / 2f - dp(80));
-        final float liftForRoomy = Math.max(0f, dp(156) - restingGap);
+        // keep the circle on screen no matter what the keyboard/pan animators are doing. the parent
+        // (ChatActivityFragmentView, which holds this view) is itself translated up while the keyboard
+        // slides, and this view only carries +panTranslationY, so the circle's real on-screen top is
+        // the parent's translation above its view position. cap the lift against the parent's actual
+        // translationY rather than an assumed 2x pan (the two can desync mid-slide) so the shifts can't
+        // stack and throw the preview off the top; dp(80) keeps the action bar clear.
+        final float parentTop = getParent() instanceof View ? ((View) getParent()).getTranslationY() : 0f;
+        final float maxLift = Math.max(0f, parentTop + getMeasuredHeight() / 2f + panTranslationY - textureViewSize / 2f - dp(80));
+        // lift toward dp(132), a little over the ~124dp two rows actually need, so the fed gap lands
+        // solidly in the roomy band; the circle then sits as low (and as safely on screen) as the room
+        // allows instead of being yanked all the way up.
+        final float liftForRoomy = Math.max(0f, dp(132) - restingGap);
         final float lift = Math.min(liftForRoomy, maxLift);
         final float gapAfterLift = restingGap + lift;
 
@@ -1042,9 +1048,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         textureOverlayView.setTranslationY(translationY);
         cameraContainer.setTranslationY(translationY);
 
-        // snap the fed gap clear of the 140..152 hysteresis band so the keyboard slide can't flip the
-        // layout back and forth; gapAfterLift is continuous across the maxLift cap, so it crosses once
-        zoomControlView.setAvailableGap(gapAfterLift >= dp(146) ? dp(156) : Math.min(gapAfterLift, dp(139)));
+        // feed a gap that's decisively outside the compact hysteresis band [112..126] so the keyboard
+        // slide can't flap the layout; gapAfterLift is continuous across the maxLift cap and crosses once.
+        // two rows are the main keyboard case now (roomy from ~120dp up), compact only when it genuinely
+        // can't fit (short screens, large fonts).
+        zoomControlView.setAvailableGap(gapAfterLift >= dp(120) ? dp(132) : Math.min(gapAfterLift, dp(108)));
         final boolean compact = zoomControlView.isCompact();
 
         final float cameraBottom = translationY + textureViewSize / 2f + dp(8);

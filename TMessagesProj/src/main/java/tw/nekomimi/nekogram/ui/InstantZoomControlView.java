@@ -100,7 +100,7 @@ public class InstantZoomControlView extends View {
         super(context);
         minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus);
         plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus);
-        switchDrawable = context.getResources().getDrawable(R.drawable.msg_photo_flip).mutate();
+        switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
         switchDrawable.setColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_IN);
         knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
@@ -162,9 +162,10 @@ public class InstantZoomControlView extends View {
     }
 
     // decides the layout from the free space between the camera circle and the record controls;
-    // 12dp hysteresis so the keyboard slide animation doesn't flap it back and forth
+    // ~14dp hysteresis so the keyboard slide animation doesn't flap it back and forth. two rows fit
+    // from ~124dp of gap, so roomy is the main keyboard case and compact only kicks in when it's tight.
     public void setAvailableGap(float gap) {
-        final boolean target = compactTarget ? gap < AndroidUtilities.dp(152) : gap < AndroidUtilities.dp(140);
+        final boolean target = compactTarget ? gap < AndroidUtilities.dp(126) : gap < AndroidUtilities.dp(112);
         if (target == compactTarget) {
             return;
         }
