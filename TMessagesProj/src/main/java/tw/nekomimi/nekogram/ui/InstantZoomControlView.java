@@ -112,10 +112,6 @@ public class InstantZoomControlView extends View {
         this.delegate = delegate;
     }
 
-    public float getZoom() {
-        return zoom;
-    }
-
     public void setZoom(float value, boolean notify) {
         value = value < 0 ? 0 : Math.min(value, 1f);
         if (value == zoom) {
@@ -314,7 +310,6 @@ public class InstantZoomControlView extends View {
                 }
                 if (hit == 2) {
                     switchPointerId = event.getPointerId(0);
-                    switchAccent.held = false;
                     switchAccent.fill = 1f;
                     switchAccent.animateTo(0.92f, 1f, 0f, 80);
                     return true;

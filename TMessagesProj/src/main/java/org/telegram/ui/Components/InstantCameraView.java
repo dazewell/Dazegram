@@ -144,11 +144,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private Delegate delegate;
     private Paint paint;
     private RectF rect;
-    private final FlashViews.ImageViewInvertable switchCameraButton;
     private final FlashViews.ImageViewInvertable flashButton;
     private final FlashViews flashViews;
     private RLottieDrawable flashOnDrawable, flashOffDrawable;
-    private RLottieDrawable switchCameraDrawable;
     private ImageView muteImageView;
     private float progress;
     private CameraInfo selectedCamera;
@@ -391,12 +389,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         buttonsLayout.setOrientation(LinearLayout.HORIZONTAL);
         addView(buttonsLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 56, Gravity.LEFT | Gravity.BOTTOM, 1, 0, 0, 0));
 
-        switchCameraButton = new FlashViews.ImageViewInvertable(context);
-        switchCameraButton.setScaleType(ImageView.ScaleType.CENTER);
-        switchCameraButton.setContentDescription(LocaleController.getString(R.string.AccDescrSwitchCamera));
-        buttonsLayout.addView(switchCameraButton, LayoutHelper.createLinear(44, 44));
-        switchCameraButton.setOnClickListener(v -> flipCamera());
-
+        // the camera flip now lives in the zoom control's button row, so this row only carries flash
         flashButton = new FlashViews.ImageViewInvertable(context);
         flashButton.setScaleType(ImageView.ScaleType.CENTER);
         buttonsLayout.addView(flashButton, LayoutHelper.createLinear(44, 44));
@@ -407,16 +400,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         updateFlash();
 
         if (!isNewDesign) {
-            flashViews.add(switchCameraButton);
             flashViews.add(flashButton);
         } else if (!resourcesProvider.isDark()) {
-            switchCameraButton.setInvert(0.6f);
             flashButton.setInvert(0.6f);
         }
-
-        // the flip button now lives in the zoom control's button row; drop this one from the layout
-        // (GONE, not INVISIBLE) so its slot collapses and the flash button isn't left with an empty gap
-        switchCameraButton.setVisibility(GONE);
 
         muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -732,10 +719,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (!bothCameras) {
             switchCamera();
         }
-        if (switchCameraDrawable != null) {
-            switchCameraDrawable.setCurrentFrame(0);
-            switchCameraDrawable.start();
-        }
         flipAnimationInProgress = true;
         ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
         valueAnimator.setDuration(580);
@@ -783,13 +766,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView != null) {
             return;
         }
-        if (switchCameraDrawable == null) {
-            switchCameraDrawable = new RLottieDrawable(R.raw.roundcamera_flip, "roundcamera_flip", buttonsSizePx, buttonsSizePx);
-            switchCameraDrawable.setCurrentFrame(0);
-            switchCameraDrawable.setCallback(switchCameraButton);
-        }
-        switchCameraButton.setImageDrawable(switchCameraDrawable);
-
         textureOverlayView.setAlpha(1.0f);
         textureOverlayView.invalidate();
         if (lastBitmap == null) {
