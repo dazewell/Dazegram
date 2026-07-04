@@ -211,8 +211,9 @@ public class InstantZoomControlView extends View {
         // compact keeps a right column clear of that button (the recorder draws it hard against the right
         // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
         final float compactW = w - AndroidUtilities.dp(56);
-        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart
-        final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300));
+        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart.
+        // trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
+        final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300)) - AndroidUtilities.dp(20);
         final float roomyLeft = (w - roomyWidth) / 2f;
         // compact: one row at 52dp, 20dp side margins, [slider] 16dp [flip] 10dp [-] 10dp [+], 40dp buttons
         final float compactPlusCx = compactW - AndroidUtilities.dp(20 + 20);
