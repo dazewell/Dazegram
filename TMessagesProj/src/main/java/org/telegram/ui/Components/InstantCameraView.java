@@ -367,6 +367,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     zoomStep(direction);
                 }
             }
+
+            @Override
+            public void onSwitchCamera() {
+                flipCamera();
+            }
         });
         addView(zoomControlView, new LayoutParams(LayoutHelper.MATCH_PARENT, dp(104), Gravity.CENTER));
 
@@ -390,59 +395,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         switchCameraButton.setScaleType(ImageView.ScaleType.CENTER);
         switchCameraButton.setContentDescription(LocaleController.getString(R.string.AccDescrSwitchCamera));
         buttonsLayout.addView(switchCameraButton, LayoutHelper.createLinear(44, 44));
-        switchCameraButton.setOnClickListener(v -> {
-            if (!cameraReady || !isCameraSessionInitiated() || cameraThread == null) {
-                return;
-            }
-            if (!bothCameras) {
-                switchCamera();
-            }
-            if (switchCameraDrawable != null) {
-                switchCameraDrawable.setCurrentFrame(0);
-                switchCameraDrawable.start();
-            }
-            flipAnimationInProgress = true;
-            ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
-            valueAnimator.setDuration(580);
-            valueAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-            final boolean[] didSwap = new boolean[1];
-            Runnable doSwap = () -> {
-                if (bothCameras) {
-                    switchCamera();
-                }
-            };
-            cameraContainer.setCameraDistance(cameraContainer.getMeasuredHeight() * 8f);
-            textureOverlayView.setCameraDistance(textureOverlayView.getMeasuredHeight() * 8f);
-            valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                @Override
-                public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                    float p = (float) valueAnimator.getAnimatedValue();
-                    if (p > 0.5f && !didSwap[0]) {
-                        didSwap[0] = true;
-                        doSwap.run();
-                    }
-                    float rotation = p < 0.5f ? p : p - 1f;
-                    rotation *= 180;
-                    cameraContainer.setRotationY(rotation);
-                    textureOverlayView.setRotationY(rotation);
-                }
-            });
-            valueAnimator.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    super.onAnimationEnd(animation);
-                    if (!didSwap[0]) {
-                        didSwap[0] = true;
-                        doSwap.run();
-                    }
-                    cameraContainer.setRotationY(0f);
-                    textureOverlayView.setRotationY(0f);
-                    flipAnimationInProgress = false;
-                    invalidate();
-                }
-            });
-            valueAnimator.start();
-        });
+        switchCameraButton.setOnClickListener(v -> flipCamera());
 
         flashButton = new FlashViews.ImageViewInvertable(context);
         flashButton.setScaleType(ImageView.ScaleType.CENTER);
@@ -460,6 +413,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             switchCameraButton.setInvert(0.6f);
             flashButton.setInvert(0.6f);
         }
+
+        // the flip button now lives in the zoom control's button row; keep this one laid out but hidden
+        // (INVISIBLE, not GONE) so the flash button stays exactly where it is
+        switchCameraButton.setVisibility(INVISIBLE);
 
         muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -766,11 +723,66 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return !recording;
     }
 
+    // flips between the front and back camera; also reached from the zoom control's flip button.
+    // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
+    private void flipCamera() {
+        if (flipAnimationInProgress || !cameraReady || !isCameraSessionInitiated() || cameraThread == null) {
+            return;
+        }
+        if (!bothCameras) {
+            switchCamera();
+        }
+        if (switchCameraDrawable != null) {
+            switchCameraDrawable.setCurrentFrame(0);
+            switchCameraDrawable.start();
+        }
+        flipAnimationInProgress = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
+        valueAnimator.setDuration(580);
+        valueAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        final boolean[] didSwap = new boolean[1];
+        Runnable doSwap = () -> {
+            if (bothCameras) {
+                switchCamera();
+            }
+        };
+        cameraContainer.setCameraDistance(cameraContainer.getMeasuredHeight() * 8f);
+        textureOverlayView.setCameraDistance(textureOverlayView.getMeasuredHeight() * 8f);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                float p = (float) valueAnimator.getAnimatedValue();
+                if (p > 0.5f && !didSwap[0]) {
+                    didSwap[0] = true;
+                    doSwap.run();
+                }
+                float rotation = p < 0.5f ? p : p - 1f;
+                rotation *= 180;
+                cameraContainer.setRotationY(rotation);
+                textureOverlayView.setRotationY(rotation);
+            }
+        });
+        valueAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                super.onAnimationEnd(animation);
+                if (!didSwap[0]) {
+                    didSwap[0] = true;
+                    doSwap.run();
+                }
+                cameraContainer.setRotationY(0f);
+                textureOverlayView.setRotationY(0f);
+                flipAnimationInProgress = false;
+                invalidate();
+            }
+        });
+        valueAnimator.start();
+    }
+
     public void showCamera(boolean fromPaused) {
         if (textureView != null) {
             return;
         }
-
         if (switchCameraDrawable == null) {
             switchCameraDrawable = new RLottieDrawable(R.raw.roundcamera_flip, "roundcamera_flip", buttonsSizePx, buttonsSizePx);
             switchCameraDrawable.setCurrentFrame(0);
@@ -1017,8 +1029,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // 156dp clears the roomy layout (104dp of rows + margins); lift toward it as far as the top
         // chrome allows, then let whatever room is left pick roomy vs compact.
         final float restingGap = bottomControlsTop - (panTranslationY + textureViewSize / 2f + dp(8));
-        // don't let the lift push the circle up under the top chrome
-        final float maxLift = Math.max(0f, panTranslationY + getMeasuredHeight() / 2f - textureViewSize / 2f - dp(80));
+        // cap the lift so the circle top stays clear of the top chrome. while the keyboard pans, the
+        // parent view itself is shifted up by 2*panTranslationY (this view only carries +panTranslationY),
+        // so the circle's on-screen top is panTranslationY higher than its view position: subtract it here
+        // or the two stack and throw the preview off the top. Math.max(0) guards any downward pan.
+        final float maxLift = Math.max(0f, getMeasuredHeight() / 2f - Math.max(0f, panTranslationY) - textureViewSize / 2f - dp(80));
         final float liftForRoomy = Math.max(0f, dp(156) - restingGap);
         final float lift = Math.min(liftForRoomy, maxLift);
         final float gapAfterLift = restingGap + lift;
@@ -4172,7 +4187,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     private void showZoomLabel(float ratio) {
         zoomLabel.setText(String.format(Locale.US, "%.1fx", ratio));
-        if (opened && zoomControlView.getVisibility() == VISIBLE) {
+        if (opened && zoomControlView.isZoomEnabled()) {
             if (!zoomLabelVisible) {
                 zoomLabelVisible = true;
                 zoomLabel.animate().alpha(1.0f).setDuration(120).start();
@@ -4211,7 +4226,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         final Camera2Session session = camera2SessionCurrent;
         final boolean hasZoom = session != null && session.getMaxZoom() > session.getMinZoom() * 1.01f;
-        zoomControlView.setVisibility(hasZoom ? VISIBLE : INVISIBLE);
+        // keep the control laid out so its flip button stays; only the slider + rocker follow zoom
+        zoomControlView.setZoomEnabled(hasZoom);
         if (!hasZoom) {
             zoomLabelVisible = false;
             zoomLabel.animate().cancel();
