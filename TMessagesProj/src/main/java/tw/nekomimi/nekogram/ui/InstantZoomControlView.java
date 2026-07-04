@@ -4,6 +4,7 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.view.MotionEvent;
@@ -17,9 +18,10 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 
 /**
  * Zoom control for the round video message recorder: a long precision slider with a paired -/+ rocker
- * kept off the track ends. Has two layouts blended by a single fraction: roomy (slider row on top,
- * rocker centered below) and compact for when the soft keyboard eats the vertical space (one row,
- * rocker to the right of a shorter slider). The view is always 104dp tall; the rows move inside it.
+ * and a camera-flip button to their left, all kept off the track ends. Has two layouts blended by a
+ * single fraction: roomy (slider row on top, buttons centered below) and compact for when the soft
+ * keyboard eats the vertical space (one row, buttons to the right of a shorter slider). The view is
+ * always 104dp tall; the rows move inside it. The flip button stays even when the camera has no zoom.
  */
 public class InstantZoomControlView extends View {
 
@@ -27,10 +29,12 @@ public class InstantZoomControlView extends View {
         void didSetZoom(float zoom);
         void onButtonDown(int direction);
         void onButtonUp(int direction, boolean cancelled);
+        void onSwitchCamera();
     }
 
     private final Drawable minusDrawable;
     private final Drawable plusDrawable;
+    private final Drawable switchDrawable;
     private final Drawable knobDrawable;
     private final Drawable pressedKnobDrawable;
     private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -48,7 +52,10 @@ public class InstantZoomControlView extends View {
 
     // geometry recomputed each draw from width + compact fraction
     private float trackLeft, trackRight, trackY;
-    private float minusCx, plusCx, buttonCy, buttonRadius, glyphHalf;
+    private float minusCx, plusCx, switchCx, buttonCy, buttonRadius, glyphHalf, switchGlyphHalf;
+
+    // the slider + -/+ rocker hide when the current camera has no zoom range; the flip button stays
+    private boolean zoomEnabled = true;
 
     private boolean knobPressed;
     private float knobOffsetX;
@@ -57,6 +64,7 @@ public class InstantZoomControlView extends View {
 
     private int buttonPointerId = -1;
     private int buttonDirection;
+    private int switchPointerId = -1;
 
     private final class ButtonAccent {
         float scale = 1f;
@@ -86,11 +94,14 @@ public class InstantZoomControlView extends View {
 
     private final ButtonAccent minusAccent = new ButtonAccent();
     private final ButtonAccent plusAccent = new ButtonAccent();
+    private final ButtonAccent switchAccent = new ButtonAccent();
 
     public InstantZoomControlView(Context context) {
         super(context);
         minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus);
         plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus);
+        switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
+        switchDrawable.setColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_IN);
         knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
@@ -99,10 +110,6 @@ public class InstantZoomControlView extends View {
 
     public void setDelegate(Delegate delegate) {
         this.delegate = delegate;
-    }
-
-    public float getZoom() {
-        return zoom;
     }
 
     public void setZoom(float value, boolean notify) {
@@ -129,10 +136,32 @@ public class InstantZoomControlView extends View {
         return compactTarget;
     }
 
+    public boolean isZoomEnabled() {
+        return zoomEnabled;
+    }
+
+    // the slider + -/+ rocker draw and respond only when the current camera can zoom; the flip button
+    // stays regardless, so switching cameras still works on a fixed-focus (no-zoom) camera
+    public void setZoomEnabled(boolean enabled) {
+        if (zoomEnabled == enabled) {
+            return;
+        }
+        zoomEnabled = enabled;
+        if (!enabled) {
+            knobPressed = false;
+            trackPressed = false;
+            if (buttonPointerId != -1) {
+                releaseButton(true);
+            }
+        }
+        invalidate();
+    }
+
     // decides the layout from the free space between the camera circle and the record controls;
-    // 12dp hysteresis so the keyboard slide animation doesn't flap it back and forth
+    // ~14dp hysteresis so the keyboard slide animation doesn't flap it back and forth. two rows fit
+    // from ~124dp of gap, so roomy is the main keyboard case and compact only kicks in when it's tight.
     public void setAvailableGap(float gap) {
-        final boolean target = compactTarget ? gap < AndroidUtilities.dp(152) : gap < AndroidUtilities.dp(140);
+        final boolean target = compactTarget ? gap < AndroidUtilities.dp(126) : gap < AndroidUtilities.dp(112);
         if (target == compactTarget) {
             return;
         }
@@ -173,20 +202,32 @@ public class InstantZoomControlView extends View {
 
     private void updateGeometry() {
         final float w = getMeasuredWidth();
-        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart
-        final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300));
+        // roomy centers on the full width: the slider sits a row above the recorder's view-once "(1)"
+        // button and the rocker is a centered pair, so nothing reaches the right edge the button lives on.
+        // compact keeps a right column clear of that button (the recorder draws it hard against the right
+        // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
+        final float compactW = w - AndroidUtilities.dp(56);
+        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart.
+        // trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
+        final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300)) - AndroidUtilities.dp(20);
         final float roomyLeft = (w - roomyWidth) / 2f;
-        // compact: one row at 52dp, 20dp side margins, [slider] 16dp [-] 10dp [+], 40dp buttons
-        final float compactPlusCx = w - AndroidUtilities.dp(20 + 20);
+        // compact: one row at 52dp, 20dp side margins, [slider] 16dp [flip] 10dp [-] 10dp [+], 40dp buttons
+        final float compactPlusCx = compactW - AndroidUtilities.dp(20 + 20);
         final float compactMinusCx = compactPlusCx - AndroidUtilities.dp(50);
+        // flip button sits one slot left of the rocker in both layouts
+        final float compactSwitchCx = compactMinusCx - AndroidUtilities.dp(50);
         trackLeft = lerp(roomyLeft, AndroidUtilities.dp(20), compact);
-        trackRight = lerp(roomyLeft + roomyWidth, compactMinusCx - AndroidUtilities.dp(20 + 16), compact);
+        // in compact the slider stops short of the flip button, not the minus button
+        trackRight = lerp(roomyLeft + roomyWidth, compactSwitchCx - AndroidUtilities.dp(20 + 16), compact);
         trackY = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(52), compact);
-        minusCx = lerp(w / 2f - AndroidUtilities.dp(30), compactMinusCx, compact);
-        plusCx = lerp(w / 2f + AndroidUtilities.dp(30), compactPlusCx, compact);
+        // roomy centers the [flip][-][+] trio (60dp apart) so the group stays under the circle's center
+        switchCx = lerp(w / 2f - AndroidUtilities.dp(60), compactSwitchCx, compact);
+        minusCx = lerp(w / 2f, compactMinusCx, compact);
+        plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         buttonCy = lerp(AndroidUtilities.dp(76), AndroidUtilities.dp(52), compact);
         buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
         glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
+        switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
     }
 
     // inset the knob travel by its own radius so it reaches right up to each track end without spilling past it
@@ -208,6 +249,11 @@ public class InstantZoomControlView extends View {
         return x >= cx - radius && x <= cx + radius && y >= buttonCy - radius && y <= buttonCy + radius;
     }
 
+    private boolean insideSwitch(float x, float y) {
+        final float radius = AndroidUtilities.dp(28);
+        return x >= switchCx - radius && x <= switchCx + radius && y >= buttonCy - radius && y <= buttonCy + radius;
+    }
+
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         updateGeometry();
@@ -227,36 +273,72 @@ public class InstantZoomControlView extends View {
             }
             return true;
         }
+        if (switchPointerId != -1) {
+            final int index = event.findPointerIndex(switchPointerId);
+            if (action == MotionEvent.ACTION_CANCEL || index == -1) {
+                cancelSwitch();
+            } else if (action == MotionEvent.ACTION_MOVE) {
+                final float radius = AndroidUtilities.dp(40);
+                if (Math.abs(event.getX(index) - switchCx) > radius || Math.abs(event.getY(index) - buttonCy) > radius) {
+                    cancelSwitch();
+                }
+            } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP && event.getPointerId(event.getActionIndex()) == switchPointerId) {
+                final boolean inside = insideSwitch(event.getX(index), event.getY(index));
+                cancelSwitch();
+                if (inside && delegate != null) {
+                    delegate.onSwitchCamera();
+                }
+            }
+            return true;
+        }
         final float x = event.getX();
         final float y = event.getY();
         final float knobX = travelLeft() + travelWidth() * zoom;
         if (action == MotionEvent.ACTION_DOWN) {
-            final boolean inMinus = insideButton(x, y, -1);
-            final boolean inPlus = insideButton(x, y, 1);
-            // the 28dp hit boxes overlap between the compact-mode buttons: the nearer center wins there
-            final int direction = inMinus && inPlus ? (x < (minusCx + plusCx) / 2f ? -1 : 1) : inMinus ? -1 : inPlus ? 1 : 0;
-            if (direction != 0) {
-                buttonPointerId = event.getPointerId(0);
-                buttonDirection = direction;
-                final ButtonAccent accent = accent(direction);
-                accent.held = false;
-                accent.fill = 1f;
-                accent.animateTo(0.92f, 1f, 0f, 80);
-                if (delegate != null) {
-                    delegate.onButtonDown(direction);
+            // the flip / -/+ buttons share a row and their 28dp hit boxes overlap; the nearest present
+            // center wins. the flip button is always live; the rocker responds only when zoom is enabled.
+            if (Math.abs(y - buttonCy) <= AndroidUtilities.dp(28)) {
+                int hit = 0; // 2 = flip, -1 = minus, 1 = plus
+                float best = AndroidUtilities.dp(28);
+                float d = Math.abs(x - switchCx);
+                if (d < best) { best = d; hit = 2; }
+                if (zoomEnabled) {
+                    d = Math.abs(x - minusCx);
+                    if (d < best) { best = d; hit = -1; }
+                    d = Math.abs(x - plusCx);
+                    if (d < best) { best = d; hit = 1; }
                 }
-                return true;
+                if (hit == 2) {
+                    switchPointerId = event.getPointerId(0);
+                    switchAccent.fill = 1f;
+                    switchAccent.animateTo(0.92f, 1f, 0f, 80);
+                    return true;
+                }
+                if (hit != 0) {
+                    buttonPointerId = event.getPointerId(0);
+                    buttonDirection = hit;
+                    final ButtonAccent accent = accent(hit);
+                    accent.held = false;
+                    accent.fill = 1f;
+                    accent.animateTo(0.92f, 1f, 0f, 80);
+                    if (delegate != null) {
+                        delegate.onButtonDown(hit);
+                    }
+                    return true;
+                }
             }
-            if (Math.abs(x - knobX) <= AndroidUtilities.dp(22) && Math.abs(y - trackY) <= AndroidUtilities.dp(24)) {
-                knobPressed = true;
-                knobOffsetX = knobX - x;
-                invalidate();
-                return true;
-            }
-            if (x >= trackLeft && x <= trackRight && Math.abs(y - trackY) <= AndroidUtilities.dp(24)) {
-                trackPressed = true;
-                trackDownX = x;
-                return true;
+            if (zoomEnabled) {
+                if (Math.abs(x - knobX) <= AndroidUtilities.dp(22) && Math.abs(y - trackY) <= AndroidUtilities.dp(24)) {
+                    knobPressed = true;
+                    knobOffsetX = knobX - x;
+                    invalidate();
+                    return true;
+                }
+                if (x >= trackLeft && x <= trackRight && Math.abs(y - trackY) <= AndroidUtilities.dp(24)) {
+                    trackPressed = true;
+                    trackDownX = x;
+                    return true;
+                }
             }
             return false;
         } else if (action == MotionEvent.ACTION_MOVE) {
@@ -297,32 +379,40 @@ public class InstantZoomControlView extends View {
         }
     }
 
+    private void cancelSwitch() {
+        switchPointerId = -1;
+        switchAccent.animateTo(1f, 0f, 0f, 150);
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         updateGeometry();
-        final float half = AndroidUtilities.dpf2(2f);
-        // the line spans only the knob's center travel, so at the ends the dot caps it and no stub shows past it
-        final float lineLeft = travelLeft();
-        final float lineRight = travelLeft() + travelWidth();
-        final float knobX = lineLeft + (lineRight - lineLeft) * zoom;
+        if (zoomEnabled) {
+            final float half = AndroidUtilities.dpf2(2f);
+            // the line spans only the knob's center travel, so at the ends the dot caps it and no stub shows past it
+            final float lineLeft = travelLeft();
+            final float lineRight = travelLeft() + travelWidth();
+            final float knobX = lineLeft + (lineRight - lineLeft) * zoom;
 
-        trackPaint.setColor(0x4DFFFFFF);
-        trackRect.set(lineLeft, trackY - half, lineRight, trackY + half);
-        canvas.drawRoundRect(trackRect, half, half, trackPaint);
-        trackPaint.setColor(0xFFFFFFFF);
-        trackRect.set(lineLeft, trackY - half, knobX, trackY + half);
-        canvas.drawRoundRect(trackRect, half, half, trackPaint);
+            trackPaint.setColor(0x4DFFFFFF);
+            trackRect.set(lineLeft, trackY - half, lineRight, trackY + half);
+            canvas.drawRoundRect(trackRect, half, half, trackPaint);
+            trackPaint.setColor(0xFFFFFFFF);
+            trackRect.set(lineLeft, trackY - half, knobX, trackY + half);
+            canvas.drawRoundRect(trackRect, half, half, trackPaint);
 
-        final Drawable knob = knobPressed ? pressedKnobDrawable : knobDrawable;
-        final int knobHalf = knob.getIntrinsicWidth() / 2;
-        knob.setBounds((int) knobX - knobHalf, (int) trackY - knobHalf, (int) knobX + knobHalf, (int) trackY + knobHalf);
-        knob.draw(canvas);
+            final Drawable knob = knobPressed ? pressedKnobDrawable : knobDrawable;
+            final int knobHalf = knob.getIntrinsicWidth() / 2;
+            knob.setBounds((int) knobX - knobHalf, (int) trackY - knobHalf, (int) knobX + knobHalf, (int) trackY + knobHalf);
+            knob.draw(canvas);
 
-        drawButton(canvas, minusDrawable, minusAccent, minusCx);
-        drawButton(canvas, plusDrawable, plusAccent, plusCx);
+            drawButton(canvas, minusDrawable, minusAccent, minusCx, glyphHalf);
+            drawButton(canvas, plusDrawable, plusAccent, plusCx, glyphHalf);
+        }
+        drawButton(canvas, switchDrawable, switchAccent, switchCx, switchGlyphHalf);
     }
 
-    private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, float cx) {
+    private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, float cx, float glyphHalfPx) {
         final float radius = buttonRadius * accent.scale;
         scrimPaint.setColor(ColorUtils.blendARGB(0x4D000000, 0x73000000, accent.fill));
         canvas.drawCircle(cx, buttonCy, radius, scrimPaint);
@@ -330,7 +420,7 @@ public class InstantZoomControlView extends View {
             ringPaint.setColor(ColorUtils.setAlphaComponent(0xFFFFFFFF, (int) (0xCC * accent.ring)));
             canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         }
-        final int gh = (int) (glyphHalf * accent.scale);
+        final int gh = (int) (glyphHalfPx * accent.scale);
         glyph.setBounds((int) cx - gh, (int) (buttonCy - gh), (int) cx + gh, (int) (buttonCy + gh));
         glyph.draw(canvas);
     }

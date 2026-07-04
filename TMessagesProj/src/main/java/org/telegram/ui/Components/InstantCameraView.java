@@ -144,11 +144,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private Delegate delegate;
     private Paint paint;
     private RectF rect;
-    private final FlashViews.ImageViewInvertable switchCameraButton;
     private final FlashViews.ImageViewInvertable flashButton;
     private final FlashViews flashViews;
     private RLottieDrawable flashOnDrawable, flashOffDrawable;
-    private RLottieDrawable switchCameraDrawable;
     private ImageView muteImageView;
     private float progress;
     private CameraInfo selectedCamera;
@@ -367,6 +365,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     zoomStep(direction);
                 }
             }
+
+            @Override
+            public void onSwitchCamera() {
+                flipCamera();
+            }
         });
         addView(zoomControlView, new LayoutParams(LayoutHelper.MATCH_PARENT, dp(104), Gravity.CENTER));
 
@@ -386,64 +389,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         buttonsLayout.setOrientation(LinearLayout.HORIZONTAL);
         addView(buttonsLayout, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 56, Gravity.LEFT | Gravity.BOTTOM, 1, 0, 0, 0));
 
-        switchCameraButton = new FlashViews.ImageViewInvertable(context);
-        switchCameraButton.setScaleType(ImageView.ScaleType.CENTER);
-        switchCameraButton.setContentDescription(LocaleController.getString(R.string.AccDescrSwitchCamera));
-        buttonsLayout.addView(switchCameraButton, LayoutHelper.createLinear(44, 44));
-        switchCameraButton.setOnClickListener(v -> {
-            if (!cameraReady || !isCameraSessionInitiated() || cameraThread == null) {
-                return;
-            }
-            if (!bothCameras) {
-                switchCamera();
-            }
-            if (switchCameraDrawable != null) {
-                switchCameraDrawable.setCurrentFrame(0);
-                switchCameraDrawable.start();
-            }
-            flipAnimationInProgress = true;
-            ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
-            valueAnimator.setDuration(580);
-            valueAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
-            final boolean[] didSwap = new boolean[1];
-            Runnable doSwap = () -> {
-                if (bothCameras) {
-                    switchCamera();
-                }
-            };
-            cameraContainer.setCameraDistance(cameraContainer.getMeasuredHeight() * 8f);
-            textureOverlayView.setCameraDistance(textureOverlayView.getMeasuredHeight() * 8f);
-            valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                @Override
-                public void onAnimationUpdate(ValueAnimator valueAnimator) {
-                    float p = (float) valueAnimator.getAnimatedValue();
-                    if (p > 0.5f && !didSwap[0]) {
-                        didSwap[0] = true;
-                        doSwap.run();
-                    }
-                    float rotation = p < 0.5f ? p : p - 1f;
-                    rotation *= 180;
-                    cameraContainer.setRotationY(rotation);
-                    textureOverlayView.setRotationY(rotation);
-                }
-            });
-            valueAnimator.addListener(new AnimatorListenerAdapter() {
-                @Override
-                public void onAnimationEnd(Animator animation) {
-                    super.onAnimationEnd(animation);
-                    if (!didSwap[0]) {
-                        didSwap[0] = true;
-                        doSwap.run();
-                    }
-                    cameraContainer.setRotationY(0f);
-                    textureOverlayView.setRotationY(0f);
-                    flipAnimationInProgress = false;
-                    invalidate();
-                }
-            });
-            valueAnimator.start();
-        });
-
+        // the camera flip now lives in the zoom control's button row, so this row only carries flash
         flashButton = new FlashViews.ImageViewInvertable(context);
         flashButton.setScaleType(ImageView.ScaleType.CENTER);
         buttonsLayout.addView(flashButton, LayoutHelper.createLinear(44, 44));
@@ -454,10 +400,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         updateFlash();
 
         if (!isNewDesign) {
-            flashViews.add(switchCameraButton);
             flashViews.add(flashButton);
         } else if (!resourcesProvider.isDark()) {
-            switchCameraButton.setInvert(0.6f);
             flashButton.setInvert(0.6f);
         }
 
@@ -766,18 +710,62 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return !recording;
     }
 
+    // flips between the front and back camera; also reached from the zoom control's flip button.
+    // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
+    private void flipCamera() {
+        if (flipAnimationInProgress || !cameraReady || !isCameraSessionInitiated() || cameraThread == null) {
+            return;
+        }
+        if (!bothCameras) {
+            switchCamera();
+        }
+        flipAnimationInProgress = true;
+        ValueAnimator valueAnimator = ValueAnimator.ofFloat(0, 1f);
+        valueAnimator.setDuration(580);
+        valueAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+        final boolean[] didSwap = new boolean[1];
+        Runnable doSwap = () -> {
+            if (bothCameras) {
+                switchCamera();
+            }
+        };
+        cameraContainer.setCameraDistance(cameraContainer.getMeasuredHeight() * 8f);
+        textureOverlayView.setCameraDistance(textureOverlayView.getMeasuredHeight() * 8f);
+        valueAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator valueAnimator) {
+                float p = (float) valueAnimator.getAnimatedValue();
+                if (p > 0.5f && !didSwap[0]) {
+                    didSwap[0] = true;
+                    doSwap.run();
+                }
+                float rotation = p < 0.5f ? p : p - 1f;
+                rotation *= 180;
+                cameraContainer.setRotationY(rotation);
+                textureOverlayView.setRotationY(rotation);
+            }
+        });
+        valueAnimator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                super.onAnimationEnd(animation);
+                if (!didSwap[0]) {
+                    didSwap[0] = true;
+                    doSwap.run();
+                }
+                cameraContainer.setRotationY(0f);
+                textureOverlayView.setRotationY(0f);
+                flipAnimationInProgress = false;
+                invalidate();
+            }
+        });
+        valueAnimator.start();
+    }
+
     public void showCamera(boolean fromPaused) {
         if (textureView != null) {
             return;
         }
-
-        if (switchCameraDrawable == null) {
-            switchCameraDrawable = new RLottieDrawable(R.raw.roundcamera_flip, "roundcamera_flip", buttonsSizePx, buttonsSizePx);
-            switchCameraDrawable.setCurrentFrame(0);
-            switchCameraDrawable.setCallback(switchCameraButton);
-        }
-        switchCameraButton.setImageDrawable(switchCameraDrawable);
-
         textureOverlayView.setAlpha(1.0f);
         textureOverlayView.invalidate();
         if (lastBitmap == null) {
@@ -1008,25 +996,61 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private void updateTranslationY() {
-        final float translationY = animationTranslationY + panTranslationY;
+        // the circle and the zoom control are laid out Gravity.CENTER inside this view's padded content
+        // area, and the keyboard is reserved as the bottom padding (internalPaddingBottom). so their
+        // natural, untranslated center sits at the middle of the area above the keyboard, not the middle
+        // of the whole view. measure everything from that visible center; the full-height center throws
+        // the block up by half the reserved inset, which is what made the preview sit too high.
+        final float visibleHalf = (getMeasuredHeight() - internalPaddingBottom) / 2f;
+        final float bottomControlsTop = visibleHalf;
+
+        // when the keyboard squeezes the room below the circle, lift the circle up so the two-row
+        // control fits beneath it instead of being crammed over the preview. measured from the
+        // settled (fully-open) position, so the lift stays constant through the open/close slide
+        // rather than yanking the circle while animationTranslationY runs.
+        // the roomy layout needs ~124dp (104dp of rows + margins); lift toward a hair more (dp132) as
+        // far as the top chrome allows, then let whatever room is left pick roomy vs compact.
+        final float restingGap = bottomControlsTop - (panTranslationY + textureViewSize / 2f + dp(8));
+        // keep the circle on screen no matter what the keyboard/pan animators are doing. the parent
+        // (ChatActivityFragmentView, which holds this view) is itself translated up while the keyboard
+        // slides, and this view only carries +panTranslationY, so the circle's real on-screen top is
+        // the parent's translation above its view position. cap the lift against the parent's actual
+        // translationY rather than an assumed 2x pan (the two can desync mid-slide) so the shifts can't
+        // stack and throw the preview off the top; dp(80) keeps the action bar clear.
+        final float parentTop = getParent() instanceof View ? ((View) getParent()).getTranslationY() : 0f;
+        final float maxLift = Math.max(0f, parentTop + visibleHalf + panTranslationY - textureViewSize / 2f - dp(80));
+        // lift toward dp(132), a little over the ~124dp two rows actually need, so the fed gap lands
+        // solidly in the roomy band; the circle then sits as low (and as safely on screen) as the room
+        // allows instead of being yanked all the way up.
+        final float liftForRoomy = Math.max(0f, dp(132) - restingGap);
+        final float lift = Math.min(liftForRoomy, maxLift);
+        final float gapAfterLift = restingGap + lift;
+
+        final float translationY = animationTranslationY + panTranslationY - lift;
         textureOverlayView.setTranslationY(translationY);
         cameraContainer.setTranslationY(translationY);
 
-        final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
-        final float bottomControlsTop = getMeasuredHeight() / 2f - internalPaddingBottom;
-        final float gap = bottomControlsTop - cameraBottom;
-        zoomControlView.setAvailableGap(gap);
+        // feed a gap that's decisively outside the compact hysteresis band [112..126] so the keyboard
+        // slide can't flap the layout; gapAfterLift is continuous across the maxLift cap and crosses once.
+        // two rows are the main keyboard case now (roomy from ~120dp up), compact only when it genuinely
+        // can't fit (short screens, large fonts).
+        zoomControlView.setAvailableGap(gapAfterLift >= dp(120) ? dp(132) : Math.min(gapAfterLift, dp(108)));
         final boolean compact = zoomControlView.isCompact();
+
+        final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
         // the drawn rows sit at the view's own center in both layouts, so translationY is the content center
         final float contentHalf = dp(compact ? 24 : 52);
-        float zoomControlCenterY = (cameraBottom + bottomControlsTop) / 2f;
-        zoomControlCenterY = Math.max(zoomControlCenterY, cameraBottom + dp(8) + contentHalf);
-        zoomControlCenterY = Math.min(zoomControlCenterY, bottomControlsTop - dp(12) - contentHalf);
-        if (compact && gap < dp(64)) {
+        final float lo = cameraBottom + dp(8) + contentHalf;
+        final float hi = bottomControlsTop - dp(12) - contentHalf;
+        float zoomControlCenterY;
+        if (compact && gapAfterLift < dp(64)) {
             // almost no room left: hug the record controls and let the scrims ride over the preview edge
             zoomControlCenterY = bottomControlsTop - dp(36);
-        } else if (!compact) {
-            zoomControlCenterY = Math.min(zoomControlCenterY, getMeasuredHeight() / 2f - dp(89));
+        } else if (lo > hi) {
+            // vertical budget too tight for the row to clear both edges: sit it centered in the gap
+            zoomControlCenterY = (cameraBottom + bottomControlsTop) / 2f;
+        } else {
+            zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
         if (compact) {
@@ -4150,7 +4174,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     private void showZoomLabel(float ratio) {
         zoomLabel.setText(String.format(Locale.US, "%.1fx", ratio));
-        if (opened && zoomControlView.getVisibility() == VISIBLE) {
+        if (opened && zoomControlView.isZoomEnabled()) {
             if (!zoomLabelVisible) {
                 zoomLabelVisible = true;
                 zoomLabel.animate().alpha(1.0f).setDuration(120).start();
@@ -4189,7 +4213,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
         final Camera2Session session = camera2SessionCurrent;
         final boolean hasZoom = session != null && session.getMaxZoom() > session.getMinZoom() * 1.01f;
-        zoomControlView.setVisibility(hasZoom ? VISIBLE : INVISIBLE);
+        // keep the control laid out so its flip button stays; only the slider + rocker follow zoom
+        zoomControlView.setZoomEnabled(hasZoom);
         if (!hasZoom) {
             zoomLabelVisible = false;
             zoomLabel.animate().cancel();
