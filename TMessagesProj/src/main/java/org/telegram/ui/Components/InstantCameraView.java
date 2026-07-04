@@ -1020,7 +1020,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private void updateTranslationY() {
-        final float bottomControlsTop = getMeasuredHeight() / 2f - internalPaddingBottom;
+        // the circle and the zoom control are laid out Gravity.CENTER inside this view's padded content
+        // area, and the keyboard is reserved as the bottom padding (internalPaddingBottom). so their
+        // natural, untranslated center sits at the middle of the area above the keyboard, not the middle
+        // of the whole view. measure everything from that visible center; the full-height center throws
+        // the block up by half the reserved inset, which is what made the preview sit too high.
+        final float visibleHalf = (getMeasuredHeight() - internalPaddingBottom) / 2f;
+        final float bottomControlsTop = visibleHalf;
 
         // when the keyboard squeezes the room below the circle, lift the circle up so the two-row
         // control fits beneath it instead of being crammed over the preview. measured from the
@@ -1036,7 +1042,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // translationY rather than an assumed 2x pan (the two can desync mid-slide) so the shifts can't
         // stack and throw the preview off the top; dp(80) keeps the action bar clear.
         final float parentTop = getParent() instanceof View ? ((View) getParent()).getTranslationY() : 0f;
-        final float maxLift = Math.max(0f, parentTop + getMeasuredHeight() / 2f + panTranslationY - textureViewSize / 2f - dp(80));
+        final float maxLift = Math.max(0f, parentTop + visibleHalf + panTranslationY - textureViewSize / 2f - dp(80));
         // lift toward dp(132), a little over the ~124dp two rows actually need, so the fed gap lands
         // solidly in the roomy band; the circle then sits as low (and as safely on screen) as the room
         // allows instead of being yanked all the way up.
@@ -1069,9 +1075,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             zoomControlCenterY = (cameraBottom + bottomControlsTop) / 2f;
         } else {
             zoomControlCenterY = Math.min(Math.max((cameraBottom + bottomControlsTop) / 2f, lo), hi);
-            if (!compact) {
-                zoomControlCenterY = Math.min(zoomControlCenterY, getMeasuredHeight() / 2f - dp(89));
-            }
         }
         zoomControlView.setTranslationY(zoomControlCenterY);
         if (compact) {
