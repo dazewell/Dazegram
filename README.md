@@ -63,6 +63,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
  - **Retry a transcription with another provider:** the Retry option on a voice or video message's transcription used to quietly re-run whichever provider is picked in settings. Now, if you have two or more providers set up with working credentials, it reads "Retry with…" and opens a short list of just those configured providers, so you can bounce a garbled message off a different service without opening settings first. With one provider (or none) set up it stays a plain "Retry" that re-runs straight away.
 
+ - **Long-press the transcription button to switch providers:** the same "Retry with…" list is now one press away on the message itself. Hold the "A" transcription button on a voice or round video and it stops whatever attempt is running (handy when a provider hangs and the spinner won't quit) and opens that provider list right there, so you never have to wait out a stuck request or dig through the message menu. It only kicks in when you transcribe through your own providers; with two or more configured you get the list, with one it just re-runs.
+
 ## Download
 
 Latest versions are available through:

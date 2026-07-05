@@ -52,6 +52,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 import tw.nekomimi.nekogram.NekoConfig;
@@ -192,6 +193,11 @@ public class TranscribeButton {
 
     private boolean pressed = false;
     private long pressId = 0;
+
+    public boolean isPressed() {
+        return pressed;
+    }
+
     public boolean onTouch(int action, float x, float y) {
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             if (pressed && action == MotionEvent.ACTION_UP) {
@@ -640,6 +646,38 @@ public class TranscribeButton {
     private static HashMap<Integer, MessageObject> transcribeOperationsByDialogPosition;
     private static ArrayList<Integer> videoTranscriptionsOpen;
 
+    // The id of the AI request that currently owns each message slot. A stuck or merely slow request
+    // that finally returns checks this before touching state, so it can't clobber a newer attempt or
+    // one the user already stopped by long-pressing the button. Concurrent since the start paths write
+    // it on the UI thread while the transcription callbacks read it on background threads.
+    private static final ConcurrentHashMap<Integer, Long> transcribeActiveRequestId = new ConcurrentHashMap<>();
+
+    private static void setActiveRequest(MessageObject messageObject, long id) {
+        transcribeActiveRequestId.put(reqInfoHash(messageObject), id);
+    }
+
+    private static boolean isActiveRequest(MessageObject messageObject, long id) {
+        return Long.valueOf(id).equals(transcribeActiveRequestId.get(reqInfoHash(messageObject)));
+    }
+
+    // Long-press on the "A" button: drop a stuck attempt so the spinner clears even if the picker is
+    // then dismissed, and void its request so a late callback can't revive it.
+    public static void stopTranscription(MessageObject messageObject) {
+        if (messageObject == null || messageObject.messageOwner == null) {
+            return;
+        }
+        int account = messageObject.currentAccount;
+        transcribeActiveRequestId.remove(reqInfoHash(messageObject));
+        if (transcribeOperationsByDialogPosition != null) {
+            transcribeOperationsByDialogPosition.remove((Integer) reqInfoHash(messageObject));
+        }
+        if (transcribeOperationsById != null) {
+            transcribeOperationsById.remove(messageObject.messageOwner.voiceTranscriptionId);
+        }
+        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject);
+        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.updateTranscriptionLock);
+    }
+
     public static void openVideoTranscription(MessageObject messageObject) {
         if (messageObject == null || isVideoTranscriptionOpen(messageObject)) {
             return;
@@ -697,11 +735,15 @@ public class TranscribeButton {
                         return;
                     }
                     long id = Utilities.random.nextLong();
+                    setActiveRequest(messageObject, id);
                     if (transcribeOperationsByDialogPosition == null) {
                         transcribeOperationsByDialogPosition = new HashMap<>();
                     }
                     transcribeOperationsByDialogPosition.put(reqInfoHash(messageObject), messageObject);
                     TranscribeHelper.sendRequest(path, messageObject.isRoundVideo(), (text, exception) -> {
+                        if (!isActiveRequest(messageObject, id)) {
+                            return;
+                        }
                         if (text != null) {
                             if (transcribeOperationsById == null) {
                                 transcribeOperationsById = new HashMap<>();
@@ -851,11 +893,15 @@ public class TranscribeButton {
             return;
         }
         long id = Utilities.random.nextLong();
+        setActiveRequest(messageObject, id);
         if (transcribeOperationsByDialogPosition == null) {
             transcribeOperationsByDialogPosition = new HashMap<>();
         }
         transcribeOperationsByDialogPosition.put(reqInfoHash(messageObject), messageObject);
         BiConsumer<String, Exception> callback = (text, exception) -> {
+            if (!isActiveRequest(messageObject, id)) {
+                return;
+            }
             if (text != null) {
                 if (transcribeOperationsById == null) {
                     transcribeOperationsById = new HashMap<>();
@@ -923,6 +969,7 @@ public class TranscribeButton {
             return;
         }
         long id = Utilities.random.nextLong();
+        setActiveRequest(messageObject, id);
         if (transcribeOperationsByDialogPosition == null) {
             transcribeOperationsByDialogPosition = new HashMap<>();
         }
@@ -933,6 +980,9 @@ public class TranscribeButton {
         Translator.translate(locale, textToTranslate, LlmConfig.isLLMTranslatorAvailable() ? Translator.providerLLMTranslator : 0, new Translator.Companion.TranslateCallBack() {
             @Override
             public void onSuccess(@NonNull String translatedText) {
+                if (!isActiveRequest(messageObject, id)) {
+                    return;
+                }
                 if (transcribeOperationsById == null) {
                     transcribeOperationsById = new HashMap<>();
                 }
@@ -950,6 +1000,9 @@ public class TranscribeButton {
 
             @Override
             public void onFailed(boolean unsupported, @NotNull String message) {
+                if (!isActiveRequest(messageObject, id)) {
+                    return;
+                }
                 AndroidUtilities.runOnUIThread(() -> {
                     if (transcribeOperationsByDialogPosition != null) {
                         transcribeOperationsByDialogPosition.remove(reqInfoHash(messageObject));
@@ -984,6 +1037,7 @@ public class TranscribeButton {
                 return false;
             }
             final MessageObject finalMessageObject = messageObject;
+            transcribeActiveRequestId.remove(reqInfoHash(messageObject));
             if (transcribeOperationsByDialogPosition != null) {
                 transcribeOperationsByDialogPosition.remove((Integer) reqInfoHash(messageObject));
             }

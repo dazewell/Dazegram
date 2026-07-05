@@ -41489,6 +41489,17 @@ public class ChatActivity extends BaseFragment implements
         }
 
         @Override
+        public boolean didLongPressTranscribeButton(ChatMessageCell cell) {
+            MessageObject messageObject = cell.getMessageObject();
+            if (messageObject == null) {
+                return false;
+            }
+            TranscribeButton.stopTranscription(messageObject);
+            showTranscribeRetryPicker(messageObject);
+            return true;
+        }
+
+        @Override
         public void didPressUserStatus(ChatMessageCell cell, TLRPC.User user, TLRPC.Document document, String giftSlug) {
             if (cell == null) {
                 return;
@@ -46707,30 +46718,7 @@ public class ChatActivity extends BaseFragment implements
                 TranscribeButton.retryOrTranslateVoiceTranscription(selectedObject, false, null);
                 break;
             case nkbtn_transcriptionRetry: {
-                java.util.List<Integer> providers = TranscribeHelper.getConfiguredProviders();
-                if (providers.size() >= 2) {
-                    MessageObject retryObject = selectedObject;
-                    int currentProvider = TranscribeHelper.getEffectiveProvider();
-                    CharSequence[] names = new CharSequence[providers.size()];
-                    for (int i = 0; i < providers.size(); i++) {
-                        String name = TranscribeHelper.getProviderName(providers.get(i));
-                        if (providers.get(i) == currentProvider) {
-                            SpannableStringBuilder marked = new SpannableStringBuilder(name).append("  ");
-                            int suffixStart = marked.length();
-                            marked.append(getString(R.string.TranscribeProviderCurrentSuffix));
-                            marked.setSpan(new ForegroundColorSpan(getThemedColor(Theme.key_dialogTextGray2)), suffixStart, marked.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-                            names[i] = marked;
-                        } else {
-                            names[i] = name;
-                        }
-                    }
-                    AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
-                    builder.setTitle(getString(R.string.RetryWith));
-                    builder.setItems(names, (dialog, which) -> TranscribeButton.retryVoiceTranscriptionWithProvider(retryObject, providers.get(which)));
-                    showDialog(builder.create());
-                } else {
-                    TranscribeButton.retryOrTranslateVoiceTranscription(selectedObject, true, null);
-                }
+                showTranscribeRetryPicker(selectedObject);
                 break;
             }
             case nkbtn_detail: {
@@ -49458,6 +49446,37 @@ public class ChatActivity extends BaseFragment implements
 
     private boolean isTranslatingDialog(MessageObject messageObject) {
         return messageObject != null && getMessagesController().getTranslateController().isTranslatingDialog(messageObject.getDialogId());
+    }
+
+    // Shared by the message-menu "Retry with" item and the transcribe button long-press: with two or
+    // more configured providers it offers the list, otherwise it just re-runs the default provider.
+    private void showTranscribeRetryPicker(MessageObject messageObject) {
+        if (messageObject == null) {
+            return;
+        }
+        java.util.List<Integer> providers = TranscribeHelper.getConfiguredProviders();
+        if (providers.size() >= 2) {
+            int currentProvider = TranscribeHelper.getEffectiveProvider();
+            CharSequence[] names = new CharSequence[providers.size()];
+            for (int i = 0; i < providers.size(); i++) {
+                String name = TranscribeHelper.getProviderName(providers.get(i));
+                if (providers.get(i) == currentProvider) {
+                    SpannableStringBuilder marked = new SpannableStringBuilder(name).append("  ");
+                    int suffixStart = marked.length();
+                    marked.append(getString(R.string.TranscribeProviderCurrentSuffix));
+                    marked.setSpan(new ForegroundColorSpan(getThemedColor(Theme.key_dialogTextGray2)), suffixStart, marked.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    names[i] = marked;
+                } else {
+                    names[i] = name;
+                }
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+            builder.setTitle(getString(R.string.RetryWith));
+            builder.setItems(names, (dialog, which) -> TranscribeButton.retryVoiceTranscriptionWithProvider(messageObject, providers.get(which)));
+            showDialog(builder.create());
+        } else {
+            TranscribeButton.retryOrTranslateVoiceTranscription(messageObject, true, null);
+        }
     }
 
     private record MessageMenuStatus(boolean allowCopy, boolean allowCopyPhoto,
