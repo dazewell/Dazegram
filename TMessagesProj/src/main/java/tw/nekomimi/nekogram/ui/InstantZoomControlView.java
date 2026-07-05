@@ -25,12 +25,21 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
  */
 public class InstantZoomControlView extends View {
 
-    // the -/+ and flip buttons share the recorder's light control language: a translucent white chip
-    // (brighter when pressed) with a faint dark rim and a dark glyph
-    private static final int CHIP_COLOR = 0x40FFFFFF;
-    private static final int CHIP_COLOR_PRESSED = 0x66FFFFFF;
-    private static final int CHIP_RIM_COLOR = 0x22000000;
-    private static final int GLYPH_COLOR = 0xCC000000;
+    // the -/+ and flip buttons follow the recorder's other controls per theme, like the flash button:
+    // a translucent chip (brighter when pressed) with a faint rim, dark glyph on light and white on dark
+    private static final int CHIP_COLOR_LIGHT = 0x40FFFFFF;
+    private static final int CHIP_COLOR_PRESSED_LIGHT = 0x66FFFFFF;
+    private static final int CHIP_RIM_COLOR_LIGHT = 0x22000000;
+    private static final int GLYPH_COLOR_LIGHT = 0xCC000000;
+    private static final int CHIP_COLOR_DARK = 0x40000000;
+    private static final int CHIP_COLOR_PRESSED_DARK = 0x66000000;
+    private static final int CHIP_RIM_COLOR_DARK = 0x22FFFFFF;
+    private static final int GLYPH_COLOR_DARK = 0xFFFFFFFF;
+
+    private final int chipColor;
+    private final int chipColorPressed;
+    private final int chipRimColor;
+    private final int glyphColor;
 
     public interface Delegate {
         void didSetZoom(float zoom);
@@ -103,15 +112,19 @@ public class InstantZoomControlView extends View {
     private final ButtonAccent plusAccent = new ButtonAccent();
     private final ButtonAccent switchAccent = new ButtonAccent();
 
-    public InstantZoomControlView(Context context) {
+    public InstantZoomControlView(Context context, boolean dark) {
         super(context);
-        // dark glyphs so they read on the light chip that matches the recorder's other controls
+        chipColor = dark ? CHIP_COLOR_DARK : CHIP_COLOR_LIGHT;
+        chipColorPressed = dark ? CHIP_COLOR_PRESSED_DARK : CHIP_COLOR_PRESSED_LIGHT;
+        chipRimColor = dark ? CHIP_RIM_COLOR_DARK : CHIP_RIM_COLOR_LIGHT;
+        glyphColor = dark ? GLYPH_COLOR_DARK : GLYPH_COLOR_LIGHT;
+        // white glyphs on dark, dark on light, so they read like the recorder's other controls per theme
         minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
-        minusDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
+        minusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
-        plusDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
+        plusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
-        switchDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
+        switchDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
@@ -424,12 +437,12 @@ public class InstantZoomControlView extends View {
 
     private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, float cx, float glyphHalfPx) {
         final float radius = buttonRadius * accent.scale;
-        chipPaint.setColor(ColorUtils.blendARGB(CHIP_COLOR, CHIP_COLOR_PRESSED, accent.fill));
+        chipPaint.setColor(ColorUtils.blendARGB(chipColor, chipColorPressed, accent.fill));
         canvas.drawCircle(cx, buttonCy, radius, chipPaint);
-        ringPaint.setColor(CHIP_RIM_COLOR);
+        ringPaint.setColor(chipRimColor);
         canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         if (accent.ring > 0f) {
-            ringPaint.setColor(ColorUtils.setAlphaComponent(GLYPH_COLOR, (int) (0x99 * accent.ring)));
+            ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x99 * accent.ring)));
             canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         }
         final int gh = (int) (glyphHalfPx * accent.scale);
