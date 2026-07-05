@@ -340,7 +340,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         addView(cameraContainer, new LayoutParams(AndroidUtilities.roundPlayingMessageSize, AndroidUtilities.roundPlayingMessageSize, Gravity.CENTER));
         addView(flashViews.foregroundView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
 
-        zoomControlView = new InstantZoomControlView(context);
+        zoomControlView = new InstantZoomControlView(context, resourcesProvider.isDark(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
         zoomControlView.setAlpha(0.0f);
         zoomControlView.setContentDescription(LocaleController.getString(R.string.AccDescrZoomControl));
         zoomControlView.setDelegate(new InstantZoomControlView.Delegate() {
