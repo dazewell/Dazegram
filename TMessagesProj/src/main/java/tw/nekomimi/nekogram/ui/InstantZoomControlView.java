@@ -25,6 +25,13 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
  */
 public class InstantZoomControlView extends View {
 
+    // the -/+ and flip buttons share the recorder's light control language: a translucent white chip
+    // (brighter when pressed) with a faint dark rim, and a dark glyph, rather than the old black discs
+    private static final int CHIP_COLOR = 0x40FFFFFF;
+    private static final int CHIP_COLOR_PRESSED = 0x66FFFFFF;
+    private static final int CHIP_RIM_COLOR = 0x22000000;
+    private static final int GLYPH_COLOR = 0xCC000000;
+
     public interface Delegate {
         void didSetZoom(float zoom);
         void onButtonDown(int direction);
@@ -38,7 +45,7 @@ public class InstantZoomControlView extends View {
     private final Drawable knobDrawable;
     private final Drawable pressedKnobDrawable;
     private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint scrimPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint chipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF trackRect = new RectF();
 
@@ -98,10 +105,13 @@ public class InstantZoomControlView extends View {
 
     public InstantZoomControlView(Context context) {
         super(context);
-        minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus);
-        plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus);
+        // dark glyphs so they read on the light chip that matches the recorder's other controls
+        minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
+        minusDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
+        plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
+        plusDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
         switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
-        switchDrawable.setColorFilter(0xFFFFFFFF, PorterDuff.Mode.SRC_IN);
+        switchDrawable.setColorFilter(GLYPH_COLOR, PorterDuff.Mode.SRC_IN);
         knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
         pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
         ringPaint.setStyle(Paint.Style.STROKE);
@@ -225,9 +235,9 @@ public class InstantZoomControlView extends View {
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         buttonCy = lerp(AndroidUtilities.dp(76), AndroidUtilities.dp(52), compact);
-        buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
-        glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
-        switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
+        buttonRadius = lerp(AndroidUtilities.dp(21), AndroidUtilities.dp(19), compact);
+        glyphHalf = lerp(AndroidUtilities.dp(10), AndroidUtilities.dp(9), compact);
+        switchGlyphHalf = lerp(AndroidUtilities.dp(12), AndroidUtilities.dp(10), compact);
     }
 
     // inset the knob travel by its own radius so it reaches right up to each track end without spilling past it
@@ -414,10 +424,12 @@ public class InstantZoomControlView extends View {
 
     private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, float cx, float glyphHalfPx) {
         final float radius = buttonRadius * accent.scale;
-        scrimPaint.setColor(ColorUtils.blendARGB(0x4D000000, 0x73000000, accent.fill));
-        canvas.drawCircle(cx, buttonCy, radius, scrimPaint);
+        chipPaint.setColor(ColorUtils.blendARGB(CHIP_COLOR, CHIP_COLOR_PRESSED, accent.fill));
+        canvas.drawCircle(cx, buttonCy, radius, chipPaint);
+        ringPaint.setColor(CHIP_RIM_COLOR);
+        canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         if (accent.ring > 0f) {
-            ringPaint.setColor(ColorUtils.setAlphaComponent(0xFFFFFFFF, (int) (0xCC * accent.ring)));
+            ringPaint.setColor(ColorUtils.setAlphaComponent(GLYPH_COLOR, (int) (0x99 * accent.ring)));
             canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         }
         final int gh = (int) (glyphHalfPx * accent.scale);
