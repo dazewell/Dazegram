@@ -235,9 +235,9 @@ public class InstantZoomControlView extends View {
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
         buttonCy = lerp(AndroidUtilities.dp(76), AndroidUtilities.dp(52), compact);
-        buttonRadius = lerp(AndroidUtilities.dp(21), AndroidUtilities.dp(19), compact);
-        glyphHalf = lerp(AndroidUtilities.dp(10), AndroidUtilities.dp(9), compact);
-        switchGlyphHalf = lerp(AndroidUtilities.dp(12), AndroidUtilities.dp(10), compact);
+        buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
+        glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
+        switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
     }
 
     // inset the knob travel by its own radius so it reaches right up to each track end without spilling past it
