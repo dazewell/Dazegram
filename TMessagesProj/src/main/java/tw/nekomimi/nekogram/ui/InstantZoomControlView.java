@@ -25,14 +25,10 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
  */
 public class InstantZoomControlView extends View {
 
-    // the -/+ and flip buttons follow the recorder's other controls per theme, like the flash button:
-    // a translucent chip (brighter when pressed) with a faint rim, dark glyph on light and white on dark
-    private static final int CHIP_COLOR_LIGHT = 0x40FFFFFF;
-    private static final int CHIP_COLOR_PRESSED_LIGHT = 0x66FFFFFF;
+    // the -/+ and flip buttons sit on the recorder's message-panel chip, the same background the flash
+    // button uses; a faint rim and a dark-on-light / white-on-dark glyph, brightening a touch on press
     private static final int CHIP_RIM_COLOR_LIGHT = 0x22000000;
     private static final int GLYPH_COLOR_LIGHT = 0xCC000000;
-    private static final int CHIP_COLOR_DARK = 0x40000000;
-    private static final int CHIP_COLOR_PRESSED_DARK = 0x66000000;
     private static final int CHIP_RIM_COLOR_DARK = 0x22FFFFFF;
     private static final int GLYPH_COLOR_DARK = 0xFFFFFFFF;
 
@@ -112,13 +108,14 @@ public class InstantZoomControlView extends View {
     private final ButtonAccent plusAccent = new ButtonAccent();
     private final ButtonAccent switchAccent = new ButtonAccent();
 
-    public InstantZoomControlView(Context context, boolean dark) {
+    public InstantZoomControlView(Context context, boolean dark, int chipBackgroundColor) {
         super(context);
-        chipColor = dark ? CHIP_COLOR_DARK : CHIP_COLOR_LIGHT;
-        chipColorPressed = dark ? CHIP_COLOR_PRESSED_DARK : CHIP_COLOR_PRESSED_LIGHT;
+        // same background the flash button rides on (the chat's message-panel color), opaque here since
+        // this view can't blur behind itself; pressing lifts it toward the glyph for a bit of feedback
+        chipColor = ColorUtils.setAlphaComponent(chipBackgroundColor, 0xFF);
         chipRimColor = dark ? CHIP_RIM_COLOR_DARK : CHIP_RIM_COLOR_LIGHT;
         glyphColor = dark ? GLYPH_COLOR_DARK : GLYPH_COLOR_LIGHT;
-        // white glyphs on dark, dark on light, so they read like the recorder's other controls per theme
+        chipColorPressed = ColorUtils.blendARGB(chipColor, glyphColor, 0.12f);
         minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
         minusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
