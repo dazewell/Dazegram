@@ -26,7 +26,7 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
 public class InstantZoomControlView extends View {
 
     // the -/+ and flip buttons share the recorder's light control language: a translucent white chip
-    // (brighter when pressed) with a faint dark rim, and a dark glyph, rather than the old black discs
+    // (brighter when pressed) with a faint dark rim and a dark glyph
     private static final int CHIP_COLOR = 0x40FFFFFF;
     private static final int CHIP_COLOR_PRESSED = 0x66FFFFFF;
     private static final int CHIP_RIM_COLOR = 0x22000000;
