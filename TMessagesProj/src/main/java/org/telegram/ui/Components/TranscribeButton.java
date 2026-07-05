@@ -657,7 +657,8 @@ public class TranscribeButton {
     }
 
     private static boolean isActiveRequest(MessageObject messageObject, long id) {
-        return Long.valueOf(id).equals(transcribeActiveRequestId.get(reqInfoHash(messageObject)));
+        Long active = transcribeActiveRequestId.get(reqInfoHash(messageObject));
+        return active != null && active == id;
     }
 
     // Long-press on the "A" button: drop a stuck attempt so the spinner clears even if the picker is
