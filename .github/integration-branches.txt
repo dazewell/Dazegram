@@ -13,4 +13,4 @@
 #   dazewell/chatlock
 #   dazewell/hide-last-message
 
-# (no active topic branches yet)
+copilot/implement-retry-with-menu
