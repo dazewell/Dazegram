@@ -1,0 +1,16 @@
+# Active feature (topic) branches merged into `dev`, one per line.
+# The Sync-upstream workflow re-merges each of these onto a freshly
+# fast-forwarded `base` when syncing on the base fork (risin42/NagramX).
+#
+# Rules:
+#   - one branch name per line, no `origin/` prefix (the workflow adds it)
+#   - blank lines and `# comments` are ignored
+#   - add a branch here when you first land it into `dev`
+#   - remove it when you retire the feature, then rebuild `dev` (see the
+#     nagramx-branch-flow skill)
+#
+# Example:
+#   dazewell/chatlock
+#   dazewell/hide-last-message
+
+# (no active topic branches yet)

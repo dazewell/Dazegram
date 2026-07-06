@@ -1,10 +1,16 @@
 name: Sync upstream
 
+# Merge-forward sync onto the base fork (risin42/NagramX), never a rebase.
+# base is fast-forwarded from the base fork, then dev merges base + every
+# active topic branch. If any merge conflicts the whole sync aborts, pushes
+# nothing, and pings Telegram so it can be finished on the PC. A clean sync
+# pushes dev, which triggers staging.yml (dual APK + Telegram upload).
+
 on:
   workflow_dispatch:
     inputs:
-      upstream_branch:
-        description: 'Upstream branch to rebase onto'
+      base_branch:
+        description: 'Base-fork branch to sync onto'
         required: false
         default: 'dev'
 
@@ -14,7 +20,7 @@ permissions:
 
 jobs:
   sync:
-    name: Rebase dev onto upstream
+    name: Merge-forward dev onto base fork
     runs-on: ubuntu-latest
 
     steps:
@@ -30,20 +36,64 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Add upstream remote
-        run: git remote add upstream https://github.com/risin42/NagramX.git
-
-      - name: Fetch upstream
-        run: git fetch upstream ${{ github.event.inputs.upstream_branch }}
-
-      - name: Rebase dev onto upstream/${{ github.event.inputs.upstream_branch }}
+      - name: Add base-fork remote
         run: |
-          git rebase upstream/${{ github.event.inputs.upstream_branch }}
+          git remote add source https://github.com/risin42/NagramX.git \
+            || git remote set-url source https://github.com/risin42/NagramX.git
 
-      - name: Push updated dev
-        run: git push origin dev --force-with-lease
+      - name: Fetch base fork
+        run: git fetch source ${{ github.event.inputs.base_branch }}
 
-      - name: Trigger staging build
+      - name: Fast-forward base
+        run: |
+          BR="${{ github.event.inputs.base_branch }}"
+          if git ls-remote --exit-code --heads origin base >/dev/null 2>&1; then
+            git fetch origin base
+            git switch -C base FETCH_HEAD
+            git merge --ff-only "source/$BR"
+          else
+            git switch -C base "source/$BR"
+          fi
+          git push origin base
+
+      - name: Merge-forward dev (conflict-guarded)
+        id: merge
+        run: |
+          git switch dev
+          PRE=$(git rev-parse HEAD)
+          echo "pre=$PRE" >> "$GITHUB_OUTPUT"
+          merge() {
+            if ! git merge --no-edit "$1"; then
+              git merge --abort || true
+              git reset --hard "$PRE"
+              echo "conflict=$1" >> "$GITHUB_OUTPUT"
+              exit 1
+            fi
+          }
+          merge base
+          if [ -f .github/integration-branches.txt ]; then
+            while IFS= read -r b; do
+              b="$(echo "$b" | sed 's/#.*//' | xargs)"
+              [ -n "$b" ] || continue
+              git fetch origin "$b"
+              merge FETCH_HEAD
+            done < .github/integration-branches.txt
+          fi
+
+      - name: Push dev (clean only)
+        run: git push origin dev
+
+      - name: Notify conflict
+        if: failure() && steps.merge.outputs.conflict != ''
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run staging.yml --ref dev --repo ${{ github.repository }}
+          HELPER_BOT_TOKEN: ${{ secrets.HELPER_BOT_TOKEN }}
+          HELPER_BOT_TARGET: ${{ secrets.HELPER_BOT_TARGET }}
+        run: |
+          if [ -z "$HELPER_BOT_TOKEN" ] || [ -z "$HELPER_BOT_TARGET" ]; then
+            echo "Telegram secrets unset; skipping notification."
+            exit 0
+          fi
+          curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
+            --data-urlencode "text=⚠️ NagramX sync blocked: ${{ steps.merge.outputs.conflict }} conflicts with the base fork. Needs the PC." \
+            >/dev/null

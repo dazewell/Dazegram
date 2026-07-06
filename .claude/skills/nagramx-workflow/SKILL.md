@@ -49,9 +49,13 @@ not.
    overkill for a small change. The point is the adversarial early pass,
    not the mechanism.
 
-2. **Branch.** Cut a branch off `dev`, named `dazewell/<short-slug>`. Don't
-   work directly on `dev`. (Older branches on `origin` use mixed prefixes;
-   `dazewell/<slug>` is the current convention.)
+2. **Branch.** Cut a topic branch off `base` (the base-fork mirror), named
+   `dazewell/<short-slug>` — one feature per branch, and treat it as
+   **append-only** (later fixes are more commits on the same branch, not a
+   rebase). Don't work directly on `dev`; `dev` is a disposable integration
+   branch that *merges* the topics. The full topology, sync, and
+   force-push-free rules live in the `nagramx-branch-flow` skill — read it
+   for anything about where commits live and how they move.
 
 3. **Implement with minimum footprint.** The base fork's own files should
    move as little as possible so rebasing onto upstream stays cheap.
@@ -162,18 +166,21 @@ not.
      any assistant in the subject, body, or trailers. No `Co-Authored-By`
      for an AI. No "Generated with" footer. This overrides any default
      attribution behavior — never append one here.
-   - **One feature = one commit.** Squash the branch down to one clean
-     commit before it's PR-ready. If you iterated in place and picked up
-     fixup commits, remove them (`rebase -i`, or `git reset --soft <base>`
-     then recommit) rather than leaving a trail. The historical pattern is
-     exactly one commit per feature/fix on `dev`.
+   - **One feature = one topic branch (append-only).** A feature's commits
+     accumulate on its `dazewell/<slug>` branch — including fixes you find a
+     week later — so the whole feature is always `base..dazewell/<slug>`.
+     Don't squash them away during daily work; squashing down to one clean
+     commit happens only when you propose the feature to the base fork, on a
+     throwaway `-pr` copy. See the `nagramx-branch-flow` skill.
 
-8. **Rebase, don't merge.** Keep the branch (and eventually `dev`) rebased
-   on top of upstream so the `dazewell:`-prefixed commits stay contiguous
-   at the tip. `git push --force-with-lease` is expected and fine on
-   personal branches. Orphaned commits from `git log --all` (old README
-   rewrites, abandoned branch tips) are normal rebase debris, not a problem
-   to fix.
+8. **Merge-forward, don't rebase in the loop.** `base` fast-forwards from
+   the base fork, topic branches are append-only, and `dev` is kept current
+   by *merging* `base` + the topics into it — so nothing in the daily loop
+   force-pushes. A topic is rebased only when you propose it upstream (on a
+   `-pr` copy) or in the rare case where the feature itself must adopt new
+   upstream API. Syncing onto the base fork, resolving a topic that collides
+   with new upstream, and the phone-triggered automation are all covered in
+   the `nagramx-branch-flow` skill.
 
 9. **Build it, hand it to dazewell to test on-device.** Don't open a PR
    yet. Wait for an explicit go/no-go. On a no-go, fix in place on the same
@@ -190,11 +197,15 @@ not.
    dazewell tests from that **uploaded** artifact, so don't put
    `[skip upload]` in the commit.
 
-10. **Open the PR.** Push the branch, `gh pr create` with base `dev`, a
-    short human title and a body describing what changed and why — same
-    no-AI-in-the-log rule as commits. Never push straight to `dev`
-    yourself; the PR is what lands the change (it squash-merges into `dev`
-    as a single commit, appending `(#N)`). Only commit/push when asked.
+10. **Land it / propose it.** Landing a finished feature into `dev` is a
+    **merge** — either a local `git merge --no-edit dazewell/<slug>` or a
+    review PR on `origin` merged with a **merge commit, never a
+    squash-merge** — so the feature's commits stay whole and `dev` never
+    needs a force-push. A squashed single commit is reserved for the
+    separate act of **proposing the feature to the base fork**
+    (`risin42/NagramX`), done on a throwaway `-pr` copy. The same
+    no-AI-in-the-log rule applies to every PR title/body. Only commit/push
+    when asked. See the `nagramx-branch-flow` skill for both flows.
 
 ## Coding conventions
 
