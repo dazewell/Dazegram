@@ -255,12 +255,60 @@ git switch dev
 git merge --no-edit dazewell/<slug>
 git push origin dev            # normal push -> staging.yml builds + uploads
 ```
-Add `dazewell/<slug>` to `.github/integration-branches.txt` so the sync
-automation knows to re-merge it. If you'd rather land through a review PR on
-`origin`, that's fine — just **merge it with a merge commit, never a
-squash-merge**, so the feature's commits stay whole and `dev` never needs a
-force-push. Squash is reserved for the upstream `-pr` (below). PRs to the
+If you'd rather land through a review PR on `origin`, that's fine — just
+**merge it with a merge commit, never a squash-merge**, so the feature's
+commits stay whole and `dev` never needs a force-push. Squash is reserved
+for the upstream `-pr` (below). PRs to the
 base fork are a separate thing from landing into `dev`.
+
+Either way, register the topic in the manifest **after** the feature is
+landed — see the step below.
+
+### Register a landed feature in the manifest (AI flow)
+
+**When:** **after** the feature is landed into `dev` — i.e. once the review
+PR (`dazewell/<slug>` → `dev` on `origin`) has **merged**, or immediately
+after the local merge above. Registering post-merge means the manifest only
+ever lists features that are genuinely in `dev`; a PR that's closed without
+merging never leaves a stray entry. This is not a script or CI job; the
+assistant does it automatically as the closing step of landing, the same way
+it runs the compile gate.
+
+**Hard constraint — where the entry lives:** the manifest line is committed
+**on `dev` only, never on the topic branch.** `.github/integration-branches.txt`
+is dazewell infrastructure, not part of the feature; if it rode along on
+`dazewell/<slug>` it would leak into the pristine `base..dazewell/<slug>`
+range and pollute the upstream `-pr` proposal. Keep it out of the topic.
+
+**What the assistant must do once `dazewell/<slug>` has merged into `dev`:**
+1. Fetch/checkout the merged `dev` and be on it (the manifest edit is a
+   `dev` commit that lands *on top of* the merge).
+2. If `dazewell/<slug>` is **not already** a non-comment line in
+   `.github/integration-branches.txt`, append it (bare name, no `origin/`
+   prefix). If it's already there, do nothing — the file is a set.
+3. Commit that manifest change on `dev` with a plain message, e.g.
+   `chore: register dazewell/<slug> in integration manifest` (no AI mentions).
+4. Push `dev`.
+
+```powershell
+git switch dev
+git pull --ff-only origin dev          # get the merge commit the PR just created
+$slug = "dazewell/<slug>"
+$manifest = ".github/integration-branches.txt"
+$present = Select-String -Path $manifest -SimpleMatch $slug |
+  Where-Object { $_.Line.TrimStart() -notmatch '^\s*#' -and $_.Line.Trim() -eq $slug }
+if (-not $present) {
+    Add-Content -Path $manifest -Value $slug
+    git add $manifest
+    git commit -m "chore: register $slug in integration manifest"
+    git push origin dev
+}
+```
+
+This is what "automate adding to the manifest after the PR is merged" means
+here: a fixed, idempotent step the assistant runs once the merge exists,
+guaranteed to touch `dev` and only `dev`. Retiring a feature is the reverse
+(remove the line, rebuild `dev`) — see "Retire a feature from the build".
 
 ### Add a fix/improvement to an existing feature (the "week later" case)
 ```powershell
