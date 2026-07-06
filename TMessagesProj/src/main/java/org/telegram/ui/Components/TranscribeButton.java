@@ -62,6 +62,8 @@ import tw.nekomimi.nekogram.translate.Translator;
 import tw.nekomimi.nekogram.translate.TranslatorKt;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 
+import xyz.nextalone.nagram.NaConfig;
+
 public class TranscribeButton {
 
     private final static int[] pressedState = new int[]{android.R.attr.state_enabled, android.R.attr.state_pressed};
@@ -914,6 +916,9 @@ public class TranscribeButton {
         if (messageObject == null || messageObject.messageOwner == null || !messageObject.isSent()) {
             return;
         }
+        // NagramX: picking a provider here pins it as the new default, same as choosing it in settings,
+        // so the next plain retry (and the "current" marker in the picker) follows the last one you used.
+        NaConfig.INSTANCE.getTranscribeProvider().setConfigInt(provider);
         closeVoiceTranscriptionIfOpen(messageObject);
         startAiTranscription(messageObject, provider);
     }
