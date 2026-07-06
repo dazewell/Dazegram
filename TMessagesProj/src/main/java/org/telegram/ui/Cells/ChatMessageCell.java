@@ -680,6 +680,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         default void didPressSponsoredInfo(ChatMessageCell cell, float x, float y) {
         }
 
+        default boolean didLongPressTranscribeButton(ChatMessageCell cell) {
+            return false;
+        }
+
         default void didPressTime(ChatMessageCell cell) {
         }
 
@@ -12145,6 +12149,14 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     @Override
     protected boolean onLongPress() {
+        // NagramX: long-press on the transcribe ("A") button drops a stuck attempt and opens the retry-with-provider picker
+        if (useTranscribeButton && transcribeButton != null && transcribeButton.isPressed()
+                && currentMessageObject != null
+                && tw.nekomimi.nekogram.helpers.TranscribeHelper.useTranscribeAI(currentMessageObject.currentAccount)
+                && delegate != null && delegate.didLongPressTranscribeButton(this)) {
+            hadLongPress = true;
+            return true;
+        }
         if (isRoundVideo && isPlayingRound && MediaController.getInstance().isPlayingMessage(currentMessageObject)) {
             float touchRadius = (lastTouchX - photoImage.getCenterX()) * (lastTouchX - photoImage.getCenterX()) + (lastTouchY - photoImage.getCenterY()) * (lastTouchY - photoImage.getCenterY());
             float r1 = (photoImage.getImageWidth() / 2f) * (photoImage.getImageWidth() / 2f);
