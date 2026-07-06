@@ -874,6 +874,10 @@ public class TranscribeButton {
         long id = Utilities.random.nextLong();
         setActiveRequest(messageObject, id);
         transcribeOperationsByDialogPosition.put(reqInfoHash(messageObject), messageObject);
+        // NagramX: retry paths don't go through onTap (which calls setLoading), so nudge the cell to
+        // rebind and animate into the loading spinner, matching how a fresh press looks.
+        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject);
+        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.updateTranscriptionLock);
         BiConsumer<String, Exception> callback = (text, exception) -> {
             if (!isActiveRequest(messageObject, id)) {
                 return;
