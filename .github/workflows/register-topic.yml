@@ -1,0 +1,78 @@
+name: Register topic
+
+# When a PR is merged into dev, record its source branch in
+# .github/integration-branches.txt so the Sync-upstream workflow re-merges the
+# feature onto a freshly fast-forwarded base. Replaces the manual step of
+# adding the branch to the manifest after every merge.
+#
+# The manifest is a set: a branch already listed is left untouched, so this is
+# safe to re-run and never produces duplicate lines. The entry is committed on
+# dev only (the manifest is dazewell infrastructure, not part of the feature).
+
+on:
+  pull_request:
+    types: [closed]
+
+# Serialize so two near-simultaneous merges don't race on pushing dev.
+concurrency:
+  group: register-topic-dev
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  register:
+    name: Register merged topic in manifest
+    runs-on: ubuntu-latest
+    # Only merged PRs that landed into dev from a branch in this same repo.
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'dev' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Register branch in manifest
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -e
+          MANIFEST=".github/integration-branches.txt"
+
+          # Never register the integration/mirror branches themselves.
+          case "$BRANCH" in
+            ""|dev|base)
+              echo "Skipping branch '$BRANCH' (not a topic branch)."
+              exit 0
+              ;;
+          esac
+
+          touch "$MANIFEST"
+
+          # Treat the manifest as a set: compare against trimmed, non-comment lines.
+          if grep -vE '^[[:space:]]*#' "$MANIFEST" \
+               | sed 's/#.*//' \
+               | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+               | grep -qxF "$BRANCH"; then
+            echo "'$BRANCH' already registered; nothing to do."
+            exit 0
+          fi
+
+          echo "$BRANCH" >> "$MANIFEST"
+          git add "$MANIFEST"
+          git commit -m "chore: register $BRANCH in integration manifest"
+
+          # Safety net against a concurrent push to dev (append-only, so ff/rebase is trivial).
+          git pull --rebase origin dev
+          git push origin dev

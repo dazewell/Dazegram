@@ -264,15 +264,27 @@ base fork are a separate thing from landing into `dev`.
 Either way, register the topic in the manifest **after** the feature is
 landed — see the step below.
 
-### Register a landed feature in the manifest (AI flow)
+### Register a landed feature in the manifest (automated + fallback)
 
 **When:** **after** the feature is landed into `dev` — i.e. once the review
 PR (`dazewell/<slug>` → `dev` on `origin`) has **merged**, or immediately
 after the local merge above. Registering post-merge means the manifest only
 ever lists features that are genuinely in `dev`; a PR that's closed without
-merging never leaves a stray entry. This is not a script or CI job; the
-assistant does it automatically as the closing step of landing, the same way
-it runs the compile gate.
+merging never leaves a stray entry.
+
+**Automated for PR merges:** `.github/workflows/register-topic.yml` runs on
+`pull_request: closed`, and when the PR was *merged into `dev`* from a branch
+in this repo it appends the PR's head branch to
+`.github/integration-branches.txt` (idempotently — the manifest is a set) and
+commits it on `dev`. So a merged PR needs **no manual step**. It pushes with
+the same `GITHUB_TOKEN` + `github-actions[bot]` identity `sync-upstream.yml`
+uses; that push does not retrigger `staging.yml` (GITHUB_TOKEN pushes don't
+spawn workflows, and `staging.yml` ignores `.github/**` anyway).
+
+**Fallback — local merges:** a plain `git merge` into `dev` from the PC does
+**not** fire a `pull_request` event, so the workflow won't run. In that case
+the assistant registers the topic by hand as the closing step of landing, the
+same way it runs the compile gate — the procedure below.
 
 **Hard constraint — where the entry lives:** the manifest line is committed
 **on `dev` only, never on the topic branch.** `.github/integration-branches.txt`
