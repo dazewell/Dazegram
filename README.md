@@ -4,66 +4,151 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 
 **This is a personal fork** by [@dazewell](https://github.com/dazewell) with a few extras on top of [NagramX](https://github.com/risin42/NagramX):
 
- - **Per-chat time zones:** set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a worldtimebuddy-style side-by-side time converter in a bottom sheet view. Each message also shows both your local time and the peer's.
+<details>
+<summary><b>Per-chat time zones</b></summary>
 
-   <img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
-   <img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />
+set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a worldtimebuddy-style side-by-side time converter in a bottom sheet view. Each message also shows both your local time and the peer's.
 
- - **Quick schedule button:** the calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default.
+<img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
+<img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />
 
- - **Physical keyboard hotkeys:** matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings.
+</details>
 
-   | Shortcut | Action |
-   |---|---|
-   | `Esc` | Cancel reply/edit, close search, go back |
-   | `Up` (empty input) | Edit last sent message |
-   | `Ctrl+F` | Search in current chat / chat list |
-   | `Ctrl+W` | Close current chat |
-   | `Ctrl+PgDn` / `Ctrl+PgUp` | Next / previous chat |
-   | `Ctrl+Alt+Home` / `End` | First / last chat |
-   | `Ctrl+Shift+↓` / `↑` | Next / previous folder |
-   | `Ctrl+0` | Saved Messages |
-   | `Ctrl+1`..`8` | Pinned chat 1–8 |
-   | `Ctrl+9` | Archive |
-   | `Ctrl+J` | Contacts |
-   | `Ctrl+L` | Lock app (when passcode is set) |
-   | `Ctrl+M` | Minimize app |
-   | `Ctrl+R` | Mark current chat as read |
-   | `Alt+Enter` | Schedule message (Enter confirms the picker) |
-   | `Alt+↑` / `↓` | Step reply target older / newer; past newest clears |
-   | `Alt+;` | Emoji search: type to filter, arrows to pick, Enter inserts, Ctrl+Enter sends, Esc closes |
-   | `↑` / `↓` / `Enter` (suggestions open) | Navigate the inline `:emoji` / `@` / `#` / `/` autocomplete; keep typing to filter, Enter inserts the highlighted one |
-   | `Ctrl+B` / `I` / `U` / `K` | Bold / italic / underline / link |
-   | `Ctrl+Shift+X` / `M` / `P` / `N` | Strikethrough / monospace / spoiler / plain |
-   | `Ctrl+Shift+.` | Quote (works at cursor without a selection too) |
+<details>
+<summary><b>Quick schedule button</b></summary>
 
- - **Hide last message:** flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
+the calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default.
 
- - **Require password:** when an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens. It doesn't matter how you get there: a tap, a notification, a shortcut, a search result, or a long-press peek all hit the same lock. Turning this on also hides the chat's last message in the list. Once you unlock the chat it stays open until you put the app in the background, then it asks again. Since the lock leans on the app passcode, removing that passcode leaves the flagged chats open again; they lock back up on their own once you set a passcode.
+</details>
 
- - **Video message playback modes:** a button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
+<details>
+<summary><b>Physical keyboard hotkeys</b></summary>
 
- - **Mute video messages:** a mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
+matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings.
 
- - **External microphone toggle in video message popup:** when camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. The switch reflects the same setting as the one in Settings and persists across recordings.
+| Shortcut | Action |
+|---|---|
+| `Esc` | Cancel reply/edit, close search, go back |
+| `Up` (empty input) | Edit last sent message |
+| `Ctrl+F` | Search in current chat / chat list |
+| `Ctrl+W` | Close current chat |
+| `Ctrl+PgDn` / `Ctrl+PgUp` | Next / previous chat |
+| `Ctrl+Alt+Home` / `End` | First / last chat |
+| `Ctrl+Shift+↓` / `↑` | Next / previous folder |
+| `Ctrl+0` | Saved Messages |
+| `Ctrl+1`..`8` | Pinned chat 1–8 |
+| `Ctrl+9` | Archive |
+| `Ctrl+J` | Contacts |
+| `Ctrl+L` | Lock app (when passcode is set) |
+| `Ctrl+M` | Minimize app |
+| `Ctrl+R` | Mark current chat as read |
+| `Alt+Enter` | Schedule message (Enter confirms the picker) |
+| `Alt+↑` / `↓` | Step reply target older / newer; past newest clears |
+| `Alt+;` | Emoji search: type to filter, arrows to pick, Enter inserts, Ctrl+Enter sends, Esc closes |
+| `↑` / `↓` / `Enter` (suggestions open) | Navigate the inline `:emoji` / `@` / `#` / `/` autocomplete; keep typing to filter, Enter inserts the highlighted one |
+| `Ctrl+B` / `I` / `U` / `K` | Bold / italic / underline / link |
+| `Ctrl+Shift+X` / `M` / `P` / `N` | Strikethrough / monospace / spoiler / plain |
+| `Ctrl+Shift+.` | Quote (works at cursor without a selection too) |
 
- - **Smoother video message zoom:** the zoom control under the round video camera was rebuilt. A long slider runs the whole range evenly (no more cramming 1x–2x into its first stretch), and a − / + pair sits together beneath it: each tap steps the zoom by 1.25x with a short animation, holding a button keeps zooming until you let go, and the buttons press in and grow under your finger so you can feel what they're doing. The − / +, along with the camera flip button just to their left, sit on the same chip background the recorder's flash button uses, and follow the app theme: a dark glyph on a light chip in light mode, a white glyph on a dark chip in dark mode. The flip button stays even on a camera that can't zoom, where the slider and rocker hide instead. A small label shows the current zoom level while you adjust it. The whole control keeps clear of the "view once" button in the corner. With the keyboard open, the video nudges up a little and the two-row control tucks in beneath it; only on really short screens does it fall back to a single row. Pinch-to-zoom while recording works like before. Zoom carries over when you flip between cameras; if you'd rather have it start fresh each time, turn on *Reset zoom when switching cameras* in NagramX chat settings, under Camera. There's also a *Hardware smooth zoom* switch next to it: it hands the zoom animation to the camera itself, which glides between levels more smoothly than software can. Not every phone supports it, so the app checks yours the moment you flip it on and tells you either way.
+</details>
 
- - **Reschedule selected messages:** pick several scheduled messages and move them all to a new time at once. Set a base time and an interval: the first message lands on the base time, the next one an interval later, and so on in their current order. Intervals run from 15 seconds up to days. There's a live preview of the resulting span before you confirm, so you can re-queue a whole batch without editing each one by hand.
+<details>
+<summary><b>Hide last message</b></summary>
 
- - **Cite:** select text in a message and tap *Cite* to drop it into your input box as a quote block on a new line. Formatting from the original (bold, italic, links, custom emoji) is kept, the same as if you'd copied and pasted it yourself. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few different messages and answer all of them in one long message.
+flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
 
- - **Ayu Mode shortcut:** a launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline right away, then the app opens as normal. It only ever turns Ghost on, so it's safe to tap when you're already in Ghost. It's named "Ayu Mode" rather than anything obvious so it doesn't give itself away on your home screen. If it doesn't show up right after install, flip Settings → Privacy and Security → "Suggest frequent contacts" off (and back on if you want it) once to make it appear.
+</details>
 
- - **Ghost icon stays put under stories:** with Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header, and only came back when you pulled the list down. Now it stays visible in the collapsed header too, sitting where your emoji or premium status would be. It follows the same Ghost mode status toggle, so it shows in both spots or neither.
+<details>
+<summary><b>Require password</b></summary>
 
- - **Whisper transcription controls:** the Whisper (Workers AI) voice-to-text provider kept inventing names and stray comments during quiet parts of a message, which is just how the model behaves on silence. Its settings now carry a few knobs Cloudflare exposes for exactly this, and they only appear while Whisper (or Auto, which can fall back to it) is the selected provider. You can pick a language or leave it on Auto-detect, switch on voice activity detection to skip silent and non-speech audio, switch off "use previous context" so it stops repeating or making up phrases, and drag a slider to skip silences longer than a set number of seconds (off by default). Voice activity detection starts on and previous-context starts off, since that pairing is what keeps most of the made-up text out.
+when an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens — however you reach it: a tap, a notification, a shortcut, a search result, or a long-press peek. Turning it on also hides the chat's last message in the list. Once unlocked, the chat stays open until you background the app, then it asks again. The lock leans on the app passcode, so removing that passcode leaves the flagged chats open until you set one again.
 
- - **Groq transcription provider:** a new free voice-to-text option that runs Whisper on Groq, which is fast and does well with Russian. Pick "Groq (Whisper)" as the provider and paste an API key (the key row links straight to console.groq.com where you get one). Groq says it doesn't train on your audio and only holds requests briefly for abuse checks, so it sits better with private messages than the free tiers that learn from whatever you send. Two extra rows show up while it's selected: a model choice between accurate (whisper-large-v3) and faster (the turbo variant), and a language you can pin or leave on Auto-detect for a small accuracy and speed gain. Free-tier uploads stop at 25 MB, so a very long voice message will ask you to trim it or switch providers. Whisper likes to invent subtitle-style lines ("captions by ...") over silent stretches, so segments it scores as non-speech get dropped before you see the text.
+</details>
 
- - **Retry a transcription with another provider:** the Retry option on a voice or video message's transcription used to quietly re-run whichever provider is picked in settings. Now, if you have two or more providers set up with working credentials, it reads "Retry with…" and opens a short list of just those configured providers, so you can bounce a garbled message off a different service without opening settings first. Whichever one you pick also becomes your new default, the same as setting it in settings, so a plain Retry keeps using it afterward. With one provider (or none) set up it stays a plain "Retry" that re-runs straight away.
+<details>
+<summary><b>Video message playback modes</b></summary>
 
- - **Long-press the transcription button to switch providers:** the same "Retry with…" list is now one press away on the message itself. Hold the "A" transcription button on a voice or round video and it stops whatever attempt is running (handy when a provider hangs and the spinner won't quit) and opens that provider list right there, so you never have to wait out a stuck request or dig through the message menu. It only kicks in when you transcribe through your own providers; with two or more configured you get the list, with one it just re-runs.
+a button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
+
+</details>
+
+<details>
+<summary><b>Mute video messages</b></summary>
+
+a mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
+
+</details>
+
+<details>
+<summary><b>External microphone toggle in video message popup</b></summary>
+
+when camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. It's the same setting you'd find in Settings, so it sticks across recordings.
+
+</details>
+
+<details>
+<summary><b>Smoother video message zoom</b></summary>
+
+the zoom control under the round video camera was rebuilt with a full-range slider and a − / + pair that steps the zoom one notch at a time (hold to keep going). Two flags live in NagramX chat settings, under Camera: *Reset zoom when switching cameras* starts the zoom fresh each time you flip cameras instead of carrying it over, and *Hardware smooth zoom* hands the animation to the camera itself for a smoother glide — the app checks whether your phone supports it when you flip it on.
+
+</details>
+
+<details>
+<summary><b>Reschedule selected messages</b></summary>
+
+pick several scheduled messages and move them all at once. Set a base time and an interval: the first lands on the base time, the next one an interval later, and so on in their current order. Intervals run from 15 seconds up to days, with a live preview of the span before you confirm.
+
+</details>
+
+<details>
+<summary><b>Cite</b></summary>
+
+select text in a message and tap *Cite* to drop it into your input box as a quote block, formatting and all. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few messages and answer them all in one.
+
+</details>
+
+<details>
+<summary><b>Ayu Mode shortcut</b></summary>
+
+a launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal — it only ever turns Ghost on, so it's safe to tap when you're already in it. It's named "Ayu Mode" so it doesn't give itself away on your home screen. If it doesn't show up after install, toggle Settings → Privacy and Security → "Suggest frequent contacts" off and on once to make it appear.
+
+</details>
+
+<details>
+<summary><b>Ghost icon stays put under stories</b></summary>
+
+with Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header. Now it stays visible in the collapsed header too, following the same Ghost mode status toggle.
+
+</details>
+
+<details>
+<summary><b>Whisper transcription controls</b></summary>
+
+the Whisper (Workers AI) provider kept inventing names and stray comments during quiet parts of a message. Its settings now carry a few knobs for exactly this, shown only while Whisper (or Auto, which can fall back to it) is selected: pick a language or leave it on Auto-detect, turn on voice activity detection to skip silent and non-speech audio, turn off "use previous context" so it stops repeating or making up phrases, and a slider to skip silences longer than a set number of seconds (off by default). The first two default to the pairing that keeps most of the made-up text out.
+
+</details>
+
+<details>
+<summary><b>Groq transcription provider</b></summary>
+
+a new free voice-to-text option that runs Whisper on Groq, which is fast and does well with Russian. Pick "Groq (Whisper)" and paste an API key (the key row links straight to console.groq.com where you get one). Groq says it doesn't train on your audio, so it sits better with private messages than the free tiers that learn from whatever you send. Two extra rows show up while it's selected: a model choice between accurate and faster, and a language you can pin or leave on Auto-detect. Uploads stop at 25 MB on the free tier, so a very long voice message will ask you to trim it or switch providers.
+
+</details>
+
+<details>
+<summary><b>Retry a transcription with another provider</b></summary>
+
+if you have two or more providers set up with working credentials, the Retry option on a transcription becomes "Retry with…" and lists just those configured providers, so you can bounce a garbled message off a different service without opening settings first. Whichever one you pick becomes your new default too, so a plain Retry keeps using it afterward. With one provider (or none) set up it stays a plain "Retry" that re-runs straight away.
+
+</details>
+
+<details>
+<summary><b>Long-press the transcription button to switch providers</b></summary>
+
+the same "Retry with…" list is one press away on the message itself. Hold the "A" transcription button on a voice or round video to stop whatever attempt is running (handy when a provider hangs and the spinner won't quit) and open the provider list right there. It only kicks in with your own providers; with one set up it just re-runs.
+
+</details>
 
 ## Download
 
