@@ -182,26 +182,39 @@ not.
    with new upstream, and the phone-triggered automation are all covered in
    the `nagramx-branch-flow` skill.
 
-9. **Build it, hand it to dazewell to test on-device.** Don't open a PR
-   yet. Wait for an explicit go/no-go. On a no-go, fix in place on the same
-   branch (amend/rebase, don't stack visible "fix review comments"
-   commits) and hand it back. Only a clear green light moves to the next
-   step.
+9. **Open a draft PR into `dev` — that *is* the preview build.** The build
+   dazewell tests on-device must be **`dev` + the feature** (the feature on
+   top of the current fork state, alongside everything already landed), not
+   the topic sitting on raw upstream. The clean way to get that is a
+   **draft** PR from `dazewell/<slug>` into `dev` on `origin`: opening it,
+   and every later push to the topic, triggers `pr.yml`, which checks out
+   the PR **merge ref** (`dev` merged with the feature) and builds a
+   release-signed debug `nekox.messenger` (Unofficial) APK, then uploads it
+   through the normal channel. dazewell installs that over the daily
+   Unofficial app and tests from the **uploaded** artifact.
 
-   How the staging build gets triggered depends on whether a PR exists yet.
-   Opening a PR, or pushing into an already-open PR, triggers the staging
-   workflow automatically — don't run it by hand in those cases. But a bare
-   branch with **no PR open** does *not* auto-build, so there you trigger it
-   yourself: `gh workflow run staging.yml --ref <branch>`. Either way the
-   build uploads the Unofficial + Official APKs through the normal channel;
-   dazewell tests from that **uploaded** artifact, so don't put
-   `[skip upload]` in the commit.
+   **Draft** specifically, because it keeps the merge button disabled — the
+   PR is a build/test vehicle, not a request to land. Iterate by pushing to
+   the topic (each push rebuilds + re-uploads). On a no-go, fix in place on
+   the topic and push again; don't stack visible "fix review comments"
+   commits. Only a clear green light moves to landing.
+
+   Notes: `pr.yml` path-ignores pure `**.md` / `**.xml` pushes, so a
+   docs-only change won't build. The PR preview is the single-package debug
+   build; the signed **dual-package** build (Unofficial + Official, minified)
+   is produced later by `staging.yml` on the push to `dev` *after* the merge
+   (step 10) — that's the post-land build, not the preview. Don't run
+   `staging.yml` by hand for a preview, and don't put `[skip upload]` in a
+   commit you want dazewell to test.
 
 10. **Land it / propose it.** Landing a finished feature into `dev` is a
-    **merge** — either a local `git merge --no-edit dazewell/<slug>` or a
-    review PR on `origin` merged with a **merge commit, never a
-    squash-merge** — so the feature's commits stay whole and `dev` never
-    needs a force-push. A squashed single commit is reserved for the
+    **merge** — normally you mark the draft preview PR from step 9 **Ready
+    for review** and merge it with a **merge commit, never a squash-merge**
+    (or, if you skipped the PR, a local `git merge --no-edit dazewell/<slug>`)
+    — so the feature's commits stay whole and `dev` never needs a
+    force-push. The merge into `dev` triggers `staging.yml` (the signed
+    dual-package build) and `register-topic.yml` (which records the topic in
+    the integration manifest). A squashed single commit is reserved for the
     separate act of **proposing the feature to the base fork**
     (`risin42/NagramX`), done on a throwaway `-pr` copy. The same
     no-AI-in-the-log rule applies to every PR title/body. Only commit/push
@@ -240,6 +253,13 @@ needs `buildFeatures.resValues = true` (enabled in the root
 contains custom resource values, but the feature is disabled." Firebase:
 `TMessagesProj/google-services.json` needs a client entry per
 `package_name`.
+
+**PR preview builds** are a separate pipeline: `.github/workflows/pr.yml`
+runs on `pull_request` (including drafts), builds the **merge ref**
+(`dev` + the PR branch) as a single-package release-signed *debug*
+`nekox.messenger` APK via `assembleDebug`, and uploads it. That's the
+on-device preview (see step 9); `staging.yml` is the post-land dual-package
+build that runs on push to `dev`.
 
 ## Keeping this current
 

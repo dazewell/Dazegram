@@ -36,6 +36,9 @@ branches sit still.
    feature to the base fork, on a throwaway `dazewell/<slug>-pr` copy.
 
 **"Which command do I need?"** → jump to *Case-by-case procedures* below.
+**"How do I test a feature before landing?"** → open a **draft PR** into
+`dev`; `pr.yml` builds the `dev`+feature merge ref and uploads it. Jump to
+*Testing a feature (preview build)*.
 **"Something on `dev` broke my feature"** → jump to *When something on `dev`
 breaks my feature*.
 **"I need the whole rationale"** → keep reading from *Why this model exists*.
@@ -249,20 +252,52 @@ git switch -c dazewell/<slug> base
 git push -u origin dazewell/<slug>
 ```
 
+### Testing a feature (preview build)
+
+The compile gate runs on the topic itself, but the **on-device build
+dazewell tests must be `dev` + the feature**, not a bare topic branch: a
+topic cut from `base` is the feature sitting on raw upstream, missing the
+current fork state and every other landed feature. So the preview always
+builds the *merge* of the topic into `dev`.
+
+The mechanism is a **draft PR** from `dazewell/<slug>` into `dev` on
+`origin`. Opening it — and every later push to the topic — triggers
+`pr.yml`, which checks out the PR **merge ref** (`dev` + feature) and builds
+a release-signed debug `nekox.messenger` (Unofficial) APK, then uploads it
+through the normal channel. dazewell installs it over the daily Unofficial
+app and tests. No throwaway branch and no local merge: **the topic and `dev`
+are both untouched** — the merge exists only as GitHub's ephemeral
+test-merge.
+
+Draft matters because it keeps the merge button disabled — the PR is purely
+a build/test vehicle until the green light. On the green light you mark it
+**Ready for review** and merge it (a **merge commit, never a squash** — see
+"Land a feature into the build"), which is the landing. The signed
+**dual-package** build (Unofficial + Official, minified) comes afterward from
+`staging.yml` on the push to `dev`; the PR preview is the single-package
+debug build.
+
 ### Land a feature into the build (integration)
+
+Normally the feature already has a **draft preview PR** open against `dev`
+(see "Testing a feature" above). Landing is just promoting it: mark it
+**Ready for review** and merge with a **merge commit, never a squash-merge**.
+That merge triggers `staging.yml` (the signed dual-package build) and
+`register-topic.yml` (which records the topic in the manifest).
+
+If you skipped the PR, land locally instead:
 ```powershell
 git switch dev
 git merge --no-edit dazewell/<slug>
 git push origin dev            # normal push -> staging.yml builds + uploads
 ```
-If you'd rather land through a review PR on `origin`, that's fine — just
-**merge it with a merge commit, never a squash-merge**, so the feature's
-commits stay whole and `dev` never needs a force-push. Squash is reserved
-for the upstream `-pr` (below). PRs to the
-base fork are a separate thing from landing into `dev`.
+Either way, **merge with a merge commit, never a squash-merge**, so the
+feature's commits stay whole and `dev` never needs a force-push. Squash is
+reserved for the upstream `-pr` (below); PRs to the base fork are a separate
+thing from landing into `dev`.
 
-Either way, register the topic in the manifest **after** the feature is
-landed — see the step below.
+Register the topic in the manifest **after** the feature is landed — see the
+step below (automated for PR merges, manual only for a local merge).
 
 ### Register a landed feature in the manifest (automated + fallback)
 
