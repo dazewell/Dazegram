@@ -7,8 +7,9 @@ description: "Dazewell's git branch / integration / upstream-sync model for the 
 
 This is the **plumbing** layer for dazewell's fork. The `nagramx-workflow`
 skill still owns *what a change looks like* (design review round 1, minimal
-hooks, compile gate, code review round 2, README + humanizer, commit style,
-no AI in the log). This skill owns *where commits live and how they move* —
+hooks, compile gate, code review round 2, the `FEATURES.md` entry + humanizer,
+commit style, no AI in the log). This skill owns *where commits live and how
+they move* —
 the branch topology, upstream sync, and the phone-triggered automation.
 
 Read `nagramx-workflow` for the change itself; read this for the git
@@ -248,7 +249,8 @@ stop rebasing them; append instead.
 git fetch source dev
 git switch base; git merge --ff-only source/dev        # keep base current
 git switch -c dazewell/<slug> base
-# ...do the nagramx-workflow steps: design review, hooks, compile, code review, README...
+# ...do the nagramx-workflow steps: design review, hooks, compile, code review...
+# (the FEATURES.md entry is written now but committed on dev at landing, not here)
 git push -u origin dazewell/<slug>
 ```
 
@@ -285,19 +287,34 @@ Normally the feature already has a **draft preview PR** open against `dev`
 That merge triggers `staging.yml` (the signed dual-package build) and
 `register-topic.yml` (which records the topic in the manifest).
 
-If you skipped the PR, land locally instead:
+If you skipped the PR, land locally instead. Push the **code merge first** so
+the build is triggered by (and labelled with) the merge, then add the
+dev-only follow-ups in a second push:
 ```powershell
 git switch dev
 git merge --no-edit dazewell/<slug>
-git push origin dev            # normal push -> staging.yml builds + uploads
+git push origin dev            # code merge -> staging.yml builds + uploads
+# then the dev-only follow-ups below (FEATURES.md entry + manifest), pushed
+# separately -> staging ignores them, so no second build
 ```
 Either way, **merge with a merge commit, never a squash-merge**, so the
 feature's commits stay whole and `dev` never needs a force-push. Squash is
 reserved for the upstream `-pr` (below); PRs to the base fork are a separate
 thing from landing into `dev`.
 
-Register the topic in the manifest **after** the feature is landed — see the
-step below (automated for PR merges, manual only for a local merge).
+**Two dev-only follow-ups finish the landing**, both **after** the merge and
+both on `dev` only. Neither triggers a staging build: `staging.yml` ignores
+`*.md` and `.github/**`, so **only the code merge builds** — which is exactly
+the rule "a build happens when the feature is merged, not when it's
+registered or documented."
+
+- **Add the feature's `FEATURES.md` entry** (written per `nagramx-workflow`
+  step 6) under its `## section`, humanized. It lives on `dev`, never on the
+  topic — that is what keeps a `base`-cut topic from colliding with `dev`'s
+  catalog on every landing, and keeps the upstream `-pr` code-only.
+- **Register the topic in the manifest** — see the step below (automated for
+  PR merges, always manual for the `FEATURES.md` entry since prose can't be
+  generated).
 
 ### Register a landed feature in the manifest (automated + fallback)
 
@@ -360,10 +377,11 @@ guaranteed to touch `dev` and only `dev`. Retiring a feature is the reverse
 ### Add a fix/improvement to an existing feature (the "week later" case)
 ```powershell
 git switch dazewell/<slug>
-# ...implement the fix (compile gate, review, README if user-visible)...
+# ...implement the fix (compile gate, review)...
 git commit -m "dazewell: <slug> — <what the fix does>"
 git push origin dazewell/<slug>          # append, never force
 git switch dev; git merge --no-edit dazewell/<slug>; git push origin dev
+# if the fix changes user-visible behaviour, update the FEATURES.md entry on dev too
 ```
 The fix now lives with the feature forever; the whole thing is still
 `base..dazewell/<slug>`. You don't need to rebase the topic onto newer
@@ -398,14 +416,13 @@ PR merges (deleting a branch is not a force-push). This is the routine
 ceremony that rewrites history, and it does it on a copy — the only other
 rewrite is the rare "feature must adopt new upstream API" case above.
 
-**Drop the fork README bullet here.** A feature carries its `README.md`
-entry on the topic branch (see `nagramx-workflow` step 6), but that bullet
-describes *dazewell's* fork catalog, not the base fork's. When you replay
-onto `source/dev` its README hunk will conflict or land fork-presentation
-content upstream, so during the `rebase -i`/squash on the `-pr` copy, **drop
-or edit out the `README.md` change** — the proposed commit should be feature
-code only. The living topic keeps its README bullet; only the throwaway copy
-loses it.
+**Nothing fork-specific to strip.** The topic is code-only: its user-facing
+doc entry lives in `FEATURES.md` on `dev`, not on the branch (see
+`nagramx-workflow` step 6), so `base..dazewell/<slug>` is already just the
+feature. The `-pr` copy replays clean onto `source/dev` with no README or
+`FEATURES.md` hunk to drop. (This is why the doc entry moved off the topic:
+it kept the base fork's `README.md` from colliding on every landing *and*
+made the upstream proposal clean.)
 
 ### Retire a feature from the build
 Remove it from `.github/integration-branches.txt`, then rebuild `dev`:

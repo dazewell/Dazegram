@@ -17,9 +17,9 @@ exchange for a repo that stays clean.
 Commit messages, PR titles/bodies, and code (comments included) must never
 reference Claude, Anthropic, Copilot, or any assistant — no
 `Co-Authored-By`, no "Generated with" footers, no AI-flavored comments.
-This workflow doc, `CLAUDE.md`, `README.md`, and the memory notes are
-allowed to talk about the process openly; the app's history and code are
-not.
+This workflow doc, `CLAUDE.md`, `README.md`, `FEATURES.md`, and the memory
+notes are allowed to talk about the process openly; the app's history and
+code are not.
 
 ## What NagramX is (and isn't)
 
@@ -144,14 +144,23 @@ not.
    Address the comments, re-review. This is a distinct second pass from the
    step-1 design review.
 
-6. **README.md, same change.** If the change is user-visible, add or update
-   its entry in the feature bullet list in the repo-root `README.md`,
-   matching the existing voice and format exactly: `**Feature name:**`
-   lead-in, then a plain-spoken description of what it does and how to use
-   it, no marketing language, occasional inline shortcut table or
-   screenshot where neighboring entries do that. Run the new prose through
-   the `humanizer` skill before it goes in — every entry reads like a
-   person wrote it in one pass, and new ones need to match.
+6. **Feature doc entry — written now, committed at landing (not on the
+   topic).** If the change is user-visible, write its entry for `FEATURES.md`:
+   under the right `## section`, a `### Feature name` heading, then a
+   plain-spoken description of what it does and how to use it, no marketing
+   language, with an inline shortcut table or screenshot where neighboring
+   entries do that. Run the prose through the `humanizer` skill so it reads
+   like dazewell wrote it in one pass, matching the surrounding entries.
+
+   But the entry does **not** go on the topic branch. `FEATURES.md` is
+   dazewell's fork catalog, which the base fork's `README.md` doesn't have,
+   so committing it on a `base`-cut topic collides with `dev` on every
+   landing. Keep the topic **code-only** (plus its fork-owned strings and
+   drawables) and add the `FEATURES.md` entry on `dev` at landing time,
+   next to the manifest registration — see the `nagramx-branch-flow` skill.
+   The repo-root `README.md` is a stable pointer to `FEATURES.md` and does
+   not change per feature. (Because the entry lands as a `.md` commit on
+   `dev`, it never triggers a staging build — only the code merge does.)
 
 7. **Commit.**
    - Subject: `dazewell: <lowercase, imperative summary>` — e.g.
@@ -270,7 +279,7 @@ directly in the same session, don't just remember it in conversation. Keep
 it in sync with the repo's `CLAUDE.md` (a thin pointer to this skill) and
 the memory feature maps; the same change should land in all of them at
 once. It should always reflect the process as currently practiced, the same
-way the README should always reflect the features currently shipped.
+way `FEATURES.md` should always reflect the features currently shipped.
 
 This file is committed in the repo at
 `.claude/skills/nagramx-workflow/SKILL.md`, so it's discoverable as a
