@@ -4227,7 +4227,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     clearSelectionMode();
                 } else if (id == nkactionbarbtn_send_now) {
-                    performSendNowSelectedMessages();
+                    confirmSendNowSelectedMessages();
                 } else if (id == nkactionbarbtn_reschedule) {
                     performRescheduleSpreadSelectedMessages();
                 } else if (id == delete) {
@@ -11076,12 +11076,19 @@ public class ChatActivity extends BaseFragment implements
         actionModeViews.add(actionMode.addItemWithWidth(edit, R.drawable.msg_edit, dp(54), LocaleController.getString(R.string.Edit)));
         actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_selectBetween, R.drawable.ic_select_between, dp(54), LocaleController.getString(R.string.SelectBetween)));
         actionModeViews.add(actionMode.addItemWithWidth(star, R.drawable.msg_fave, dp(54), LocaleController.getString(R.string.AddToFavorites)));
-        actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, dp(54), LocaleController.getString(R.string.Copy)));
+        // NagramX: in scheduled selection, copy + forward move to the overflow and delete shifts to the
+        // top-right, trimming the top row so the selection count isn't hidden behind the button cluster.
+        final boolean scheduledActionBar = chatMode == MODE_SCHEDULED;
+        if (!scheduledActionBar) {
+            actionModeViews.add(actionMode.addItemWithWidth(copy, R.drawable.msg_copy, dp(54), LocaleController.getString(R.string.Copy)));
+        }
         actionModeViews.add(actionMode.addItemWithWidth(combine_message, R.drawable.msg_replace, dp(54), LocaleController.getString(R.string.CombineMessage)));
-        if (currentEncryptedChat == null && getDialogId() != UserObject.VERIFY && NaConfig.INSTANCE.getActionBarButtonForward().Bool()) {
+        if (!scheduledActionBar && currentEncryptedChat == null && getDialogId() != UserObject.VERIFY && NaConfig.INSTANCE.getActionBarButtonForward().Bool()) {
             actionModeViews.add(actionMode.addItemWithWidth(forward, R.drawable.msg_forward_noquote, dp(54), LocaleController.getString(R.string.Forward)));
         }
-        actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), LocaleController.getString(R.string.Delete)));
+        if (!scheduledActionBar) {
+            actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), LocaleController.getString(R.string.Delete)));
+        }
         actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_send_now, R.drawable.msg_send, AndroidUtilities.dp(54), LocaleController.getString(R.string.MessageScheduleSend)));
         actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_reschedule, R.drawable.msg_calendar2, AndroidUtilities.dp(54), LocaleController.getString(R.string.Reschedule)));
 
@@ -11095,6 +11102,10 @@ public class ChatActivity extends BaseFragment implements
 
         boolean noforward = getMessagesController().isChatNoForwards(currentChat);
         boolean canSendMessages = ChatObject.canSendMessages(currentChat);
+        if (scheduledActionBar) {
+            // NagramX: delete moves to the top-right, right before the overflow, in scheduled selection
+            actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), LocaleController.getString(R.string.Delete)));
+        }
         actionModeViews.add(actionModeOtherItem = actionMode.addItemWithWidth(nkactionbarbtn_action_mode_other, R.drawable.ic_ab_other, dp(54), LocaleController.getString(R.string.MessageMenu)));
 
         if (currentEncryptedChat == null && !noforward) {
@@ -11113,6 +11124,13 @@ public class ChatActivity extends BaseFragment implements
         actionModeOtherItem.addSubItem(nkbtn_hide, R.drawable.msg_disable, LocaleController.getString(R.string.Hide));
         actionModeOtherItem.addSubItem(nkbtn_report, R.drawable.msg_report, LocaleController.getString(R.string.ReportChat));
         actionModeOtherItem.addSubItem(nkbtn_detail,R.drawable.msg_info,LocaleController.getString(R.string.MessageDetails));
+        if (scheduledActionBar) {
+            // NagramX: copy + forward relocated here off the scheduled top row (forward honours the same config toggle as the top-row button)
+            actionModeOtherItem.addSubItem(copy, R.drawable.msg_copy, LocaleController.getString(R.string.Copy));
+            if (currentEncryptedChat == null && getDialogId() != UserObject.VERIFY && NaConfig.INSTANCE.getActionBarButtonForward().Bool()) {
+                actionModeOtherItem.addSubItem(forward, R.drawable.msg_forward_noquote, LocaleController.getString(R.string.Forward));
+            }
+        }
 
         actionMode.setItemVisibility(nkactionbarbtn_reply, canSendMessages && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 1) && NaConfig.INSTANCE.getActionBarButtonReply().Bool() ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(edit, canEditMessagesCount == 1 && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 1) && NaConfig.INSTANCE.getActionBarButtonEdit().Bool() ? View.VISIBLE : View.GONE);
@@ -11128,7 +11146,13 @@ public class ChatActivity extends BaseFragment implements
         actionMode.setItemVisibility(share, View.GONE);
 
         actionModeOtherItem.setSubItemVisibility(star, selectedMessagesCanStarIds[0].size() + selectedMessagesCanStarIds[1].size() != 0);
-        boolean doShrinkActionBarItems = isActionBarTooNarrow && actionMode.getItem(edit).getVisibility() == View.VISIBLE && actionMode.getItem(copy).getVisibility() == View.VISIBLE && actionMode.getItem(delete).getVisibility() == View.VISIBLE;
+        ActionBarMenuItem editItem = actionMode.getItem(edit);
+        ActionBarMenuItem copyItem = actionMode.getItem(copy);
+        ActionBarMenuItem deleteItem = actionMode.getItem(delete);
+        boolean doShrinkActionBarItems = isActionBarTooNarrow
+                && editItem != null && editItem.getVisibility() == View.VISIBLE
+                && copyItem != null && copyItem.getVisibility() == View.VISIBLE
+                && deleteItem != null && deleteItem.getVisibility() == View.VISIBLE;
         if (doShrinkActionBarItems) {
             actionMode.getItem(nkactionbarbtn_reply).setVisibility(View.GONE);
         }
@@ -20356,6 +20380,18 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (rescheduleItem != null) {
                     rescheduleItem.setVisibility(chatMode == MODE_SCHEDULED && selectedCount > 0 ? View.VISIBLE : View.GONE);
+                }
+                if (chatMode == MODE_SCHEDULED && actionModeOtherItem != null) {
+                    // NagramX: copy/forward live in the overflow here; keep copy shown only when there's something to copy
+                    // and mirror the top-row forward's disabled state (forwarding scheduled messages is unsupported).
+                    actionModeOtherItem.setSubItemVisibility(copy, selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 && NaConfig.INSTANCE.getActionBarButtonCopy().Bool());
+                    ActionBarMenuSubItem forwardSubItem = actionModeOtherItem.getSubItem(forward);
+                    if (forwardSubItem != null) {
+                        // forwarding unsent scheduled messages is unsupported, so this stays greyed
+                        boolean canForwardScheduled = cantForwardMessagesCount == 0;
+                        forwardSubItem.setEnabled(canForwardScheduled);
+                        forwardSubItem.setAlpha(canForwardScheduled ? 1.0f : 0.5f);
+                    }
                 }
                 hasUnfavedSelected = false;
                 for (int a = 0; a < 2; a++) {
@@ -36489,6 +36525,20 @@ public class ChatActivity extends BaseFragment implements
                 }
             });
         }
+    }
+
+    private void confirmSendNowSelectedMessages() {
+        if (getParentActivity() == null) {
+            performSendNowSelectedMessages();
+            return;
+        }
+        if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 0) return;
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString(R.string.MessageScheduleSend));
+        builder.setMessage(LocaleController.getString(R.string.SendScheduledNowConfirm));
+        builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialogInterface, i) -> performSendNowSelectedMessages());
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showDialog(builder.create());
     }
 
     private void performSendNowSelectedMessages() {
