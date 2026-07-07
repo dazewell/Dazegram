@@ -49193,6 +49193,30 @@ public class ChatActivity extends BaseFragment implements
         checkUi_BlurHeight();
         checkUi_emptyContainerPosition();
         checkUi_chatListViewPaddings();
+        checkUi_expandedInputGlassReprime();
+    }
+
+    // NagramX: the fullscreen input toggle jumps the island by hundreds of dp; once the height
+    // animation settles, rebuild the glass render nodes so a hiccup mid-animation can't leave
+    // the input opaque until the chat is reopened
+    private boolean expandedInputGlassWasExpanded;
+    private boolean expandedInputGlassReprimePending;
+    private void checkUi_expandedInputGlassReprime() {
+        final boolean expanded = chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded();
+        if (expanded != expandedInputGlassWasExpanded) {
+            expandedInputGlassWasExpanded = expanded;
+            expandedInputGlassReprimePending = true;
+        }
+        if (expandedInputGlassReprimePending && inputIslandHeightCurrent == inputIslandHeightTarget) {
+            expandedInputGlassReprimePending = false;
+            if (glassBackgroundSourceRenderNode != null) {
+                glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
+            }
+            if (glassBackgroundSourceFrostedRenderNode != null) {
+                glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
+            }
+            invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_POSITIONS);
+        }
     }
 
     private static final Rect clipBoundsRect = new Rect();
