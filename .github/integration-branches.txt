@@ -14,3 +14,4 @@
 #   dazewell/hide-last-message
 
 copilot/implement-retry-with-menu
+dazewell/fullscreen-input
