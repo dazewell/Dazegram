@@ -12806,6 +12806,14 @@ public class ChatActivity extends BaseFragment implements
         checkUi_chatListViewPaddings();
     }
 
+    // NagramX: absolute anchor for keeping the chat list pinned across an input-island resize (see
+    // checkUi_chatListViewPaddings). The list is bottom-anchored, so the island growing/shrinking would
+    // otherwise shift every message; we re-pin one visible message to a fixed screen spot each frame.
+    private float lastIslandHeight = -1f;
+    private boolean islandPinActive;
+    private int islandPinPosition;
+    private int islandPinOffset;
+    private int islandPinStartHeight;
     private void checkUi_chatListViewPaddings() {
         if (chatListView == null) {
             return;
@@ -12821,11 +12829,48 @@ public class ChatActivity extends BaseFragment implements
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
         }
 
+        // NagramX: keep the visible history in place while the input island animates its height. The list
+        // is bottom-anchored, so a growing island shifts every message up (wanted on the newest message,
+        // but a fling to the bottom while reading history). Capture one on-screen message when the resize
+        // starts, then below re-pin it to the same screen position each frame - absolute, so it can't
+        // build up the jitter a per-frame scrollBy would. Left alone when sitting on the newest message.
+        final int islandHeightNow = (int) inputIslandHeightCurrent;
+        final boolean islandResizing = chatLayoutManager != null && lastIslandHeight >= 0
+            && islandHeightNow != (int) lastIslandHeight;
+        if (islandResizing && !islandPinActive && !chatListView.fastScrollAnimationRunning
+                && chatLayoutManager.findFirstVisibleItemPosition() != 0) {
+            for (int i = 0; i < chatListView.getChildCount(); i++) {
+                final View child = chatListView.getChildAt(i);
+                if (child instanceof ChatMessageCell || child instanceof ChatActionCell) {
+                    final int position = chatListView.getChildAdapterPosition(child);
+                    if (position >= 0) {
+                        islandPinPosition = position;
+                        islandPinOffset = getScrollingOffsetForView(child);
+                        islandPinStartHeight = (int) lastIslandHeight;
+                        islandPinActive = true;
+                        break;
+                    }
+                }
+            }
+        }
+        lastIslandHeight = inputIslandHeightCurrent;
+
         final int paddingTop = (int) chatListViewPaddingTop;
         if (topicsTabs != null) {
             topicsTabs.setSideMenuBackgroundMarginTop(0);//Math.max(0, paddingTop - blurredViewTopOffset - dp(5)));
         }
         chatListViewPaddingsAnimator.setPaddings(paddingTop, paddingBottom, !chatListView.fastScrollAnimationRunning);
+        if (islandPinActive) {
+            if (islandResizing) {
+                try {
+                    chatLayoutManager.scrollToPositionWithOffset(islandPinPosition, islandPinOffset - (islandHeightNow - islandPinStartHeight));
+                } catch (Throwable t) {
+                    FileLog.e(t);
+                }
+            } else {
+                islandPinActive = false;
+            }
+        }
         if (messageMetricsView != null) {
             messageMetricsView.setViewportPadding(
                 getTopicTabsSideSize(TopicsTabsView.Position.LEFT),
