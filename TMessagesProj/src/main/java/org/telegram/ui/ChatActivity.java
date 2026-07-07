@@ -2099,7 +2099,7 @@ public class ChatActivity extends BaseFragment implements
                         return allowRepeat && !message.isSponsored() && chatMode != MODE_SCHEDULED && !message.needDrawBluredPreview() && !message.isLiveLocation() && message.type != 16;
                     case DoubleTap.DOUBLE_TAP_ACTION_REPEAT_AS_COPY:
                         allowRepeat = allowChatActions && (currentChat == null || ((!ChatObject.isNotInChat(currentChat) || isThreadChat()) && (!ChatObject.isChannel(currentChat) || currentChat.megagroup) && ChatObject.canSendMessages(currentChat))) && !isAyuDeleted &&
-                                (!isThreadChat() || getMessageHelper().getMessageForRepeat(message, selectedObjectGroup) != null);
+                                (!noforwards || getMessageHelper().canSendMessageAsCopy(message, selectedObjectGroup)) && (!isThreadChat() || getMessageHelper().getMessageForRepeat(message, selectedObjectGroup) != null);
                         return allowRepeat && !message.isSponsored() && chatMode != MODE_SCHEDULED && !message.needDrawBluredPreview() && !message.isLiveLocation() && message.type != 16;
                     case DoubleTap.DOUBLE_TAP_ACTION_EDIT:
                         return allowEdit && !isAyuDeleted;
@@ -4988,15 +4988,14 @@ public class ChatActivity extends BaseFragment implements
                 String text;
                 int draw;
                 if (!currentChat.megagroup) {
-                    text = LocaleController.getString(R.string.LinkedGroupChat);
+                    text = getString(R.string.LinkedGroupChat);
                     draw = R.drawable.msg_groups;
                 } else {
-                    text = LocaleController.getString(R.string.LinkedChannelChat);
+                    text = getString(R.string.LinkedChannelChat);
                     draw = R.drawable.msg_channel;
                 }
                 if (NaConfig.INSTANCE.getChatMenuItemLinkedChat().Bool()) headerItem.lazilyAddSubItem(nkheaderbtn_linked_chat, draw, text);
             }
-
             if (currentUser != null && currentUser.id != UserObject.VERIFY && currentUser.id != UserObject.REPLY_BOT) {
                 addContactItem = headerItem.lazilyAddSubItem(share_contact, R.drawable.msg_addcontact, LocaleController.getString(R.string.AddToContacts));
             }
@@ -11300,14 +11299,14 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private ArrayList<Pair<String, TLRPC.MessagesFilter>> searchFilters = new ArrayList<>() {{
-        add(Pair.create(LocaleController.getString(R.string.FilterAllChatsShort), null));
-        add(Pair.create(LocaleController.getString(R.string.SharedMediaTab2), new TLRPC.TL_inputMessagesFilterPhotoVideo()));
-        add(Pair.create(LocaleController.getString(R.string.SharedVoiceTab2), new TLRPC.TL_inputMessagesFilterVoice()));
-        add(Pair.create(LocaleController.getString(R.string.SharedFilesTab2), new TLRPC.TL_inputMessagesFilterDocument()));
-        add(Pair.create(LocaleController.getString(R.string.SharedMusicTab2), new TLRPC.TL_inputMessagesFilterMusic()));
-        add(Pair.create(LocaleController.getString(R.string.SharedGIFsTab2), new TLRPC.TL_inputMessagesFilterGif()));
-        add(Pair.create(LocaleController.getString(R.string.ChatLocation), new TLRPC.TL_inputMessagesFilterGeo()));
-        add(Pair.create(LocaleController.getString(R.string.Mention), new TLRPC.TL_inputMessagesFilterMyMentions()));
+        add(Pair.create(getString(R.string.FilterAllChatsShort), null));
+        add(Pair.create(getString(R.string.SharedMediaTab2), new TLRPC.TL_inputMessagesFilterPhotoVideo()));
+        add(Pair.create(getString(R.string.SharedVoiceTab2), new TLRPC.TL_inputMessagesFilterVoice()));
+        add(Pair.create(getString(R.string.SharedFilesTab2), new TLRPC.TL_inputMessagesFilterDocument()));
+        add(Pair.create(getString(R.string.SharedMusicTab2), new TLRPC.TL_inputMessagesFilterMusic()));
+        add(Pair.create(getString(R.string.SharedGIFsTab2), new TLRPC.TL_inputMessagesFilterGif()));
+        add(Pair.create(getString(R.string.ChatLocation), new TLRPC.TL_inputMessagesFilterGeo()));
+        add(Pair.create(getString(R.string.Mention), new TLRPC.TL_inputMessagesFilterMyMentions()));
     }};
 
     private void createSearchContainer() {
@@ -20225,7 +20224,7 @@ public class ChatActivity extends BaseFragment implements
                     repeatItem.setVisibility(canForward && canSendMessage);
                 }
                 if (RepeatAsCopyItem != null) {
-                    RepeatAsCopyItem.setVisibility(canSendMessage);
+                    RepeatAsCopyItem.setVisibility(canSendMessage && (!noforwards || getMessageHelper().canSendMessagesAsCopy(getSelectedMessages1())));
                 }
                 if (reportItem != null) {
                     reportItem.setVisibility(canReport);
@@ -35336,7 +35335,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     final boolean isMusicFinal = isMusic;
                     MediaController.saveFilesFromMessages(getParentActivity(), getAccountInstance(), messageObjects, (count) -> {
-                        if (getParentActivity() == null) {
+                        if (getParentActivity() == null || fragmentView == null) {
                             return;
                         }
                         if (count > 0) {
@@ -38124,10 +38123,10 @@ public class ChatActivity extends BaseFragment implements
                 final int finalTimestamp = timestamp;
                 // boolean noforwards = isPeerNoForwards() || (messageObject != null && messageObject.messageOwner != null && messageObject.messageOwner.noforwards);
                 CharSequence[] items = new CharSequence[]{
-                        LocaleController.getString(R.string.Open),
-                        LocaleController.getString(R.string.Copy),
-                        LocaleController.getString(R.string.ShareQRCode),
-                        LocaleController.getString(R.string.ShareMessages)
+                        getString(R.string.Open),
+                        getString(R.string.Copy),
+                        getString(R.string.ShareQRCode),
+                        getString(R.string.ShareMessages)
                 };
                 // builder.setItems(noforwards ? new CharSequence[] {LocaleController.getString(R.string.Open)} : new CharSequence[]{LocaleController.getString(R.string.Open), LocaleController.getString(R.string.Copy)}, (dialog, which) -> {
                 builder.setItems(items, (dialog, which) -> {
@@ -38199,7 +38198,7 @@ public class ChatActivity extends BaseFragment implements
                             Intent shareIntent = new Intent(Intent.ACTION_SEND);
                             shareIntent.setType("text/plain");
                             shareIntent.putExtra(Intent.EXTRA_TEXT, urlFinal);
-                            Intent chooserIntent = Intent.createChooser(shareIntent, LocaleController.getString("ShareFile", R.string.ShareFile));
+                            Intent chooserIntent = Intent.createChooser(shareIntent, getString(R.string.ShareFile));
                             chooserIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                             ApplicationLoader.applicationContext.startActivity(chooserIntent);
                         }
@@ -42125,10 +42124,10 @@ public class ChatActivity extends BaseFragment implements
                 BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity(), false, themeDelegate);
                 builder.setTitle(button.text);
                 builder.setItems(new CharSequence[]{
-                        LocaleController.getString("Copy", R.string.Copy),
-                        button.data != null ? LocaleController.getString("CopyCallback", R.string.CopyCallback) : null,
-                        button.query != null ? LocaleController.getString("CopyInlineQuery", R.string.CopyInlineQuery) : null,
-                        button.user_id != 0 ? LocaleController.getString("CopyID", R.string.CopyID) : null}, (dialog, which) -> {
+                        getString(R.string.Copy),
+                        button.data != null ? getString(R.string.CopyCallback) : null,
+                        button.query != null ? getString(R.string.CopyInlineQuery) : null,
+                        button.user_id != 0 ? getString(R.string.CopyID) : null}, (dialog, which) -> {
                     if (which == 0) {
                         AndroidUtilities.addToClipboard(button.text);
                     } else if (which == 1) {
@@ -46515,14 +46514,14 @@ public class ChatActivity extends BaseFragment implements
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {
             AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-            builder.setMessage(LocaleController.getString("ConvertGroupAlert", R.string.ConvertGroupAlert));
-            builder.setTitle(LocaleController.getString("ConvertGroupAlertWarning", R.string.ConvertGroupAlertWarning));
-            builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialogInterface, i) -> getMessagesController().convertToMegaGroup(getParentActivity(), currentChat.id, ChatActivity.this, chatNew -> {
+            builder.setMessage(getString(R.string.ConvertGroupAlert));
+            builder.setTitle(getString(R.string.ConvertGroupAlertWarning));
+            builder.setPositiveButton(getString(R.string.OK), (dialogInterface, i) -> getMessagesController().convertToMegaGroup(getParentActivity(), currentChat.id, ChatActivity.this, chatNew -> {
                 if (chatNew != 0) {
                     getMessagesController().toggleChannelInvitesHistory(chatNew, false);
                 }
             }));
-            builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+            builder.setNegativeButton(getString(R.string.Cancel), null);
             showDialog(builder.create());
         } else if (id == nkheaderbtn_show_pinned) {
             SharedPreferences preferences = MessagesController.getNotificationsSettings(currentAccount);
@@ -46867,14 +46866,11 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
         final ArrayList<MessageObject> messages = new ArrayList<>();
-        if (selectedObject != null) {
+        if (hasSelectedMessages()) {
+            messages.addAll(getSelectedMessages1());
+            selectedObject = null;
+        } else if (selectedObject != null) {
             messages.add(selectedObject);
-        } else {
-            for (int k = 0; k < selectedMessagesIds[0].size(); k++) {
-                if (selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)) != null) {
-                    messages.add(selectedMessagesIds[0].get(selectedMessagesIds[0].keyAt(k)));
-                }
-            }
         }
         if (!NekoConfig.repeatConfirm.Bool()) {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);
@@ -46882,18 +46878,18 @@ public class ChatActivity extends BaseFragment implements
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle(LocaleController.getString("Repeat", R.string.Repeat));
-        builder.setMessage(LocaleController.getString("repeatConfirmText", R.string.repeatConfirmText));
-        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK), (dialogInterface, i) -> {
+        builder.setTitle(getString(R.string.Repeat));
+        builder.setMessage(getString(R.string.repeatConfirmText));
+        builder.setPositiveButton(getString(R.string.OK), (dialogInterface, i) -> {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);
         });
-        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+        builder.setNegativeButton(getString(R.string.Cancel), null);
         showDialog(builder.create());
     }
 
     private void doRepeatMessage(boolean isLongClick, ArrayList<MessageObject> messages, boolean isRepeatAsCopy) {
-        boolean noforwards = getMessagesController().isChatNoForwards(currentChat);
-        if (selectedObject == null && noforwards && !messages.isEmpty()) {
+        boolean noforwards = getMessageHelper().shouldRepeatMessagesAsCopy(messages, currentChat);
+        if (selectedObject == null && noforwards && messages.size() == 1) {
             selectedObject = messages.get(0);
         }
         if (selectedObject != null && selectedObject.messageOwner != null && (isLongClick || (isThreadChat() && !isTopic) || noforwards)) {
@@ -46902,32 +46898,25 @@ public class ChatActivity extends BaseFragment implements
             // When not LongClick but in a threadchat: reply to the Thread
             MessageObject replyTo = selectedObject.replyMessageObject != null ? isLongClick ? selectedObject.replyMessageObject : getThreadMessage() : getThreadMessage();
             if (replyTo != null || noforwards) {
-                if (selectedObject.type == 0 || selectedObject.isAnimatedEmoji() || getMessageCaption(selectedObject, selectedObjectGroup) != null) {
-                    CharSequence caption = getMessageCaption(selectedObject, selectedObjectGroup);
-                    if (caption == null) {
-                        caption = getMessageContent(selectedObject, 0, false);
-                    }
-                    if (!TextUtils.isEmpty(caption)) {
-                        SendMessagesHelper.getInstance(currentAccount)
-                                .sendMessage(caption.toString(), dialog_id, replyTo,
-                                        getThreadMessage(), null,
-                                        false, selectedObject.messageOwner.entities, null, null,
-                                        true, 0, 0, null, false);
-                    }
-                } else if ((selectedObject.isSticker() || selectedObject.isAnimatedSticker()) && selectedObject.getDocument() != null) {
-                    SendMessagesHelper.getInstance(currentAccount)
-                            .sendSticker(selectedObject.getDocument(), null, dialog_id, null, null, replyTo, getThreadMessage(), null, replyingQuote, null, true, 0, 0, false, null, quickReplyShortcut, getQuickReplyId(), 0, 0, null);
+                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), replyingQuote, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                    BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
                 }
                 return;
             }
         }
-
+        if (selectedObject == null && noforwards) {
+            MessageObject replyTo = getThreadMessage();
+            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, replyTo, getThreadMessage(), replyingQuote, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
+            }
+            return;
+        }
         forwardMessages(messages, isLongClick || isRepeatAsCopy, false, true, 0, 0);
     }
 
     public void setScrollToMessage() {
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle(LocaleController.getString("InputMessageId", R.string.InputMessageId));
+        builder.setTitle(getString(R.string.InputMessageId));
         final EditTextBoldCursor editText = new EditTextBoldCursor(getParentActivity());
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
         editText.setTextColor(getThemedColor(Theme.key_dialogTextBlack));
@@ -46944,7 +46933,7 @@ public class ChatActivity extends BaseFragment implements
         editText.setInputType(InputType.TYPE_CLASS_NUMBER);
         builder.setView(editText);
 
-        builder.setPositiveButton(LocaleController.getString("OK", R.string.OK),
+        builder.setPositiveButton(getString(R.string.OK),
                 (dialogInterface, i) -> {
                     try {
                         if (Integer.parseInt(editText.getText().toString()) > 0) {
@@ -46953,7 +46942,7 @@ public class ChatActivity extends BaseFragment implements
                     } catch (NumberFormatException ignored) {
                     }
                 });
-        builder.setNegativeButton(LocaleController.getString("Cancel", R.string.Cancel), null);
+        builder.setNegativeButton(getString(R.string.Cancel), null);
         builder.setOnDismissListener(dialog -> {
             chatActivityEnterView.getEditField().clearFocus();
         });
@@ -49063,7 +49052,7 @@ public class ChatActivity extends BaseFragment implements
                         options.add(nkbtn_repeat);
                         icons.add(R.drawable.msg_repeat);
                     }
-                    if (allowRepeat && !isAyuDeleted && !selectedObject.needDrawBluredPreview() && (NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NekoConfig.showRepeat.Bool() && noforwards))){
+                    if ((NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NekoConfig.showRepeat.Bool() && noforwards)) && allowRepeat && !isAyuDeleted && !selectedObject.needDrawBluredPreview() && (!noforwards || getMessageHelper().canSendMessageAsCopy(selectedObject, selectedObjectGroup))){
                         items.add(LocaleController.getString(R.string.RepeatAsCopy));
                         options.add(nkbtn_repeatascopy);
                         icons.add(R.drawable.msg_repeat);
