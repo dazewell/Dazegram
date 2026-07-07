@@ -9522,7 +9522,34 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private boolean lastInAppInputVisible;
+    // NagramX: height budget for the fullscreen input mode, everything between the action bar
+    // and whatever input method is up (keyboard or emoji panel), minus the island's bottom gap
+    private void checkUi_expandedInputBudget() {
+        if (chatActivityEnterView == null || contentView == null) {
+            return;
+        }
+        // settled (target) insets, not the per-frame animated value: the field resizes once to its end
+        // state instead of relayouting the whole screen on every frame of an inset animation
+        final int maxBottomInset = Math.max(
+            windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.systemBars()).bottom,
+            windowInsetsStateHolder.getInAppKeyboardHeight());
+        int budget = contentView.getMeasuredHeight() - contentView.getPaddingTop()
+            - maxBottomInset
+            - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 10);
+        if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
+            budget -= actionBar.getMeasuredHeight();
+        }
+        final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
+            || windowInsetsStateHolder.inAppViewIsVisible();
+        chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);
+    }
+
     private void checkInsets() {
+        // only while expanded (to resize/collapse on keyboard<->emoji swaps and dismissals); when off,
+        // the measure pass keeps the budget primed, so this per-frame path stays free for everyone else
+        if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
+            checkUi_expandedInputBudget();
+        }
         chatInputViewsContainer.checkInsets();
         updatePagedownButtonsPosition();
         updateBotforumTabsBottomMargin();
@@ -19179,6 +19206,7 @@ public class ChatActivity extends BaseFragment implements
             }
 
             int childCount = getChildCount();
+            checkUi_expandedInputBudget(); // NagramX: refresh the fullscreen input budget before the enter view measures
             measureChildWithMargins(chatActivityEnterView, widthMeasureSpec, 0, heightMeasureSpec, 0);
 
             if (inPreviewMode || isInsideContainer || shouldHideBottomFor3ButtonNav() || shouldHideBottomForGesture()) {
