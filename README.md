@@ -150,6 +150,13 @@ the same "Retry with…" list is one press away on the message itself. Hold the 
 
 </details>
 
+<details>
+<summary><b>Fullscreen message input</b></summary>
+
+once your draft grows past two lines, a small expand button shows up in the top corner of the message box, next to the AI edit button. Tap it and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. The icon flips to a collapse arrow, and tapping again returns to normal. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box, just taller. It also works while editing a message, and the button keeps out of the way in landscape and split-screen.
+
+</details>
+
 ## Download
 
 Latest versions are available through:

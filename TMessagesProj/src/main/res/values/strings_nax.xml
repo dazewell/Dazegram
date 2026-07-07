@@ -411,4 +411,6 @@
     <string name="HotkeysChatNotice">↑ edits your last message when the input field is empty. Enter confirms the schedule picker. In emoji search: arrow keys navigate, Enter inserts the emoji, Ctrl+Enter sends the message, Esc closes the panel.</string>
     <string name="HotkeysTextNotice">Formatting shortcuts apply to the selected text. Quote also works at the cursor without a selection.</string>
     <string name="ExportAyuDB">Export Database</string>
+    <string name="ExpandMessageField">Expand message field</string>
+    <string name="CollapseMessageField">Collapse message field</string>
 </resources>
