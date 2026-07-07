@@ -363,6 +363,15 @@ PR merges (deleting a branch is not a force-push). This is the routine
 ceremony that rewrites history, and it does it on a copy — the only other
 rewrite is the rare "feature must adopt new upstream API" case above.
 
+**Drop the fork README bullet here.** A feature carries its `README.md`
+entry on the topic branch (see `nagramx-workflow` step 6), but that bullet
+describes *dazewell's* fork catalog, not the base fork's. When you replay
+onto `source/dev` its README hunk will conflict or land fork-presentation
+content upstream, so during the `rebase -i`/squash on the `-pr` copy, **drop
+or edit out the `README.md` change** — the proposed commit should be feature
+code only. The living topic keeps its README bullet; only the throwaway copy
+loses it.
+
 ### Retire a feature from the build
 Remove it from `.github/integration-branches.txt`, then rebuild `dev`:
 ```powershell
