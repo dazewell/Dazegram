@@ -350,4 +350,6 @@
     <string name="DeepLTranslateKeyNotice">Configure DeepL API Key, leave blank to use built-in credentials.</string>
     <string name="DefaultScheduleDelay">Default delay</string>
     <string name="ExportAyuDB">Export Database</string>
+    <string name="ExpandMessageField">Expand message field</string>
+    <string name="CollapseMessageField">Collapse message field</string>
 </resources>
