@@ -2855,7 +2855,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleType(ImageView.ScaleType.CENTER);
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         aiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
-        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
+        // NagramX: second slot, tucked under the expand button (frames overlap 12dp so the icons sit ~8dp apart)
+        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 33, 0, 0));
         aiButton.setContentDescription(getString(R.string.AIEditor));
         ScaleStateListAnimator.apply(aiButton);
         aiButton.setOnClickListener(v -> {
@@ -2896,15 +2897,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleX(0.6f);
         aiButton.setScaleY(0.6f);
 
-        // NagramX: fullscreen input toggle. Sits directly under the AI button so both share the one
-        // right-edge column the text already clears, otherwise a long line runs under this icon.
-        // Secret chats never show the AI button, so there it takes the top slot instead.
+        // NagramX: fullscreen input toggle. Takes the top slot on the right edge; the AI button, when it
+        // fits, sits in the second slot below it. Both live in the one right-edge column the text already
+        // clears, otherwise a long line would run under this icon.
         expandInputButton = new ImageView(context);
         expandInputButton.setImageResource(R.drawable.photo_expand);
         expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
         expandInputButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
-        textFieldContainer.addView(expandInputButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, parentFragment != null && parentFragment.isSecretChat() ? 1 : 1 + DEFAULT_HEIGHT, 0, 0));
+        textFieldContainer.addView(expandInputButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
         expandInputButton.setContentDescription(getString(R.string.ExpandMessageField));
         ScaleStateListAnimator.apply(expandInputButton);
         expandInputButton.setOnClickListener(v -> setMessageEditExpanded(!messageEditExpanded));
@@ -6281,6 +6282,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 if (lineCount != messageEditText.getLineCount()) {
                     showAiButton(messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
+                } else {
+                    // NagramX: the field height can change without the line count moving (the
+                    // fullscreen toggle), and the AI button's room gate depends on it
+                    showAiButton(aiButtonWanted);
                 }
                 checkExpandInputButton();
             }
@@ -6674,9 +6679,24 @@ public class ChatActivityEnterView extends FrameLayout implements
             .start();
     }
 
+    // NagramX: the AI button sits in the second slot under the expand button. Below ~4 lines that
+    // slot runs into the bottom-anchored send button, so it yields until its icon (24dp centered
+    // in the 44dp frame) clears the send icon. The field measures ~2dp shorter than the container
+    // the buttons anchor to.
+    private boolean aiButtonWanted;
+    private boolean aiButtonHasRoom() {
+        if (messageEditText == null || !(aiButton.getLayoutParams() instanceof MarginLayoutParams)) {
+            return false;
+        }
+        final int iconBottom = ((MarginLayoutParams) aiButton.getLayoutParams()).topMargin + dp(34);
+        final int sendIconTop = messageEditText.getMeasuredHeight() + dp(2) - dp(34);
+        return iconBottom <= sendIconTop;
+    }
+
     private boolean shownAiButton;
     private void showAiButton(boolean show_) {
-        final boolean show = show_ && parentFragment != null && !parentFragment.isSecretChat();
+        aiButtonWanted = show_;
+        final boolean show = show_ && parentFragment != null && !parentFragment.isSecretChat() && aiButtonHasRoom();
 
         if (shownAiButton == show) return;
         if (show) {
