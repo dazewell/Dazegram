@@ -60,13 +60,16 @@ def get_document() -> list["InputMediaDocument"]:
         InputMediaDocument(
             media = str("TMessagesProj/src/main/" + "ic_launcher_nagram_block_round-playstore.png")
         ))
-    # Telegram caps captions at 1024 chars. Keep the AI summary and make room by
-    # trimming the commit message; the summary is bounded so the caption always
-    # fits even with no message text left.
+    # Telegram caps captions at 1024 chars. Split the budget so the commit
+    # message always keeps a share (it used to be starved to "…" by a long
+    # summary); the summary then takes whatever the message doesn't need.
     limit = 1024
     overhead = len(get_caption(commit_msg_budget=0))
     wrapper = len("\n\n<blockquote expandable></blockquote>")
-    ai_summary = get_ai_summary(max_inner=max(0, limit - overhead - wrapper))
+    content_budget = max(0, limit - overhead - wrapper)
+    commit_message = get_commit_info()[2]
+    msg_reserve = min(len(commit_message), content_budget // 2)
+    ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
     documents[-1].caption = base_caption + ai_summary

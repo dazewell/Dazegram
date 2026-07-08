@@ -188,11 +188,12 @@ jobs:
 
           PROMPT=$(cat << 'EOP'
           Please summarize the Git commit messages between the last CI build and the current build using Telegram HTML formatting (not Markdown):
-          - Output strictly valid HTML supported by Telegram Bot API (e.g., <b>, <i>, <u>, <s>, <code>, <pre>, <a href="...">, <blockquote>, <br>).
+          - Output strictly valid HTML supported by Telegram (e.g., <b>, <i>, <u>, <s>, <code>, <pre>, <a href="...">, <blockquote>).
           - Do NOT use Markdown, code fences, or backticks. No triple backticks.
+          - Telegram does NOT support <br>; use a real line break (an actual newline character) for every new line. Never emit <br>.
           - Group by type with HTML headers: <b>✨ Features</b>, <b>🐛 Fixes</b>, <b>♻️ Refactors</b>, <b>⚠️ Breaking Changes</b>, <b>🧹 Others</b>.
-          - Put exactly one blank line between each header section (i.e., one empty line between headers and their following section).
-          - Under each header, use lines separated by <br> and start each item with • (bullet), keep each item one line, max 20 total items across all sections.
+          - Put exactly one blank line (one empty line) between each header section.
+          - Under each header, put each item on its own line separated by a newline and start each item with • (bullet), keep each item one line, max 20 total items across all sections.
           - Escape any &, <, > characters from commit messages as &amp;, &lt;, &gt;.
           - Aggressively ignore trivial commits (merge commits, formatting, chore/version bumps, bump-deps, docs-only). Only surface user-facing changes, bug fixes, refactors affecting behavior, or notable internal changes.
           Here are the commit messages:
