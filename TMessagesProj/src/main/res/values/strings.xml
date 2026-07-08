@@ -10234,6 +10234,17 @@
     <string name="ChatTimeZoneInsertTime">Insert into message</string>
     <string name="ChatTimeZoneInsertPattern">%1$s my time (%2$s your time)</string>
     <string name="ChatTimeZoneScheduleTime">%1$s\'s time: %2$s</string>
+    <string name="Reschedule">Reschedule</string>
+    <string name="RescheduleMessages">Reschedule messages</string>
+    <string name="RescheduleInterval">Interval between messages</string>
+    <string name="RescheduleUnitMinutes">minutes</string>
+    <string name="RescheduleUnitHours">hours</string>
+    <string name="RescheduleUnitDays">days</string>
+    <string name="RescheduleSpreadOverflow">Last message is past the 1-year limit</string>
+    <string name="RescheduleSpreadMessages_one">%1$d message</string>
+    <string name="RescheduleSpreadMessages_other">%1$d messages</string>
+    <string name="RescheduleConfirmCount_one">Reschedule %1$d message?</string>
+    <string name="RescheduleConfirmCount_other">Reschedule %1$d messages?</string>
     <string name="AddContactShareNumber">Share My Phone Number</string>
     <string name="AddContactShareNumberInfo">Turn this off to prevent %s from seeing your phone number.</string>
     <string name="UserSuggestBirthday">Suggest Date of Birth</string>
