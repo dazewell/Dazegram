@@ -183,7 +183,7 @@ jobs:
           fi
 
           MODEL_ID="${{ vars.AI_MODEL }}"
-          [ -n "$MODEL_ID" ] || MODEL_ID="openai/gpt-4o"
+          [ -n "$MODEL_ID" ] || MODEL_ID="openai/gpt-4.1"
           echo "model: $MODEL_ID"
 
           PROMPT=$(cat << 'EOP'
