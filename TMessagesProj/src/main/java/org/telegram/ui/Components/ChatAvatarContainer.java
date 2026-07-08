@@ -96,6 +96,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
     private ImageView timeItem;
     private ImageView starBgItem, starFgItem;
     private TimerDrawable timerDrawable;
+    // Per-peer time-zone clock pill (next to the title).
+    private android.widget.TextView tzClockPill;
     private ChatActivity parentFragment;
     private StatusDrawable[] statusDrawables = new StatusDrawable[6];
     private AvatarDrawable avatarDrawable = new AvatarDrawable();
@@ -400,6 +402,42 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             addView(subtitleTextView);
         }
 
+        // Time-zone pill (initially hidden; populated by updateTimeZonePill()).
+        tzClockPill = new android.widget.TextView(context);
+        tzClockPill.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 12);
+        tzClockPill.setTypeface(AndroidUtilities.bold());
+        tzClockPill.setIncludeFontPadding(false);
+        tzClockPill.setPadding(dp(7), dp(2), dp(7), dp(2));
+        tzClockPill.setGravity(Gravity.CENTER);
+        // Pin the pill to the widest possible "HH:mm" so a proportional-digit clock (e.g. 11:11 vs
+        // 00:00) can't change its width as minutes tick over -- that would shift the title/bubble
+        // centre every minute. Centre the shorter strings inside the fixed box.
+        android.text.TextPaint pillPaint = tzClockPill.getPaint();
+        float widestDigit = 0;
+        for (char c = '0'; c <= '9'; c++) {
+            widestDigit = Math.max(widestDigit, pillPaint.measureText(String.valueOf(c)));
+        }
+        tzClockPill.setMinWidth((int) Math.ceil(widestDigit * 4 + pillPaint.measureText(":")) + dp(7) * 2);
+        tzClockPill.setVisibility(GONE);
+        // Tapping the pill opens the hour-comparison sheet (local vs peer time zone).
+        tzClockPill.setOnClickListener(v -> {
+            if (parentFragment == null) return;
+            org.telegram.ui.ActionBar.BottomSheet sheet = com.radolyn.ayugram.chattimezone.ChatTimeZoneHoursSheet.show(
+                    getContext(), currentAccount, parentFragment.getDialogId(), parentFragment.getResourceProvider(),
+                    text -> {
+                        ChatActivityEnterView enterView = parentFragment.getChatActivityEnterView();
+                        if (enterView == null || enterView.getEditField() == null) return;
+                        // Insert at the cursor (or append) rather than replacing any draft.
+                        int selection = enterView.getEditField().getSelectionEnd();
+                        if (selection < 0) selection = enterView.getEditField().length();
+                        enterView.getEditField().getText().insert(selection, text);
+                    });
+            if (sheet != null) {
+                parentFragment.showDialog(sheet);
+            }
+        });
+        addView(tzClockPill);
+
         if (parentFragment != null) {
             timeItem = new ImageView(context);
             timeItem.setScaleType(ImageView.ScaleType.CENTER);
@@ -581,6 +619,45 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
 
     public void setOverrideSubtitleColor(Integer overrideSubtitleColor) {
         this.overrideSubtitleColor = overrideSubtitleColor;
+    }
+
+    public void updateTimeZonePill() {
+        if (tzClockPill == null || parentFragment == null) return;
+        // Only show the pill in the regular chat view -- not in scheduled, quick-replies,
+        // business-link or other auxiliary modes where the title isn't the peer name.
+        boolean show;
+        long dialogId = parentFragment.getDialogId();
+        if (parentFragment.getChatMode() != 0 || dialogId == UserConfig.getInstance(currentAccount).getClientUserId()) {
+            // No pill in auxiliary modes (scheduled, quick-replies, business-link) or in Saved
+            // Messages / notes-to-self, where a peer time zone is meaningless.
+            show = false;
+        } else {
+            java.util.TimeZone tz = com.radolyn.ayugram.chattimezone.ChatTimeZoneController.getForDialog(currentAccount, dialogId);
+            show = tz != null && !com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.sameAsLocal(tz);
+            if (show) {
+                String text = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.formatNow(tz);
+                if (!text.contentEquals(tzClockPill.getText())) {
+                    tzClockPill.setText(text);
+                    tzClockPill.setContentDescription(getString(R.string.ChatTimeZone) + ", " + text);
+                    // Fixed pill width, but re-layout so the anchor tracks any title width change.
+                    tzClockPill.requestLayout();
+                }
+                int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
+                tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
+                tzClockPill.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
+            }
+        }
+        if (!show) {
+            if (tzClockPill.getVisibility() != GONE) {
+                tzClockPill.setVisibility(GONE);
+                requestLayout();
+            }
+            return;
+        }
+        if (tzClockPill.getVisibility() != VISIBLE) {
+            tzClockPill.setVisibility(VISIBLE);
+            requestLayout();
+        }
     }
 
     public boolean openSetTimer() {
@@ -776,8 +853,24 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         int padding = isCentered() ? dp(isPreviewMode() ? 35 : 10) : 0;
         int width = MeasureSpec.getSize(widthMeasureSpec) + (isCentered() ? 0 : titleTextView.getPaddingRight());
         int availableWidth = width - dp(((avatarImageView.getVisibility() == VISIBLE || isCentered()) ? 54 : 0) + 16);
+        if (glassMode && isCentered()) {
+            // Reserve the two glass side bubbles (back on the left, menu/avatar on the right),
+            // dp(58) each, so the title box stays symmetric and clears them on both sides
+            // instead of leaning into the avatar.
+            availableWidth = width - 2 * dp(58);
+        }
         avatarImageView.measure(MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(avatarSizeInDp), MeasureSpec.EXACTLY));
-        titleTextView.measure(MeasureSpec.makeMeasureSpec(availableWidth - padding, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(24 + 8) + titleTextView.getPaddingRight(), MeasureSpec.AT_MOST));
+        int tzPillReserve = 0;
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            tzClockPill.measure(
+                    MeasureSpec.makeMeasureSpec(availableWidth, MeasureSpec.AT_MOST),
+                    MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.AT_MOST));
+            // Shrink the title by the pill width so the pill always fits next to it: the
+            // title fades by gradient instead of ellipsizing and would otherwise consume
+            // the full available width for long names, leaving no room for the pill.
+            tzPillReserve = tzClockPill.getMeasuredWidth() + pillLeadingGap();
+        }
+        titleTextView.measure(MeasureSpec.makeMeasureSpec(Math.max(0, availableWidth - padding - tzPillReserve), MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(24 + 8) + titleTextView.getPaddingRight(), MeasureSpec.AT_MOST));
         if (subtitleTextView != null) {
             subtitleTextView.measure(MeasureSpec.makeMeasureSpec(availableWidth - padding, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(dp(20), MeasureSpec.AT_MOST));
         } else if (animatedSubtitleTextView != null) {
@@ -885,6 +978,22 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         avatarImageView.layout(avatarLeft, viewTop, avatarLeft + avatarImageView.getMeasuredWidth(), viewTop + avatarImageView.getMeasuredHeight());
 
         int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE && !isCentered() ? dp(glassMode ? 48.66f : 54) : (isCentered() ? 0 : dp(glassMode ? 12 : 0))) + (isCentered() ? 0 : rightAvatarPadding);
+        if (glassMode && isCentered() && !isPreviewMode()) {
+            int tzPillReserve = (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE)
+                    ? tzClockPill.getMeasuredWidth() + pillLeadingGap() : 0;
+            // Centre the title (plus the time-zone pill, when it's there) on the action bar, not
+            // on this container: the container is pushed in by a left margin with nothing matching
+            // it on the right, so its own centre sits right of the bar's. Pull the title+pill group
+            // back by half that margin gap so it lands dead centre between the back and menu
+            // bubbles. The box is measured narrower than the bar to clear those bubbles, so pinning
+            // it left (or to the container's own centre) would lean it off to one side.
+            int marginShift = 0;
+            if (getLayoutParams() instanceof android.view.ViewGroup.MarginLayoutParams) {
+                android.view.ViewGroup.MarginLayoutParams lp = (android.view.ViewGroup.MarginLayoutParams) getLayoutParams();
+                marginShift = (lp.leftMargin - lp.rightMargin) / 2;
+            }
+            l = (getWidth() - titleTextView.getMeasuredWidth() - tzPillReserve) / 2 - marginShift;
+        }
         if (isPreviewMode() && isCentered()) {
             l += dp(AndroidUtilities.isTablet() ? 80 : 72) / 2;
         }
@@ -917,14 +1026,54 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         if (starFgItem != null) {
             starFgItem.layout(leftPadding + dp(28), viewTop + dp(24), leftPadding + dp(28) + starFgItem.getMeasuredWidth(), viewTop + dp(24) + starFgItem.getMeasuredHeight());
         }
+        // The centered title box is measured narrower than the subtitle and pinned to the
+        // centered-title left, but the subtitle box stays full width. Left-aligning both at the
+        // same l leaves the subtitle's CENTER_HORIZONTAL text off to the right of the title and
+        // the glass bubble. Re-centre it on the same group centre the bubble hugs.
+        final boolean centerSubtitle = glassMode && isCentered() && !isPreviewMode();
         if (subtitleTextView != null) {
-            subtitleTextView.layout(l, subtitleTop, l + subtitleTextView.getMeasuredWidth(), subtitleTop + subtitleTextView.getTextHeight());
+            int sl = centerSubtitle ? getCenteredTitleCenterX() - subtitleTextView.getMeasuredWidth() / 2 : l;
+            subtitleTextView.layout(sl, subtitleTop, sl + subtitleTextView.getMeasuredWidth(), subtitleTop + subtitleTextView.getTextHeight());
         } else if (animatedSubtitleTextView != null) {
-            animatedSubtitleTextView.layout(l, subtitleTop, l + animatedSubtitleTextView.getMeasuredWidth(), subtitleTop + animatedSubtitleTextView.getTextHeight());
+            int sl = centerSubtitle ? getCenteredTitleCenterX() - animatedSubtitleTextView.getMeasuredWidth() / 2 : l;
+            animatedSubtitleTextView.layout(sl, subtitleTop, sl + animatedSubtitleTextView.getMeasuredWidth(), subtitleTop + animatedSubtitleTextView.getTextHeight());
+        }
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            int pillH = tzClockPill.getMeasuredHeight();
+            int pillW = tzClockPill.getMeasuredWidth();
+            int pillL;
+            if (isCentered()) {
+                // Anchor the pill at the right edge of the visible title content (see
+                // centeredContentRight): that edge is derived from the stable title-box centre and
+                // clamped to the box, so an overflowing gradient-faded name can never push the text
+                // out from under the pill, and it matches the group the glass bubble hugs exactly.
+                pillL = centeredContentRight() + pillLeadingGap();
+                // Keep the pill clear of the right-hand side bubble / avatar.
+                int rightLimit = getMeasuredWidth() - dp(8);
+                if (avatarImageView != null && avatarImageView.getVisibility() == VISIBLE) {
+                    rightLimit = Math.min(rightLimit, avatarImageView.getLeft() - dp(6));
+                }
+                if (pillL + pillW > rightLimit) {
+                    pillL = Math.max(centeredContentLeft(), rightLimit - pillW);
+                }
+            } else {
+                // Left-aligned title: sit right after the text and its trailing drawables.
+                pillL = l + titleContentEnd() + pillLeadingGap();
+                int rightLimit = getMeasuredWidth() - dp(8);
+                if (pillL + pillW > rightLimit) {
+                    pillL = Math.max(l, rightLimit - pillW);
+                }
+            }
+            // Vertically center the pill on the title TEXT (not the padded title view bounds).
+            int titleTextTop = titleTextView.getTop() + titleTextView.getPaddingTop();
+            int titleTextCenter = titleTextTop + titleTextView.getTextHeight() / 2;
+            int pillT = titleTextCenter - pillH / 2;
+            tzClockPill.layout(pillL, pillT, pillL + pillW, pillT + pillH);
         }
         SimpleTextView subtitleTextLargerCopyView = this.subtitleTextLargerCopyView.get();
         if (subtitleTextLargerCopyView != null) {
-            subtitleTextLargerCopyView.layout(l, subtitleTop, l + subtitleTextLargerCopyView.getMeasuredWidth(), subtitleTop + subtitleTextLargerCopyView.getTextHeight());
+            int sl = centerSubtitle ? getCenteredTitleCenterX() - subtitleTextLargerCopyView.getMeasuredWidth() / 2 : l;
+            subtitleTextLargerCopyView.layout(sl, subtitleTop, sl + subtitleTextLargerCopyView.getMeasuredWidth(), subtitleTop + subtitleTextLargerCopyView.getTextHeight());
         }
     }
 
@@ -1375,6 +1524,9 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
                     isOnline[0] = false;
                     newStatus = LocaleController.formatUserStatus(currentAccount, user, isOnline, allowShorterStatus ? statusMadeShorter : null);
                     useOnlineColor = isOnline[0];
+                    // Append the peer's local time of their last-seen moment (no-op when not configured
+                    // or when the status has no concrete timestamp, e.g. online/recently/week/month).
+                    newStatus = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.augmentLastSeen(newStatus, currentAccount, user);
                 }
                 newSubtitle = newStatus;
             } else {
@@ -1417,6 +1569,8 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
             setTypingAnimation(true);
         }
         lastSubtitleColorKey = useOnlineColor ? Theme.key_chat_status : Theme.key_actionBarDefaultSubtitle;
+        // Refresh peer time-zone clock pill (no-op when not configured).
+        updateTimeZonePill();
         if (lastSubtitle == null) {
             if (subtitleTextView != null) {
                 subtitleTextView.setText(newSubtitle);
@@ -1845,24 +1999,126 @@ public class ChatAvatarContainer extends FrameLayout implements NotificationCent
         }
     }
 
-    public boolean hasVisibleAvatar() {
-        return avatarImageView != null && avatarImageView.getVisibility() == VISIBLE;
+    public boolean isCenteredTitle() {
+        return isCentered();
     }
 
-    public int getVisualWidth() {
-        float width = 0;
+    // The centred title is a CENTER_HORIZONTAL, gradient-fading SimpleTextView. It doesn't centre
+    // the bare text: SimpleTextView shrinks the text layout by its side-drawable widths, so the
+    // WHOLE visible group (a leading lock/bot-verification drawable, the text, then the trailing
+    // status/verified/mute drawables) ends up centred on the title-box centre. The box centre is
+    // therefore a stable anchor regardless of name length or which decorations are present, and all
+    // the geometry below (pill x, bubble centre, bubble width) hangs off this one group so nothing
+    // can drift apart.
+    private int centeredBoxCenterX() {
+        return titleTextView.getLeft() + titleTextView.getMeasuredWidth() / 2;
+    }
 
-        if (titleTextView != null) {
-            width = Math.max(width, titleTextView.getExactWidthIncludeDrawables());
+    // Empty space between the trailing status drawable's visible glyph and its full box's right edge.
+    // The default premium star is a small glyph left-pinned in a dp(24) box, so the box overhangs it;
+    // a custom emoji status fills the box (slack 0). Only the status drawable has this, and only when
+    // it's the last decoration: a following mute/scam/verified rightDrawable2 fills its own box.
+    private int trailingDecorationSlack() {
+        if (titleTextView.getRightDrawable2() == null && titleTextView.getRightDrawable() == emojiStatusDrawable) {
+            return emojiStatusDrawable.getIntrinsicWidth()
+                    - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable);
         }
+        return 0;
+    }
+
+    // Gap between the title's trailing content and the time-zone pill. A trailing emoji status
+    // (default premium star or a custom emoji) is a tight glyph, so mirror the title's own dp(4)
+    // drawablePadding: the roomier dp(6) leaves a visibly off-centre space to the star's right.
+    // Plain text and box-metric decorations (mute/scam/verified, or a mute drawn after the status,
+    // i.e. rightDrawable2 != null) keep the dp(6).
+    private int pillLeadingGap() {
+        if (titleTextView.getRightDrawable2() == null && titleTextView.getRightDrawable() == emojiStatusDrawable) {
+            return dp(4);
+        }
+        return dp(6);
+    }
+
+    // Full-box width of the centred group -- what SimpleTextView actually centres on the box centre:
+    // leading drawable + displayed text + trailing decoration BOXES. titleContentEnd() hugs the status
+    // glyph, so add the slack back to recover the full box (glyphHug + slack == box). Centring on the
+    // glyph-hugged width instead would shift the whole group and leave a gap past the star.
+    private int centeredTitleVisualWidth() {
+        int leftExtent = 0;
+        android.graphics.drawable.Drawable ld = titleTextView.getLeftDrawable();
+        if (ld != null) {
+            leftExtent = ld.getIntrinsicWidth() + dp(4);
+        }
+        return leftExtent + titleContentEnd() + trailingDecorationSlack();
+    }
+
+    // Left edge of the visible title group: centred on the box using the full-box width, clamped to
+    // the box left so an overflowing gradient-faded name can't report an edge past what's drawn.
+    private int centeredContentLeft() {
+        int half = centeredTitleVisualWidth() / 2;
+        return Math.max(titleTextView.getLeft(), centeredBoxCenterX() - half);
+    }
+
+    // Right edge of the VISIBLE content: trim the trailing status box's empty slack so the pill hugs
+    // the glyph, THEN clamp to the box right (subtract-then-clamp: clamping first would let an
+    // overflowing star drag the pill back over the faded text).
+    private int centeredContentRight() {
+        int half = centeredTitleVisualWidth() / 2;
+        int boxRight = titleTextView.getLeft() + titleTextView.getMeasuredWidth();
+        int visibleRight = centeredBoxCenterX() + half - trailingDecorationSlack();
+        return Math.min(boxRight, visibleRight);
+    }
+
+    // Right edge of the whole centred group (title content + time-zone pill), in this view's coords.
+    private int centeredGroupRight() {
+        int right = centeredContentRight();
+        if (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE) {
+            right += pillLeadingGap() + tzClockPill.getMeasuredWidth();
+        }
+        return right;
+    }
+
+    // Horizontal centre of the centred group (title content + pill), in this view's own coordinates.
+    // The bubble hugs this group; it depends only on the title and pill (both stable), so it doesn't
+    // jump while the status/subtitle animates its width.
+    public int getCenteredTitleCenterX() {
+        return (centeredContentLeft() + centeredGroupRight()) / 2;
+    }
+
+    // Distance from the title's text left edge to the right edge of its last trailing decoration
+    // (emoji status / premium star, then any mute/scam/verified icon). Shared by the pill anchor and
+    // the bubble width so they can't drift apart. Two subtleties baked in:
+    //  - The title fades by gradient instead of ellipsizing, so getTextWidth() can report the FULL
+    //    untruncated width; clamp to getMaxTextWidth() (the displayed width).
+    //  - The default premium star is a ~14dp glyph left-pinned in a dp(24) box; hug the glyph (via
+    //    emojiStatusGlyphWidth) when it's the trailing decoration. A following mute/scam sits past
+    //    the FULL box, so keep the box width then (dp(4) mirrors SimpleTextView's drawablePadding).
+    private int titleContentEnd() {
+        int end = Math.min(titleTextView.getTextWidth(), titleTextView.getMaxTextWidth());
+        android.graphics.drawable.Drawable rd = titleTextView.getRightDrawable();
+        android.graphics.drawable.Drawable rd2 = titleTextView.getRightDrawable2();
+        if (rd != null) {
+            int rdw = (rd2 == null && rd instanceof org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable)
+                    ? com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth((org.telegram.ui.Components.AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable) rd)
+                    : rd.getIntrinsicWidth();
+            end += dp(4) + rdw;
+        }
+        if (rd2 != null) {
+            end += dp(4) + rd2.getIntrinsicWidth();
+        }
+        return end;
+    }
+
+    // Widest of the title+pill group or the status line -- the smallest bubble that hugs both. This
+    // is a width only (the box-centre terms cancel out), so it's valid even before the title has been
+    // laid out. No avatar: in centered mode it keeps its own bubble on the right.
+    public int getCenteredContentWidth() {
+        int width = centeredGroupRight() - centeredContentLeft();
         if (subtitleTextView != null) {
-            width = Math.max(width, subtitleTextView.getExactWidthIncludeDrawables());
+            // Same gradient-fade caveat as the title: clamp to the displayed width.
+            width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
+        } else if (animatedSubtitleTextView != null) {
+            width = Math.max(width, (int) Math.ceil(animatedSubtitleTextView.getDrawable().getCurrentWidth()));
         }
-        if (hasVisibleAvatar()) {
-            width += dp(52 + 12);
-        } else {
-            width += dp(30);
-        }
-        return (int) width;
+        return width;
     }
 }

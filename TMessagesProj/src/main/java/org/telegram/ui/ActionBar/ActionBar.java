@@ -77,7 +77,6 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorPro
 
 import java.util.ArrayList;
 
-import me.vkryl.android.animator.BoolAnimator;
 import me.vkryl.android.animator.FactorAnimator;
 import me.vkryl.android.animator.ReplaceAnimator;
 
@@ -2159,17 +2158,18 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     public void checkAvatarContainerWidth(boolean animated) {
-        if (chatAvatarContainer == null) {
+        // Only the centered title hugs its content. The left-aligned layout keeps the
+        // full-width bubble, so there's nothing to measure there.
+        if (chatAvatarContainer == null || !chatAvatarContainer.isCenteredTitle()) {
             return;
         }
 
-        final boolean hasAvatar = chatAvatarContainer.hasVisibleAvatar();
-        int visualWidth = chatAvatarContainer.getVisualWidth();
-        if (hasAvatar) {
-            visualWidth = Math.max(visualWidth, dp(192));
-        }
-
-        final int width = Math.min(getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6), visualWidth);
+        // Title/status text width only. The avatar has its own (menu) bubble.
+        final int contentWidth = chatAvatarContainer.getCenteredContentWidth();
+        // Cap to the gap between the side bubbles so the title bubble never overlaps them.
+        // Each side bubble is p + s + p wide (dp(6) + dp(46) + dp(6)): one for the back
+        // button on the left, one for the menu on the right.
+        final int width = Math.min(getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6), contentWidth);
         if (animated) {
             if (animatorAvatarContainerWidth.getToFactor() != width) {
                 animatorAvatarContainerWidth.animateTo(width);
@@ -2177,11 +2177,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         } else {
             animatorAvatarContainerWidth.forceFactor(width);
         }
-        animatorAvatarContainerHasAvatar.setValue(hasAvatar, animated);
     }
 
     private final FactorAnimator animatorAvatarContainerWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
-    private final BoolAnimator animatorAvatarContainerHasAvatar = new BoolAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
 
     @Override
     public void onFactorChanged(int id, float factor, float fraction, FactorAnimator callee) {
@@ -2205,9 +2203,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int p = dp(6);
         final int s = dp(46);
 
-        final float actionModeFactor = getActionModeFactor();
+        // Hug the bubble to its content only when the title is centered. Otherwise it stays
+        // the full-width (back<->menu) bubble. Settings screens have no chatAvatarContainer.
+        final boolean centeredTitle = chatAvatarContainer != null && chatAvatarContainer.isCenteredTitle();
         int defaultMenuWidth = Math.max(0, menu != null ? menu.getItemsWidth() - dp(1) - dp(1) : 0);
-        if (chatAvatarContainer == null && menu != null && menu.isCenteredTitle()) {
+        if (menu != null && menu.isCenteredTitle()) {
             defaultMenuWidth = lerp(Math.max(defaultMenuWidth, s), defaultMenuWidth, searchFactor);
         }
         final int actionMenuWidth = Math.max(0, actionMode != null ? actionMode.getItemsWidth() - dp(1) - dp(1) : 0);
@@ -2220,20 +2220,30 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
 
         if (glassDrawable != null) {
             final int menuWidthWithPadding = menuWidth > 0 ? (menuWidth + p) : 0;
-            final int rightOffset = lerp(menuWidthWithPadding, Math.max(menuWidthWithPadding, p + s), chatAvatarContainer == null ? 0f : 1f - animatorAvatarContainerHasAvatar.getFloatValue());
-
-            final int leftDefault = lerp(hasBackButton ? s + p : 0, s + p, chatAvatarContainer == null? 0f : 1f - animatorAvatarContainerHasAvatar.getFloatValue());
-            final int rightDefault = getWidth() - rightOffset;
+            final int leftDefault = hasBackButton ? s + p : 0;
+            final int rightDefault = getWidth() - menuWidthWithPadding;
             final int widthDefault = rightDefault - leftDefault;
-            final int left, right;
-            if (chatAvatarContainer != null) {
-                final int width = lerp(Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + p * 2), widthDefault, Math.max(searchFactor, actionModeFactor));
-                left = (rightDefault + leftDefault - width) / 2;
-                right = left + width;
-                chatAvatarContainer.setTranslationX(left
-                    - ((MarginLayoutParams)(chatAvatarContainer.getLayoutParams())).leftMargin
-                    - chatAvatarContainer.getLeftPadding()
-                    + p + dp(3));
+            int left, right;
+            if (centeredTitle) {
+                // Hug the centered title/status text. The avatar has its own (menu) bubble on the
+                // right, so we never move the container, just resize the bubble around the text.
+                // Center it on the text's own centre, which stays put while the status
+                // ("online" -> "last seen recently") grows or shrinks the width with animation.
+                final int width = Math.min(widthDefault, (int) animatorAvatarContainerWidth.getFactor() + dp(44));
+                final int centerX = (int) (chatAvatarContainer.getX() + chatAvatarContainer.getCenteredTitleCenterX());
+                int hugLeft = centerX - width / 2;
+                int hugRight = centerX + width / 2;
+                if (hugLeft < leftDefault) {
+                    hugLeft = leftDefault;
+                }
+                if (hugRight > rightDefault) {
+                    hugRight = rightDefault;
+                }
+                // Expand to the full back<->menu span as search or selection (action) mode opens,
+                // so the bubble backs the search field / action bar instead of staying a small pill.
+                final float expand = Math.max(searchFactor, getActionModeFactor());
+                left = lerp(hugLeft, leftDefault, expand);
+                right = lerp(hugRight, rightDefault, expand);
             } else {
                 left = leftDefault;
                 right = rightDefault;
