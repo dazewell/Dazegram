@@ -154,7 +154,10 @@ code are not.
 
    The entry is committed **on the change branch, alongside the code** — it's
    part of the same PR, so the feature and its documentation land together and
-   never drift. The repo-root `README.md` is a stable pointer to `FEATURES.md`
+   never drift. Mark the entry with its `<!-- #slug -->` (beside the `###`
+   heading) so the feature tag is discoverable and CI-verifiable —
+   `commit-tag.yml` fails a PR whose feature slug isn't catalogued. The repo-root
+   `README.md` is a stable pointer to `FEATURES.md`
    and does not change per feature. The only place the doc is separated from
    the code is the upstream `-pr` ceremony, which drops the one `FEATURES.md`
    hunk (`git checkout source/dev -- FEATURES.md`) so the proposal stays

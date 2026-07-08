@@ -107,6 +107,10 @@ prefix and the no-AI-in-logs line:
   until git is pointed at them).
 - **CI:** `.github/workflows/commit-tag.yml` fails a PR if any non-merge commit
   in it lacks a tag.
+- **Catalogued:** a *feature* slug must also appear in `FEATURES.md`, marked
+  `<!-- #slug -->` beside its entry heading; `commit-tag.yml` fails a PR whose
+  feature slug isn't catalogued. Category tags (`#ci`, `#docs`, `#build`, …) and
+  `*-fix` tags are exempt.
 
 Bypass (`--no-verify`) only in a genuine emergency.
 
