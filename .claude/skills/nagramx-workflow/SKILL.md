@@ -47,7 +47,9 @@ code are not.
    Explore first if you need to see the relevant code, then reason as the
    architect), or reason through it inline in that persona if a subagent is
    overkill for a small change. The point is the adversarial early pass,
-   not the mechanism.
+   not the mechanism. The persona, the Android-and-fork checklist, and the
+   dispatch/output template live in the `nagramx-code-review` skill — read it
+   for *what* this review actually checks.
 
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
    `dazewell/<short-slug>` — one change per branch. You PR it into `dev` and
@@ -142,7 +144,10 @@ code are not.
    compiles, take the implemented diff back through review — the chief
    Android architect persona again, now reviewing real code, not a plan.
    Address the comments, re-review. This is a distinct second pass from the
-   step-1 design review.
+   step-1 design review. Same `nagramx-code-review` skill as round 1; that
+   skill spells out the fork-fit / Android-correctness / code-quality checks,
+   the severity calibration, and the strengths-plus-issues-plus-verdict output
+   format the reviewer returns.
 
 6. **Feature doc entry — rides with the feature.** If the change is
    user-visible, write its entry for `FEATURES.md`: under the right
