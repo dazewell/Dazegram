@@ -9,7 +9,6 @@ from pyrogram.types import InputMediaDocument
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
 artifacts_path = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
-build_type = argv[3] if len(argv) > 3 else None
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 
 def find_apk(abi: str) -> Path:
@@ -31,9 +30,7 @@ def get_caption(commit_msg_budget=None) -> str:
     # the caption valid while leaving room for the AI summary.
     if commit_msg_budget is not None and len(commit_message) > commit_msg_budget:
         commit_message = commit_message[: max(0, commit_msg_budget - 1)].rstrip() + "…"
-    labels = {"test": "Test", "staging": "Staging", "release": "Release"}
-    pre = labels.get(build_type, "Release")
-    caption = f"{pre} version.\n\n"
+    caption = ""
     header = ""
     if build_label := os.environ.get("BUILD_LABEL"):
         header += f"{build_label} build\n"
