@@ -8288,6 +8288,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onPasscodePause() {
+        // NagramX: a "require password" chat re-locks once the app leaves the foreground
+        com.radolyn.ayugram.chatlock.ChatLockController.clearUnlocked();
         if (lockRunnable != null) {
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("cancel lockRunnable onPasscodePause");
