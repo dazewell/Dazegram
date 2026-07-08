@@ -172,6 +172,10 @@ android {
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
+    // NagramX: default app-icon glyph differs per package variant (Official = D, Unofficial = N).
+    // Each dir holds the same ic_launcher_nagram_blue_foreground/_monochrome names, so only one may be on the path at a time.
+    sourceSets.main.res.srcDirs += APP_PACKAGE.endsWith('.beta') ? 'src/iconOfficial/res' : 'src/iconUnofficial/res'
+
     namespace = 'org.telegram.messenger'
 }
 
