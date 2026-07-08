@@ -655,6 +655,12 @@ public class ChatActivityEnterView extends FrameLayout implements
     private ImageView attachButton;
     private AiButtonDrawable aiButtonIcon;
     private ImageView aiButton;
+    // NagramX: ad-hoc fullscreen input mode, alive only until the draft is sent or dismissed
+    private ImageView expandInputButton;
+    private boolean shownExpandInputButton;
+    private boolean messageEditExpanded;
+    private int expandedInputBudget;
+    private boolean expandedInputAnchorVisible;
     private float attachButtonAlpha = 1.0f;
     private ImageView suggestButton;
     @Nullable
@@ -961,6 +967,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
 
+            setMessageEditExpanded(false); // NagramX: the record UI replaces the field, don't leave a fullscreen island behind it
             delegate.onPreAudioVideoRecord();
             calledRecordRunnable = true;
             recordAudioVideoRunnableStarted = false;
@@ -2848,7 +2855,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleType(ImageView.ScaleType.CENTER);
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         aiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
-        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
+        // NagramX: second slot, tucked under the expand button (frames overlap 12dp so the icons sit ~8dp apart)
+        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 33, 0, 0));
         aiButton.setContentDescription(getString(R.string.AIEditor));
         ScaleStateListAnimator.apply(aiButton);
         aiButton.setOnClickListener(v -> {
@@ -2888,6 +2896,23 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setAlpha(0.0f);
         aiButton.setScaleX(0.6f);
         aiButton.setScaleY(0.6f);
+
+        // NagramX: fullscreen input toggle. Takes the top slot on the right edge; the AI button, when it
+        // fits, sits in the second slot below it. Both live in the one right-edge column the text already
+        // clears, otherwise a long line would run under this icon.
+        expandInputButton = new ImageView(context);
+        expandInputButton.setImageResource(R.drawable.photo_expand);
+        expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
+        expandInputButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+        expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
+        textFieldContainer.addView(expandInputButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
+        expandInputButton.setContentDescription(getString(R.string.ExpandMessageField));
+        ScaleStateListAnimator.apply(expandInputButton);
+        expandInputButton.setOnClickListener(v -> setMessageEditExpanded(!messageEditExpanded));
+        expandInputButton.setVisibility(View.GONE);
+        expandInputButton.setAlpha(0.0f);
+        expandInputButton.setScaleX(0.6f);
+        expandInputButton.setScaleY(0.6f);
 
         if (audioToSend != null) {
             createRecordAudioPanel();
@@ -6243,10 +6268,26 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                // NagramX: in fullscreen mode fill the budget ChatActivity computed (action bar to keyboard),
+                // minus what else stacks inside the island (the reply/edit header and the field's bottom margin)
+                if (messageEditExpanded) {
+                    int budget = Math.min(MeasureSpec.getSize(heightMeasureSpec),
+                        expandedInputBudget - (isTopViewVisible() ? topView.getLayoutParams().height : 0) - dp(3));
+                    // only force the fill when there's room for at least a normal field; a transient tiny/zero
+                    // offered spec falls through to the usual wrap measure instead of snapping to one row
+                    if (budget >= dp(DEFAULT_HEIGHT)) {
+                        heightMeasureSpec = MeasureSpec.makeMeasureSpec(budget, MeasureSpec.EXACTLY);
+                    }
+                }
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 if (lineCount != messageEditText.getLineCount()) {
                     showAiButton(messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
+                } else {
+                    // NagramX: the field height can change without the line count moving (the
+                    // fullscreen toggle), and the AI button's room gate depends on it
+                    showAiButton(aiButtonWanted);
                 }
+                checkExpandInputButton();
             }
         };
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -6292,6 +6333,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setHintTextColor(getThemedColor(Theme.key_chat_messagePanelHint));
         messageEditText.setCursorColor(getThemedColor(Theme.key_chat_messagePanelCursor));
         messageEditText.setHandlesColor(getThemedColor(Theme.key_chat_TextSelectionCursor));
+        // NagramX: the fullscreen toggle only shows (and the mode only survives) while the field is focused.
+        // Defer the collapse: the keyboard-forcing clearFocus()+requestFocus() idiom blurs then re-focuses
+        // in the same frame, and we don't want that transient to drop the user out of fullscreen.
+        messageEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus && messageEditExpanded) {
+                AndroidUtilities.cancelRunOnUIThread(collapseIfBlurred);
+                AndroidUtilities.runOnUIThread(collapseIfBlurred, 100);
+            }
+            checkExpandInputButton();
+        });
         messageEditTextContainer.addView(messageEditText, 1, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 52, 0, isChat ? 50 : 2, 1.5f));
         messageEditText.setOnKeyListener(new OnKeyListener() {
 
@@ -6380,6 +6431,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             public void onTextChanged(CharSequence charSequence, int start, int before, int count) {
                 if (ignorePrevTextChange) {
                     return;
+                }
+
+                // NagramX: fullscreen input lives only as long as the draft (covers send, edit done and clear-all)
+                if (messageEditExpanded && TextUtils.isEmpty(charSequence)) {
+                    setMessageEditExpanded(false);
                 }
 
                 boolean allowChangeToSmile = true;
@@ -6534,9 +6590,113 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateFieldRight(lastAttachVisible);
     }
 
+    // NagramX: fullscreen input mode. Not persisted: it ends with the draft (send/clear), with focus,
+    // or when both the keyboard and the emoji panel are gone (the field is sized against them).
+    public boolean isMessageEditExpanded() {
+        return messageEditExpanded;
+    }
+
+    // Deferred collapse checks: run a beat later so a transient blur (keyboard re-force) or a
+    // keyboard<->emoji handoff frame doesn't collapse the mode before the real state settles.
+    private final Runnable collapseIfBlurred = () -> {
+        if (messageEditExpanded && messageEditText != null && !messageEditText.isFocused()) {
+            setMessageEditExpanded(false);
+        }
+    };
+    private final Runnable collapseIfAnchorLost = () -> {
+        if (messageEditExpanded && !expandedInputAnchorVisible) {
+            setMessageEditExpanded(false);
+        }
+    };
+
+    public void setMessageEditExpanded(boolean expanded) {
+        if (messageEditExpanded == expanded || messageEditText == null || expandInputButton == null
+                || (expanded && (parentFragment == null || expandedInputBudget <= 0))) {
+            return;
+        }
+        messageEditExpanded = expanded;
+        messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
+        // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
+        messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);
+        messageEditText.requestLayout();
+        expandInputButton.setImageResource(expanded ? R.drawable.input_collapse : R.drawable.photo_expand);
+        expandInputButton.setContentDescription(getString(expanded ? R.string.CollapseMessageField : R.string.ExpandMessageField));
+        expandInputButton.announceForAccessibility(expandInputButton.getContentDescription());
+        checkExpandInputButton();
+        // keep the line being edited on screen once the new height is applied
+        AndroidUtilities.runOnUIThread(() -> {
+            if (messageEditText != null && messageEditText.getSelectionStart() >= 0) {
+                messageEditText.bringPointIntoView(messageEditText.getSelectionStart());
+            }
+        });
+    }
+
+    // NagramX: called from ChatActivity on every measure/inset pass; budget is the space between
+    // the action bar and whatever input method (keyboard or emoji panel) is up
+    public void updateExpandedInputBudget(int budget, boolean inputMethodVisible) {
+        final boolean changed = expandedInputBudget != budget;
+        final boolean anchorLost = expandedInputAnchorVisible && !inputMethodVisible;
+        expandedInputBudget = budget;
+        expandedInputAnchorVisible = inputMethodVisible;
+        if (!messageEditExpanded) {
+            return;
+        }
+        if (anchorLost) {
+            // deferred: a keyboard<->emoji swap briefly reports no input method before the panel registers
+            AndroidUtilities.cancelRunOnUIThread(collapseIfAnchorLost);
+            AndroidUtilities.runOnUIThread(collapseIfAnchorLost, 100);
+        } else if (changed && messageEditText != null) {
+            messageEditText.requestLayout();
+        }
+    }
+
+    private void checkExpandInputButton() {
+        if (expandInputButton == null || messageEditText == null) {
+            return;
+        }
+        final boolean show = messageEditExpanded || (parentFragment != null
+            && messageEditText.isFocused()
+            && messageEditText.getLineCount() > 2 && !TextUtils.isEmpty(messageEditText.getText())
+            && !recordingAudioVideo && audioToSend == null
+            && !AndroidUtilities.isInMultiwindow
+            && AndroidUtilities.displaySize.y > AndroidUtilities.displaySize.x);
+        if (shownExpandInputButton == show) {
+            return;
+        }
+        shownExpandInputButton = show;
+        expandInputButton.setVisibility(View.VISIBLE);
+        expandInputButton.animate()
+            .alpha(show ? 1.0f : 0.0f)
+            .scaleX(show ? 1.0f : 0.6f)
+            .scaleY(show ? 1.0f : 0.6f)
+            .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+            .setDuration(420)
+            .withEndAction(() -> {
+                if (!shownExpandInputButton) {
+                    expandInputButton.setVisibility(View.GONE);
+                }
+            })
+            .start();
+    }
+
+    // NagramX: the AI button sits in the second slot under the expand button. Below ~4 lines that
+    // slot runs into the bottom-anchored send button, so it yields until its icon (24dp centered
+    // in the 44dp frame) clears the send icon. The field measures ~2dp shorter than the container
+    // the buttons anchor to.
+    private boolean aiButtonWanted;
+    private boolean aiButtonHasRoom() {
+        if (messageEditText == null || !(aiButton.getLayoutParams() instanceof MarginLayoutParams)) {
+            return false;
+        }
+        final int iconBottom = ((MarginLayoutParams) aiButton.getLayoutParams()).topMargin + dp(34);
+        final int sendIconTop = messageEditText.getMeasuredHeight() + dp(2) - dp(34);
+        return iconBottom <= sendIconTop;
+    }
+
     private boolean shownAiButton;
     private void showAiButton(boolean show_) {
-        final boolean show = show_ && parentFragment != null && !parentFragment.isSecretChat();
+        aiButtonWanted = show_;
+        final boolean show = show_ && parentFragment != null && !parentFragment.isSecretChat() && aiButtonHasRoom();
 
         if (shownAiButton == show) return;
         if (show) {
@@ -10827,6 +10987,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
         createMessageEditText();
+        setMessageEditExpanded(false); // NagramX: entering or leaving edit mode replaces the field text, start it collapsed
         boolean hadEditingMessage = editingMessageObject != null;
         editingMessageObject = messageObject;
         editingCaption = caption;
@@ -13651,6 +13812,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private void setSearchingTypeInternal(int searchingType, boolean animated) {
+        if (searchingType != 0) {
+            setMessageEditExpanded(false); // NagramX: emoji/sticker search resizes the panels, the fullscreen field can't coexist with it
+        }
         boolean showSearchingNew = searchingType != 0;
         boolean showSearchingOld = this.searchingType != 0;
         if (showSearchingNew != showSearchingOld) {
@@ -14340,6 +14504,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (emojiView == null || !byDrag && stickersExpanded == expanded) {
             return;
+        }
+        if (expanded) {
+            setMessageEditExpanded(false); // NagramX: the sticker panel expansion measures against the normal field height
         }
         stickersExpanded = expanded;
         if (delegate != null) {
@@ -15146,6 +15313,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 .translationY(0)
                 .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).setDuration(420)
                 .start();
+            if (expandInputButton != null && expandInputButton.getVisibility() == View.VISIBLE) {
+                expandInputButton.setTranslationY(expandInputButton.getTranslationY() + textFieldContainer.getMeasuredHeight() - wasHeight);
+                expandInputButton.animate()
+                    .translationY(0)
+                    .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT).setDuration(420)
+                    .start();
+            }
             if (aiHint != null) {
                 aiHint.setTranslationY(aiHint.getTranslationY() + textFieldContainer.getMeasuredHeight() - wasHeight);
                 aiHint.animate()
@@ -16193,6 +16367,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
         isInVideoMode = true;
+        setMessageEditExpanded(false); // NagramX: same reason as in recordAudioVideoRunnable, this path skips it in camera-ask mode
         // initialize state that would have been set in recordAudioVideoRunnable
         delegate.onPreAudioVideoRecord();
         calledRecordRunnable = true;
