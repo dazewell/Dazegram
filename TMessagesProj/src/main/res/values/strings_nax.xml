@@ -2,6 +2,13 @@
 <resources>
     <string name="NagramX" translatable="false">Nagram X</string>
     <string name="VideoMessagesPlayAll">Play all video messages</string>
+    <string name="AccDescrZoomControl">Zoom</string>
+    <string name="VideoMessagesResetZoomOnSwitch">Reset zoom when switching cameras</string>
+    <string name="VideoMessagesHalSmoothZoom">Hardware smooth zoom</string>
+    <string name="VideoMessagesHalSmoothZoomNotice">Let the camera hardware glide between zoom levels itself. Support is checked on your device when you turn this on.</string>
+    <string name="VideoMessagesHalSmoothZoomSupported">Smooth zoom is supported on this device</string>
+    <string name="VideoMessagesHalSmoothZoomUnsupported">This device doesn\'t support hardware smooth zoom, the usual zoom is kept</string>
+    <string name="VideoMessagesHalSmoothZoomCheckFailed">Couldn\'t check the camera right now, try again with the camera closed</string>
     <string name="VideoMessagesMute">Mute video messages</string>
     <string name="VideoMessagesUnmute">Unmute video messages</string>
     <string name="HideLastMessage">Hide Last Message</string>

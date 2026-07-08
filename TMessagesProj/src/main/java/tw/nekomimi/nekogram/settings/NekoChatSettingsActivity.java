@@ -23,9 +23,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MediaController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -35,6 +37,7 @@ import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextCheckCell2;
 import org.telegram.ui.Cells.TextSettingsCell;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SeekBarView;
@@ -164,6 +167,8 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.CameraInVideoMessagesRear),
             getString(R.string.CameraInVideoMessagesAsk)
     }, null));
+    private final AbstractConfigCell videoMessagesResetZoomOnSwitchRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesResetZoomOnSwitch()));
+    private final AbstractConfigCell videoMessagesHalSmoothZoomRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom(), getString(R.string.VideoMessagesHalSmoothZoomNotice)));
     private final AbstractConfigCell dividerCamera = cellGroup.appendCell(new ConfigCellDivider());
 
     // Media
@@ -649,6 +654,10 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                 }
                 checkTranscribeGroqRows(true);
                 checkTranscribeCfRows(true);
+            } else if (key.equals(NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom().getKey())) {
+                if ((boolean) newValue) {
+                    checkHalSmoothZoomSupport();
+                }
             } else if (key.equals("PremiumElements")) {
                 addRowsToMap(cellGroup);
             }
@@ -952,6 +961,47 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             }
             return view;
         }
+    }
+
+    // NagramX: rear-camera HAL support for smooth zoom can only be read from an open camera, so the switch
+    // is verified the moment it's turned on and flipped back with an explanation when the device says no
+    private void checkHalSmoothZoomSupport() {
+        Utilities.globalQueue.postRunnable(() -> {
+            Boolean supported = null;
+            try {
+                final android.hardware.Camera.CameraInfo info = new android.hardware.Camera.CameraInfo();
+                for (int i = 0; i < android.hardware.Camera.getNumberOfCameras(); i++) {
+                    android.hardware.Camera.getCameraInfo(i, info);
+                    if (info.facing == android.hardware.Camera.CameraInfo.CAMERA_FACING_BACK) {
+                        final android.hardware.Camera camera = android.hardware.Camera.open(i);
+                        try {
+                            supported = camera.getParameters().isSmoothZoomSupported();
+                        } finally {
+                            camera.release();
+                        }
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            final Boolean result = supported;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getParentActivity() == null) {
+                    return;
+                }
+                if (result != null && result) {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(R.string.VideoMessagesHalSmoothZoomSupported)).show();
+                } else {
+                    NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom().setConfigBool(false);
+                    final int index = cellGroup.rows.indexOf(videoMessagesHalSmoothZoomRow);
+                    if (index >= 0 && listAdapter != null) {
+                        listAdapter.notifyItemChanged(index);
+                    }
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(result == null ? R.string.VideoMessagesHalSmoothZoomCheckFailed : R.string.VideoMessagesHalSmoothZoomUnsupported)).show();
+                }
+            });
+        });
     }
 
     private void checkSkipOpenLinkConfirmRows() {
