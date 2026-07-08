@@ -472,6 +472,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_bookmark = 2039;
     private final static int nkbtn_bookmarks_manager = 2040;
     private final static int nkbtn_report = 2041;
+    private final static int nkactionbarbtn_send_now = 2042;
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
 
@@ -4119,6 +4120,8 @@ public class ChatActivity extends BaseFragment implements
                         MessagesController.getInstance(currentAccount).deleteMessages(toDeleteMessagesIds, null, null, dialog_id, 0, true, MODE_DEFAULT);
                     }
                     clearSelectionMode();
+                } else if (id == nkactionbarbtn_send_now) {
+                    performSendNowSelectedMessages();
                 } else if (id == delete) {
                     if (getParentActivity() == null) {
                         return;
@@ -10922,6 +10925,7 @@ public class ChatActivity extends BaseFragment implements
             actionModeViews.add(actionMode.addItemWithWidth(forward, R.drawable.msg_forward_noquote, dp(54), LocaleController.getString(R.string.Forward)));
         }
         actionModeViews.add(actionMode.addItemWithWidth(delete, R.drawable.msg_delete, dp(54), LocaleController.getString(R.string.Delete)));
+        actionModeViews.add(actionMode.addItemWithWidth(nkactionbarbtn_send_now, R.drawable.msg_send, AndroidUtilities.dp(54), LocaleController.getString(R.string.MessageScheduleSend)));
 
         if (currentEncryptedChat == null) {
             final boolean isSavedMessages = getDialogId() == getUserConfig().getClientUserId() && (chatMode == 0 || chatMode == MODE_SAVED);
@@ -10960,6 +10964,7 @@ public class ChatActivity extends BaseFragment implements
         actionMode.setItemVisibility(combine_message, selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(forward, NaConfig.INSTANCE.getActionBarButtonForward().Bool() ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(delete, cantDeleteMessagesCount == 0 ? View.VISIBLE : View.GONE);
+        actionMode.setItemVisibility(nkactionbarbtn_send_now, chatMode == MODE_SCHEDULED && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0 ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(tag_message, getUserConfig().isPremium() ? View.VISIBLE : View.GONE);
         actionMode.setItemVisibility(share, View.GONE);
 
@@ -20015,6 +20020,7 @@ public class ChatActivity extends BaseFragment implements
                 ActionBarMenuItem editItem = actionBar.createActionMode().getItem(edit);
                 ActionBarMenuItem forwardItem = actionBar.createActionMode().getItem(forward);
                 ActionBarMenuItem deleteItem = actionBar.createActionMode().getItem(delete);
+                ActionBarMenuItem sendNowItem = actionBar.createActionMode().getItem(nkactionbarbtn_send_now);
                 ActionBarMenuItem tagItem = actionBar.createActionMode().getItem(tag_message);
                 ActionBarMenuItem shareItem = actionBar.createActionMode().getItem(share);
 
@@ -20138,6 +20144,9 @@ public class ChatActivity extends BaseFragment implements
 
                 if (deleteItem != null) {
                     deleteItem.setVisibility(cantDeleteMessagesCount == 0 ? View.VISIBLE : View.GONE);
+                }
+                if (sendNowItem != null) {
+                    sendNowItem.setVisibility(chatMode == MODE_SCHEDULED && selectedCount > 0 ? View.VISIBLE : View.GONE);
                 }
                 hasUnfavedSelected = false;
                 for (int a = 0; a < 2; a++) {
@@ -35634,26 +35643,7 @@ public class ChatActivity extends BaseFragment implements
                         } else {
                             req.id.add(selectedObject.getId());
                         }
-                        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
-                            if (error == null) {
-                                TLRPC.Updates updates = (TLRPC.Updates) response;
-                                getMessagesController().processUpdates(updates, false);
-                                for (int i = 0; i < req.id.size(); i++) {
-                                    AyuState.permitDeleteMessage(dialog_id, req.id.get(i));
-                                }
-                                AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.messagesDeleted, req.id, getUserConfig().getClientUserId() == dialog_id ? 0 : -dialog_id, true, true));
-                            } else if (error.text != null) {
-                                AndroidUtilities.runOnUIThread(() -> {
-                                    if (error.text.startsWith("SLOWMODE_WAIT_")) {
-                                        AlertsCreator.showSimpleToast(ChatActivity.this, LocaleController.getString(R.string.SlowmodeSendError));
-                                    } else if (error.text.equals("CHAT_SEND_MEDIA_FORBIDDEN")) {
-                                        AlertsCreator.showSimpleToast(ChatActivity.this, LocaleController.getString(R.string.AttachMediaRestrictedForever));
-                                    } else {
-                                        AlertsCreator.showSimpleToast(ChatActivity.this, error.text);
-                                    }
-                                });
-                            }
-                        });
+                        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> handleSendScheduledNowResponse(req, response, error));
                     }
                 };
                 if (selectedObject != null && selectedObject.messageOwner != null && selectedObject.messageOwner.video_processing_pending) {
@@ -36248,6 +36238,66 @@ public class ChatActivity extends BaseFragment implements
         if (button != null) {
             button.setTextColor(getThemedColor(Theme.key_text_RedBold));
         }
+    }
+
+    private void handleSendScheduledNowResponse(TLRPC.TL_messages_sendScheduledMessages req, TLObject response, TLRPC.TL_error error) {
+        if (error == null) {
+            getMessagesController().processUpdates((TLRPC.Updates) response, false);
+            for (int i = 0; i < req.id.size(); i++) {
+                AyuState.permitDeleteMessage(dialog_id, req.id.get(i));
+            }
+            AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(
+                    NotificationCenter.messagesDeleted, req.id,
+                    getUserConfig().getClientUserId() == dialog_id ? 0L : -dialog_id, true, true));
+        } else if (error.text != null) {
+            AndroidUtilities.runOnUIThread(() -> {
+                if (error.text.startsWith("SLOWMODE_WAIT_")) {
+                    AlertsCreator.showSimpleToast(ChatActivity.this, LocaleController.getString(R.string.SlowmodeSendError));
+                } else if ("CHAT_SEND_MEDIA_FORBIDDEN".equals(error.text)) {
+                    AlertsCreator.showSimpleToast(ChatActivity.this, LocaleController.getString(R.string.AttachMediaRestrictedForever));
+                } else {
+                    AlertsCreator.showSimpleToast(ChatActivity.this, error.text);
+                }
+            });
+        }
+    }
+
+    private void performSendNowSelectedMessages() {
+        if (chatMode != MODE_SCHEDULED) return;
+        if (checkSlowMode(chatActivityEnterView != null ? chatActivityEnterView.getSendButton() : null))
+            return;
+        if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 0) return;
+
+        // selectedMessagesIds is a SparseArray keyed by message id, so it iterates in
+        // ascending-id order. In scheduled mode messages are displayed by schedule date,
+        // which is unrelated to creation-order ids, so we walk the adapter list messages
+        // (reverse = top-of-screen first) to follow what the user actually sees.
+        // Album members are stored contiguously in messages, so a single lastGroupId
+        // is enough to dedupe after album expansion.
+        TLRPC.TL_messages_sendScheduledMessages req = new TLRPC.TL_messages_sendScheduledMessages();
+        req.peer = getMessagesController().getInputPeer(dialog_id);
+        long lastGroupId = 0;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            MessageObject m = messages.get(i);
+            if (m == null) continue;
+            int id = m.getId();
+            if (selectedMessagesIds[0].indexOfKey(id) < 0 && selectedMessagesIds[1].indexOfKey(id) < 0)
+                continue;
+            long gid = m.getGroupId();
+            if (gid != 0 && gid == lastGroupId) continue;
+            lastGroupId = gid;
+            MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
+            if (group != null) {
+                for (int k = 0; k < group.messages.size(); k++)
+                    req.id.add(group.messages.get(k).getId());
+            } else {
+                req.id.add(id);
+            }
+        }
+        if (req.id.isEmpty()) return;
+
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> handleSendScheduledNowResponse(req, response, error));
+        clearSelectionMode();
     }
 
     public void clearSelectionMode() {
