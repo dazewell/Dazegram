@@ -390,6 +390,7 @@
     <string name="DefaultScheduleDelay">Default delay</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
+    <string name="SendScheduledNowConfirm">Send the selected messages now?</string>
     <string name="PhysicalKeyboardHotkeys">Physical keyboard shortcuts</string>
     <string name="PhysicalKeyboardHotkeysValue">Click to see all Telegram Desktop-style hotkeys</string>
     <string name="HotkeysHeaderGlobal">Anywhere</string>
