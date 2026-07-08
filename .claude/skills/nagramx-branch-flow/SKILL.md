@@ -25,9 +25,10 @@ branches are short-lived scaffolding you delete after merging.
   Merged forward into `dev` on every sync.
 
 **Short-lived per change:**
-- `dazewell/<slug>` (or `copilot/<slug>`) — one branch per change, cut from
-  `dev`, PR'd into `dev`, then **deleted after merge**. Keep it alive *only* if
-  you intend to propose that feature upstream (then it stays append-only).
+- `<YYYY-MM-DD>_<slug>` (the date you start it, e.g. `2026-07-07_chatlock`) —
+  one branch per change, cut from `dev`, PR'd into `dev`, then **deleted after
+  merge**. Keep it alive *only* if you intend to propose that feature upstream
+  (then it stays append-only).
 
 **The tag that replaces permanent branches:** every commit carries an inline
 `#<slug>` hashtag (e.g. `#chatlock`). That — not a surviving branch — is how you
@@ -65,7 +66,7 @@ tag per commit*, which survives branch deletion.
 The old model tried to give *every* feature a permanent, upstream-proposable
 `base..topic` range. You don't keep branches, so you can't have that for free:
 
-- **A feature you'll propose upstream** → keep its `dazewell/<slug>` branch
+- **A feature you'll propose upstream** → keep its `<YYYY-MM-DD>_<slug>` branch
   alive (append-only). Its clean range stays available for the `-pr` ceremony.
 - **Everything else** → delete the branch after merge. The record of "the whole
   change" is `git log --grep '#<slug>'` plus the merged PR. Good enough, because
@@ -80,18 +81,18 @@ gitGraph
   commit id: "base = source/dev (ff-only)"
   checkout main
   commit id: "dev trunk"
-  branch dazewell/chatlock
+  branch 2026-07-07_chatlock
   commit id: "add chat lock #chatlock"
   checkout main
-  merge dazewell/chatlock tag: "PR merge -> staging build"
+  merge 2026-07-07_chatlock tag: "PR merge -> staging build"
   commit id: "merge base (upstream sync)"
-  commit id: "chatlock: fix edge case #chatlock"
+  commit id: "fix edge case #chatlock"
 ```
 
 ## The #tag convention (discoverability)
 
 Every authored commit carries an **inline `#<slug>` hashtag** somewhere in the
-subject or body — e.g. `dazewell: add chat lock #chatlock`. Rules:
+subject or body — e.g. `add chat lock #chatlock`. Rules:
 
 - Feature commits use the **feature slug**; a fix weeks later reuses the *same*
   slug so the whole change is one `git log --grep` away.
@@ -100,8 +101,8 @@ subject or body — e.g. `dazewell: add chat lock #chatlock`. Rules:
 - Put the tag **inline**, not alone at the start of a line — a line beginning
   with `#` can be stripped as a comment by git's editor cleanup.
 
-This is enforced two ways, the same "everywhere" spirit as the `dazewell/`
-prefix and the no-AI-in-logs line:
+This is enforced two ways, the same "everywhere" spirit as the no-AI-in-logs
+line:
 - **Local:** `.githooks/commit-msg` rejects a tagless commit. Enable it once per
   clone: `git config core.hooksPath .githooks` (committed hooks aren't active
   until git is pointed at them).
@@ -129,7 +130,7 @@ the name matches in CI too.)
   force-pushed.
 - **`base`** — mirror of `source/dev`, **fast-forward only**, merged forward
   into `dev` on sync. Never force-pushed.
-- **`dazewell/<slug>`** — short-lived change branch. Cut from `dev`, PR'd in,
+- **`<YYYY-MM-DD>_<slug>`** — short-lived change branch. Cut from `dev`, PR'd in,
   deleted after merge (kept only for upstream candidates).
 
 ## Do I keep feature branches updated? (no — and usually don't keep them at all)
@@ -150,7 +151,7 @@ even if one survives you don't touch it. `dev` is where reconciliation happens.
 git fetch source dev
 git switch base; git merge --ff-only source/dev        # keep the mirror current
 git switch dev;  git merge --no-edit base               # bring upstream into the trunk
-git switch -c dazewell/<slug> dev                       # cut the change branch from the trunk
+git switch -c <YYYY-MM-DD>_<slug> dev                   # cut the change branch (date-stamped) from the trunk
 git config core.hooksPath .githooks                     # once per clone, if not set
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
@@ -159,7 +160,7 @@ user-visible, its `FEATURES.md` entry goes **in this branch's commits**, next to
 the code — it rides in with the feature (see `nagramx-workflow` step 6).
 
 ### Test before landing (preview build)
-Open a PR from `dazewell/<slug>` into `dev` on `origin`. `staging.yml` runs on
+Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `staging.yml` runs on
 the PR, builds the **merge ref** (`dev` + the branch) as the release-signed
 dual-package APK, and uploads it to Telegram (labelled a *test* build). Push more
 commits to iterate; each push rebuilds. This is the same artifact users get, not
@@ -177,18 +178,18 @@ won't trigger a redundant build.
 Landing locally instead of via PR:
 ```powershell
 git switch dev
-git merge --no-edit dazewell/<slug>     # merge commit -> staging.yml builds + uploads
+git merge --no-edit <YYYY-MM-DD>_<slug>     # merge commit -> staging.yml builds + uploads
 git push origin dev
-git branch -d dazewell/<slug>; git push origin --delete dazewell/<slug>   # unless upstream candidate
+git branch -d <YYYY-MM-DD>_<slug>; git push origin --delete <YYYY-MM-DD>_<slug>   # unless upstream candidate
 ```
 
 ### Add a fix to an existing change (the "week later" case)
 The original branch is usually gone — that's fine, the tag carries the link.
 ```powershell
 git switch dev; git pull --ff-only origin dev
-git switch -c dazewell/<slug>-fix dev
+git switch -c <YYYY-MM-DD>_<slug>-fix dev
 # ...implement, compile gate, review...
-git commit -m "dazewell: <slug> — <what the fix does> #<slug>"   # SAME slug as the feature
+git commit -m "<what the fix does> #<slug>"   # SAME slug as the feature
 ```
 PR it into `dev`, merge, delete. Now `git log --grep '#<slug>'` shows the feature
 and its later fix together. If the fix is user-visible, update the `FEATURES.md`
@@ -207,15 +208,15 @@ history. This is the same thing the phone-triggered automation does; it just
 bails to the PC when the merge isn't clean.
 
 ### Propose a feature to the base fork (the only place rewriting/force happens)
-Only for a feature whose `dazewell/<slug>` branch you kept alive.
+Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive.
 ```powershell
 git fetch source dev
-git switch -c dazewell/<slug>-pr dazewell/<slug>          # throwaway copy
-git rebase --onto source/dev <branch-point> dazewell/<slug>-pr   # replay onto pristine upstream
+git switch -c <YYYY-MM-DD>_<slug>-pr <YYYY-MM-DD>_<slug>   # throwaway copy
+git rebase --onto source/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine upstream
 git checkout source/dev -- FEATURES.md                    # drop the fork-only doc hunk
-git rebase -i source/dev                                  # squash to one clean dazewell: commit
-git push origin dazewell/<slug>-pr
-gh pr create --repo risin42/NagramX --base dev --head dazewell:dazewell/<slug>-pr
+git rebase -i source/dev                                  # squash to one clean commit
+git push origin <YYYY-MM-DD>_<slug>-pr
+gh pr create --repo risin42/NagramX --base dev --head dazewell:<YYYY-MM-DD>_<slug>-pr
 ```
 Delete the `-pr` branch after the PR merges. The one file to strip is
 `FEATURES.md` (dazewell's catalog, which the base fork doesn't have); everything

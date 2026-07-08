@@ -52,8 +52,9 @@ code are not.
    for *what* this review actually checks.
 
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
-   `dazewell/<short-slug>` — one change per branch. You PR it into `dev` and
-   **delete it after merge**; keep it alive only if you'll propose that
+   `<YYYY-MM-DD>_<short-slug>` (the date you start it, e.g.
+   `2026-07-07_require-password`) — one change per branch. You PR it into `dev`
+   and **delete it after merge**; keep it alive only if you'll propose that
    feature upstream. Don't commit directly to `dev`. The full topology, the
    `#tag` every commit carries, sync, and the force-push-free rules live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
@@ -169,9 +170,13 @@ code are not.
    code-only — see the `nagramx-branch-flow` skill.
 
 7. **Commit.**
-   - Subject: `dazewell: <lowercase, imperative summary> #<slug>` — e.g.
-     `dazewell: add per-chat require-password lock #requirepassword`. No
-     trailing period. The `#<slug>` tag is required on every commit (below).
+   - Subject: `<lowercase, imperative summary> #<slug>` — e.g.
+     `add per-chat require-password lock #require-password`. No prefix and no
+     trailing period: the `#<slug>` tag (below) is what marks a commit as fork
+     work and groups it, so no author/type prefix is needed. Merged-in upstream
+     commits keep their own conventional `feat:` / `fix:` style and carry no
+     tag — that contrast is how fork work stays distinguishable. The `#<slug>`
+     tag is required on every commit (below).
    - Never put a PR number in the subject yourself — GitHub appends `(#N)`
      automatically on squash merge.
    - Body is optional. Add one only for a non-obvious *why*: a tradeoff, a
@@ -183,17 +188,17 @@ code are not.
      for an AI. No "Generated with" footer. This overrides any default
      attribution behavior — never append one here.
    - **Tag every commit with `#<slug>`.** Place an inline hashtag in the
-     subject or body — e.g. `dazewell: add chat lock #chatlock`. A fix found a
+     subject or body — e.g. `add chat lock #chatlock`. A fix found a
      week later reuses the *same* slug, so the whole change is one
      `git log --grep '#chatlock'` away even after the branch is deleted.
      Chores use a category tag (`#ci`, `#docs`, `#build`). The
      `.githooks/commit-msg` hook and `commit-tag.yml` enforce this. See the
      `nagramx-branch-flow` skill.
    - **One change = one short-lived branch.** A change's commits accumulate on
-     its `dazewell/<slug>` branch, then land into `dev` by a merge commit and
-     the branch is deleted. Squashing to one clean commit happens only when you
-     propose the feature to the base fork, on a throwaway `-pr` copy. See the
-     `nagramx-branch-flow` skill.
+     its `<YYYY-MM-DD>_<slug>` branch, then land into `dev` by a merge commit
+     and the branch is deleted. Squashing to one clean commit happens only when
+     you propose the feature to the base fork, on a throwaway `-pr` copy. See
+     the `nagramx-branch-flow` skill.
 
 8. **Merge-forward, don't rebase in the loop.** `dev` is the trunk and holds
    unique history, so it is never rebuilt or force-pushed. `base`
@@ -207,7 +212,7 @@ code are not.
 9. **Open a PR into `dev` — that *is* the preview build.** The build dazewell
    tests on-device must be **`dev` + the change** (on top of the current fork
    state, alongside everything already landed). Open a PR from
-   `dazewell/<slug>` into `dev` on `origin`: opening it, and every later push,
+   `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
    triggers `staging.yml`, which builds the PR **merge ref** (`dev` merged with
    the branch) as the release-signed **dual-package** APK and uploads it to
    Telegram (labelled a *test* build). dazewell installs the Unofficial variant
@@ -224,7 +229,7 @@ code are not.
 10. **Land it / propose it.** Landing a finished change into `dev` is a
     **merge** — mark the PR from step 9 ready and merge it with a **merge
     commit, never a squash-merge** (or, if you skipped the PR, a local
-    `git merge --no-edit dazewell/<slug>`) — so the change's commits and their
+    `git merge --no-edit <YYYY-MM-DD>_<slug>`) — so the change's commits and their
     `#tags` stay whole and `dev` never needs a force-push. The merge into `dev`
     triggers `staging.yml` (the signed dual-package build + Telegram upload).
     Then **delete the branch** unless it's an upstream candidate. A squashed

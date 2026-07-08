@@ -4,9 +4,11 @@
 #   git log --grep '#chatlock'
 #
 # The tag is a hashtag placed inline in the subject or body, e.g.
-#   dazewell: add chat lock #chatlock
-# Feature commits use the feature slug; infra/chore commits use a category tag
-# such as #ci, #docs, or #build. Merge commits are exempt.
+#   add chat lock #chatlock
+# Subjects carry no author/type prefix (no "dazewell:" / "docs:") — the tag is
+# what marks and groups a fork commit. Feature commits use the feature slug;
+# infra/chore commits use a category tag such as #ci, #docs, or #build.
+# Merge commits are exempt.
 #
 # Enable once per clone (committed hooks aren't active until you point git at them):
 #   git config core.hooksPath .githooks
