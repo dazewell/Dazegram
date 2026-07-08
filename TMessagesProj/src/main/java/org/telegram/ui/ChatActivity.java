@@ -41427,6 +41427,17 @@ public class ChatActivity extends BaseFragment implements
         }
 
         @Override
+        public boolean didLongPressTranscribeButton(ChatMessageCell cell) {
+            MessageObject messageObject = cell.getMessageObject();
+            if (messageObject == null) {
+                return false;
+            }
+            TranscribeButton.stopTranscription(messageObject);
+            showTranscribeRetryPicker(messageObject);
+            return true;
+        }
+
+        @Override
         public void didPressUserStatus(ChatMessageCell cell, TLRPC.User user, TLRPC.Document document, String giftSlug) {
             if (cell == null) {
                 return;
@@ -46644,9 +46655,10 @@ public class ChatActivity extends BaseFragment implements
             case nkbtn_translateVoice:
                 TranscribeButton.retryOrTranslateVoiceTranscription(selectedObject, false, null);
                 break;
-            case nkbtn_transcriptionRetry:
-                TranscribeButton.retryOrTranslateVoiceTranscription(selectedObject, true, null);
+            case nkbtn_transcriptionRetry: {
+                showTranscribeRetryPicker(selectedObject);
                 break;
+            }
             case nkbtn_detail: {
                 presentFragment(new MessageDetailsActivity(selectedObject, selectedObjectGroup));
                 break;
@@ -48674,7 +48686,7 @@ public class ChatActivity extends BaseFragment implements
                             options.add(nkbtn_translateVoice);
                             icons.add(LlmConfig.isLLMTranslatorAvailable() ? R.drawable.magic_stick_solar : R.drawable.msg_translate);
                             if (TranscribeHelper.useTranscribeAI(selectedObject.currentAccount)) {
-                                items.add(getString(R.string.Retry));
+                                items.add(TranscribeHelper.getConfiguredProviders().size() >= 2 ? getString(R.string.RetryWith) : getString(R.string.Retry));
                                 options.add(nkbtn_transcriptionRetry);
                                 icons.add(R.drawable.msg_retry);
                             }
@@ -49362,6 +49374,37 @@ public class ChatActivity extends BaseFragment implements
 
     private boolean isTranslatingDialog(MessageObject messageObject) {
         return messageObject != null && getMessagesController().getTranslateController().isTranslatingDialog(messageObject.getDialogId());
+    }
+
+    // Shared by the message-menu "Retry with" item and the transcribe button long-press: with two or
+    // more configured providers it offers the list, otherwise it just re-runs the default provider.
+    private void showTranscribeRetryPicker(MessageObject messageObject) {
+        if (messageObject == null) {
+            return;
+        }
+        java.util.List<Integer> providers = TranscribeHelper.getConfiguredProviders();
+        if (providers.size() >= 2) {
+            int currentProvider = TranscribeHelper.getEffectiveProvider();
+            CharSequence[] names = new CharSequence[providers.size()];
+            for (int i = 0; i < providers.size(); i++) {
+                String name = TranscribeHelper.getProviderName(providers.get(i));
+                if (providers.get(i) == currentProvider) {
+                    SpannableStringBuilder marked = new SpannableStringBuilder(name).append("  ");
+                    int suffixStart = marked.length();
+                    marked.append(getString(R.string.TranscribeProviderCurrentSuffix));
+                    marked.setSpan(new ForegroundColorSpan(getThemedColor(Theme.key_dialogTextGray2)), suffixStart, marked.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    names[i] = marked;
+                } else {
+                    names[i] = name;
+                }
+            }
+            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+            builder.setTitle(getString(R.string.RetryWith));
+            builder.setItems(names, (dialog, which) -> TranscribeButton.retryVoiceTranscriptionWithProvider(messageObject, providers.get(which)));
+            showDialog(builder.create());
+        } else {
+            TranscribeButton.retryOrTranslateVoiceTranscription(messageObject, true, null);
+        }
     }
 
     private record MessageMenuStatus(boolean allowCopy, boolean allowCopyPhoto,

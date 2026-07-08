@@ -45,6 +45,7 @@ import org.telegram.ui.Components.UndoView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 import kotlin.Unit;
@@ -190,10 +191,21 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.TranscribeProviderWorkersAI),
             getString(R.string.TranscribeProviderGemini),
             getString(R.string.TranscribeProviderOpenAI),
+            getString(R.string.TranscribeProviderGroq),
     }, null));
     private final AbstractConfigCell transcribeProviderCfCredentialsRow = cellGroup.appendCell(new ConfigCellCustom("CloudflareCredentials", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, true));
+    private final AbstractConfigCell transcribeProviderCfLanguageRow = cellGroup.appendCell(new ConfigCellSelectBox("TranscribeProviderCfLanguage", NaConfig.INSTANCE.getTranscribeProviderCfLanguage(), buildCfLanguageLabels(), null));
+    private final AbstractConfigCell transcribeProviderCfVadFilterRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTranscribeProviderCfVadFilter(), getString(R.string.TranscribeProviderCfVadFilterInfo), getString(R.string.TranscribeProviderCfVadFilter)));
+    private final AbstractConfigCell transcribeProviderCfConditionRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTranscribeProviderCfConditionOnPreviousText(), getString(R.string.TranscribeProviderCfConditionInfo), getString(R.string.TranscribeProviderCfCondition)));
+    private final AbstractConfigCell transcribeProviderCfThresholdRow = cellGroup.appendCell(new ConfigCellCustom(getString(R.string.TranscribeProviderCfThreshold), ConfigCellCustom.CUSTOM_ITEM_TranscribeThreshold, false));
     private final AbstractConfigCell transcribeProviderGeminiApiKeyRow = cellGroup.appendCell(new ConfigCellCustom("LlmProviderGeminiKey", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, true));
     private final AbstractConfigCell transcribeProviderOpenAiRow = cellGroup.appendCell(new ConfigCellCustom("TranscribeProviderOpenAI", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, true));
+    private final AbstractConfigCell transcribeProviderGroqRow = cellGroup.appendCell(new ConfigCellCustom("TranscribeProviderGroq", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, true));
+    private final AbstractConfigCell transcribeProviderGroqModelRow = cellGroup.appendCell(new ConfigCellSelectBox("TranscribeProviderGroqModel", NaConfig.INSTANCE.getTranscribeProviderGroqModel(), new String[]{
+            getString(R.string.TranscribeProviderGroqModelAccurate),
+            getString(R.string.TranscribeProviderGroqModelFast),
+    }, null));
+    private final AbstractConfigCell transcribeProviderGroqLanguageRow = cellGroup.appendCell(new ConfigCellSelectBox("TranscribeProviderGroqLanguage", NaConfig.INSTANCE.getTranscribeProviderGroqLanguage(), buildCfLanguageLabels(), null));
     private final AbstractConfigCell dividerTranscribe = cellGroup.appendCell(new ConfigCellDivider());
 
     // MenuAndButtons
@@ -488,6 +500,8 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
         if (NaConfig.INSTANCE.getTranscribeProvider().Int() != TranscribeHelper.TRANSCRIBE_OPENAI) {
             cellGroup.rows.remove(transcribeProviderOpenAiRow);
         }
+        checkTranscribeGroqRows(false);
+        checkTranscribeCfRows(false);
         if (!BuildVars.LOGS_ENABLED) {
             cellGroup.rows.remove(markdownParserRow);
         }
@@ -501,6 +515,71 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
         EmojiHelper.getInstance().loadEmojisInfo(this);
         NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.emojiLoaded);
         return super.onFragmentCreate();
+    }
+
+    private static String[] buildCfLanguageLabels() {
+        String[] labels = new String[TranscribeHelper.CF_LANGUAGE_CODES.length];
+        labels[0] = getString(R.string.TranscribeProviderCfLanguageAuto);
+        for (int i = 1; i < labels.length; i++) {
+            String displayName = new Locale(TranscribeHelper.CF_LANGUAGE_CODES[i]).getDisplayLanguage();
+            labels[i] = TextUtils.isEmpty(displayName) ? TranscribeHelper.CF_LANGUAGE_CODES[i] : displayName;
+        }
+        return labels;
+    }
+
+    // The Whisper (Workers AI) tuning rows only make sense for that provider; Auto can fall back to it too.
+    private void checkTranscribeCfRows(boolean notify) {
+        int provider = NaConfig.INSTANCE.getTranscribeProvider().Int();
+        boolean shouldShow = provider == TranscribeHelper.TRANSCRIBE_WORKERSAI || provider == TranscribeHelper.TRANSCRIBE_AUTO;
+        boolean present = cellGroup.rows.contains(transcribeProviderCfLanguageRow);
+        if (shouldShow == present) {
+            return;
+        }
+        if (shouldShow) {
+            int index = cellGroup.rows.indexOf(transcribeProviderCfCredentialsRow) + 1;
+            cellGroup.rows.add(index, transcribeProviderCfLanguageRow);
+            cellGroup.rows.add(index + 1, transcribeProviderCfVadFilterRow);
+            cellGroup.rows.add(index + 2, transcribeProviderCfConditionRow);
+            cellGroup.rows.add(index + 3, transcribeProviderCfThresholdRow);
+            if (notify && listAdapter != null) {
+                listAdapter.notifyItemRangeInserted(index, 4);
+            }
+        } else {
+            int index = cellGroup.rows.indexOf(transcribeProviderCfLanguageRow);
+            cellGroup.rows.remove(transcribeProviderCfLanguageRow);
+            cellGroup.rows.remove(transcribeProviderCfVadFilterRow);
+            cellGroup.rows.remove(transcribeProviderCfConditionRow);
+            cellGroup.rows.remove(transcribeProviderCfThresholdRow);
+            if (notify && listAdapter != null) {
+                listAdapter.notifyItemRangeRemoved(index, 4);
+            }
+        }
+    }
+
+    // Groq shows its own key/model/language block, and only when it's the selected provider.
+    private void checkTranscribeGroqRows(boolean notify) {
+        boolean shouldShow = NaConfig.INSTANCE.getTranscribeProvider().Int() == TranscribeHelper.TRANSCRIBE_GROQ;
+        boolean present = cellGroup.rows.contains(transcribeProviderGroqRow);
+        if (shouldShow == present) {
+            return;
+        }
+        if (shouldShow) {
+            int index = cellGroup.rows.indexOf(transcribeProviderGeminiApiKeyRow) + 1;
+            cellGroup.rows.add(index, transcribeProviderGroqRow);
+            cellGroup.rows.add(index + 1, transcribeProviderGroqModelRow);
+            cellGroup.rows.add(index + 2, transcribeProviderGroqLanguageRow);
+            if (notify && listAdapter != null) {
+                listAdapter.notifyItemRangeInserted(index, 3);
+            }
+        } else {
+            int index = cellGroup.rows.indexOf(transcribeProviderGroqRow);
+            cellGroup.rows.remove(transcribeProviderGroqRow);
+            cellGroup.rows.remove(transcribeProviderGroqModelRow);
+            cellGroup.rows.remove(transcribeProviderGroqLanguageRow);
+            if (notify && listAdapter != null) {
+                listAdapter.notifyItemRangeRemoved(index, 3);
+            }
+        }
     }
 
     @SuppressLint("NewApi")
@@ -568,6 +647,8 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                         listAdapter.notifyItemRemoved(index);
                     }
                 }
+                checkTranscribeGroqRows(true);
+                checkTranscribeCfRows(true);
             } else if (key.equals("PremiumElements")) {
                 addRowsToMap(cellGroup);
             }
@@ -646,6 +727,8 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             TranscribeHelper.showGeminiApiKeyDialog(this);
         } else if (position == cellGroup.rows.indexOf(transcribeProviderOpenAiRow)) {
             TranscribeHelper.showOpenAiCredentialsDialog(this);
+        } else if (position == cellGroup.rows.indexOf(transcribeProviderGroqRow)) {
+            TranscribeHelper.showGroqApiKeyDialog(this);
         }
     }
 
@@ -708,6 +791,58 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     public void onFragmentDestroy() {
         NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
         super.onFragmentDestroy();
+    }
+
+    // Slider for Whisper's hallucination_silence_threshold (seconds); 0 = off, param omitted.
+    private class TranscribeThresholdSeekBar extends FrameLayout {
+
+        private final SeekBarView sizeBar;
+        private final TextPaint textPaint;
+
+        public TranscribeThresholdSeekBar(Context context) {
+            super(context);
+
+            setWillNotDraw(false);
+
+            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint.setTextSize(AndroidUtilities.dp(16));
+
+            sizeBar = new SeekBarView(context);
+            sizeBar.setReportChanges(true);
+            sizeBar.setSeparatorsCount(21);
+            sizeBar.setDelegate((stop, progress) -> {
+                float value = Math.round(progress * 20) / 2f;
+                NaConfig.INSTANCE.getTranscribeProviderCfHallucinationSilenceThreshold().setConfigFloat(value);
+                invalidate();
+            });
+            float currentValue = NaConfig.INSTANCE.getTranscribeProviderCfHallucinationSilenceThreshold().Float();
+            sizeBar.setProgress(currentValue / 10f);
+            addView(sizeBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.LEFT | Gravity.TOP, 15, 30, 15, 0));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            canvas.drawText(getString(R.string.TranscribeProviderCfThreshold), AndroidUtilities.dp(21), AndroidUtilities.dp(24), textPaint);
+            float value = NaConfig.INSTANCE.getTranscribeProviderCfHallucinationSilenceThreshold().Float();
+            String valueText = value <= 0f ? getString(R.string.TranscribeProviderCfThresholdOff) : String.format(Locale.US, "%.1fs", value);
+            float valueWidth = textPaint.measureText(valueText);
+            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
+            canvas.drawText(valueText, getMeasuredWidth() - AndroidUtilities.dp(21) - valueWidth, AndroidUtilities.dp(24), textPaint);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(74), View.MeasureSpec.EXACTLY));
+            float currentValue = NaConfig.INSTANCE.getTranscribeProviderCfHallucinationSilenceThreshold().Float();
+            sizeBar.setProgress(currentValue / 10f);
+        }
+
+        @Override
+        public void invalidate() {
+            super.invalidate();
+            sizeBar.invalidate();
+        }
     }
 
     private class StickerSizeCell extends FrameLayout {
@@ -783,6 +918,8 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                     textCell.setTextAndValue(getString(R.string.LlmProviderGeminiKey), "", true);
                 } else if (position == cellGroup.rows.indexOf(transcribeProviderOpenAiRow)) {
                     textCell.setTextAndValue(getString(R.string.TranscribeProviderOpenAI), "", true);
+                } else if (position == cellGroup.rows.indexOf(transcribeProviderGroqRow)) {
+                    textCell.setTextAndValue(getString(R.string.TranscribeProviderGroq), "", true);
                 }
             } else if (holder.itemView instanceof EmojiSetCell v1) {
                 v1.setData(EmojiHelper.getInstance().getCurrentEmojiPackInfo(), false, true);
@@ -798,6 +935,9 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                     break;
                 case ConfigCellCustom.CUSTOM_ITEM_EmojiSet:
                     view = new EmojiSetCell(mContext, false);
+                    break;
+                case ConfigCellCustom.CUSTOM_ITEM_TranscribeThreshold:
+                    view = new TranscribeThresholdSeekBar(mContext);
                     break;
                 case CellGroup.ITEM_TYPE_CHECK2:
                     view = new TextCheckCell2(mContext);
