@@ -4732,6 +4732,11 @@ public class AlertsCreator {
                 }
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);
+                // Truncating seconds can leave the base moments away (or already past): the server
+                // sends anything due within ~10s immediately, so keep a full minute of margin.
+                if (calendar.getTimeInMillis() < System.currentTimeMillis() + 60000L) {
+                    calendar.add(Calendar.MINUTE, 1);
+                }
                 final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
                 reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds);
                 builder.getDismissRunnable().run();
