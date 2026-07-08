@@ -2,45 +2,6 @@
 [![Crowdin](https://badges.crowdin.net/NagramX/localized.svg)](https://crowdin.com/project/NagramX)  
 A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional features.
 
-**This is a personal fork** by [@dazewell](https://github.com/dazewell) with a few extras on top of [NagramX](https://github.com/risin42/NagramX):
-
- - **Per-chat time zones:** set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a worldtimebuddy-style side-by-side time converter in a bottom sheet view. Each message also shows both your local time and the peer's.
-
-   <img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
-   <img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />
-
- - **Quick schedule button:** the calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default.
-
- - **Physical keyboard hotkeys:** matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings.
-
-   | Shortcut | Action |
-   |---|---|
-   | `Esc` | Cancel reply/edit, close search, go back |
-   | `Up` (empty input) | Edit last sent message |
-   | `Ctrl+F` | Search in current chat / chat list |
-   | `Ctrl+W` | Close current chat |
-   | `Ctrl+PgDn` / `Ctrl+PgUp` | Next / previous chat |
-   | `Ctrl+Alt+Home` / `End` | First / last chat |
-   | `Ctrl+Shift+↓` / `↑` | Next / previous folder |
-   | `Ctrl+0` | Saved Messages |
-   | `Ctrl+1`..`8` | Pinned chat 1–8 |
-   | `Ctrl+9` | Archive |
-   | `Ctrl+J` | Contacts |
-   | `Ctrl+L` | Lock app (when passcode is set) |
-   | `Ctrl+M` | Minimize app |
-   | `Ctrl+R` | Mark current chat as read |
-   | `Alt+Enter` | Schedule message (Enter confirms the picker) |
-   | `Alt+↑` / `↓` | Step reply target older / newer; past newest clears |
-   | `Alt+;` | Emoji search: type to filter, arrows to pick, Enter inserts, Ctrl+Enter sends, Esc closes |
-   | `↑` / `↓` / `Enter` (suggestions open) | Navigate the inline `:emoji` / `@` / `#` / `/` autocomplete; keep typing to filter, Enter inserts the highlighted one |
-   | `Ctrl+B` / `I` / `U` / `K` | Bold / italic / underline / link |
-   | `Ctrl+Shift+X` / `M` / `P` / `N` | Strikethrough / monospace / spoiler / plain |
-   | `Ctrl+Shift+.` | Quote (works at cursor without a selection too) |
-
- - **Hide last message:** flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
-
- - **Video message playback modes:** a button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
-
 ## Download
 
 Latest versions are available through:
@@ -52,7 +13,7 @@ Latest versions are available through:
 
 Official APKs use the following Android signing certificate:
 
-* Package name: `nekox.messenger` / `nekox.messengerx` (base version)
+* Package name: `nu.gpu.nagram` / `nu.gpu.nagramx` (base version)
 * SHA-256: `0D:51:91:56:E8:0C:91:8C:28:C4:80:BF:D1:3F:31:6A:3B:3B:F7:22:DB:53:2F:AB:74:66:0E:C8:E5:C5:06:A1`
 
 ## Compilation Guide
