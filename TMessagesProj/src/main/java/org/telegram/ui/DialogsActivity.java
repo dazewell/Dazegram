@@ -2991,16 +2991,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         }
         if (NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool()) {
             if (ghostDrawable == null) {
-                ghostDrawable = getContext().getResources().getDrawable(R.drawable.ayu_ghost).mutate();
-                ghostDrawable = new AnimatedEmojiDrawable.WrapSizeDrawable(ghostDrawable, dp(20), dp(20)) {
-                    @Override
-                    public void draw(@NonNull Canvas canvas) {
-                        canvas.save();
-                        canvas.translate(dp(-1), dp(1));
-                        super.draw(canvas);
-                        canvas.restore();
-                    }
-                };
+                ghostDrawable = com.radolyn.ayugram.utils.AyuGhostUtils.createGhostStatusDrawable(getContext(), 20, -1, 1);
             }
             ghostDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_profile_verifiedBackground), PorterDuff.Mode.SRC_IN));
             statusDrawable.set(ghostDrawable, animated);
