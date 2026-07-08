@@ -4348,6 +4348,10 @@ public class AlertsCreator {
 
         // NagramX: bulk reschedule reuses this sheet but spreads the selection over base + interval.
         final boolean isReschedule = reschedule != null;
+        // Reschedule floors the earliest pickable slot at 2 min (vs the 60s default), so after seconds
+        // are zeroed the base is still a full minute ahead and can't land in the server's send-now window.
+        // The +1min bump at confirm then only has to cover time drifting on while the sheet sits open.
+        final long minScheduleSeconds = isReschedule ? 120 : 0;
         final com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[] intervalControls = new com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[1];
 
         long selfUserId = UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
@@ -4536,7 +4540,7 @@ public class AlertsCreator {
         final Runnable[] tzPeerTimeUpdater = new Runnable[1];
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
             // In reschedule mode the button keeps its "Reschedule" label, so don't let checkScheduleDate rewrite it.
-            checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+            checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
             if (tzPeerTimeUpdater[0] != null) {
                 tzPeerTimeUpdater[0].run();
             }
@@ -4584,7 +4588,7 @@ public class AlertsCreator {
                     hourPicker,
                     minutePicker,
                     () -> {
-                        checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+                        checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
                         if (tzPeerTimeUpdater[0] != null) {
                             tzPeerTimeUpdater[0].run();
                         }
@@ -4596,7 +4600,7 @@ public class AlertsCreator {
         }
         final boolean[] canceled = {true};
 
-        checkScheduleDate(isReschedule ? null : buttonTextView, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+        checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
         // The initial validation above may have snapped the pickers forward; re-render the peer time line.
         if (intervalControls[0] != null) {
             intervalControls[0].update();
@@ -4720,7 +4724,7 @@ public class AlertsCreator {
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             canceled[0] = false;
-            boolean setSeconds = checkScheduleDate(null, null, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+            boolean setSeconds = checkScheduleDate(null, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
             calendar.setTimeInMillis(System.currentTimeMillis());
             calendar.add(Calendar.DAY_OF_YEAR, dayPicker.getValue());
             calendar.set(Calendar.HOUR_OF_DAY, hourPicker.getValue());
@@ -4732,8 +4736,9 @@ public class AlertsCreator {
                 }
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);
-                // Truncating seconds can leave the base moments away (or already past): the server
-                // sends anything due within ~10s immediately, so keep a full minute of margin.
+                // The 2-min picker floor already keeps the base ahead, but the sheet may have sat open
+                // long enough for now to catch up: if zeroing seconds left under a minute of lead, push
+                // one minute out so the first message never lands in the server's ~10s send-now window.
                 if (calendar.getTimeInMillis() < System.currentTimeMillis() + 60000L) {
                     calendar.add(Calendar.MINUTE, 1);
                 }
