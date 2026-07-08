@@ -1,0 +1,33 @@
+#!/bin/sh
+# Reject commits that don't carry a #<slug> change tag, so every commit for a
+# change (a feature and any later fix) is greppable by one token:
+#   git log --grep '#chatlock'
+#
+# The tag is a hashtag placed inline in the subject or body, e.g.
+#   dazewell: add chat lock #chatlock
+# Feature commits use the feature slug; infra/chore commits use a category tag
+# such as #ci, #docs, or #build. Merge commits are exempt.
+#
+# Enable once per clone (committed hooks aren't active until you point git at them):
+#   git config core.hooksPath .githooks
+# Bypass in a genuine emergency only: git commit --no-verify
+
+msg_file="$1"
+subject=$(head -n 1 "$msg_file")
+
+# Auto-generated / non-authored commits don't need a tag.
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
+esac
+
+# A hashtag token: # followed by a lowercase letter/digit, then letters/digits/-,
+# not glued to a preceding word character (so URLs / anchors don't count).
+if grep -Eq '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*' "$msg_file"; then
+  exit 0
+fi
+
+echo "commit-msg: missing a #<slug> change tag." >&2
+echo "  Add a hashtag that ties this commit to its change, e.g. '#chatlock'." >&2
+echo "  Feature commits use the feature slug; chores use a category tag (#ci, #docs, #build)." >&2
+echo "  (bypass with --no-verify only in a real emergency)" >&2
+exit 1

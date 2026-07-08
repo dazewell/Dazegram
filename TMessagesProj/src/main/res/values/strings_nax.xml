@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="NagramX" translatable="false">Nagram X</string>
+    <!-- NagramX (app display name) is generated per package variant via resValue in build.gradle -->
     <string name="VideoMessagesPlayAll">Play all video messages</string>
     <string name="AccDescrZoomControl">Zoom</string>
     <string name="VideoMessagesResetZoomOnSwitch">Reset zoom when switching cameras</string>
@@ -344,6 +344,7 @@
     <string name="CameraInVideoMessagesFront">Front Camera</string>
     <string name="CameraInVideoMessagesRear">Rear Camera</string>
     <string name="CameraInVideoMessagesAsk">Ask</string>
+    <string name="CameraInVideoMessagesExternalMic">External Microphone</string>
     <string name="CameraSettings">Camera</string>
     <string name="ContactNotes">Notes</string>
     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>

@@ -1,5 +1,10 @@
 name: Staging build
 
+# The single build + Telegram-upload pipeline. Runs on every push to dev and
+# on pull requests into dev (a PR run builds the dev + branch merge ref, so it
+# doubles as the on-device preview). Doc-only and .github-only changes are
+# skipped. Upload always happens — there is no skip switch.
+
 on:
   push:
     branches:
@@ -8,11 +13,13 @@ on:
       - '**.md'
       - '.github/**'
       - '!.github/workflows/staging.yml'
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - '!.github/workflows/staging.yml'
   workflow_dispatch:
-    inputs:
-      upload:
-        description: 'Skip Upload: Set to "y" to skip uploading the build.'
-        required: false
 
 permissions:
   contents: read
@@ -21,8 +28,16 @@ permissions:
 
 jobs:
   build:
-    name: Gradle Build
+    name: Gradle Build (${{ matrix.package }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: nekox.messenger
+            artifact: Unofficial
+          - package: org.telegram.messenger.beta
+            artifact: Official
     outputs:
       build_timestamp: ${{ steps.staging_build_step.outputs.build_timestamp }}
     env:
@@ -72,23 +87,22 @@ jobs:
       - name: Staging Build
         id: staging_build_step
         env:
-          COMMIT_ID: ${{ github.event.head_commit.id }}
+          COMMIT_ID: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           export LOCAL_PROPERTIES="${{ secrets.LOCAL_PROPERTIES }}"
           export BUILD_TIMESTAMP=$(date +%s)
           echo "build_timestamp=$BUILD_TIMESTAMP" >> "$GITHUB_OUTPUT"
-          ./gradlew TMessagesProj:assembleStaging
+          ./gradlew TMessagesProj:assembleStaging -PAPP_PACKAGE=${{ matrix.package }}
 
           APK=$(find TMessagesProj/build/outputs/apk -name '*arm64-v8a*.apk')
           APK=$(dirname $APK)
           echo "APK=$APK" >> $GITHUB_ENV
       - uses: actions/upload-artifact@v4
         with:
-          name: Staging
+          name: ${{ matrix.artifact }}
           path: ${{ env.APK }}
   upload:
     name: Upload staging
-    if: github.event.inputs.upload != 'y' && !contains(github.event.head_commit.message, '[skip upload]')
     runs-on: ubuntu-latest
     needs:
       - build
@@ -107,58 +121,70 @@ jobs:
         id: prepare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          REPO: ${{ github.repository }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BRANCH: ${{ github.ref_name }}
         run: |
           set -e
-          AI_SUMMARY_ENABLED="${{ vars.AI_SUMMARY_ENABLED }}"
-          if [ "$AI_SUMMARY_ENABLED" != "true" ] && [ "$AI_SUMMARY_ENABLED" != "TRUE" ]; then
-            echo "AI summary is disabled; skipping."
-            echo "ai_summary<<EOF" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            exit 0
-          fi
 
           if ! command -v jq >/dev/null 2>&1; then
             sudo apt-get update -y
             sudo apt-get install -y jq
           fi
 
-          BRANCH="${{ github.ref_name }}"
-          REPO="${{ github.repository }}"
-          HEAD_SHA="${{ github.sha }}"
-          # HEAD_MSG is provided through the step environment (see 'env' above)
+          # Resolve event context: pull_request events don't populate head_commit,
+          # and github.sha/ref_name point at the synthetic merge, so derive the
+          # real branch/sha/message from the PR payload instead.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BRANCH="$PR_HEAD_REF"
+            HEAD_SHA="$PR_HEAD_SHA"
+            HEAD_MSG="$PR_TITLE"
+          else
+            BRANCH="$PUSH_BRANCH"
+            HEAD_SHA="$PUSH_SHA"
+            HEAD_MSG=$(git log -1 --pretty=%B HEAD)
+          fi
+          echo "event=$EVENT_NAME branch=$BRANCH head=$HEAD_SHA"
+
+          # Emit the ai_summary output (multiline-safe) and return.
+          write_summary() {
+            {
+              echo "ai_summary<<SUMEOF"
+              printf '%s\n' "$1"
+              echo "SUMEOF"
+            } >> "$GITHUB_OUTPUT"
+          }
 
           LAST_SHA=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/$REPO/actions/workflows/staging.yml/runs?status=completed&conclusion=success&branch=$BRANCH&per_page=1" | jq -r '.workflow_runs[0].head_sha // empty')
+          echo "last successful build: ${LAST_SHA:-<none>}"
 
           COMMIT_TEXT=""
           TOTAL_COMMITS=0
-          if [ -n "$LAST_SHA" ]; then
+          if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$HEAD_SHA" ]; then
             COMPARE=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$REPO/compare/$LAST_SHA...$HEAD_SHA")
             TOTAL_COMMITS=$(echo "$COMPARE" | jq -r '.total_commits // 0')
             COMMIT_TEXT=$(echo "$COMPARE" | jq -r '[.commits[].commit.message] | join("\n\n")')
           fi
+          [ -n "$COMMIT_TEXT" ] || COMMIT_TEXT="$HEAD_MSG"
+          echo "commits since last build: $TOTAL_COMMITS"
 
           if [ -z "$COMMIT_TEXT" ]; then
-            COMMIT_TEXT="$HEAD_MSG"
-          fi
-
-          if [ "$TOTAL_COMMITS" -lt 3 ]; then
-            echo "Found $TOTAL_COMMITS commits since last build; skipping AI summary."
-            echo "ai_summary<<EOF" >> $GITHUB_OUTPUT
-            echo "" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "no commit text available; skipping AI summary."
+            write_summary ""
             exit 0
           fi
 
           MODEL_ID="${{ vars.AI_MODEL }}"
-          if [ -z "$MODEL_ID" ]; then
-            MODEL_ID="openai/gpt-4o"
-          fi
+          [ -n "$MODEL_ID" ] || MODEL_ID="openai/gpt-4o"
+          echo "model: $MODEL_ID"
 
           PROMPT=$(cat << 'EOP'
           Please summarize the Git commit messages between the last CI build and the current build using Telegram HTML formatting (not Markdown):
@@ -172,44 +198,72 @@ jobs:
           Here are the commit messages:
           EOP
           )
-          CONTENT="$PROMPT\n$COMMIT_TEXT"
+          # printf so the prompt and commit list are joined by a real newline
+          # (a double-quoted "\n" stays a literal backslash-n and confuses the model).
+          CONTENT=$(printf '%s\n%s' "$PROMPT" "$COMMIT_TEXT")
           PAYLOAD=$(jq -n --arg content "$CONTENT" --arg model "$MODEL_ID" '{messages:[{role:"user",content:$content}],model:$model}')
 
-          RAW_RESPONSE=$(curl -s "https://models.github.ai/inference/chat/completions" \
+          BODY=$(mktemp)
+          HTTP_CODE=$(curl -s -o "$BODY" -w "%{http_code}" "https://models.github.ai/inference/chat/completions" \
              -H "Content-Type: application/json" \
              -H "Authorization: Bearer $GITHUB_TOKEN" \
              -d "$PAYLOAD")
+          echo "::group::GitHub Models response (HTTP $HTTP_CODE)"
+          cat "$BODY"; echo
+          echo "::endgroup::"
 
-          SUMMARY=$(echo "$RAW_RESPONSE" | jq -r '.choices[0].message.content // empty')
-
-          COMBINED=""
-          if [ -n "$SUMMARY" ]; then
-            COMBINED="Changes since last build:\n\n$SUMMARY"
+          SUMMARY=$(jq -r '.choices[0].message.content // empty' < "$BODY")
+          if [ -z "$SUMMARY" ]; then
+            echo "::warning::AI summary empty (HTTP $HTTP_CODE): $(jq -r '.error.message // "no content in response"' < "$BODY")"
           fi
 
-          if [ -n "$LAST_SHA" ]; then
+          if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$HEAD_SHA" ]; then
             DIFF_URL="https://github.com/$REPO/compare/$LAST_SHA...$HEAD_SHA"
           else
             DIFF_URL="https://github.com/$REPO/commit/$HEAD_SHA"
           fi
 
-          COMBINED="$COMBINED\n\n<a href=\"$DIFF_URL\"><b>Full changes</b></a>\n\nGenerated by $MODEL_ID"
-
-          echo "ai_summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMBINED" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Literal \n sequences are converted to real newlines by upload.py.
+          COMBINED=""
+          [ -n "$SUMMARY" ] && COMBINED="Changes since last build:\n\n$SUMMARY\n\n"
+          COMBINED="$COMBINED<a href=\"$DIFF_URL\"><b>Full changes</b></a>\n\nGenerated by $MODEL_ID"
+          write_summary "$COMBINED"
       - name: Send to Telegram
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_HASH: ${{ secrets.APP_HASH }}
-          COMMIT_ID: ${{ github.event.head_commit.id }}
-          COMMIT_URL: ${{ github.event.head_commit.url }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          SERVER_URL: ${{ github.server_url }}
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_BRANCH: ${{ github.ref_name }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
         run: |
-          # send apk via telegram bot api
-          export mini64=$(find artifacts -name "*arm64-v8a.apk")
-          echo $mini64
+          set -e
+          # A pull_request run is checked out at the merge ref, so fetch the real
+          # PR head to read its commit message; a push is already at that commit.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            SHA="$PR_HEAD_SHA"
+            export BRANCH="$PR_HEAD_REF"
+            BUILD_TYPE="test"
+            git fetch --depth=1 origin "$SHA"
+          else
+            SHA="$PUSH_SHA"
+            export BRANCH="$PUSH_BRANCH"
+            BUILD_TYPE="staging"
+          fi
+          export COMMIT_ID="$SHA"
+          export COMMIT_URL="$SERVER_URL/$REPO/commit/$SHA"
+          export COMMIT_MESSAGE=$(git log -1 --pretty=%B "$SHA")
+          # send each package variant via telegram bot api
           python -m pip install -r Tools/scripts/requirements.txt
-          python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} test ${{ secrets.HELPER_BOT_CANARY_TARGET }}
+          for entry in "nekox.messenger:Unofficial" "org.telegram.messenger.beta:Official"; do
+            export PACKAGE_NAME="${entry%%:*}"
+            export BUILD_LABEL="${entry##*:}"
+            export ARTIFACTS_PATH="artifacts/$BUILD_LABEL"
+            echo "Uploading $BUILD_LABEL ($PACKAGE_NAME) from $ARTIFACTS_PATH"
+            python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} "$BUILD_TYPE"
+          done

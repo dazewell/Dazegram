@@ -1,0 +1,46 @@
+name: Commit tag check
+
+# Fail a PR if any authored (non-merge) commit lacks a #<slug> change tag, the
+# same tag the local .githooks/commit-msg hook enforces. Keeps every commit for
+# a change greppable by one token (git log --grep '#chatlock').
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Every commit carries a #tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify commit tags
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" || true
+          fail=0
+          for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
+            subject=$(git log -1 --format=%s "$sha")
+            case "$subject" in
+              "Revert "*|"fixup! "*|"squash! "*|"amend! "*) continue ;;
+            esac
+            if git log -1 --format=%B "$sha" | grep -Eq '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*'; then
+              continue
+            fi
+            echo "::error::commit $sha is missing a #<slug> change tag: $subject"
+            fail=1
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "Every commit must carry a #tag (e.g. #chatlock) so all commits for a change are greppable."
+            exit 1
+          fi
+          echo "All commits carry a change tag."
