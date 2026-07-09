@@ -95,6 +95,10 @@ When camera mode is set to Ask, the camera choice popup now has an External Micr
 
 The zoom control under the round video camera was rebuilt with a full-range slider and a − / + pair that steps the zoom one notch at a time (hold to keep going). Two flags live in NagramX chat settings, under Camera: *Reset zoom when switching cameras* starts the zoom fresh each time you flip cameras instead of carrying it over, and *Hardware smooth zoom* hands the animation to the camera itself for a smoother glide — the app checks whether your phone supports it when you flip it on.
 
+### Scrub the video message preview <!-- #video-scrub -->
+
+The preview you get after recording a round video message used to have only the two trim handles on its timeline, so checking a spot near the end meant dragging a handle there and remembering to drag it back. The timeline now has a playback cursor too. It follows the playback, and you can drag it to scrub: the video pauses while you hold it, seeks as you move, and resumes from where you let go. Tapping anywhere between the handles jumps straight there. While you scrub, the same time tooltip the trim handles use shows the position. Trimming itself hasn't changed.
+
 ## Transcription
 
 ### Whisper transcription controls <!-- #transcribe-retry -->

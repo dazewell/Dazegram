@@ -113,6 +113,11 @@ public class VideoTimelineView extends View {
         return progressRight;
     }
 
+    // NagramX: the playback scrubber subclass needs the duration for its time hint
+    public long getVideoLength() {
+        return videoLength;
+    }
+
     public void setMinProgressDiff(float value) {
         minProgressDiff = value;
     }
