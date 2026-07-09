@@ -913,6 +913,8 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject replyingMessageObject;
     private int editingMessageObjectReqId;
     public MessageObject editingMessageObject;
+    // NagramX: in-progress edit or scheduled-compose text stashed on pause so a view rebuild (e.g. passcode unlock) can restore it in createView
+    private CharSequence textToRestoreOnRebuild;
     private boolean paused = true;
     private boolean pausedOnLastMessage;
     private boolean wasPaused;
@@ -4139,6 +4141,15 @@ public class ChatActivity extends BaseFragment implements
                             showBusinessLinksDiscardAlert(() -> {
                                 finishFragment();
                             });
+                            return;
+                        }
+                        // NagramX: the header back arrow bypasses onBackPressed(), so run the same no-draft discard guards here
+                        if (hasUnsavedEditChanges()) {
+                            showDiscardAlert(R.string.EditDiscardTitle, R.string.EditDiscardMessage);
+                            return;
+                        }
+                        if (hasUnsentScheduledText()) {
+                            showDiscardAlert(R.string.ScheduledDiscardTitle, R.string.ScheduledDiscardMessage);
                             return;
                         }
                         if (!checkRecordLocked(true, true)) {
@@ -9381,6 +9392,19 @@ public class ChatActivity extends BaseFragment implements
                     showFieldPanelForReply(replyingMessageObject);
                 }
             }
+        }
+        if (editingMessageObject != null) {
+            // NagramX: same rebuild case as the reply restore above (e.g. passcode unlock recreates the views); the
+            // fragment instance survives but the enter view is new, so re-enter edit mode and put back the in-progress text
+            if (textToRestoreOnRebuild != null) {
+                chatActivityEnterView.setPendingEditText(textToRestoreOnRebuild);
+                textToRestoreOnRebuild = null;
+            }
+            showFieldPanelForEdit(true, editingMessageObject);
+        } else if (chatMode == MODE_SCHEDULED && textToRestoreOnRebuild != null) {
+            // NagramX: the scheduled view keeps no draft either, so drop the typed compose text straight back into the rebuilt field
+            chatActivityEnterView.setFieldText(textToRestoreOnRebuild);
+            textToRestoreOnRebuild = null;
         }
 
         ViewGroup decorView = (ViewGroup) getParentActivity().getWindow().getDecorView();
@@ -31483,6 +31507,10 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.onPause();
             chatActivityEnterView.setFieldFocused(false);
         }
+        // NagramX: a passcode-lock unlock rebuilds this fragment (createView restores it); stash a detached copy of the in-progress
+        // edit or scheduled-compose text (neither has a draft to fall back on) so the old field's live Editable isn't held across the rebuild
+        CharSequence fieldText = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
+        textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
         if (chatAttachAlert != null) {
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();

@@ -704,6 +704,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean editingCaption;
     // NagramX: text the field started with when edit mode opened, so hasEditChanges() can tell if leaving would drop edits
     private CharSequence editingOriginalText;
+    // NagramX: in-progress edit text to show on the next edit-mode entry instead of the message's original (see setPendingEditText)
+    private CharSequence pendingEditText;
 
     private TL_account.TL_businessChatLink editingBusinessLink;
 
@@ -11122,6 +11124,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 AndroidUtilities.runOnUIThread(setTextFieldRunnable = () -> {
                     setFieldText(textToSetWithKeyboardFinal);
                     editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
+                    applyPendingEditText();
                     setTextFieldRunnable = null;
                 }, 200);
             } else {
@@ -11131,6 +11134,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 setFieldText(textToSetWithKeyboard);
                 editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
+                applyPendingEditText();
             }
             if (messageEditText != null) {
                 messageEditText.requestFocus();
@@ -11668,6 +11672,20 @@ public class ChatActivityEnterView extends FrameLayout implements
             return messageEditText.getText();
         }
         return null;
+    }
+
+    // NagramX: hand the next edit-mode entry an in-progress text to show instead of the message's original,
+    // used to restore an unfinished edit after a view rebuild (e.g. passcode unlock recreates this view).
+    // Copy so a caller's live EditText Editable (with widget watcher spans) isn't held onto here.
+    public void setPendingEditText(CharSequence text) {
+        pendingEditText = text == null ? null : new SpannableStringBuilder(text);
+    }
+
+    private void applyPendingEditText() {
+        if (pendingEditText != null) {
+            setFieldText(pendingEditText);
+            pendingEditText = null;
+        }
     }
 
     public void updateGiftButton(boolean animated) {
