@@ -13899,15 +13899,34 @@ public class ChatActivityEnterView extends FrameLayout implements
         return editingMessageObject != null;
     }
 
-    // NagramX: true while an edit in progress differs from the message's original text, used to guard against losing edits on back
+    // NagramX: true while an edit in progress differs from the text or formatting the field opened with, to guard against losing edits on back
     public boolean hasEditChanges() {
-        if (editingMessageObject == null || messageEditText == null) {
+        // editingOriginalText stays null until the edit field is populated; treat that window as "nothing changed yet"
+        if (editingMessageObject == null || messageEditText == null || editingOriginalText == null) {
             return false;
         }
-        CharSequence current = messageEditText.getTextToUse();
-        String currentText = current == null ? "" : AndroidUtilities.getTrimmedString(current).toString();
-        String originalText = editingOriginalText == null ? "" : AndroidUtilities.getTrimmedString(editingOriginalText).toString();
-        return !TextUtils.equals(currentText, originalText);
+        CharSequence[] current = new CharSequence[]{AndroidUtilities.getTrimmedString(messageEditText.getTextToUse())};
+        CharSequence[] original = new CharSequence[]{AndroidUtilities.getTrimmedString(editingOriginalText)};
+        // getEntities strips markdown from the text copies and returns the spans, so this catches formatting-only edits too, not just character changes
+        ArrayList<TLRPC.MessageEntity> currentEntities = MediaDataController.getInstance(currentAccount).getEntities(current, supportsSendingNewEntities());
+        ArrayList<TLRPC.MessageEntity> originalEntities = MediaDataController.getInstance(currentAccount).getEntities(original, supportsSendingNewEntities());
+        return !TextUtils.equals(current[0], original[0]) || !sameEntities(currentEntities, originalEntities);
+    }
+
+    private static boolean sameEntities(ArrayList<TLRPC.MessageEntity> a, ArrayList<TLRPC.MessageEntity> b) {
+        int sizeA = a == null ? 0 : a.size();
+        int sizeB = b == null ? 0 : b.size();
+        if (sizeA != sizeB) {
+            return false;
+        }
+        for (int i = 0; i < sizeA; i++) {
+            TLRPC.MessageEntity ea = a.get(i);
+            TLRPC.MessageEntity eb = b.get(i);
+            if (ea.getClass() != eb.getClass() || ea.offset != eb.offset || ea.length != eb.length) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public MessageObject getEditingMessageObject() {

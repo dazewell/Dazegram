@@ -38912,7 +38912,7 @@ public class ChatActivity extends BaseFragment implements
         if (chatMode == MODE_QUICK_REPLIES && (messages.isEmpty() || threadMessageId == 0)) {
             return false;
         }
-        // NagramX: scheduled compose and in-progress edits keep no draft, so route an accidental swipe through the discard prompt instead of silently dropping the text
+        // NagramX: scheduled compose and in-progress edits keep no draft; block the swipe-back gesture so it can't silently drop the text (the back button/arrow then routes through the discard prompt)
         if (hasUnsentScheduledText() || hasUnsavedEditChanges()) {
             return false;
         }
