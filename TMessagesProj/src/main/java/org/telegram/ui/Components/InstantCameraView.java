@@ -1559,6 +1559,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (videoPlayer != null && videoEditedInfo != null && videoEditedInfo.endTime > 0 && videoPlayer.getCurrentPosition() >= videoEditedInfo.endTime) {
                             videoPlayer.seekTo(videoEditedInfo.startTime > 0 ? videoEditedInfo.startTime : 0);
                         }
+                        // NagramX: drives the playback cursor on the preview timeline; duration is unset until the player is prepared
+                        long duration = videoPlayer != null ? videoPlayer.getDuration() : 0;
+                        if (duration > 0) {
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.videoPreviewProgressChanged, recordingGuid, videoPlayer.getCurrentPosition() / (float) duration);
+                        }
                     } catch (Exception e) {
                         FileLog.e(e);
                     }

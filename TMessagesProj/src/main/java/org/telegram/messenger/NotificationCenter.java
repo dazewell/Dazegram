@@ -383,6 +383,8 @@ public class NotificationCenter {
     public static final int accountLogin = totalEvents++;
     // posted with (Long dialogId) when a locally stored chat time zone changes
     public static final int chatTimeZoneChanged = totalEvents++;
+    // posted with (Integer guid, Float progress) while the round video preview plays
+    public static final int videoPreviewProgressChanged = totalEvents++;
 
     private final SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();
     private final SparseArray<ArrayList<NotificationCenterDelegate>> removeAfterBroadcast = new SparseArray<>();

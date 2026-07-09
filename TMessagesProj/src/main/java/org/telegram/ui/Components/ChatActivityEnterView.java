@@ -2642,6 +2642,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordStartError);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordStopped);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordProgressChanged);
+        NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.videoPreviewProgressChanged);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.closeChats);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.audioDidSent);
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.beforeAudioDidSent);
@@ -4070,7 +4071,12 @@ public class ChatActivityEnterView extends FrameLayout implements
             resetRecordedState();
         });
 
-        videoTimelineView = new VideoTimelineView(getContext());
+        videoTimelineView = new com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView(getContext());
+        ((com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setOnSeek(progress -> {
+            if (videoToSendMessageObject != null) {
+                delegate.needChangeVideoPreviewState(2, progress);
+            }
+        });
         videoTimelineView.setVisibility(INVISIBLE);
         videoTimelineView.useClip = !shouldDrawBackground;
         videoTimelineView.setRoundFrames(true);
@@ -7289,6 +7295,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordStartError);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordStopped);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordProgressChanged);
+        NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.videoPreviewProgressChanged);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.closeChats);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.audioDidSent);
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.beforeAudioDidSent);
@@ -7475,6 +7482,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordStartError);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordStopped);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.recordProgressChanged);
+            NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.videoPreviewProgressChanged);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.closeChats);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.audioDidSent);
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.beforeAudioDidSent);
@@ -7491,6 +7499,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordStartError);
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordStopped);
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.recordProgressChanged);
+            NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.videoPreviewProgressChanged);
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.closeChats);
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.audioDidSent);
             NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.beforeAudioDidSent);
@@ -14135,6 +14144,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             if (recordCircle != null) {
                 recordCircle.setAmplitude((Double) args[1]);
+            }
+        } else if (id == NotificationCenter.videoPreviewProgressChanged) {
+            int guid = (Integer) args[0];
+            if (guid == recordingGuid && videoTimelineView instanceof com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) {
+                ((com.radolyn.ayugram.videoscrub.PlaybackVideoTimelineView) videoTimelineView).setProgress((Float) args[1]);
             }
         } else if (id == NotificationCenter.closeChats) {
             if (messageEditText != null && messageEditText.isFocused()) {
