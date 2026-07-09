@@ -77,6 +77,10 @@ When you select messages in the scheduled view, the top bar used to fill with so
 
 Once your draft grows past two lines, a small expand button shows up in the top corner of the message box, next to the AI edit button. Tap it and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. The icon flips to a collapse arrow, and tapping again returns to normal. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box, just taller. It also works while editing a message, and the button keeps out of the way in landscape and split-screen.
 
+### Don't lose typed text on an accidental back <!-- #discard-guard -->
+
+Two spots used to throw away what you'd typed if you swiped back by accident, because neither keeps a draft: composing in the scheduled view, and editing an existing message. Now, while there's unsaved text in either, a swipe won't just drop you out — back (swipe or the arrow) asks first (*Discard message?* when composing a scheduled message, *Discard changes?* when you've edited one) so a stray gesture can't throw the text away. Leave the box empty, or edit a message without actually changing it, and back goes straight through as before. Normal composing is untouched — those drafts already save on their own.
+
 ## Media and camera
 
 ### Video message playback modes <!-- #video-playback-modes -->

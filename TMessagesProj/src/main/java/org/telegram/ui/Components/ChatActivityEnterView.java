@@ -702,6 +702,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private MessageObject editingMessageObject;
     private boolean editingCaption;
+    // NagramX: text the field started with when edit mode opened, so hasEditChanges() can tell if leaving would drop edits
+    private CharSequence editingOriginalText;
 
     private TL_account.TL_businessChatLink editingBusinessLink;
 
@@ -11119,6 +11121,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 final CharSequence textToSetWithKeyboardFinal = textToSetWithKeyboard;
                 AndroidUtilities.runOnUIThread(setTextFieldRunnable = () -> {
                     setFieldText(textToSetWithKeyboardFinal);
+                    editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
                     setTextFieldRunnable = null;
                 }, 200);
             } else {
@@ -11127,6 +11130,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     setTextFieldRunnable = null;
                 }
                 setFieldText(textToSetWithKeyboard);
+                editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
             }
             if (messageEditText != null) {
                 messageEditText.requestFocus();
@@ -11161,6 +11165,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 AndroidUtilities.cancelRunOnUIThread(setTextFieldRunnable);
                 setTextFieldRunnable = null;
             }
+            editingOriginalText = null;
             if (doneButton != null) {
                 doneButton.setVisibility(View.GONE);
             }
@@ -13892,6 +13897,17 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public boolean isEditingMessage() {
         return editingMessageObject != null;
+    }
+
+    // NagramX: true while an edit in progress differs from the message's original text, used to guard against losing edits on back
+    public boolean hasEditChanges() {
+        if (editingMessageObject == null || messageEditText == null) {
+            return false;
+        }
+        CharSequence current = messageEditText.getTextToUse();
+        String currentText = current == null ? "" : AndroidUtilities.getTrimmedString(current).toString();
+        String originalText = editingOriginalText == null ? "" : AndroidUtilities.getTrimmedString(editingOriginalText).toString();
+        return !TextUtils.equals(currentText, originalText);
     }
 
     public MessageObject getEditingMessageObject() {
