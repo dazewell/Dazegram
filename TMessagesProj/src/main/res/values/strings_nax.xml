@@ -408,6 +408,10 @@
     <string name="RescheduleApplied_other">%1$d messages rescheduled and confirmed</string>
     <string name="RescheduleVerifyFailed">%1$d of %2$d messages kept their old time. Check the schedule and retry.</string>
     <string name="RescheduleBusy">Still applying the previous reschedule…</string>
+    <string name="ScheduledDiscardTitle">Discard message?</string>
+    <string name="ScheduledDiscardMessage">Scheduled messages don\'t keep a draft. If you leave now, the text you\'ve typed will be lost.</string>
+    <string name="EditDiscardTitle">Discard changes?</string>
+    <string name="EditDiscardMessage">You\'ve edited this message but haven\'t saved it. If you leave now, your changes will be lost.</string>
     <string name="PhysicalKeyboardHotkeys">Physical keyboard shortcuts</string>
     <string name="PhysicalKeyboardHotkeysValue">Click to see all Telegram Desktop-style hotkeys</string>
     <string name="HotkeysHeaderGlobal">Anywhere</string>

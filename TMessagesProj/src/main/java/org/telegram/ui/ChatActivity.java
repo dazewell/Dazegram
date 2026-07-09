@@ -36457,6 +36457,14 @@ public class ChatActivity extends BaseFragment implements
         } else if (chatMode == MODE_EDIT_BUSINESS_LINK && chatActivityEnterView.businessLinkHasChanges()) {
             if (invoked) showBusinessLinksDiscardAlert(this::finishFragment);
             return false;
+        } else if (hasUnsavedEditChanges()) {
+            // NagramX: leaving an in-progress message edit drops the changes with no draft to fall back on, so confirm first
+            if (invoked) showDiscardAlert(R.string.EditDiscardTitle, R.string.EditDiscardMessage);
+            return false;
+        } else if (hasUnsentScheduledText()) {
+            // NagramX: scheduled composer has no draft store, so confirm before an accidental back drops what was typed
+            if (invoked) showDiscardAlert(R.string.ScheduledDiscardTitle, R.string.ScheduledDiscardMessage);
+            return false;
         } else if (actionBar != null && actionBar.isSearchFieldVisible()) {
             if (invoked) actionBar.closeSearchField();
             return false;
@@ -36487,6 +36495,32 @@ public class ChatActivity extends BaseFragment implements
                 .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
                 .create()
         );
+    }
+
+    // NagramX: true while the scheduled composer still holds unsent text, used to guard against accidental-back text loss
+    private boolean hasUnsentScheduledText() {
+        return chatMode == MODE_SCHEDULED && chatActivityEnterView != null
+            && !TextUtils.isEmpty(AndroidUtilities.getTrimmedString(chatActivityEnterView.getFieldText()));
+    }
+
+    // NagramX: true while a message edit in progress has unsaved changes, used for the same accidental-back guard
+    private boolean hasUnsavedEditChanges() {
+        return chatActivityEnterView != null && chatActivityEnterView.isEditingMessage()
+            && chatActivityEnterView.hasEditChanges();
+    }
+
+    private void showDiscardAlert(int titleRes, int messageRes) {
+        AlertDialog dialog = new AlertDialog.Builder(getContext(), getResourceProvider())
+                .setTitle(LocaleController.getString(titleRes))
+                .setMessage(LocaleController.getString(messageRes))
+                .setPositiveButton(LocaleController.getString(R.string.Discard), (di, w) -> finishFragment())
+                .setNegativeButton(LocaleController.getString(R.string.Cancel), null)
+                .create();
+        showDialog(dialog);
+        TextView button = (TextView) dialog.getButton(DialogInterface.BUTTON_POSITIVE);
+        if (button != null) {
+            button.setTextColor(getThemedColor(Theme.key_text_RedBold));
+        }
     }
 
     private void showBusinessLinksDiscardAlert(Runnable onDiscard) {
@@ -38876,6 +38910,10 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public boolean isSwipeBackEnabled(MotionEvent event) {
         if (chatMode == MODE_QUICK_REPLIES && (messages.isEmpty() || threadMessageId == 0)) {
+            return false;
+        }
+        // NagramX: scheduled compose and in-progress edits keep no draft; block the swipe-back gesture so it can't silently drop the text (the back button/arrow then routes through the discard prompt)
+        if (hasUnsentScheduledText() || hasUnsavedEditChanges()) {
             return false;
         }
         if (animatorSearchResultAsListVisibility.getValue()) {

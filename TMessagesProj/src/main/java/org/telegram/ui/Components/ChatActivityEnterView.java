@@ -702,6 +702,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private MessageObject editingMessageObject;
     private boolean editingCaption;
+    // NagramX: text the field started with when edit mode opened, so hasEditChanges() can tell if leaving would drop edits
+    private CharSequence editingOriginalText;
 
     private TL_account.TL_businessChatLink editingBusinessLink;
 
@@ -11119,6 +11121,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 final CharSequence textToSetWithKeyboardFinal = textToSetWithKeyboard;
                 AndroidUtilities.runOnUIThread(setTextFieldRunnable = () -> {
                     setFieldText(textToSetWithKeyboardFinal);
+                    editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
                     setTextFieldRunnable = null;
                 }, 200);
             } else {
@@ -11127,6 +11130,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     setTextFieldRunnable = null;
                 }
                 setFieldText(textToSetWithKeyboard);
+                editingOriginalText = messageEditText == null ? "" : messageEditText.getTextToUse();
             }
             if (messageEditText != null) {
                 messageEditText.requestFocus();
@@ -11161,6 +11165,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 AndroidUtilities.cancelRunOnUIThread(setTextFieldRunnable);
                 setTextFieldRunnable = null;
             }
+            editingOriginalText = null;
             if (doneButton != null) {
                 doneButton.setVisibility(View.GONE);
             }
@@ -13892,6 +13897,36 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public boolean isEditingMessage() {
         return editingMessageObject != null;
+    }
+
+    // NagramX: true while an edit in progress differs from the text or formatting the field opened with, to guard against losing edits on back
+    public boolean hasEditChanges() {
+        // editingOriginalText stays null until the edit field is populated; treat that window as "nothing changed yet"
+        if (editingMessageObject == null || messageEditText == null || editingOriginalText == null) {
+            return false;
+        }
+        CharSequence[] current = new CharSequence[]{AndroidUtilities.getTrimmedString(messageEditText.getTextToUse())};
+        CharSequence[] original = new CharSequence[]{AndroidUtilities.getTrimmedString(editingOriginalText)};
+        // getEntities strips markdown from the text copies and returns the spans, so this catches formatting-only edits too, not just character changes
+        ArrayList<TLRPC.MessageEntity> currentEntities = MediaDataController.getInstance(currentAccount).getEntities(current, supportsSendingNewEntities());
+        ArrayList<TLRPC.MessageEntity> originalEntities = MediaDataController.getInstance(currentAccount).getEntities(original, supportsSendingNewEntities());
+        return !TextUtils.equals(current[0], original[0]) || !sameEntities(currentEntities, originalEntities);
+    }
+
+    private static boolean sameEntities(ArrayList<TLRPC.MessageEntity> a, ArrayList<TLRPC.MessageEntity> b) {
+        int sizeA = a == null ? 0 : a.size();
+        int sizeB = b == null ? 0 : b.size();
+        if (sizeA != sizeB) {
+            return false;
+        }
+        for (int i = 0; i < sizeA; i++) {
+            TLRPC.MessageEntity ea = a.get(i);
+            TLRPC.MessageEntity eb = b.get(i);
+            if (ea.getClass() != eb.getClass() || ea.offset != eb.offset || ea.length != eb.length) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public MessageObject getEditingMessageObject() {
