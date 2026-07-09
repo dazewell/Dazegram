@@ -36586,35 +36586,34 @@ public class ChatActivity extends BaseFragment implements
         if (getParentActivity() == null) return;
         if (selectedMessagesIds[0].size() + selectedMessagesIds[1].size() == 0) return;
 
-        // One entry per message or album, deduped the same way as performSendNowSelectedMessages.
-        // For an album we keep its first member: editing it reschedules the whole group.
-        final ArrayList<MessageObject> items = new ArrayList<>();
-        long lastGroupId = 0;
+        final ArrayList<Integer> selectedIds = new ArrayList<>();
         for (int i = messages.size() - 1; i >= 0; i--) {
             MessageObject m = messages.get(i);
             if (m == null) continue;
             int mid = m.getId();
-            if (selectedMessagesIds[0].indexOfKey(mid) < 0 && selectedMessagesIds[1].indexOfKey(mid) < 0)
-                continue;
-            long gid = m.getGroupId();
-            if (gid != 0 && gid == lastGroupId) continue;
-            lastGroupId = gid;
-            MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
-            items.add(group != null && !group.messages.isEmpty() ? group.messages.get(0) : m);
+            if (selectedMessagesIds[0].indexOfKey(mid) >= 0 || selectedMessagesIds[1].indexOfKey(mid) >= 0)
+                selectedIds.add(mid);
         }
-        if (items.isEmpty()) return;
 
-        // Spread in ascending current schedule order: the earliest message takes the base time.
-        Collections.sort(items, (a, b) -> Integer.compare(a.messageOwner.date, b.messageOwner.date));
-
-        final int count = items.size();
-        final long currentDate = items.get(0).messageOwner.date;
+        final ArrayList<MessageObject> preview = resolveRescheduleItems(selectedIds);
+        if (preview.isEmpty()) return;
+        final int count = preview.size();
+        final long currentDate = preview.get(0).messageOwner.date;
         AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, (baseScheduleDate, intervalSeconds) -> {
             final Runnable apply = () -> {
-                for (int i = 0; i < count; i++) {
+                // Dates can move while the sheet is open (an earlier pass still landing, a message
+                // getting sent), so re-resolve and re-sort now instead of trusting the preview snapshot.
+                ArrayList<MessageObject> items = resolveRescheduleItems(selectedIds);
+                ArrayList<com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target> targets = new ArrayList<>(items.size());
+                for (int i = 0; i < items.size(); i++) {
                     MessageObject m = items.get(i);
-                    int scheduleDate = baseScheduleDate + i * intervalSeconds;
-                    SendMessagesHelper.getInstance(currentAccount).editMessage(m, null, false, ChatActivity.this, null, scheduleDate, m.messageOwner.schedule_repeat_period);
+                    targets.add(new com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target(
+                            m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period));
+                }
+                if (targets.isEmpty()) return;
+                if (!com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this)) {
+                    BulletinFactory.of(ChatActivity.this).createSimpleBulletin(R.raw.error, LocaleController.getString(R.string.RescheduleBusy)).show();
+                    return;
                 }
                 clearSelectionMode();
             };
@@ -36629,6 +36628,35 @@ public class ChatActivity extends BaseFragment implements
                 apply.run();
             }
         }, null, themeDelegate);
+    }
+
+    // NagramX: live dedup for the bulk reschedule. One entry per message or album (the min-id
+    // member: a schedule edit moves the whole group), skipping ids that already left the queue,
+    // sorted by current schedule time so the earliest message takes the base slot.
+    private ArrayList<MessageObject> resolveRescheduleItems(ArrayList<Integer> ids) {
+        ArrayList<MessageObject> items = new ArrayList<>();
+        HashSet<Long> seenGroups = new HashSet<>();
+        for (int i = 0; i < ids.size(); i++) {
+            MessageObject m = messagesDict[0].get(ids.get(i));
+            if (m == null) continue;
+            long gid = m.getGroupId();
+            if (gid != 0) {
+                if (!seenGroups.add(gid)) continue;
+                MessageObject.GroupedMessages group = groupedMessagesMap.get(gid);
+                if (group != null && !group.messages.isEmpty()) {
+                    MessageObject first = group.messages.get(0);
+                    for (int k = 1; k < group.messages.size(); k++) {
+                        if (group.messages.get(k).getId() < first.getId()) first = group.messages.get(k);
+                    }
+                    m = first;
+                }
+            }
+            items.add(m);
+        }
+        Collections.sort(items, (a, b) -> a.messageOwner.date != b.messageOwner.date
+                ? Integer.compare(a.messageOwner.date, b.messageOwner.date)
+                : Integer.compare(a.getId(), b.getId()));
+        return items;
     }
 
     public void clearSelectionMode() {

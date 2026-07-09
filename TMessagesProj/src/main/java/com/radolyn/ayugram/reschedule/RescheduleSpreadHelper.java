@@ -91,9 +91,10 @@ public final class RescheduleSpreadHelper {
         row.setWeightSum(1.0f);
         container.addView(row, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 0));
 
-        // Unit picker: Minutes / Hours / Days. One minute is the floor: Telegram fires scheduled
-        // messages on a coarse tick and orders same-tick messages by their queue id (not schedule_date),
-        // so anything tighter than a minute can't guarantee the send order the user set up.
+        // Unit picker: Minutes / Hours / Days. One minute is the floor, but Telegram's scheduler
+        // is best-effort: sends can run minutes late, and a catch-up batch appears to go out in
+        // queue-id order rather than by schedule_date. Short intervals therefore can't guarantee
+        // the send order the user set up; the hint line below warns under 3 minutes.
         unitPicker.setMinValue(0);
         unitPicker.setMaxValue(2);
         unitPicker.setWrapSelectorWheel(false);
@@ -116,10 +117,19 @@ public final class RescheduleSpreadHelper {
         preview.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         preview.setGravity(Gravity.CENTER_HORIZONTAL);
         preview.setPadding(dp(22), 0, dp(22), 0);
-        container.addView(preview, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 6));
+        container.addView(preview, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 2, 0, 2));
+
+        final TextView shortIntervalHint = new TextView(context);
+        shortIntervalHint.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+        shortIntervalHint.setGravity(Gravity.CENTER_HORIZONTAL);
+        shortIntervalHint.setPadding(dp(22), 0, dp(22), 0);
+        shortIntervalHint.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+        shortIntervalHint.setText(getString(R.string.RescheduleShortIntervalHint));
+        shortIntervalHint.setVisibility(android.view.View.GONE);
+        container.addView(shortIntervalHint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 6));
 
         final IntervalControlsImpl controls = new IntervalControlsImpl(
-                messageCount, textColor, preview, buttonTextView,
+                messageCount, textColor, preview, shortIntervalHint, buttonTextView,
                 valuePicker, unitPicker, dayPicker, hourPicker, minutePicker);
 
         unitPicker.setOnValueChangedListener((picker, oldVal, newVal) -> {
@@ -159,6 +169,7 @@ public final class RescheduleSpreadHelper {
         private final int messageCount;
         private final int textColor;
         private final TextView preview;
+        private final TextView shortIntervalHint;
         private final TextView buttonTextView;
         private final NumberPicker valuePicker;
         private final NumberPicker unitPicker;
@@ -168,12 +179,13 @@ public final class RescheduleSpreadHelper {
         private boolean valid = true;
 
         IntervalControlsImpl(int messageCount, int textColor,
-                             TextView preview, TextView buttonTextView,
+                             TextView preview, TextView shortIntervalHint, TextView buttonTextView,
                              NumberPicker valuePicker, NumberPicker unitPicker,
                              NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
             this.messageCount = messageCount;
             this.textColor = textColor;
             this.preview = preview;
+            this.shortIntervalHint = shortIntervalHint;
             this.buttonTextView = buttonTextView;
             this.valuePicker = valuePicker;
             this.unitPicker = unitPicker;
@@ -220,6 +232,8 @@ public final class RescheduleSpreadHelper {
             limit.setTimeInMillis(now);
             limit.add(Calendar.DAY_OF_YEAR, (int) MAX_SCHEDULE_DAYS);
             valid = lastMs <= limit.getTimeInMillis();
+
+            shortIntervalHint.setVisibility(valid && interval < 180 ? android.view.View.VISIBLE : android.view.View.GONE);
 
             if (!valid) {
                 preview.setText(getString(R.string.RescheduleSpreadOverflow));

@@ -67,7 +67,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 ### Reschedule selected messages <!-- #reschedule -->
 
-Pick several scheduled messages and move them all at once. Set a base time and an interval: the first lands on the base time, the next one an interval later, and so on in their current order. Intervals run from one minute up to days, with a live preview of the span before you confirm. The one-minute floor is deliberate: Telegram fires everything scheduled within the same minute as one batch and picks the order itself (roughly the order the messages were first written, not the times you set), so anything tighter can't hold the order you laid out.
+Pick several scheduled messages and move them all at once. Set a base time and an interval: the first lands on the base time, the next one an interval later, and so on in their current order. Intervals run from one minute up to days, with a live preview of the span before you confirm. The edits go to Telegram one at a time, and once they're all through the app reads the schedule back from the server: a popup confirms everything took, or tells you how many messages kept their old time so you can fix them before they fire. One caveat on ordering: Telegram's own scheduler can run a minute or two late, and when it catches up it sends whatever is overdue in roughly the order the messages were first written, not the times you set. That's out of the app's hands, so intervals under three minutes show a warning; if the exact order matters, give messages three minutes or more of spacing.
 
 ### Tidier scheduled selection bar <!-- #scheduled-selection-toolbar -->
 
