@@ -913,6 +913,8 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject replyingMessageObject;
     private int editingMessageObjectReqId;
     public MessageObject editingMessageObject;
+    // NagramX: in-progress edit text stashed on pause so a view rebuild (e.g. passcode unlock) can restore it in createView
+    private CharSequence editTextToRestore;
     private boolean paused = true;
     private boolean pausedOnLastMessage;
     private boolean wasPaused;
@@ -4139,6 +4141,15 @@ public class ChatActivity extends BaseFragment implements
                             showBusinessLinksDiscardAlert(() -> {
                                 finishFragment();
                             });
+                            return;
+                        }
+                        // NagramX: the header back arrow bypasses onBackPressed(), so run the same no-draft discard guards here
+                        if (hasUnsavedEditChanges()) {
+                            showDiscardAlert(R.string.EditDiscardTitle, R.string.EditDiscardMessage);
+                            return;
+                        }
+                        if (hasUnsentScheduledText()) {
+                            showDiscardAlert(R.string.ScheduledDiscardTitle, R.string.ScheduledDiscardMessage);
                             return;
                         }
                         if (!checkRecordLocked(true, true)) {
@@ -9381,6 +9392,15 @@ public class ChatActivity extends BaseFragment implements
                     showFieldPanelForReply(replyingMessageObject);
                 }
             }
+        }
+        if (editingMessageObject != null) {
+            // NagramX: same rebuild case as the reply restore above (e.g. passcode unlock recreates the views); the
+            // fragment instance survives but the enter view is new, so re-enter edit mode and put back the in-progress text
+            if (editTextToRestore != null) {
+                chatActivityEnterView.setPendingEditText(editTextToRestore);
+                editTextToRestore = null;
+            }
+            showFieldPanelForEdit(true, editingMessageObject);
         }
 
         ViewGroup decorView = (ViewGroup) getParentActivity().getWindow().getDecorView();
@@ -31483,6 +31503,8 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.onPause();
             chatActivityEnterView.setFieldFocused(false);
         }
+        // NagramX: a passcode-lock unlock rebuilds this fragment (createView re-enters edit mode); stash the in-progress edit text so the rebuild doesn't drop it
+        editTextToRestore = editingMessageObject != null && chatActivityEnterView != null ? chatActivityEnterView.getFieldText() : null;
         if (chatAttachAlert != null) {
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();

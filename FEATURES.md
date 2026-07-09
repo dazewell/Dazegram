@@ -79,7 +79,7 @@ Once your draft grows past two lines, a small expand button shows up in the top 
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 
-Two spots used to throw away what you'd typed if you swiped back by accident, because neither keeps a draft: composing in the scheduled view, and editing an existing message. Now, while there's unsaved text in either, the swipe-back gesture is held so it can't quietly drop you out, and pressing back (the arrow or the system button) asks first — *Discard message?* when composing a scheduled message, *Discard changes?* when you've edited one — so a stray gesture can't throw the text away. Leave the box empty, or edit a message without actually changing its text or formatting, and back goes straight through as before. Normal composing is untouched — those drafts already save on their own.
+Two spots used to throw away what you'd typed if you swiped back by accident, because neither keeps a draft: composing in the scheduled view, and editing an existing message. Now, while there's unsaved text in either, the swipe-back gesture is held so it can't quietly drop you out, and pressing back (the header arrow or the system button) asks first — *Discard message?* when composing a scheduled message, *Discard changes?* when you've edited one — so a stray gesture can't throw the text away. Leave the box empty, or edit a message without actually changing its text or formatting, and back goes straight through as before. An in-progress edit also survives an app-lock or minimise: if the app locks (or you switch away and come back) while you're editing, your unsaved text is put back when you return. Normal composing is untouched — those drafts already save on their own.
 
 ## Media and camera
 
