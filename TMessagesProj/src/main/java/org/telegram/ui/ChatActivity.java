@@ -31507,8 +31507,10 @@ public class ChatActivity extends BaseFragment implements
             chatActivityEnterView.onPause();
             chatActivityEnterView.setFieldFocused(false);
         }
-        // NagramX: a passcode-lock unlock rebuilds this fragment (createView restores it); stash the in-progress edit or scheduled-compose text, neither of which has a draft to fall back on
-        textToRestoreOnRebuild = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
+        // NagramX: a passcode-lock unlock rebuilds this fragment (createView restores it); stash a detached copy of the in-progress
+        // edit or scheduled-compose text (neither has a draft to fall back on) so the old field's live Editable isn't held across the rebuild
+        CharSequence fieldText = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
+        textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
         if (chatAttachAlert != null) {
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();

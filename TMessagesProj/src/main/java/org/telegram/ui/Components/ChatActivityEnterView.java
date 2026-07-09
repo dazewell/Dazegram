@@ -11675,9 +11675,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     // NagramX: hand the next edit-mode entry an in-progress text to show instead of the message's original,
-    // used to restore an unfinished edit after a view rebuild (e.g. passcode unlock recreates this view)
+    // used to restore an unfinished edit after a view rebuild (e.g. passcode unlock recreates this view).
+    // Copy so a caller's live EditText Editable (with widget watcher spans) isn't held onto here.
     public void setPendingEditText(CharSequence text) {
-        pendingEditText = text;
+        pendingEditText = text == null ? null : new SpannableStringBuilder(text);
     }
 
     private void applyPendingEditText() {
