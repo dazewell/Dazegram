@@ -9698,6 +9698,17 @@ public class ChatActivity extends BaseFragment implements
         final boolean inputMethodVisible = windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.ime()).bottom > 0
             || windowInsetsStateHolder.inAppViewIsVisible();
         chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);
+        // The emoji suggestion strip is a 160dp bottom-anchored frame whose bubble is translated up
+        // past the field's top edge. A fullscreen field is screen-high, so the bubble lands way outside
+        // that frame: clipped from drawing (or worse, a stray clipped fragment over the text) and dead
+        // to touch, since hit testing goes by the frame. Give the strip full height while expanded.
+        if (suggestEmojiPanel != null && suggestEmojiPanel.getLayoutParams() != null) {
+            final int suggestPanelHeight = chatActivityEnterView.isMessageEditExpanded() ? ViewGroup.LayoutParams.MATCH_PARENT : dp(160);
+            if (suggestEmojiPanel.getLayoutParams().height != suggestPanelHeight) {
+                suggestEmojiPanel.getLayoutParams().height = suggestPanelHeight;
+                suggestEmojiPanel.requestLayout();
+            }
+        }
     }
 
     private void checkInsets() {
