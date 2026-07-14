@@ -343,6 +343,7 @@ public class EditTextEffects extends EditText {
             AnimatedEmojiSpan.drawAnimatedEmojis(canvas, getLayout(), animatedEmojiDrawables, 0, spoilers, computeVerticalScrollOffset() - AndroidUtilities.dp(6), computeVerticalScrollOffset() + computeVerticalScrollExtent(), 0, 1f, animatedEmojiColorFilter);
             canvas.restore();
         }
+        logEmojiOverlayState();
         canvas.restore();
 
         if (!spoilers.isEmpty()) {
@@ -389,7 +390,53 @@ public class EditTextEffects extends EditText {
             animatedEmojiDrawables = AnimatedEmojiSpan.update(emojiCacheType(), this, animatedEmojiDrawables, getLayout());
             lastLayout = getLayout();
             lastTextLength = newTextLength;
+            // naxemoji diag: temporary, remove before landing
+            FileLog.d("naxemoji update force=" + force + " layout=" + System.identityHashCode(getLayout()) + " len=" + newTextLength
+                + " holders=" + (animatedEmojiDrawables == null ? -1 : animatedEmojiDrawables.holders.size()));
         }
+    }
+
+    // naxemoji diag: temporary, remove before landing. Dumps the animated-emoji overlay state
+    // for this field twice a second while it contains custom emoji, so a black-gap repro can be
+    // matched against which link of the chain (holder, position record, cull, image) is failing.
+    private long lastEmojiDiagTime;
+    private void logEmojiOverlayState() {
+        if (System.currentTimeMillis() - lastEmojiDiagTime < 500 || getLayout() == null || !(getLayout().getText() instanceof android.text.Spanned)) {
+            return;
+        }
+        android.text.Spanned text = (android.text.Spanned) getLayout().getText();
+        AnimatedEmojiSpan[] textSpans = text.getSpans(0, text.length(), AnimatedEmojiSpan.class);
+        if (textSpans.length == 0) {
+            return;
+        }
+        lastEmojiDiagTime = System.currentTimeMillis();
+        StringBuilder sb = new StringBuilder("naxemoji draw ").append(getClass().getSimpleName())
+            .append(" layout=").append(System.identityHashCode(getLayout()))
+            .append(" lastLayout=").append(System.identityHashCode(lastLayout))
+            .append(" len=").append(text.length())
+            .append(" scrollY=").append(getScrollY())
+            .append(" h=").append(getHeight())
+            .append(" layoutH=").append(getLayout().getHeight())
+            .append(" bounds=").append(computeVerticalScrollOffset() - AndroidUtilities.dp(6)).append("..").append(computeVerticalScrollOffset() + computeVerticalScrollExtent())
+            .append(" spans=").append(textSpans.length)
+            .append(" holders=").append(animatedEmojiDrawables == null ? -1 : animatedEmojiDrawables.holders.size());
+        for (AnimatedEmojiSpan span : textSpans) {
+            sb.append(" span[id=").append(span.getDocumentId())
+                .append(" start=").append(text.getSpanStart(span))
+                .append(" drawn=").append(span.spanDrawn)
+                .append(" cx=").append(span.lastDrawnCx)
+                .append(" cy=").append(span.lastDrawnCy)
+                .append(" size=").append(span.measuredSize).append(']');
+        }
+        if (animatedEmojiDrawables != null) {
+            for (int i = 0; i < animatedEmojiDrawables.holders.size(); i++) {
+                AnimatedEmojiSpan.AnimatedEmojiHolder holder = animatedEmojiDrawables.holders.get(i);
+                sb.append(" holder[layout=").append(System.identityHashCode(holder.layout))
+                    .append(" skip=").append(holder.skipDraw)
+                    .append(" img=").append(holder.drawable != null && holder.drawable.getImageReceiver() != null && holder.drawable.getImageReceiver().hasImageLoaded()).append(']');
+            }
+        }
+        FileLog.d(sb.toString());
     }
 
     protected int emojiCacheType() {
