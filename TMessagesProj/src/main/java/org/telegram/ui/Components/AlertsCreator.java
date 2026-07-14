@@ -4600,6 +4600,12 @@ public class AlertsCreator {
         }
         final boolean[] canceled = {true};
 
+        // NagramX: "Send on event" trigger chip; null unless this is a plain forward schedule to a real chat.
+        final com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerRow naxEventRow =
+                com.radolyn.ayugram.eventschedule.EventScheduleHelper.addTriggerRow(
+                        context, container, UserConfig.selectedAccount, dialogId, selfUserId,
+                        isReschedule, forcedTitle != null, datePickerColors.textColor, datePickerColors.backgroundColor);
+
         checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
         // The initial validation above may have snapped the pickers forward; re-render the peer time line.
         if (intervalControls[0] != null) {
@@ -4750,6 +4756,10 @@ public class AlertsCreator {
             if (setSeconds) {
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);
+            }
+            // NagramX: arm the event trigger before the send fires so it can claim the local echo.
+            if (naxEventRow != null) {
+                naxEventRow.commit((int) (calendar.getTimeInMillis() / 1000), repeat[0]);
             }
             datePickerDelegate.didSelectDate(notify[0], (int) (calendar.getTimeInMillis() / 1000), repeat[0]);
             builder.getDismissRunnable().run();

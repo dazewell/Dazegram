@@ -35957,6 +35957,15 @@ public class ChatActivity extends BaseFragment implements
             case OPTION_EDIT_SCHEDULE_TIME: {
                 MessageObject message = selectedObject;
                 MessageObject.GroupedMessages group = selectedObjectGroup;
+                // NagramX: hand the message's server ids to the schedule sheet so it can prefill/edit an event trigger.
+                int[] naxEventIds;
+                if (group != null && !group.messages.isEmpty()) {
+                    naxEventIds = new int[group.messages.size()];
+                    for (int a = 0; a < group.messages.size(); a++) naxEventIds[a] = group.messages.get(a).getId();
+                } else {
+                    naxEventIds = new int[]{message.getId()};
+                }
+                com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds);
                 AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
                         SendMessagesHelper.getInstance(currentAccount).editMessage(group.messages.get(0), null, false, ChatActivity.this, null, scheduleDate, scheduleRepeatPeriod);
@@ -49345,6 +49354,13 @@ public class ChatActivity extends BaseFragment implements
                     items.add(LocaleController.getString(R.string.MessageScheduleEditTime));
                     options.add(OPTION_EDIT_SCHEDULE_TIME);
                     icons.add(R.drawable.msg_calendar2);
+                    // NagramX: for an armed message, a second row (same edit action) surfaces its event trigger.
+                    CharSequence naxEventSummary = com.radolyn.ayugram.eventschedule.EventScheduleHelper.getMenuSummary(currentAccount, dialog_id, selectedObject);
+                    if (naxEventSummary != null) {
+                        items.add(naxEventSummary);
+                        options.add(OPTION_EDIT_SCHEDULE_TIME);
+                        icons.add(R.drawable.msg_instant_solar);
+                    }
                 }
                 MessageObject msg = selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject;
                 if (msg != null && msg.isFactCheckable() && getMessagesController().canEditFactcheck && ChatObject.isChannelAndNotMegaGroup(currentChat) && chatMode == MODE_DEFAULT) {

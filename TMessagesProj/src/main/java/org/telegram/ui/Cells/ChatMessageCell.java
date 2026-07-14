@@ -18577,6 +18577,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             }
             ((SpannableStringBuilder) timeString).append(" | ").append(String.valueOf(messageObject.messageOwner.id));
         }
+        // NagramX: mark scheduled messages that carry a live event trigger with a small bolt.
+        timeString = com.radolyn.ayugram.eventschedule.EventScheduleHelper.decorateTimeString(currentAccount, messageObject, timeString);
         // Append peer's local time when a chat time-zone is configured for this dialog (no-op otherwise).
         // Use messageObject (the method parameter) -- not currentMessageObject (the field) -- so that
         // callers that pass a different MessageObject instance (e.g. pinned messages) get the right

@@ -21475,6 +21475,8 @@ public class MessagesController extends BaseController implements NotificationCe
             QuickRepliesController.getInstance(currentAccount).checkLocalMessages(messages);
         }
         getNotificationCenter().postNotificationName(NotificationCenter.didReceiveNewMessages, dialogId, messages, scheduled, mode);
+        // NagramX: single new-message funnel for event-triggered scheduled messages (claim/evaluate).
+        com.radolyn.ayugram.eventschedule.EventScheduleController.onNewMessages(currentAccount, dialogId, messages, scheduled);
 
         if (lastMessage == null || scheduled) {
             return false;
