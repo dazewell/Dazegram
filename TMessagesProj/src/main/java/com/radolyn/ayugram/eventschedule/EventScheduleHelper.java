@@ -21,7 +21,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.LayoutHelper;
-import org.telegram.ui.Components.SlideChooseView;
+import org.telegram.ui.Components.SeekBarView;
 
 import java.util.regex.Pattern;
 
@@ -198,25 +198,67 @@ public final class EventScheduleHelper {
             patternField.setText(pattern);
             TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
 
-            builder.addTitle(getString(R.string.EventScheduleDelayTitle));
             final int[] delayValues = {0, 5, 10, 30, 60, 300};
-            final String[] delayLabels = {
-                    getString(R.string.EventScheduleNoDelay),
-                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 5),
-                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 10),
-                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 30),
-                    org.telegram.messenger.LocaleController.formatPluralString("Minutes", 1),
-                    org.telegram.messenger.LocaleController.formatPluralString("Minutes", 5)
-            };
             int startIndex = 0;
             for (int i = 0; i < delayValues.length; i++) {
                 if (delayValues[i] <= delay) startIndex = i;
             }
             final int[] delayIndex = {startIndex};
-            SlideChooseView delaySlider = new SlideChooseView(context);
-            delaySlider.setOptions(startIndex, delayLabels);
-            delaySlider.setCallback(index -> delayIndex[0] = index);
-            builder.addCustomView(delaySlider);
+
+            final int accentColor = Theme.getColor(Theme.key_player_progress);
+            LinearLayout delayLayout = new LinearLayout(context);
+            delayLayout.setOrientation(LinearLayout.VERTICAL);
+
+            LinearLayout delayHeader = new LinearLayout(context);
+            delayHeader.setOrientation(LinearLayout.HORIZONTAL);
+            delayHeader.setGravity(Gravity.CENTER_VERTICAL);
+            delayLayout.addView(delayHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 24, 22, 8, 22, 0));
+
+            TextView delayTitle = new TextView(context);
+            delayTitle.setText(getString(R.string.EventScheduleDelayTitle));
+            delayTitle.setTextColor(accentColor);
+            delayTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            delayTitle.setTypeface(org.telegram.messenger.AndroidUtilities.bold());
+            delayTitle.setGravity(Gravity.CENTER_VERTICAL);
+            delayTitle.setSingleLine(true);
+            delayTitle.setEllipsize(TextUtils.TruncateAt.END);
+            delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
+
+            final TextView delayValue = new TextView(context);
+            delayValue.setText(formatDelayLabel(delayValues[startIndex]));
+            delayValue.setTextColor(accentColor);
+            delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            delayValue.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+            delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+
+            final SeekBarView delaySeekBar = new SeekBarView(context, null);
+            delaySeekBar.setReportChanges(true);
+            delaySeekBar.setSeparatorsCount(delayValues.length);
+            delaySeekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
+                @Override
+                public void onSeekBarDrag(boolean stop, float progress) {
+                    int step = Math.round(progress * (delayValues.length - 1));
+                    delayIndex[0] = step;
+                    delayValue.setText(formatDelayLabel(delayValues[step]));
+                    if (stop) {
+                        delaySeekBar.setProgress(step / (float) (delayValues.length - 1), true);
+                    }
+                }
+
+                @Override
+                public CharSequence getContentDescription() {
+                    return delayTitle.getText() + ", " + delayValue.getText();
+                }
+
+                @Override
+                public int getStepsCount() {
+                    return delayValues.length - 1;
+                }
+            });
+            delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 38, 13, 0, 13, 0));
+            final float initialDelayProgress = startIndex / (float) (delayValues.length - 1);
+            org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
+            builder.addCustomView(delayLayout);
 
             builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                 enabled = false;
@@ -310,5 +352,15 @@ public final class EventScheduleHelper {
         private void refresh() {
             if (onChanged != null) onChanged.run();
         }
+    }
+
+    private static String formatDelayLabel(int seconds) {
+        if (seconds <= 0) {
+            return getString(R.string.EventScheduleNoDelay);
+        }
+        if (seconds < 60 || seconds % 60 != 0) {
+            return org.telegram.messenger.LocaleController.formatPluralString("Seconds", seconds);
+        }
+        return org.telegram.messenger.LocaleController.formatPluralString("Minutes", seconds / 60);
     }
 }
