@@ -17,8 +17,9 @@ import java.util.regex.Pattern;
  * <p>The scheduled message keeps a real, user-picked fallback date; if a matching
  * message arrives in the same chat while the app is running, the scheduled message is
  * sent early instead. Matching is type (voice / round / video / photo / text, a bit
- * mask) AND pattern (glob or regex over the incoming text/caption). An empty side of
- * the AND passes, but at least one condition must be set.
+ * mask) OR pattern (glob or regex over the incoming text/caption): a selected type that
+ * matches fires on its own, otherwise the pattern is checked. At least one condition
+ * must be set, and the pattern is evaluated on any message regardless of the type mask.
  *
  * <p>Persisted as JSON under {@link EventScheduleStore}; the compiled {@link Pattern}
  * and the transient runtime {@link #state} / {@link #localIds} are never stored.

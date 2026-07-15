@@ -17,8 +17,6 @@ import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.LaunchActivity;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
  * Posts a local heads-up to the sender when a trigger sends a scheduled message early, so the
  * auto-send isn't invisible when they're not looking at the chat. Uses the app's existing
@@ -26,7 +24,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 final class EventScheduleNotifier {
 
-    private static final AtomicInteger NEXT_ID = new AtomicInteger(0x6E780000);
+    // Per-account, per-dialog base so repeated early sends in the same chat collapse into one
+    // notification instead of stacking, the way message notifications do.
+    private static final int ID_BASE = 0x6E780000;
 
     private EventScheduleNotifier() {}
 
@@ -36,7 +36,7 @@ final class EventScheduleNotifier {
             if (context == null) return;
 
             String name = resolveName(account, dialogId);
-            int id = NEXT_ID.incrementAndGet();
+            int id = ID_BASE + (account << 24) + (int) (dialogId ^ (dialogId >>> 32));
 
             Intent intent = new Intent(context, LaunchActivity.class);
             intent.setAction("com.tmessages.openchat" + Math.random() + Integer.MAX_VALUE);
