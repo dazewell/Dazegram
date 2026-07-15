@@ -49,14 +49,16 @@ public final class EventScheduleHelper {
     private static int editAccount;
     private static long editDialogId;
     private static int[] editMessageIds;
+    private static Runnable editOnChanged;
 
     private EventScheduleHelper() {}
 
-    public static void armEdit(int account, long dialogId, int[] messageIds) {
+    public static void armEdit(int account, long dialogId, int[] messageIds, Runnable onChanged) {
         editPending = true;
         editAccount = account;
         editDialogId = dialogId;
         editMessageIds = messageIds;
+        editOnChanged = onChanged;
     }
 
     public static TriggerRow addTriggerRow(Context context, LinearLayout container, int account, long dialogId,
@@ -64,20 +66,27 @@ public final class EventScheduleHelper {
                                            int textColor, int backgroundColor) {
         boolean editHere = editPending && editAccount == account && editDialogId == dialogId;
         int[] editIds = editHere ? editMessageIds : null;
+        Runnable onChanged = editHere ? editOnChanged : null;
         editPending = false;
         editMessageIds = null;
+        editOnChanged = null;
 
         if (isReschedule || hasForcedTitle || dialogId == 0 || dialogId == -1
                 || dialogId == selfUserId || DialogObject.isEncryptedDialog(dialogId)) {
             return null;
         }
 
-        Row row = new Row(account, dialogId, editIds);
+        Row row = new Row(account, dialogId, editIds, onChanged);
 
         TextView chip = new TextView(context);
         chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         chip.setTextColor(textColor);
-        chip.setPadding(dp(12), 0, dp(12), 0);
+        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
+        // Summaries can list several types plus a delay, so let the pill wrap and grow instead of
+        // clipping to the single-line height the "Repeat" chip uses; keep short pills that same size.
+        chip.setMinHeight(dp(28));
+        chip.setMaxLines(3);
+        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
         final int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
         final int chipSelector = Theme.multAlpha(textColor, 0.1f);
         chip.setBackground(Theme.createSimpleSelectorRoundRectDrawable(dp(14), chipBg, Theme.blendOver(chipBg, chipSelector)));
@@ -87,7 +96,7 @@ public final class EventScheduleHelper {
         row.updateChip();
 
         FrameLayout chipContainer = new FrameLayout(context);
-        chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 28, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
+        chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
         container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         return row;
@@ -126,6 +135,7 @@ public final class EventScheduleHelper {
         final long dialogId;
         final int[] editIds;
         final EventScheduleEntry editEntry;
+        final Runnable onChanged;
 
         boolean enabled;
         int types;
@@ -135,10 +145,11 @@ public final class EventScheduleHelper {
 
         TextView chip;
 
-        Row(int account, long dialogId, int[] editIds) {
+        Row(int account, long dialogId, int[] editIds, Runnable onChanged) {
             this.account = account;
             this.dialogId = dialogId;
             this.editIds = editIds;
+            this.onChanged = onChanged;
             EventScheduleEntry existing = editIds != null && editIds.length > 0
                     ? EventScheduleStore.findByMessage(account, dialogId, editIds[0]) : null;
             this.editEntry = existing;
@@ -255,6 +266,7 @@ public final class EventScheduleHelper {
                 } else {
                     EventScheduleStore.remove(account, editEntry);
                 }
+                refresh();
                 return;
             }
             if (!armed) {
@@ -274,6 +286,7 @@ public final class EventScheduleHelper {
                 entry.fallbackDate = scheduleDate;
                 entry.createdAt = System.currentTimeMillis();
                 EventScheduleController.armExisting(account, entry);
+                refresh();
                 return;
             }
             EventScheduleEntry entry = new EventScheduleEntry();
@@ -283,6 +296,12 @@ public final class EventScheduleHelper {
             entry.delaySeconds = delay;
             entry.createdAt = System.currentTimeMillis();
             EventScheduleController.armPending(account, dialogId, entry, scheduleDate);
+        }
+
+        // Repaint the scheduled view so the bolt appears/disappears at once (editing a live message
+        // is a local-only store change with no server round-trip to rebind the cell).
+        private void refresh() {
+            if (onChanged != null) onChanged.run();
         }
     }
 }
