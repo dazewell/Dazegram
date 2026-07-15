@@ -60,7 +60,7 @@ public final class EventScheduleEntry {
     }
 
     public boolean matchesType(MessageObject message) {
-        if (types == 0) return true;
+        if (types == 0) return false;
         if ((types & TYPE_VOICE) != 0 && message.isVoice()) return true;
         if ((types & TYPE_ROUND) != 0 && message.isRoundVideo()) return true;
         if ((types & TYPE_VIDEO) != 0 && message.isVideo() && !message.isRoundVideo()) return true;

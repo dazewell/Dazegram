@@ -4,7 +4,6 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
-import android.text.InputType;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
@@ -22,6 +21,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.SlideChooseView;
 
 import java.util.regex.Pattern;
 
@@ -167,7 +167,8 @@ public final class EventScheduleHelper {
 
         void openSheet(Context context) {
             BottomBuilder builder = new BottomBuilder(context);
-            builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
+            builder.addTitle(getString(R.string.EventScheduleTitle),
+                    getString(R.string.EventScheduleMatchInfo) + " " + getString(R.string.EventScheduleArmed));
 
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null);
             TextCheckCell roundCell = builder.addCheckItem(getString(R.string.AttachRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
@@ -177,16 +178,24 @@ public final class EventScheduleHelper {
 
             EditText patternField = builder.addEditText(getString(R.string.EventSchedulePatternHint));
             patternField.setText(pattern);
-            TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleGlobHint), null);
+            TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
 
-            EditText delayField = builder.addEditText(getString(R.string.EventScheduleDelayHint));
-            delayField.setInputType(InputType.TYPE_CLASS_NUMBER);
-            if (delay > 0) delayField.setText(String.valueOf(delay));
+            builder.addTitle(getString(R.string.EventScheduleDelayTitle));
+            final int[] delayValues = {0, 5, 10, 30, 60, 300};
+            final String[] delayLabels = {getString(R.string.EventScheduleNoDelay), "5s", "10s", "30s", "1m", "5m"};
+            int startIndex = 0;
+            for (int i = 0; i < delayValues.length; i++) {
+                if (delayValues[i] <= delay) startIndex = i;
+            }
+            final int[] delayIndex = {startIndex};
+            SlideChooseView delaySlider = new SlideChooseView(context);
+            delaySlider.setOptions(startIndex, delayLabels);
+            delaySlider.setCallback(index -> delayIndex[0] = index);
+            builder.addCustomView(delaySlider);
 
-            builder.addButton(getString(R.string.EventScheduleClear), false, true, it -> {
+            builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                 enabled = false;
                 updateChip();
-                builder.dismiss();
                 return kotlin.Unit.INSTANCE;
             });
             builder.addButton(getString(R.string.Done), true, false, it -> {
@@ -210,12 +219,7 @@ public final class EventScheduleHelper {
                         return kotlin.Unit.INSTANCE;
                     }
                 }
-                int newDelay = 0;
-                try {
-                    String d = delayField.getText().toString().trim();
-                    if (!d.isEmpty()) newDelay = Math.max(0, Math.min(86400, Integer.parseInt(d)));
-                } catch (Throwable ignore) {
-                }
+                int newDelay = delayValues[delayIndex[0]];
                 enabled = true;
                 types = newTypes;
                 pattern = newPattern;

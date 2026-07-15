@@ -281,6 +281,11 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
         builder.setTitleMultipleLines(multilines)
     }
 
+    fun addCustomView(view: android.view.View): android.view.View {
+        rootView.addView(view, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, rtl))
+        return view
+    }
+
     fun create(): BottomSheet {
         return builder.create().also {
             onShowListener?.also(it::setOnShowListener)

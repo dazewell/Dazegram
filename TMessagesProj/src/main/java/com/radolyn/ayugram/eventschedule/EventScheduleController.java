@@ -1,5 +1,7 @@
 package com.radolyn.ayugram.eventschedule;
 
+import android.text.TextUtils;
+
 import androidx.annotation.NonNull;
 
 import com.radolyn.ayugram.utils.AyuState;
@@ -217,19 +219,28 @@ public final class EventScheduleController {
             final CharSequence text = message.messageOwner.message;
             for (EventScheduleEntry entry : entries) {
                 if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()) continue;
-                if (!entry.matchesType(message)) continue;
                 final String key = entry.key();
+                boolean typeSet = entry.types != 0;
+                boolean patternSet = !TextUtils.isEmpty(entry.pattern);
+                // OR: a matching type is enough on its own; otherwise the pattern can still match.
+                if (typeSet && entry.matchesType(message)) {
+                    armWaiting(account, entry, key);
+                    continue;
+                }
+                if (!patternSet) continue;
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
                     if (!entry.matchesPattern(text)) return;
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (entry.state != EventScheduleEntry.STATE_ARMED || !EventScheduleStore.contains(account, key)) return;
-                        entry.state = EventScheduleEntry.STATE_WAITING;
-                        AndroidUtilities.runOnUIThread(() -> fire(account, entry), entry.delaySeconds * 1000L);
-                    });
+                    AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key));
                 });
             }
         }
+    }
+
+    private static void armWaiting(int account, EventScheduleEntry entry, String key) {
+        if (entry.state != EventScheduleEntry.STATE_ARMED || !EventScheduleStore.contains(account, key)) return;
+        entry.state = EventScheduleEntry.STATE_WAITING;
+        AndroidUtilities.runOnUIThread(() -> fire(account, entry), entry.delaySeconds * 1000L);
     }
 
     private static void fire(int account, EventScheduleEntry entry) {
@@ -256,6 +267,8 @@ public final class EventScheduleController {
                             NotificationCenter.messagesDeleted, req.id,
                             clientUserId == dialogId ? 0L : -dialogId, true, true);
                     EventScheduleStore.remove(account, entry);
+                    // Local heads-up: the trigger fired while the user may not be looking at the chat.
+                    EventScheduleNotifier.notifySent(account, dialogId);
                 });
             } else if (error.text != null && error.text.startsWith("SLOWMODE_WAIT_")) {
                 // Next matching message retries; the fallback date covers it regardless.

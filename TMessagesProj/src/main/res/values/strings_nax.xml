@@ -414,12 +414,15 @@
     <string name="EventScheduleTypeText">Text message</string>
     <string name="EventSchedulePatternHint">Text or caption pattern</string>
     <string name="EventScheduleUseRegex">Regular expression</string>
-    <string name="EventScheduleGlobHint">Glob: * matches anything, ? one character, whole text must match</string>
-    <string name="EventScheduleDelayHint">Delay after trigger, seconds</string>
+    <string name="EventScheduleRegexInfo">Off: wildcards, * matches anything and ? one character. On: a full regular expression, matched anywhere in the text.</string>
+    <string name="EventScheduleMatchInfo">Sent early when a new message in this chat matches any type you pick, or when its text or caption matches the pattern (the pattern works on any message, with or without the Text message type). Set at least one condition.</string>
+    <string name="EventScheduleDelayTitle">Delay before sending</string>
+    <string name="EventScheduleNoDelay">No delay</string>
     <string name="EventScheduleClear">Remove trigger</string>
     <string name="EventScheduleNeedCondition">Select a message type or enter a pattern</string>
     <string name="EventScheduleInvalidRegex">Invalid pattern</string>
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
+    <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
     <string name="ScheduledDiscardTitle">Discard message?</string>
     <string name="ScheduledDiscardMessage">Scheduled messages don\'t keep a draft. If you leave now, the text you\'ve typed will be lost.</string>
     <string name="EditDiscardTitle">Discard changes?</string>
