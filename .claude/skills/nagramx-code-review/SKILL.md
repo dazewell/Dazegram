@@ -122,6 +122,24 @@ and still be wrong for this repo.
 - **`RecyclerView` / adapters & cell reuse.** State set in a bind path must be
   reset on every bind (recycled cells carry stale state) — a classic
   `DialogCell` / adapter bug.
+- **Multi-account correctness.** The app runs several accounts at once, so any
+  lookup, cache, observer, store, or state bit must be keyed by `account`
+  end-to-end. The tells:
+  - A method that *takes* an `account` parameter but ignores it (scans across
+    every account). Local/temporary message ids are generated **per account and
+    collide between accounts**, so an id-remap, `messageReceivedByServer`
+    handler, or any local-id lookup must filter by the account it fired for — or
+    it applies one account's event to another's state.
+  - `NotificationCenter` observers, `SharedPreferences` files, and
+    fast-path/dirty flags that must exist **per account** (`<feature>_<account>`,
+    a per-account map or bitmask), not one global instance.
+  - `UserConfig.selectedAccount` (the UI's current account) vs the callback's /
+    fragment's `currentAccount` — arming with one and acting on another silently
+    targets the wrong account. Verify the same account threads through arm →
+    persist → fire.
+  - A shared `static` keyed only by dialog id or message id — not by
+    `(account, id)` — is the smell; confirm collisions across accounts can't
+    cross-wire.
 - **Config coherence.** If the change adds a package variant concern, does it
   respect `BuildConfig.APPLICATION_ID` / the dual-package split rather than
   hardcoding a package name?
