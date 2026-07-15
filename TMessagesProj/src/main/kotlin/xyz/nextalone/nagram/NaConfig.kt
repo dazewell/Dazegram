@@ -1336,6 +1336,30 @@ object NaConfig {
             ConfigItem.configTypeInt,
             10
         )
+    val eventScheduleLastTypes =
+        addConfig(
+            "EventScheduleLastTypes",
+            ConfigItem.configTypeInt,
+            0
+        )
+    val eventScheduleLastPattern =
+        addConfig(
+            "EventScheduleLastPattern",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val eventScheduleLastPatternRegex =
+        addConfig(
+            "EventScheduleLastPatternRegex",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val eventScheduleLastDelay =
+        addConfig(
+            "EventScheduleLastDelay",
+            ConfigItem.configTypeInt,
+            0
+        )
     val keepTranslatorPreferences =
         addConfig(
             "KeepTranslatorPreferences",

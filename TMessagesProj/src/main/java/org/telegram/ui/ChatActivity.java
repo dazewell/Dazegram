@@ -35957,6 +35957,18 @@ public class ChatActivity extends BaseFragment implements
             case OPTION_EDIT_SCHEDULE_TIME: {
                 MessageObject message = selectedObject;
                 MessageObject.GroupedMessages group = selectedObjectGroup;
+                // NagramX: hand the message's server ids to the schedule sheet so it can prefill/edit an event trigger.
+                // Only when the picker will actually build (parent non-null), so the one-shot can't linger and pin this fragment.
+                if (getParentActivity() != null) {
+                    int[] naxEventIds;
+                    if (group != null && !group.messages.isEmpty()) {
+                        naxEventIds = new int[group.messages.size()];
+                        for (int a = 0; a < group.messages.size(); a++) naxEventIds[a] = group.messages.get(a).getId();
+                    } else {
+                        naxEventIds = new int[]{message.getId()};
+                    }
+                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, this::updateVisibleRows);
+                }
                 AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
                         SendMessagesHelper.getInstance(currentAccount).editMessage(group.messages.get(0), null, false, ChatActivity.this, null, scheduleDate, scheduleRepeatPeriod);
