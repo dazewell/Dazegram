@@ -40,6 +40,8 @@ public final class EventScheduleHelper {
         void commit(int scheduleDate, int repeatPeriod);
     }
 
+    private static final int BOLT_SIZE_DP = 11;
+
     // One-shot context set by the ChatActivity "Edit schedule time" hook, consumed by the next
     // addTriggerRow. The "edit a Saved Messages reminder" path sets nothing useful, so the row
     // validates the dialog id and clears the flag unconditionally to avoid leaking into a later sheet.
@@ -94,24 +96,29 @@ public final class EventScheduleHelper {
     /** Prepends a small bolt to the time string of a scheduled message that carries a live trigger. */
     public static CharSequence decorateTimeString(int account, MessageObject msg, CharSequence timeString) {
         EventScheduleController.ensureWarm(account);
-        if (msg == null || !msg.scheduled || !EventScheduleStore.hasAny(account)) return timeString;
-        if (EventScheduleStore.findByMessage(account, msg.getDialogId(), msg.getId()) == null) return timeString;
+        if (!isArmed(account, msg)) return timeString;
         SpannableStringBuilder sb = new SpannableStringBuilder("\u200b ");
         ColoredImageSpan bolt = new ColoredImageSpan(R.drawable.msg_instant_solar);
-        bolt.setSize(dp(11));
+        bolt.setSize(dp(BOLT_SIZE_DP));
         bolt.spaceScaleX = 0.9f;
         sb.setSpan(bolt, 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         sb.append(timeString);
         return sb;
     }
 
-    /** Long-press menu label for an armed scheduled message, or null when it has no trigger. */
-    public static CharSequence getMenuSummary(int account, long dialogId, MessageObject selected) {
-        if (selected == null || !EventScheduleStore.hasAny(account)) return null;
-        EventScheduleEntry entry = EventScheduleStore.findByMessage(account, dialogId, selected.getId());
-        if (entry == null) return null;
-        CharSequence detail = entry.summary(true);
-        return TextUtils.isEmpty(detail) ? getString(R.string.EventScheduleArmed) : detail;
+    /**
+     * Width the bolt adds to the time layout. chat_timePaint.measureText ignores the span (it rides
+     * a zero-width char), so the cell must reserve this or the status ticks collide with it -- the
+     * same reservation the peer-time glyph needs.
+     */
+    public static int timeGlyphReserve(int account, MessageObject msg) {
+        if (!isArmed(account, msg)) return 0;
+        return dp(BOLT_SIZE_DP);
+    }
+
+    private static boolean isArmed(int account, MessageObject msg) {
+        if (msg == null || !msg.scheduled || !EventScheduleStore.hasAny(account)) return false;
+        return EventScheduleStore.findByMessage(account, msg.getDialogId(), msg.getId()) != null;
     }
 
     private static final class Row implements TriggerRow {

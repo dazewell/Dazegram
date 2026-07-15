@@ -49354,13 +49354,6 @@ public class ChatActivity extends BaseFragment implements
                     items.add(LocaleController.getString(R.string.MessageScheduleEditTime));
                     options.add(OPTION_EDIT_SCHEDULE_TIME);
                     icons.add(R.drawable.msg_calendar2);
-                    // NagramX: for an armed message, a second row (same edit action) surfaces its event trigger.
-                    CharSequence naxEventSummary = com.radolyn.ayugram.eventschedule.EventScheduleHelper.getMenuSummary(currentAccount, dialog_id, selectedObject);
-                    if (naxEventSummary != null) {
-                        items.add(naxEventSummary);
-                        options.add(OPTION_EDIT_SCHEDULE_TIME);
-                        icons.add(R.drawable.msg_instant_solar);
-                    }
                 }
                 MessageObject msg = selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject;
                 if (msg != null && msg.isFactCheckable() && getMessagesController().canEditFactcheck && ChatObject.isChannelAndNotMegaGroup(currentChat) && chatMode == MODE_DEFAULT) {
