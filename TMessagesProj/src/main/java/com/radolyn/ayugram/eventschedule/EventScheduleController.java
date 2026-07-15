@@ -7,16 +7,18 @@ import androidx.annotation.NonNull;
 import com.radolyn.ayugram.utils.AyuState;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.ChatObject;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
-import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 
 /**
@@ -66,6 +68,19 @@ public final class EventScheduleController {
 
     private static boolean hasState(int account) {
         return EventScheduleStore.hasAny(account) || (pendingAccounts & (1L << account)) != 0;
+    }
+
+    // Keep the per-account pending bit exact so the hot new-message path bails cheaply for accounts
+    // with nothing pending, instead of only clearing when every account's pending drains.
+    private static void refreshPendingBit(int account) {
+        String prefix = account + "_";
+        for (String k : PENDING.keySet()) {
+            if (k.startsWith(prefix)) {
+                pendingAccounts |= (1L << account);
+                return;
+            }
+        }
+        pendingAccounts &= ~(1L << account);
     }
 
     // The observer serves every account (the callback carries the account), so one instance
@@ -122,7 +137,7 @@ public final class EventScheduleController {
     /** Drops a pending bind that never got a message (trigger turned off, or a stale edit). */
     public static void killPending(int account, long dialogId) {
         PENDING.remove(pendingKey(account, dialogId));
-        if (!hasPending()) pendingAccounts = 0;
+        refreshPendingBit(account);
     }
 
     /** Arms a trigger on a message whose server ids are already known (editing a message with no trigger yet). */
@@ -143,10 +158,6 @@ public final class EventScheduleController {
         entry.resetCompiled();
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
-    }
-
-    private static boolean hasPending() {
-        return !PENDING.isEmpty();
     }
 
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
@@ -194,13 +205,14 @@ public final class EventScheduleController {
         }
         EventScheduleStore.persist(account, entry);
         if (entry.localIds.isEmpty()) {
-            for (Map.Entry<String, Pending> e : PENDING.entrySet()) {
-                if (e.getValue().entry == entry) {
-                    PENDING.remove(e.getKey());
+            Iterator<Map.Entry<String, Pending>> it = PENDING.entrySet().iterator();
+            while (it.hasNext()) {
+                if (it.next().getValue().entry == entry) {
+                    it.remove();
                     break;
                 }
             }
-            if (!hasPending()) pendingAccounts = 0;
+            refreshPendingBit(account);
         }
     }
 
@@ -255,7 +267,11 @@ public final class EventScheduleController {
         final TLRPC.TL_messages_sendScheduledMessages req = new TLRPC.TL_messages_sendScheduledMessages();
         req.peer = MessagesController.getInstance(account).getInputPeer(dialogId);
         req.id.addAll(entry.serverIds);
-        final long clientUserId = UserConfig.getInstance(account).getClientUserId();
+        // Scheduled-delete channelId is channel-only (matches MessagesController's own scheduled post):
+        // passing -dialogId for a DM or basic group makes ChatActivity.processDeletedMessages skip the
+        // removal, leaving the message stuck in the scheduled view until reload.
+        final long channelId = DialogObject.isChatDialog(dialogId)
+                && ChatObject.isChannel(MessagesController.getInstance(account).getChat(-dialogId)) ? -dialogId : 0L;
         ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
             if (error == null) {
                 MessagesController.getInstance(account).processUpdates((TLRPC.Updates) response, false);
@@ -264,8 +280,7 @@ public final class EventScheduleController {
                 }
                 AndroidUtilities.runOnUIThread(() -> {
                     NotificationCenter.getInstance(account).postNotificationName(
-                            NotificationCenter.messagesDeleted, req.id,
-                            clientUserId == dialogId ? 0L : -dialogId, true, true);
+                            NotificationCenter.messagesDeleted, req.id, channelId, true, true);
                     EventScheduleStore.remove(account, entry);
                     // Local heads-up: the trigger fired while the user may not be looking at the chat.
                     EventScheduleNotifier.notifySent(account, dialogId);
