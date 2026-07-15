@@ -414,7 +414,7 @@
     <string name="EventScheduleTypeText">Text message</string>
     <string name="EventSchedulePatternHint">Text or caption pattern</string>
     <string name="EventScheduleUseRegex">Regular expression</string>
-    <string name="EventScheduleRegexInfo">Off: wildcards, * matches anything and ? one character. On: a full regular expression, matched anywhere in the text.</string>
+    <string name="EventScheduleRegexInfo">Off: wildcards, where * matches anything and ? matches one character. On: a full regular expression, matched anywhere in the text.</string>
     <string name="EventScheduleMatchInfo">Sent early when a new message in this chat matches any type you pick, or when its text or caption matches the pattern (the pattern works on any message, with or without the Text message type). Set at least one condition.</string>
     <string name="EventScheduleDelayTitle">Delay before sending</string>
     <string name="EventScheduleNoDelay">No delay</string>

@@ -200,7 +200,14 @@ public final class EventScheduleHelper {
 
             builder.addTitle(getString(R.string.EventScheduleDelayTitle));
             final int[] delayValues = {0, 5, 10, 30, 60, 300};
-            final String[] delayLabels = {getString(R.string.EventScheduleNoDelay), "5s", "10s", "30s", "1m", "5m"};
+            final String[] delayLabels = {
+                    getString(R.string.EventScheduleNoDelay),
+                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 5),
+                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 10),
+                    org.telegram.messenger.LocaleController.formatPluralString("Seconds", 30),
+                    org.telegram.messenger.LocaleController.formatPluralString("Minutes", 1),
+                    org.telegram.messenger.LocaleController.formatPluralString("Minutes", 5)
+            };
             int startIndex = 0;
             for (int i = 0; i < delayValues.length; i++) {
                 if (delayValues[i] <= delay) startIndex = i;

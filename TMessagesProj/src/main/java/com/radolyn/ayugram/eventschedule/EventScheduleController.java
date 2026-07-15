@@ -217,8 +217,12 @@ public final class EventScheduleController {
     }
 
     private static EventScheduleEntry findByLocalId(int account, int oldId) {
-        for (Pending p : PENDING.values()) {
-            if (p.entry.localIds.contains(oldId)) return p.entry;
+        // Local echo ids are per-account and can collide across accounts, so match within this account only.
+        String prefix = account + "_";
+        for (Map.Entry<String, Pending> e : PENDING.entrySet()) {
+            if (e.getKey().startsWith(prefix) && e.getValue().entry.localIds.contains(oldId)) {
+                return e.getValue().entry;
+            }
         }
         return null;
     }
