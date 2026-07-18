@@ -6353,13 +6353,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             @Override
-            protected boolean hintAlignTop() {
-                // in fullscreen mode the field is tall and top-anchored; keep the placeholder with
-                // the caret at the top instead of floating in the middle
-                return messageEditExpanded;
-            }
-
-            @Override
             public boolean onTextContextMenuItem(int id) {
                 if (id == android.R.id.paste && handleRichHtmlPaste()) {
                     return true;
@@ -6787,6 +6780,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
         // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
         messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);
+        // the placeholder looks marooned floating in a tall empty field, so drop it while expanded
+        // and bring it back on collapse (it only ever draws when the field is empty anyway)
+        messageEditText.setHintVisible(!expanded, false);
         messageEditText.requestLayout();
         // keep the line being edited on screen once the new height is applied
         AndroidUtilities.runOnUIThread(() -> {
