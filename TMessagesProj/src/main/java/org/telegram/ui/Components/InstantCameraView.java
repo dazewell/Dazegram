@@ -1016,9 +1016,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // slides, and this view only carries +panTranslationY, so the circle's real on-screen top is
         // the parent's translation above its view position. cap the lift against the parent's actual
         // translationY rather than an assumed 2x pan (the two can desync mid-slide) so the shifts can't
-        // stack and throw the preview off the top; dp(80) keeps the action bar clear.
+        // stack and throw the preview off the top; dp(64) keeps the circle just below the action bar.
+        // (was dp(80): too conservative — when a reply's top view squeezed the gap the circle stayed
+        // pinned with ~20dp of usable room above it going unused, so the two-row control fell to compact.)
         final float parentTop = getParent() instanceof View ? ((View) getParent()).getTranslationY() : 0f;
-        final float maxLift = Math.max(0f, parentTop + visibleHalf + panTranslationY - textureViewSize / 2f - dp(80));
+        final float maxLift = Math.max(0f, parentTop + visibleHalf + panTranslationY - textureViewSize / 2f - dp(64));
         // lift toward dp(132), a little over the ~124dp two rows actually need, so the fed gap lands
         // solidly in the roomy band; the circle then sits as low (and as safely on screen) as the room
         // allows instead of being yanked all the way up.
@@ -1032,14 +1034,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         // feed a gap that's decisively outside the compact hysteresis band [112..126] so the keyboard
         // slide can't flap the layout; gapAfterLift is continuous across the maxLift cap and crosses once.
-        // two rows are the main keyboard case now (roomy from ~120dp up), compact only when it genuinely
-        // can't fit (short screens, large fonts).
-        zoomControlView.setAvailableGap(gapAfterLift >= dp(120) ? dp(132) : Math.min(gapAfterLift, dp(108)));
+        // the shortened two-row block (InstantZoomControlView, 68dp) has its buttons ~40dp below center,
+        // so it only overlaps the panel below ~80dp of gap — gate there. between the relaxed lift cap
+        // above (which now frees the circle to open the gap to ~100dp when a reply squeezes it) and this
+        // floor gate, two rows win whenever they physically fit; feeding dp(132)/<dp(108) keeps the
+        // values clear of the [112..126] band. compact only when it genuinely can't fit (very small gaps).
+        zoomControlView.setAvailableGap(gapAfterLift >= dp(80) ? dp(132) : Math.min(gapAfterLift, dp(108)));
         final boolean compact = zoomControlView.isCompact();
 
         final float cameraBottom = translationY + textureViewSize / 2f + dp(8);
         // the drawn rows sit at the view's own center in both layouts, so translationY is the content center
-        final float contentHalf = dp(compact ? 24 : 52);
+        final float contentHalf = dp(compact ? 24 : 44);
         final float lo = cameraBottom + dp(8) + contentHalf;
         final float hi = bottomControlsTop - dp(12) - contentHalf;
         float zoomControlCenterY;
