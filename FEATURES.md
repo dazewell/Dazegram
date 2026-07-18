@@ -79,7 +79,7 @@ When you select messages in the scheduled view, the top bar used to fill with so
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-Once your draft grows past two lines, a small expand button shows up in the top corner of the message box, next to the AI edit button. Tap it and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. The icon flips to a collapse arrow, and tapping again returns to normal. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box, just taller. It also works while editing a message, and the button keeps out of the way in landscape and split-screen.
+Once your draft grows past two lines, a firm swipe up on the message box grows the input to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. Swipe down to return to normal. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box, just taller. The swipe only fires on a deliberate vertical flick and never while you're selecting text, so it keeps out of the way of normal editing. It also works while editing a message, and behaves in landscape and split-screen.
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 
