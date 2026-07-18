@@ -483,6 +483,8 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_report = 2041;
     private final static int nkactionbarbtn_send_now = 2042;
     private final static int nkactionbarbtn_reschedule = 2043;
+    private final static int nkbtn_pin_all = 2044;
+    private final static int nkbtn_reply_numbers = 2045;
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
     private final static int nkheaderbtn_hide_last_message = 2102;
@@ -11158,12 +11160,28 @@ public class ChatActivity extends BaseFragment implements
         actionModeOtherItem.addSubItem(nkbtn_translate, LlmConfig.llmIsDefaultProvider() ? R.drawable.magic_stick_solar : R.drawable.ic_translate, LocaleController.getString(R.string.Translate));
         actionModeOtherItem.addSubItem(nkbtn_sharemessage, R.drawable.msg_shareout, LocaleController.getString(R.string.ShareMessages));
         actionModeOtherItem.addSubItem(nkbtn_unpin, R.drawable.msg_unpin, LocaleController.getString(R.string.UnpinMessage));
+        // NagramX: bulk-pin every selected message sequentially, reusing the single-message pin dialog
+        boolean canPinAll;
+        if (currentChat != null) {
+            canPinAll = ChatObject.canPinMessages(currentChat) && !currentChat.monoforum;
+        } else if (userInfo != null) {
+            canPinAll = userInfo.can_pin_message;
+        } else {
+            canPinAll = false;
+        }
+        if (canPinAll && !scheduledActionBar && currentEncryptedChat == null) {
+            actionModeOtherItem.addSubItem(nkbtn_pin_all, R.drawable.msg_pin, LocaleController.getString(R.string.PinAll));
+        }
         if (!noforward) {
             actionModeOtherItem.addSubItem(nkbtn_savemessage, R.drawable.menu_saved, LocaleController.getString(R.string.AddToSavedMessages));
             if (canSendMessages) actionModeOtherItem.addSubItem(nkbtn_repeat, R.drawable.msg_repeat, LocaleController.getString(R.string.Repeat));
         }
         if (canSendMessages) {
             actionModeOtherItem.addSubItem(nkbtn_repeatascopy, R.drawable.msg_repeat, LocaleController.getString(R.string.RepeatAsCopy));
+            // NagramX: numbered replies -- a table of contents the peer can tap to jump between the selected messages
+            if (!scheduledActionBar && currentEncryptedChat == null) {
+                actionModeOtherItem.addSubItem(nkbtn_reply_numbers, R.drawable.menu_reply, LocaleController.getString(R.string.ReplyWithNumbers));
+            }
         }
         actionModeOtherItem.addSubItem(nkbtn_hide, R.drawable.msg_disable, LocaleController.getString(R.string.Hide));
         actionModeOtherItem.addSubItem(nkbtn_report, R.drawable.msg_report, LocaleController.getString(R.string.ReportChat));
@@ -35650,81 +35668,10 @@ public class ChatActivity extends BaseFragment implements
                 } else {
                     mid = selectedObject.getId();
                 }
-                AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
-                builder.setTitle(LocaleController.getString(R.string.PinMessageAlertTitle));
+                ArrayList<Integer> pinMids = new ArrayList<>();
+                pinMids.add(mid);
                 preserveDim = true;
-                builder.setDimAlpha(.5f);
-                builder.setOnPreDismissListener(di -> dimBehindView(false));
-
-                final boolean[] checks;
-                if (currentUser != null) {
-                    if (currentPinnedMessageId != 0 && mid < currentPinnedMessageId) {
-                        builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
-                    } else {
-                        builder.setMessage(LocaleController.getString(R.string.PinMessageAlertChat));
-                    }
-                    checks = new boolean[]{false, false};
-                    if (!UserObject.isUserSelf(currentUser)) {
-                        FrameLayout frameLayout = new FrameLayout(getParentActivity());
-                        CheckBoxCell cell = new CheckBoxCell(getParentActivity(), 1, themeDelegate);
-                        cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
-                        cell.setText(LocaleController.formatString("PinAlsoFor", R.string.PinAlsoFor, UserObject.getFirstName(currentUser)), "", false, false);
-                        cell.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 8), 0, AndroidUtilities.dp(LocaleController.isRTL ? 8 : 16), 0);
-                        frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT));
-                        cell.setOnClickListener(v -> {
-                            CheckBoxCell cell1 = (CheckBoxCell) v;
-                            checks[1] = !checks[1];
-                            cell1.setChecked(checks[1], true);
-                        });
-                        builder.setCustomViewOffset(6);
-                        builder.setView(frameLayout);
-                    }
-                } else if (ChatObject.isChannel(currentChat) && currentChat.megagroup || currentChat != null && !ChatObject.isChannel(currentChat)) {
-                    if (!pinnedMessageIds.isEmpty() && mid < pinnedMessageIds.get(0)) {
-                        builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
-                        checks = new boolean[]{false, true};
-                    } else {
-                        if (isTopic) {
-                            builder.setMessage(LocaleController.getString(R.string.PinMessageInTopicAlert));
-                        } else {
-                            builder.setMessage(LocaleController.getString(R.string.PinMessageAlert));
-                        }
-                        checks = new boolean[]{true, true};
-                        FrameLayout frameLayout = new FrameLayout(getParentActivity());
-                        CheckBoxCell cell = new CheckBoxCell(getParentActivity(), 1, themeDelegate);
-                        cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
-                        cell.setText(LocaleController.getString(R.string.PinNotify), "", true, false);
-                        cell.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 8), 0, AndroidUtilities.dp(LocaleController.isRTL ? 8 : 16), 0);
-                        frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT));
-                        cell.setOnClickListener(v -> {
-                            CheckBoxCell cell1 = (CheckBoxCell) v;
-                            checks[0] = !checks[0];
-                            cell1.setChecked(checks[0], true);
-                        });
-                        builder.setCustomViewOffset(9);
-                        builder.setView(frameLayout);
-                    }
-                } else {
-                    if (currentPinnedMessageId != 0 && mid < currentPinnedMessageId) {
-                        builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
-                    } else {
-                        builder.setMessage(LocaleController.getString(R.string.PinMessageAlertChannel));
-                    }
-                    checks = new boolean[]{false, true};
-                }
-                builder.setPositiveButton(LocaleController.getString(R.string.PinMessage), (dialogInterface, i) -> {
-                    getMessagesController().pinMessage(currentChat, currentUser, mid, false, !checks[1], checks[0]);
-                    Bulletin bulletin = BulletinFactory.createPinMessageBulletin(this, themeDelegate);
-                    bulletin.show();
-                    View view = bulletin.getLayout();
-                    view.postDelayed(() -> {
-                        try {
-                            if (!NekoConfig.disableVibration.Bool()) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-                        } catch (Exception ignored) {}
-                    }, 550);
-                });
-                builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-                showDialog(builder.create());
+                showPinDialog(pinMids, true);
                 break;
             }
             case OPTION_UNPIN: {
@@ -46778,6 +46725,10 @@ public class ChatActivity extends BaseFragment implements
                     unpinMessage(selectedMessage);
                 }
             }
+        } else if (id == nkbtn_pin_all) {
+            pinSelectedMessages();
+        } else if (id == nkbtn_reply_numbers) {
+            replyWithNumbersToSelection();
         } else if (id == nkbtn_savemessage) {
             ArrayList<MessageObject> messages = getSelectedMessages();
             forwardMessages(messages, false, false, true, 0, UserConfig.getInstance(currentAccount).getClientUserId(), 0);
@@ -46924,6 +46875,153 @@ public class ChatActivity extends BaseFragment implements
                 clearSelectionMode();
             });
         }
+    }
+
+    // a burst of pins/replies invites a flood ban, so cap the selection these two bulk actions accept
+    private static final int BULK_ACTION_LIMIT = 30;
+
+    private void pinSelectedMessages() {
+        final int count = selectedMessagesIds[0].size() + selectedMessagesIds[1].size();
+        if (count == 0) {
+            return;
+        }
+        if (count > BULK_ACTION_LIMIT) {
+            BulletinFactory.of(this).createSimpleBulletin(R.raw.error, formatString(R.string.BulkActionLimit, BULK_ACTION_LIMIT)).show();
+            return;
+        }
+        ArrayList<MessageObject> messages = getSelectedMessages();
+        ArrayList<Integer> mids = new ArrayList<>(messages.size());
+        for (MessageObject m : messages) {
+            if (m != null && m.getId() > 0) {
+                mids.add(m.getId());
+            }
+        }
+        if (mids.isEmpty()) {
+            return;
+        }
+        showPinDialog(mids, false);
+    }
+
+    private void replyWithNumbersToSelection() {
+        final int count = selectedMessagesIds[0].size() + selectedMessagesIds[1].size();
+        if (count == 0) {
+            return;
+        }
+        if (count > BULK_ACTION_LIMIT) {
+            BulletinFactory.of(this).createSimpleBulletin(R.raw.error, formatString(R.string.BulkActionLimit, BULK_ACTION_LIMIT)).show();
+            return;
+        }
+        if (chatActivityEnterView != null && checkSlowMode(chatActivityEnterView.getSendButton())) {
+            return;
+        }
+        ArrayList<MessageObject> messages = getSelectedMessages();
+        final ArrayList<MessageObject> targets = new ArrayList<>(messages.size());
+        for (MessageObject m : messages) {
+            if (m != null && m.getId() > 0) {
+                targets.add(m);
+            }
+        }
+        if (targets.isEmpty()) {
+            return;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+        builder.setTitle(getString(R.string.ReplyWithNumbers));
+        builder.setMessage(formatString(R.string.ReplyWithNumbersHint, targets.size()));
+        builder.setPositiveButton(getString(R.string.Send), (dialogInterface, i) ->
+                com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets));
+        builder.setNegativeButton(getString(R.string.Cancel), null);
+        showDialog(builder.create());
+    }
+
+    // shared by the single-message pin option and bulk "Pin all": same dialog, one code path. mids holds
+    // one id for a single pin, or the whole (ascending) selection for a bulk run.
+    private void showPinDialog(ArrayList<Integer> mids, boolean fromMessageMenu) {
+        if (mids.isEmpty() || getParentActivity() == null) {
+            return;
+        }
+        final int mid = mids.get(0);
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+        builder.setTitle(LocaleController.getString(R.string.PinMessageAlertTitle));
+        if (fromMessageMenu) {
+            builder.setDimAlpha(.5f);
+            builder.setOnPreDismissListener(di -> dimBehindView(false));
+        }
+
+        final boolean[] checks;
+        if (currentUser != null) {
+            if (currentPinnedMessageId != 0 && mid < currentPinnedMessageId) {
+                builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
+            } else {
+                builder.setMessage(LocaleController.getString(R.string.PinMessageAlertChat));
+            }
+            checks = new boolean[]{false, false};
+            if (!UserObject.isUserSelf(currentUser)) {
+                FrameLayout frameLayout = new FrameLayout(getParentActivity());
+                CheckBoxCell cell = new CheckBoxCell(getParentActivity(), 1, themeDelegate);
+                cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
+                cell.setText(LocaleController.formatString("PinAlsoFor", R.string.PinAlsoFor, UserObject.getFirstName(currentUser)), "", false, false);
+                cell.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 8), 0, AndroidUtilities.dp(LocaleController.isRTL ? 8 : 16), 0);
+                frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT));
+                cell.setOnClickListener(v -> {
+                    CheckBoxCell cell1 = (CheckBoxCell) v;
+                    checks[1] = !checks[1];
+                    cell1.setChecked(checks[1], true);
+                });
+                builder.setCustomViewOffset(6);
+                builder.setView(frameLayout);
+            }
+        } else if (ChatObject.isChannel(currentChat) && currentChat.megagroup || currentChat != null && !ChatObject.isChannel(currentChat)) {
+            if (!pinnedMessageIds.isEmpty() && mid < pinnedMessageIds.get(0)) {
+                builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
+                checks = new boolean[]{false, true};
+            } else {
+                if (isTopic) {
+                    builder.setMessage(LocaleController.getString(R.string.PinMessageInTopicAlert));
+                } else {
+                    builder.setMessage(LocaleController.getString(R.string.PinMessageAlert));
+                }
+                checks = new boolean[]{true, true};
+                FrameLayout frameLayout = new FrameLayout(getParentActivity());
+                CheckBoxCell cell = new CheckBoxCell(getParentActivity(), 1, themeDelegate);
+                cell.setBackgroundDrawable(Theme.getSelectorDrawable(false));
+                cell.setText(LocaleController.getString(R.string.PinNotify), "", true, false);
+                cell.setPadding(AndroidUtilities.dp(LocaleController.isRTL ? 16 : 8), 0, AndroidUtilities.dp(LocaleController.isRTL ? 8 : 16), 0);
+                frameLayout.addView(cell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT));
+                cell.setOnClickListener(v -> {
+                    CheckBoxCell cell1 = (CheckBoxCell) v;
+                    checks[0] = !checks[0];
+                    cell1.setChecked(checks[0], true);
+                });
+                builder.setCustomViewOffset(9);
+                builder.setView(frameLayout);
+            }
+        } else {
+            if (currentPinnedMessageId != 0 && mid < currentPinnedMessageId) {
+                builder.setMessage(LocaleController.getString(R.string.PinOldMessageAlert));
+            } else {
+                builder.setMessage(LocaleController.getString(R.string.PinMessageAlertChannel));
+            }
+            checks = new boolean[]{false, true};
+        }
+        builder.setPositiveButton(LocaleController.getString(R.string.PinMessage), (dialogInterface, i) -> {
+            final boolean notify = checks[0];
+            final boolean oneSide = !checks[1];
+            if (mids.size() == 1) {
+                getMessagesController().pinMessage(currentChat, currentUser, mid, false, oneSide, notify);
+                Bulletin bulletin = BulletinFactory.createPinMessageBulletin(this, themeDelegate);
+                bulletin.show();
+                View view = bulletin.getLayout();
+                view.postDelayed(() -> {
+                    try {
+                        if (!NekoConfig.disableVibration.Bool()) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    } catch (Exception ignored) {}
+                }, 550);
+            } else {
+                com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify);
+            }
+        });
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        showDialog(builder.create());
     }
 
     private void nkbtn_onclick(int id) {
