@@ -253,6 +253,20 @@ the `workflow_dispatch` REST API. It:
 There is no manifest and no topic re-merge loop — `dev` already contains the
 landed features, so merging `base` forward is the whole job.
 
+**Push token — must have the `workflow` scope.** The base fork ships
+`.github/workflows/*` files, so a sync push updates workflow files, and the
+built-in `GITHUB_TOKEN` is *structurally* forbidden from pushing under
+`.github/workflows/` (there is no grantable `workflows` permission for it — no
+amount of `permissions:` tuning helps). So the checkout/push uses the
+`SYNC_TOKEN` secret (a fine-grained PAT with **Contents: write + Workflows:
+write** on `dazewell/NagramX`), falling back to `GITHUB_TOKEN` only when the
+sync happens to carry no workflow-file change. If a sync ever fails at
+**Fast-forward base** with `remote rejected … without 'workflows' permission`,
+`SYNC_TOKEN` is missing or under-scoped — fix the secret, not the permissions
+block. A manual PC-side sync (your own credentials carry the scope) unblocks a
+one-off, but the next upstream workflow-file change re-breaks it, so keep the
+PAT.
+
 ### Telegram → GitHub trigger (optional)
 A bot command (or shortcut) that POSTs to
 `/repos/dazewell/NagramX/actions/workflows/sync-upstream.yml/dispatches` with a
