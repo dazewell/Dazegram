@@ -27,6 +27,10 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 With Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header. Now it stays visible in the collapsed header too, following the same Ghost mode status toggle.
 
+### Copy a message link for the other side <!-- #copy-link-for-peer -->
+
+In a personal chat, the *Copy Link* item in a message's ⋯ menu now remembers who you're copying for. Long-press it to choose *Copy for me* or *Copy for them*. *Copy for me* is the old behaviour: a link that jumps straight to that message on any of your own devices. *Copy for them* makes a link the person on the other side can open to land back in your chat with them. A plain tap uses whichever you picked last, and the item's subtext tells you which. Private-chat message IDs are per account, so the "for them" link opens the conversation rather than the exact message — there's no way to point it at a single message on their side.
+
 ## Composer and input
 
 ### Quick schedule button <!-- #quick-schedule -->

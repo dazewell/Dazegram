@@ -33447,6 +33447,50 @@ public class ChatActivity extends BaseFragment implements
                         }
                         processSelectedOption(options.get(i));
                     });
+                    if (option == nkbtn_copy_link_in_pm && currentUser != null) {
+                        // long-press this item to pick which side the copied link targets; a plain tap uses the remembered choice
+                        final boolean forPeer = NaConfig.INSTANCE.getCopyLinkForPeer().Bool();
+                        cell.setSubtext(getString(forPeer ? R.string.CopyLinkForThem : R.string.CopyLinkForMe));
+
+                        LinearLayout copyLinkSubmenu = new LinearLayout(getParentActivity());
+                        copyLinkSubmenu.setOrientation(LinearLayout.VERTICAL);
+
+                        ActionBarMenuSubItem backCell = new ActionBarMenuSubItem(getParentActivity(), true, false, themeDelegate);
+                        backCell.setItemHeight(44);
+                        backCell.setTextAndIcon(getString(R.string.Back), R.drawable.msg_arrow_back);
+                        backCell.getTextView().setPadding(LocaleController.isRTL ? 0 : AndroidUtilities.dp(40), 0, LocaleController.isRTL ? AndroidUtilities.dp(40) : 0, 0);
+                        backCell.setOnClickListener(v2 -> popupLayout.getSwipeBack().closeForeground());
+                        copyLinkSubmenu.addView(backCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                        copyLinkSubmenu.addView(new ActionBarPopupWindow.GapView(contentView.getContext(), themeDelegate), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+
+                        ActionBarMenuSubItem forMeCell = new ActionBarMenuSubItem(getParentActivity(), true, true, false, themeDelegate);
+                        forMeCell.setMinimumWidth(AndroidUtilities.dp(200));
+                        forMeCell.setTextAndIcon(getString(R.string.CopyLinkForMe), R.drawable.msg_link);
+                        forMeCell.setChecked(!forPeer);
+                        forMeCell.setOnClickListener(v2 -> {
+                            NaConfig.INSTANCE.getCopyLinkForPeer().setConfigBool(false);
+                            copyMessageLinkInPm(false);
+                            closeMenu(true);
+                        });
+                        copyLinkSubmenu.addView(forMeCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+                        ActionBarMenuSubItem forThemCell = new ActionBarMenuSubItem(getParentActivity(), true, false, true, themeDelegate);
+                        forThemCell.setMinimumWidth(AndroidUtilities.dp(200));
+                        forThemCell.setTextAndIcon(getString(R.string.CopyLinkForThem), R.drawable.msg_link);
+                        forThemCell.setChecked(forPeer);
+                        forThemCell.setOnClickListener(v2 -> {
+                            NaConfig.INSTANCE.getCopyLinkForPeer().setConfigBool(true);
+                            copyMessageLinkInPm(true);
+                            closeMenu(true);
+                        });
+                        copyLinkSubmenu.addView(forThemCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+                        final int copyLinkSubmenuIndex = popupLayout.addViewToSwipeBack(copyLinkSubmenu);
+                        cell.setOnLongClickListener(v2 -> {
+                            popupLayout.getSwipeBack().openForeground(copyLinkSubmenuIndex);
+                            return true;
+                        });
+                    }
                     /*if (option == OPTION_TRANSLATE) {
                         final boolean translateEnabled = getMessagesController().getTranslateController().isContextTranslateEnabled();
                         String toLangDefault = LocaleController.getInstance().getCurrentLocale().getLanguage();
@@ -47139,14 +47183,7 @@ public class ChatActivity extends BaseFragment implements
 
             }
             case nkbtn_copy_link_in_pm: {
-                try {
-                    String link_message = "tg://openmessage?user_id=" + currentUser.id + "&message_id=" + selectedObject.messageOwner.id;
-                    ClipboardManager clipboard = (ClipboardManager) ApplicationLoader.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE);
-                    ClipData clip = ClipData.newPlainText("label", link_message);
-                    clipboard.setPrimaryClip(clip);
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
+                copyMessageLinkInPm(NaConfig.INSTANCE.getCopyLinkForPeer().Bool());
                 break;
 
             }
@@ -47180,6 +47217,21 @@ public class ChatActivity extends BaseFragment implements
                 chatActivity.showFieldPanelForReplyQuote(selectedObject, null);
                 break;
             }
+        }
+    }
+
+    // "for me" anchors to the message via my account's local id; the peer's account has a different id for
+    // that same message and there's no way to translate it, so "for them" can only point at the chat.
+    private void copyMessageLinkInPm(boolean forPeer) {
+        if (selectedObject == null || selectedObject.messageOwner == null || currentUser == null) {
+            return;
+        }
+        final long myId = getUserConfig().getClientUserId();
+        final String link = forPeer
+                ? "tg://openmessage?user_id=" + myId
+                : "tg://openmessage?user_id=" + currentUser.id + "&message_id=" + selectedObject.messageOwner.id + "&account_user_id=" + myId;
+        if (AndroidUtilities.addToClipboard(link) && BulletinFactory.canShowBulletin(this)) {
+            BulletinFactory.of(this).createCopyLinkBulletin().show();
         }
     }
 

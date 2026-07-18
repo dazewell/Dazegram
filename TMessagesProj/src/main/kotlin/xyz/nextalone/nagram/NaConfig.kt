@@ -1228,6 +1228,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val copyLinkForPeer =
+        addConfig(
+            "CopyLinkForPeer",
+            ConfigItem.configTypeBool,
+            false
+        )
     val preferCommonGroupsTab =
         addConfig(
             "PreferCommonGroupsTab",

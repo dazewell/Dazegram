@@ -215,6 +215,8 @@
     <string name="GroqApiKeyDialog">Free, fast Whisper transcription with strong Russian support. Groq says it won\'t use your audio to train models and keeps requests only briefly for abuse monitoring.\n**How to obtain?**\n</string>
     <string name="GeminiNotSupport">Gemini is not supported on this device.</string>
     <string name="ReplyInPrivate">Reply in Private Chat</string>
+    <string name="CopyLinkForMe">Copy for me</string>
+    <string name="CopyLinkForThem">Copy for them</string>
     <string name="TranscribeProviderGeminiPrompt">Prompt (optional)</string>
     <string name="uploadBoost">Upload Speed Boost</string>
     <string name="HideDividers">Hide Dividers</string>
