@@ -107,6 +107,10 @@ The zoom control under the round video camera was rebuilt with a full-range slid
 
 The preview you get after recording a round video message used to have only the two trim handles on its timeline, so checking a spot near the end meant dragging a handle there and remembering to drag it back. The timeline now has a playback cursor too. It follows the playback, and you can drag it to scrub: the video pauses while you hold it, seeks as you move, and resumes from where you let go. Tapping anywhere between the handles jumps straight there. While you scrub, the same time tooltip the trim handles use shows the position. Trimming itself hasn't changed.
 
+### Bigger recorder pause and once buttons <!-- #recorder-controls -->
+
+The pause button and the view-once "(1)" toggle that stack above the send button while you record a voice or round video message were small and sat close to it, so reaching for them often caught the send button instead. They're larger now and lifted a bit higher off the send button, in both voice and video recording.
+
 ## Transcription
 
 ### Whisper transcription controls <!-- #transcribe-retry -->
