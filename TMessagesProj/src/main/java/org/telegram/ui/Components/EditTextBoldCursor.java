@@ -599,7 +599,11 @@ public class EditTextBoldCursor extends EditTextEffects {
             if (lastSize != currentSize) {
                 setHintText(hint, false, hintLayout.getPaint());
             }
-            if (hintLayoutYFix) {
+            if (hintAlignTop()) {
+                // top-align the hint (fullscreen message input) so it sits with the caret at the
+                // top of a tall field instead of floating in the vertical middle
+                lineY = getExtendedPaddingTop() + getPaddingTop() + hintLayout.getHeight() + dp(6);
+            } else if (hintLayoutYFix) {
                 lineY = getExtendedPaddingTop() + getPaddingTop() + (getMeasuredHeight() - getPaddingTop() - getPaddingBottom() - hintLayout.getHeight()) / 2.0f + hintLayout.getHeight() - dp(1);
             } else {
                 lineY = (getMeasuredHeight() - hintLayout.getHeight()) / 2.0f + hintLayout.getHeight() + dp(6);
@@ -608,6 +612,12 @@ public class EditTextBoldCursor extends EditTextEffects {
             lineY = getMeasuredHeight() - dp(2);
         }
         lastSize = currentSize;
+    }
+
+    // Overridable so a tall field (e.g. the fullscreen message input) can pin the hint to the top
+    // instead of the default vertical centering. Defaults to the shared behavior for every caller.
+    protected boolean hintAlignTop() {
+        return false;
     }
 
     public void setHintText(CharSequence text) {

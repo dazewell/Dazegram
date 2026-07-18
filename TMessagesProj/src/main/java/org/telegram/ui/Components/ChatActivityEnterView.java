@@ -6353,6 +6353,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             @Override
+            protected boolean hintAlignTop() {
+                // in fullscreen mode the field is tall and top-anchored; keep the placeholder with
+                // the caret at the top instead of floating in the middle
+                return messageEditExpanded;
+            }
+
+            @Override
             public boolean onTextContextMenuItem(int id) {
                 if (id == android.R.id.paste && handleRichHtmlPaste()) {
                     return true;
