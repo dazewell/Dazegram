@@ -29,7 +29,11 @@ jobs:
         with:
           ref: dev
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # PAT with `workflow` scope: the base fork ships .github/workflows
+          # files, and the default GITHUB_TOKEN is refused when a push
+          # creates/updates a workflow file. Falls back to GITHUB_TOKEN so a
+          # clone with no workflow changes upstream still works.
+          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Configure git identity
         run: |
