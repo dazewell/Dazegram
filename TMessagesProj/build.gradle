@@ -197,7 +197,8 @@ androidComponents {
             String gramName = APP_PACKAGE.endsWith('.beta') ? 'NagramX-Official' : 'NagramX-Unofficial'
             // commit hash goes right after the package label so it's easy to spot in the filename
             String prefix = commitHash ? "${gramName}-${commitHash}" : gramName
-            String first = String.format('%s-v%s(%s)', prefix, verName, verCode)
+            // version part uses the bare APP_VERSION_NAME (not verName) so the hash isn't repeated
+            String first = String.format('%s-v%s(%s)', prefix, APP_VERSION_NAME, verCode)
             output.outputFileName.set(
                 output.outputFileName.get()
                     .replace('TMessagesProj', first)
