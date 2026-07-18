@@ -45,7 +45,7 @@ def get_caption(commit_msg_budget=None) -> str:
 
 def get_document() -> list["InputMediaDocument"]:
     documents = []
-    abis = ["arm64-v8a"]
+    abis = ["arm64-v8a", "universal"]
     for abi in abis:
         if apk := find_apk(abi):
             documents.append(
