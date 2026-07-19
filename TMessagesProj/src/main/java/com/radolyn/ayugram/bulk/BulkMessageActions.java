@@ -78,26 +78,33 @@ public final class BulkMessageActions {
         final MessageObject target = messages.get(index);
         int nextSent = sent;
         if (target != null && target.getId() > 0) {
-            // reply carries the running index (as keycap emoji, so it renders big and bright) as its
-            // whole body: the peer taps the reply header to jump to that message, giving a table of
-            // contents that works on both sides. Silent so a long index doesn't fire a notification per entry.
+            // reply carries the running index (one bright glyph) as its whole body: the peer taps the
+            // reply header to jump to that message, giving a table of contents that works on both sides.
+            // Silent so a long index doesn't fire a notification per entry.
             nextSent++;
-            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(keycapNumber(nextSent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
+            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(glyphNumber(nextSent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
             SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
         }
         final int sentSoFar = nextSent;
         AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, sentSoFar), REPLY_DELAY_MS);
     }
 
-    // e.g. 7 -> 7️⃣, 12 -> 1️⃣2️⃣: each digit becomes its keycap emoji so any count keeps the look, and a
-    // leading LTR mark keeps multi-digit numbers reading left-to-right in RTL chats.
-    private static String keycapNumber(int n) {
-        String digits = Integer.toString(n);
-        StringBuilder sb = new StringBuilder(1 + digits.length() * 3);
-        sb.append('\u200E');
-        for (int i = 0; i < digits.length(); i++) {
-            sb.append(digits.charAt(i)).append('\uFE0F').append('\u20E3');
+    // one glyph per number: bright keycap emoji for 1-10 (7 -> 7️⃣, 10 -> 🔟), then single circled glyphs
+    // for 11-30 (⑪ … ㉚), since no colourful single glyph exists past ten. Cap is 30, so the plain-number
+    // fallback isn't normally reached.
+    private static String glyphNumber(int n) {
+        if (n >= 1 && n <= 9) {
+            return "" + (char) ('0' + n) + '\uFE0F' + '\u20E3';
         }
-        return sb.toString();
+        if (n == 10) {
+            return "\uD83D\uDD1F";
+        }
+        if (n >= 11 && n <= 20) {
+            return String.valueOf((char) (0x2460 + n - 1));
+        }
+        if (n >= 21 && n <= 30) {
+            return String.valueOf((char) (0x3251 + n - 21));
+        }
+        return Integer.toString(n);
     }
 }
