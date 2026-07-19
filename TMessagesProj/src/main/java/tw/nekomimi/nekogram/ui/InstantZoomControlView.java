@@ -227,7 +227,7 @@ public class InstantZoomControlView extends View {
         // compact keeps a right column clear of that button (the recorder draws it hard against the right
         // edge, centered at width - 26dp) since its -/+ dock on the right of the single row.
         final float compactW = w - AndroidUtilities.dp(56);
-        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 76dp, 12dp apart.
+        // roomy: slider row on top (centerline 24dp), 48dp rocker pair centered at 68dp, 12dp apart.
         // trim the line ~20dp so it doesn't run edge to edge; roomyLeft keeps it centered.
         final float roomyWidth = Math.min(w - AndroidUtilities.dp(64), AndroidUtilities.dp(300)) - AndroidUtilities.dp(20);
         final float roomyLeft = (w - roomyWidth) / 2f;
@@ -244,7 +244,9 @@ public class InstantZoomControlView extends View {
         switchCx = lerp(w / 2f - AndroidUtilities.dp(60), compactSwitchCx, compact);
         minusCx = lerp(w / 2f, compactMinusCx, compact);
         plusCx = lerp(w / 2f + AndroidUtilities.dp(60), compactPlusCx, compact);
-        buttonCy = lerp(AndroidUtilities.dp(76), AndroidUtilities.dp(52), compact);
+        // roomy row sits at 68dp (was 76): pulling it up shortens the two-row block so it still fits
+        // above the input island when a reply's top view eats into the space below the camera circle
+        buttonCy = lerp(AndroidUtilities.dp(68), AndroidUtilities.dp(52), compact);
         buttonRadius = lerp(AndroidUtilities.dp(24), AndroidUtilities.dp(20), compact);
         glyphHalf = lerp(AndroidUtilities.dp(11), AndroidUtilities.dp(9), compact);
         switchGlyphHalf = lerp(AndroidUtilities.dp(13), AndroidUtilities.dp(11), compact);
