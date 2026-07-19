@@ -1451,8 +1451,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             float lockRotation;
             float transformToPauseProgress = 0;
             if (sendButtonVisible) {
-                lockSize = dp(36);
-                lockY = dp(60) + multilinTooltipOffset + dpf2(30) * (1.0f - sc) - yAdd + dpf2(14f) * moveProgress;
+                // NagramX: bigger, higher locked pause/once buttons so they're harder to misclick
+                // against the send button
+                lockSize = dp(44);
+                lockY = dp(72) + multilinTooltipOffset + dpf2(30) * (1.0f - sc) - yAdd + dpf2(14f) * moveProgress;
 
                 lockMiddleY = lockY + lockSize / 2f - dpf2(8) + dpf2(2);
                 lockTopY =    lockY + lockSize / 2f - dpf2(16) + dpf2(2);
@@ -1598,7 +1600,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             float s = (1f - hidePause) * controlsScale * (1f - exitProgress2) * slideToCancelLockProgress;
             canvas.scale(s, s, cx, lockMiddleY + dy);
 
-            rectF.set(cx - dpf2(18), lockY + dy, cx + dpf2(18), lockY + dy + lockSize);
+            rectF.set(cx - dpf2(22), lockY + dy, cx + dpf2(22), lockY + dy + lockSize);
 
             if (lockBackgroundDrawable != null){
                 lockBackgroundDrawable.setBounds(
@@ -1612,7 +1614,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         (int) (rectF.right + dpf2(3)), (int) (rectF.bottom + dpf2(3))
                 );
                 lockShadowDrawable.draw(canvas);
-                canvas.drawRoundRect(rectF, dpf2(18), dpf2(18), lockBackgroundPaint);
+                canvas.drawRoundRect(rectF, dpf2(22), dpf2(22), lockBackgroundPaint);
             }
 
 
@@ -1714,12 +1716,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             canvas.restore();
 
             final float cy = lerp(lockY, getMeasuredHeight() - dp(118), Math.max(exitTransition, Math.min(progressToSeekbarStep1, slideToCancelLockProgress))) + dy + dp(38) * hidePause;
-            rectF.set(cx - dpf2(18), cy, cx + dpf2(18), cy + lockSize);
+            rectF.set(cx - dpf2(22), cy, cx + dpf2(22), cy + lockSize);
             onceVisible = delegate != null && delegate.onceVoiceAvailable();
             if (onceVisible) {
-                final float onceOffset = dpf2(12);
+                // NagramX: wider gap above the pause button (was dpf2(12)) so the fatter once/pause
+                // pair keeps clear air between them instead of touching as the stack shifts
+                final float onceOffset = dpf2(24);
                 rectF.set(
-                    rectF.left, rectF.top - dpf2(36) - onceOffset, rectF.right, rectF.top - onceOffset
+                    rectF.left, rectF.top - lockSize - onceOffset, rectF.right, rectF.top - onceOffset
                 );
                 if (onceHint != null) {
                     onceHint.setJointPx(0, rectF.centerY());
@@ -1742,7 +1746,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                             (int) (rectF.right + dpf2(3)), (int) (rectF.bottom + dpf2(3))
                     );
                     lockShadowDrawable.draw(canvas);
-                    canvas.drawRoundRect(rectF, dpf2(18), dpf2(18), lockBackgroundPaint);
+                    canvas.drawRoundRect(rectF, dpf2(22), dpf2(22), lockBackgroundPaint);
                 }
                 periodDrawable.setBounds((int) rectF.left, (int) rectF.top, (int) rectF.right, (int) rectF.bottom);
                 periodDrawable.draw(canvas);
@@ -1768,11 +1772,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             lockBackgroundDrawable = factory.create(this, colorProvider);
-            lockBackgroundDrawable.setRadius(dp(18));
+            lockBackgroundDrawable.setRadius(dp(22));
             lockBackgroundDrawable.setPadding(dp(3));
 
             periodBackgroundDrawable = factory.create(this, colorProvider);
-            periodBackgroundDrawable.setRadius(dp(18));
+            periodBackgroundDrawable.setRadius(dp(22));
             periodBackgroundDrawable.setPadding(dp(3));
 
             updateColors();
