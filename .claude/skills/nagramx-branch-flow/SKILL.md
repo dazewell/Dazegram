@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, avoiding force pushes, or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, avoiding force pushes, or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -40,6 +40,13 @@ though the original branch is long gone.
 - `base`, `dev` → **never** force-push (shared history everything depends on).
 - feature branches → append-only while alive; the one sanctioned rewrite is the
   throwaway `-pr` copy at upstream-proposal time.
+
+**Worktree or in-place?** A change you expect to iterate on (back-and-forth:
+multiple review rounds, on-device testing, fixes trickling in over days) gets its
+own **git worktree** — a sibling folder (`..\NagramX-<slug>`) so the main clone
+stays free to sync `dev` or start another change without stashing. A quick
+one-shot (CI tweak, bug fix, little tuning) just cuts a branch in the main clone.
+See *Worktree or in-place?* below.
 
 **"Which command do I need?"** → *Case-by-case procedures* below.
 **"How do I test before landing?"** → open a PR into `dev`; `staging.yml` builds
@@ -144,9 +151,30 @@ If a `dev` merge (an upstream sync) conflicts with something a landed feature
 did, resolve it **in the `dev` merge commit** — there's no branch to rebase, and
 even if one survives you don't touch it. `dev` is where reconciliation happens.
 
+## Worktree or in-place? (choosing where to work)
+
+**Default to a dedicated worktree for feature development you expect to iterate
+on.** "Back-and-forth" is the signal: a change that will go through both review
+rounds, get an on-device test build, and likely take follow-up commits (or a
+fix a few days later) earns its own checkout so the work-in-progress tree isn't
+competing with `dev` syncs or a second change. Worktrees live as **sibling
+folders** next to the main clone — `..\NagramX-<slug>` (e.g. `NagramX-multi-pin`
+next to `NagramX`) — each on its own `<YYYY-MM-DD>_<slug>` branch.
+
+**Skip the worktree for simpler stuff** — CI/workflow tweaks, a contained bug
+fix, a little tuning, a docs-only touch. Those are quick, one-shot, and don't
+benefit from an isolated tree; just cut a branch in the main clone (*Start a
+change*, plain variant). When in doubt (is this a one-liner or will it grow?),
+a worktree costs almost nothing and keeps the main clone clean, so lean toward
+one for anything feature-shaped.
+
+Worktrees share the clone's `.git` config, so `core.hooksPath .githooks` (the
+`#tag` hook) applies automatically — no re-config per worktree. Remove the
+worktree once its branch has landed and been deleted (*Land a change*).
+
 ## Case-by-case procedures (PowerShell)
 
-### Start a change
+### Start a change (plain — simpler / one-shot work)
 ```powershell
 git fetch source dev
 git switch base; git merge --ff-only source/dev        # keep the mirror current
@@ -158,6 +186,24 @@ git config core.hooksPath .githooks                     # once per clone, if not
 Commit with the `#<slug>` tag inline (the hook enforces it). If the change is
 user-visible, its `FEATURES.md` entry goes **in this branch's commits**, next to
 the code — it rides in with the feature (see `nagramx-workflow` step 6).
+
+### Start a change in a worktree (iterative feature work — the default for features)
+```powershell
+git fetch source dev
+git switch base; git merge --ff-only source/dev        # keep the mirror current
+git switch dev;  git merge --no-edit base               # bring upstream into the trunk
+git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # sibling folder on a fresh branch cut from dev
+cd ..\NagramX-<slug>                                    # work here; the main clone stays on dev
+# ...nagramx-workflow steps: design review, hooks, compile, code review...
+```
+Same tag/commit/`FEATURES.md` rules as the plain variant — the hook and config
+carry over from the shared `.git`. Build and PR from the worktree exactly as
+normal. After the change lands and the branch is deleted, clean up:
+```powershell
+cd ..\NagramX
+git worktree remove ..\NagramX-<slug>                   # drop the sibling tree
+git worktree prune                                      # tidy stale metadata (if the folder was already gone)
+```
 
 ### Test before landing (preview build)
 Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `staging.yml` runs on
@@ -182,6 +228,8 @@ git merge --no-edit <YYYY-MM-DD>_<slug>     # merge commit -> staging.yml builds
 git push origin dev
 git branch -d <YYYY-MM-DD>_<slug>; git push origin --delete <YYYY-MM-DD>_<slug>   # unless upstream candidate
 ```
+If the change lived in a worktree, remove it after the branch is gone:
+`git worktree remove ..\NagramX-<slug>` (from the main clone).
 
 ### Add a fix to an existing change (the "week later" case)
 The original branch is usually gone — that's fine, the tag carries the link.
