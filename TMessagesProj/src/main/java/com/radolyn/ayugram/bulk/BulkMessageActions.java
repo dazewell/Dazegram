@@ -78,14 +78,26 @@ public final class BulkMessageActions {
         final MessageObject target = messages.get(index);
         int nextSent = sent;
         if (target != null && target.getId() > 0) {
-            // reply carries the running index as its whole body: the peer taps the reply header to
-            // jump to that message, giving a table of contents that works on both sides. Silent so a
-            // long index doesn't fire a notification per entry.
+            // reply carries the running index (as keycap emoji, so it renders big and bright) as its
+            // whole body: the peer taps the reply header to jump to that message, giving a table of
+            // contents that works on both sides. Silent so a long index doesn't fire a notification per entry.
             nextSent++;
-            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(String.valueOf(nextSent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
+            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(keycapNumber(nextSent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
             SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
         }
         final int sentSoFar = nextSent;
         AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, sentSoFar), REPLY_DELAY_MS);
+    }
+
+    // e.g. 7 -> 7️⃣, 12 -> 1️⃣2️⃣: each digit becomes its keycap emoji so any count keeps the look, and a
+    // leading LTR mark keeps multi-digit numbers reading left-to-right in RTL chats.
+    private static String keycapNumber(int n) {
+        String digits = Integer.toString(n);
+        StringBuilder sb = new StringBuilder(1 + digits.length() * 3);
+        sb.append('\u200E');
+        for (int i = 0; i < digits.length(); i++) {
+            sb.append(digits.charAt(i)).append('\uFE0F').append('\u20E3');
+        }
+        return sb.toString();
     }
 }
