@@ -46877,16 +46877,8 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    // a burst of pins/replies invites a flood ban, so cap the selection these two bulk actions accept
-    private static final int BULK_ACTION_LIMIT = 30;
-
     private void pinSelectedMessages() {
-        final int count = selectedMessagesIds[0].size() + selectedMessagesIds[1].size();
-        if (count == 0) {
-            return;
-        }
-        if (count > BULK_ACTION_LIMIT) {
-            BulletinFactory.of(this).createSimpleBulletin(R.raw.error, formatString(R.string.BulkActionLimit, BULK_ACTION_LIMIT)).show();
+        if (!hasSelectedMessages()) {
             return;
         }
         // gather without clearing the selection, so Cancel or a busy/no-op run leaves it intact to retry
@@ -46904,12 +46896,7 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void replyWithNumbersToSelection() {
-        final int count = selectedMessagesIds[0].size() + selectedMessagesIds[1].size();
-        if (count == 0) {
-            return;
-        }
-        if (count > BULK_ACTION_LIMIT) {
-            BulletinFactory.of(this).createSimpleBulletin(R.raw.error, formatString(R.string.BulkActionLimit, BULK_ACTION_LIMIT)).show();
+        if (!hasSelectedMessages()) {
             return;
         }
         if (chatActivityEnterView != null && checkSlowMode(chatActivityEnterView.getSendButton())) {
