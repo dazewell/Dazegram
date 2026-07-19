@@ -46889,7 +46889,8 @@ public class ChatActivity extends BaseFragment implements
             BulletinFactory.of(this).createSimpleBulletin(R.raw.error, formatString(R.string.BulkActionLimit, BULK_ACTION_LIMIT)).show();
             return;
         }
-        ArrayList<MessageObject> messages = getSelectedMessages();
+        // gather without clearing the selection, so Cancel or a busy/no-op run leaves it intact to retry
+        ArrayList<MessageObject> messages = getSelectedMessages1();
         ArrayList<Integer> mids = new ArrayList<>(messages.size());
         for (MessageObject m : messages) {
             if (m != null && m.getId() > 0) {
@@ -46914,7 +46915,8 @@ public class ChatActivity extends BaseFragment implements
         if (chatActivityEnterView != null && checkSlowMode(chatActivityEnterView.getSendButton())) {
             return;
         }
-        ArrayList<MessageObject> messages = getSelectedMessages();
+        // gather without clearing the selection, so Cancel or a busy run leaves it intact to retry
+        ArrayList<MessageObject> messages = getSelectedMessages1();
         final ArrayList<MessageObject> targets = new ArrayList<>(messages.size());
         for (MessageObject m : messages) {
             if (m != null && m.getId() > 0) {
@@ -46952,7 +46954,9 @@ public class ChatActivity extends BaseFragment implements
                     startNumber = Integer.parseInt(s);
                 }
             } catch (NumberFormatException ignored) {}
-            if (!com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets, startNumber)) {
+            if (com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets, startNumber)) {
+                clearSelectionMode();
+            } else {
                 BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
             }
         });
@@ -46966,7 +46970,7 @@ public class ChatActivity extends BaseFragment implements
         if (mids.isEmpty() || getParentActivity() == null) {
             return;
         }
-        final int mid = mids.get(0);
+        final int mid = Collections.min(mids);
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
         builder.setTitle(LocaleController.getString(R.string.PinMessageAlertTitle));
         if (fromMessageMenu) {
@@ -47033,6 +47037,7 @@ public class ChatActivity extends BaseFragment implements
         builder.setPositiveButton(LocaleController.getString(R.string.PinMessage), (dialogInterface, i) -> {
             final boolean notify = checks[0];
             final boolean oneSide = !checks[1];
+            final boolean started;
             if (mids.size() == 1) {
                 getMessagesController().pinMessage(currentChat, currentUser, mid, false, oneSide, notify);
                 Bulletin bulletin = BulletinFactory.createPinMessageBulletin(this, themeDelegate);
@@ -47043,8 +47048,16 @@ public class ChatActivity extends BaseFragment implements
                         if (!NekoConfig.disableVibration.Bool()) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignored) {}
                 }, 550);
-            } else if (!com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify)) {
-                BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
+                started = true;
+            } else {
+                started = com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify);
+                if (!started) {
+                    BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
+                }
+            }
+            // clear the selection only once a run actually started; a single pin from the message menu has none
+            if (started && !fromMessageMenu) {
+                clearSelectionMode();
             }
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);

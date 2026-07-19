@@ -11,6 +11,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -39,11 +40,22 @@ public final class BulkMessageActions {
         if (mids == null || mids.isEmpty()) {
             return false;
         }
+        // normalise here instead of trusting the caller: drop invalid ids, pin ascending so the newest lands on top
+        final ArrayList<Integer> clean = new ArrayList<>(mids.size());
+        for (Integer id : mids) {
+            if (id != null && id > 0) {
+                clean.add(id);
+            }
+        }
+        if (clean.isEmpty()) {
+            return false;
+        }
+        Collections.sort(clean);
         final String busyKey = currentAccount + ":" + dialogId;
         if (!pinBusyKeys.add(busyKey)) {
             return false;
         }
-        pinNext(fragment, currentAccount, chat, user, mids, 0, oneSide, notify, busyKey);
+        pinNext(fragment, currentAccount, chat, user, clean, 0, oneSide, notify, busyKey);
         return true;
     }
 
@@ -66,11 +78,22 @@ public final class BulkMessageActions {
         if (messages == null || messages.isEmpty()) {
             return false;
         }
+        // normalise here instead of trusting the caller: drop invalid targets and number in ascending id order
+        final ArrayList<MessageObject> clean = new ArrayList<>(messages.size());
+        for (MessageObject m : messages) {
+            if (m != null && m.getId() > 0) {
+                clean.add(m);
+            }
+        }
+        if (clean.isEmpty()) {
+            return false;
+        }
+        Collections.sort(clean, (a, b) -> Integer.compare(a.getId(), b.getId()));
         final String busyKey = currentAccount + ":" + dialogId;
         if (!replyBusyKeys.add(busyKey)) {
             return false;
         }
-        replyNext(fragment, currentAccount, dialogId, threadMessage, messages, 0, startNumber, 0, busyKey);
+        replyNext(fragment, currentAccount, dialogId, threadMessage, clean, 0, startNumber, 0, busyKey);
         return true;
     }
 
