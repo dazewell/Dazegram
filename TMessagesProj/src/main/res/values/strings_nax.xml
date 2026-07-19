@@ -449,4 +449,5 @@
     <string name="ExportAyuDB">Export Database</string>
     <string name="ExpandMessageField">Expand message field</string>
     <string name="CollapseMessageField">Collapse message field</string>
+    <string name="ExpandInputHint">Drag up to expand your draft</string>
 </resources>
