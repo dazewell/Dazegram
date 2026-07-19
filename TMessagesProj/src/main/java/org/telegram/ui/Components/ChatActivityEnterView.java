@@ -74,7 +74,6 @@ import android.util.TypedValue;
 import android.view.ActionMode;
 import android.view.DragEvent;
 import android.view.Gravity;
-import android.view.GestureDetector;
 import android.view.HapticFeedbackConstants;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -278,6 +277,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     public HintView2 birthdayHint;
     public HintView2 aiHint;
     private HintView2 sendSuggestHintView;
+    // NagramX: one-time nudge pointing at the emoji button once a draft is long enough to be worth expanding
+    private HintView2 expandInputHint;
 
     public boolean voiceOnce;
     public boolean onceVisible;
@@ -664,10 +665,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     private ImageView attachButton;
     private AiButtonDrawable aiButtonIcon;
     private ImageView aiButton;
-    // NagramX: ad-hoc fullscreen input mode, alive only until the draft is sent or dismissed (toggled by a vertical swipe on the input)
+    // NagramX: ad-hoc fullscreen input mode, alive only until the draft is sent or dismissed (toggled by a vertical swipe on the side gutters)
     private boolean messageEditExpanded;
     private int expandedInputBudget;
     private boolean expandedInputAnchorVisible;
+    // shrink the field while expanded so more of the draft fits; restore the default on collapse
+    private static final int EDIT_TEXT_SIZE_DP = 18;
+    private static final int EDIT_TEXT_SIZE_EXPANDED_DP = 15;
     private ImageView richButton;
     private float attachButtonAlpha = 1.0f;
     private ImageView suggestButton;
@@ -2703,6 +2707,71 @@ public class ChatActivityEnterView extends FrameLayout implements
         addView(textFieldContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.BOTTOM, 0, 1, 0, 0));
 
         FrameLayout frameLayout = messageEditTextContainer = new FrameLayout(context) {
+            // NagramX: drag the emoji/GIF column (bottom-left) up to expand the input to fullscreen, down
+            // to collapse; dragging down on either side gutter also collapses. A deliberate vertical drag,
+            // not a fling, so it works even in the short collapsed row (the finger keeps travelling up past
+            // the row). We only steal the stream from the button once the drag clears a firm threshold, so
+            // a tap still opens the emoji panel and a long-press still fires; the field's own touches are
+            // never claimed, so scrolling / selecting the draft is untouched.
+            private float expandDragDownX, expandDragDownY;
+            private int expandDragRegion;
+            private boolean expandDragHandled;
+
+            // Threshold check shared by both dispatch paths (see the two overrides below). Returns true the
+            // moment the drag commits, so the caller knows to consume the rest of the stream.
+            private boolean evaluateExpandDrag(MotionEvent ev) {
+                if (expandDragRegion == 0 || expandDragHandled) {
+                    return false;
+                }
+                final float dx = ev.getX() - expandDragDownX;
+                final float dy = ev.getY() - expandDragDownY;
+                if (Math.abs(dy) > dp(40) && Math.abs(dy) > Math.abs(dx) * 1.5f) {
+                    // expand only from the emoji/GIF column (region -1); collapse from either gutter.
+                    // Don't arm expand when nothing can expand yet (no anchor/budget), or we'd swallow
+                    // the touch for a toggle that setMessageEditExpanded would no-op anyway.
+                    if (dy < 0 && !messageEditExpanded && expandDragRegion == -1 && canExpandInput()) {
+                        expandDragHandled = true;
+                        setMessageEditExpanded(true);
+                        return true;
+                    }
+                    if (dy > 0 && messageEditExpanded) {
+                        expandDragHandled = true;
+                        setMessageEditExpanded(false);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent ev) {
+                final int action = ev.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    expandDragDownX = ev.getX();
+                    expandDragDownY = ev.getY();
+                    expandDragRegion = expandGutterRegion(ev.getX());
+                    expandDragHandled = false;
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    // a button consumed the down, so we only see moves here: steal the drag once it commits
+                    return evaluateExpandDrag(ev);
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                // reached for the empty-gutter path (no child took the down) and after we've intercepted a
+                // button drag; either way we own the whole gutter gesture, so claim it and run the check.
+                // Claiming the down is what keeps the framework delivering moves for the empty-space case.
+                if (expandDragRegion != 0) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                        evaluateExpandDrag(event);
+                    }
+                    return true;
+                }
+                return super.onTouchEvent(event);
+            }
+
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -6317,35 +6386,6 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         messageEditText = new ChatActivityEditTextCaption(getContext(), resourcesProvider) {
 
-            // NagramX: a firm, mostly-vertical fling on the field toggles the fullscreen input mode
-            // (replaces the old expand button). Guarded so it never fires while a text range is
-            // selected (that's a selection-handle drag), and it only observes the touch stream —
-            // it never consumes events, so typing / tap-to-position / long-press selection are intact.
-            private final GestureDetector expandInputGestureDetector = new GestureDetector(getContext(), new GestureDetector.SimpleOnGestureListener() {
-                @Override
-                public boolean onFling(MotionEvent e1, MotionEvent e2, float velocityX, float velocityY) {
-                    if (e1 == null || e2 == null || messageEditText == null) {
-                        return false;
-                    }
-                    if (messageEditText.getSelectionStart() != messageEditText.getSelectionEnd()) {
-                        return false;
-                    }
-                    final float dy = e2.getY() - e1.getY();
-                    if (Math.abs(velocityY) < dp(700) || Math.abs(velocityY) < Math.abs(velocityX) * 2f || Math.abs(dy) < dp(32)) {
-                        return false;
-                    }
-                    if (dy < 0 && !messageEditExpanded) {
-                        setMessageEditExpanded(true);
-                        return true;
-                    }
-                    if (dy > 0 && messageEditExpanded) {
-                        setMessageEditExpanded(false);
-                        return true;
-                    }
-                    return false;
-                }
-            });
-
             private boolean firstDraw = true;
             @Override
             protected void onDraw(Canvas canvas) {
@@ -6368,7 +6408,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             boolean clickMaybe;
             @Override
             public boolean onTouchEvent(MotionEvent event) {
-                expandInputGestureDetector.onTouchEvent(event);
                 if (botCommandsMenuIsShowing()) {
                     if (event.getAction() == MotionEvent.ACTION_DOWN) {
                         touchX = event.getX();
@@ -6623,6 +6662,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     lineCount = messageEditText.getLineCount();
                     showAiButton(lineCount > 2 && charSequence != null && !TextUtils.isEmpty(charSequence.toString().trim()));
                     showRichButton(lineCount > 2 && charSequence != null && !TextUtils.isEmpty(charSequence.toString().trim()));
+                    checkExpandInputHint();
                 } else {
                     heightShouldBeChanged = false;
                 }
@@ -6762,6 +6802,29 @@ public class ChatActivityEnterView extends FrameLayout implements
         return messageEditExpanded;
     }
 
+    // Which side gutter a touch x sits in: -1 = left (the emoji/GIF column, the expand handle),
+    // 1 = right (attach column), 0 = over the field or nowhere the drag should arm. Bail while the field
+    // isn't laid out (no width, so every x would read as a gutter) or a full-height bot web view covers
+    // the row. Use getX()/width, not getLeft()/getRight(), so it tracks the field's animated translationX
+    // (the container slides children on button reflow) rather than their settled positions.
+    private int expandGutterRegion(float x) {
+        if (messageEditText == null || messageEditText.getVisibility() != View.VISIBLE
+                || messageEditText.getWidth() <= 0) {
+            return 0;
+        }
+        if (botWebViewButton != null && botWebViewButton.getVisibility() == View.VISIBLE) {
+            return 0;
+        }
+        final float left = messageEditText.getX();
+        if (x < left) {
+            return -1;
+        }
+        if (x > left + messageEditText.getWidth()) {
+            return 1;
+        }
+        return 0;
+    }
+
     // Deferred collapse checks: run a beat later so a transient blur (keyboard re-force) or a
     // keyboard<->emoji handoff frame doesn't collapse the mode before the real state settles.
     private final Runnable collapseIfBlurred = () -> {
@@ -6775,15 +6838,67 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     };
 
+    // Expand needs a live anchor (the fragment plus keyboard/emoji-panel space) to size against.
+    private boolean canExpandInput() {
+        return parentFragment != null && expandedInputBudget > 0;
+    }
+
+    // A hidden drag gesture needs a nudge: once the draft grows past a few lines (i.e. expanding is now
+    // worth it) point a one-time tip at the emoji button, which doubles as the drag handle. Capped at a
+    // couple of shows globally so it teaches the gesture without nagging.
+    private void checkExpandInputHint() {
+        if (expandInputHint != null || messageEditExpanded || messageEditText == null
+                || emojiButton == null || emojiButton.getVisibility() != View.VISIBLE || emojiButton.getWidth() == 0
+                || messageEditText.getLineCount() < 4 || !canExpandInput()) {
+            return;
+        }
+        final SharedPreferences prefs = MessagesController.getGlobalMainSettings();
+        if (prefs.getInt("expandinputhintshown", 0) >= 2) {
+            return;
+        }
+        prefs.edit().putInt("expandinputhintshown", prefs.getInt("expandinputhintshown", 0) + 1).apply();
+
+        // anchor the arrow at the emoji button's real on-screen centre, measured relative to this view —
+        // getLocationInWindow is immune to whatever container offsets/translations sit in between
+        final int[] buttonLoc = new int[2];
+        emojiButton.getLocationInWindow(buttonLoc);
+        final int[] selfLoc = new int[2];
+        getLocationInWindow(selfLoc);
+        final float jointX = buttonLoc[0] - selfLoc[0] + emojiButton.getWidth() / 2f;
+
+        final HintView2 thisHint = expandInputHint = new HintView2(getContext(), HintView2.DIRECTION_BOTTOM);
+        expandInputHint.setMultilineText(true);
+        expandInputHint.setText(getString(R.string.ExpandInputHint));
+        expandInputHint.setJointPx(0f, jointX);
+        addView(expandInputHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 200, Gravity.TOP, 0, -200 + 4, 0, 0));
+        // clear the reference when it hides (duration or an explicit hide), or the != null guard would
+        // block the next show and setMessageEditExpanded could hide an already-removed view
+        expandInputHint.setOnHiddenListener(() -> {
+            removeView(thisHint);
+            if (expandInputHint == thisHint) {
+                expandInputHint = null;
+            }
+        });
+        expandInputHint.setDuration(4000L);
+        expandInputHint.show();
+    }
+
     public void setMessageEditExpanded(boolean expanded) {
         if (messageEditExpanded == expanded || messageEditText == null
-                || (expanded && (parentFragment == null || expandedInputBudget <= 0))) {
+                || (expanded && !canExpandInput())) {
             return;
         }
         messageEditExpanded = expanded;
+        // the tip has served its purpose the moment the field expands
+        if (expanded && expandInputHint != null) {
+            expandInputHint.hide();
+            expandInputHint = null;
+        }
         messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
         // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
         messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);
+        // shrink the whole field (text + emoji) while expanded so more of the draft fits at once
+        applyExpandedFieldTextSize(expanded);
         // the placeholder looks marooned floating in a tall empty field, so drop it while expanded
         // and bring it back on collapse (it only ever draws when the field is empty anyway)
         messageEditText.setHintVisible(!expanded, false);
@@ -6796,6 +6911,26 @@ public class ChatActivityEnterView extends FrameLayout implements
         });
     }
 
+    // Emoji spans (static and animated) cache their size from the paint's font metrics at insert time, so
+    // changing the text size alone leaves them at the old scale. Re-derive them against the new metrics;
+    // newly typed emoji already pick up the current size at replaceEmoji time. resetFontMetricsCache is the
+    // established nudge that forces the line-height/layout recompute across the other span kinds.
+    private void applyExpandedFieldTextSize(boolean expanded) {
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, expanded ? EDIT_TEXT_SIZE_EXPANDED_DP : EDIT_TEXT_SIZE_DP);
+        final Editable text = messageEditText.getText();
+        if (text != null) {
+            final Paint.FontMetricsInt fm = messageEditText.getPaint().getFontMetricsInt();
+            for (Emoji.EmojiSpan span : text.getSpans(0, text.length(), Emoji.EmojiSpan.class)) {
+                span.replaceFontMetrics(fm);
+            }
+            for (AnimatedEmojiSpan span : text.getSpans(0, text.length(), AnimatedEmojiSpan.class)) {
+                span.applyFontMetrics(fm, AnimatedEmojiDrawable.getCacheTypeForEnterView());
+            }
+        }
+        messageEditText.invalidateEffects();
+        messageEditText.resetFontMetricsCache();
+    }
+
     // NagramX: called from ChatActivity on every measure/inset pass; budget is the space between
     // the action bar and whatever input method (keyboard or emoji panel) is up
     public void updateExpandedInputBudget(int budget, boolean inputMethodVisible) {
@@ -6804,6 +6939,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         expandedInputBudget = budget;
         expandedInputAnchorVisible = inputMethodVisible;
         if (!messageEditExpanded) {
+            // the text-watcher trigger misses drafts that reach 4 lines via reflow, or where the budget
+            // only becomes available (keyboard opens) after the last keystroke, so re-check here too
+            if (inputMethodVisible) {
+                checkExpandInputHint();
+            }
             return;
         }
         if (anchorLost) {
