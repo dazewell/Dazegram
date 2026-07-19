@@ -213,6 +213,19 @@ commits to iterate; each push rebuilds. This is the same artifact users get, not
 a separate debug build. `commit-tag.yml` also runs and fails the PR if any commit
 is missing its tag.
 
+For a **user-visible feature this PR is opened by default** (don't wait to be
+asked — it's how dazewell gets the test build); **CI/bug/chore work stays
+optional** and can land straight into `dev` (below). When you open the PR, also
+request a Copilot review:
+```powershell
+gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
+gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+```
+`gh pr edit --add-reviewer @copilot` silently no-ops and `--json reviewRequests`
+hides bot reviewers; confirm with
+`gh api repos/<owner>/<repo>/pulls/<n>/requested_reviewers` (look for `Copilot`).
+See the `nagramx-github-pr-copilot-review` memory note.
+
 ### Land a change
 Mark the PR ready and **merge it with a merge commit (never squash)**, so the
 change's commits — and their tags — stay whole in `dev`. The merge to `dev`
