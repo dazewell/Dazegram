@@ -46924,11 +46924,35 @@ public class ChatActivity extends BaseFragment implements
         if (targets.isEmpty()) {
             return;
         }
+        final EditTextBoldCursor startField = new EditTextBoldCursor(getParentActivity());
+        startField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        startField.setTextColor(getThemedColor(Theme.key_windowBackgroundWhiteBlackText));
+        startField.setHintTextColor(getThemedColor(Theme.key_windowBackgroundWhiteHintText));
+        startField.setHandlesColor(getThemedColor(Theme.key_chat_TextSelectionCursor));
+        startField.setBackground(null);
+        startField.setLineColors(getThemedColor(Theme.key_windowBackgroundWhiteInputField), getThemedColor(Theme.key_windowBackgroundWhiteInputFieldActivated), getThemedColor(Theme.key_text_RedRegular));
+        startField.setInputType(InputType.TYPE_CLASS_NUMBER);
+        startField.setMinLines(1);
+        startField.setMaxLines(1);
+        startField.setHint(getString(R.string.ReplyWithNumbersStartHint));
+        startField.setText("1");
+        startField.setSelection(startField.getText().length());
+        FrameLayout startContainer = new FrameLayout(getParentActivity());
+        startContainer.addView(startField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP | Gravity.LEFT, 24, 4, 24, 0));
+
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
         builder.setTitle(getString(R.string.ReplyWithNumbers));
         builder.setMessage(formatString(R.string.ReplyWithNumbersHint, targets.size()));
+        builder.setView(startContainer);
         builder.setPositiveButton(getString(R.string.Send), (dialogInterface, i) -> {
-            if (!com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets)) {
+            int startNumber = 1;
+            try {
+                String s = startField.getText() == null ? "" : startField.getText().toString().trim();
+                if (!s.isEmpty()) {
+                    startNumber = Integer.parseInt(s);
+                }
+            } catch (NumberFormatException ignored) {}
+            if (!com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets, startNumber)) {
                 BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
             }
         });

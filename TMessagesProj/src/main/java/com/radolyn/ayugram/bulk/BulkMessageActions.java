@@ -62,7 +62,7 @@ public final class BulkMessageActions {
         AndroidUtilities.runOnUIThread(() -> pinNext(fragment, currentAccount, chat, user, mids, index + 1, oneSide, notify, busyKey), PIN_DELAY_MS);
     }
 
-    public static boolean runNumberedReply(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages) {
+    public static boolean runNumberedReply(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages, int startNumber) {
         if (messages == null || messages.isEmpty()) {
             return false;
         }
@@ -70,11 +70,11 @@ public final class BulkMessageActions {
         if (!replyBusyKeys.add(busyKey)) {
             return false;
         }
-        replyNext(fragment, currentAccount, dialogId, threadMessage, messages, 0, 0, busyKey);
+        replyNext(fragment, currentAccount, dialogId, threadMessage, messages, 0, startNumber, 0, busyKey);
         return true;
     }
 
-    private static void replyNext(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages, int index, int sent, String busyKey) {
+    private static void replyNext(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages, int index, int startNumber, int sent, String busyKey) {
         if (fragment == null || fragment.getParentActivity() == null) {
             replyBusyKeys.remove(busyKey);
             return;
@@ -87,33 +87,14 @@ public final class BulkMessageActions {
         final MessageObject target = messages.get(index);
         int nextSent = sent;
         if (target != null && target.getId() > 0) {
-            // reply carries the running index (one bright glyph) as its whole body: the peer taps the
-            // reply header to jump to that message, giving a table of contents that works on both sides.
-            // Silent so a long index doesn't fire a notification per entry.
-            nextSent++;
-            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(glyphNumber(nextSent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
+            // reply carries the running number (counting up from startNumber) as its whole body: the peer
+            // taps the reply header to jump to that message, giving a table of contents that works on both
+            // sides. Silent so a long index doesn't fire a notification per entry.
+            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(String.valueOf(startNumber + sent), dialogId, target, threadMessage, null, false, null, null, null, false, 0, 0, null, false);
             SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
+            nextSent++;
         }
         final int sentSoFar = nextSent;
-        AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, sentSoFar, busyKey), REPLY_DELAY_MS);
-    }
-
-    // one glyph per number: bright keycap emoji for 1-10 (7 -> 7️⃣, 10 -> 🔟), then single circled glyphs
-    // for 11-30 (⑪ … ㉚), since no colourful single glyph exists past ten. Cap is 30, so the plain-number
-    // fallback isn't normally reached.
-    private static String glyphNumber(int n) {
-        if (n >= 1 && n <= 9) {
-            return "" + (char) ('0' + n) + '\uFE0F' + '\u20E3';
-        }
-        if (n == 10) {
-            return "\uD83D\uDD1F";
-        }
-        if (n >= 11 && n <= 20) {
-            return String.valueOf((char) (0x2460 + n - 1));
-        }
-        if (n >= 21 && n <= 30) {
-            return String.valueOf((char) (0x3251 + n - 21));
-        }
-        return Integer.toString(n);
+        AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, startNumber, sentSoFar, busyKey), REPLY_DELAY_MS);
     }
 }

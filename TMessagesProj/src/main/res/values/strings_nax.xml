@@ -410,7 +410,8 @@
     <string name="RescheduleBusy">Still applying the previous reschedule…</string>
     <string name="PinAll">Pin all</string>
     <string name="ReplyWithNumbers">Reply with numbers</string>
-    <string name="ReplyWithNumbersHint">Send a numbered reply to each of the %1$d selected messages? You can tap each reply to jump to its message.</string>
+    <string name="ReplyWithNumbersHint">Reply to each of the %1$d selected messages with a number, counting up from the value below. Tap a reply to jump to its message.</string>
+    <string name="ReplyWithNumbersStartHint">Start number</string>
     <string name="BulkActionLimit">Select %1$d messages or fewer for this.</string>
     <string name="BulkActionBusy">Still finishing the previous batch…</string>
     <string name="BulkPinned_one">%1$d message pinned</string>
