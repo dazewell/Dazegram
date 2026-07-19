@@ -209,7 +209,11 @@ code are not.
    `dev` merge, and the phone-triggered automation are covered in the
    `nagramx-branch-flow` skill.
 
-9. **Open a PR into `dev` — that *is* the preview build.** The build dazewell
+9. **Open a PR into `dev` — that *is* the preview build (the default for a
+   feature).** For a user-visible feature this is a standing step, not
+   something to wait to be told: once it compiles and passes round-2 review,
+   **commit → push → open the PR** so dazewell always has a test build to
+   install. The build dazewell
    tests on-device must be **`dev` + the change** (on top of the current fork
    state, alongside everything already landed). Open a PR from
    `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
@@ -218,6 +222,51 @@ code are not.
    Telegram (labelled a *test* build). dazewell installs the Unofficial variant
    over the daily app and tests from the uploaded artifact. `commit-tag.yml`
    also runs and blocks the PR if any commit lacks its `#tag`.
+
+   **Request a Copilot review when the PR opens.** `gh pr edit <n> --add-reviewer
+   @copilot` doesn't resolve the bot (it no-ops), and the bot isn't a
+   `suggestedActors` entry. Add it over REST:
+
+   ```powershell
+   gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+   ```
+
+   `gh pr view <n> --json reviewRequests` hides bot reviewers (it'll read `[]`
+   even on success); confirm with `gh api repos/<owner>/<repo>/pulls/<n>/requested_reviewers`
+   (look for `Copilot`). It's a machine reviewer, not a substitute for the
+   round-2 architect pass — treat its comments the same way (verify before
+   acting). Details in the `nagramx-github-pr-copilot-review` memory note.
+
+   **Wait for the review, then act on it.** Copilot posts a minute or two later,
+   so don't move on assuming it's clean. Note the current Copilot review count
+   as a baseline, then run a background watcher that blocks until a new one
+   lands and prints the review body plus its inline comments — run it in the
+   background (async terminal) so you're notified when it returns rather than
+   polling by hand. Login gotcha: the *reviews* endpoint lists Copilot as
+   `copilot-pull-request-reviewer[bot]`, but the inline *comments* endpoint lists
+   it as `Copilot` — filtering reviews by `Copilot` silently returns 0.
+
+   ```powershell
+   $owner='<owner>'; $repo='<repo>'; $pr=<n>; $base=<baseline count>; $deadline=(Get-Date).AddMinutes(20)
+   while ((Get-Date) -lt $deadline) {
+     $c = gh api "repos/$owner/$repo/pulls/$pr/reviews" --jq '[.[]|select(.user.login=="copilot-pull-request-reviewer[bot]")]|length' 2>$null
+     if ([int]$c -gt $base) { break }
+     Start-Sleep -Seconds 20
+   }
+   gh api "repos/$owner/$repo/pulls/$pr/reviews"  --jq 'map(select(.user.login=="copilot-pull-request-reviewer[bot]"))|last|{state,submitted_at,body}'
+   gh api "repos/$owner/$repo/pulls/$pr/comments" --jq '[.[]|select(.user.login=="Copilot")]|sort_by(.created_at)|.[-3:]|.[]|{path,line,body}'
+   ```
+
+   Then triage its findings like any review: fix the real ones in place and push,
+   note the false positives. **Do this exactly once — one Copilot pass, not a
+   loop.** Request the review, wait for that first review, address what's worth
+   addressing, push, and stop. Do **not** re-request another Copilot review to
+   "check the fix" — Copilot tends to surface a fresh nitpick every round, so
+   re-requesting after each fix turns into endless churn on diminishing returns.
+   The round-2 architect review is the real quality gate; Copilot is one
+   supplementary machine pass. If a later Copilot pass is genuinely warranted
+   (e.g. the fix was large or risky), dazewell asks for it explicitly. Don't
+   stack "address Copilot" commits either — amend/fix in place.
 
    Iterate by pushing to the branch (each push rebuilds + re-uploads). On a
    no-go, fix in place and push again; don't stack visible "fix review
@@ -236,8 +285,21 @@ code are not.
     single commit is reserved for the separate act of **proposing the feature
     to the base fork** (`risin42/NagramX`), on a throwaway `-pr` copy that also
     drops the `FEATURES.md` hunk. The no-AI-in-the-log rule applies to every PR
-    title/body. Only commit/push when asked. See the `nagramx-branch-flow`
-    skill for both flows.
+    title/body. See the `nagramx-branch-flow` skill for both flows.
+
+### Commit/PR by default vs. ask first
+
+- **A user-visible feature is committed and PR'd by default** — don't wait to
+  be told. Finish the pipeline (compile, round-2 review), then commit, push, and
+  open the PR into `dev` with a Copilot review requested (step 9). That's how
+  dazewell gets the on-device test build; making it a standing step is the point.
+- **CI/workflow tweaks, bug fixes, and small/chore items keep the lighter
+  touch** — commit only when asked, and a PR is optional (they can land via a
+  local merge into `dev`, or be shortcut entirely). Don't force a full
+  branch+PR ceremony on a one-liner unless dazewell wants the staging build.
+- Either way, still **only push to shared branches when that's the intent** —
+  the default-PR rule is about not re-asking for *feature* work, not about
+  pushing chores nobody requested.
 
 ## Coding conventions
 
