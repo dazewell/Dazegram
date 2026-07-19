@@ -11,6 +11,8 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Runs the two multi-select bulk actions (pin all, numbered replies) as strictly sequential
@@ -25,53 +27,60 @@ public final class BulkMessageActions {
     private static final long PIN_DELAY_MS = 250;
     private static final long REPLY_DELAY_MS = 700;
 
-    // Best-effort re-entry guard: one run of each kind per dialog at a time.
-    private static volatile long pinBusyDialogId;
-    private static volatile long replyBusyDialogId;
+    // Re-entry guard: one run of each kind per (account, dialog) at a time. Keyed on the account too,
+    // because the same dialog id exists across accounts and a run in one must not block the other.
+    private static final Set<String> pinBusyKeys = ConcurrentHashMap.newKeySet();
+    private static final Set<String> replyBusyKeys = ConcurrentHashMap.newKeySet();
 
     private BulkMessageActions() {
     }
 
     public static boolean runPin(BaseFragment fragment, int currentAccount, TLRPC.Chat chat, TLRPC.User user, long dialogId, ArrayList<Integer> mids, boolean oneSide, boolean notify) {
-        if (pinBusyDialogId == dialogId || mids == null || mids.isEmpty()) {
+        if (mids == null || mids.isEmpty()) {
             return false;
         }
-        pinBusyDialogId = dialogId;
-        pinNext(fragment, currentAccount, chat, user, dialogId, mids, 0, oneSide, notify);
+        final String busyKey = currentAccount + ":" + dialogId;
+        if (!pinBusyKeys.add(busyKey)) {
+            return false;
+        }
+        pinNext(fragment, currentAccount, chat, user, mids, 0, oneSide, notify, busyKey);
         return true;
     }
 
-    private static void pinNext(BaseFragment fragment, int currentAccount, TLRPC.Chat chat, TLRPC.User user, long dialogId, ArrayList<Integer> mids, int index, boolean oneSide, boolean notify) {
+    private static void pinNext(BaseFragment fragment, int currentAccount, TLRPC.Chat chat, TLRPC.User user, ArrayList<Integer> mids, int index, boolean oneSide, boolean notify, String busyKey) {
         if (fragment == null || fragment.getParentActivity() == null) {
-            pinBusyDialogId = 0;
+            pinBusyKeys.remove(busyKey);
             return;
         }
         if (index >= mids.size()) {
-            pinBusyDialogId = 0;
+            pinBusyKeys.remove(busyKey);
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.formatPluralString("BulkPinned", mids.size())).show();
             return;
         }
         // ascending id order, so the newest selected message is pinned last and lands on top of the pin stack
         MessagesController.getInstance(currentAccount).pinMessage(chat, user, mids.get(index), false, oneSide, notify);
-        AndroidUtilities.runOnUIThread(() -> pinNext(fragment, currentAccount, chat, user, dialogId, mids, index + 1, oneSide, notify), PIN_DELAY_MS);
+        AndroidUtilities.runOnUIThread(() -> pinNext(fragment, currentAccount, chat, user, mids, index + 1, oneSide, notify, busyKey), PIN_DELAY_MS);
     }
 
     public static boolean runNumberedReply(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages) {
-        if (replyBusyDialogId == dialogId || messages == null || messages.isEmpty()) {
+        if (messages == null || messages.isEmpty()) {
             return false;
         }
-        replyBusyDialogId = dialogId;
-        replyNext(fragment, currentAccount, dialogId, threadMessage, messages, 0, 0);
+        final String busyKey = currentAccount + ":" + dialogId;
+        if (!replyBusyKeys.add(busyKey)) {
+            return false;
+        }
+        replyNext(fragment, currentAccount, dialogId, threadMessage, messages, 0, 0, busyKey);
         return true;
     }
 
-    private static void replyNext(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages, int index, int sent) {
+    private static void replyNext(BaseFragment fragment, int currentAccount, long dialogId, MessageObject threadMessage, ArrayList<MessageObject> messages, int index, int sent, String busyKey) {
         if (fragment == null || fragment.getParentActivity() == null) {
-            replyBusyDialogId = 0;
+            replyBusyKeys.remove(busyKey);
             return;
         }
         if (index >= messages.size()) {
-            replyBusyDialogId = 0;
+            replyBusyKeys.remove(busyKey);
             BulletinFactory.of(fragment).createSimpleBulletin(R.raw.chats_infotip, LocaleController.formatPluralString("NumberedRepliesSent", sent)).show();
             return;
         }
@@ -86,7 +95,7 @@ public final class BulkMessageActions {
             SendMessagesHelper.getInstance(currentAccount).sendMessage(params);
         }
         final int sentSoFar = nextSent;
-        AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, sentSoFar), REPLY_DELAY_MS);
+        AndroidUtilities.runOnUIThread(() -> replyNext(fragment, currentAccount, dialogId, threadMessage, messages, index + 1, sentSoFar, busyKey), REPLY_DELAY_MS);
     }
 
     // one glyph per number: bright keycap emoji for 1-10 (7 -> 7️⃣, 10 -> 🔟), then single circled glyphs

@@ -46927,8 +46927,11 @@ public class ChatActivity extends BaseFragment implements
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
         builder.setTitle(getString(R.string.ReplyWithNumbers));
         builder.setMessage(formatString(R.string.ReplyWithNumbersHint, targets.size()));
-        builder.setPositiveButton(getString(R.string.Send), (dialogInterface, i) ->
-                com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets));
+        builder.setPositiveButton(getString(R.string.Send), (dialogInterface, i) -> {
+            if (!com.radolyn.ayugram.bulk.BulkMessageActions.runNumberedReply(this, currentAccount, dialog_id, getThreadMessage(), targets)) {
+                BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
+            }
+        });
         builder.setNegativeButton(getString(R.string.Cancel), null);
         showDialog(builder.create());
     }
@@ -47016,8 +47019,8 @@ public class ChatActivity extends BaseFragment implements
                         if (!NekoConfig.disableVibration.Bool()) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
                     } catch (Exception ignored) {}
                 }, 550);
-            } else {
-                com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify);
+            } else if (!com.radolyn.ayugram.bulk.BulkMessageActions.runPin(this, currentAccount, currentChat, currentUser, dialog_id, mids, oneSide, notify)) {
+                BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.BulkActionBusy)).show();
             }
         });
         builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);

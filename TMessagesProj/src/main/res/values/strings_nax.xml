@@ -412,6 +412,7 @@
     <string name="ReplyWithNumbers">Reply with numbers</string>
     <string name="ReplyWithNumbersHint">Send a numbered reply to each of the %1$d selected messages? You can tap each reply to jump to its message.</string>
     <string name="BulkActionLimit">Select %1$d messages or fewer for this.</string>
+    <string name="BulkActionBusy">Still finishing the previous batch…</string>
     <string name="BulkPinned_one">%1$d message pinned</string>
     <string name="BulkPinned_other">%1$d messages pinned</string>
     <string name="NumberedRepliesSent_one">%1$d numbered reply sent</string>
