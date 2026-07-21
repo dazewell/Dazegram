@@ -391,6 +391,7 @@
     <string name="DefaultScheduleDelay">Default delay</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>
+    <string name="InputTextSize">Message input text size</string>
     <string name="SendScheduledNowConfirm">Send the selected messages now?</string>
     <string name="Reschedule">Reschedule</string>
     <string name="RescheduleMessages">Reschedule messages</string>

@@ -33,6 +33,10 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 The calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default.
 
+### Message input text size <!-- #input-text-size -->
+
+The text you type in the compose box has its own size, separate from the chat bubbles. A slider in the chat settings (right under the quick schedule toggle) runs from 14 to 20 — the default 18 matches stock Telegram, and dropping it a couple of points fits more of a long draft on screen. It's one size in every state now: the box uses your chosen size whether it's the normal compose row, expanded fullscreen, or an edit, so the text doesn't change size as the box grows.
+
 ### Physical keyboard hotkeys <!-- #keyboard-hotkeys -->
 
 Matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings.
@@ -83,7 +87,7 @@ Select a few messages and the selection bar's ⋯ menu gets two new actions. *Pi
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-Drag the emoji/GIF button (bottom-left of the compose row) up and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. Drag it back down to return to normal — or drag down on either side margin of the row, whichever's closer. It's a deliberate vertical drag, not a flick, so it works even when the box is still short, and a normal tap on the button still opens the emoji panel. The first couple of times a draft gets long enough to be worth expanding, a tip points at the button so the gesture is easy to find. Keeping the gesture off the text itself is deliberate: scrolling through a long draft never collapses it by accident. While expanded the text and emoji shrink a little so more of the message fits on screen at once. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box. It also works while editing a message, and behaves in landscape and split-screen.
+Drag the emoji/GIF button (bottom-left of the compose row) up and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. Drag it back down to return to normal — or drag down on either side margin of the row, whichever's closer. It's a deliberate vertical drag, not a flick, so it works even when the box is still short, and a normal tap on the button still opens the emoji panel. The first couple of times a draft gets long enough to be worth expanding, a tip points at the button so the gesture is easy to find. Keeping the gesture off the text itself is deliberate: scrolling through a long draft never collapses it by accident. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box. It also works while editing a message, and behaves in landscape and split-screen.
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 

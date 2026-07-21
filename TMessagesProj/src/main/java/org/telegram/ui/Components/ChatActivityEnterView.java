@@ -669,9 +669,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean messageEditExpanded;
     private int expandedInputBudget;
     private boolean expandedInputAnchorVisible;
-    // shrink the field while expanded so more of the draft fits; restore the default on collapse
-    private static final int EDIT_TEXT_SIZE_DP = 18;
-    private static final int EDIT_TEXT_SIZE_EXPANDED_DP = 15;
     private ImageView richButton;
     private float attachButtonAlpha = 1.0f;
     private ImageView suggestButton;
@@ -6516,7 +6513,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateFieldHint(false);
         messageEditText.setSingleLine(false);
         messageEditText.setMaxLines(6);
-        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, getInputTextSizeDp());
         messageEditText.setGravity(Gravity.BOTTOM);
         messageEditText.setPadding(0, dp(9), 0, dp(10));
         messageEditText.setBackgroundDrawable(null);
@@ -6897,8 +6894,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
         // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
         messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);
-        // shrink the whole field (text + emoji) while expanded so more of the draft fits at once
-        applyExpandedFieldTextSize(expanded);
         // the placeholder looks marooned floating in a tall empty field, so drop it while expanded
         // and bring it back on collapse (it only ever draws when the field is empty anyway)
         messageEditText.setHintVisible(!expanded, false);
@@ -6911,24 +6906,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         });
     }
 
-    // Emoji spans (static and animated) cache their size from the paint's font metrics at insert time, so
-    // changing the text size alone leaves them at the old scale. Re-derive them against the new metrics;
-    // newly typed emoji already pick up the current size at replaceEmoji time. resetFontMetricsCache is the
-    // established nudge that forces the line-height/layout recompute across the other span kinds.
-    private void applyExpandedFieldTextSize(boolean expanded) {
-        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, expanded ? EDIT_TEXT_SIZE_EXPANDED_DP : EDIT_TEXT_SIZE_DP);
-        final Editable text = messageEditText.getText();
-        if (text != null) {
-            final Paint.FontMetricsInt fm = messageEditText.getPaint().getFontMetricsInt();
-            for (Emoji.EmojiSpan span : text.getSpans(0, text.length(), Emoji.EmojiSpan.class)) {
-                span.replaceFontMetrics(fm);
-            }
-            for (AnimatedEmojiSpan span : text.getSpans(0, text.length(), AnimatedEmojiSpan.class)) {
-                span.applyFontMetrics(fm, AnimatedEmojiDrawable.getCacheTypeForEnterView());
-            }
-        }
-        messageEditText.invalidateEffects();
-        messageEditText.resetFontMetricsCache();
+    // NagramX: composer text size is a single user-configurable value (NaConfig.inputTextSize),
+    // applied everywhere the field renders, so it no longer changes between normal and fullscreen.
+    // Clamp to the slider's range in case a stored value drifts out of bounds.
+    private int getInputTextSizeDp() {
+        return Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int()));
     }
 
     // NagramX: called from ChatActivity on every measure/inset pass; budget is the space between
@@ -11247,7 +11229,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             if (paint == null) {
                 paint = new TextPaint();
-                paint.setTextSize(dp(18));
+                paint.setTextSize(dp(getInputTextSizeDp()));
             }
             fontMetricsInt = paint.getFontMetricsInt();
 
@@ -11429,7 +11411,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (paint == null) {
                     paint = new TextPaint();
-                    paint.setTextSize(dp(18));
+                    paint.setTextSize(dp(getInputTextSizeDp()));
                 }
                 fontMetricsInt = paint.getFontMetricsInt();
 
