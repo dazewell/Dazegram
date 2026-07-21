@@ -9703,7 +9703,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                             scheduledButton.setAlpha(1.0f);
                             scheduledButton.setScaleX(1.0f);
                             scheduledButton.setScaleY(1.0f);
-                            scheduledButton.setTranslationX(dp(DEFAULT_HEIGHT));
+                            // NagramX (#quick-schedule): with the attach menu on, the attach button keeps the
+                            // rightmost slot, so the pinned calendar sits one slot to its left (0); with it off
+                            // the attach layout is hidden here, so the calendar takes the rightmost slot. Using
+                            // DEFAULT_HEIGHT in both cases parks it behind the attach button on a restored draft.
+                            scheduledButton.setTranslationX(dp((!NekoConfig.useChatAttachMediaMenu.Bool() || isStories) ? DEFAULT_HEIGHT : 0));
                         } else {
                             if (hasScheduledInstant) {
                                 scheduledButton.setVisibility(GONE);
@@ -10170,8 +10174,20 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
         int oldRightMargin = layoutParams.rightMargin;
-        boolean scheduleGutter = false;
-        if (isStories && isLiveComment) {
+        // NagramX (#quick-schedule): the pinned calendar button only needs the bottom-right corner, so on a
+        // wrapped draft drop it into a one-button-tall bottom gutter (Option D) and let every line run full
+        // width instead of narrowing each line with a right margin. Decided up front so it wins over whichever
+        // reservation branch (attach menu shown or not) would otherwise steal the width.
+        boolean scheduleGutter = !(isStories && isLiveComment)
+                && editingMessageObject == null
+                && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                && scheduledButton != null
+                && scheduledButton.getTag() != null
+                && scheduledButton.getVisibility() == VISIBLE
+                && messageEditText.getLineCount() > 1;
+        if (scheduleGutter) {
+            layoutParams.rightMargin = dp(2);
+        } else if (isStories && isLiveComment) {
             layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         } else if (attachVisible == 1 || attachVisible == 2/* && layoutParams.rightMargin != dp(2)*/) {
             if (botButton != null && botButton.getVisibility() == VISIBLE && scheduledButton != null && scheduledButton.getVisibility() == VISIBLE && attachButton != null && attachButton.getVisibility() == VISIBLE) {
@@ -10183,14 +10199,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         } else {
             if (scheduledButton != null && scheduledButton.getTag() != null) {
-                // Option D: single line keeps the button beside the text; a wrapped draft gets full-width
-                // lines and the button moves into the bottom gutter (applied below).
-                if (messageEditText.getLineCount() > 1) {
-                    layoutParams.rightMargin = dp(2);
-                    scheduleGutter = true;
-                } else {
-                    layoutParams.rightMargin = dp(50);
-                }
+                layoutParams.rightMargin = dp(50);
             } else {
                 layoutParams.rightMargin = dp(2);
             }
@@ -11907,6 +11916,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         ignoreTextChange = false;
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);
+        }
+        if (fromDraft) {
+            // NagramX (#quick-schedule): a restored draft skips the typing path that pins the calendar
+            // button and lays out the bottom gutter, so reconcile the field spacing once the restored
+            // text has been measured. post() drains after the next layout pass so getLineCount() is set.
+            messageEditText.post(() -> {
+                if (messageEditText != null) {
+                    updateFieldRight(lastAttachVisible);
+                }
+            });
         }
     }
 
