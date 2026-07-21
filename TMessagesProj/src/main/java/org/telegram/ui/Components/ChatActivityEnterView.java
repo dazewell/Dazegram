@@ -10181,12 +10181,12 @@ public class ChatActivityEnterView extends FrameLayout implements
     // runs last leaves the same result. Callers post() it so getLineCount() is final before the gutter is
     // decided. The pinned translationX matches what checkSendButton animates to, so running last never fights.
     private void reconcileScheduleButton() {
-        if (messageEditText == null || delegate == null) {
+        if (messageEditText == null) {
             return;
         }
-        if (TextUtils.isEmpty(messageEditText.getTextToUse())) {
-            // empty composer: the standard checkSendButton / updateScheduleButton paths own the button here;
-            // just never leave the draft gutter behind.
+        if (delegate == null || TextUtils.isEmpty(messageEditText.getTextToUse())) {
+            // no delegate yet (init/teardown) or empty composer: the standard checkSendButton /
+            // updateScheduleButton paths own the button here; just never leave the draft gutter behind.
             applyScheduleGutter(false);
             return;
         }
