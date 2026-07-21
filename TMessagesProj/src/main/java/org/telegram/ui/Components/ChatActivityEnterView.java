@@ -6517,7 +6517,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateFieldHint(false);
         messageEditText.setSingleLine(false);
         messageEditText.setMaxLines(6);
-        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, getInputTextSizeDp());
+        int inputTextSizeDp = getInputTextSizeDp();
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, inputTextSizeDp);
+        lastAppliedInputTextSizeDp = inputTextSizeDp;
         messageEditText.setGravity(Gravity.BOTTOM);
         messageEditText.setPadding(0, dp(9), 0, dp(10));
         messageEditText.setBackgroundDrawable(null);
@@ -6915,6 +6917,36 @@ public class ChatActivityEnterView extends FrameLayout implements
     // Clamp to the slider's range in case a stored value drifts out of bounds.
     private int getInputTextSizeDp() {
         return Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int()));
+    }
+
+    // NagramX (#input-text-size): the field only takes its size at creation, so a slider change made
+    // while a chat is open wouldn't show until the view was recreated. Re-read the config when the
+    // composer resumes (which includes returning from the settings screen) and, if it changed, resize
+    // the field and re-derive cached emoji span metrics against the new size so existing drafts render
+    // at the new scale too.
+    private int lastAppliedInputTextSizeDp;
+    private void refreshInputTextSize() {
+        if (messageEditText == null) {
+            return;
+        }
+        int sizeDp = getInputTextSizeDp();
+        if (sizeDp == lastAppliedInputTextSizeDp) {
+            return;
+        }
+        lastAppliedInputTextSizeDp = sizeDp;
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sizeDp);
+        final Editable text = messageEditText.getText();
+        if (text != null) {
+            final Paint.FontMetricsInt fm = messageEditText.getPaint().getFontMetricsInt();
+            for (Emoji.EmojiSpan span : text.getSpans(0, text.length(), Emoji.EmojiSpan.class)) {
+                span.replaceFontMetrics(fm);
+            }
+            for (AnimatedEmojiSpan span : text.getSpans(0, text.length(), AnimatedEmojiSpan.class)) {
+                span.applyFontMetrics(fm, AnimatedEmojiDrawable.getCacheTypeForEnterView());
+            }
+        }
+        messageEditText.invalidateEffects();
+        messageEditText.resetFontMetricsCache();
     }
 
     // NagramX: called from ChatActivity on every measure/inset pass; budget is the space between
@@ -7699,6 +7731,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void onResume() {
         isPaused = false;
+        // NagramX (#input-text-size): pick up a slider change made while this chat was backgrounded
+        refreshInputTextSize();
         if (hideKeyboardRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(hideKeyboardRunnable);
             hideKeyboardRunnable = null;
