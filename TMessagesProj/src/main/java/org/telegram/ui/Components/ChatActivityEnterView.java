@@ -12575,7 +12575,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (notifyButton != null) {
                     notifyButton.setVisibility(notifyVisible && scheduledButton.getVisibility() != VISIBLE ? VISIBLE : GONE);
                 }
-                scheduledButton.setTranslationX(0);
+                // NagramX (#quick-schedule): when the pin keeps the calendar visible over a restored draft and
+                // the attach layout is hidden (attach menu off, or stories), the calendar takes the freed
+                // rightmost slot; leaving it at 0 would strand it one slot left of the now-empty attach spot.
+                // Mirrors the value checkSendButton sets, since this async path (scheduledMessagesUpdated on
+                // chat re-entry) runs after checkSendButton and would otherwise reset the position to 0.
+                boolean pinnedOverDraft = visible && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                        && editingMessageObject == null
+                        && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)
+                        && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse());
+                scheduledButton.setTranslationX(dp(pinnedOverDraft ? DEFAULT_HEIGHT : 0));
             } else if (notifyButton != null) {
                 notifyButton.setVisibility(notifyVisible ? VISIBLE : GONE);
             }
