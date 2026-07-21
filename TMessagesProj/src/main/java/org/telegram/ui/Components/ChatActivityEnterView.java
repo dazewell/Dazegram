@@ -12527,6 +12527,15 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         }
         boolean hasScheduled = delegate != null && !isInScheduleMode() && delegate.hasScheduledMessages();
+        // NagramX (#quick-schedule): scheduleButtonHidden gets latched true when a draft is restored on
+        // chat entry before the scheduled-messages list has loaded (hasScheduledMessages() was still false),
+        // and nothing clears it once the list arrives. Re-enable the pin here so re-entering a chat that has
+        // scheduled messages plus a saved draft doesn't leave the calendar button stuck hidden.
+        if (hasScheduled && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                && editingMessageObject == null && !recordingAudioVideo && recordInterfaceState == 0
+                && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse())) {
+            scheduleButtonHidden = false;
+        }
         // recordingAudioVideo is reset to false once recording moves into the locked/preview
         // (RECORD_STATE_PREPARING) phase, while recordInterfaceState stays 1 until the record UI
         // is fully dismissed. Without the recordInterfaceState guard the calendar button would
