@@ -31,7 +31,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Quick schedule button <!-- #quick-schedule -->
 
-The calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default.
+The calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. When a draft wraps to more than one line the calendar drops into a strip below the text instead of narrowing every line, so only the last line makes room for it.
 
 ### Message input text size <!-- #input-text-size -->
 

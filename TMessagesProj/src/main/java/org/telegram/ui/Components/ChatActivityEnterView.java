@@ -4836,7 +4836,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onLineCountChanged(int oldLineCount, int newLineCount) {
-
+        // NagramX (#quick-schedule): a wrap in/out of multi-line flips Option D between the
+        // beside-text reservation and the bottom gutter, so re-run the field spacing.
+        if (scheduledButton != null && scheduledButton.getTag() != null && (oldLineCount > 1) != (newLineCount > 1)) {
+            updateFieldRight(lastAttachVisible);
+        }
     }
 
     private void startLockTransition() {
@@ -10104,18 +10108,35 @@ public class ChatActivityEnterView extends FrameLayout implements
         slowModeButton.setVisibility(visible ? VISIBLE : GONE);
         int padding = visible ? dp(slowModeButton.isPremiumMode ? 26 : 16) : 0;
         if (messageEditText != null && messageEditText.getPaddingRight() != padding) {
-            messageEditText.setPadding(0, dp(9), padding, dp(10));
+            // keep whatever bottom padding the schedule gutter set (Option D)
+            messageEditText.setPadding(0, dp(9), padding, messageEditText.getPaddingBottom());
         }
+    }
+
+    // NagramX (#quick-schedule): the pinned calendar button only occupies the bottom-right corner, so
+    // rather than narrowing every line with a full-height right margin, reserve a bottom strip (one
+    // button tall) that the last line floats above while the button drops into it (Option D).
+    private boolean scheduleGutterApplied;
+    private void applyScheduleGutter(boolean gutter) {
+        if (messageEditText == null || scheduleGutterApplied == gutter) {
+            return;
+        }
+        scheduleGutterApplied = gutter;
+        int bottom = dp(10) + (gutter ? dp(DEFAULT_HEIGHT) : 0);
+        messageEditText.setPadding(messageEditText.getPaddingLeft(), messageEditText.getPaddingTop(), messageEditText.getPaddingRight(), bottom);
     }
 
     private int lastAttachVisible;
     private void updateFieldRight(int attachVisible) {
         lastAttachVisible = attachVisible;
         if (messageEditText == null || (editingMessageObject != null && !editingMessageObject.needResendWhenEdit())) {
+            // never leave the schedule gutter behind when the field turns into an edit box
+            applyScheduleGutter(false);
             return;
         }
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
         int oldRightMargin = layoutParams.rightMargin;
+        boolean scheduleGutter = false;
         if (isStories && isLiveComment) {
             layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         } else if (attachVisible == 1 || attachVisible == 2/* && layoutParams.rightMargin != dp(2)*/) {
@@ -10128,7 +10149,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         } else {
             if (scheduledButton != null && scheduledButton.getTag() != null) {
-                layoutParams.rightMargin = dp(50);
+                // Option D: single line keeps the button beside the text; a wrapped draft gets full-width
+                // lines and the button moves into the bottom gutter (applied below).
+                if (messageEditText.getLineCount() > 1) {
+                    layoutParams.rightMargin = dp(2);
+                    scheduleGutter = true;
+                } else {
+                    layoutParams.rightMargin = dp(50);
+                }
             } else {
                 layoutParams.rightMargin = dp(2);
             }
@@ -10137,6 +10165,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (doneButton != null && doneButton.getVisibility() == VISIBLE) {
             layoutParams.rightMargin = Math.max(layoutParams.rightMargin, Math.max(0, doneButton.width() - dp(DEFAULT_HEIGHT)));
         }
+        applyScheduleGutter(scheduleGutter);
         if (oldRightMargin != layoutParams.rightMargin) {
             messageEditText.setLayoutParams(layoutParams);
         }
@@ -11450,6 +11479,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
                 layoutParams.rightMargin = dp(4);
                 messageEditText.setLayoutParams(layoutParams);
+                // edit mode hides the schedule button, so drop any bottom gutter it left behind
+                applyScheduleGutter(false);
             }
             if (recordedAudioPanel != null) {
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
