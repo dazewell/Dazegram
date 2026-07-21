@@ -884,17 +884,21 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
         protected void onDraw(Canvas canvas) {
             textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             canvas.drawText(getString(R.string.InputTextSize), AndroidUtilities.dp(21), AndroidUtilities.dp(24), textPaint);
-            String valueText = String.valueOf(NaConfig.INSTANCE.getInputTextSize().Int());
+            String valueText = String.valueOf(clampedSize());
             float valueWidth = textPaint.measureText(valueText);
             textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
             canvas.drawText(valueText, getMeasuredWidth() - AndroidUtilities.dp(21) - valueWidth, AndroidUtilities.dp(24), textPaint);
         }
 
+        // keep the label, the slider position and the applied size all in sync if a stored value is ever out of range
+        private int clampedSize() {
+            return Math.max(minSize, Math.min(maxSize, NaConfig.INSTANCE.getInputTextSize().Int()));
+        }
+
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(74), View.MeasureSpec.EXACTLY));
-            int clamped = Math.max(minSize, Math.min(maxSize, NaConfig.INSTANCE.getInputTextSize().Int()));
-            sizeBar.setProgress((clamped - minSize) / (float) (maxSize - minSize));
+            sizeBar.setProgress((clampedSize() - minSize) / (float) (maxSize - minSize));
         }
 
         @Override
