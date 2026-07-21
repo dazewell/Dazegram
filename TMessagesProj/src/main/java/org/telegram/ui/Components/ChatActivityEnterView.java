@@ -1598,10 +1598,15 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (dy > maxTranslationDy) {
                 dy = maxTranslationDy;
             }
+            // NagramX: pausing runs the seekbar transition, which drops the button down by dy and
+            // lands the enlarged pause/resume button on top of the send arrow. Lift it back by the
+            // 20dp the enlargement added, in step with the pause, so it clears the send button again.
+            // Only the locked (sendButtonVisible) button is enlarged, so scope the correction to it
+            float pauseDy = dy - (sendButtonVisible ? dpf2(20) * progressToSeekbarStep1 : 0);
             float s = (1f - hidePause) * controlsScale * (1f - exitProgress2) * slideToCancelLockProgress;
-            canvas.scale(s, s, cx, lockMiddleY + dy);
+            canvas.scale(s, s, cx, lockMiddleY + pauseDy);
 
-            rectF.set(cx - dpf2(22), lockY + dy, cx + dpf2(22), lockY + dy + lockSize);
+            rectF.set(cx - dpf2(22), lockY + pauseDy, cx + dpf2(22), lockY + pauseDy + lockSize);
 
             if (lockBackgroundDrawable != null){
                 lockBackgroundDrawable.setBounds(
@@ -1628,9 +1633,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             rectF.set(
                 cx - dpf2(6) - dpf2(2) * (1f - transformToPauseProgress),
-                lockMiddleY + dy - dpf2(2) * (1f - transformToPauseProgress),
+                lockMiddleY + pauseDy - dpf2(2) * (1f - transformToPauseProgress),
                 cx + dp(6) + dpf2(2) * (1f - transformToPauseProgress),
-                lockMiddleY + dy + dp(12) + dpf2(2) * (1f - transformToPauseProgress)
+                lockMiddleY + pauseDy + dp(12) + dpf2(2) * (1f - transformToPauseProgress)
             );
             float lockBottom = rectF.bottom;
             float locCx = rectF.centerX();
