@@ -10244,6 +10244,31 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.post(reconcileScheduleButtonRunnable);
     }
 
+    // NagramX (#quick-schedule): decide the Option D gutter against the fixed beside-button (narrow) width
+    // instead of the field's current width. Turning the gutter on widens the field, which un-wraps the text
+    // back to one line, which would turn the gutter off, which narrows it, which re-wraps - the feedback loop
+    // that made the box jump on every keystroke near the right border. Measuring the intrinsic line width
+    // against a state-invariant reference removes the moving basis, so the seam has a single stable boundary.
+    private boolean textWouldWrapAtNarrowWidth(int narrowRightMargin) {
+        Layout layout = messageEditText.getLayout();
+        int width = messageEditText.getWidth();
+        if (layout == null || width <= 0) {
+            return messageEditText.getLineCount() > 1;
+        }
+        if (layout.getLineCount() > 1) {
+            return true;
+        }
+        // parent content width is invariant: current field width + whatever right margin is applied now. Re-derive
+        // the narrow text width from it so the check reads the same from either the narrow or the widened state.
+        int currentRightMargin = ((FrameLayout.LayoutParams) messageEditText.getLayoutParams()).rightMargin;
+        int narrowTextWidth = width + currentRightMargin - narrowRightMargin
+                - messageEditText.getPaddingLeft() - messageEditText.getPaddingRight();
+        if (narrowTextWidth <= 0) {
+            return messageEditText.getLineCount() > 1;
+        }
+        return layout.getLineWidth(0) > narrowTextWidth;
+    }
+
     private int lastAttachVisible;
     private void updateFieldRight(int attachVisible) {
         lastAttachVisible = attachVisible;
@@ -10258,36 +10283,42 @@ public class ChatActivityEnterView extends FrameLayout implements
         // wrapped draft drop it into a one-button-tall bottom gutter (Option D) and let every line run full
         // width instead of narrowing each line with a right margin. Decided up front so it wins over whichever
         // reservation branch (attach menu shown or not) would otherwise steal the width.
-        boolean scheduleGutter = !(isStories && isLiveComment)
+        boolean canUseScheduleGutter = !(isStories && isLiveComment)
                 && editingMessageObject == null
                 && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
                 && scheduledButton != null
                 && scheduledButton.getTag() != null
-                && scheduledButton.getVisibility() == VISIBLE
-                && messageEditText.getLineCount() > 1;
-        if (scheduleGutter) {
-            layoutParams.rightMargin = dp(2);
-        } else if (isStories && isLiveComment) {
-            layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
+                && scheduledButton.getVisibility() == VISIBLE;
+        // the beside-button margin this same cascade would pick when the gutter is off; also the stable
+        // reference the gutter decision measures against (see textWouldWrapAtNarrowWidth).
+        int narrowRightMargin;
+        if (isStories && isLiveComment) {
+            narrowRightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         } else if (attachVisible == 1 || attachVisible == 2/* && layoutParams.rightMargin != dp(2)*/) {
             if (botButton != null && botButton.getVisibility() == VISIBLE && scheduledButton != null && scheduledButton.getVisibility() == VISIBLE && attachButton != null && attachButton.getVisibility() == VISIBLE) {
-                layoutParams.rightMargin = dp(146);
+                narrowRightMargin = dp(146);
             } else if (botButton != null && botButton.getVisibility() == VISIBLE || notifyButton != null && notifyButton.getVisibility() == VISIBLE || scheduledButton != null && scheduledButton.getTag() != null) {
-                layoutParams.rightMargin = dp(98);
+                narrowRightMargin = dp(98);
             } else {
-                layoutParams.rightMargin = dp(50);
+                narrowRightMargin = dp(50);
             }
         } else {
             if (scheduledButton != null && scheduledButton.getTag() != null) {
-                layoutParams.rightMargin = dp(50);
+                narrowRightMargin = dp(50);
             } else {
-                layoutParams.rightMargin = dp(2);
+                narrowRightMargin = dp(2);
             }
         }
-        layoutParams.rightMargin = Math.max(layoutParams.rightMargin, Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT)));
+        int minRightMargin = Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         if (doneButton != null && doneButton.getVisibility() == VISIBLE) {
-            layoutParams.rightMargin = Math.max(layoutParams.rightMargin, Math.max(0, doneButton.width() - dp(DEFAULT_HEIGHT)));
+            minRightMargin = Math.max(minRightMargin, Math.max(0, doneButton.width() - dp(DEFAULT_HEIGHT)));
         }
+        narrowRightMargin = Math.max(narrowRightMargin, minRightMargin);
+        // enter the gutter when the narrow layout wraps; once in it, stay until the text would again fit the
+        // narrow width - measured against that fixed reference, not the widened field - so the seam can't flip-flop.
+        boolean scheduleGutter = canUseScheduleGutter
+                && (scheduleGutterApplied ? textWouldWrapAtNarrowWidth(narrowRightMargin) : messageEditText.getLineCount() > 1);
+        layoutParams.rightMargin = scheduleGutter ? Math.max(dp(2), minRightMargin) : narrowRightMargin;
         applyScheduleGutter(scheduleGutter);
         if (oldRightMargin != layoutParams.rightMargin) {
             messageEditText.setLayoutParams(layoutParams);
