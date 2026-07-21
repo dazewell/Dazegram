@@ -10184,9 +10184,17 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (messageEditText == null) {
             return;
         }
-        if (delegate == null || TextUtils.isEmpty(messageEditText.getTextToUse())) {
-            // no delegate yet (init/teardown) or empty composer: the standard checkSendButton /
-            // updateScheduleButton paths own the button here; just never leave the draft gutter behind.
+        if (runningAnimation2 != null) {
+            // checkSendButton is mid-transition animating this same button (100ms); snapping the final
+            // state now would fight those animators and flicker. Retry once it settles - its end listener
+            // nulls runningAnimation2, and the animated endpoints match what this computes anyway.
+            postReconcileScheduleButton();
+            return;
+        }
+        if (delegate == null || AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() == 0) {
+            // no delegate yet (init/teardown), or an empty composer (whitespace-only counts as empty, to
+            // match checkSendButton): the standard checkSendButton / updateScheduleButton paths own the
+            // button here; just never leave the draft gutter behind.
             applyScheduleGutter(false);
             return;
         }
