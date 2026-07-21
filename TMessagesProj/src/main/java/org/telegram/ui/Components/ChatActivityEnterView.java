@@ -669,9 +669,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean messageEditExpanded;
     private int expandedInputBudget;
     private boolean expandedInputAnchorVisible;
-    // shrink the field while expanded so more of the draft fits; restore the default on collapse
-    private static final int EDIT_TEXT_SIZE_DP = 18;
-    private static final int EDIT_TEXT_SIZE_EXPANDED_DP = 15;
     private ImageView richButton;
     private float attachButtonAlpha = 1.0f;
     private ImageView suggestButton;
@@ -4839,7 +4836,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onLineCountChanged(int oldLineCount, int newLineCount) {
-
+        // NagramX (#quick-schedule): a wrap in/out of multi-line flips Option D between the
+        // beside-text reservation and the bottom gutter, so re-run the field spacing.
+        if (scheduledButton != null && scheduledButton.getTag() != null && (oldLineCount > 1) != (newLineCount > 1)) {
+            updateFieldRight(lastAttachVisible);
+        }
     }
 
     private void startLockTransition() {
@@ -6516,7 +6517,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateFieldHint(false);
         messageEditText.setSingleLine(false);
         messageEditText.setMaxLines(6);
-        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
+        int inputTextSizeDp = getInputTextSizeDp();
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, inputTextSizeDp);
+        lastAppliedInputTextSizeDp = inputTextSizeDp;
         messageEditText.setGravity(Gravity.BOTTOM);
         messageEditText.setPadding(0, dp(9), 0, dp(10));
         messageEditText.setBackgroundDrawable(null);
@@ -6897,8 +6900,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setMaxLines(expanded ? Integer.MAX_VALUE : 6);
         // top gravity while expanded: a fullscreen draft reads as a document, not a chat bubble
         messageEditText.setGravity(expanded ? Gravity.TOP : Gravity.BOTTOM);
-        // shrink the whole field (text + emoji) while expanded so more of the draft fits at once
-        applyExpandedFieldTextSize(expanded);
         // the placeholder looks marooned floating in a tall empty field, so drop it while expanded
         // and bring it back on collapse (it only ever draws when the field is empty anyway)
         messageEditText.setHintVisible(!expanded, false);
@@ -6911,12 +6912,29 @@ public class ChatActivityEnterView extends FrameLayout implements
         });
     }
 
-    // Emoji spans (static and animated) cache their size from the paint's font metrics at insert time, so
-    // changing the text size alone leaves them at the old scale. Re-derive them against the new metrics;
-    // newly typed emoji already pick up the current size at replaceEmoji time. resetFontMetricsCache is the
-    // established nudge that forces the line-height/layout recompute across the other span kinds.
-    private void applyExpandedFieldTextSize(boolean expanded) {
-        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, expanded ? EDIT_TEXT_SIZE_EXPANDED_DP : EDIT_TEXT_SIZE_DP);
+    // NagramX: composer text size is a single user-configurable value (NaConfig.inputTextSize),
+    // applied everywhere the field renders, so it no longer changes between normal and fullscreen.
+    // Clamp to the slider's range in case a stored value drifts out of bounds.
+    private int getInputTextSizeDp() {
+        return Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int()));
+    }
+
+    // NagramX (#input-text-size): the field only takes its size at creation, so a slider change made
+    // while a chat is open wouldn't show until the view was recreated. Re-read the config when the
+    // composer resumes (which includes returning from the settings screen) and, if it changed, resize
+    // the field and re-derive cached emoji span metrics against the new size so existing drafts render
+    // at the new scale too.
+    private int lastAppliedInputTextSizeDp;
+    private void refreshInputTextSize() {
+        if (messageEditText == null) {
+            return;
+        }
+        int sizeDp = getInputTextSizeDp();
+        if (sizeDp == lastAppliedInputTextSizeDp) {
+            return;
+        }
+        lastAppliedInputTextSizeDp = sizeDp;
+        messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, sizeDp);
         final Editable text = messageEditText.getText();
         if (text != null) {
             final Paint.FontMetricsInt fm = messageEditText.getPaint().getFontMetricsInt();
@@ -7713,6 +7731,8 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void onResume() {
         isPaused = false;
+        // NagramX (#input-text-size): pick up a slider change made while this chat was backgrounded
+        refreshInputTextSize();
         if (hideKeyboardRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(hideKeyboardRunnable);
             hideKeyboardRunnable = null;
@@ -9683,7 +9703,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                             scheduledButton.setAlpha(1.0f);
                             scheduledButton.setScaleX(1.0f);
                             scheduledButton.setScaleY(1.0f);
-                            scheduledButton.setTranslationX(dp(DEFAULT_HEIGHT));
+                            // NagramX (#quick-schedule): with the attach menu on, the attach button keeps the
+                            // rightmost slot, so the pinned calendar sits one slot to its left (0); with it off
+                            // the attach layout is hidden here, so the calendar takes the rightmost slot. Using
+                            // DEFAULT_HEIGHT in both cases parks it behind the attach button on a restored draft.
+                            scheduledButton.setTranslationX(dp((!NekoConfig.useChatAttachMediaMenu.Bool() || isStories) ? DEFAULT_HEIGHT : 0));
                         } else {
                             if (hasScheduledInstant) {
                                 scheduledButton.setVisibility(GONE);
@@ -10122,19 +10146,48 @@ public class ChatActivityEnterView extends FrameLayout implements
         slowModeButton.setVisibility(visible ? VISIBLE : GONE);
         int padding = visible ? dp(slowModeButton.isPremiumMode ? 26 : 16) : 0;
         if (messageEditText != null && messageEditText.getPaddingRight() != padding) {
-            messageEditText.setPadding(0, dp(9), padding, dp(10));
+            // keep whatever bottom padding the schedule gutter set (Option D)
+            messageEditText.setPadding(0, dp(9), padding, messageEditText.getPaddingBottom());
         }
+    }
+
+    // NagramX (#quick-schedule): the pinned calendar button only occupies the bottom-right corner, so
+    // rather than narrowing every line with a full-height right margin, reserve a bottom strip (one
+    // button tall) that the last line floats above while the button drops into it (Option D).
+    private boolean scheduleGutterApplied;
+    private void applyScheduleGutter(boolean gutter) {
+        if (messageEditText == null || scheduleGutterApplied == gutter) {
+            return;
+        }
+        scheduleGutterApplied = gutter;
+        int bottom = dp(10) + (gutter ? dp(DEFAULT_HEIGHT) : 0);
+        messageEditText.setPadding(messageEditText.getPaddingLeft(), messageEditText.getPaddingTop(), messageEditText.getPaddingRight(), bottom);
     }
 
     private int lastAttachVisible;
     private void updateFieldRight(int attachVisible) {
         lastAttachVisible = attachVisible;
         if (messageEditText == null || (editingMessageObject != null && !editingMessageObject.needResendWhenEdit())) {
+            // never leave the schedule gutter behind when the field turns into an edit box
+            applyScheduleGutter(false);
             return;
         }
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
         int oldRightMargin = layoutParams.rightMargin;
-        if (isStories && isLiveComment) {
+        // NagramX (#quick-schedule): the pinned calendar button only needs the bottom-right corner, so on a
+        // wrapped draft drop it into a one-button-tall bottom gutter (Option D) and let every line run full
+        // width instead of narrowing each line with a right margin. Decided up front so it wins over whichever
+        // reservation branch (attach menu shown or not) would otherwise steal the width.
+        boolean scheduleGutter = !(isStories && isLiveComment)
+                && editingMessageObject == null
+                && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                && scheduledButton != null
+                && scheduledButton.getTag() != null
+                && scheduledButton.getVisibility() == VISIBLE
+                && messageEditText.getLineCount() > 1;
+        if (scheduleGutter) {
+            layoutParams.rightMargin = dp(2);
+        } else if (isStories && isLiveComment) {
             layoutParams.rightMargin = dp(suggestButtonVisible ? 50 : 2) + Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT));
         } else if (attachVisible == 1 || attachVisible == 2/* && layoutParams.rightMargin != dp(2)*/) {
             if (botButton != null && botButton.getVisibility() == VISIBLE && scheduledButton != null && scheduledButton.getVisibility() == VISIBLE && attachButton != null && attachButton.getVisibility() == VISIBLE) {
@@ -10155,6 +10208,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (doneButton != null && doneButton.getVisibility() == VISIBLE) {
             layoutParams.rightMargin = Math.max(layoutParams.rightMargin, Math.max(0, doneButton.width() - dp(DEFAULT_HEIGHT)));
         }
+        applyScheduleGutter(scheduleGutter);
         if (oldRightMargin != layoutParams.rightMargin) {
             messageEditText.setLayoutParams(layoutParams);
         }
@@ -11247,7 +11301,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             if (paint == null) {
                 paint = new TextPaint();
-                paint.setTextSize(dp(18));
+                paint.setTextSize(dp(getInputTextSizeDp()));
             }
             fontMetricsInt = paint.getFontMetricsInt();
 
@@ -11429,7 +11483,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 if (paint == null) {
                     paint = new TextPaint();
-                    paint.setTextSize(dp(18));
+                    paint.setTextSize(dp(getInputTextSizeDp()));
                 }
                 fontMetricsInt = paint.getFontMetricsInt();
 
@@ -11468,6 +11522,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
                 layoutParams.rightMargin = dp(4);
                 messageEditText.setLayoutParams(layoutParams);
+                // edit mode hides the schedule button, so drop any bottom gutter it left behind
+                applyScheduleGutter(false);
             }
             if (recordedAudioPanel != null) {
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
@@ -11860,6 +11916,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         ignoreTextChange = false;
         if (ignoreChange && delegate != null) {
             delegate.onTextChanged(messageEditText.getText(), true, fromDraft);
+        }
+        if (fromDraft) {
+            // NagramX (#quick-schedule): a restored draft skips the typing path that pins the calendar
+            // button and lays out the bottom gutter, so reconcile the field spacing once the restored
+            // text has been measured. post() drains after the next layout pass so getLineCount() is set.
+            messageEditText.post(() -> {
+                if (messageEditText != null) {
+                    updateFieldRight(lastAttachVisible);
+                }
+            });
         }
     }
 
@@ -12461,6 +12527,15 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         }
         boolean hasScheduled = delegate != null && !isInScheduleMode() && delegate.hasScheduledMessages();
+        // NagramX (#quick-schedule): scheduleButtonHidden gets latched true when a draft is restored on
+        // chat entry before the scheduled-messages list has loaded (hasScheduledMessages() was still false),
+        // and nothing clears it once the list arrives. Re-enable the pin here so re-entering a chat that has
+        // scheduled messages plus a saved draft doesn't leave the calendar button stuck hidden.
+        if (hasScheduled && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                && editingMessageObject == null && !recordingAudioVideo && recordInterfaceState == 0
+                && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse())) {
+            scheduleButtonHidden = false;
+        }
         // recordingAudioVideo is reset to false once recording moves into the locked/preview
         // (RECORD_STATE_PREPARING) phase, while recordInterfaceState stays 1 until the record UI
         // is fully dismissed. Without the recordInterfaceState guard the calendar button would
@@ -12500,7 +12575,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (notifyButton != null) {
                     notifyButton.setVisibility(notifyVisible && scheduledButton.getVisibility() != VISIBLE ? VISIBLE : GONE);
                 }
-                scheduledButton.setTranslationX(0);
+                // NagramX (#quick-schedule): when the pin keeps the calendar visible over a restored draft and
+                // the attach layout is hidden (attach menu off, or stories), the calendar takes the freed
+                // rightmost slot; leaving it at 0 would strand it one slot left of the now-empty attach spot.
+                // Mirrors the value checkSendButton sets, since this async path (scheduledMessagesUpdated on
+                // chat re-entry) runs after checkSendButton and would otherwise reset the position to 0.
+                boolean pinnedOverDraft = visible && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                        && editingMessageObject == null
+                        && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)
+                        && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse());
+                scheduledButton.setTranslationX(dp(pinnedOverDraft ? DEFAULT_HEIGHT : 0));
             } else if (notifyButton != null) {
                 notifyButton.setVisibility(notifyVisible ? VISIBLE : GONE);
             }

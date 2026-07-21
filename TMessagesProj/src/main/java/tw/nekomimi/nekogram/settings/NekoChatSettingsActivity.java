@@ -120,6 +120,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     private final AbstractConfigCell sendCommentAfterForwardRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.sendCommentAfterForward));
     private final AbstractConfigCell useChatAttachMediaMenuRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.useChatAttachMediaMenu, getString(R.string.UseChatAttachEnterMenuNotice)));
     private final AbstractConfigCell quickScheduleButtonRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getQuickScheduleButton(), getString(R.string.QuickScheduleButtonNotice)));
+    private final AbstractConfigCell inputTextSizeRow = cellGroup.appendCell(new ConfigCellCustom("InputTextSize", ConfigCellCustom.CUSTOM_ITEM_InputTextSize, false));
     private final AbstractConfigCell fixLinkPreviewRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getFixLinkPreview(), "x.com -> fixupx.com"));
     private final AbstractConfigCell disableLinkPreviewByDefaultRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.disableLinkPreviewByDefault));
     private final AbstractConfigCell deleteChatForBothSidesRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getDeleteChatForBothSides()));
@@ -854,6 +855,59 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
         }
     }
 
+    private class InputTextSizeSeekBar extends FrameLayout {
+
+        private final SeekBarView sizeBar;
+        private final TextPaint textPaint;
+        private final int minSize = 14;
+        private final int maxSize = 20;
+
+        public InputTextSizeSeekBar(Context context) {
+            super(context);
+
+            setWillNotDraw(false);
+
+            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
+            textPaint.setTextSize(AndroidUtilities.dp(16));
+
+            sizeBar = new SeekBarView(context);
+            sizeBar.setReportChanges(true);
+            sizeBar.setSeparatorsCount(maxSize - minSize + 1);
+            sizeBar.setDelegate((stop, progress) -> {
+                NaConfig.INSTANCE.getInputTextSize().setConfigInt(minSize + Math.round(progress * (maxSize - minSize)));
+                invalidate();
+            });
+            addView(sizeBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.LEFT | Gravity.TOP, 15, 30, 15, 0));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            canvas.drawText(getString(R.string.InputTextSize), AndroidUtilities.dp(21), AndroidUtilities.dp(24), textPaint);
+            String valueText = String.valueOf(clampedSize());
+            float valueWidth = textPaint.measureText(valueText);
+            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
+            canvas.drawText(valueText, getMeasuredWidth() - AndroidUtilities.dp(21) - valueWidth, AndroidUtilities.dp(24), textPaint);
+        }
+
+        // keep the label, the slider position and the applied size all in sync if a stored value is ever out of range
+        private int clampedSize() {
+            return Math.max(minSize, Math.min(maxSize, NaConfig.INSTANCE.getInputTextSize().Int()));
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(74), View.MeasureSpec.EXACTLY));
+            sizeBar.setProgress((clampedSize() - minSize) / (float) (maxSize - minSize));
+        }
+
+        @Override
+        public void invalidate() {
+            super.invalidate();
+            sizeBar.invalidate();
+        }
+    }
+
     private class StickerSizeCell extends FrameLayout {
 
         private final StickerSizePreviewMessagesCell messagesCell;
@@ -947,6 +1001,9 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                     break;
                 case ConfigCellCustom.CUSTOM_ITEM_TranscribeThreshold:
                     view = new TranscribeThresholdSeekBar(mContext);
+                    break;
+                case ConfigCellCustom.CUSTOM_ITEM_InputTextSize:
+                    view = new InputTextSizeSeekBar(mContext);
                     break;
                 case CellGroup.ITEM_TYPE_CHECK2:
                     view = new TextCheckCell2(mContext);

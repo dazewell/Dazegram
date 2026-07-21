@@ -8,6 +8,7 @@ public class ConfigCellCustom extends AbstractConfigCell implements WithKey {
     public static final int CUSTOM_ITEM_EmojiSet = 996;
     public static final int CUSTOM_ITEM_Temperature = 995;
     public static final int CUSTOM_ITEM_TranscribeThreshold = 994;
+    public static final int CUSTOM_ITEM_InputTextSize = 993;
 
     public final int type;
     public boolean enabled;
