@@ -10220,15 +10220,20 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateFieldRight(lastAttachVisible);
     }
 
+    private final Runnable reconcileScheduleButtonRunnable = () -> {
+        if (!destroyed && messageEditText != null) {
+            reconcileScheduleButton();
+        }
+    };
+
     private void postReconcileScheduleButton() {
-        if (messageEditText == null) {
+        if (destroyed || messageEditText == null) {
             return;
         }
-        messageEditText.post(() -> {
-            if (messageEditText != null) {
-                reconcileScheduleButton();
-            }
-        });
+        // checkSendButton posts this on every keystroke; collapse to one pending pass so the queue
+        // can't pile up redundant reconciles (and none survives onDestroy).
+        messageEditText.removeCallbacks(reconcileScheduleButtonRunnable);
+        messageEditText.post(reconcileScheduleButtonRunnable);
     }
 
     private int lastAttachVisible;
