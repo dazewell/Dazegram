@@ -4842,9 +4842,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     protected void onLineCountChanged(int oldLineCount, int newLineCount) {
         // NagramX (#quick-schedule): a wrap in/out of multi-line flips Option D between the
-        // beside-text reservation and the bottom gutter, so re-run the field spacing.
-        if (scheduledButton != null && scheduledButton.getTag() != null && (oldLineCount > 1) != (newLineCount > 1)) {
-            updateFieldRight(lastAttachVisible);
+        // beside-text reservation and the bottom gutter, so re-reconcile the pinned button.
+        if ((oldLineCount > 1) != (newLineCount > 1)) {
+            postReconcileScheduleButton();
         }
     }
 
@@ -10145,6 +10145,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 suggestButton.setTranslationX(shownSendButton ? -Math.max(0, sendButton.width() - dp(64)) : dp(42));
             }
         }
+        // NagramX (#quick-schedule): settle the pinned calendar + gutter after this pass. checkSendButton
+        // only pins when the scheduled count is already known; posting reconcile fixes the live-typing case
+        // where the count hadn't loaded yet, and keeps the position deterministic across the reopen races.
+        postReconcileScheduleButton();
     }
 
     private void setSlowModeButtonVisible(boolean visible) {
@@ -10167,6 +10171,64 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduleGutterApplied = gutter;
         int bottom = dp(10) + (gutter ? dp(DEFAULT_HEIGHT) : 0);
         messageEditText.setPadding(messageEditText.getPaddingLeft(), messageEditText.getPaddingTop(), messageEditText.getPaddingRight(), bottom);
+    }
+
+    // NagramX (#quick-schedule): single source of truth for the calendar button that stays pinned while a
+    // draft is present. checkSendButton, updateScheduleButton and the draft restore each used to set the
+    // button's visibility, translationX and the bottom gutter on their own, at racing times (the scheduled
+    // count loads async, drafts restore before it, layout runs later) - so the final look depended on
+    // interleaving. This recomputes everything from current state and is idempotent, so whichever trigger
+    // runs last leaves the same result. Callers post() it so getLineCount() is final before the gutter is
+    // decided. The pinned translationX matches what checkSendButton animates to, so running last never fights.
+    private void reconcileScheduleButton() {
+        if (messageEditText == null || delegate == null) {
+            return;
+        }
+        if (TextUtils.isEmpty(messageEditText.getTextToUse())) {
+            // empty composer: the standard checkSendButton / updateScheduleButton paths own the button here;
+            // just never leave the draft gutter behind.
+            applyScheduleGutter(false);
+            return;
+        }
+        boolean pin = NaConfig.INSTANCE.getQuickScheduleButton().Bool()
+                && !isInScheduleMode()
+                && delegate.hasScheduledMessages()
+                && editingMessageObject == null
+                && !recordingAudioVideo
+                && recordInterfaceState == 0;
+        if (pin) {
+            createScheduledButton();
+        }
+        if (scheduledButton == null) {
+            applyScheduleGutter(false);
+            return;
+        }
+        if (scheduledButtonAnimation != null) {
+            scheduledButtonAnimation.cancel();
+            scheduledButtonAnimation = null;
+        }
+        scheduleButtonHidden = !pin;
+        scheduledButton.setTag(pin ? 1 : null);
+        scheduledButton.setVisibility(pin ? VISIBLE : GONE);
+        scheduledButton.setAlpha(pin ? 1.0f : 0.0f);
+        scheduledButton.setScaleX(pin ? 1.0f : 0.0f);
+        scheduledButton.setScaleY(1.0f);
+        // attach layout hidden (attach menu off, or stories) frees the rightmost slot for the calendar;
+        // otherwise it sits one slot to the left of the still-present attach button.
+        boolean attachHidden = !NekoConfig.useChatAttachMediaMenu.Bool() || isStories;
+        scheduledButton.setTranslationX(dp(pin && attachHidden ? DEFAULT_HEIGHT : 0));
+        updateFieldRight(lastAttachVisible);
+    }
+
+    private void postReconcileScheduleButton() {
+        if (messageEditText == null) {
+            return;
+        }
+        messageEditText.post(() -> {
+            if (messageEditText != null) {
+                reconcileScheduleButton();
+            }
+        });
     }
 
     private int lastAttachVisible;
@@ -11924,13 +11986,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (fromDraft) {
             // NagramX (#quick-schedule): a restored draft skips the typing path that pins the calendar
-            // button and lays out the bottom gutter, so reconcile the field spacing once the restored
-            // text has been measured. post() drains after the next layout pass so getLineCount() is set.
-            messageEditText.post(() -> {
-                if (messageEditText != null) {
-                    updateFieldRight(lastAttachVisible);
-                }
-            });
+            // button and lays out the bottom gutter, so reconcile once the restored text is measured.
+            postReconcileScheduleButton();
         }
     }
 
@@ -12514,6 +12571,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void updateScheduleButton(boolean animated) {
+        // NagramX (#quick-schedule): settle the pinned-over-draft state after this runs, once layout is done.
+        // This is the path scheduledMessagesUpdated takes when the count loads async, so it re-pins a draft
+        // that was restored before the scheduled list arrived.
+        postReconcileScheduleButton();
         boolean notifyVisible = false;
         if (DialogObject.isChatDialog(dialog_id)) {
             TLRPC.Chat currentChat = accountInstance.getMessagesController().getChat(-dialog_id);
@@ -12532,15 +12593,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         }
         boolean hasScheduled = delegate != null && !isInScheduleMode() && delegate.hasScheduledMessages();
-        // NagramX (#quick-schedule): scheduleButtonHidden gets latched true when a draft is restored on
-        // chat entry before the scheduled-messages list has loaded (hasScheduledMessages() was still false),
-        // and nothing clears it once the list arrives. Re-enable the pin here so re-entering a chat that has
-        // scheduled messages plus a saved draft doesn't leave the calendar button stuck hidden.
-        if (hasScheduled && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
-                && editingMessageObject == null && !recordingAudioVideo && recordInterfaceState == 0
-                && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse())) {
-            scheduleButtonHidden = false;
-        }
         // recordingAudioVideo is reset to false once recording moves into the locked/preview
         // (RECORD_STATE_PREPARING) phase, while recordInterfaceState stays 1 until the record UI
         // is fully dismissed. Without the recordInterfaceState guard the calendar button would
@@ -12580,16 +12632,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 if (notifyButton != null) {
                     notifyButton.setVisibility(notifyVisible && scheduledButton.getVisibility() != VISIBLE ? VISIBLE : GONE);
                 }
-                // NagramX (#quick-schedule): when the pin keeps the calendar visible over a restored draft and
-                // the attach layout is hidden (attach menu off, or stories), the calendar takes the freed
-                // rightmost slot; leaving it at 0 would strand it one slot left of the now-empty attach spot.
-                // Mirrors the value checkSendButton sets, since this async path (scheduledMessagesUpdated on
-                // chat re-entry) runs after checkSendButton and would otherwise reset the position to 0.
-                boolean pinnedOverDraft = visible && NaConfig.INSTANCE.getQuickScheduleButton().Bool()
-                        && editingMessageObject == null
-                        && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)
-                        && messageEditText != null && !TextUtils.isEmpty(messageEditText.getTextToUse());
-                scheduledButton.setTranslationX(dp(pinnedOverDraft ? DEFAULT_HEIGHT : 0));
+                scheduledButton.setTranslationX(0);
             } else if (notifyButton != null) {
                 notifyButton.setVisibility(notifyVisible ? VISIBLE : GONE);
             }
