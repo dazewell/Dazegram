@@ -187,8 +187,12 @@ public final class ChatTimeZoneHoursSheet {
 
         final String youLabel = LocaleController.getString(R.string.FromYou);
         final String peerLabel = peerName;
+        // Reused across the readout and preview so dragging the pointer doesn't
+        // allocate fresh calendars (each clones a TimeZone) on every step change.
+        final Calendar calLocal = Calendar.getInstance();
+        final Calendar calPeer = Calendar.getInstance(peerTz);
         strip.setOnStepSelected(step -> {
-            CharSequence text = buildReadout(step, startMs, peerTz, youLabel, peerLabel,
+            CharSequence text = buildReadout(step, startMs, calLocal, calPeer, youLabel, peerLabel,
                     Theme.getColor(Theme.key_dialogTextBlue, rp));
             readoutView.setText(text);
             strip.setContentDescription(text);
@@ -255,8 +259,7 @@ public final class ChatTimeZoneHoursSheet {
             chipsScroller.setHorizontalScrollBarEnabled(false);
             LinearLayout chips = new LinearLayout(context);
             chips.setOrientation(LinearLayout.HORIZONTAL);
-            String[] tokens = {"{my_side}", "{peer_side}", "{my_time}", "{peer_time}", "{my_day}", "{peer_day}", "{peer_name}", "{offset}", "{daydiff}"};
-            for (String token : tokens) {
+            for (String token : ChatTimeZoneTemplate.TOKENS) {
                 TextView chip = makePlaceholderChip(context, token, rp);
                 chip.setOnClickListener(v -> {
                     int s = Math.max(0, field.getSelectionStart());
@@ -294,7 +297,7 @@ public final class ChatTimeZoneHoursSheet {
             container.addView(actionRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 0));
 
             final Runnable updatePreview = () -> previewView.setText(
-                    renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF));
+                    renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF, calLocal, calPeer));
             previewUpdater[0] = updatePreview;
 
             final Runnable applyScope = () -> {
@@ -333,7 +336,7 @@ public final class ChatTimeZoneHoursSheet {
             ButtonWithCounterView insertButton = new ButtonWithCounterView(context, rp);
             insertButton.setText(LocaleController.getString(R.string.ChatTimeZoneInsertTime), false);
             insertButton.setOnClickListener(v -> {
-                insertHandler.run(renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF));
+                insertHandler.run(renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF, calLocal, calPeer));
                 if (sheetRef[0] != null) {
                     sheetRef[0].dismiss();
                 }
@@ -389,12 +392,10 @@ public final class ChatTimeZoneHoursSheet {
         return name + " · " + ChatTimeZoneTemplate.formatOffset(diffMin);
     }
 
-    private static CharSequence buildReadout(int step, long startMs, TimeZone peerTz,
+    private static CharSequence buildReadout(int step, long startMs, Calendar local, Calendar peer,
                                              String youLabel, String peerLabel, int accentColor) {
         long t = startMs + (long) step * STEP_MS;
-        Calendar local = Calendar.getInstance();
         local.setTimeInMillis(t);
-        Calendar peer = Calendar.getInstance(peerTz);
         peer.setTimeInMillis(t);
 
         SpannableStringBuilder ssb = new SpannableStringBuilder();
@@ -413,11 +414,10 @@ public final class ChatTimeZoneHoursSheet {
     }
 
     /** Renders the message-format template for the pinned 15-minute step. */
-    private static String renderTemplate(String template, int step, long startMs, TimeZone peerTz, String peerName) {
+    private static String renderTemplate(String template, int step, long startMs, TimeZone peerTz,
+                                         String peerName, Calendar local, Calendar peer) {
         long t = startMs + (long) step * STEP_MS;
-        Calendar local = Calendar.getInstance();
         local.setTimeInMillis(t);
-        Calendar peer = Calendar.getInstance(peerTz);
         peer.setTimeInMillis(t);
         int offsetMin = (peerTz.getOffset(t) - TimeZone.getDefault().getOffset(t)) / 60_000;
         return ChatTimeZoneTemplate.render(template, local, peer, peerName, offsetMin);

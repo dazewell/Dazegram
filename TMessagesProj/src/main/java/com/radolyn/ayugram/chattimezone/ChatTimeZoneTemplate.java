@@ -44,6 +44,16 @@ public final class ChatTimeZoneTemplate {
 
     private static final String ACCOUNT_TEMPLATE_KEY = "insert_template";
 
+    /**
+     * Canonical, ordered list of supported placeholders in editor (brace) form.
+     * The editor's token chips render from this, and {@link #render} fills the
+     * same keys — keep the two in step when adding or renaming a token.
+     */
+    public static final String[] TOKENS = {
+            "{my_side}", "{peer_side}", "{my_time}", "{peer_time}",
+            "{my_day}", "{peer_day}", "{peer_name}", "{offset}", "{daydiff}"
+    };
+
     private ChatTimeZoneTemplate() {}
 
     private static String prefsName(int account) {
