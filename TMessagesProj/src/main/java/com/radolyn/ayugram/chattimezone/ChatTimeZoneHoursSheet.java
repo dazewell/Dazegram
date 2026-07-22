@@ -625,7 +625,11 @@ public final class ChatTimeZoneHoursSheet {
                         }
                         return true;
                     }
-                    return gestureDetector.onTouchEvent(event);
+                    // Not on the handle: forward for tap-to-jump but keep consuming
+                    // the stream ourselves; the parent scroller takes over via its
+                    // own interception (we get a CANCEL) when it decides to pan.
+                    gestureDetector.onTouchEvent(event);
+                    return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
                     if (grabbing && getParent() != null) {
