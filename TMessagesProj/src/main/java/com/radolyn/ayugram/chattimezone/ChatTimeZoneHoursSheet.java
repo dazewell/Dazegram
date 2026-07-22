@@ -16,12 +16,10 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.text.style.ForegroundColorSpan;
 import android.util.TypedValue;
-import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -49,9 +47,10 @@ import java.util.TimeZone;
 /**
  * Bottom sheet visualizing upcoming hours side by side in the device's and the
  * peer's time zones (worldtimebuddy-style dual hour strip). Two horizontally
- * scrollable lanes share one scroll position; a draggable pointer snaps to
- * 15-minute steps and the readout above shows the exact local→peer mapping,
- * including a day-change badge when the dates differ.
+ * scrollable lanes share one scroll position and slide under a fixed center
+ * cursor; the step under the cursor (15-minute precision) drives the readout
+ * above, which shows the exact local→peer mapping, including a day-change badge
+ * when the dates differ.
  *
  * <p>Mirrors {@link ChatTimeZonePickerSheet}: the returned sheet is NOT shown;
  * callers present it via {@code fragment.showDialog(sheet)}.
@@ -170,10 +169,18 @@ public final class ChatTimeZoneHoursSheet {
         stripRow.addView(labels, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 android.view.Gravity.TOP, 16, 0, 6, 0));
 
-        final HorizontalScrollView scroller = new HorizontalScrollView(context);
-        scroller.setHorizontalScrollBarEnabled(false);
+        final CenterScrollView scroller = new CenterScrollView(context);
         scroller.addView(strip);
-        stripRow.addView(scroller, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, 0, 0, 16, 0));
+        // Wrap the scroller so a fixed cursor can float over its horizontal
+        // center while the plot pans beneath it.
+        FrameLayout scrollerFrame = new FrameLayout(context);
+        scrollerFrame.addView(scroller, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT));
+        View cursor = new CursorView(context,
+                Theme.getColor(Theme.key_featuredStickers_addButton, rp), strip.cellH, strip.gap);
+        scrollerFrame.addView(cursor, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, strip.cellH * 2 + strip.gap, Gravity.TOP));
+        stripRow.addView(scrollerFrame, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, 0, 0, 16, 0));
 
         container.addView(stripRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
@@ -187,35 +194,54 @@ public final class ChatTimeZoneHoursSheet {
 
         final String youLabel = LocaleController.getString(R.string.FromYou);
         final String peerLabel = peerName;
-        // Reused across the readout and preview so dragging the pointer doesn't
+        // Reused across the readout and preview so scrolling the plot doesn't
         // allocate fresh calendars (each clones a TimeZone) on every step change.
         final Calendar calLocal = Calendar.getInstance();
         final Calendar calPeer = Calendar.getInstance(peerTz);
-        strip.setOnStepSelected(step -> {
-            CharSequence text = buildReadout(step, startMs, calLocal, calPeer, youLabel, peerLabel,
-                    Theme.getColor(Theme.key_dialogTextBlue, rp));
+        final int readoutColor = Theme.getColor(Theme.key_dialogTextBlue, rp);
+        // The 15-minute step currently under the fixed center cursor.
+        final int[] selectedStep = { nowStep };
+        final Runnable syncSelection = () -> {
+            // Half-viewport padding on the scroller (see the layout listener) makes
+            // the content x under the fixed center cursor equal the raw scroll offset.
+            int step = strip.stepFromX(scroller.getScrollX());
+            if (step == selectedStep[0]) return;
+            selectedStep[0] = step;
+            // Buzz only on user-driven scrolls, not fling settle or programmatic recenters.
+            if (scroller.userDragging) {
+                strip.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            }
+            CharSequence text = buildReadout(step, startMs, calLocal, calPeer, youLabel, peerLabel, readoutColor);
             readoutView.setText(text);
             strip.setContentDescription(text);
             if (previewUpdater[0] != null) previewUpdater[0].run();
-        });
-        strip.selectStep(nowStep);
+        };
+        scroller.onScrollChanged = syncSelection;
+        // Seed the readout for "now" before the first layout gives the scroller a width.
+        CharSequence initReadout = buildReadout(nowStep, startMs, calLocal, calPeer, youLabel, peerLabel, readoutColor);
+        readoutView.setText(initReadout);
+        strip.setContentDescription(initReadout);
 
-        // Open with the "now" column a bit in from the left edge, keeping some
-        // already-passed hours visible for context. Deferred to the first layout
-        // pass: View.post() fires on attach, before the scroller has any width
-        // to clamp the scroll against.
+        // Pad the scroller by half its viewport on each side so every step — including
+        // the very first and last — can be scrolled under the centered cursor, then
+        // open with "now" centered. Deferred to the first layout pass, when the
+        // scroller finally has a width; the padding change forces another layout, so
+        // the centering is posted to run once the scroll range is final.
         scroller.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
             @Override
             public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
                 scroller.removeOnLayoutChangeListener(this);
-                scroller.scrollTo(Math.max(0, (nowHour - 2) * strip.pitch()), 0);
+                int pad = scroller.getWidth() / 2;
+                scroller.setClipToPadding(false);
+                scroller.setPadding(pad, 0, pad, 0);
+                scroller.post(() -> {
+                    scroller.scrollTo(centerScrollFor(strip, nowStep), 0);
+                    syncSelection.run();
+                });
             }
         });
 
-        nowButton.setOnClickListener(v -> {
-            strip.selectStep(nowStep);
-            scroller.smoothScrollTo(Math.max(0, (nowHour - 2) * strip.pitch()), 0);
-        });
+        nowButton.setOnClickListener(v -> scroller.smoothScrollTo(centerScrollFor(strip, nowStep), 0));
 
         final BottomSheet[] sheetRef = new BottomSheet[1];
         if (insertHandler != null) {
@@ -297,7 +323,7 @@ public final class ChatTimeZoneHoursSheet {
             container.addView(actionRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 0));
 
             final Runnable updatePreview = () -> previewView.setText(
-                    renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF, calLocal, calPeer));
+                    renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer));
             previewUpdater[0] = updatePreview;
 
             final Runnable applyScope = () -> {
@@ -336,7 +362,7 @@ public final class ChatTimeZoneHoursSheet {
             ButtonWithCounterView insertButton = new ButtonWithCounterView(context, rp);
             insertButton.setText(LocaleController.getString(R.string.ChatTimeZoneInsertTime), false);
             insertButton.setOnClickListener(v -> {
-                insertHandler.run(renderTemplate(field.getText().toString(), strip.getSelectedStep(), startMs, peerTz, peerNameF, calLocal, calPeer));
+                insertHandler.run(renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer));
                 if (sheetRef[0] != null) {
                     sheetRef[0].dismiss();
                 }
@@ -479,11 +505,17 @@ public final class ChatTimeZoneHoursSheet {
      * lane = peer zone, columns aligned by instant. ~144 cells are cheap to
      * draw with clip-rect culling, so no view recycling is needed.
      */
-    private static final class HourStripView extends View {
+    /**
+     * Scroll offset that centers a given step under the fixed cursor. The scroller
+     * is padded by half its viewport on each side (see the layout listener), so a
+     * step's centered scroll position is simply its content x; scrollTo clamps the
+     * upper bound to the scroll range.
+     */
+    private static int centerScrollFor(HourStripView strip, int step) {
+        return Math.max(0, Math.round(strip.xForStep(step)));
+    }
 
-        interface OnStepSelected {
-            void onSelected(int step);
-        }
+    private static final class HourStripView extends View {
 
         final int cellW = dp(46);
         final int cellH = dp(40);
@@ -496,23 +528,13 @@ public final class ChatTimeZoneHoursSheet {
         private final TextPaint hourPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pointerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF cellRect = new RectF();
         private final Rect clipRect = new Rect();
         private final Calendar cal = Calendar.getInstance();
         private final Calendar peerCal;
 
         final int nightColor, shoulderColor, workColor;
-        private final int textColor, nightTextColor, accentColor;
-
-        private int selectedStep = -1;
-        private OnStepSelected listener;
-        private final GestureDetector gestureDetector;
-        private final int touchSlop;
-        private final int handleGrab = dp(24);
-        private boolean grabbing;
-        private boolean dragging;
-        private float downX;
+        private final int textColor, nightTextColor;
 
         HourStripView(Context context, long startMs, int nowHour, TimeZone peerTz,
                       @Nullable Theme.ResourcesProvider rp) {
@@ -521,7 +543,6 @@ public final class ChatTimeZoneHoursSheet {
             this.nowHour = nowHour;
             this.peerTz = peerTz;
             this.peerCal = Calendar.getInstance(peerTz);
-            this.touchSlop = ViewConfiguration.get(context).getScaledTouchSlop();
 
             int bgBase = Theme.getColor(Theme.key_dialogBackground, rp);
             // Blending fixed hues into the dialog background keeps the palette
@@ -531,31 +552,12 @@ public final class ChatTimeZoneHoursSheet {
             workColor = ColorUtils.blendARGB(bgBase, 0xFF40B373, 0.22f);
             textColor = Theme.getColor(Theme.key_dialogTextBlack, rp);
             nightTextColor = Theme.getColor(Theme.key_dialogTextGray3, rp);
-            accentColor = Theme.getColor(Theme.key_featuredStickers_addButton, rp);
 
             hourPaint.setTypeface(AndroidUtilities.bold());
             ringPaint.setStyle(Paint.Style.STROKE);
             ringPaint.setStrokeWidth(dp(1.5f));
-            // "Now" ring is grey so the accent pointer stays the one accent cue.
+            // "Now" ring is grey so the accent cursor stays the one accent cue.
             ringPaint.setColor(Theme.getColor(Theme.key_dialogTextGray3, rp));
-            pointerPaint.setColor(accentColor);
-
-            gestureDetector = new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
-                @Override
-                public boolean onDown(MotionEvent e) {
-                    return true;
-                }
-
-                @Override
-                public boolean onSingleTapUp(MotionEvent e) {
-                    int step = stepFromX(e.getX());
-                    if (step != selectedStep) {
-                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                        selectStep(step);
-                    }
-                    return true;
-                }
-            });
         }
 
         int pitch() {
@@ -575,78 +577,9 @@ public final class ChatTimeZoneHoursSheet {
             return step * stepPitch();
         }
 
-        void setOnStepSelected(OnStepSelected listener) {
-            this.listener = listener;
-        }
-
-        void selectStep(int step) {
-            step = Math.max(0, Math.min(STEPS - 1, step));
-            selectedStep = step;
-            if (listener != null) {
-                listener.onSelected(step);
-            }
-            invalidate();
-        }
-
-        int getSelectedStep() {
-            return selectedStep;
-        }
-
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             setMeasuredDimension(HOURS * pitch() - gap, cellH * 2 + gap);
-        }
-
-        @Override
-        public boolean onTouchEvent(MotionEvent event) {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    downX = event.getX();
-                    // Only grab the pointer when the touch lands near it; a swipe
-                    // anywhere else falls through so the parent scroller pans.
-                    grabbing = Math.abs(event.getX() - xForStep(selectedStep)) <= handleGrab;
-                    dragging = false;
-                    if (grabbing && getParent() != null) {
-                        getParent().requestDisallowInterceptTouchEvent(true);
-                    }
-                    gestureDetector.onTouchEvent(event);
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    if (grabbing) {
-                        if (!dragging && Math.abs(event.getX() - downX) > touchSlop) {
-                            dragging = true;
-                        }
-                        if (dragging) {
-                            int step = stepFromX(event.getX());
-                            if (step != selectedStep) {
-                                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
-                                selectStep(step);
-                            }
-                        }
-                        return true;
-                    }
-                    // Not on the handle: forward for tap-to-jump but keep consuming
-                    // the stream ourselves; the parent scroller takes over via its
-                    // own interception (we get a CANCEL) when it decides to pan.
-                    gestureDetector.onTouchEvent(event);
-                    return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (grabbing && getParent() != null) {
-                        getParent().requestDisallowInterceptTouchEvent(false);
-                    }
-                    boolean wasDragging = dragging;
-                    grabbing = false;
-                    dragging = false;
-                    // A grab that never moved is a tap on the handle: let the
-                    // detector fire onSingleTapUp so it still re-snaps cleanly.
-                    if (!wasDragging) {
-                        gestureDetector.onTouchEvent(event);
-                    }
-                    return true;
-                default:
-                    return gestureDetector.onTouchEvent(event);
-            }
         }
 
         @Override
@@ -664,20 +597,6 @@ public final class ChatTimeZoneHoursSheet {
                 peerCal.setTimeInMillis(t);
                 drawCell(canvas, x, cellH + gap, peerCal, i);
             }
-            drawPointer(canvas);
-        }
-
-        private void drawPointer(Canvas canvas) {
-            if (selectedStep < 0) {
-                return;
-            }
-            float px = xForStep(selectedStep);
-            int bottom = cellH * 2 + gap;
-            pointerPaint.setStyle(Paint.Style.STROKE);
-            pointerPaint.setStrokeWidth(dp(2));
-            canvas.drawLine(px, 0, px, bottom, pointerPaint);
-            pointerPaint.setStyle(Paint.Style.FILL);
-            canvas.drawCircle(px, cellH + gap / 2f, dp(6), pointerPaint);
         }
 
         private void drawCell(Canvas canvas, int x, int y, Calendar c, int index) {
@@ -719,6 +638,73 @@ public final class ChatTimeZoneHoursSheet {
 
         private boolean isNight(int hour) {
             return hour < 7 || hour > 21;
+        }
+    }
+
+    /**
+     * Horizontal scroller that reports every scroll position change and tracks
+     * whether the user's finger is down, so the sheet can read the step under the
+     * fixed cursor and only buzz on user-driven moves (not fling or programmatic
+     * recenters).
+     */
+    private static final class CenterScrollView extends HorizontalScrollView {
+        Runnable onScrollChanged;
+        boolean userDragging;
+
+        CenterScrollView(Context context) {
+            super(context);
+            setHorizontalScrollBarEnabled(false);
+        }
+
+        @Override
+        protected void onScrollChanged(int l, int t, int oldl, int oldt) {
+            super.onScrollChanged(l, t, oldl, oldt);
+            if (onScrollChanged != null) {
+                onScrollChanged.run();
+            }
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    userDragging = true;
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    userDragging = false;
+                    break;
+            }
+            return super.onTouchEvent(event);
+        }
+    }
+
+    /**
+     * Non-interactive overlay drawing the fixed selection cursor (accent line plus
+     * a handle dot on the lane divider) at its own horizontal center. Touches fall
+     * through to the scroller beneath it so the plot pans normally.
+     */
+    private static final class CursorView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final int laneH;
+        private final int gap;
+
+        CursorView(Context context, int accent, int laneH, int gap) {
+            super(context);
+            this.laneH = laneH;
+            this.gap = gap;
+            paint.setColor(accent);
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            float cx = getWidth() / 2f;
+            int bottom = laneH * 2 + gap;
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            canvas.drawLine(cx, 0, cx, bottom, paint);
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawCircle(cx, laneH + gap / 2f, dp(6), paint);
         }
     }
 }
