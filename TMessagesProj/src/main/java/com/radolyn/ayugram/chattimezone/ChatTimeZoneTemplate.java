@@ -61,8 +61,10 @@ public final class ChatTimeZoneTemplate {
         return NaConfig.INSTANCE.getChatTimeZoneInsertTemplate().String();
     }
 
+    /** Pass {@code null}/blank to clear the global template and fall back to the built-in default. */
     public static void setGlobal(@Nullable String template) {
-        NaConfig.INSTANCE.getChatTimeZoneInsertTemplate().setConfigString(template != null ? template : "");
+        String normalized = (template == null || template.trim().isEmpty()) ? "" : template;
+        NaConfig.INSTANCE.getChatTimeZoneInsertTemplate().setConfigString(normalized);
     }
 
     /** Per-account override, or {@code null} when none is set. */
