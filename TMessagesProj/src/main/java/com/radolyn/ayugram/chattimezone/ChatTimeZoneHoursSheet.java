@@ -599,11 +599,6 @@ public final class ChatTimeZoneHoursSheet {
     // ---------- the strip ----------
 
     /**
-     * Canvas-drawn dual lane of hour cells: top lane = device-local, bottom
-     * lane = peer zone, columns aligned by instant. ~144 cells are cheap to
-     * draw with clip-rect culling, so no view recycling is needed.
-     */
-    /**
      * Scroll offset that centers a given step under the fixed cursor. The scroller
      * is padded by half its viewport on each side (see the layout listener), so a
      * step's centered scroll position is simply its content x; scrollTo clamps the
@@ -613,6 +608,11 @@ public final class ChatTimeZoneHoursSheet {
         return Math.max(0, Math.round(strip.xForStep(step)));
     }
 
+    /**
+     * Canvas-drawn dual lane of hour cells: top lane = device-local, bottom
+     * lane = peer zone, columns aligned by instant. ~144 cells are cheap to
+     * draw with clip-rect culling, so no view recycling is needed.
+     */
     private static final class HourStripView extends View {
 
         final int cellW = dp(46);
