@@ -136,6 +136,12 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val chatTimeZoneInsertLanguage =
+        addConfig(
+            "ChatTimeZoneInsertLanguage",
+            ConfigItem.configTypeString,
+            ""
+        )
     val combineMessage =
         addConfig(
             "CombineMessage",

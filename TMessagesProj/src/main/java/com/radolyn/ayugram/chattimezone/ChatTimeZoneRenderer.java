@@ -56,16 +56,32 @@ public final class ChatTimeZoneRenderer {
         return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
-    /** Localized short weekday name ("Tue") of the calendar's current moment. */
+    /** Localized short weekday name ("Tue") of the calendar's current moment, in the app locale. */
     public static String weekday(@NonNull Calendar c) {
-        String s = c.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT,
-                org.telegram.messenger.LocaleController.getInstance().getCurrentLocale());
+        return weekday(c, null);
+    }
+
+    /**
+     * Localized short weekday name ("Tue") in the given locale, or the app locale
+     * when {@code locale} is {@code null}. Lets the message-format editor render
+     * weekday tokens in a language the user chooses, independent of the app UI
+     * language (e.g. Russian output on an English phone).
+     */
+    public static String weekday(@NonNull Calendar c, @Nullable Locale locale) {
+        Locale l = locale != null ? locale
+                : org.telegram.messenger.LocaleController.getInstance().getCurrentLocale();
+        String s = c.getDisplayName(Calendar.DAY_OF_WEEK, Calendar.SHORT, l);
         return s != null ? s : "";
     }
 
-    /** "Tue 18:00" in the given calendar's zone. */
+    /** "Tue 18:00" in the given calendar's zone, weekday in the app locale. */
     public static String formatSide(@NonNull Calendar c) {
-        return weekday(c) + String.format(Locale.US, " %02d:%02d",
+        return formatSide(c, null);
+    }
+
+    /** "Tue 18:00" in the given calendar's zone, weekday in the given locale (app locale when {@code null}). */
+    public static String formatSide(@NonNull Calendar c, @Nullable Locale locale) {
+        return weekday(c, locale) + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 

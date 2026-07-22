@@ -468,4 +468,6 @@
     <string name="ChatTimeZoneTemplateReset">Reset to default</string>
     <string name="ChatTimeZoneTemplateSave">Save</string>
     <string name="ChatTimeZoneTemplateSaved">Message format saved</string>
+    <string name="ChatTimeZoneMessageLanguage">Message language</string>
+    <string name="ChatTimeZoneLanguageDefault">App language</string>
 </resources>

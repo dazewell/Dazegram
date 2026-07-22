@@ -34,6 +34,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Business.TimezonesController;
@@ -70,6 +71,29 @@ public final class ChatTimeZoneHoursSheet {
     private static final int STEPS = HOURS * STEPS_PER_HOUR;
 
     private ChatTimeZoneHoursSheet() {}
+
+    /**
+     * Curated shortlist for the "Message language" picker. First entry ("") means
+     * "app language". Kept small and self-contained so it survives upstream merges;
+     * weekday names render for any of these via {@code Calendar.getDisplayName},
+     * while the default prose is only translated where a resource override exists
+     * (currently Russian) and gracefully falls back to English elsewhere.
+     */
+    private static final String[] LANG_TAGS = {
+            "", "en", "ru-RU", "uk", "es", "pt-BR", "de", "fr", "it",
+            "tr", "pl", "nl", "ar", "fa", "id", "ja", "ko", "zh-CN"
+    };
+
+    /** Autonym display name for a language tag ("Русский"), or the "app language" label for "". */
+    private static String languageDisplayName(String tag) {
+        if (tag == null || tag.isEmpty()) {
+            return LocaleController.getString(R.string.ChatTimeZoneLanguageDefault);
+        }
+        Locale l = Locale.forLanguageTag(tag);
+        String name = l.getDisplayLanguage(l);
+        if (TextUtils.isEmpty(name)) return tag;
+        return name.substring(0, 1).toUpperCase(l) + name.substring(1);
+    }
 
     /**
      * @param insertHandler when non-null, an "insert into message" button is shown
@@ -201,6 +225,15 @@ public final class ChatTimeZoneHoursSheet {
         final int readoutColor = Theme.getColor(Theme.key_dialogTextBlue, rp);
         // The 15-minute step currently under the fixed center cursor.
         final int[] selectedStep = { nowStep };
+        // Locale the readout / strip weekdays / preview render in; null = app language.
+        // Driven by the "Message language" selector in the editor block below.
+        final Locale[] outputLocale = { null };
+        final Runnable refreshReadout = () -> {
+            CharSequence text = buildReadout(selectedStep[0], startMs, calLocal, calPeer,
+                    youLabel, peerLabel, readoutColor, outputLocale[0]);
+            readoutView.setText(text);
+            strip.setContentDescription(text);
+        };
         final Runnable syncSelection = () -> {
             // Half-viewport padding on the scroller (see the layout listener) makes
             // the content x under the fixed center cursor equal the raw scroll offset.
@@ -211,16 +244,12 @@ public final class ChatTimeZoneHoursSheet {
             if (scroller.userDragging) {
                 strip.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             }
-            CharSequence text = buildReadout(step, startMs, calLocal, calPeer, youLabel, peerLabel, readoutColor);
-            readoutView.setText(text);
-            strip.setContentDescription(text);
+            refreshReadout.run();
             if (previewUpdater[0] != null) previewUpdater[0].run();
         };
         scroller.onScrollChanged = syncSelection;
         // Seed the readout for "now" before the first layout gives the scroller a width.
-        CharSequence initReadout = buildReadout(nowStep, startMs, calLocal, calPeer, youLabel, peerLabel, readoutColor);
-        readoutView.setText(initReadout);
-        strip.setContentDescription(initReadout);
+        refreshReadout.run();
 
         // Pad the scroller by half its viewport on each side so every step — including
         // the very first and last — can be scrolled under the centered cursor, then
@@ -265,6 +294,24 @@ public final class ChatTimeZoneHoursSheet {
             scopeRow.addView(accountChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 8, 0));
             scopeRow.addView(globalChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
             container.addView(scopeRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+
+            // "Message language" row: a label plus a tappable chip that opens a
+            // shortlist picker. Drives weekday rendering (and, where translated,
+            // the default prose) so a user writing in another language than the
+            // app UI gets output in that language.
+            final String[] langTag = { "" };
+            LinearLayout langRow = new LinearLayout(context);
+            langRow.setOrientation(LinearLayout.HORIZONTAL);
+            langRow.setGravity(Gravity.CENTER_VERTICAL);
+            TextView langLabel = new TextView(context);
+            langLabel.setText(LocaleController.getString(R.string.ChatTimeZoneMessageLanguage));
+            langLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            langLabel.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, rp));
+            final TextView langValue = makeScopeChip(context, languageDisplayName(langTag[0]));
+            styleScopeChip(langValue, false, rp);
+            langRow.addView(langLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+            langRow.addView(langValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+            container.addView(langRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             FrameLayout fieldBox = new FrameLayout(context);
             fieldBox.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection, rp)));
@@ -323,19 +370,49 @@ public final class ChatTimeZoneHoursSheet {
             container.addView(actionRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 0));
 
             final Runnable updatePreview = () -> previewView.setText(
-                    renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer));
+                    renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer, outputLocale[0]));
             previewUpdater[0] = updatePreview;
 
             final Runnable applyScope = () -> {
                 styleScopeChip(accountChip, scope[0] == 1, rp);
                 styleScopeChip(globalChip, scope[0] == 0, rp);
             };
+            // Apply a language choice: swap the resolved locale, refresh the chip
+            // label, strip weekdays, readout and preview. When {@code replaceDefault}
+            // and the field still holds the previous language's default, retranslate
+            // it too — so picking a language updates the prose while preserving any
+            // custom edits the user made.
+            final Utilities.Callback2<String, Boolean> applyLanguage = (tag, replaceDefault) -> {
+                Locale newLocale = ChatTimeZoneTemplate.localeFor(tag);
+                if (replaceDefault) {
+                    String oldDefault = ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]);
+                    if (field.getText().toString().equals(oldDefault)) {
+                        field.setText(ChatTimeZoneTemplate.defaultTemplate(newLocale));
+                        field.setSelection(field.getText().length());
+                    }
+                }
+                langTag[0] = tag == null ? "" : tag;
+                outputLocale[0] = newLocale;
+                langValue.setText(languageDisplayName(langTag[0]));
+                strip.setWeekdayLocale(newLocale);
+                refreshReadout.run();
+                updatePreview.run();
+            };
             final Runnable loadScope = () -> {
+                String tag = scope[0] == 1 ? ChatTimeZoneTemplate.getAccountLanguage(currentAccount) : null;
+                if (tag == null) tag = ChatTimeZoneTemplate.getGlobalLanguage();
+                langTag[0] = tag == null ? "" : tag;
+                outputLocale[0] = ChatTimeZoneTemplate.localeFor(langTag[0]);
+                langValue.setText(languageDisplayName(langTag[0]));
+                strip.setWeekdayLocale(outputLocale[0]);
+
                 String v = scope[0] == 1 ? ChatTimeZoneTemplate.getAccountOverride(currentAccount) : null;
                 if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.getGlobal();
-                if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.defaultTemplate();
+                if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]);
                 field.setText(v);
                 field.setSelection(field.getText().length());
+                refreshReadout.run();
+                updatePreview.run();
             };
 
             field.addTextChangedListener(new TextWatcher() {
@@ -343,16 +420,29 @@ public final class ChatTimeZoneHoursSheet {
                 @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
                 @Override public void afterTextChanged(Editable s) { updatePreview.run(); }
             });
+            langValue.setOnClickListener(v -> {
+                String[] names = new String[LANG_TAGS.length];
+                for (int i = 0; i < LANG_TAGS.length; i++) names[i] = languageDisplayName(LANG_TAGS[i]);
+                AlertDialog.Builder b = new AlertDialog.Builder(context, rp);
+                b.setTitle(LocaleController.getString(R.string.ChatTimeZoneMessageLanguage));
+                b.setItems(names, (dialog, which) -> applyLanguage.run(LANG_TAGS[which], true));
+                b.show();
+            });
             accountChip.setOnClickListener(v -> { scope[0] = 1; applyScope.run(); loadScope.run(); });
             globalChip.setOnClickListener(v -> { scope[0] = 0; applyScope.run(); loadScope.run(); });
             resetView.setOnClickListener(v -> {
-                field.setText(ChatTimeZoneTemplate.defaultTemplate());
+                field.setText(ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]));
                 field.setSelection(field.getText().length());
             });
             saveView.setOnClickListener(v -> {
                 String v2 = field.getText().toString();
-                if (scope[0] == 1) ChatTimeZoneTemplate.setAccountOverride(currentAccount, v2);
-                else ChatTimeZoneTemplate.setGlobal(v2);
+                if (scope[0] == 1) {
+                    ChatTimeZoneTemplate.setAccountOverride(currentAccount, v2);
+                    ChatTimeZoneTemplate.setAccountLanguage(currentAccount, langTag[0]);
+                } else {
+                    ChatTimeZoneTemplate.setGlobal(v2);
+                    ChatTimeZoneTemplate.setGlobalLanguage(langTag[0]);
+                }
                 Toast.makeText(context, LocaleController.getString(R.string.ChatTimeZoneTemplateSaved), Toast.LENGTH_SHORT).show();
             });
 
@@ -362,7 +452,7 @@ public final class ChatTimeZoneHoursSheet {
             ButtonWithCounterView insertButton = new ButtonWithCounterView(context, rp);
             insertButton.setText(LocaleController.getString(R.string.ChatTimeZoneInsertTime), false);
             insertButton.setOnClickListener(v -> {
-                insertHandler.run(renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer));
+                insertHandler.run(renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer, outputLocale[0]));
                 if (sheetRef[0] != null) {
                     sheetRef[0].dismiss();
                 }
@@ -419,15 +509,16 @@ public final class ChatTimeZoneHoursSheet {
     }
 
     private static CharSequence buildReadout(int step, long startMs, Calendar local, Calendar peer,
-                                             String youLabel, String peerLabel, int accentColor) {
+                                             String youLabel, String peerLabel, int accentColor,
+                                             @Nullable Locale locale) {
         long t = startMs + (long) step * STEP_MS;
         local.setTimeInMillis(t);
         peer.setTimeInMillis(t);
 
         SpannableStringBuilder ssb = new SpannableStringBuilder();
-        ssb.append(youLabel).append(" ∙ ").append(ChatTimeZoneRenderer.formatSide(local))
+        ssb.append(youLabel).append(" ∙ ").append(ChatTimeZoneRenderer.formatSide(local, locale))
                 .append("  →  ")
-                .append(peerLabel).append(" ∙ ").append(ChatTimeZoneRenderer.formatSide(peer));
+                .append(peerLabel).append(" ∙ ").append(ChatTimeZoneRenderer.formatSide(peer, locale));
 
         int dayDiff = ChatTimeZoneRenderer.compareDay(peer, local);
         if (dayDiff != 0) {
@@ -441,12 +532,13 @@ public final class ChatTimeZoneHoursSheet {
 
     /** Renders the message-format template for the pinned 15-minute step. */
     private static String renderTemplate(String template, int step, long startMs, TimeZone peerTz,
-                                         String peerName, Calendar local, Calendar peer) {
+                                         String peerName, Calendar local, Calendar peer,
+                                         @Nullable Locale locale) {
         long t = startMs + (long) step * STEP_MS;
         local.setTimeInMillis(t);
         peer.setTimeInMillis(t);
         int offsetMin = (peerTz.getOffset(t) - TimeZone.getDefault().getOffset(t)) / 60_000;
-        return ChatTimeZoneTemplate.render(template, local, peer, peerName, offsetMin);
+        return ChatTimeZoneTemplate.render(template, local, peer, peerName, offsetMin, locale);
     }
 
     private static TextView makeScopeChip(Context context, String text) {
@@ -535,6 +627,8 @@ public final class ChatTimeZoneHoursSheet {
 
         final int nightColor, shoulderColor, workColor;
         private final int textColor, nightTextColor;
+        // Locale for the midnight weekday labels; null = app language.
+        private Locale weekdayLocale;
 
         HourStripView(Context context, long startMs, int nowHour, TimeZone peerTz,
                       @Nullable Theme.ResourcesProvider rp) {
@@ -562,6 +656,12 @@ public final class ChatTimeZoneHoursSheet {
 
         int pitch() {
             return cellW + gap;
+        }
+
+        /** Re-render midnight weekday labels in {@code locale} (null = app language). */
+        void setWeekdayLocale(@Nullable Locale locale) {
+            this.weekdayLocale = locale;
+            invalidate();
         }
 
         private float stepPitch() {
@@ -616,7 +716,7 @@ public final class ChatTimeZoneHoursSheet {
             String label;
             if (hour == 0 && minute == 0) {
                 // Midnight cell shows the weekday: it doubles as a date separator.
-                label = ChatTimeZoneRenderer.weekday(c);
+                label = ChatTimeZoneRenderer.weekday(c, weekdayLocale);
             } else if (minute != 0) {
                 // Half/quarter-hour zones (e.g. +05:30) surface their minutes.
                 label = String.format(Locale.US, "%d:%02d", hour, minute);

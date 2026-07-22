@@ -1,6 +1,8 @@
 package com.radolyn.ayugram.chattimezone;
 
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -43,6 +45,7 @@ import xyz.nextalone.nagram.NaConfig;
 public final class ChatTimeZoneTemplate {
 
     private static final String ACCOUNT_TEMPLATE_KEY = "insert_template";
+    private static final String ACCOUNT_LANGUAGE_KEY = "insert_language";
 
     /**
      * Canonical, ordered list of supported placeholders in editor (brace) form.
@@ -60,11 +63,48 @@ public final class ChatTimeZoneTemplate {
         return "chattimezone_" + account;
     }
 
-    /** The built-in default, derived from the localized pattern so it stays translated. */
+    /** The built-in default in the app locale, derived from the localized pattern so it stays translated. */
     public static String defaultTemplate() {
-        String pattern = LocaleController.getString(R.string.ChatTimeZoneInsertPattern);
+        return defaultTemplate(null);
+    }
+
+    /**
+     * The built-in default in the given locale (app locale when {@code locale} is
+     * {@code null}). Reads {@link R.string#ChatTimeZoneInsertPattern} from a
+     * locale-specific resource context, so a translated pattern (e.g. the Russian
+     * override) is used even when the app itself runs in another language; falls
+     * back to the base pattern where no translation exists.
+     */
+    public static String defaultTemplate(@Nullable Locale locale) {
+        String pattern = patternFor(locale);
         // Pattern is "%1$s my time (%2$s your time)" -> token form the editor can show/edit.
         return pattern.replace("%1$s", "{my_side}").replace("%2$s", "{peer_side}");
+    }
+
+    private static String patternFor(@Nullable Locale locale) {
+        if (locale == null) {
+            return LocaleController.getString(R.string.ChatTimeZoneInsertPattern);
+        }
+        try {
+            Context base = ApplicationLoader.applicationContext;
+            Configuration cfg = new Configuration(base.getResources().getConfiguration());
+            cfg.setLocale(locale);
+            return base.createConfigurationContext(cfg).getString(R.string.ChatTimeZoneInsertPattern);
+        } catch (Throwable ignore) {
+            return LocaleController.getString(R.string.ChatTimeZoneInsertPattern);
+        }
+    }
+
+    /** Parses a BCP-47 language tag; {@code null}/blank (= "app language") yields {@code null}. */
+    @Nullable
+    public static Locale localeFor(@Nullable String tag) {
+        if (tag == null || tag.trim().isEmpty()) return null;
+        try {
+            Locale l = Locale.forLanguageTag(tag.trim().replace('_', '-'));
+            return l.getLanguage().isEmpty() ? null : l;
+        } catch (Throwable ignore) {
+            return null;
+        }
     }
 
     public static String getGlobal() {
@@ -108,6 +148,47 @@ public final class ChatTimeZoneTemplate {
         } catch (Throwable ignore) {}
     }
 
+    // ---------- output language (parallel scope surfaces to the template) ----------
+
+    /** Global output-language tag, or "" for the app language. */
+    public static String getGlobalLanguage() {
+        return NaConfig.INSTANCE.getChatTimeZoneInsertLanguage().String();
+    }
+
+    public static void setGlobalLanguage(@Nullable String tag) {
+        NaConfig.INSTANCE.getChatTimeZoneInsertLanguage().setConfigString(tag == null ? "" : tag);
+    }
+
+    /**
+     * Per-account output-language tag, or {@code null} when the account inherits
+     * the global choice. An empty string is a real value ("app language" picked
+     * explicitly at account scope) and is kept distinct from {@code null}.
+     */
+    @Nullable
+    public static String getAccountLanguage(int account) {
+        try {
+            SharedPreferences sp = ApplicationLoader.applicationContext
+                    .getSharedPreferences(prefsName(account), 0);
+            return sp.getString(ACCOUNT_LANGUAGE_KEY, null);
+        } catch (Throwable ignore) {
+            return null;
+        }
+    }
+
+    /** Pass {@code null} to clear the account choice and inherit the global one. */
+    public static void setAccountLanguage(int account, @Nullable String tag) {
+        try {
+            SharedPreferences.Editor ed = ApplicationLoader.applicationContext
+                    .getSharedPreferences(prefsName(account), 0).edit();
+            if (tag == null) {
+                ed.remove(ACCOUNT_LANGUAGE_KEY);
+            } else {
+                ed.putString(ACCOUNT_LANGUAGE_KEY, tag);
+            }
+            ed.apply();
+        } catch (Throwable ignore) {}
+    }
+
     /** "+9h", "−3h", "+5:30" — relative offset of peer vs local in minutes. */
     public static String formatOffset(int diffMin) {
         int abs = Math.abs(diffMin);
@@ -124,19 +205,30 @@ public final class ChatTimeZoneTemplate {
      */
     public static String render(@Nullable String template, @NonNull Calendar local, @NonNull Calendar peer,
                                 @NonNull String peerName, int offsetMin) {
+        return render(template, local, peer, peerName, offsetMin, null);
+    }
+
+    /**
+     * Substitutes tokens for the given moment, rendering weekday/side tokens and
+     * the fallback default in {@code locale} (app locale when {@code null}). A
+     * blank template falls back to the built-in default so we never insert an
+     * empty string.
+     */
+    public static String render(@Nullable String template, @NonNull Calendar local, @NonNull Calendar peer,
+                                @NonNull String peerName, int offsetMin, @Nullable Locale locale) {
         if (template == null || template.trim().isEmpty()) {
-            template = defaultTemplate();
+            template = defaultTemplate(locale);
         }
         int dayDiff = ChatTimeZoneRenderer.compareDay(peer, local);
         String dayDiffStr = dayDiff > 0 ? "+1d" : dayDiff < 0 ? "−1d" : "";
 
         Map<String, String> vals = new LinkedHashMap<>();
-        vals.put("my_side", ChatTimeZoneRenderer.formatSide(local));
-        vals.put("peer_side", ChatTimeZoneRenderer.formatSide(peer));
+        vals.put("my_side", ChatTimeZoneRenderer.formatSide(local, locale));
+        vals.put("peer_side", ChatTimeZoneRenderer.formatSide(peer, locale));
         vals.put("my_time", hhmm(local));
         vals.put("peer_time", hhmm(peer));
-        vals.put("my_day", ChatTimeZoneRenderer.weekday(local));
-        vals.put("peer_day", ChatTimeZoneRenderer.weekday(peer));
+        vals.put("my_day", ChatTimeZoneRenderer.weekday(local, locale));
+        vals.put("peer_day", ChatTimeZoneRenderer.weekday(peer, locale));
         vals.put("peer_name", peerName);
         vals.put("offset", formatOffset(offsetMin));
         vals.put("daydiff", dayDiffStr);
