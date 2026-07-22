@@ -156,7 +156,7 @@ public final class ChatTimeZoneTemplate {
     }
 
     public static void setGlobalLanguage(@Nullable String tag) {
-        NaConfig.INSTANCE.getChatTimeZoneInsertLanguage().setConfigString(tag == null ? "" : tag);
+        NaConfig.INSTANCE.getChatTimeZoneInsertLanguage().setConfigString(tag == null ? "" : tag.trim());
     }
 
     /**
@@ -183,7 +183,7 @@ public final class ChatTimeZoneTemplate {
             if (tag == null) {
                 ed.remove(ACCOUNT_LANGUAGE_KEY);
             } else {
-                ed.putString(ACCOUNT_LANGUAGE_KEY, tag);
+                ed.putString(ACCOUNT_LANGUAGE_KEY, tag.trim());
             }
             ed.apply();
         } catch (Throwable ignore) {}

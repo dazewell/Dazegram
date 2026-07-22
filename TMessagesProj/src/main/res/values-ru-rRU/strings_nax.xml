@@ -339,4 +339,12 @@
     <string name="ChatTimeZoneInsertPattern">%1$s моё время (%2$s твоё время)</string>
     <string name="ChatTimeZoneMessageLanguage">Язык сообщения</string>
     <string name="ChatTimeZoneLanguageDefault">Язык приложения</string>
+    <string name="ChatTimeZoneNow">Сейчас</string>
+    <string name="ChatTimeZoneTemplate">Формат сообщения</string>
+    <string name="ChatTimeZoneTemplateHint">Введите формат сообщения\u2026</string>
+    <string name="ChatTimeZoneTemplateScopeGlobal">Все аккаунты</string>
+    <string name="ChatTimeZoneTemplateScopeAccount">Этот аккаунт</string>
+    <string name="ChatTimeZoneTemplateReset">Сбросить по умолчанию</string>
+    <string name="ChatTimeZoneTemplateSave">Сохранить</string>
+    <string name="ChatTimeZoneTemplateSaved">Формат сообщения сохранён</string>
 </resources>
