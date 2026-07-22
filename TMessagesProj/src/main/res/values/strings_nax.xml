@@ -460,4 +460,12 @@
     <string name="ExpandMessageField">Expand message field</string>
     <string name="CollapseMessageField">Collapse message field</string>
     <string name="ExpandInputHint">Drag up to expand your draft</string>
+    <string name="ChatTimeZoneNow">Now</string>
+    <string name="ChatTimeZoneTemplate">Message format</string>
+    <string name="ChatTimeZoneTemplateHint">Type a message format\u2026</string>
+    <string name="ChatTimeZoneTemplateScopeGlobal">All accounts</string>
+    <string name="ChatTimeZoneTemplateScopeAccount">This account</string>
+    <string name="ChatTimeZoneTemplateReset">Reset to default</string>
+    <string name="ChatTimeZoneTemplateSave">Save</string>
+    <string name="ChatTimeZoneTemplateSaved">Message format saved</string>
 </resources>

@@ -6,7 +6,7 @@ Extra bits I've added on top of [NagramX](https://github.com/risin42/NagramX). M
 
 ### Per-chat time zones <!-- #timezones -->
 
-Set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a worldtimebuddy-style side-by-side time converter in a bottom sheet view. Each message also shows both your local time and the peer's.
+Set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a worldtimebuddy-style side-by-side time converter in a bottom sheet view. Drag the pointer along the strip to line up a moment in both zones down to 15-minute steps, or hit "Now" to jump back to the current time. From that sheet you can drop the lined-up time into the message box, and edit the template it uses — tap tokens like `{peer_time}` or `{offset}` to build it, with a live preview. The template saves for this account or across all of them. Each message also shows both your local time and the peer's.
 
 <img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
 <img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />

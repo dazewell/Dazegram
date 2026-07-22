@@ -130,6 +130,12 @@ object NaConfig {
             ConfigItem.configTypeString,
             "translate,bold,italic,mono,code,strike,underline,quote,spoiler,link,mention,date,regular"
         )
+    val chatTimeZoneInsertTemplate =
+        addConfig(
+            "ChatTimeZoneInsertTemplate",
+            ConfigItem.configTypeString,
+            ""
+        )
     val combineMessage =
         addConfig(
             "CombineMessage",
