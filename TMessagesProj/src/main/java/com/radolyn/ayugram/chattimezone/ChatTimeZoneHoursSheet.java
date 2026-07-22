@@ -270,7 +270,13 @@ public final class ChatTimeZoneHoursSheet {
             }
         });
 
-        nowButton.setOnClickListener(v -> scroller.smoothScrollTo(centerScrollFor(strip, nowStep), 0));
+        // Recompute "now" at click time so a long-open sheet returns to the real
+        // current moment, not the step captured when the sheet was first shown.
+        nowButton.setOnClickListener(v -> {
+            int liveNowStep = (int) Math.min(STEPS - 1, Math.max(0,
+                    Math.round((System.currentTimeMillis() - startMs) / (double) STEP_MS)));
+            scroller.smoothScrollTo(centerScrollFor(strip, liveNowStep), 0);
+        });
 
         final BottomSheet[] sheetRef = new BottomSheet[1];
         if (insertHandler != null) {
