@@ -94,6 +94,9 @@ public final class ChatTimeZoneScheduleHelper {
      */
     public static final class Controls {
 
+        // Matches the schedule sheet's stock day-picker max (AlertsCreator sets dayPicker max to 365).
+        private static final int LOCAL_MAX_DAY = 365;
+
         private final TimeZone tz;
         private final String peerName;
         private final boolean isReschedule;
@@ -194,6 +197,7 @@ public final class ChatTimeZoneScheduleHelper {
             peerMode = false;
             dayPicker.setFormatter(localDayFormatter);
             resetMins();
+            dayPicker.setMaxValue(LOCAL_MAX_DAY); // restore the stock max in case peer mode raised it
             setWheelsFromInstant(instant, null);
             updateTabUi();
         }
@@ -272,10 +276,28 @@ public final class ChatTimeZoneScheduleHelper {
             peerMode = true;
             dayPicker.setFormatter(peerDayFormatter);
             resetMins();
+            // Bound the day wheel to the peer-zone offset of the sheet's max instant so the current
+            // instant is always representable (a zone ahead can push it to day 366) without silent clamping.
+            dayPicker.setMaxValue(peerMaxDayOffset());
             setWheelsFromInstant(instant, tz);
             peerValidate(button);
             updateTabUi();
             renderReadout();
+        }
+
+        /** Peer-zone day offset of the latest schedulable instant (local today + max days at 23:59). */
+        private int peerMaxDayOffset() {
+            Calendar max = Calendar.getInstance();
+            max.setTimeInMillis(System.currentTimeMillis());
+            max.add(Calendar.DAY_OF_YEAR, LOCAL_MAX_DAY);
+            max.set(Calendar.HOUR_OF_DAY, 23);
+            max.set(Calendar.MINUTE, 59);
+            max.set(Calendar.SECOND, 0);
+            max.set(Calendar.MILLISECOND, 0);
+            final ZoneId zid = tz.toZoneId();
+            LocalDate peerToday = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(zid).toLocalDate();
+            LocalDate peerMax = Instant.ofEpochMilli(max.getTimeInMillis()).atZone(zid).toLocalDate();
+            return (int) ChronoUnit.DAYS.between(peerToday, peerMax);
         }
 
         // ---------- wheel <-> instant conversion ----------
