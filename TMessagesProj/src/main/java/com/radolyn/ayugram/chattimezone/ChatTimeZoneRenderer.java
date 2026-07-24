@@ -85,6 +85,22 @@ public final class ChatTimeZoneRenderer {
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
+    /**
+     * Like {@link #formatSide(Calendar, Locale)}, but includes the localized
+     * day-of-month ("Tue, Jul 24 18:00") when {@code withDate} is true. Callers pass
+     * true when the counterparty day differs from the edited side's day, so a
+     * weekday alone would be ambiguous. The date uses the schedule-day formatter and
+     * reflects {@code c}'s own zone (FastDateFormat reads the calendar's fields).
+     */
+    public static String formatSide(@NonNull Calendar c, @Nullable Locale locale, boolean withDate) {
+        if (!withDate) {
+            return formatSide(c, locale);
+        }
+        String date = org.telegram.messenger.LocaleController.getInstance().getFormatterScheduleDay().format(c);
+        return weekday(c, locale) + ", " + date + String.format(Locale.US, " %02d:%02d",
+                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+    }
+
     /** -1, 0 or +1: calendar-date difference of {@code a} relative to {@code b}. */
     public static int compareDay(@NonNull Calendar a, @NonNull Calendar b) {
         int byYear = Integer.compare(a.get(Calendar.YEAR), b.get(Calendar.YEAR));
