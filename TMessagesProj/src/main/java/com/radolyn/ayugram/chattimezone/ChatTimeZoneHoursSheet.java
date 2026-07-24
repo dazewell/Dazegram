@@ -240,8 +240,9 @@ public final class ChatTimeZoneHoursSheet {
             int step = strip.stepFromX(scroller.getScrollX());
             if (step == selectedStep[0]) return;
             selectedStep[0] = step;
-            // Buzz only on user-driven scrolls, not fling settle or programmatic recenters.
-            if (scroller.userDragging) {
+            // Buzz on user-driven moves — the drag and the fling it throws — but
+            // not on programmatic recenters (the Now button, the initial centering).
+            if (scroller.userScrolling) {
                 strip.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
             }
             refreshReadout.run();
@@ -749,13 +750,21 @@ public final class ChatTimeZoneHoursSheet {
 
     /**
      * Horizontal scroller that reports every scroll position change and tracks
-     * whether the user's finger is down, so the sheet can read the step under the
-     * fixed cursor and only buzz on user-driven moves (not fling or programmatic
-     * recenters).
+     * whether the current motion is user-initiated — the finger drag and the
+     * fling it launches, but not programmatic recenters — so the sheet can read
+     * the step under the fixed cursor and buzz only on those user-driven moves.
      */
     private static final class CenterScrollView extends HorizontalScrollView {
+        // Grace period after the last fling frame before the motion counts as
+        // settled; comfortably longer than a 60fps frame so it never trips mid-fling.
+        private static final long FLING_SETTLE_MS = 90;
+
         Runnable onScrollChanged;
-        boolean userDragging;
+        // True while the motion is user-initiated: the finger drag and the fling it
+        // launches. Stays false for programmatic scrolls (smoothScrollTo/scrollTo).
+        boolean userScrolling;
+        private boolean fingerDown;
+        private final Runnable clearScrolling = () -> userScrolling = false;
 
         CenterScrollView(Context context) {
             super(context);
@@ -765,6 +774,12 @@ public final class ChatTimeZoneHoursSheet {
         @Override
         protected void onScrollChanged(int l, int t, int oldl, int oldt) {
             super.onScrollChanged(l, t, oldl, oldt);
+            // During the fling (finger already up) keep the flag alive frame by
+            // frame; once the scroll stops, the last-armed runnable clears it.
+            if (userScrolling && !fingerDown) {
+                removeCallbacks(clearScrolling);
+                postDelayed(clearScrolling, FLING_SETTLE_MS);
+            }
             if (onScrollChanged != null) {
                 onScrollChanged.run();
             }
@@ -774,11 +789,17 @@ public final class ChatTimeZoneHoursSheet {
         public boolean onTouchEvent(MotionEvent event) {
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
-                    userDragging = true;
+                    removeCallbacks(clearScrolling);
+                    fingerDown = true;
+                    userScrolling = true;
                     break;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    userDragging = false;
+                    fingerDown = false;
+                    // Arm the settle timer: with no fling it clears the flag shortly;
+                    // a fling reposts it each frame until the glide actually stops.
+                    removeCallbacks(clearScrolling);
+                    postDelayed(clearScrolling, FLING_SETTLE_MS);
                     break;
             }
             return super.onTouchEvent(event);
