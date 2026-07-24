@@ -4614,14 +4614,19 @@ public class AlertsCreator {
                 }
             }
         });
-        // Peer time-zone readout under the pickers (no-op when not configured). Holder because
-        // the line is created only after the pickers are populated, below.
-        final Runnable[] tzPeerTimeUpdater = new Runnable[1];
+        // NagramX: chat-time-zone tab + readout under the pickers (null when no differing zone is
+        // configured). Holder because the controls are built only after the pickers are populated, below.
+        final com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[] tz = new com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[1];
+        final int scheduleType = forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0;
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
-            // In reschedule mode the button keeps its "Reschedule" label, so don't let checkScheduleDate rewrite it.
-            checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
-            if (tzPeerTimeUpdater[0] != null) {
-                tzPeerTimeUpdater[0].run();
+            // NagramX: in "Peer's time" mode the wheels hold peer wall-clock and the helper owns
+            // validation; stock checkScheduleDate would clamp them as device-local and corrupt the instant.
+            if (tz[0] == null || !tz[0].isPeerMode()) {
+                // In reschedule mode the button keeps its "Reschedule" label, so don't let checkScheduleDate rewrite it.
+                checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
+            }
+            if (tz[0] != null) {
+                tz[0].onPickerChanged(isReschedule ? null : buttonTextView);
             }
             if (intervalControls[0] != null) {
                 intervalControls[0].update();
@@ -4644,11 +4649,11 @@ public class AlertsCreator {
 
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
-        // Show the selected moment in the peer's time zone, right under the pickers (no-op when not configured).
-        tzPeerTimeUpdater[0] = com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.addPeerTimeLine(
-                context, container, UserConfig.selectedAccount, dialogId,
+        // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
+        tz[0] = com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.install(
+                context, container, linearLayout, UserConfig.selectedAccount, dialogId, isReschedule, scheduleType,
                 datePickerColors.textColor, datePickerColors.buttonBackgroundColor,
-                dayPicker, hourPicker, minutePicker);
+                dayPicker, hourPicker, minutePicker, isReschedule ? null : buttonTextView);
 
         // NagramX: interval [value][unit] row + live preview for bulk reschedule (>= 2 messages).
         if (isReschedule && reschedule.messageCount >= 2) {
@@ -4667,9 +4672,13 @@ public class AlertsCreator {
                     hourPicker,
                     minutePicker,
                     () -> {
-                        checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
-                        if (tzPeerTimeUpdater[0] != null) {
-                            tzPeerTimeUpdater[0].run();
+                        // NagramX: same peer-mode delegation as the wheel listener; the slider writes
+                        // device-local values, so the helper re-expresses them as peer wall-clock in peer mode.
+                        if (tz[0] == null || !tz[0].isPeerMode()) {
+                            checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
+                        }
+                        if (tz[0] != null) {
+                            tz[0].onDefaultScheduleChanged(isReschedule ? null : buttonTextView);
                         }
                         if (intervalControls[0] != null) {
                             intervalControls[0].update();
@@ -4685,13 +4694,14 @@ public class AlertsCreator {
                         context, container, UserConfig.selectedAccount, dialogId, selfUserId,
                         isReschedule, forcedTitle != null, datePickerColors.textColor, datePickerColors.backgroundColor);
 
-        checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
-        // The initial validation above may have snapped the pickers forward; re-render the peer time line.
+        checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
+        // The initial validation above may have snapped the pickers forward; re-render the readout.
+        // Init runs in "My time" mode (default), so stock checkScheduleDate above is correct.
         if (intervalControls[0] != null) {
             intervalControls[0].update();
         }
-        if (tzPeerTimeUpdater[0] != null) {
-            tzPeerTimeUpdater[0].run();
+        if (tz[0] != null) {
+            tz[0].onPickerChanged(isReschedule ? null : buttonTextView);
         }
 
         final boolean testBackend = ConnectionsManager.getInstance(UserConfig.selectedAccount).isTestBackend();
@@ -4809,7 +4819,13 @@ public class AlertsCreator {
         container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             canceled[0] = false;
-            boolean setSeconds = checkScheduleDate(null, null, minScheduleSeconds, 0, forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0, dayPicker, hourPicker, minutePicker);
+            // NagramX: if the "Peer's time" tab is active, snap the wheels back to device-local first so
+            // the calendar reads below (and stock checkScheduleDate) run on local values, keeping the
+            // scheduled instant identical regardless of which tab was showing.
+            if (tz[0] != null) {
+                tz[0].snapToLocal();
+            }
+            boolean setSeconds = checkScheduleDate(null, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
             calendar.setTimeInMillis(System.currentTimeMillis());
             calendar.add(Calendar.DAY_OF_YEAR, dayPicker.getValue());
             calendar.set(Calendar.HOUR_OF_DAY, hourPicker.getValue());

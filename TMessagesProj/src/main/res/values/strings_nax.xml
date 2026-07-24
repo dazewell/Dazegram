@@ -470,4 +470,7 @@
     <string name="ChatTimeZoneTemplateSaved">Message format saved</string>
     <string name="ChatTimeZoneMessageLanguage">Message language</string>
     <string name="ChatTimeZoneLanguageDefault">App language</string>
+    <string name="ChatTimeZoneScheduleMyTime">My time</string>
+    <string name="ChatTimeZoneSchedulePeerTime">Peer\'s time</string>
+    <string name="ChatTimeZoneScheduleYourTime">Your time: %1$s</string>
 </resources>

@@ -17390,12 +17390,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         popupLayout.setAnimationEnabled(false);
 
         // NagramX: external mic toggle (its own section above the camera choices)
-        // custom row so the label takes the leftover width (weight 1) and the switch sits
-        // in a fixed zone behind a divider, instead of overlapping like a frame-positioned item
+        // custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while
+        // taking leftover width, with the switch in a fixed zone behind a divider
+        boolean isRtl = LocaleController.isRTL;
         LinearLayout micRow = new LinearLayout(getContext());
         micRow.setOrientation(LinearLayout.HORIZONTAL);
         micRow.setGravity(Gravity.CENTER_VERTICAL);
-        micRow.setPadding(dp(18), 0, dp(14), 0);
+        micRow.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+        micRow.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
         micRow.setMinimumWidth(dp(220));
         micRow.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
 
@@ -17403,19 +17405,20 @@ public class ChatActivityEnterView extends FrameLayout implements
         micIcon.setScaleType(ImageView.ScaleType.CENTER);
         micIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
         micIcon.setImageResource(R.drawable.msg_voice_headphones_solar);
-        micRow.addView(micIcon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, 0, 0, 12, 0));
+        micRow.addView(micIcon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, isRtl ? 19 : 0, 0, isRtl ? 0 : 19, 0));
 
         TextView micLabel = new TextView(getContext());
         micLabel.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
         micLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
         micLabel.setSingleLine(true);
         micLabel.setEllipsize(TextUtils.TruncateAt.END);
+        micLabel.setGravity(isRtl ? Gravity.RIGHT : Gravity.LEFT);
         micLabel.setText(getString(R.string.CameraInVideoMessagesExternalMic));
         micRow.addView(micLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
 
         View micDivider = new View(getContext());
         micDivider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
-        micRow.addView(micDivider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, 10, 0, 12, 0));
+        micRow.addView(micDivider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
 
         Switch micSwitch = new Switch(getContext(), resourcesProvider);
         micSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);

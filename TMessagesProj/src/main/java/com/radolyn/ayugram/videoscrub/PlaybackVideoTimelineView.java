@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.view.MotionEvent;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -12,14 +13,15 @@ import org.telegram.ui.Components.VideoTimelineView;
 
 /**
  * Round video preview timeline with a draggable playback cursor on top of the stock trim view.
- * Interaction follows the video editor's VideoTimelinePlayView (tap between the handles jumps
- * there, cursor never leaves the trim range), except the trim handles keep touch priority so
- * a cursor resting on a handle can't steal its grab.
+ * Interaction and cursor styling follow the video editor's VideoTimelinePlayView (tap between
+ * the handles jumps there, cursor never leaves the trim range), except the trim handles keep
+ * touch priority so a cursor resting on a handle can't steal its grab.
  */
 public class PlaybackVideoTimelineView extends VideoTimelineView {
 
     private final Paint playPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint playShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF playRect = new RectF();
     private float playProgress;
     private boolean pressedPlay;
     private float pressDx;
@@ -30,12 +32,9 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
     public PlaybackVideoTimelineView(Context context) {
         super(context);
         playPaint.setColor(Color.WHITE);
-        playPaint.setStrokeWidth(AndroidUtilities.dpf2(2f));
-        playPaint.setStyle(Paint.Style.STROKE);
-        playPaint.setStrokeCap(Paint.Cap.ROUND);
-        playShadowPaint.set(playPaint);
-        playShadowPaint.setColor(0x4c000000);
-        playShadowPaint.setStrokeWidth(AndroidUtilities.dpf2(4f));
+        playPaint.setStyle(Paint.Style.FILL);
+        playShadowPaint.setColor(0x26000000);
+        playShadowPaint.setStyle(Paint.Style.FILL);
     }
 
     public void setOnSeek(Utilities.Callback<Float> listener) {
@@ -172,9 +171,15 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
         int width = getMeasuredWidth() - AndroidUtilities.dp(24);
         float playX = width * clampToTrim(playProgress) + AndroidUtilities.dp(12);
         int topOffset = (getMeasuredHeight() - AndroidUtilities.dp(32)) >> 1;
-        float top = topOffset + AndroidUtilities.dp(4);
-        float bottom = getMeasuredHeight() - topOffset - AndroidUtilities.dp(4);
-        canvas.drawLine(playX, top, playX, bottom, playShadowPaint);
-        canvas.drawLine(playX, top, playX, bottom, playPaint);
+        float top = topOffset - AndroidUtilities.dp(2);
+        float bottom = getMeasuredHeight() - topOffset + AndroidUtilities.dp(2);
+        float halfWidth = AndroidUtilities.dpf2(1.5f);
+        float shadowInset = AndroidUtilities.dpf2(0.66f);
+        float radius = AndroidUtilities.dp(6);
+        playRect.set(playX - halfWidth, top, playX + halfWidth, bottom);
+        playRect.inset(-shadowInset, -shadowInset);
+        canvas.drawRoundRect(playRect, radius, radius, playShadowPaint);
+        playRect.set(playX - halfWidth, top, playX + halfWidth, bottom);
+        canvas.drawRoundRect(playRect, radius, radius, playPaint);
     }
 }
