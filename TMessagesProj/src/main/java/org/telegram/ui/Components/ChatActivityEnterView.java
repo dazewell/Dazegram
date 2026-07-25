@@ -5251,6 +5251,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (!hasAudioToSend() && (message == null || AndroidUtilities.getTrimmedString(message).length() == 0)) {
             return false;
         }
+        // Telegram rejects a send that carries both a schedule date and a view-once TTL, leaving the
+        // message stuck on the retry button. Upstream avoids it by dropping the schedule item from the
+        // send menu while once is on (see onSendLongClick), which this hotkey would otherwise walk past.
+        if (voiceOnce && (videoToSendMessageObject != null || audioToSend != null)) {
+            BulletinFactory.of(parentFragment).createSimpleBulletin(R.raw.fire_on, getString(R.string.ScheduleOnceUnavailable)).show();
+            return true;
+        }
         AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> sendMessageInternal(notify, scheduleDate, scheduleRepeatPeriod, 0, true), resourcesProvider);
         return true;
     }
