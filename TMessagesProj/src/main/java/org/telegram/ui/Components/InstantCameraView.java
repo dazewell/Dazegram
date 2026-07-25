@@ -257,6 +257,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean isMessageTransition;
     private boolean updateTextureViewSize;
     private final Theme.ResourcesProvider resourcesProvider;
+    private final boolean isNewDesign;
 
     private final static int audioSampleRate = 48000;
 
@@ -291,6 +292,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         WRITE_TO_FILE_IN_BACKGROUND = false;//SharedConfig.deviceIsAboveAverage();
         this.resourcesProvider = resourcesProvider;
+        this.isNewDesign = isNewDesign;
         parentView = delegate.getFragmentView();
         setWillNotDraw(false);
 
@@ -572,6 +574,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         NotificationCenter.getInstance(currentAccount).addObserver(this, NotificationCenter.fileUploaded);
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.didSetNewTheme);
     }
 
     @Override
@@ -579,8 +582,22 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         super.onDetachedFromWindow();
         cancelZoomInteractions();
         NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.fileUploaded);
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.didSetNewTheme);
         if (flashViews != null) {
             flashViews.flashOut();
+        }
+    }
+
+    // NagramX: the recorder is built once per chat and reused, so a live theme flip (e.g. battery-saver
+    // dark mode) has to be pushed into the controls that snapshot their colors, or they keep the old ones
+    private void updateThemeColors() {
+        if (zoomControlView != null) {
+            zoomControlView.updateColors(resourcesProvider.isDark(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
+        }
+        // NagramX: only the new-design flash button carries a fixed invert here; the legacy one is driven
+        // by flashViews, so leave it alone. strip the light-theme invert outright when going dark
+        if (flashButton != null && isNewDesign) {
+            flashButton.setInvert(resourcesProvider.isDark() ? 0f : 0.6f);
         }
     }
 
@@ -597,6 +614,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     iv = (byte[]) args[4];
                 }
             }
+        } else if (id == NotificationCenter.didSetNewTheme) {
+            updateThemeColors();
         }
     }
 
@@ -766,6 +785,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView != null) {
             return;
         }
+        // NagramX: pick up the current theme each time the recorder opens, in case it changed while hidden
+        updateThemeColors();
         textureOverlayView.setAlpha(1.0f);
         textureOverlayView.invalidate();
         if (lastBitmap == null) {

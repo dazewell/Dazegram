@@ -32,10 +32,10 @@ public class InstantZoomControlView extends View {
     private static final int CHIP_RIM_COLOR_DARK = 0x22FFFFFF;
     private static final int GLYPH_COLOR_DARK = 0xFFFFFFFF;
 
-    private final int chipColor;
-    private final int chipColorPressed;
-    private final int chipRimColor;
-    private final int glyphColor;
+    private int chipColor;
+    private int chipColorPressed;
+    private int chipRimColor;
+    private int glyphColor;
 
     public interface Delegate {
         void didSetZoom(float zoom);
@@ -110,22 +110,30 @@ public class InstantZoomControlView extends View {
 
     public InstantZoomControlView(Context context, boolean dark, int chipBackgroundColor) {
         super(context);
+        minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
+        plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
+        switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
+        knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
+        pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
+        ringPaint.setStyle(Paint.Style.STROKE);
+        ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
+        updateColors(dark, chipBackgroundColor);
+    }
+
+    // re-read the recorder's colors so the chips follow a live theme flip (e.g. battery-saver dark
+    // mode) instead of keeping the colors captured when the recorder was first built
+    public void updateColors(boolean dark, int chipBackgroundColor) {
         // same background the flash button rides on (the chat's message-panel color), opaque here since
         // this view can't blur behind itself; pressing lifts it toward the glyph for a bit of feedback
         chipColor = ColorUtils.setAlphaComponent(chipBackgroundColor, 0xFF);
         chipRimColor = dark ? CHIP_RIM_COLOR_DARK : CHIP_RIM_COLOR_LIGHT;
         glyphColor = dark ? GLYPH_COLOR_DARK : GLYPH_COLOR_LIGHT;
         chipColorPressed = ColorUtils.blendARGB(chipColor, glyphColor, 0.12f);
-        minusDrawable = context.getResources().getDrawable(R.drawable.zoom_minus).mutate();
+        // white glyphs on dark, dark on light, so they read like the recorder's other controls per theme
         minusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
-        plusDrawable = context.getResources().getDrawable(R.drawable.zoom_plus).mutate();
         plusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
-        switchDrawable = context.getResources().getDrawable(R.drawable.camera_revert1).mutate();
         switchDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
-        knobDrawable = context.getResources().getDrawable(R.drawable.zoom_round);
-        pressedKnobDrawable = context.getResources().getDrawable(R.drawable.zoom_round_b);
-        ringPaint.setStyle(Paint.Style.STROKE);
-        ringPaint.setStrokeWidth(AndroidUtilities.dpf2(1.5f));
+        invalidate();
     }
 
     public void setDelegate(Delegate delegate) {
