@@ -1085,6 +1085,9 @@ public class NotificationsController extends BaseController implements Notificat
                 if (AyuFilter.isBlockedChannel(messageObject.getFromChatId())) {
                     continue;
                 }
+                if (!messageObject.isOauthPush && AyuFilter.isFiltered(messageObject, null)) {
+                    continue;
+                }
                 if (messageObject.isStoryPush) {
                     long date = messageObject.messageOwner == null ? System.currentTimeMillis() : messageObject.messageOwner.date * 1000L;
                     long dialogId = messageObject.getDialogId();
@@ -5272,6 +5275,9 @@ public class NotificationsController extends BaseController implements Notificat
                         continue;
                     }
                     if (AyuFilter.isBlockedChannel(messageObject.getFromChatId())) {
+                        continue;
+                    }
+                    if (!messageObject.isOauthPush && AyuFilter.isFiltered(messageObject, null)) {
                         continue;
                     }
                     String message = getShortStringForMessage(messageObject, senderName, preview);

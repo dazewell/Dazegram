@@ -22076,6 +22076,10 @@ public class MessagesController extends BaseController implements NotificationCe
         if (!scheduled && !quickReplies) {
             for (int a = 0; a < messages.size(); a++) {
                 MessageObject message = messages.get(a);
+                if (MessageHelper.getInstance(currentAccount).isBlockedOrFiltered(message)) {
+                    message.messageOwner.unread = false;
+                    message.messageOwner.media_unread = false;
+                }
                 if (lastMessage == null || (!isEncryptedChat && message.getId() > lastMessage.getId() || (isEncryptedChat || message.getId() < 0 && lastMessage.getId() < 0) && message.getId() < lastMessage.getId()) || message.messageOwner.date > lastMessage.messageOwner.date) {
                     lastMessage = message;
                     if (message.messageOwner.peer_id.channel_id != 0) {
