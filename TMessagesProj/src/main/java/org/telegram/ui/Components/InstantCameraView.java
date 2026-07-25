@@ -588,14 +588,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
     }
 
-    // the recorder is built once per chat and reused, so a live theme flip (e.g. battery-saver dark
-    // mode) has to be pushed into the controls that snapshot their colors, or they keep the old ones
+    // NagramX: the recorder is built once per chat and reused, so a live theme flip (e.g. battery-saver
+    // dark mode) has to be pushed into the controls that snapshot their colors, or they keep the old ones
     private void updateThemeColors() {
         if (zoomControlView != null) {
             zoomControlView.updateColors(resourcesProvider.isDark(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
         }
-        // only the new-design flash button carries a fixed invert here; the legacy one is driven by
-        // flashViews, so leave it alone. strip the light-theme invert outright when going dark
+        // NagramX: only the new-design flash button carries a fixed invert here; the legacy one is driven
+        // by flashViews, so leave it alone. strip the light-theme invert outright when going dark
         if (flashButton != null && isNewDesign) {
             flashButton.setInvert(resourcesProvider.isDark() ? 0f : 0.6f);
         }
@@ -785,7 +785,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         if (textureView != null) {
             return;
         }
-        // pick up the current theme each time the recorder opens, in case it changed while hidden
+        // NagramX: pick up the current theme each time the recorder opens, in case it changed while hidden
         updateThemeColors();
         textureOverlayView.setAlpha(1.0f);
         textureOverlayView.invalidate();
