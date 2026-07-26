@@ -365,14 +365,15 @@ public final class ChatTimeZoneHoursSheet {
                 // point, so nothing moves and the strip doesn't jump.
                 pinnedStep[0] = -1;
             } else {
-                pinnedStep[0] = selectedStep[0];
-                // Seed an hour-long range and put its other edge under the cursor: the
-                // scroll shows what just happened and leaves the finger where it needs
-                // to be to stretch it. Runs backwards at the very end of the strip.
-                int target = selectedStep[0] + STEPS_PER_HOUR;
-                if (target > STEPS - 1) target = Math.max(0, selectedStep[0] - STEPS_PER_HOUR);
-                scroller.cancelUserScrolling();
-                scroller.smoothScrollTo(centerScrollFor(strip, scroller, target), 0);
+                // Seed an hour-long range by pinning the far edge, rather than moving
+                // the cursor to it: the span is valid from the first frame (no window
+                // where Insert would produce a zero-length range), and the instant you
+                // deliberately panned to stays under the cursor. The band and the second
+                // readout row appearing are the feedback. Runs backwards at the very end
+                // of the strip.
+                int other = selectedStep[0] + STEPS_PER_HOUR;
+                if (other > STEPS - 1) other = Math.max(0, selectedStep[0] - STEPS_PER_HOUR);
+                pinnedStep[0] = other;
             }
             boolean range = pinnedStep[0] >= 0;
             styleModeChip(rangeButton, range, rp);
