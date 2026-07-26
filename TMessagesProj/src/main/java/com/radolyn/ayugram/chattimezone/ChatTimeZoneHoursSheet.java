@@ -38,6 +38,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Business.TimezonesController;
+import org.telegram.ui.Cells.CollapseTextCell;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
@@ -284,15 +285,25 @@ public final class ChatTimeZoneHoursSheet {
             // Message-format template editor: edit, preview live against the pinned
             // instant, choose account/global scope, and insert. Insert renders from
             // the current draft so what you preview is what gets inserted.
+            //
+            // Everything that configures the format sits in a section that starts
+            // collapsed, so the sheet opens on the time comparison and the insert
+            // button; the live preview stays out of it since that's what the button
+            // will actually produce.
             final int[] scope = { ChatTimeZoneTemplate.hasAccountOverride(currentAccount) ? 1 : 0 };
 
-            TextView tmplHeader = new TextView(context);
-            tmplHeader.setText(LocaleController.getString(R.string.ChatTimeZoneTemplate));
-            tmplHeader.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
-            tmplHeader.setTypeface(AndroidUtilities.bold());
-            tmplHeader.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, rp));
+            final CollapseTextCell tmplHeader = new CollapseTextCell(context, rp);
+            tmplHeader.set(LocaleController.getString(R.string.ChatTimeZoneTemplate), true);
+            tmplHeader.setColor(Theme.key_dialogTextBlack);
+            tmplHeader.setBackground(Theme.createSelectorDrawable(
+                    Theme.getColor(Theme.key_dialogButtonSelector, rp), Theme.RIPPLE_MASK_ALL));
             container.addView(tmplHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
-                    22, 14, 22, 0));
+                    0, 4, 0, 0));
+
+            final LinearLayout tmplBody = new LinearLayout(context);
+            tmplBody.setOrientation(LinearLayout.VERTICAL);
+            tmplBody.setVisibility(View.GONE);
+            container.addView(tmplBody, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             LinearLayout scopeRow = new LinearLayout(context);
             scopeRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -300,7 +311,7 @@ public final class ChatTimeZoneHoursSheet {
             final TextView globalChip = makeScopeChip(context, LocaleController.getString(R.string.ChatTimeZoneTemplateScopeGlobal));
             scopeRow.addView(accountChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 8, 0));
             scopeRow.addView(globalChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
-            container.addView(scopeRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            tmplBody.addView(scopeRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             // "Message language" row: a label plus a tappable chip that opens a
             // shortlist picker. Drives weekday rendering (and, where translated,
@@ -318,7 +329,7 @@ public final class ChatTimeZoneHoursSheet {
             styleScopeChip(langValue, false, rp);
             langRow.addView(langLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
             langRow.addView(langValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-            container.addView(langRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            tmplBody.addView(langRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             FrameLayout fieldBox = new FrameLayout(context);
             fieldBox.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection, rp)));
@@ -333,7 +344,7 @@ public final class ChatTimeZoneHoursSheet {
             field.setMaxLines(3);
             field.setPadding(dp(12), dp(10), dp(12), dp(10));
             fieldBox.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            container.addView(fieldBox, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            tmplBody.addView(fieldBox, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             HorizontalScrollView chipsScroller = new HorizontalScrollView(context);
             chipsScroller.setHorizontalScrollBarEnabled(false);
@@ -349,14 +360,7 @@ public final class ChatTimeZoneHoursSheet {
                 chips.addView(chip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 6, 0));
             }
             chipsScroller.addView(chips);
-            container.addView(chipsScroller, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
-
-            TextView previewView = new TextView(context);
-            previewView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            previewView.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, rp));
-            previewView.setSingleLine(true);
-            previewView.setEllipsize(TextUtils.TruncateAt.END);
-            container.addView(previewView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            tmplBody.addView(chipsScroller, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             LinearLayout actionRow = new LinearLayout(context);
             actionRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -374,7 +378,16 @@ public final class ChatTimeZoneHoursSheet {
             saveView.setPadding(dp(8), dp(6), dp(4), dp(6));
             actionRow.addView(resetView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
             actionRow.addView(saveView, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
-            container.addView(actionRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 0));
+            tmplBody.addView(actionRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 20, 0, 20, 0));
+
+            // Preview of what the insert button will produce: stays outside the
+            // collapsible body so the sheet still says what it's about to send.
+            TextView previewView = new TextView(context);
+            previewView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            previewView.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, rp));
+            previewView.setSingleLine(true);
+            previewView.setEllipsize(TextUtils.TruncateAt.END);
+            container.addView(previewView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             final Runnable updatePreview = () -> previewView.setText(
                     renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer, outputLocale[0]));
@@ -426,6 +439,18 @@ public final class ChatTimeZoneHoursSheet {
                 @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
                 @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
                 @Override public void afterTextChanged(Editable s) { updatePreview.run(); }
+            });
+            final boolean[] expanded = { false };
+            tmplHeader.setOnClickListener(v -> {
+                expanded[0] = !expanded[0];
+                tmplHeader.set(LocaleController.getString(R.string.ChatTimeZoneTemplate), !expanded[0]);
+                tmplBody.setVisibility(expanded[0] ? View.VISIBLE : View.GONE);
+                if (!expanded[0]) {
+                    // Collapsing out from under the keyboard would leave it up over a
+                    // sheet that no longer has a field.
+                    AndroidUtilities.hideKeyboard(field);
+                    field.clearFocus();
+                }
             });
             langValue.setOnClickListener(v -> {
                 String[] names = new String[LANG_TAGS.length];
