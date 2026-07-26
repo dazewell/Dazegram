@@ -2663,6 +2663,9 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
                 } else if (state == 2 || state == 5) {
                     instantCameraView.cancel(state == 2);
+                } else if (state == 6) {
+                    // NagramX: infinite video message hit the 60s cap, roll over to the next segment
+                    instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
                 }
             }
         }

@@ -918,6 +918,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private Boolean pendingCameraFront = null; // nax
 
+    // NagramX: infinite video message. Session-only on purpose, so it never carries over to the next recording.
+    private static final int INFINITE_VIDEO_MAX_SEGMENTS = 10;
+    private boolean infiniteVideoMessage;
+    private int infiniteVideoSegments;
+
     private Runnable onFinishInitCameraRunnable = new Runnable() {
         @Override
         public void run() {
@@ -939,6 +944,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (delegate == null || parentActivity == null) {
                 return;
             }
+            // NagramX: every recording starts with infinite mode off, whatever the last one used
+            infiniteVideoMessage = false;
+            infiniteVideoSegments = 0;
             /*delegate.onPreAudioVideoRecord();
             calledRecordRunnable = true;
             recordAudioVideoRunnableStarted = false;
@@ -15979,6 +15987,16 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             if (isInVideoMode()) {
                 if (t >= 59500 && !stoppedInternal) {
+                    // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
+                    // dropping into the preview. The last allowed segment falls back to the normal stop.
+                    if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+                        infiniteVideoSegments++;
+                        startedDraggingX = -1;
+                        delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                        sendButton.setEffect(effectId = 0);
+                        start(0);
+                        return;
+                    }
                     startedDraggingX = -1;
                     delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
                     sendButton.setEffect(effectId = 0);
@@ -17394,6 +17412,45 @@ public class ChatActivityEnterView extends FrameLayout implements
         startLockTransition();
     }
 
+    // NagramX: custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while taking leftover
+    // width, with the switch in a fixed zone behind a divider
+    private LinearLayout createPopupSwitchRow(int iconRes, CharSequence label, Switch sw, boolean enabled) {
+        boolean isRtl = LocaleController.isRTL;
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+        row.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
+        row.setMinimumWidth(dp(220));
+        if (enabled) {
+            row.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
+        } else {
+            row.setAlpha(0.5f);
+        }
+
+        ImageView icon = new ImageView(getContext());
+        icon.setScaleType(ImageView.ScaleType.CENTER);
+        icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+        icon.setImageResource(iconRes);
+        row.addView(icon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, isRtl ? 19 : 0, 0, isRtl ? 0 : 19, 0));
+
+        TextView text = new TextView(getContext());
+        text.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
+        text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+        text.setSingleLine(true);
+        text.setEllipsize(TextUtils.TruncateAt.END);
+        text.setGravity(isRtl ? Gravity.RIGHT : Gravity.LEFT);
+        text.setText(label);
+        row.addView(text, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+
+        View divider = new View(getContext());
+        divider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
+        row.addView(divider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
+
+        row.addView(sw, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
+        return row;
+    }
+
     private void showCameraSelectionPopup(View anchorView, Runnable onFrontSelected, Runnable onRearSelected) {
         if (parentActivity == null) {
             return;
@@ -17405,41 +17462,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         popupLayout.setAnimationEnabled(false);
 
         // NagramX: external mic toggle (its own section above the camera choices)
-        // custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while
-        // taking leftover width, with the switch in a fixed zone behind a divider
-        boolean isRtl = LocaleController.isRTL;
-        LinearLayout micRow = new LinearLayout(getContext());
-        micRow.setOrientation(LinearLayout.HORIZONTAL);
-        micRow.setGravity(Gravity.CENTER_VERTICAL);
-        micRow.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
-        micRow.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
-        micRow.setMinimumWidth(dp(220));
-        micRow.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
-
-        ImageView micIcon = new ImageView(getContext());
-        micIcon.setScaleType(ImageView.ScaleType.CENTER);
-        micIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
-        micIcon.setImageResource(R.drawable.msg_voice_headphones_solar);
-        micRow.addView(micIcon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, isRtl ? 19 : 0, 0, isRtl ? 0 : 19, 0));
-
-        TextView micLabel = new TextView(getContext());
-        micLabel.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
-        micLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-        micLabel.setSingleLine(true);
-        micLabel.setEllipsize(TextUtils.TruncateAt.END);
-        micLabel.setGravity(isRtl ? Gravity.RIGHT : Gravity.LEFT);
-        micLabel.setText(getString(R.string.CameraInVideoMessagesExternalMic));
-        micRow.addView(micLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
-
-        View micDivider = new View(getContext());
-        micDivider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
-        micRow.addView(micDivider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
-
         Switch micSwitch = new Switch(getContext(), resourcesProvider);
         micSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
         micSwitch.setChecked(SharedConfig.recordViaSco, false);
-        micRow.addView(micSwitch, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
-
+        LinearLayout micRow = createPopupSwitchRow(R.drawable.msg_voice_headphones_solar, getString(R.string.CameraInVideoMessagesExternalMic), micSwitch, true);
         micRow.setOnClickListener(v -> {
             boolean enable = !SharedConfig.recordViaSco;
             SharedConfig.recordViaSco = enable;
@@ -17461,6 +17487,23 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         });
         popupLayout.addView(micRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+
+        // NagramX: infinite video message toggle. Deliberately not persisted: it keeps sending until you
+        // stop, so it has to be an explicit choice every time. Dead where a segment couldn't be sent
+        // unattended anyway (slow mode, paid messages, scheduling, view-once).
+        final boolean infiniteAvailable = !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
+                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
+        Switch infiniteSwitch = new Switch(getContext(), resourcesProvider);
+        infiniteSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+        infiniteSwitch.setChecked(infiniteVideoMessage, false);
+        LinearLayout infiniteRow = createPopupSwitchRow(R.drawable.msg_retry_solar, getString(R.string.CameraInVideoMessagesInfinite), infiniteSwitch, infiniteAvailable);
+        if (infiniteAvailable) {
+            infiniteRow.setOnClickListener(v -> {
+                infiniteVideoMessage = !infiniteVideoMessage;
+                infiniteSwitch.setChecked(infiniteVideoMessage, true);
+            });
+        }
+        popupLayout.addView(infiniteRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
 
         // section separator
         ActionBarPopupWindow.GapView gapView = new ActionBarPopupWindow.GapView(getContext(), resourcesProvider);
