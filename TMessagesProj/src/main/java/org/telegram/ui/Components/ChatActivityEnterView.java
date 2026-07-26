@@ -6479,17 +6479,6 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                // NagramX: in fullscreen mode fill the budget ChatActivity computed (action bar to keyboard),
-                // minus what else stacks inside the island (the reply/edit header and the field's bottom margin)
-                if (messageEditExpanded) {
-                    int budget = Math.min(MeasureSpec.getSize(heightMeasureSpec),
-                        expandedInputBudget - (isTopViewVisible() ? topView.getLayoutParams().height : 0) - dp(3));
-                    // only force the fill when there's room for at least a normal field; a transient tiny/zero
-                    // offered spec falls through to the usual wrap measure instead of snapping to one row
-                    if (budget >= dp(DEFAULT_HEIGHT)) {
-                        heightMeasureSpec = MeasureSpec.makeMeasureSpec(budget, MeasureSpec.EXACTLY);
-                    }
-                }
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 if (lineCount != messageEditText.getLineCount()) {
                     showAiButton(messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
@@ -6983,6 +6972,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         } else if (changed && messageEditText != null) {
             messageEditText.requestLayout();
         }
+    }
+
+    // NagramX: while expanded the field fills the budget ChatActivity measured (action bar to keyboard)
+    // minus what else stacks inside the island (the reply/edit header and the field's bottom margin).
+    // Floored at a normal row so a momentarily silly budget can't squash it to nothing.
+    private int getExpandedInputHeight() {
+        return Math.max(dp(DEFAULT_HEIGHT),
+            expandedInputBudget - (isTopViewVisible() ? topView.getLayoutParams().height : 0) - dp(3));
     }
 
     private boolean shownAiButton;
@@ -16183,6 +16180,17 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (richDraftPreview != null) {
                 ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = dp(50);
             }
+        }
+        // NagramX: publish the fullscreen height as the field's declared height, refreshed here so it tracks
+        // the reply/edit header. It has to be a concrete number rather than the measure spec the override used
+        // to force: TextView.checkForResize() runs on every edit and, while the declared height is
+        // WRAP_CONTENT, compares the text height against the view height. Filling the screen means those two
+        // never meet, so each keystroke asked for a layout it could never satisfy, and the whole-screen pass
+        // that set off (down to the chat list's padding and scroll) kept shunting the history about behind
+        // the glass.
+        if (messageEditText != null) {
+            messageEditText.getLayoutParams().height = messageEditExpanded && expandedInputBudget > 0
+                ? getExpandedInputHeight() : LayoutHelper.WRAP_CONTENT;
         }
         updateBotCommandsMenuContainerTopPadding();
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
