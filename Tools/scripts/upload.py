@@ -1,16 +1,25 @@
 import os
 import re
 import contextlib
+from asyncio import sleep
 from pathlib import Path
 from sys import argv
 
 from pyrogram import Client
+from pyrogram.errors import FloodPremiumWait, FloodWait
 from pyrogram.types import InputMediaDocument
 
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
 artifacts_path = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
 metadata_chat_id = argv[4] if len(argv) > 4 else None
+
+# Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
+# which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
+# throttled). Let it absorb anything up to five minutes on its own; the retry
+# wrapper below catches whatever is longer.
+SLEEP_THRESHOLD = 300
+MAX_FLOOD_WAIT = 900
 
 def find_apk(abi: str) -> Path | None:
     return next((apk for apk in artifacts_path.rglob("*.apk") if abi in apk.name), None)
@@ -111,13 +120,24 @@ def normalize_message(text: str) -> str:
 
 def retry(func):
     async def wrapper(*args, **kwargs):
-        for attempt in range(3):
+        delay = 15
+        for attempt in range(4):
+            last = attempt == 3
             try:
                 return await func(*args, **kwargs)
-            except Exception as e:
-                print(e)
-                if attempt == 2:
+            except (FloodWait, FloodPremiumWait) as e:
+                # Retrying a flood wait immediately (what this used to do) only
+                # digs the hole deeper, so wait out what Telegram asked for.
+                if last or e.value > MAX_FLOOD_WAIT:
                     raise
+                print(f"flood wait {e.value}s, sleeping", flush=True)
+                await sleep(e.value + 5)
+            except Exception as e:
+                if last:
+                    raise
+                print(e, flush=True)
+                await sleep(delay)
+                delay *= 3
     return wrapper
 
 @retry
@@ -148,6 +168,7 @@ def get_client(bot_token: str):
         api_id=api_id,
         api_hash=api_hash,
         bot_token=bot_token,
+        sleep_threshold=SLEEP_THRESHOLD,
     )
 
 async def main():

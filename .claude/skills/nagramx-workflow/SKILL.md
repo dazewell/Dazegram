@@ -268,7 +268,8 @@ code are not.
    (e.g. the fix was large or risky), dazewell asks for it explicitly. Don't
    stack "address Copilot" commits either — amend/fix in place.
 
-   Iterate by pushing to the branch (each push rebuilds + re-uploads). On a
+   Iterate by pushing to the branch (each push rebuilds + re-uploads, and
+   supersedes a build still running on that PR rather than adding to it). On a
    no-go, fix in place and push again; don't stack visible "fix review
    comments" commits. `staging.yml` path-ignores pure doc / `.github` pushes,
    so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
