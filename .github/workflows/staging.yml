@@ -78,6 +78,9 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
+          # Without a fallback, editing any build file means a cold cache and a
+          # full dependency re-download.
+          restore-keys: gradle-
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
