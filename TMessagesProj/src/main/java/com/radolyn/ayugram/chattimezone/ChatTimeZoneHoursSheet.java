@@ -205,25 +205,43 @@ public final class ChatTimeZoneHoursSheet {
         final LinearLayout rangeRows = new LinearLayout(context);
         rangeRows.setOrientation(LinearLayout.VERTICAL);
         rangeRows.setVisibility(View.GONE);
+        // The whole row is the control, not just the chip: at 12sp the chip is a ~50dp
+        // target, and the thing you're aiming at is conceptually "that edge", which is
+        // the row. The chip stays as the state indicator. Rows carry their own side
+        // padding so the ripple reaches past the text while the text still lines up
+        // with the readout above it.
         LinearLayout startRow = new LinearLayout(context);
         startRow.setOrientation(LinearLayout.HORIZONTAL);
         startRow.setGravity(Gravity.CENTER_VERTICAL);
+        startRow.setMinimumHeight(dp(36));
+        startRow.setPadding(dp(6), 0, dp(6), 0);
+        startRow.setBackground(Theme.createSelectorDrawable(
+                Theme.getColor(Theme.key_dialogButtonSelector, rp), Theme.RIPPLE_MASK_ALL));
         startRow.addView(startChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
         startRow.addView(startText, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
         LinearLayout endRow = new LinearLayout(context);
         endRow.setOrientation(LinearLayout.HORIZONTAL);
         endRow.setGravity(Gravity.CENTER_VERTICAL);
+        endRow.setMinimumHeight(dp(36));
+        endRow.setPadding(dp(6), 0, dp(6), 0);
+        endRow.setBackground(Theme.createSelectorDrawable(
+                Theme.getColor(Theme.key_dialogButtonSelector, rp), Theme.RIPPLE_MASK_ALL));
         endRow.addView(endChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
         endRow.addView(endText, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
         endRow.addView(durationText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
                 Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
+        // One accessibility node per row rather than three: the row is what's tappable,
+        // and its description already carries the chip's label and the readout's text.
+        for (View child : new View[]{ startChip, startText, endChip, endText, durationText }) {
+            child.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
         rangeRows.addView(startRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
-                0, 0, 0, 4));
+                0, 0, 0, 2));
         rangeRows.addView(endRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         container.addView(rangeRows, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
-                22, 10, 22, 10));
+                16, 6, 16, 6));
 
         // Strip row: fixed lane labels on the left + shared horizontal scroller.
         LinearLayout stripRow = new LinearLayout(context);
@@ -310,10 +328,11 @@ public final class ChatTimeZoneHoursSheet {
             durationText.setText(ChatTimeZoneRenderer.formatDuration((long) (endStep - startStep) * STEP_MS));
             styleScopeChip(startChip, activeIsStart, rp);
             styleScopeChip(endChip, !activeIsStart, rp);
-            startChip.setContentDescription(edgeDescription(
+            startRow.setContentDescription(edgeDescription(
                     LocaleController.getString(R.string.ChatTimeZoneRangeStart), startLine, activeIsStart));
-            endChip.setContentDescription(edgeDescription(
-                    LocaleController.getString(R.string.ChatTimeZoneRangeEnd), endLine, !activeIsStart));
+            endRow.setContentDescription(edgeDescription(
+                    LocaleController.getString(R.string.ChatTimeZoneRangeEnd),
+                    endLine + ", " + durationText.getText(), !activeIsStart));
             strip.setContentDescription(startLine + " — " + endLine + ", " + durationText.getText());
             strip.setBand(selectedStep[0], pinnedStep[0]);
         };
@@ -407,8 +426,8 @@ public final class ChatTimeZoneHoursSheet {
             refreshReadout.run();
             if (previewUpdater[0] != null) previewUpdater[0].run();
         };
-        startChip.setOnClickListener(v -> { if (selectedStep[0] > pinnedStep[0]) swapEdges.run(); });
-        endChip.setOnClickListener(v -> { if (selectedStep[0] < pinnedStep[0]) swapEdges.run(); });
+        startRow.setOnClickListener(v -> { if (selectedStep[0] > pinnedStep[0]) swapEdges.run(); });
+        endRow.setOnClickListener(v -> { if (selectedStep[0] < pinnedStep[0]) swapEdges.run(); });
 
         final BottomSheet[] sheetRef = new BottomSheet[1];
         if (insertHandler != null) {
