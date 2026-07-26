@@ -3,6 +3,7 @@ package tw.nekomimi.nekogram.ui;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.RectF;
@@ -15,6 +16,9 @@ import androidx.core.graphics.ColorUtils;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 
 /**
  * Zoom control for the round video message recorder: a long precision slider with a paired -/+ rocker
@@ -25,16 +29,12 @@ import org.telegram.ui.Components.CubicBezierInterpolator;
  */
 public class InstantZoomControlView extends View {
 
-    // the -/+ and flip buttons sit on the recorder's message-panel chip, the same background the flash
-    // button uses; a faint rim and a dark-on-light / white-on-dark glyph, brightening a touch on press
-    private static final int CHIP_RIM_COLOR_LIGHT = 0x22000000;
-    private static final int GLYPH_COLOR_LIGHT = 0xCC000000;
-    private static final int CHIP_RIM_COLOR_DARK = 0x22FFFFFF;
-    private static final int GLYPH_COLOR_DARK = 0xFFFFFFFF;
+    // the flash button's glyph is a white lottie multiplied by this blend (see
+    // FlashViews.ImageViewInvertable.setInvert, fed 0.6f by the recorder in a light theme), so reusing the
+    // same number here is what keeps the two rows of controls reading as one set instead of two
+    private static final float LIGHT_GLYPH_INVERT = 0.6f;
 
     private int chipColor;
-    private int chipColorPressed;
-    private int chipRimColor;
     private int glyphColor;
 
     public interface Delegate {
@@ -53,6 +53,12 @@ public class InstantZoomControlView extends View {
     private final Paint chipPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final RectF trackRect = new RectF();
+
+    // one glass chip per button, from the same factory the flash button's background comes from. null
+    // until the recorder hands them over (and stays null wherever there's no blur host), in which case
+    // the buttons fall back to a flat message-panel circle
+    private BlurredBackgroundDrawable minusChip, plusChip, switchChip;
+    private float chipRadius = -1f;
 
     private Delegate delegate;
     private float zoom;
@@ -123,16 +129,27 @@ public class InstantZoomControlView extends View {
     // re-read the recorder's colors so the chips follow a live theme flip (e.g. battery-saver dark
     // mode) instead of keeping the colors captured when the recorder was first built
     public void updateColors(boolean dark, int chipBackgroundColor) {
-        // same background the flash button rides on (the chat's message-panel color), opaque here since
-        // this view can't blur behind itself; pressing lifts it toward the glyph for a bit of feedback
+        // only used when there's no glass chip to draw: a flat message-panel circle, the color the flash
+        // button's background falls back to when blur is off
         chipColor = ColorUtils.setAlphaComponent(chipBackgroundColor, 0xFF);
-        chipRimColor = dark ? CHIP_RIM_COLOR_DARK : CHIP_RIM_COLOR_LIGHT;
-        glyphColor = dark ? GLYPH_COLOR_DARK : GLYPH_COLOR_LIGHT;
-        chipColorPressed = ColorUtils.blendARGB(chipColor, glyphColor, 0.12f);
-        // white glyphs on dark, dark on light, so they read like the recorder's other controls per theme
+        glyphColor = dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, LIGHT_GLYPH_INVERT);
         minusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         plusDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
         switchDrawable.setColorFilter(glyphColor, PorterDuff.Mode.SRC_IN);
+        invalidate();
+    }
+
+    // hands the buttons the recorder's glass background so they match the flash button instead of sitting
+    // on flat circles. one drawable per button since each samples the backdrop under its own spot; called
+    // once, because every create() adds a position subscription that can't be taken back
+    public void setButtonsBackground(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
+        if (minusChip != null) {
+            return;
+        }
+        minusChip = factory.create(this, colorProvider);
+        plusChip = factory.create(this, colorProvider);
+        switchChip = factory.create(this, colorProvider);
+        chipRadius = -1f;
         invalidate();
     }
 
@@ -436,24 +453,49 @@ public class InstantZoomControlView extends View {
             knob.setBounds((int) knobX - knobHalf, (int) trackY - knobHalf, (int) knobX + knobHalf, (int) trackY + knobHalf);
             knob.draw(canvas);
 
-            drawButton(canvas, minusDrawable, minusAccent, minusCx, glyphHalf);
-            drawButton(canvas, plusDrawable, plusAccent, plusCx, glyphHalf);
+            drawButton(canvas, minusDrawable, minusAccent, minusChip, minusCx, glyphHalf);
+            drawButton(canvas, plusDrawable, plusAccent, plusChip, plusCx, glyphHalf);
         }
-        drawButton(canvas, switchDrawable, switchAccent, switchCx, switchGlyphHalf);
+        drawButton(canvas, switchDrawable, switchAccent, switchChip, switchCx, switchGlyphHalf);
     }
 
-    private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, float cx, float glyphHalfPx) {
-        final float radius = buttonRadius * accent.scale;
-        chipPaint.setColor(ColorUtils.blendARGB(chipColor, chipColorPressed, accent.fill));
-        canvas.drawCircle(cx, buttonCy, radius, chipPaint);
-        ringPaint.setColor(chipRimColor);
-        canvas.drawCircle(cx, buttonCy, radius, ringPaint);
+    private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, BlurredBackgroundDrawable chip, float cx, float glyphHalfPx) {
+        final int radius = Math.round(buttonRadius);
+        // the press bounce runs through the canvas instead of the chip's own radius: re-cutting the glass
+        // drawable's geometry every frame would rebuild its render node (and, with blur off, its nine-patch)
+        canvas.save();
+        if (accent.scale != 1f) {
+            canvas.scale(accent.scale, accent.scale, cx, buttonCy);
+        }
+        if (chip != null) {
+            final int icx = Math.round(cx), icy = Math.round(buttonCy);
+            chip.setBounds(icx - radius, icy - radius, icx + radius, icy + radius);
+            if (chipRadius != radius) {
+                chipRadius = radius;
+                minusChip.setRadius(radius);
+                plusChip.setRadius(radius);
+                switchChip.setRadius(radius);
+            }
+            chip.draw(canvas);
+        } else {
+            // no glass to sit on (the stories recorder never hands one over), so keep the flat circle plus
+            // the faint rim that stops it vanishing into a backdrop of the same color
+            chipPaint.setColor(chipColor);
+            canvas.drawCircle(cx, buttonCy, radius, chipPaint);
+            ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, 0x22));
+            canvas.drawCircle(cx, buttonCy, radius, ringPaint);
+        }
+        if (accent.fill > 0f) {
+            chipPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x1F * accent.fill)));
+            canvas.drawCircle(cx, buttonCy, radius, chipPaint);
+        }
         if (accent.ring > 0f) {
             ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x99 * accent.ring)));
             canvas.drawCircle(cx, buttonCy, radius, ringPaint);
         }
-        final int gh = (int) (glyphHalfPx * accent.scale);
+        final int gh = (int) glyphHalfPx;
         glyph.setBounds((int) cx - gh, (int) (buttonCy - gh), (int) cx + gh, (int) (buttonCy + gh));
         glyph.draw(canvas);
+        canvas.restore();
     }
 }

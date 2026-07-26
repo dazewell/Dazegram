@@ -444,6 +444,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         drawable.setPadding(dp(6));
         drawable.setRadius(dp(21));
         buttonsLayout.setBackground(drawable);
+        zoomControlView.setButtonsBackground(factory, colorProvider);
     }
 
     private Boolean wasFlashing;
