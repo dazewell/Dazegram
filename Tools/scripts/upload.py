@@ -154,7 +154,7 @@ async def main():
     await send_to_channel(client, chat_id)
     if metadata_chat_id:
         await send_metadata(client, metadata_chat_id)
-    await client.log_out()
+    await client.stop()
 
 if __name__ == "__main__":
     from asyncio import run
