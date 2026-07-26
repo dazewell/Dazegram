@@ -3,7 +3,9 @@ name: Staging build
 # The single build + Telegram-upload pipeline. Runs on every push to dev and
 # on pull requests into dev (a PR run builds the dev + branch merge ref, so it
 # doubles as the on-device preview). Doc-only and .github-only changes are
-# skipped. Upload always happens — there is no skip switch.
+# skipped. Upload always happens — there is no skip switch. A newer push
+# supersedes an older in-flight build on the same branch or PR (see the build
+# job's concurrency group).
 
 on:
   push:
@@ -30,6 +32,15 @@ jobs:
   build:
     name: Gradle Build (${{ matrix.package }})
     runs-on: ubuntu-latest
+    # Drop an older run on the same branch/PR rather than building it out: a
+    # few rounds of review each shipped their own pair of APKs, which is what
+    # trips the bot's flood limit. The matrix leg is part of the group because
+    # a job-level group is otherwise shared by the whole matrix, so the two
+    # packages would cancel each other. Only the build is cancellable, so a run
+    # that already reached the upload step still posts both variants.
+    concurrency:
+      group: staging-${{ github.event.pull_request.number || github.ref }}-${{ matrix.package }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -67,6 +78,9 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
+          # Without a fallback, editing any build file means a cold cache and a
+          # full dependency re-download.
+          restore-keys: gradle-
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:

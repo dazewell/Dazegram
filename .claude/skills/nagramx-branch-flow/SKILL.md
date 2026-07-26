@@ -295,7 +295,15 @@ One workflow builds and uploads. It runs on:
 
 Upload always happens (no skip switch). Doc-only and `.github`-only changes are
 skipped via `paths-ignore` (with an exception so edits to `staging.yml` itself
-still build). The upload step also posts an **AI commit summary** (GitHub Models
+still build). A push onto a branch or PR that already has a build running
+**supersedes** it: the `build` job carries a `concurrency` group keyed on the
+branch/PR (plus the matrix package, since a job-level group is otherwise shared
+across the whole matrix) with `cancel-in-progress`, so several rounds of review
+no longer ship a pair of APKs each and trip Telegram's flood limit. Only the
+build is cancellable, so a run that already reached the upload step finishes
+posting. Nothing is lost from the changelog either: the AI summary spans commits
+since the last *successful* run, so a superseded build's commits fold into the
+next one. The upload step also posts an **AI commit summary** (GitHub Models
 via `GITHUB_TOKEN`, `models: read`) of the commits since the last successful
 build on that branch; `Tools/scripts/upload.py` folds it into the Telegram
 caption, trimming the commit message before the summary so the summary always
