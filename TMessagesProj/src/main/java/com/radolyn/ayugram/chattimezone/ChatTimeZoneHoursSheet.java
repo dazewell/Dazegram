@@ -250,28 +250,16 @@ public final class ChatTimeZoneHoursSheet {
         // Seed the readout for "now" before the first layout gives the scroller a width.
         refreshReadout.run();
 
-        // Pad the scroller by half its viewport on each side so every step — including
-        // the very first and last — can be scrolled under the centered cursor. Only
-        // the first layout has a width to compute that from, and the padding it sets
-        // moves the strip on the *next* pass, so the opening recenter waits for the
-        // pass where the strip's origin already reflects it. The listener stays
-        // registered to re-apply the padding if the sheet is ever laid out at a new
-        // width, but centers once: re-centering later would yank the plot out from
-        // under a drag.
+        // Open with "now" under the cursor. Deferred to layout, when the scroller
+        // finally has a width to center against, and only marked done once the
+        // scroll sticks; re-centering after that would yank the plot out from under
+        // a drag.
         final boolean[] centered = { false };
         scroller.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            int pad = scroller.getWidth() / 2;
-            if (pad <= 0) {
-                return;
-            }
-            if (scroller.getPaddingLeft() != pad) {
-                scroller.setClipToPadding(false);
-                scroller.setPadding(pad, 0, pad, 0);
-                return;
-            }
-            if (!centered[0]) {
-                centered[0] = true;
-                scroller.scrollTo(centerScrollFor(strip, scroller, nowStep), 0);
+            if (!centered[0] && scroller.getWidth() > 0) {
+                int target = centerScrollFor(strip, scroller, nowStep);
+                scroller.scrollTo(target, 0);
+                centered[0] = scroller.getScrollX() == target;
             }
             syncSelection.run();
         });
@@ -638,10 +626,10 @@ public final class ChatTimeZoneHoursSheet {
     // ---------- the strip ----------
 
     /**
-     * Content x sitting under the fixed cursor. Derived from the strip's laid-out
-     * origin rather than from the half-viewport padding the scroller is supposed to
-     * carry: if that padding lands late or not at all, reading the raw scroll offset
-     * tracks the scroller's left edge instead of the line the user is aiming with.
+     * Content x sitting under the fixed cursor, measured from the strip's own
+     * laid-out origin. Reading the raw scroll offset instead only holds while the
+     * scroller's half-viewport padding is really in place, and puts every reading
+     * half a viewport off the line the user is aiming with the moment it isn't.
      */
     private static float centerContentX(HourStripView strip, CenterScrollView scroller) {
         return scroller.getScrollX() + scroller.getWidth() / 2f - strip.getLeft();
@@ -830,6 +818,24 @@ public final class ChatTimeZoneHoursSheet {
         CenterScrollView(Context context) {
             super(context);
             setHorizontalScrollBarEnabled(false);
+        }
+
+        /**
+         * Carry half a viewport of padding on each side so the first and last steps
+         * can still be scrolled under the center cursor. It's taken here, off the
+         * measured width, because the strip then gets laid out against it in the same
+         * pass: setting it from a layout callback instead asks for a relayout that
+         * this view's own layout() throws away, leaving the padding counted but the
+         * strip still sitting at x=0.
+         */
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            int pad = getMeasuredWidth() / 2;
+            if (pad > 0 && getPaddingLeft() != pad) {
+                setClipToPadding(false);
+                setPadding(pad, 0, pad, 0);
+            }
         }
 
         /** Hands the next motion over to code: recentering on top of a live fling shouldn't buzz. */
