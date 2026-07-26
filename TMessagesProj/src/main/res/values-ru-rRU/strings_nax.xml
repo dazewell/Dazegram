@@ -347,4 +347,16 @@
     <string name="ChatTimeZoneTemplateReset">Сбросить по умолчанию</string>
     <string name="ChatTimeZoneTemplateSave">Сохранить</string>
     <string name="ChatTimeZoneTemplateSaved">Формат сообщения сохранён</string>
+    <string name="ChatTimeZoneInsertRangePattern">%1$s моё время (%2$s твоё время)</string>
+    <string name="ChatTimeZoneRange">Интервал</string>
+    <string name="ChatTimeZoneRangeStart">Начало</string>
+    <string name="ChatTimeZoneRangeEnd">Конец</string>
+    <string name="ChatTimeZoneTemplateRange">Формат сообщения · Интервал</string>
+    <string name="ChatTimeZoneRangeTemplateHint">Введите формат интервала\u2026</string>
+    <string name="ChatTimeZoneRangeTemplateSaved">Формат интервала сохранён</string>
+    <string name="ChatTimeZoneAccRangeOn">Выбор интервала, включён</string>
+    <string name="ChatTimeZoneAccRangeOff">Выбор интервала, выключен</string>
+    <string name="ChatTimeZoneAccEdgeSelected">%1$s, выбрано. %2$s</string>
+    <string name="ChatTimeZoneAccEdgeUnselected">%1$s, %2$s. Нажмите дважды, чтобы выбрать</string>
+    <string name="ChatTimeZoneAccNowEdge">Переместить выбранную границу на текущее время</string>
 </resources>
