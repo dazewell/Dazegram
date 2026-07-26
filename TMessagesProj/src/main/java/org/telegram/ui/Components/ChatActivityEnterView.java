@@ -11942,6 +11942,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (recordCircle != null) {
             recordCircle.updateColors();
         }
+        // NagramX: the once/pause chips own a color provider that only refreshes from here, so leaving
+        // controlsView out of this list left them on the old theme's colors after a live dark-mode flip
+        if (controlsView != null) {
+            controlsView.updateColors();
+            controlsView.invalidate();
+        }
         if (recordDot != null) {
             recordDot.updateColors();
         }
