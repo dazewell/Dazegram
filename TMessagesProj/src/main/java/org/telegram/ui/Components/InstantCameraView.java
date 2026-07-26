@@ -836,15 +836,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         if (!fromPaused) {
-            cameraFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_DOCUMENT), System.currentTimeMillis() + "_" + SharedConfig.getLastLocalId() + ".mp4") {
-                @Override
-                public boolean delete() {
-                    if (BuildVars.LOGS_ENABLED) {
-                        FileLog.e("delete camera file");
-                    }
-                    return super.delete();
-                }
-            };
+            cameraFile = generateCameraFile();
         }
 
         SharedConfig.saveConfig();
@@ -1194,6 +1186,74 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 MediaController.getInstance().requestRecordAudioFocus(false);
             }
         }
+    }
+
+    // NagramX: same cache file the recorder starts with, so an infinite-mode rollover can open the next one
+    private File generateCameraFile() {
+        return new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_DOCUMENT), System.currentTimeMillis() + "_" + SharedConfig.getLastLocalId() + ".mp4") {
+            @Override
+            public boolean delete() {
+                if (BuildVars.LOGS_ENABLED) {
+                    FileLog.e("delete camera file");
+                }
+                return super.delete();
+            }
+        };
+    }
+
+    // NagramX: infinite video message: wrap the current segment up, send it, and keep recording into the
+    // next file. The camera, the encoders and the audio record all stay running, so nothing is lost at the
+    // boundary beyond the frames it takes the encoder to produce a keyframe.
+    public void rollOverSegment(boolean notify, int ttl, long effectId, long stars) {
+        if (cameraThread == null || videoEncoder == null || !recording || cancelled) {
+            return;
+        }
+        final long segmentDuration = recordedTime;
+        final File nextFile = generateCameraFile();
+        AutoDeleteMediaTask.lockFile(nextFile);
+        // the finished segment is still being written when we get here, so its upload can't have completed
+        // yet and these carry nothing worth keeping: hand them straight to the next segment
+        cameraFile = nextFile;
+        file = null;
+        encryptedFile = null;
+        key = null;
+        iv = null;
+        size = 0;
+        videoEncoder.rollOver(nextFile, segmentDuration, new SendOptions(notify, 0, 0, ttl, effectId, stars));
+        recordPlusTime = 0;
+        recordStartTime = System.currentTimeMillis();
+        recordedTime = 0;
+        progress = 0;
+        invalidate();
+    }
+
+    // NagramX: send a finished infinite-mode segment as its own round message. Mirrors the normal round-video
+    // send: the file is handed over while its upload is still being finalised, same as a user-stopped one.
+    private VideoEditedInfo sendSegment(File segmentFile, long duration, SendOptions options) {
+        if (delegate == null) {
+            return null;
+        }
+        VideoEditedInfo info = new VideoEditedInfo();
+        info.startTime = -1;
+        info.endTime = -1;
+        info.roundVideo = true;
+        info.estimatedSize = Math.max(1, segmentFile.length());
+        info.estimatedDuration = duration;
+        info.framerate = 25;
+        info.resultWidth = info.originalWidth = 360;
+        info.resultHeight = info.originalHeight = 360;
+        info.originalPath = segmentFile.getAbsolutePath();
+        info.notReadyYet = true;
+        if (textureView != null) {
+            info.thumb = textureView.getBitmap();
+        }
+        MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, segmentFile.getAbsolutePath(), 0, true, 0, 0, 0);
+        if (options != null) {
+            entry.ttl = options.ttl;
+            entry.effectId = options.effectId;
+        }
+        delegate.sendMediaKeepRecording(entry, info, options == null || options.notify, options != null ? options.stars : 0);
+        return info;
     }
 
     private void saveLastCameraBitmap() {
@@ -2184,6 +2244,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private static final int MSG_AUDIOFRAME_AVAILABLE = 3;
     private static final int MSG_PAUSE_RECORDING = 4;
     private static final int MSG_RESUME_RECORDING = 5;
+    private static final int MSG_ROLLOVER_RECORDING = 6; // NagramX
 
     private static class EncoderHandler extends Handler {
         private WeakReference<VideoRecorder> mWeakEncoder;
@@ -2235,6 +2296,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         FileLog.e("InstantCamera resume encoder");
                     }
                     encoder.handleResumeRecording();
+                    break;
+                }
+                case MSG_ROLLOVER_RECORDING: {
+                    if (BuildVars.LOGS_ENABLED) {
+                        FileLog.e("InstantCamera roll encoder over to the next segment");
+                    }
+                    encoder.handleRollover(inputMessage.arg1, (SendOptions) inputMessage.obj);
                     break;
                 }
                 case MSG_VIDEOFRAME_AVAILABLE: {
@@ -2325,6 +2393,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private ArrayList<AudioBufferInfo> buffersToWrite = new ArrayList<>();
         private int videoTrackIndex = -5;
         private int audioTrackIndex = -5;
+        // NagramX: kept so a segment rollover can re-add both tracks to the next file's muxer
+        private MediaFormat videoTrackFormat;
+        private MediaFormat audioTrackFormat;
+        private volatile File rolloverFile;
+        private boolean waitingForSyncFrame;
 
         private long lastCommitedFrameTime;
         private long audioStartTime = -1;
@@ -2556,6 +2629,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         public void resume() {
             handler.sendMessage(handler.obtainMessage(MSG_RESUME_RECORDING));
+        }
+
+        // NagramX: infinite video message
+        public void rollOver(File nextFile, long duration, SendOptions options) {
+            rolloverFile = nextFile;
+            handler.sendMessage(handler.obtainMessage(MSG_ROLLOVER_RECORDING, (int) duration, 0, options));
         }
 
         long prevTimestamp;
@@ -2993,6 +3072,173 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             pauseRecorder = false;
         }
 
+        // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next
+        // one on the same encoders. Nothing is stopped or released here, so the camera never blinks.
+        private void handleRollover(long segmentDuration, SendOptions sendOptions) {
+            final File nextFile = rolloverFile;
+            if (!running || pauseRecorder || cancelled || mediaMuxer == null || nextFile == null) {
+                if (nextFile != null) {
+                    rolloverFile = null;
+                    // the UI side already pointed cameraFile at the file we're not going to open, so put it
+                    // back on the one still being written or a later send would reach for something empty
+                    final File stillWriting = videoFile;
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (cameraFile == nextFile) {
+                            cameraFile = stillWriting;
+                        }
+                        AutoDeleteMediaTask.unlockFile(nextFile);
+                    });
+                }
+                return;
+            }
+            try {
+                drainEncoder(false);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            finishMuxer();
+            final File segmentFile = videoFile;
+            final boolean segmentFirstWrite = videoConvertFirstWrite;
+            AndroidUtilities.runOnUIThread(() -> {
+                VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
+                if (info != null) {
+                    info.notReadyYet = false;
+                }
+                // the segment is complete on disk, so whatever the streaming upload managed during the
+                // recording just needs closing off
+                if (segmentFirstWrite) {
+                    FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
+                }
+                FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
+            });
+
+            videoFile = nextFile;
+            rolloverFile = null;
+            videoConvertFirstWrite = true;
+            firstEncode = true;
+            videoTrackIndex = -5;
+            audioTrackIndex = -5;
+            // the thumb list is written from the UI thread, so let it do the clearing too
+            AndroidUtilities.runOnUIThread(keyframeThumbs::clear);
+            frameCount = 0;
+            try {
+                createMuxer();
+                if (videoTrackFormat != null) {
+                    videoTrackIndex = mediaMuxer.addTrack(videoTrackFormat, false);
+                }
+                if (audioTrackFormat != null) {
+                    audioTrackIndex = mediaMuxer.addTrack(audioTrackFormat, true);
+                }
+            } catch (Exception e) {
+                FileLog.e(e);
+                // no muxer means there is nowhere to put the next segment, so stop the whole recording
+                // instead of filming into a file that can never be finished. The segment that was just
+                // handed off is already on its way and is not affected.
+                mediaMuxer = null;
+                AndroidUtilities.runOnUIThread(() -> cancel(false));
+                return;
+            }
+            // whatever is already in the encoder still refers to the previous file's frames
+            waitingForSyncFrame = true;
+            try {
+                android.os.Bundle params = new android.os.Bundle();
+                params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
+                videoEncoder.setParameters(params);
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            // the encoder clocks have to keep running forward, but the audio re-syncs to the next segment's
+            // first video frame the same way it does after a pause: that also rebases the 60s audio cut-off,
+            // which is measured from audioStartTime and would otherwise truncate the last segment
+            prevVideoLast = videoLast + videoLastDt;
+            prevAudioLast = audioLast + audioLastDt;
+            firstVideoFrameSincePause = true;
+            lastTimestamp = -1;
+            lastCommitedFrameTime = 0;
+            audioStartTime = -1;
+            audioFirst = -1;
+            videoFirst = -1;
+            videoLast = -1;
+            videoDiff = -1;
+            audioLast = -1;
+            desyncTime = 0;
+        }
+
+        // NagramX: pulled out of prepareEncoder so a rollover opens the next segment's movie the same way
+        private void createMuxer() throws Exception {
+            fileToWrite = videoFile;
+            writingToDifferentFile = false;
+            if (ImageLoader.isSdCardPath(videoFile)) {
+                try {
+                    fileToWrite = new File(ApplicationLoader.getFilesDirFixed(), "camera_tmp.mp4");
+                    if (fileToWrite.exists()) {
+                        fileToWrite.delete();
+                    }
+                    writingToDifferentFile = true;
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                    fileToWrite = videoFile;
+                    writingToDifferentFile = false;
+                }
+            }
+            Mp4Movie movie = new Mp4Movie();
+            movie.setCacheFile(fileToWrite);
+            movie.setRotation(0);
+            movie.setSize(videoWidth, videoHeight);
+            mediaMuxer = new MP4Builder().createMovie(movie, isSecretChat, false);
+            mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
+        }
+
+        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way
+        private void finishMuxer() {
+            if (mediaMuxer == null) {
+                return;
+            }
+            if (WRITE_TO_FILE_IN_BACKGROUND) {
+                CountDownLatch countDownLatch = new CountDownLatch(1);
+                fileWriteQueue.postRunnable(() -> {
+                    try {
+                        mediaMuxer.finishMovie();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    countDownLatch.countDown();
+                });
+                try {
+                    countDownLatch.await();
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                try {
+                    mediaMuxer.finishMovie();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+            FileLog.d("InstantCamera finish muxer " + videoFile);
+            if (writingToDifferentFile) {
+                if (videoFile.exists()) {
+                    try {
+                        videoFile.delete();
+                    } catch (Exception e) {
+                        FileLog.e("InstantCamera copying fileToWrite to videoFile, deleting videoFile error " + videoFile);
+                        FileLog.e(e);
+                    }
+                }
+                if (!fileToWrite.renameTo(videoFile)) {
+                    FileLog.e("InstantCamera unable to rename file, try move file");
+                    try {
+                        AndroidUtilities.copyFile(fileToWrite, videoFile);
+                        fileToWrite.delete();
+                    } catch (IOException e) {
+                        FileLog.e(e);
+                        FileLog.e("InstantCamera unable to move file");
+                    }
+                }
+            }
+        }
+
         private void setupVideoPlayer(File file) {
             videoPlayer = new VideoPlayer();
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
@@ -3144,49 +3390,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewFile = null;
             }
             if (mediaMuxer != null) {
-                if (WRITE_TO_FILE_IN_BACKGROUND) {
-                    CountDownLatch countDownLatch = new CountDownLatch(1);
-                    fileWriteQueue.postRunnable(() -> {
-                        try {
-                            mediaMuxer.finishMovie();
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                        countDownLatch.countDown();
-                    });
-                    try {
-                        countDownLatch.await();
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    try {
-                        mediaMuxer.finishMovie();
-                    } catch (Exception e) {
-                        FileLog.e(e);
-                    }
-                }
-                FileLog.d("InstantCamera handleStopRecording finish muxer");
-                if (writingToDifferentFile) {
-                    if (videoFile.exists()) {
-                        try {
-                            videoFile.delete();
-                        } catch (Exception e) {
-                            FileLog.e("InstantCamera copying fileToWrite to videoFile, deleting videoFile error " + videoFile);
-                            FileLog.e(e);
-                        }
-                    }
-                    if (!fileToWrite.renameTo(videoFile)) {
-                        FileLog.e("InstantCamera unable to rename file, try move file");
-                        try {
-                            AndroidUtilities.copyFile(fileToWrite, videoFile);
-                            fileToWrite.delete();
-                        } catch (IOException e) {
-                            FileLog.e(e);
-                            FileLog.e("InstantCamera unable to move file");
-                        }
-                    }
-                }
+                finishMuxer();
             }
             if (send != 2) {
                 DispatchQueue queue = generateKeyframeThumbsQueue;
@@ -3416,27 +3620,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEncoder.start();
 
                 if (!fromPause) {
-                    boolean isSdCard = ImageLoader.isSdCardPath(videoFile);
-                    fileToWrite = videoFile;
-                    if (isSdCard) {
-                        try {
-                            fileToWrite = new File(ApplicationLoader.getFilesDirFixed(), "camera_tmp.mp4");
-                            if (fileToWrite.exists()) {
-                                fileToWrite.delete();
-                            }
-                            writingToDifferentFile = true;
-                        } catch (Throwable e) {
-                            FileLog.e(e);
-                            fileToWrite = videoFile;
-                            writingToDifferentFile = false;
-                        }
-                    }
-                    Mp4Movie movie = new Mp4Movie();
-                    movie.setCacheFile(fileToWrite);
-                    movie.setRotation(0);
-                    movie.setSize(videoWidth, videoHeight);
-                    mediaMuxer = new MP4Builder().createMovie(movie, isSecretChat, false);
-                    mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
+                    createMuxer();
                 }
 
                 AndroidUtilities.runOnUIThread(() -> {
@@ -3580,6 +3764,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         public void drainEncoder(boolean endOfStream) throws Exception {
+            // NagramX: a failed rollover leaves no muxer behind; there is nothing to drain into
+            if (mediaMuxer == null) {
+                return;
+            }
             if (endOfStream) {
                 videoEncoder.signalEndOfInputStream();
             }
@@ -3596,6 +3784,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     MediaFormat newFormat = videoEncoder.getOutputFormat();
                     if (videoTrackIndex == -5) {
                         videoTrackIndex = mediaMuxer.addTrack(newFormat, false);
+                        videoTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
                         if (newFormat.containsKey(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES) && newFormat.getInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES) == 1) {
                             ByteBuffer spsBuff = newFormat.getByteBuffer("csd-0");
                             ByteBuffer ppsBuff = newFormat.getByteBuffer("csd-1");
@@ -3607,6 +3796,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     encodedData = videoEncoder.getOutputBuffer(encoderStatus);
                     if (encodedData == null) {
                         throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
+                    }
+                    // NagramX: right after a rollover the encoder is still emitting frames that reference the
+                    // previous file's keyframe: they'd be unplayable at the head of the new one, so drop them
+                    // until the sync frame we asked for shows up
+                    if (waitingForSyncFrame && (videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                        if ((videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+                            waitingForSyncFrame = false;
+                        } else {
+                            videoBufferInfo.size = 0;
+                        }
                     }
                     if (videoBufferInfo.size > 1) {
                         if ((videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
@@ -3684,6 +3883,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                                 newFormat.setByteBuffer("csd-1", pps);
                             }
                             videoTrackIndex = mediaMuxer.addTrack(newFormat, false);
+                            videoTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
                         }
                     }
                     videoEncoder.releaseOutputBuffer(encoderStatus, false);
@@ -3704,6 +3904,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     MediaFormat newFormat = audioEncoder.getOutputFormat();
                     if (audioTrackIndex == -5) {
                         audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
+                        audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
                     }
                 } else if (encoderStatus >= 0) {
                     ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
@@ -4278,6 +4479,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         View getFragmentView();
         void sendMedia(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean b1, long stars);
+
+        // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
+        // sendMedia treats a round video as the end of the session and tears the camera down 3s later.
+        default void sendMediaKeepRecording(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+            sendMedia(entry, videoEditedInfo, notify, 0, 0, false, stars);
+        }
         Activity getParentActivity();
         int getClassGuid();
         long getDialogId();

@@ -845,6 +845,10 @@ public class ChatActivity extends BaseFragment implements
     private int convertingToastMessageId;
 
     public ArrayList<MessageObject> animatingMessageObjects = new ArrayList<>();
+    // NagramX: attach paths of infinite video message segments sent while the camera is still running.
+    // Those bubbles must not become the target of the fly-the-camera-into-the-message transition, which
+    // ends by destroying the camera; only the final segment is the real end of the session.
+    private final HashSet<String> keepRecordingSegmentPaths = new HashSet<>();
     private final HashMap<TLRPC.Document, Integer> animatingDocuments = new HashMap<>();
     private MessageObject needAnimateToMessage;
 
@@ -2664,6 +2668,9 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
                 } else if (state == 2 || state == 5) {
                     instantCameraView.cancel(state == 2);
+                } else if (state == 6) {
+                    // NagramX: infinite video message hit the 60s cap, roll over to the next segment
+                    instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
                 }
             }
         }
@@ -27051,7 +27058,7 @@ public class ChatActivity extends BaseFragment implements
                 } else if (currentChat != null && currentChat.megagroup && (action instanceof TLRPC.TL_messageActionChatAddUser || action instanceof TLRPC.TL_messageActionChatDeleteUser)) {
                     reloadMegagroup = true;
                 }
-                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED) {
+                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && !isKeepRecordingSegment(obj)) {
                     needAnimateToMessage = obj;
                 }
                 if (obj.isOut() && obj.wasJustSent) {
@@ -27224,7 +27231,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 addToPolls(obj, null);
-                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && (chatMode != MODE_QUICK_REPLIES || messages.size() + 1 < getMessagesController().quickReplyMessagesLimit)) {
+                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && !isKeepRecordingSegment(obj) && (chatMode != MODE_QUICK_REPLIES || messages.size() + 1 < getMessagesController().quickReplyMessagesLimit)) {
                     animatingMessageObjects.add(obj);
                 }
 
@@ -37800,7 +37807,30 @@ public class ChatActivity extends BaseFragment implements
         }, stars);
     }
 
+    // NagramX: infinite video message rollover. Skips what sendMedia does around the actual send
+    // (the round-camera visibility flip, beforeMessageSend, the delayed close animation): the recorder
+    // is still running, so treating this as the end of the session would kill it mid-flight.
+    @Override
+    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+        if (photoEntry == null) {
+            return;
+        }
+        if (photoEntry.path != null) {
+            keepRecordingSegmentPaths.add(photoEntry.path);
+        }
+        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, quickReplyShortcut, getQuickReplyId(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        afterMessageSend();
+    }
+
+    // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
+    // send animation is only ever classified once per message.
+    private boolean isKeepRecordingSegment(MessageObject obj) {
+        return !keepRecordingSegmentPaths.isEmpty() && obj != null && obj.messageOwner != null
+                && keepRecordingSegmentPaths.remove(obj.messageOwner.attachPath);
+    }
+
     private void runCloseInstantCameraAnimation() {
+        keepRecordingSegmentPaths.clear();
         if (instantCameraView == null) {
             return;
         }

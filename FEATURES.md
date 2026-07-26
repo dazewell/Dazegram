@@ -107,6 +107,12 @@ A mute button next to the playback-mode toggle silences round video messages whi
 
 When camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. It's the same setting you'd find in Settings, so it sticks across recordings.
 
+### Infinite video message <!-- #infinite-video -->
+
+Round video messages stop dead at 60 seconds, which is annoying when you're mid-sentence. With camera mode set to Ask, the camera choice popup has an *Infinite Recording* toggle under the microphone one. Turn it on and the 60-second mark stops being a wall: the recorder closes off that minute, sends it as its own round message, and carries straight on into the next one. The camera doesn't blink and the mic never restarts, so a Bluetooth headset stays connected through the handover. You stop it the normal way, by lifting your finger or tapping send, and the last piece goes through like any other video message. There's a ceiling of ten minutes, after which it stops on its own and leaves the final piece in the preview for you.
+
+Unlike the microphone toggle, this one is off every time you start a recording. It keeps sending on its own, so it should be a decision you make each time rather than something you forget is on. It's also greyed out where sending unattended wouldn't work: slow mode, paid messages, scheduled messages, secret chats, and when view-once is armed. If you arm view-once or slow mode kicks in partway through, the recording just stops at the next minute the way it normally would.
+
 ### Smoother video message zoom <!-- #video-zoom -->
 
 The zoom control under the round video camera was rebuilt with a full-range slider and a − / + pair that steps the zoom one notch at a time (hold to keep going). Two flags live in NagramX chat settings, under Camera: *Reset zoom when switching cameras* starts the zoom fresh each time you flip cameras instead of carrying it over, and *Hardware smooth zoom* hands the animation to the camera itself for a smoother glide — the app checks whether your phone supports it when you flip it on.
