@@ -37802,6 +37802,18 @@ public class ChatActivity extends BaseFragment implements
         }, stars);
     }
 
+    // NagramX: infinite video message rollover. Skips what sendMedia does around the actual send
+    // (the round-camera visibility flip, beforeMessageSend, the delayed close animation): the recorder
+    // is still running, so treating this as the end of the session would kill it mid-flight.
+    @Override
+    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+        if (photoEntry == null) {
+            return;
+        }
+        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, quickReplyShortcut, getQuickReplyId(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        afterMessageSend();
+    }
+
     private void runCloseInstantCameraAnimation() {
         if (instantCameraView == null) {
             return;

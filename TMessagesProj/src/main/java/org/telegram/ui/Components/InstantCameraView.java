@@ -1251,7 +1251,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             entry.ttl = options.ttl;
             entry.effectId = options.effectId;
         }
-        delegate.sendMedia(entry, info, options == null || options.notify, 0, 0, false, options != null ? options.stars : 0);
+        delegate.sendMediaKeepRecording(entry, info, options == null || options.notify, options != null ? options.stars : 0);
         return info;
     }
 
@@ -4446,6 +4446,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         View getFragmentView();
         void sendMedia(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean b1, long stars);
+
+        // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
+        // sendMedia treats a round video as the end of the session and tears the camera down 3s later.
+        default void sendMediaKeepRecording(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+            sendMedia(entry, videoEditedInfo, notify, 0, 0, false, stars);
+        }
         Activity getParentActivity();
         int getClassGuid();
         long getDialogId();
