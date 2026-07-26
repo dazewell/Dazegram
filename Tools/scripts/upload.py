@@ -12,10 +12,8 @@ api_hash = os.environ.get("APP_HASH")
 artifacts_path = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 
-def find_apk(abi: str) -> Path:
-    for apk in artifacts_path.rglob("*.apk"):
-        if abi in apk.name:
-            return apk
+def find_apk(abi: str) -> Path | None:
+    return next((apk for apk in artifacts_path.rglob("*.apk") if abi in apk.name), None)
 
 def get_commit_info():
     commit_id_raw = os.environ.get("COMMIT_ID") or "unknown"
@@ -71,8 +69,8 @@ def get_document() -> list["InputMediaDocument"]:
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
     documents[-1].caption = base_caption + ai_summary
-    print(documents)
     return documents
+
 def get_metadata():
     commit_id = "<code>" + (os.environ.get("COMMIT_ID") or "unknown")[:7] + "</code>"
     commit_message = "<code>" + (os.environ.get("COMMIT_MESSAGE") or "unknown") + "</code>"
@@ -113,20 +111,26 @@ def normalize_message(text: str) -> str:
 
 def retry(func):
     async def wrapper(*args, **kwargs):
-        for _ in range(3):
+        for attempt in range(3):
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
                 print(e)
+                if attempt == 2:
+                    raise
     return wrapper
 
 @retry
 async def send_to_channel(client: "Client", cid: str):
     with contextlib.suppress(ValueError):
         cid = int(cid)
+    documents = get_document()
+    print("Uploading to Telegram:", flush=True)
+    for document in documents:
+        print(f"- {document.media}", flush=True)
     await client.send_media_group(
         cid,
-        media = get_document(),
+        media = documents,
     )
 
 @retry

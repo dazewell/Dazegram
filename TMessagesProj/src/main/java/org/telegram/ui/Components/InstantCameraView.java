@@ -1878,9 +1878,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         public void finish() {
+            initied = false;
             if (cameraSurface != null) {
                 for (int a = 0; a < 2; ++a) {
                     if (cameraSurface[a] != null) {
+                        cameraSurface[a].setOnFrameAvailableListener(null);
                         cameraSurface[a].release();
                         cameraSurface[a] = null;
                     }
@@ -1938,7 +1940,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         private void onDraw(Integer cameraId, boolean updateTexImage1, boolean updateTexImage2) {
-            if (!initied) {
+            if (!initied || !this.cameraId.equals(cameraId)) {
                 return;
             }
 
@@ -1950,11 +1952,22 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     return;
                 }
             }
-            if (updateTexImage1) {
-                cameraSurface[0].updateTexImage();
-            }
-            if (updateTexImage2) {
-                cameraSurface[1].updateTexImage();
+            try {
+                if (updateTexImage1) {
+                    if (cameraSurface[0] == null) {
+                        return;
+                    }
+                    cameraSurface[0].updateTexImage();
+                }
+                if (updateTexImage2) {
+                    if (cameraSurface[1] == null) {
+                        return;
+                    }
+                    cameraSurface[1].updateTexImage();
+                }
+            } catch (RuntimeException e) {
+                FileLog.e(e);
+                return;
             }
 
             boolean captureFirstFrameThumb = false;
@@ -2151,6 +2164,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         public void shutdown(int send, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId) {
             Handler handler = getHandler();
             if (handler != null) {
+                handler.removeMessages(DO_RENDER_MESSAGE);
                 sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0)), 0);
             }
         }

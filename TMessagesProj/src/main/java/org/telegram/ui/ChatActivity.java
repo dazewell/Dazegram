@@ -138,6 +138,7 @@ import com.google.zxing.common.detector.MathUtils;
 
 import com.radolyn.ayugram.AyuConstants;
 import com.radolyn.ayugram.AyuUtils;
+import com.radolyn.ayugram.database.AyuData;
 import com.radolyn.ayugram.messages.AyuMessagesController;
 import com.radolyn.ayugram.messages.AyuSavePreferences;
 import com.radolyn.ayugram.proprietary.AyuHistoryHook;
@@ -3997,6 +3998,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public View createView(Context context) {
         Timer t = Timer.create("ChatActivity.createView");
+        ChatsHelper chatsHelper = ChatsHelper.getInstance(currentAccount);
 
         blurredBackgroundColorProvider = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_chat_messagePanelBackground) {
             @Override
@@ -4769,7 +4771,7 @@ public class ChatActivity extends BaseFragment implements
         });
 
         ActionBarMenu menu = actionBar.createMenu();
-        menu.setCenteredTitle(isTitleCentered());
+        menu.setCenteredTitle(isTitleCentered() && chatMode != MODE_QUICK_REPLIES);
 
         if (isThreadChat() && threadMessageId != 0 && !isTopic) {
             viewInChatItem = menu.addItem(nkbtn_view_in_chat, R.drawable.msg_viewreplies);
@@ -5694,7 +5696,7 @@ public class ChatActivity extends BaseFragment implements
                 if (e.getAction() == MotionEvent.ACTION_DOWN) {
                     scrollByTouch = true;
                 }
-                if (!NekoConfig.disableSwipeToNext.Bool() && pullingDownOffset != 0 && (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL)) {
+                if (chatsHelper.allowSwipeToNext(isTopic) && pullingDownOffset != 0 && (e.getAction() == MotionEvent.ACTION_UP || e.getAction() == MotionEvent.ACTION_CANCEL)) {
                     float progress = Math.min(1f, pullingDownOffset / AndroidUtilities.dp(110));
                     if (e.getAction() == MotionEvent.ACTION_UP && progress == 1 && pullingDownDrawable != null && !pullingDownDrawable.emptyStub) {
                         if (pullingDownDrawable.animationIsRunning()) {
@@ -5835,7 +5837,7 @@ public class ChatActivity extends BaseFragment implements
                     drawReplyButton(c);
                 }
 
-                if (!NekoConfig.disableSwipeToNext.Bool() && pullingDownOffset != 0 && !isInPreviewMode() && !isInsideContainer && chatMode != MODE_SAVED && chatMode != MODE_SCHEDULED) {
+                if (chatsHelper.allowSwipeToNext(isTopic) && pullingDownOffset != 0 && !isInPreviewMode() && !isInsideContainer && chatMode != MODE_SAVED && chatMode != MODE_SCHEDULED) {
                     c.save();
                     float transitionOffset = 0;
                     if (pullingDownAnimateProgress != 0) {
@@ -7226,7 +7228,7 @@ public class ChatActivity extends BaseFragment implements
 
             @Override
             public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
-                if (!NekoConfig.disableSwipeToNext.Bool() && dy < 0 && pullingDownOffset != 0) {
+                if (chatsHelper.allowSwipeToNext(isTopic) && dy < 0 && pullingDownOffset != 0) {
                     pullingDownOffset += dy;
                     if (pullingDownOffset < 0) {
                         dy = (int) pullingDownOffset;
@@ -7256,7 +7258,7 @@ public class ChatActivity extends BaseFragment implements
                 if (!foundTopView) {
                     scrolled = super.scrollVerticallyBy(dy, recycler, state);
                 }
-                final boolean allowPullingDownScroll = !isInPollAddOptionMode() && !hasSelectedMessages() && !NekoConfig.disableSwipeToNext.Bool();
+                final boolean allowPullingDownScroll = !isInPollAddOptionMode() && !hasSelectedMessages() && chatsHelper.allowSwipeToNext(isTopic);
                 if (allowPullingDownScroll && dy > 0 && scrolled == 0 && (ChatObject.isChannel(currentChat) && !currentChat.megagroup || isTopic && !UserObject.isBotForum(currentUser)) && chatMode != MODE_SAVED && chatMode != MODE_SCHEDULED && chatListView.getScrollState() == RecyclerView.SCROLL_STATE_DRAGGING && !chatListView.isFastScrollAnimationRunning() && !chatListView.isMultiselect() && !isReport()) {
                     if (pullingDownOffset == 0 && pullingDownDrawable != null) {
                         if (nextChannels != null && !nextChannels.isEmpty()) {
@@ -8753,7 +8755,6 @@ public class ChatActivity extends BaseFragment implements
         // left button action start
         boolean noForwards = getMessagesController().isChatNoForwards(currentChat) || currentChat != null && currentChat.noforwards;
         boolean currentLeftButtonNoForwards = isCurrentLeftButtonNoForwards();
-        ChatsHelper chatsHelper = ChatsHelper.getInstance(currentAccount);
         int leftButtonAction = ChatsHelper.getLeftButtonAction(this, currentLeftButtonNoForwards);
         actionsButtonsLayout.setReplyButtonTextAndIcon(ChatsHelper.getLeftButtonText(leftButtonAction), ChatsHelper.getLeftButtonDrawable(leftButtonAction));
         actionsButtonsLayout.setForwardButtonTextAndIcon(LocaleController.getString(R.string.Forward), R.drawable.input_forward, true);
@@ -43836,7 +43837,14 @@ public class ChatActivity extends BaseFragment implements
                     AlertUtil.showToast("FILE_NOT_FOUND");
                     return;
                 }
-                if (message.getDocumentName().toLowerCase().endsWith("attheme")) {
+                if (AyuConstants.AYU_DATABASE_EXPORT.equals(message.getDocumentName())) {
+                    File finalLocFile = locFile;
+                    AlertUtil.showConfirm(getParentActivity(),
+                            getString(R.string.ImportAyuDB),
+                            getString(R.string.ImportAyuDBAlert),
+                            R.drawable.msg_photo_settings_solar, getString(R.string.Import), true,
+                            () -> AyuData.importAyuDatabase(ChatActivity.this, finalLocFile));
+                } else if (message.getDocumentName().toLowerCase().endsWith("attheme")) {
                     Theme.ThemeInfo themeInfo = Theme.applyThemeFile(locFile, message.getDocumentName(), null, true);
                     if (themeInfo != null) {
                         presentFragment(new ThemePreviewActivity(themeInfo));

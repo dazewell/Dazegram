@@ -458,6 +458,9 @@
     <string name="HotkeysChatNotice">↑ edits your last message when the input field is empty. Enter confirms the schedule picker. In emoji search: arrow keys navigate, Enter inserts the emoji, Ctrl+Enter sends the message, Esc closes the panel.</string>
     <string name="HotkeysTextNotice">Formatting shortcuts apply to the selected text. Quote also works at the cursor without a selection.</string>
     <string name="ExportAyuDB">Export Database</string>
+    <string name="ImportAyuDB">Import Database</string>
+    <string name="ImportAyuDBAlert">The current message database will be replaced. The app will restart after the import.</string>
+    <string name="DisableSwipeToNext">Disable Swipe to Next</string>
     <string name="ExpandMessageField">Expand message field</string>
     <string name="CollapseMessageField">Collapse message field</string>
     <string name="ExpandInputHint">Drag up to expand your draft</string>
