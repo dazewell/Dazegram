@@ -3064,7 +3064,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (!running || pauseRecorder || cancelled || mediaMuxer == null || nextFile == null) {
                 if (nextFile != null) {
                     rolloverFile = null;
-                    AutoDeleteMediaTask.unlockFile(nextFile);
+                    // the UI side already pointed cameraFile at the file we're not going to open, so put it
+                    // back on the one still being written or a later send would reach for something empty
+                    final File stillWriting = videoFile;
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (cameraFile == nextFile) {
+                            cameraFile = stillWriting;
+                        }
+                        AutoDeleteMediaTask.unlockFile(nextFile);
+                    });
                 }
                 return;
             }
@@ -3078,15 +3086,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (info != null) {
-                        info.notReadyYet = false;
-                    }
-                    if (segmentFirstWrite) {
-                        FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
-                    }
-                    FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
-                });
+                if (info != null) {
+                    info.notReadyYet = false;
+                }
+                // the segment is complete on disk, so whatever the streaming upload managed during the
+                // recording just needs closing off
+                if (segmentFirstWrite) {
+                    FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
+                }
+                FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
             });
 
             videoFile = nextFile;
