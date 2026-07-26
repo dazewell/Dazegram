@@ -47,8 +47,8 @@ import java.util.Locale;
 import java.util.TimeZone;
 
 /**
- * Bottom sheet visualizing upcoming hours side by side in the device's and the
- * peer's time zones (worldtimebuddy-style dual hour strip). Two horizontally
+ * Bottom sheet visualizing the hours around now side by side in the device's and
+ * the peer's time zones (worldtimebuddy-style dual hour strip). Two horizontally
  * scrollable lanes share one scroll position and slide under a fixed center
  * cursor; the step under the cursor (15-minute precision) drives the readout
  * above, which shows the exact local→peer mapping, including a day-change badge
@@ -60,11 +60,13 @@ import java.util.TimeZone;
 public final class ChatTimeZoneHoursSheet {
 
     /**
-     * Columns start at today 00:00 device-local and span 3 days, guaranteeing
-     * at least 48 hours ahead of "now" regardless of the time of day, while
-     * keeping a few hours of scroll-back context before the "now" column.
+     * Today sits in the middle with two days of scroll-back and two ahead: enough to
+     * reach "same time on Monday" either way without making the strip a chore to
+     * scroll. Counted in flat hours off a midnight origin, so a week with a DST
+     * change runs an hour long or short at the far end.
      */
-    private static final int HOURS = 72;
+    private static final int DAYS_EACH_SIDE = 2;
+    private static final int HOURS = (DAYS_EACH_SIDE * 2 + 1) * 24;
     private static final long HOUR_MS = 3_600_000L;
     private static final int STEP_MIN = 15;
     private static final int STEPS_PER_HOUR = 60 / STEP_MIN;
@@ -114,12 +116,14 @@ public final class ChatTimeZoneHoursSheet {
             peerName = LocaleController.getString(R.string.ChatTimeZone);
         }
 
-        // Column zero = today 00:00 device-local.
+        // Column zero = 00:00 device-local, two days back. Stepping the day after
+        // zeroing the clock keeps it on real midnight through a DST change.
         Calendar day0 = Calendar.getInstance();
         day0.set(Calendar.HOUR_OF_DAY, 0);
         day0.set(Calendar.MINUTE, 0);
         day0.set(Calendar.SECOND, 0);
         day0.set(Calendar.MILLISECOND, 0);
+        day0.add(Calendar.DAY_OF_YEAR, -DAYS_EACH_SIDE);
         final long startMs = day0.getTimeInMillis();
         final long nowMs = System.currentTimeMillis();
         // Open with the pointer at "now" rounded to the nearest 15-minute step.
@@ -642,8 +646,9 @@ public final class ChatTimeZoneHoursSheet {
 
     /**
      * Canvas-drawn dual lane of hour cells: top lane = device-local, bottom
-     * lane = peer zone, columns aligned by instant. ~144 cells are cheap to
-     * draw with clip-rect culling, so no view recycling is needed.
+     * lane = peer zone, columns aligned by instant. Only the cells inside the
+     * clip rect are drawn, so the off-screen end of the span costs nothing and
+     * no view recycling is needed.
      */
     private static final class HourStripView extends View {
 
