@@ -122,7 +122,6 @@ public final class ChatTimeZoneHoursSheet {
         day0.set(Calendar.MILLISECOND, 0);
         final long startMs = day0.getTimeInMillis();
         final long nowMs = System.currentTimeMillis();
-        final int nowHour = (int) Math.min(HOURS - 1, Math.max(0, (nowMs - startMs) / HOUR_MS));
         // Open with the pointer at "now" rounded to the nearest 15-minute step.
         final int nowStep = (int) Math.min(STEPS - 1, Math.max(0, Math.round((nowMs - startMs) / (double) STEP_MS)));
         final String peerNameF = peerName;
@@ -183,7 +182,7 @@ public final class ChatTimeZoneHoursSheet {
         stripRow.setOrientation(LinearLayout.HORIZONTAL);
 
         final Runnable[] previewUpdater = { null };
-        final HourStripView strip = new HourStripView(context, startMs, nowHour, peerTz, rp);
+        final HourStripView strip = new HourStripView(context, startMs, peerTz, rp);
 
         LinearLayout labels = new LinearLayout(context);
         labels.setOrientation(LinearLayout.VERTICAL);
@@ -236,9 +235,7 @@ public final class ChatTimeZoneHoursSheet {
             strip.setContentDescription(text);
         };
         final Runnable syncSelection = () -> {
-            // Half-viewport padding on the scroller (see the layout listener) makes
-            // the content x under the fixed center cursor equal the raw scroll offset.
-            int step = strip.stepFromX(scroller.getScrollX());
+            int step = strip.stepFromX(centerContentX(strip, scroller));
             if (step == selectedStep[0]) return;
             selectedStep[0] = step;
             // Buzz on user-driven moves — the drag and the fling it throws — but
@@ -253,23 +250,18 @@ public final class ChatTimeZoneHoursSheet {
         // Seed the readout for "now" before the first layout gives the scroller a width.
         refreshReadout.run();
 
-        // Pad the scroller by half its viewport on each side so every step — including
-        // the very first and last — can be scrolled under the centered cursor, then
-        // open with "now" centered. Deferred to the first layout pass, when the
-        // scroller finally has a width; the padding change forces another layout, so
-        // the centering is posted to run once the scroll range is final.
-        scroller.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
-            @Override
-            public void onLayoutChange(View v, int l, int t, int r, int b, int ol, int ot, int or, int ob) {
-                scroller.removeOnLayoutChangeListener(this);
-                int pad = scroller.getWidth() / 2;
-                scroller.setClipToPadding(false);
-                scroller.setPadding(pad, 0, pad, 0);
-                scroller.post(() -> {
-                    scroller.scrollTo(centerScrollFor(strip, nowStep), 0);
-                    syncSelection.run();
-                });
+        // Open with "now" under the cursor. Deferred to layout, when the scroller
+        // finally has a width to center against, and only marked done once the
+        // scroll sticks; re-centering after that would yank the plot out from under
+        // a drag.
+        final boolean[] centered = { false };
+        scroller.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+            if (!centered[0] && scroller.getWidth() > 0) {
+                int target = centerScrollFor(strip, scroller, nowStep);
+                scroller.scrollTo(target, 0);
+                centered[0] = scroller.getScrollX() == target;
             }
+            syncSelection.run();
         });
 
         // Recompute "now" at click time so a long-open sheet returns to the real
@@ -277,7 +269,8 @@ public final class ChatTimeZoneHoursSheet {
         nowButton.setOnClickListener(v -> {
             int liveNowStep = (int) Math.min(STEPS - 1, Math.max(0,
                     Math.round((System.currentTimeMillis() - startMs) / (double) STEP_MS)));
-            scroller.smoothScrollTo(centerScrollFor(strip, liveNowStep), 0);
+            scroller.cancelUserScrolling();
+            scroller.smoothScrollTo(centerScrollFor(strip, scroller, liveNowStep), 0);
         });
 
         final BottomSheet[] sheetRef = new BottomSheet[1];
@@ -633,13 +626,18 @@ public final class ChatTimeZoneHoursSheet {
     // ---------- the strip ----------
 
     /**
-     * Scroll offset that centers a given step under the fixed cursor. The scroller
-     * is padded by half its viewport on each side (see the layout listener), so a
-     * step's centered scroll position is simply its content x; scrollTo clamps the
-     * upper bound to the scroll range.
+     * Content x sitting under the fixed cursor, measured from the strip's own
+     * laid-out origin. Reading the raw scroll offset instead only holds while the
+     * scroller's half-viewport padding is really in place, and puts every reading
+     * half a viewport off the line the user is aiming with the moment it isn't.
      */
-    private static int centerScrollFor(HourStripView strip, int step) {
-        return Math.max(0, Math.round(strip.xForStep(step)));
+    private static float centerContentX(HourStripView strip, CenterScrollView scroller) {
+        return scroller.getScrollX() + scroller.getWidth() / 2f - strip.getLeft();
+    }
+
+    /** Scroll offset that puts a given step under the cursor. */
+    private static int centerScrollFor(HourStripView strip, CenterScrollView scroller, int step) {
+        return Math.max(0, Math.round(strip.getLeft() + strip.xForStep(step) - scroller.getWidth() / 2f));
     }
 
     /**
@@ -654,8 +652,6 @@ public final class ChatTimeZoneHoursSheet {
         final int gap = dp(2);
 
         private final long startMs;
-        private final int nowHour;
-        private final TimeZone peerTz;
 
         private final TextPaint hourPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -664,18 +660,21 @@ public final class ChatTimeZoneHoursSheet {
         private final Rect clipRect = new Rect();
         private final Calendar cal = Calendar.getInstance();
         private final Calendar peerCal;
+        // Moves the ring along when the hour rolls over under an idle sheet.
+        private final Runnable hourTick = () -> {
+            invalidate();
+            scheduleHourTick();
+        };
 
         final int nightColor, shoulderColor, workColor;
         private final int textColor, nightTextColor;
         // Locale for the midnight weekday labels; null = app language.
         private Locale weekdayLocale;
 
-        HourStripView(Context context, long startMs, int nowHour, TimeZone peerTz,
+        HourStripView(Context context, long startMs, TimeZone peerTz,
                       @Nullable Theme.ResourcesProvider rp) {
             super(context);
             this.startMs = startMs;
-            this.nowHour = nowHour;
-            this.peerTz = peerTz;
             this.peerCal = Calendar.getInstance(peerTz);
 
             int bgBase = Theme.getColor(Theme.key_dialogBackground, rp);
@@ -696,6 +695,22 @@ public final class ChatTimeZoneHoursSheet {
 
         int pitch() {
             return cellW + gap;
+        }
+
+        @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            scheduleHourTick();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            removeCallbacks(hourTick);
+        }
+
+        private void scheduleHourTick() {
+            postDelayed(hourTick, HOUR_MS - Math.floorMod(System.currentTimeMillis() - startMs, HOUR_MS));
         }
 
         /** Re-render midnight weekday labels in {@code locale} (null = app language). */
@@ -729,24 +744,25 @@ public final class ChatTimeZoneHoursSheet {
             }
             int first = Math.max(0, clipRect.left / pitch());
             int last = Math.min(HOURS - 1, clipRect.right / pitch());
+            int nowHour = (int) Math.floorDiv(System.currentTimeMillis() - startMs, HOUR_MS);
             for (int i = first; i <= last; i++) {
                 long t = startMs + i * HOUR_MS;
                 int x = i * pitch();
                 cal.setTimeInMillis(t);
-                drawCell(canvas, x, 0, cal, i);
+                drawCell(canvas, x, 0, cal, i == nowHour);
                 peerCal.setTimeInMillis(t);
-                drawCell(canvas, x, cellH + gap, peerCal, i);
+                drawCell(canvas, x, cellH + gap, peerCal, i == nowHour);
             }
         }
 
-        private void drawCell(Canvas canvas, int x, int y, Calendar c, int index) {
+        private void drawCell(Canvas canvas, int x, int y, Calendar c, boolean now) {
             int hour = c.get(Calendar.HOUR_OF_DAY);
             int minute = c.get(Calendar.MINUTE);
 
             cellRect.set(x, y, x + cellW, y + cellH);
             bgPaint.setColor(colorForHour(hour));
             canvas.drawRoundRect(cellRect, dp(6), dp(6), bgPaint);
-            if (index == nowHour) {
+            if (now) {
                 // Mark the current hour with a ring so "now" stays findable after
                 // scrolling away and sliding the pointer elsewhere.
                 cellRect.inset(dp(1), dp(1));
@@ -802,6 +818,30 @@ public final class ChatTimeZoneHoursSheet {
         CenterScrollView(Context context) {
             super(context);
             setHorizontalScrollBarEnabled(false);
+        }
+
+        /**
+         * Carry half a viewport of padding on each side so the first and last steps
+         * can still be scrolled under the center cursor. It's taken here, off the
+         * measured width, because the strip then gets laid out against it in the same
+         * pass: setting it from a layout callback instead asks for a relayout that
+         * this view's own layout() throws away, leaving the padding counted but the
+         * strip still sitting at x=0.
+         */
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            int pad = getMeasuredWidth() / 2;
+            if (pad > 0 && getPaddingLeft() != pad) {
+                setClipToPadding(false);
+                setPadding(pad, 0, pad, 0);
+            }
+        }
+
+        /** Hands the next motion over to code: recentering on top of a live fling shouldn't buzz. */
+        void cancelUserScrolling() {
+            removeCallbacks(clearScrolling);
+            userScrolling = false;
         }
 
         @Override
