@@ -15988,8 +15988,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (isInVideoMode()) {
                 if (t >= 59500 && !stoppedInternal) {
                     // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
-                    // dropping into the preview. The last allowed segment falls back to the normal stop.
-                    if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+                    // dropping into the preview. The last allowed segment falls back to the normal stop, as
+                    // does anything that armed view-once or started a slow mode countdown mid-recording.
+                    if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
                         infiniteVideoSegments++;
                         startedDraggingX = -1;
                         delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -17412,6 +17413,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         startLockTransition();
     }
 
+    // NagramX: infinite video message: the conditions under which a segment can be sent without the
+    // user looking at it. Checked when the toggle is offered and again at every rollover, because
+    // view-once can be armed and a slow mode countdown can start while the recording is still running.
+    private boolean isInfiniteVideoAvailable() {
+        return !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
+                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
+    }
+
     // NagramX: custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while taking leftover
     // width, with the switch in a fixed zone behind a divider
     private LinearLayout createPopupSwitchRow(int iconRes, CharSequence label, Switch sw, boolean enabled) {
@@ -17491,8 +17500,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX: infinite video message toggle. Deliberately not persisted: it keeps sending until you
         // stop, so it has to be an explicit choice every time. Dead where a segment couldn't be sent
         // unattended anyway (slow mode, paid messages, scheduling, view-once).
-        final boolean infiniteAvailable = !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
-                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
+        final boolean infiniteAvailable = isInfiniteVideoAvailable();
         Switch infiniteSwitch = new Switch(getContext(), resourcesProvider);
         infiniteSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
         infiniteSwitch.setChecked(infiniteVideoMessage, false);
