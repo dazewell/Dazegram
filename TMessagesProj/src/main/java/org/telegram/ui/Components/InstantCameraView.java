@@ -3116,6 +3116,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             } catch (Exception e) {
                 FileLog.e(e);
+                // no muxer means there is nowhere to put the next segment, so stop the whole recording
+                // instead of filming into a file that can never be finished. The segment that was just
+                // handed off is already on its way and is not affected.
+                mediaMuxer = null;
+                AndroidUtilities.runOnUIThread(() -> cancel(false));
+                return;
             }
             // whatever is already in the encoder still refers to the previous file's frames
             waitingForSyncFrame = true;
@@ -3743,6 +3749,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         public void drainEncoder(boolean endOfStream) throws Exception {
+            // NagramX: a failed rollover leaves no muxer behind; there is nothing to drain into
+            if (mediaMuxer == null) {
+                return;
+            }
             if (endOfStream) {
                 videoEncoder.signalEndOfInputStream();
             }
