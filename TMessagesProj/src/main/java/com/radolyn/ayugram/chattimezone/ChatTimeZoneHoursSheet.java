@@ -148,6 +148,14 @@ public final class ChatTimeZoneHoursSheet {
         titleRow.addView(titleView, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f,
                 Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
 
+        TextView rangeButton = new TextView(context);
+        rangeButton.setText(LocaleController.getString(R.string.ChatTimeZoneRange));
+        rangeButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        rangeButton.setTypeface(AndroidUtilities.bold());
+        rangeButton.setPadding(dp(12), dp(6), dp(12), dp(6));
+        titleRow.addView(rangeButton, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL, 0, 0, 6, 0));
+
         TextView nowButton = new TextView(context);
         nowButton.setText(LocaleController.getString(R.string.ChatTimeZoneNow));
         nowButton.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
@@ -180,6 +188,42 @@ public final class ChatTimeZoneHoursSheet {
         readoutView.setEllipsize(TextUtils.TruncateAt.END);
         container.addView(readoutView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                 22, 14, 22, 10));
+
+        // The range readout takes the same line twice, one per edge, each behind a
+        // Start/End chip that selects which edge the cursor drives. Two full-width rows
+        // rather than two side-by-side columns: the columns would ellipsize into
+        // uselessness on a narrow screen, and this keeps the mapping people already read.
+        final TextView startChip = makeEdgeChip(context, LocaleController.getString(R.string.ChatTimeZoneRangeStart));
+        final TextView endChip = makeEdgeChip(context, LocaleController.getString(R.string.ChatTimeZoneRangeEnd));
+        final TextView startText = makeEdgeReadout(context, rp);
+        final TextView endText = makeEdgeReadout(context, rp);
+        final TextView durationText = new TextView(context);
+        durationText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        durationText.setTextColor(Theme.getColor(Theme.key_dialogTextGray3, rp));
+        durationText.setSingleLine(true);
+
+        final LinearLayout rangeRows = new LinearLayout(context);
+        rangeRows.setOrientation(LinearLayout.VERTICAL);
+        rangeRows.setVisibility(View.GONE);
+        LinearLayout startRow = new LinearLayout(context);
+        startRow.setOrientation(LinearLayout.HORIZONTAL);
+        startRow.setGravity(Gravity.CENTER_VERTICAL);
+        startRow.addView(startChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
+        startRow.addView(startText, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+        LinearLayout endRow = new LinearLayout(context);
+        endRow.setOrientation(LinearLayout.HORIZONTAL);
+        endRow.setGravity(Gravity.CENTER_VERTICAL);
+        endRow.addView(endChip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL, 0, 0, 8, 0));
+        endRow.addView(endText, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+        endRow.addView(durationText, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL, 8, 0, 0, 0));
+        rangeRows.addView(startRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                0, 0, 0, 4));
+        rangeRows.addView(endRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        container.addView(rangeRows, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
+                22, 10, 22, 10));
 
         // Strip row: fixed lane labels on the left + shared horizontal scroller.
         LinearLayout stripRow = new LinearLayout(context);
@@ -224,19 +268,54 @@ public final class ChatTimeZoneHoursSheet {
         final String peerLabel = peerName;
         // Reused across the readout and preview so scrolling the plot doesn't
         // allocate fresh calendars (each clones a TimeZone) on every step change.
+        // The second pair only comes into play for a range's other edge.
         final Calendar calLocal = Calendar.getInstance();
         final Calendar calPeer = Calendar.getInstance(peerTz);
+        final Calendar calLocal2 = Calendar.getInstance();
+        final Calendar calPeer2 = Calendar.getInstance(peerTz);
         final int readoutColor = Theme.getColor(Theme.key_dialogTextBlue, rp);
-        // The 15-minute step currently under the fixed center cursor.
+        // The 15-minute step currently under the fixed center cursor. In range mode it
+        // is the edge the cursor drives; pinnedStep is the other one (-1 = point mode).
         final int[] selectedStep = { nowStep };
+        final int[] pinnedStep = { -1 };
         // Locale the readout / strip weekdays / preview render in; null = app language.
         // Driven by the "Message language" selector in the editor block below.
         final Locale[] outputLocale = { null };
+        // Set by the editor block below to relabel/reload itself when the mode flips.
+        final Runnable[] modeUpdater = { null };
         final Runnable refreshReadout = () -> {
-            CharSequence text = buildReadout(selectedStep[0], startMs, calLocal, calPeer,
+            boolean range = pinnedStep[0] >= 0;
+            readoutView.setVisibility(range ? View.GONE : View.VISIBLE);
+            rangeRows.setVisibility(range ? View.VISIBLE : View.GONE);
+            if (!range) {
+                CharSequence text = buildReadout(selectedStep[0], startMs, calLocal, calPeer,
+                        youLabel, peerLabel, readoutColor, outputLocale[0]);
+                readoutView.setText(text);
+                strip.setContentDescription(text);
+                strip.setBand(-1, -1);
+                return;
+            }
+            // Which edge is "start" follows the clock, not which one the user grabbed:
+            // dragging the active edge past the other one renames them rather than
+            // letting an end sit before its start.
+            boolean activeIsStart = selectedStep[0] <= pinnedStep[0];
+            int startStep = Math.min(selectedStep[0], pinnedStep[0]);
+            int endStep = Math.max(selectedStep[0], pinnedStep[0]);
+            CharSequence startLine = buildReadout(startStep, startMs, calLocal, calPeer,
                     youLabel, peerLabel, readoutColor, outputLocale[0]);
-            readoutView.setText(text);
-            strip.setContentDescription(text);
+            CharSequence endLine = buildReadout(endStep, startMs, calLocal, calPeer,
+                    youLabel, peerLabel, readoutColor, outputLocale[0]);
+            startText.setText(startLine);
+            endText.setText(endLine);
+            durationText.setText(ChatTimeZoneRenderer.formatDuration((long) (endStep - startStep) * STEP_MS));
+            styleScopeChip(startChip, activeIsStart, rp);
+            styleScopeChip(endChip, !activeIsStart, rp);
+            startChip.setContentDescription(edgeDescription(
+                    LocaleController.getString(R.string.ChatTimeZoneRangeStart), startLine, activeIsStart));
+            endChip.setContentDescription(edgeDescription(
+                    LocaleController.getString(R.string.ChatTimeZoneRangeEnd), endLine, !activeIsStart));
+            strip.setContentDescription(startLine + " — " + endLine + ", " + durationText.getText());
+            strip.setBand(selectedStep[0], pinnedStep[0]);
         };
         final Runnable syncSelection = () -> {
             int step = strip.stepFromX(centerContentX(strip, scroller));
@@ -270,12 +349,57 @@ public final class ChatTimeZoneHoursSheet {
 
         // Recompute "now" at click time so a long-open sheet returns to the real
         // current moment, not the step captured when the sheet was first shown.
+        // In range mode it moves the edge under the cursor and leaves the other pinned.
         nowButton.setOnClickListener(v -> {
             int liveNowStep = (int) Math.min(STEPS - 1, Math.max(0,
                     Math.round((System.currentTimeMillis() - startMs) / (double) STEP_MS)));
             scroller.cancelUserScrolling();
             scroller.smoothScrollTo(centerScrollFor(strip, scroller, liveNowStep), 0);
         });
+
+        styleModeChip(rangeButton, false, rp);
+        rangeButton.setContentDescription(LocaleController.getString(R.string.ChatTimeZoneAccRangeOff));
+        rangeButton.setOnClickListener(v -> {
+            if (pinnedStep[0] >= 0) {
+                // Leaving range mode: the edge already under the cursor becomes the
+                // point, so nothing moves and the strip doesn't jump.
+                pinnedStep[0] = -1;
+            } else {
+                pinnedStep[0] = selectedStep[0];
+                // Seed an hour-long range and put its other edge under the cursor: the
+                // scroll shows what just happened and leaves the finger where it needs
+                // to be to stretch it. Runs backwards at the very end of the strip.
+                int target = selectedStep[0] + STEPS_PER_HOUR;
+                if (target > STEPS - 1) target = Math.max(0, selectedStep[0] - STEPS_PER_HOUR);
+                scroller.cancelUserScrolling();
+                scroller.smoothScrollTo(centerScrollFor(strip, scroller, target), 0);
+            }
+            boolean range = pinnedStep[0] >= 0;
+            styleModeChip(rangeButton, range, rp);
+            rangeButton.setContentDescription(LocaleController.getString(
+                    range ? R.string.ChatTimeZoneAccRangeOn : R.string.ChatTimeZoneAccRangeOff));
+            nowButton.setContentDescription(range
+                    ? LocaleController.getString(R.string.ChatTimeZoneAccNowEdge) : null);
+            refreshReadout.run();
+            if (modeUpdater[0] != null) modeUpdater[0].run();
+            if (previewUpdater[0] != null) previewUpdater[0].run();
+        });
+
+        // Tapping the other edge hands it the cursor. The jump is deliberate: the
+        // range itself doesn't change, only which end you're holding, and animating
+        // it would drag the active edge across every step in between.
+        final Runnable swapEdges = () -> {
+            if (pinnedStep[0] < 0) return;
+            int target = pinnedStep[0];
+            pinnedStep[0] = selectedStep[0];
+            selectedStep[0] = target;
+            scroller.cancelUserScrolling();
+            scroller.scrollTo(centerScrollFor(strip, scroller, target), 0);
+            refreshReadout.run();
+            if (previewUpdater[0] != null) previewUpdater[0].run();
+        };
+        startChip.setOnClickListener(v -> { if (selectedStep[0] > pinnedStep[0]) swapEdges.run(); });
+        endChip.setOnClickListener(v -> { if (selectedStep[0] < pinnedStep[0]) swapEdges.run(); });
 
         final BottomSheet[] sheetRef = new BottomSheet[1];
         if (insertHandler != null) {
@@ -294,9 +418,13 @@ public final class ChatTimeZoneHoursSheet {
             tmplHeader.setBackground(Theme.createSelectorDrawable(
                     Theme.getColor(Theme.key_dialogButtonSelector, rp), Theme.RIPPLE_MASK_ALL));
             // CollapseTextCell hides its own text from accessibility, so the row has to
-            // carry the label and its open/closed state itself.
-            final String tmplLabel = LocaleController.getString(R.string.ChatTimeZoneTemplate);
+            // carry the label and its open/closed state itself. The label also names
+            // which of the two templates is in the field, so the section can follow the
+            // strip's mode without a second mode selector inside it.
+            final boolean[] expanded = { false };
             final Utilities.Callback<Boolean> setTmplHeader = open -> {
+                String tmplLabel = LocaleController.getString(pinnedStep[0] >= 0
+                        ? R.string.ChatTimeZoneTemplateRange : R.string.ChatTimeZoneTemplate);
                 tmplHeader.set(tmplLabel, !open);
                 tmplHeader.setContentDescription(tmplLabel + ", " + LocaleController.getString(
                         open ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed));
@@ -351,21 +479,14 @@ public final class ChatTimeZoneHoursSheet {
             fieldBox.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             tmplBody.addView(fieldBox, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
-            HorizontalScrollView chipsScroller = new HorizontalScrollView(context);
-            chipsScroller.setHorizontalScrollBarEnabled(false);
-            LinearLayout chips = new LinearLayout(context);
-            chips.setOrientation(LinearLayout.HORIZONTAL);
-            for (String token : ChatTimeZoneTemplate.TOKENS) {
-                TextView chip = makePlaceholderChip(context, token, rp);
-                chip.setOnClickListener(v -> {
-                    int s = Math.max(0, field.getSelectionStart());
-                    int e = Math.max(s, field.getSelectionEnd());
-                    field.getText().replace(s, e, token);
-                });
-                chips.addView(chip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 6, 0));
-            }
-            chipsScroller.addView(chips);
-            tmplBody.addView(chipsScroller, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            // One chip row per template, swapped with the mode: the range tokens are a
+            // different set, and offering both at once would let you tap a token the
+            // active template can't fill.
+            final HorizontalScrollView pointChips = makeTokenChips(context, rp, ChatTimeZoneTemplate.TOKENS, field);
+            final HorizontalScrollView rangeChips = makeTokenChips(context, rp, ChatTimeZoneTemplate.RANGE_TOKENS, field);
+            rangeChips.setVisibility(View.GONE);
+            tmplBody.addView(pointChips, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
+            tmplBody.addView(rangeChips, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
             LinearLayout actionRow = new LinearLayout(context);
             actionRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -394,8 +515,14 @@ public final class ChatTimeZoneHoursSheet {
             previewView.setEllipsize(TextUtils.TruncateAt.END);
             container.addView(previewView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 22, 8, 22, 0));
 
+            // In-memory draft per template so flipping the strip's mode swaps the field
+            // without throwing away what you typed in the other one.
+            final boolean[] editorRange = { pinnedStep[0] >= 0 };
+            final String[] drafts = { null, null };
+
             final Runnable updatePreview = () -> previewView.setText(
-                    renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer, outputLocale[0]));
+                    renderSelection(field.getText().toString(), selectedStep[0], pinnedStep[0], startMs,
+                            peerTz, peerNameF, calLocal, calPeer, calLocal2, calPeer2, outputLocale[0]));
             previewUpdater[0] = updatePreview;
 
             final Runnable applyScope = () -> {
@@ -410,10 +537,17 @@ public final class ChatTimeZoneHoursSheet {
             final Utilities.Callback2<String, Boolean> applyLanguage = (tag, replaceDefault) -> {
                 Locale newLocale = ChatTimeZoneTemplate.localeFor(tag);
                 if (replaceDefault) {
-                    String oldDefault = ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]);
+                    String oldDefault = ChatTimeZoneTemplate.defaultTemplate(editorRange[0], outputLocale[0]);
                     if (field.getText().toString().equals(oldDefault)) {
-                        field.setText(ChatTimeZoneTemplate.defaultTemplate(newLocale));
+                        field.setText(ChatTimeZoneTemplate.defaultTemplate(editorRange[0], newLocale));
                         field.setSelection(field.getText().length());
+                    }
+                    // The mode that isn't on screen gets the same treatment, or it would
+                    // come back still written in the language you just switched away from.
+                    int other = editorRange[0] ? 0 : 1;
+                    if (drafts[other] != null
+                            && drafts[other].equals(ChatTimeZoneTemplate.defaultTemplate(other == 1, outputLocale[0]))) {
+                        drafts[other] = ChatTimeZoneTemplate.defaultTemplate(other == 1, newLocale);
                     }
                 }
                 langTag[0] = tag == null ? "" : tag;
@@ -431,13 +565,30 @@ public final class ChatTimeZoneHoursSheet {
                 langValue.setText(languageDisplayName(langTag[0]));
                 strip.setWeekdayLocale(outputLocale[0]);
 
-                String v = scope[0] == 1 ? ChatTimeZoneTemplate.getAccountOverride(currentAccount) : null;
-                if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.getGlobal();
-                if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]);
-                field.setText(v);
+                // Both drafts belong to the scope they were read from, so a scope switch
+                // drops them and the other template reloads when it's next shown.
+                drafts[0] = drafts[1] = null;
+                field.setText(storedTemplate(currentAccount, scope[0] == 1, editorRange[0], outputLocale[0]));
                 field.setSelection(field.getText().length());
                 refreshReadout.run();
                 updatePreview.run();
+            };
+            modeUpdater[0] = () -> {
+                boolean range = pinnedStep[0] >= 0;
+                if (range == editorRange[0]) return;
+                drafts[editorRange[0] ? 1 : 0] = field.getText().toString();
+                editorRange[0] = range;
+                String next = drafts[range ? 1 : 0];
+                if (next == null) {
+                    next = storedTemplate(currentAccount, scope[0] == 1, range, outputLocale[0]);
+                }
+                field.setText(next);
+                field.setSelection(field.getText().length());
+                field.setHint(LocaleController.getString(range
+                        ? R.string.ChatTimeZoneRangeTemplateHint : R.string.ChatTimeZoneTemplateHint));
+                pointChips.setVisibility(range ? View.GONE : View.VISIBLE);
+                rangeChips.setVisibility(range ? View.VISIBLE : View.GONE);
+                setTmplHeader.run(expanded[0]);
             };
 
             field.addTextChangedListener(new TextWatcher() {
@@ -445,7 +596,6 @@ public final class ChatTimeZoneHoursSheet {
                 @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
                 @Override public void afterTextChanged(Editable s) { updatePreview.run(); }
             });
-            final boolean[] expanded = { false };
             tmplHeader.setOnClickListener(v -> {
                 expanded[0] = !expanded[0];
                 setTmplHeader.run(expanded[0]);
@@ -468,19 +618,21 @@ public final class ChatTimeZoneHoursSheet {
             accountChip.setOnClickListener(v -> { scope[0] = 1; applyScope.run(); loadScope.run(); });
             globalChip.setOnClickListener(v -> { scope[0] = 0; applyScope.run(); loadScope.run(); });
             resetView.setOnClickListener(v -> {
-                field.setText(ChatTimeZoneTemplate.defaultTemplate(outputLocale[0]));
+                field.setText(ChatTimeZoneTemplate.defaultTemplate(editorRange[0], outputLocale[0]));
                 field.setSelection(field.getText().length());
             });
             saveView.setOnClickListener(v -> {
                 String v2 = field.getText().toString();
                 if (scope[0] == 1) {
-                    ChatTimeZoneTemplate.setAccountOverride(currentAccount, v2);
+                    ChatTimeZoneTemplate.setAccountOverride(currentAccount, editorRange[0], v2);
                     ChatTimeZoneTemplate.setAccountLanguage(currentAccount, langTag[0]);
                 } else {
-                    ChatTimeZoneTemplate.setGlobal(v2);
+                    ChatTimeZoneTemplate.setGlobal(editorRange[0], v2);
                     ChatTimeZoneTemplate.setGlobalLanguage(langTag[0]);
                 }
-                Toast.makeText(context, LocaleController.getString(R.string.ChatTimeZoneTemplateSaved), Toast.LENGTH_SHORT).show();
+                Toast.makeText(context, LocaleController.getString(editorRange[0]
+                                ? R.string.ChatTimeZoneRangeTemplateSaved : R.string.ChatTimeZoneTemplateSaved),
+                        Toast.LENGTH_SHORT).show();
             });
 
             applyScope.run();
@@ -489,7 +641,8 @@ public final class ChatTimeZoneHoursSheet {
             ButtonWithCounterView insertButton = new ButtonWithCounterView(context, rp);
             insertButton.setText(LocaleController.getString(R.string.ChatTimeZoneInsertTime), false);
             insertButton.setOnClickListener(v -> {
-                insertHandler.run(renderTemplate(field.getText().toString(), selectedStep[0], startMs, peerTz, peerNameF, calLocal, calPeer, outputLocale[0]));
+                insertHandler.run(renderSelection(field.getText().toString(), selectedStep[0], pinnedStep[0],
+                        startMs, peerTz, peerNameF, calLocal, calPeer, calLocal2, calPeer2, outputLocale[0]));
                 if (sheetRef[0] != null) {
                     sheetRef[0].dismiss();
                 }
@@ -578,6 +731,39 @@ public final class ChatTimeZoneHoursSheet {
         return ChatTimeZoneTemplate.render(template, local, peer, peerName, offsetMin, locale);
     }
 
+    /**
+     * Renders whatever is currently selected: the point template for a single step, the
+     * range template when a second edge is pinned. Duration comes from the two instants,
+     * so a zone change inside the span reports the time that actually passes rather than
+     * the difference between two clock faces.
+     */
+    private static String renderSelection(String template, int activeStep, int pinnedStep, long startMs,
+                                          TimeZone peerTz, String peerName,
+                                          Calendar local, Calendar peer, Calendar localEnd, Calendar peerEnd,
+                                          @Nullable Locale locale) {
+        if (pinnedStep < 0) {
+            return renderTemplate(template, activeStep, startMs, peerTz, peerName, local, peer, locale);
+        }
+        long t0 = startMs + (long) Math.min(activeStep, pinnedStep) * STEP_MS;
+        long t1 = startMs + (long) Math.max(activeStep, pinnedStep) * STEP_MS;
+        local.setTimeInMillis(t0);
+        peer.setTimeInMillis(t0);
+        localEnd.setTimeInMillis(t1);
+        peerEnd.setTimeInMillis(t1);
+        int offsetMin = (peerTz.getOffset(t0) - TimeZone.getDefault().getOffset(t0)) / 60_000;
+        return ChatTimeZoneTemplate.renderRange(template, local, localEnd, peer, peerEnd,
+                peerName, offsetMin, t1 - t0, locale);
+    }
+
+    /** The template the given scope resolves to, falling back the same way rendering does. */
+    private static String storedTemplate(int account, boolean accountScope, boolean range,
+                                         @Nullable Locale locale) {
+        String v = accountScope ? ChatTimeZoneTemplate.getAccountOverride(account, range) : null;
+        if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.getGlobal(range);
+        if (TextUtils.isEmpty(v)) v = ChatTimeZoneTemplate.defaultTemplate(range, locale);
+        return v;
+    }
+
     private static TextView makeScopeChip(Context context, String text) {
         TextView t = new TextView(context);
         t.setText(text);
@@ -608,6 +794,63 @@ public final class ChatTimeZoneHoursSheet {
         t.setBackground(Theme.createRoundRectDrawable(dp(12), Theme.getColor(Theme.key_graySection, rp)));
         t.setTextColor(Theme.getColor(Theme.key_dialogTextBlue, rp));
         return t;
+    }
+
+    /** A scrollable row of token chips that tap themselves into the template field. */
+    private static HorizontalScrollView makeTokenChips(Context context, @Nullable Theme.ResourcesProvider rp,
+                                                       String[] tokens, EditText field) {
+        HorizontalScrollView scroller = new HorizontalScrollView(context);
+        scroller.setHorizontalScrollBarEnabled(false);
+        LinearLayout chips = new LinearLayout(context);
+        chips.setOrientation(LinearLayout.HORIZONTAL);
+        for (String token : tokens) {
+            TextView chip = makePlaceholderChip(context, token, rp);
+            chip.setOnClickListener(v -> {
+                int s = Math.max(0, field.getSelectionStart());
+                int e = Math.max(s, field.getSelectionEnd());
+                field.getText().replace(s, e, token);
+            });
+            chips.addView(chip, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 0, 6, 0));
+        }
+        scroller.addView(chips);
+        return scroller;
+    }
+
+    /** The Range pill: an accent-filled toggle that reads as a sibling of "Now" when off. */
+    private static void styleModeChip(TextView t, boolean on, @Nullable Theme.ResourcesProvider rp) {
+        if (on) {
+            t.setBackground(Theme.createRoundRectDrawable(dp(14), Theme.getColor(Theme.key_featuredStickers_addButton, rp)));
+            t.setTextColor(Theme.getColor(Theme.key_featuredStickers_buttonText, rp));
+        } else {
+            t.setBackground(Theme.createRoundRectDrawable(dp(14), Theme.getColor(Theme.key_graySection, rp)));
+            t.setTextColor(Theme.getColor(Theme.key_featuredStickers_addButton, rp));
+        }
+    }
+
+    /** Start/End selector: narrower than a scope chip so the readout beside it keeps its width. */
+    private static TextView makeEdgeChip(Context context, String text) {
+        TextView t = new TextView(context);
+        t.setText(text);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(10), dp(4), dp(10), dp(4));
+        return t;
+    }
+
+    private static TextView makeEdgeReadout(Context context, @Nullable Theme.ResourcesProvider rp) {
+        TextView t = new TextView(context);
+        t.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, rp));
+        t.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+        t.setTypeface(AndroidUtilities.bold());
+        t.setSingleLine(true);
+        t.setEllipsize(TextUtils.TruncateAt.END);
+        return t;
+    }
+
+    private static String edgeDescription(String label, CharSequence line, boolean selected) {
+        return LocaleController.formatString(selected
+                        ? R.string.ChatTimeZoneAccEdgeSelected : R.string.ChatTimeZoneAccEdgeUnselected,
+                label, line.toString());
     }
 
     private static CharSequence buildLegend(HourStripView strip) {
@@ -661,6 +904,8 @@ public final class ChatTimeZoneHoursSheet {
         private final TextPaint hourPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint ringPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint bandPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint edgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF cellRect = new RectF();
         private final Rect clipRect = new Rect();
         private final Calendar cal = Calendar.getInstance();
@@ -675,6 +920,9 @@ public final class ChatTimeZoneHoursSheet {
         private final int textColor, nightTextColor;
         // Locale for the midnight weekday labels; null = app language.
         private Locale weekdayLocale;
+        // The selected span in steps; -1/-1 in point mode. bandPinned is the edge the
+        // cursor isn't holding, so it's the only one that needs its own line drawn.
+        private int bandActive = -1, bandPinned = -1;
 
         HourStripView(Context context, long startMs, TimeZone peerTz,
                       @Nullable Theme.ResourcesProvider rp) {
@@ -696,6 +944,20 @@ public final class ChatTimeZoneHoursSheet {
             ringPaint.setStrokeWidth(dp(1.5f));
             // "Now" ring is grey so the accent cursor stays the one accent cue.
             ringPaint.setColor(Theme.getColor(Theme.key_dialogTextGray3, rp));
+
+            int accent = Theme.getColor(Theme.key_featuredStickers_addButton, rp);
+            // Translucent so the hour colours and their labels still read through the span.
+            bandPaint.setColor(ColorUtils.setAlphaComponent(accent, 56));
+            edgePaint.setColor(accent);
+            edgePaint.setStrokeWidth(dp(2));
+        }
+
+        /** Marks the selected span; pass -1 for either edge to clear it. */
+        void setBand(int activeStep, int pinnedStep) {
+            if (bandActive == activeStep && bandPinned == pinnedStep) return;
+            bandActive = activeStep;
+            bandPinned = pinnedStep;
+            invalidate();
         }
 
         int pitch() {
@@ -757,6 +1019,17 @@ public final class ChatTimeZoneHoursSheet {
                 drawCell(canvas, x, 0, cal, i == nowHour);
                 peerCal.setTimeInMillis(t);
                 drawCell(canvas, x, cellH + gap, peerCal, i == nowHour);
+            }
+            if (bandActive >= 0 && bandPinned >= 0) {
+                // Drawn over the cells rather than under them, and across both lanes at
+                // once: the span is one instant range, and the two lanes are the same
+                // instants read on two clocks. Off-screen edges cost nothing -- the
+                // canvas clips the rect, and the step-to-x math doesn't need the cell.
+                int bottom = cellH * 2 + gap;
+                canvas.drawRect(xForStep(Math.min(bandActive, bandPinned)), 0,
+                        xForStep(Math.max(bandActive, bandPinned)), bottom, bandPaint);
+                float px = xForStep(bandPinned);
+                canvas.drawLine(px, 0, px, bottom, edgePaint);
             }
         }
 
@@ -847,6 +1120,11 @@ public final class ChatTimeZoneHoursSheet {
         void cancelUserScrolling() {
             removeCallbacks(clearScrolling);
             userScrolling = false;
+            // Stop the scroller itself, not just the flag. A fling still in flight would
+            // otherwise carry on past whatever position the caller is about to scroll to,
+            // dragging the selected edge along with it. A zero-velocity fling is the only
+            // public way to abort one that doesn't also disturb smoothScrollTo's timing.
+            fling(0);
         }
 
         @Override

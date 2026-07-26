@@ -109,6 +109,38 @@ public final class ChatTimeZoneRenderer {
     }
 
     /**
+     * "Tue 13:00–15:00" for a range that stays inside one day, "Tue 23:00–Wed 01:00"
+     * when it crosses midnight. The weekday is dropped from the end when it would only
+     * repeat the start's -- the two sides of a range are compared often enough that the
+     * repetition is noise, and its absence is itself the "same day" cue.
+     */
+    public static String formatRange(@NonNull Calendar start, @NonNull Calendar end,
+                                     @Nullable Locale locale) {
+        String tail = compareDay(end, start) == 0
+                ? String.format(Locale.US, "%02d:%02d", end.get(Calendar.HOUR_OF_DAY), end.get(Calendar.MINUTE))
+                : formatSide(end, locale);
+        return formatSide(start, locale) + "–" + tail;
+    }
+
+    /**
+     * Elapsed length of a range: "45m", "2h", "1h 30m", "2d 3h". Measured from the two
+     * instants rather than by subtracting the displayed clock faces, so a DST change
+     * inside the range reports the time that actually passes.
+     */
+    public static String formatDuration(long ms) {
+        long minutes = Math.max(0, ms / 60_000L);
+        long hours = minutes / 60;
+        minutes %= 60;
+        long days = hours / 24;
+        hours %= 24;
+        if (days > 0) {
+            return hours == 0 ? days + "d" : days + "d " + hours + "h";
+        }
+        if (hours == 0) return minutes + "m";
+        return minutes == 0 ? hours + "h" : hours + "h " + minutes + "m";
+    }
+
+    /**
      * Returns true when the configured zone is operationally identical to the
      * device zone (same id, or fully equivalent rules across the year).
      * Single-instant offset compares would mis-classify zones that diverge under DST.

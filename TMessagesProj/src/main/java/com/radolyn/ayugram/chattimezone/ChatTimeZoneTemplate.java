@@ -41,10 +41,16 @@ import xyz.nextalone.nagram.NaConfig;
  *   <li>{@code {daydiff}} — "+1d" / "−1d" / empty</li>
  * </ul>
  * Unknown tokens are left in place verbatim.
+ *
+ * <p>Selecting a range instead of an instant swaps in a parallel set of everything
+ * here — its own template at both scopes, its own default pattern and its own tokens
+ * ({@link #RANGE_TOKENS}) — so a range never renders through a template written for a
+ * single moment. The output language stays one shared setting.
  */
 public final class ChatTimeZoneTemplate {
 
     private static final String ACCOUNT_TEMPLATE_KEY = "insert_template";
+    private static final String ACCOUNT_RANGE_TEMPLATE_KEY = "insert_range_template";
     private static final String ACCOUNT_LANGUAGE_KEY = "insert_language";
 
     /**
@@ -57,6 +63,17 @@ public final class ChatTimeZoneTemplate {
             "{my_day}", "{peer_day}", "{peer_name}", "{offset}", "{daydiff}"
     };
 
+    /**
+     * The range equivalent of {@link #TOKENS}, filled by {@link #renderRange}. Point
+     * tokens are deliberately absent rather than quietly aliased to the range's start:
+     * a template pasted across from the other editor should read wrong, not look right
+     * and send the wrong half of the range.
+     */
+    public static final String[] RANGE_TOKENS = {
+            "{my_range}", "{peer_range}", "{my_start}", "{my_end}",
+            "{peer_start}", "{peer_end}", "{duration}", "{peer_name}", "{offset}"
+    };
+
     private ChatTimeZoneTemplate() {}
 
     private static String prefsName(int account) {
@@ -64,34 +81,37 @@ public final class ChatTimeZoneTemplate {
     }
 
     /** The built-in default in the app locale, derived from the localized pattern so it stays translated. */
-    public static String defaultTemplate() {
-        return defaultTemplate(null);
+    public static String defaultTemplate(boolean range) {
+        return defaultTemplate(range, null);
     }
 
     /**
      * The built-in default in the given locale (app locale when {@code locale} is
-     * {@code null}). Reads {@link R.string#ChatTimeZoneInsertPattern} from a
-     * locale-specific resource context, so a translated pattern (e.g. the Russian
-     * override) is used even when the app itself runs in another language; falls
-     * back to the base pattern where no translation exists.
+     * {@code null}). Reads the localized pattern from a locale-specific resource
+     * context, so a translated pattern (e.g. the Russian override) is used even when
+     * the app itself runs in another language; falls back to the base pattern where no
+     * translation exists.
      */
-    public static String defaultTemplate(@Nullable Locale locale) {
-        String pattern = patternFor(locale);
+    public static String defaultTemplate(boolean range, @Nullable Locale locale) {
+        String pattern = patternFor(range, locale);
         // Pattern is "%1$s my time (%2$s your time)" -> token form the editor can show/edit.
-        return pattern.replace("%1$s", "{my_side}").replace("%2$s", "{peer_side}");
+        return range
+                ? pattern.replace("%1$s", "{my_range}").replace("%2$s", "{peer_range}")
+                : pattern.replace("%1$s", "{my_side}").replace("%2$s", "{peer_side}");
     }
 
-    private static String patternFor(@Nullable Locale locale) {
+    private static String patternFor(boolean range, @Nullable Locale locale) {
+        int res = range ? R.string.ChatTimeZoneInsertRangePattern : R.string.ChatTimeZoneInsertPattern;
         if (locale == null) {
-            return LocaleController.getString(R.string.ChatTimeZoneInsertPattern);
+            return LocaleController.getString(res);
         }
         try {
             Context base = ApplicationLoader.applicationContext;
             Configuration cfg = new Configuration(base.getResources().getConfiguration());
             cfg.setLocale(locale);
-            return base.createConfigurationContext(cfg).getString(R.string.ChatTimeZoneInsertPattern);
+            return base.createConfigurationContext(cfg).getString(res);
         } catch (Throwable ignore) {
-            return LocaleController.getString(R.string.ChatTimeZoneInsertPattern);
+            return LocaleController.getString(res);
         }
     }
 
@@ -107,42 +127,46 @@ public final class ChatTimeZoneTemplate {
         }
     }
 
-    public static String getGlobal() {
-        return NaConfig.INSTANCE.getChatTimeZoneInsertTemplate().String();
+    public static String getGlobal(boolean range) {
+        return (range ? NaConfig.INSTANCE.getChatTimeZoneInsertRangeTemplate()
+                : NaConfig.INSTANCE.getChatTimeZoneInsertTemplate()).String();
     }
 
     /** Pass {@code null}/blank to clear the global template and fall back to the built-in default. */
-    public static void setGlobal(@Nullable String template) {
+    public static void setGlobal(boolean range, @Nullable String template) {
         String normalized = (template == null || template.trim().isEmpty()) ? "" : template;
-        NaConfig.INSTANCE.getChatTimeZoneInsertTemplate().setConfigString(normalized);
+        (range ? NaConfig.INSTANCE.getChatTimeZoneInsertRangeTemplate()
+                : NaConfig.INSTANCE.getChatTimeZoneInsertTemplate()).setConfigString(normalized);
     }
 
     /** Per-account override, or {@code null} when none is set. */
     @Nullable
-    public static String getAccountOverride(int account) {
+    public static String getAccountOverride(int account, boolean range) {
         try {
             SharedPreferences sp = ApplicationLoader.applicationContext
                     .getSharedPreferences(prefsName(account), 0);
-            String v = sp.getString(ACCOUNT_TEMPLATE_KEY, null);
+            String v = sp.getString(range ? ACCOUNT_RANGE_TEMPLATE_KEY : ACCOUNT_TEMPLATE_KEY, null);
             return TextUtils.isEmpty(v) ? null : v;
         } catch (Throwable ignore) {
             return null;
         }
     }
 
+    /** True when either template is overridden for this account: they share the scope selector. */
     public static boolean hasAccountOverride(int account) {
-        return getAccountOverride(account) != null;
+        return getAccountOverride(account, false) != null || getAccountOverride(account, true) != null;
     }
 
     /** Pass {@code null}/blank to clear the override and fall back to the global default. */
-    public static void setAccountOverride(int account, @Nullable String template) {
+    public static void setAccountOverride(int account, boolean range, @Nullable String template) {
         try {
             SharedPreferences.Editor ed = ApplicationLoader.applicationContext
                     .getSharedPreferences(prefsName(account), 0).edit();
+            String key = range ? ACCOUNT_RANGE_TEMPLATE_KEY : ACCOUNT_TEMPLATE_KEY;
             if (template == null || template.trim().isEmpty()) {
-                ed.remove(ACCOUNT_TEMPLATE_KEY);
+                ed.remove(key);
             } else {
-                ed.putString(ACCOUNT_TEMPLATE_KEY, template);
+                ed.putString(key, template);
             }
             ed.apply();
         } catch (Throwable ignore) {}
@@ -217,7 +241,7 @@ public final class ChatTimeZoneTemplate {
     public static String render(@Nullable String template, @NonNull Calendar local, @NonNull Calendar peer,
                                 @NonNull String peerName, int offsetMin, @Nullable Locale locale) {
         if (template == null || template.trim().isEmpty()) {
-            template = defaultTemplate(locale);
+            template = defaultTemplate(false, locale);
         }
         int dayDiff = ChatTimeZoneRenderer.compareDay(peer, local);
         String dayDiffStr = dayDiff > 0 ? "+1d" : dayDiff < 0 ? "−1d" : "";
@@ -232,6 +256,34 @@ public final class ChatTimeZoneTemplate {
         vals.put("peer_name", peerName);
         vals.put("offset", formatOffset(offsetMin));
         vals.put("daydiff", dayDiffStr);
+        return applyTokens(template, vals);
+    }
+
+    /**
+     * The {@link #render} counterpart for a span: the four calendars are the two edges
+     * seen from each side, already normalized so {@code start} is the earlier instant.
+     * {@code offsetMin} is taken at the start, which is where the range's own wording
+     * ("+9h") is anchored; a zone change inside the span shows up in the edge times
+     * themselves rather than in a second offset.
+     */
+    public static String renderRange(@Nullable String template,
+                                     @NonNull Calendar localStart, @NonNull Calendar localEnd,
+                                     @NonNull Calendar peerStart, @NonNull Calendar peerEnd,
+                                     @NonNull String peerName, int offsetMin, long durationMs,
+                                     @Nullable Locale locale) {
+        if (template == null || template.trim().isEmpty()) {
+            template = defaultTemplate(true, locale);
+        }
+        Map<String, String> vals = new LinkedHashMap<>();
+        vals.put("my_range", ChatTimeZoneRenderer.formatRange(localStart, localEnd, locale));
+        vals.put("peer_range", ChatTimeZoneRenderer.formatRange(peerStart, peerEnd, locale));
+        vals.put("my_start", ChatTimeZoneRenderer.formatSide(localStart, locale));
+        vals.put("my_end", ChatTimeZoneRenderer.formatSide(localEnd, locale));
+        vals.put("peer_start", ChatTimeZoneRenderer.formatSide(peerStart, locale));
+        vals.put("peer_end", ChatTimeZoneRenderer.formatSide(peerEnd, locale));
+        vals.put("duration", ChatTimeZoneRenderer.formatDuration(durationMs));
+        vals.put("peer_name", peerName);
+        vals.put("offset", formatOffset(offsetMin));
         return applyTokens(template, vals);
     }
 

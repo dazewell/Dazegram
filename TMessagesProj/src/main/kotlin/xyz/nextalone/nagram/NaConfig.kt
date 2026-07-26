@@ -137,6 +137,12 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val chatTimeZoneInsertRangeTemplate =
+        addConfig(
+            "ChatTimeZoneInsertRangeTemplate",
+            ConfigItem.configTypeString,
+            ""
+        )
     val chatTimeZoneInsertLanguage =
         addConfig(
             "ChatTimeZoneInsertLanguage",
