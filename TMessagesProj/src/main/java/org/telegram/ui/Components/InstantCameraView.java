@@ -729,13 +729,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return !recording;
     }
 
-    // NagramX: the camera is still filming. An infinite video message segment lands in the chat while
-    // this is true, and the transition that flies the camera into its bubble ends in hideCamera(), so
-    // the chat has to leave a live camera alone.
-    public boolean isRecording() {
-        return recording;
-    }
-
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {

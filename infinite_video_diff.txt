@@ -1,0 +1,711 @@
+diff --git a/FEATURES.md b/FEATURES.md
+index 72604efdf..27ae98f05 100644
+--- a/FEATURES.md
++++ b/FEATURES.md
+@@ -107,6 +107,12 @@ A mute button next to the playback-mode toggle silences round video messages whi
+ 
+ When camera mode is set to Ask, the camera choice popup now has an External Microphone toggle at the top. Flip it to record through a wired or Bluetooth headset instead of the phone's built-in mic, without digging through Settings. It's the same setting you'd find in Settings, so it sticks across recordings.
+ 
++### Infinite video message <!-- #infinite-video -->
++
++Round video messages stop dead at 60 seconds, which is annoying when you're mid-sentence. With camera mode set to Ask, the camera choice popup has an *Infinite Recording* toggle under the microphone one. Turn it on and the 60-second mark stops being a wall: the recorder closes off that minute, sends it as its own round message, and carries straight on into the next one. The camera doesn't blink and the mic never restarts, so a Bluetooth headset stays connected through the handover. You stop it the normal way, by lifting your finger or tapping send, and the last piece goes through like any other video message. There's a ceiling of ten minutes, after which it stops on its own and leaves the final piece in the preview for you.
++
++Unlike the microphone toggle, this one is off every time you start a recording. It keeps sending on its own, so it should be a decision you make each time rather than something you forget is on. It's also greyed out where sending unattended wouldn't work: slow mode, paid messages, scheduled messages, and when view-once is armed.
++
+ ### Smoother video message zoom <!-- #video-zoom -->
+ 
+ The zoom control under the round video camera was rebuilt with a full-range slider and a − / + pair that steps the zoom one notch at a time (hold to keep going). Two flags live in NagramX chat settings, under Camera: *Reset zoom when switching cameras* starts the zoom fresh each time you flip cameras instead of carrying it over, and *Hardware smooth zoom* hands the animation to the camera itself for a smoother glide — the app checks whether your phone supports it when you flip it on.
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
+index 2ec5bf6b6..0d0571e74 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
+@@ -2663,6 +2663,9 @@ public class ChatActivity extends BaseFragment implements
+                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
+                 } else if (state == 2 || state == 5) {
+                     instantCameraView.cancel(state == 2);
++                } else if (state == 6) {
++                    // NagramX: infinite video message hit the 60s cap, roll over to the next segment
++                    instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
+                 }
+             }
+         }
+@@ -37799,6 +37802,18 @@ public class ChatActivity extends BaseFragment implements
+         }, stars);
+     }
+ 
++    // NagramX: infinite video message rollover. Skips what sendMedia does around the actual send
++    // (the round-camera visibility flip, beforeMessageSend, the delayed close animation): the recorder
++    // is still running, so treating this as the end of the session would kill it mid-flight.
++    @Override
++    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
++        if (photoEntry == null) {
++            return;
++        }
++        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, quickReplyShortcut, getQuickReplyId(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
++        afterMessageSend();
++    }
++
+     private void runCloseInstantCameraAnimation() {
+         if (instantCameraView == null) {
+             return;
+@@ -39925,7 +39940,7 @@ public class ChatActivity extends BaseFragment implements
+                     int index;
+                     if ((index = animatingMessageObjects.indexOf(message)) != -1) {
+                         boolean applyAnimation = false;
+-                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null) {
++                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && !instantCameraView.isRecording()) {
+                             applyAnimation = true;
+                             if (closeInstantCameraAnimation != null) {
+                                 AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
+index 7266184e8..12aa3ed82 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/ChatActivityEnterView.java
+@@ -918,6 +918,11 @@ public class ChatActivityEnterView extends FrameLayout implements
+ 
+     private Boolean pendingCameraFront = null; // nax
+ 
++    // NagramX: infinite video message. Session-only on purpose, so it never carries over to the next recording.
++    private static final int INFINITE_VIDEO_MAX_SEGMENTS = 10;
++    private boolean infiniteVideoMessage;
++    private int infiniteVideoSegments;
++
+     private Runnable onFinishInitCameraRunnable = new Runnable() {
+         @Override
+         public void run() {
+@@ -939,6 +944,9 @@ public class ChatActivityEnterView extends FrameLayout implements
+             if (delegate == null || parentActivity == null) {
+                 return;
+             }
++            // NagramX: every recording starts with infinite mode off, whatever the last one used
++            infiniteVideoMessage = false;
++            infiniteVideoSegments = 0;
+             /*delegate.onPreAudioVideoRecord();
+             calledRecordRunnable = true;
+             recordAudioVideoRunnableStarted = false;
+@@ -15979,6 +15987,17 @@ public class ChatActivityEnterView extends FrameLayout implements
+ 
+             if (isInVideoMode()) {
+                 if (t >= 59500 && !stoppedInternal) {
++                    // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
++                    // dropping into the preview. The last allowed segment falls back to the normal stop, as
++                    // does anything that armed view-once or started a slow mode countdown mid-recording.
++                    if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
++                        infiniteVideoSegments++;
++                        startedDraggingX = -1;
++                        delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
++                        sendButton.setEffect(effectId = 0);
++                        start(0);
++                        return;
++                    }
+                     startedDraggingX = -1;
+                     delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                     sendButton.setEffect(effectId = 0);
+@@ -17394,6 +17413,53 @@ public class ChatActivityEnterView extends FrameLayout implements
+         startLockTransition();
+     }
+ 
++    // NagramX: infinite video message: the conditions under which a segment can be sent without the
++    // user looking at it. Checked when the toggle is offered and again at every rollover, because
++    // view-once can be armed and a slow mode countdown can start while the recording is still running.
++    private boolean isInfiniteVideoAvailable() {
++        return !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
++                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
++    }
++
++    // NagramX: custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while taking leftover
++    // width, with the switch in a fixed zone behind a divider
++    private LinearLayout createPopupSwitchRow(int iconRes, CharSequence label, Switch sw, boolean enabled) {
++        boolean isRtl = LocaleController.isRTL;
++        LinearLayout row = new LinearLayout(getContext());
++        row.setOrientation(LinearLayout.HORIZONTAL);
++        row.setGravity(Gravity.CENTER_VERTICAL);
++        row.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
++        row.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
++        row.setMinimumWidth(dp(220));
++        if (enabled) {
++            row.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
++        } else {
++            row.setAlpha(0.5f);
++        }
++
++        ImageView icon = new ImageView(getContext());
++        icon.setScaleType(ImageView.ScaleType.CENTER);
++        icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
++        icon.setImageResource(iconRes);
++        row.addView(icon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, isRtl ? 19 : 0, 0, isRtl ? 0 : 19, 0));
++
++        TextView text = new TextView(getContext());
++        text.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
++        text.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
++        text.setSingleLine(true);
++        text.setEllipsize(TextUtils.TruncateAt.END);
++        text.setGravity(isRtl ? Gravity.RIGHT : Gravity.LEFT);
++        text.setText(label);
++        row.addView(text, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
++
++        View divider = new View(getContext());
++        divider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
++        row.addView(divider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
++
++        row.addView(sw, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
++        return row;
++    }
++
+     private void showCameraSelectionPopup(View anchorView, Runnable onFrontSelected, Runnable onRearSelected) {
+         if (parentActivity == null) {
+             return;
+@@ -17405,41 +17471,10 @@ public class ChatActivityEnterView extends FrameLayout implements
+         popupLayout.setAnimationEnabled(false);
+ 
+         // NagramX: external mic toggle (its own section above the camera choices)
+-        // custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while
+-        // taking leftover width, with the switch in a fixed zone behind a divider
+-        boolean isRtl = LocaleController.isRTL;
+-        LinearLayout micRow = new LinearLayout(getContext());
+-        micRow.setOrientation(LinearLayout.HORIZONTAL);
+-        micRow.setGravity(Gravity.CENTER_VERTICAL);
+-        micRow.setLayoutDirection(isRtl ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+-        micRow.setPadding(dp(isRtl ? 14 : 18), 0, dp(isRtl ? 18 : 14), 0);
+-        micRow.setMinimumWidth(dp(220));
+-        micRow.setBackground(Theme.createRadSelectorDrawable(Theme.getColor(Theme.key_dialogButtonSelector, resourcesProvider), 6, 6));
+-
+-        ImageView micIcon = new ImageView(getContext());
+-        micIcon.setScaleType(ImageView.ScaleType.CENTER);
+-        micIcon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultSubmenuItemIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
+-        micIcon.setImageResource(R.drawable.msg_voice_headphones_solar);
+-        micRow.addView(micIcon, LayoutHelper.createLinear(24, 24, Gravity.CENTER_VERTICAL, isRtl ? 19 : 0, 0, isRtl ? 0 : 19, 0));
+-
+-        TextView micLabel = new TextView(getContext());
+-        micLabel.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
+-        micLabel.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+-        micLabel.setSingleLine(true);
+-        micLabel.setEllipsize(TextUtils.TruncateAt.END);
+-        micLabel.setGravity(isRtl ? Gravity.RIGHT : Gravity.LEFT);
+-        micLabel.setText(getString(R.string.CameraInVideoMessagesExternalMic));
+-        micRow.addView(micLabel, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
+-
+-        View micDivider = new View(getContext());
+-        micDivider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
+-        micRow.addView(micDivider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
+-
+         Switch micSwitch = new Switch(getContext(), resourcesProvider);
+         micSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+         micSwitch.setChecked(SharedConfig.recordViaSco, false);
+-        micRow.addView(micSwitch, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
+-
++        LinearLayout micRow = createPopupSwitchRow(R.drawable.msg_voice_headphones_solar, getString(R.string.CameraInVideoMessagesExternalMic), micSwitch, true);
+         micRow.setOnClickListener(v -> {
+             boolean enable = !SharedConfig.recordViaSco;
+             SharedConfig.recordViaSco = enable;
+@@ -17462,6 +17497,22 @@ public class ChatActivityEnterView extends FrameLayout implements
+         });
+         popupLayout.addView(micRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+ 
++        // NagramX: infinite video message toggle. Deliberately not persisted: it keeps sending until you
++        // stop, so it has to be an explicit choice every time. Dead where a segment couldn't be sent
++        // unattended anyway (slow mode, paid messages, scheduling, view-once).
++        final boolean infiniteAvailable = isInfiniteVideoAvailable();
++        Switch infiniteSwitch = new Switch(getContext(), resourcesProvider);
++        infiniteSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
++        infiniteSwitch.setChecked(infiniteVideoMessage, false);
++        LinearLayout infiniteRow = createPopupSwitchRow(R.drawable.msg_retry_solar, getString(R.string.CameraInVideoMessagesInfinite), infiniteSwitch, infiniteAvailable);
++        if (infiniteAvailable) {
++            infiniteRow.setOnClickListener(v -> {
++                infiniteVideoMessage = !infiniteVideoMessage;
++                infiniteSwitch.setChecked(infiniteVideoMessage, true);
++            });
++        }
++        popupLayout.addView(infiniteRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
++
+         // section separator
+         ActionBarPopupWindow.GapView gapView = new ActionBarPopupWindow.GapView(getContext(), resourcesProvider);
+         gapView.setTag(R.id.object_tag, 1);
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java b/TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java
+index faed822da..65bd3d161 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/Components/InstantCameraView.java
+@@ -729,6 +729,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+         return !recording;
+     }
+ 
++    // NagramX: the camera is still filming. An infinite video message segment lands in the chat while
++    // this is true, and the transition that flies the camera into its bubble ends in hideCamera(), so
++    // the chat has to leave a live camera alone.
++    public boolean isRecording() {
++        return recording;
++    }
++
+     // flips between the front and back camera; also reached from the zoom control's flip button.
+     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
+     private void flipCamera() {
+@@ -835,15 +842,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+         }
+ 
+         if (!fromPaused) {
+-            cameraFile = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_DOCUMENT), System.currentTimeMillis() + "_" + SharedConfig.getLastLocalId() + ".mp4") {
+-                @Override
+-                public boolean delete() {
+-                    if (BuildVars.LOGS_ENABLED) {
+-                        FileLog.e("delete camera file");
+-                    }
+-                    return super.delete();
+-                }
+-            };
++            cameraFile = generateCameraFile();
+         }
+ 
+         SharedConfig.saveConfig();
+@@ -1195,6 +1194,74 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+         }
+     }
+ 
++    // NagramX: same cache file the recorder starts with, so an infinite-mode rollover can open the next one
++    private File generateCameraFile() {
++        return new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_DOCUMENT), System.currentTimeMillis() + "_" + SharedConfig.getLastLocalId() + ".mp4") {
++            @Override
++            public boolean delete() {
++                if (BuildVars.LOGS_ENABLED) {
++                    FileLog.e("delete camera file");
++                }
++                return super.delete();
++            }
++        };
++    }
++
++    // NagramX: infinite video message: wrap the current segment up, send it, and keep recording into the
++    // next file. The camera, the encoders and the audio record all stay running, so nothing is lost at the
++    // boundary beyond the frames it takes the encoder to produce a keyframe.
++    public void rollOverSegment(boolean notify, int ttl, long effectId, long stars) {
++        if (cameraThread == null || videoEncoder == null || !recording || cancelled) {
++            return;
++        }
++        final long segmentDuration = recordedTime;
++        final File nextFile = generateCameraFile();
++        AutoDeleteMediaTask.lockFile(nextFile);
++        // the finished segment is still being written when we get here, so its upload can't have completed
++        // yet and these carry nothing worth keeping: hand them straight to the next segment
++        cameraFile = nextFile;
++        file = null;
++        encryptedFile = null;
++        key = null;
++        iv = null;
++        size = 0;
++        videoEncoder.rollOver(nextFile, segmentDuration, new SendOptions(notify, 0, 0, ttl, effectId, stars));
++        recordPlusTime = 0;
++        recordStartTime = System.currentTimeMillis();
++        recordedTime = 0;
++        progress = 0;
++        invalidate();
++    }
++
++    // NagramX: send a finished infinite-mode segment as its own round message. Mirrors the normal round-video
++    // send: the file is handed over while its upload is still being finalised, same as a user-stopped one.
++    private VideoEditedInfo sendSegment(File segmentFile, long duration, SendOptions options) {
++        if (delegate == null) {
++            return null;
++        }
++        VideoEditedInfo info = new VideoEditedInfo();
++        info.startTime = -1;
++        info.endTime = -1;
++        info.roundVideo = true;
++        info.estimatedSize = Math.max(1, segmentFile.length());
++        info.estimatedDuration = duration;
++        info.framerate = 25;
++        info.resultWidth = info.originalWidth = 360;
++        info.resultHeight = info.originalHeight = 360;
++        info.originalPath = segmentFile.getAbsolutePath();
++        info.notReadyYet = true;
++        if (textureView != null) {
++            info.thumb = textureView.getBitmap();
++        }
++        MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, segmentFile.getAbsolutePath(), 0, true, 0, 0, 0);
++        if (options != null) {
++            entry.ttl = options.ttl;
++            entry.effectId = options.effectId;
++        }
++        delegate.sendMediaKeepRecording(entry, info, options == null || options.notify, options != null ? options.stars : 0);
++        return info;
++    }
++
+     private void saveLastCameraBitmap() {
+         Bitmap bitmap = textureView.getBitmap();
+         if (bitmap != null && bitmap.getPixel(0, 0) != 0) {
+@@ -2169,6 +2236,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+     private static final int MSG_AUDIOFRAME_AVAILABLE = 3;
+     private static final int MSG_PAUSE_RECORDING = 4;
+     private static final int MSG_RESUME_RECORDING = 5;
++    private static final int MSG_ROLLOVER_RECORDING = 6; // NagramX
+ 
+     private static class EncoderHandler extends Handler {
+         private WeakReference<VideoRecorder> mWeakEncoder;
+@@ -2222,6 +2290,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                     encoder.handleResumeRecording();
+                     break;
+                 }
++                case MSG_ROLLOVER_RECORDING: {
++                    if (BuildVars.LOGS_ENABLED) {
++                        FileLog.e("InstantCamera roll encoder over to the next segment");
++                    }
++                    encoder.handleRollover(inputMessage.arg1, (SendOptions) inputMessage.obj);
++                    break;
++                }
+                 case MSG_VIDEOFRAME_AVAILABLE: {
+                     long timestamp = (((long) inputMessage.arg1) << 32) | (((long) inputMessage.arg2) & 0xffffffffL);
+                     Integer cameraId = (Integer) inputMessage.obj;
+@@ -2310,6 +2385,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+         private ArrayList<AudioBufferInfo> buffersToWrite = new ArrayList<>();
+         private int videoTrackIndex = -5;
+         private int audioTrackIndex = -5;
++        // NagramX: kept so a segment rollover can re-add both tracks to the next file's muxer
++        private MediaFormat videoTrackFormat;
++        private MediaFormat audioTrackFormat;
++        private volatile File rolloverFile;
++        private boolean waitingForSyncFrame;
+ 
+         private long lastCommitedFrameTime;
+         private long audioStartTime = -1;
+@@ -2543,6 +2623,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+             handler.sendMessage(handler.obtainMessage(MSG_RESUME_RECORDING));
+         }
+ 
++        // NagramX: infinite video message
++        public void rollOver(File nextFile, long duration, SendOptions options) {
++            rolloverFile = nextFile;
++            handler.sendMessage(handler.obtainMessage(MSG_ROLLOVER_RECORDING, (int) duration, 0, options));
++        }
++
+         long prevTimestamp;
+         public void frameAvailable(SurfaceTexture st, Integer cameraId, long timestampInternal) {
+             synchronized (sync) {
+@@ -2978,6 +3064,173 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+             pauseRecorder = false;
+         }
+ 
++        // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next
++        // one on the same encoders. Nothing is stopped or released here, so the camera never blinks.
++        private void handleRollover(long segmentDuration, SendOptions sendOptions) {
++            final File nextFile = rolloverFile;
++            if (!running || pauseRecorder || cancelled || mediaMuxer == null || nextFile == null) {
++                if (nextFile != null) {
++                    rolloverFile = null;
++                    // the UI side already pointed cameraFile at the file we're not going to open, so put it
++                    // back on the one still being written or a later send would reach for something empty
++                    final File stillWriting = videoFile;
++                    AndroidUtilities.runOnUIThread(() -> {
++                        if (cameraFile == nextFile) {
++                            cameraFile = stillWriting;
++                        }
++                        AutoDeleteMediaTask.unlockFile(nextFile);
++                    });
++                }
++                return;
++            }
++            try {
++                drainEncoder(false);
++            } catch (Exception e) {
++                FileLog.e(e);
++            }
++            finishMuxer();
++            final File segmentFile = videoFile;
++            final boolean segmentFirstWrite = videoConvertFirstWrite;
++            AndroidUtilities.runOnUIThread(() -> {
++                VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
++                if (info != null) {
++                    info.notReadyYet = false;
++                }
++                // the segment is complete on disk, so whatever the streaming upload managed during the
++                // recording just needs closing off
++                if (segmentFirstWrite) {
++                    FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
++                }
++                FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
++            });
++
++            videoFile = nextFile;
++            rolloverFile = null;
++            videoConvertFirstWrite = true;
++            firstEncode = true;
++            videoTrackIndex = -5;
++            audioTrackIndex = -5;
++            // the thumb list is written from the UI thread, so let it do the clearing too
++            AndroidUtilities.runOnUIThread(keyframeThumbs::clear);
++            frameCount = 0;
++            try {
++                createMuxer();
++                if (videoTrackFormat != null) {
++                    videoTrackIndex = mediaMuxer.addTrack(videoTrackFormat, false);
++                }
++                if (audioTrackFormat != null) {
++                    audioTrackIndex = mediaMuxer.addTrack(audioTrackFormat, true);
++                }
++            } catch (Exception e) {
++                FileLog.e(e);
++                // no muxer means there is nowhere to put the next segment, so stop the whole recording
++                // instead of filming into a file that can never be finished. The segment that was just
++                // handed off is already on its way and is not affected.
++                mediaMuxer = null;
++                AndroidUtilities.runOnUIThread(() -> cancel(false));
++                return;
++            }
++            // whatever is already in the encoder still refers to the previous file's frames
++            waitingForSyncFrame = true;
++            try {
++                android.os.Bundle params = new android.os.Bundle();
++                params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
++                videoEncoder.setParameters(params);
++            } catch (Exception e) {
++                FileLog.e(e);
++            }
++            // the encoder clocks have to keep running forward, but the audio re-syncs to the next segment's
++            // first video frame the same way it does after a pause: that also rebases the 60s audio cut-off,
++            // which is measured from audioStartTime and would otherwise truncate the last segment
++            prevVideoLast = videoLast + videoLastDt;
++            prevAudioLast = audioLast + audioLastDt;
++            firstVideoFrameSincePause = true;
++            lastTimestamp = -1;
++            lastCommitedFrameTime = 0;
++            audioStartTime = -1;
++            audioFirst = -1;
++            videoFirst = -1;
++            videoLast = -1;
++            videoDiff = -1;
++            audioLast = -1;
++            desyncTime = 0;
++        }
++
++        // NagramX: pulled out of prepareEncoder so a rollover opens the next segment's movie the same way
++        private void createMuxer() throws Exception {
++            fileToWrite = videoFile;
++            writingToDifferentFile = false;
++            if (ImageLoader.isSdCardPath(videoFile)) {
++                try {
++                    fileToWrite = new File(ApplicationLoader.getFilesDirFixed(), "camera_tmp.mp4");
++                    if (fileToWrite.exists()) {
++                        fileToWrite.delete();
++                    }
++                    writingToDifferentFile = true;
++                } catch (Throwable e) {
++                    FileLog.e(e);
++                    fileToWrite = videoFile;
++                    writingToDifferentFile = false;
++                }
++            }
++            Mp4Movie movie = new Mp4Movie();
++            movie.setCacheFile(fileToWrite);
++            movie.setRotation(0);
++            movie.setSize(videoWidth, videoHeight);
++            mediaMuxer = new MP4Builder().createMovie(movie, isSecretChat, false);
++            mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
++        }
++
++        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way
++        private void finishMuxer() {
++            if (mediaMuxer == null) {
++                return;
++            }
++            if (WRITE_TO_FILE_IN_BACKGROUND) {
++                CountDownLatch countDownLatch = new CountDownLatch(1);
++                fileWriteQueue.postRunnable(() -> {
++                    try {
++                        mediaMuxer.finishMovie();
++                    } catch (Exception e) {
++                        e.printStackTrace();
++                    }
++                    countDownLatch.countDown();
++                });
++                try {
++                    countDownLatch.await();
++                } catch (InterruptedException e) {
++                    e.printStackTrace();
++                }
++            } else {
++                try {
++                    mediaMuxer.finishMovie();
++                } catch (Exception e) {
++                    FileLog.e(e);
++                }
++            }
++            FileLog.d("InstantCamera finish muxer " + videoFile);
++            if (writingToDifferentFile) {
++                if (videoFile.exists()) {
++                    try {
++                        videoFile.delete();
++                    } catch (Exception e) {
++                        FileLog.e("InstantCamera copying fileToWrite to videoFile, deleting videoFile error " + videoFile);
++                        FileLog.e(e);
++                    }
++                }
++                if (!fileToWrite.renameTo(videoFile)) {
++                    FileLog.e("InstantCamera unable to rename file, try move file");
++                    try {
++                        AndroidUtilities.copyFile(fileToWrite, videoFile);
++                        fileToWrite.delete();
++                    } catch (IOException e) {
++                        FileLog.e(e);
++                        FileLog.e("InstantCamera unable to move file");
++                    }
++                }
++            }
++        }
++
+         private void setupVideoPlayer(File file) {
+             videoPlayer = new VideoPlayer();
+             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
+@@ -3129,49 +3382,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                 previewFile = null;
+             }
+             if (mediaMuxer != null) {
+-                if (WRITE_TO_FILE_IN_BACKGROUND) {
+-                    CountDownLatch countDownLatch = new CountDownLatch(1);
+-                    fileWriteQueue.postRunnable(() -> {
+-                        try {
+-                            mediaMuxer.finishMovie();
+-                        } catch (Exception e) {
+-                            e.printStackTrace();
+-                        }
+-                        countDownLatch.countDown();
+-                    });
+-                    try {
+-                        countDownLatch.await();
+-                    } catch (InterruptedException e) {
+-                        e.printStackTrace();
+-                    }
+-                } else {
+-                    try {
+-                        mediaMuxer.finishMovie();
+-                    } catch (Exception e) {
+-                        FileLog.e(e);
+-                    }
+-                }
+-                FileLog.d("InstantCamera handleStopRecording finish muxer");
+-                if (writingToDifferentFile) {
+-                    if (videoFile.exists()) {
+-                        try {
+-                            videoFile.delete();
+-                        } catch (Exception e) {
+-                            FileLog.e("InstantCamera copying fileToWrite to videoFile, deleting videoFile error " + videoFile);
+-                            FileLog.e(e);
+-                        }
+-                    }
+-                    if (!fileToWrite.renameTo(videoFile)) {
+-                        FileLog.e("InstantCamera unable to rename file, try move file");
+-                        try {
+-                            AndroidUtilities.copyFile(fileToWrite, videoFile);
+-                            fileToWrite.delete();
+-                        } catch (IOException e) {
+-                            FileLog.e(e);
+-                            FileLog.e("InstantCamera unable to move file");
+-                        }
+-                    }
+-                }
++                finishMuxer();
+             }
+             if (send != 2) {
+                 DispatchQueue queue = generateKeyframeThumbsQueue;
+@@ -3401,27 +3612,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                 videoEncoder.start();
+ 
+                 if (!fromPause) {
+-                    boolean isSdCard = ImageLoader.isSdCardPath(videoFile);
+-                    fileToWrite = videoFile;
+-                    if (isSdCard) {
+-                        try {
+-                            fileToWrite = new File(ApplicationLoader.getFilesDirFixed(), "camera_tmp.mp4");
+-                            if (fileToWrite.exists()) {
+-                                fileToWrite.delete();
+-                            }
+-                            writingToDifferentFile = true;
+-                        } catch (Throwable e) {
+-                            FileLog.e(e);
+-                            fileToWrite = videoFile;
+-                            writingToDifferentFile = false;
+-                        }
+-                    }
+-                    Mp4Movie movie = new Mp4Movie();
+-                    movie.setCacheFile(fileToWrite);
+-                    movie.setRotation(0);
+-                    movie.setSize(videoWidth, videoHeight);
+-                    mediaMuxer = new MP4Builder().createMovie(movie, isSecretChat, false);
+-                    mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
++                    createMuxer();
+                 }
+ 
+                 AndroidUtilities.runOnUIThread(() -> {
+@@ -3565,6 +3756,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+         }
+ 
+         public void drainEncoder(boolean endOfStream) throws Exception {
++            // NagramX: a failed rollover leaves no muxer behind; there is nothing to drain into
++            if (mediaMuxer == null) {
++                return;
++            }
+             if (endOfStream) {
+                 videoEncoder.signalEndOfInputStream();
+             }
+@@ -3581,6 +3776,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                     MediaFormat newFormat = videoEncoder.getOutputFormat();
+                     if (videoTrackIndex == -5) {
+                         videoTrackIndex = mediaMuxer.addTrack(newFormat, false);
++                        videoTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
+                         if (newFormat.containsKey(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES) && newFormat.getInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES) == 1) {
+                             ByteBuffer spsBuff = newFormat.getByteBuffer("csd-0");
+                             ByteBuffer ppsBuff = newFormat.getByteBuffer("csd-1");
+@@ -3593,6 +3789,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                     if (encodedData == null) {
+                         throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
+                     }
++                    // NagramX: right after a rollover the encoder is still emitting frames that reference the
++                    // previous file's keyframe: they'd be unplayable at the head of the new one, so drop them
++                    // until the sync frame we asked for shows up
++                    if (waitingForSyncFrame && (videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
++                        if ((videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
++                            waitingForSyncFrame = false;
++                        } else {
++                            videoBufferInfo.size = 0;
++                        }
++                    }
+                     if (videoBufferInfo.size > 1) {
+                         if ((videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                             if (prependHeaderSize != 0 && (videoBufferInfo.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0) {
+@@ -3669,6 +3875,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                                 newFormat.setByteBuffer("csd-1", pps);
+                             }
+                             videoTrackIndex = mediaMuxer.addTrack(newFormat, false);
++                            videoTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
+                         }
+                     }
+                     videoEncoder.releaseOutputBuffer(encoderStatus, false);
+@@ -3689,6 +3896,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+                     MediaFormat newFormat = audioEncoder.getOutputFormat();
+                     if (audioTrackIndex == -5) {
+                         audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
++                        audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
+                     }
+                 } else if (encoderStatus >= 0) {
+                     ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
+@@ -4263,6 +4471,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
+ 
+         View getFragmentView();
+         void sendMedia(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean b1, long stars);
++
++        // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
++        // sendMedia treats a round video as the end of the session and tears the camera down 3s later.
++        default void sendMediaKeepRecording(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
++            sendMedia(entry, videoEditedInfo, notify, 0, 0, false, stars);
++        }
+         Activity getParentActivity();
+         int getClassGuid();
+         long getDialogId();
+diff --git a/TMessagesProj/src/main/res/values/strings_nax.xml b/TMessagesProj/src/main/res/values/strings_nax.xml
+index 9f0992841..287bcf7c4 100644
+--- a/TMessagesProj/src/main/res/values/strings_nax.xml
++++ b/TMessagesProj/src/main/res/values/strings_nax.xml
+@@ -345,6 +345,7 @@
+     <string name="CameraInVideoMessagesRear">Rear Camera</string>
+     <string name="CameraInVideoMessagesAsk">Ask</string>
+     <string name="CameraInVideoMessagesExternalMic">External Microphone</string>
++    <string name="CameraInVideoMessagesInfinite">Infinite Recording</string>
+     <string name="CameraSettings">Camera</string>
+     <string name="ContactNotes">Notes</string>
+     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>

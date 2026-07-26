@@ -17418,6 +17418,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // view-once can be armed and a slow mode countdown can start while the recording is still running.
     private boolean isInfiniteVideoAvailable() {
         return !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
+                && !DialogObject.isEncryptedDialog(dialog_id)
                 && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
     }
 

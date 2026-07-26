@@ -844,6 +844,10 @@ public class ChatActivity extends BaseFragment implements
     private int convertingToastMessageId;
 
     public ArrayList<MessageObject> animatingMessageObjects = new ArrayList<>();
+    // NagramX: attach paths of infinite video message segments sent while the camera is still running.
+    // Those bubbles must not become the target of the fly-the-camera-into-the-message transition, which
+    // ends by destroying the camera; only the final segment is the real end of the session.
+    private final HashSet<String> keepRecordingSegmentPaths = new HashSet<>();
     private final HashMap<TLRPC.Document, Integer> animatingDocuments = new HashMap<>();
     private MessageObject needAnimateToMessage;
 
@@ -27053,7 +27057,7 @@ public class ChatActivity extends BaseFragment implements
                 } else if (currentChat != null && currentChat.megagroup && (action instanceof TLRPC.TL_messageActionChatAddUser || action instanceof TLRPC.TL_messageActionChatDeleteUser)) {
                     reloadMegagroup = true;
                 }
-                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED) {
+                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && !isKeepRecordingSegment(obj)) {
                     needAnimateToMessage = obj;
                 }
                 if (obj.isOut() && obj.wasJustSent) {
@@ -27226,7 +27230,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                 }
                 addToPolls(obj, null);
-                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && (chatMode != MODE_QUICK_REPLIES || messages.size() + 1 < getMessagesController().quickReplyMessagesLimit)) {
+                if (a == 0 && obj.shouldAnimateSending() && chatMode != MODE_SCHEDULED && !isKeepRecordingSegment(obj) && (chatMode != MODE_QUICK_REPLIES || messages.size() + 1 < getMessagesController().quickReplyMessagesLimit)) {
                     animatingMessageObjects.add(obj);
                 }
 
@@ -37810,11 +37814,22 @@ public class ChatActivity extends BaseFragment implements
         if (photoEntry == null) {
             return;
         }
+        if (photoEntry.path != null) {
+            keepRecordingSegmentPaths.add(photoEntry.path);
+        }
         SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, quickReplyShortcut, getQuickReplyId(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         afterMessageSend();
     }
 
+    // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
+    // send animation is only ever classified once per message.
+    private boolean isKeepRecordingSegment(MessageObject obj) {
+        return !keepRecordingSegmentPaths.isEmpty() && obj != null && obj.messageOwner != null
+                && keepRecordingSegmentPaths.remove(obj.messageOwner.attachPath);
+    }
+
     private void runCloseInstantCameraAnimation() {
+        keepRecordingSegmentPaths.clear();
         if (instantCameraView == null) {
             return;
         }
@@ -39940,7 +39955,7 @@ public class ChatActivity extends BaseFragment implements
                     int index;
                     if ((index = animatingMessageObjects.indexOf(message)) != -1) {
                         boolean applyAnimation = false;
-                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && !instantCameraView.isRecording()) {
+                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null) {
                             applyAnimation = true;
                             if (closeInstantCameraAnimation != null) {
                                 AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
