@@ -111,7 +111,7 @@ When camera mode is set to Ask, the camera choice popup now has an External Micr
 
 Round video messages stop dead at 60 seconds, which is annoying when you're mid-sentence. With camera mode set to Ask, the camera choice popup has an *Infinite Recording* toggle under the microphone one. Turn it on and the 60-second mark stops being a wall: the recorder closes off that minute, sends it as its own round message, and carries straight on into the next one. The camera doesn't blink and the mic never restarts, so a Bluetooth headset stays connected through the handover. You stop it the normal way, by lifting your finger or tapping send, and the last piece goes through like any other video message. There's a ceiling of ten minutes, after which it stops on its own and leaves the final piece in the preview for you.
 
-Unlike the microphone toggle, this one is off every time you start a recording. It keeps sending on its own, so it should be a decision you make each time rather than something you forget is on. It's also greyed out where sending unattended wouldn't work: slow mode, paid messages, scheduled messages, and when view-once is armed.
+Unlike the microphone toggle, this one is off every time you start a recording. It keeps sending on its own, so it should be a decision you make each time rather than something you forget is on. It's also greyed out where sending unattended wouldn't work: slow mode, paid messages, scheduled messages, secret chats, and when view-once is armed. If you arm view-once or slow mode kicks in partway through, the recording just stops at the next minute the way it normally would.
 
 ### Smoother video message zoom <!-- #video-zoom -->
 
