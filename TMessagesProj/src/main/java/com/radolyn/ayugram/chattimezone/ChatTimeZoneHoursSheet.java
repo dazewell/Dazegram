@@ -293,10 +293,18 @@ public final class ChatTimeZoneHoursSheet {
             final int[] scope = { ChatTimeZoneTemplate.hasAccountOverride(currentAccount) ? 1 : 0 };
 
             final CollapseTextCell tmplHeader = new CollapseTextCell(context, rp);
-            tmplHeader.set(LocaleController.getString(R.string.ChatTimeZoneTemplate), true);
             tmplHeader.setColor(Theme.key_dialogTextBlack);
             tmplHeader.setBackground(Theme.createSelectorDrawable(
                     Theme.getColor(Theme.key_dialogButtonSelector, rp), Theme.RIPPLE_MASK_ALL));
+            // CollapseTextCell hides its own text from accessibility, so the row has to
+            // carry the label and its open/closed state itself.
+            final String tmplLabel = LocaleController.getString(R.string.ChatTimeZoneTemplate);
+            final Utilities.Callback<Boolean> setTmplHeader = open -> {
+                tmplHeader.set(tmplLabel, !open);
+                tmplHeader.setContentDescription(tmplLabel + ", " + LocaleController.getString(
+                        open ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed));
+            };
+            setTmplHeader.run(false);
             container.addView(tmplHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT,
                     0, 4, 0, 0));
 
@@ -443,7 +451,7 @@ public final class ChatTimeZoneHoursSheet {
             final boolean[] expanded = { false };
             tmplHeader.setOnClickListener(v -> {
                 expanded[0] = !expanded[0];
-                tmplHeader.set(LocaleController.getString(R.string.ChatTimeZoneTemplate), !expanded[0]);
+                setTmplHeader.run(expanded[0]);
                 tmplBody.setVisibility(expanded[0] ? View.VISIBLE : View.GONE);
                 if (!expanded[0]) {
                     // Collapsing out from under the keyboard would leave it up over a
