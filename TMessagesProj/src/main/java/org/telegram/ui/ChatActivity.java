@@ -39940,7 +39940,7 @@ public class ChatActivity extends BaseFragment implements
                     int index;
                     if ((index = animatingMessageObjects.indexOf(message)) != -1) {
                         boolean applyAnimation = false;
-                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null) {
+                        if (message.type == MessageObject.TYPE_ROUND_VIDEO && instantCameraView != null && instantCameraView.getTextureView() != null && !instantCameraView.isRecording()) {
                             applyAnimation = true;
                             if (closeInstantCameraAnimation != null) {
                                 AndroidUtilities.cancelRunOnUIThread(closeInstantCameraAnimation);
