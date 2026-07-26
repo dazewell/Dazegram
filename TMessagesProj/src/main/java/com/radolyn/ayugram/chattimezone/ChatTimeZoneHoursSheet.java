@@ -365,15 +365,23 @@ public final class ChatTimeZoneHoursSheet {
                 // point, so nothing moves and the strip doesn't jump.
                 pinnedStep[0] = -1;
             } else {
-                // Seed an hour-long range by pinning the far edge, rather than moving
-                // the cursor to it: the span is valid from the first frame (no window
-                // where Insert would produce a zero-length range), and the instant you
-                // deliberately panned to stays under the cursor. The band and the second
-                // readout row appearing are the feedback. Runs backwards at the very end
-                // of the strip.
-                int other = selectedStep[0] + STEPS_PER_HOUR;
-                if (other > STEPS - 1) other = Math.max(0, selectedStep[0] - STEPS_PER_HOUR);
-                pinnedStep[0] = other;
+                // Seed an hour-long range: the instant you panned to becomes the start
+                // and the cursor takes the end, so sliding on from here stretches the
+                // range forward instead of eating into its front. Both edges are set
+                // before the scroll, and the scroll is instant rather than animated, so
+                // there's no frame where the two sit on top of each other and Insert
+                // could produce a zero-length range.
+                int end = selectedStep[0] + STEPS_PER_HOUR;
+                if (end <= STEPS - 1) {
+                    pinnedStep[0] = selectedStep[0];
+                    selectedStep[0] = end;
+                    scroller.cancelUserScrolling();
+                    scroller.scrollTo(centerScrollFor(strip, scroller, end), 0);
+                } else {
+                    // No room ahead: put the start an hour back instead. The cursor is
+                    // already on the end, so nothing has to move.
+                    pinnedStep[0] = Math.max(0, selectedStep[0] - STEPS_PER_HOUR);
+                }
             }
             boolean range = pinnedStep[0] >= 0;
             styleModeChip(rangeButton, range, rp);
