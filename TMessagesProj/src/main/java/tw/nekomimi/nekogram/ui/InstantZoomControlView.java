@@ -461,14 +461,16 @@ public class InstantZoomControlView extends View {
 
     private void drawButton(Canvas canvas, Drawable glyph, ButtonAccent accent, BlurredBackgroundDrawable chip, float cx, float glyphHalfPx) {
         final int radius = Math.round(buttonRadius);
+        // the chip's bounds are integers, so everything else centers on the same rounded point or the glyph
+        // ends up a pixel off the circle it sits in
+        final int icx = Math.round(cx), icy = Math.round(buttonCy);
         // the press bounce runs through the canvas instead of the chip's own radius: re-cutting the glass
         // drawable's geometry every frame would rebuild its render node (and, with blur off, its nine-patch)
         canvas.save();
         if (accent.scale != 1f) {
-            canvas.scale(accent.scale, accent.scale, cx, buttonCy);
+            canvas.scale(accent.scale, accent.scale, icx, icy);
         }
         if (chip != null) {
-            final int icx = Math.round(cx), icy = Math.round(buttonCy);
             chip.setBounds(icx - radius, icy - radius, icx + radius, icy + radius);
             if (chipRadius != radius) {
                 chipRadius = radius;
@@ -481,20 +483,20 @@ public class InstantZoomControlView extends View {
             // no glass to sit on (the stories recorder never hands one over), so keep the flat circle plus
             // the faint rim that stops it vanishing into a backdrop of the same color
             chipPaint.setColor(chipColor);
-            canvas.drawCircle(cx, buttonCy, radius, chipPaint);
+            canvas.drawCircle(icx, icy, radius, chipPaint);
             ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, 0x22));
-            canvas.drawCircle(cx, buttonCy, radius, ringPaint);
+            canvas.drawCircle(icx, icy, radius, ringPaint);
         }
         if (accent.fill > 0f) {
             chipPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x1F * accent.fill)));
-            canvas.drawCircle(cx, buttonCy, radius, chipPaint);
+            canvas.drawCircle(icx, icy, radius, chipPaint);
         }
         if (accent.ring > 0f) {
             ringPaint.setColor(ColorUtils.setAlphaComponent(glyphColor, (int) (0x99 * accent.ring)));
-            canvas.drawCircle(cx, buttonCy, radius, ringPaint);
+            canvas.drawCircle(icx, icy, radius, ringPaint);
         }
-        final int gh = (int) glyphHalfPx;
-        glyph.setBounds((int) cx - gh, (int) (buttonCy - gh), (int) cx + gh, (int) (buttonCy + gh));
+        final int gh = Math.round(glyphHalfPx);
+        glyph.setBounds(icx - gh, icy - gh, icx + gh, icy + gh);
         glyph.draw(canvas);
         canvas.restore();
     }
