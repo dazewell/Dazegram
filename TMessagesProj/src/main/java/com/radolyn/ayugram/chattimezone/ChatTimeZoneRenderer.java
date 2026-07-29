@@ -19,6 +19,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.ColoredImageSpan;
 
+import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -96,7 +97,9 @@ public final class ChatTimeZoneRenderer {
         if (!withDate) {
             return formatSide(c, locale);
         }
-        String date = org.telegram.messenger.LocaleController.getInstance().getFormatterScheduleDay().format(c);
+        SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d", locale != null ? locale : Locale.getDefault());
+        dateFormat.setTimeZone(c.getTimeZone());
+        String date = dateFormat.format(c.getTime());
         return weekday(c, locale) + ", " + date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
