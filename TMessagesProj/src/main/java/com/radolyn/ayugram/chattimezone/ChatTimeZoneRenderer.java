@@ -29,7 +29,6 @@ import java.util.TimeZone;
  */
 public final class ChatTimeZoneRenderer {
 
-    private static final String FALLBACK_DATE_PATTERN = "EEE MMM d";
     private static long lastCacheTimeMin = -1; // invalidated each minute
     private static final java.util.HashMap<TimeZone, String> NOW_CACHE = new java.util.HashMap<>();
 
@@ -97,14 +96,19 @@ public final class ChatTimeZoneRenderer {
         if (!withDate) {
             return formatSide(c, locale);
         }
+        Locale currentLocale = org.telegram.messenger.LocaleController.getInstance().getCurrentLocale();
         Locale outputLocale = locale != null ? locale
-                : org.telegram.messenger.LocaleController.getInstance().getCurrentLocale();
-        String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMMd");
+                : currentLocale != null ? currentLocale : Locale.getDefault();
+        String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMM d");
+        String date;
         if (pattern == null || pattern.isEmpty()) {
-            pattern = FALLBACK_DATE_PATTERN;
+            date = weekday(c, outputLocale) + ", "
+                    + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, outputLocale)
+                    .format(c.getTime());
+        } else {
+            date = org.telegram.messenger.time.FastDateFormat
+                    .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
         }
-        String date = org.telegram.messenger.time.FastDateFormat
-                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
         return date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
