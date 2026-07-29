@@ -115,14 +115,15 @@ public final class ChatTimeZoneRenderer {
      * does: several locales (ru, fi, ...) get the standalone weekday {@code ccc}, which
      * the printer rejects outright with an IllegalArgumentException. Standalone fields are
      * rewritten to their format-context equivalents, and anything else the printer still
-     * dislikes falls back to the plain pattern -- a wrong-for-the-locale word order beats
-     * taking the app down while someone scrolls a strip across midnight.
+     * dislikes (it signals a bad pattern with a runtime exception) falls back to the plain
+     * pattern -- a wrong-for-the-locale word order beats taking the app down while someone
+     * scrolls a strip across midnight.
      */
     private static String formatDate(String pattern, @NonNull Calendar c, @NonNull Locale locale) {
         try {
             return org.telegram.messenger.time.FastDateFormat
                     .getInstance(standaloneToFormatFields(pattern), c.getTimeZone(), locale).format(c);
-        } catch (Throwable ignore) {
+        } catch (RuntimeException ignore) {
             return org.telegram.messenger.time.FastDateFormat
                     .getInstance(FALLBACK_DATE_PATTERN, c.getTimeZone(), locale).format(c);
         }
