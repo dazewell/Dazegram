@@ -104,10 +104,47 @@ public final class ChatTimeZoneRenderer {
         if (pattern == null || pattern.isEmpty()) {
             pattern = FALLBACK_DATE_PATTERN;
         }
-        String date = org.telegram.messenger.time.FastDateFormat
-                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
+        String date = formatDate(pattern, c, outputLocale);
         return date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+    }
+
+    /**
+     * Formats {@code c}'s own date fields with a CLDR pattern. The pattern comes from
+     * ICU, which speaks more of CLDR than {@link org.telegram.messenger.time.FastDateFormat}
+     * does: several locales (ru, fi, ...) get the standalone weekday {@code ccc}, which
+     * the printer rejects outright with an IllegalArgumentException. Standalone fields are
+     * rewritten to their format-context equivalents, and anything else the printer still
+     * dislikes falls back to the plain pattern -- a wrong-for-the-locale word order beats
+     * taking the app down while someone scrolls a strip across midnight.
+     */
+    private static String formatDate(String pattern, @NonNull Calendar c, @NonNull Locale locale) {
+        try {
+            return org.telegram.messenger.time.FastDateFormat
+                    .getInstance(standaloneToFormatFields(pattern), c.getTimeZone(), locale).format(c);
+        } catch (Throwable ignore) {
+            return org.telegram.messenger.time.FastDateFormat
+                    .getInstance(FALLBACK_DATE_PATTERN, c.getTimeZone(), locale).format(c);
+        }
+    }
+
+    /**
+     * Maps the standalone weekday field {@code c} onto {@code E} outside quoted literals
+     * ({@code L} needs no mapping -- the printer already treats it as a month). Same field,
+     * same width; only the grammatical case can differ, and not in the short forms used here.
+     */
+    private static String standaloneToFormatFields(String pattern) {
+        if (pattern.indexOf('c') < 0) return pattern;
+        StringBuilder sb = new StringBuilder(pattern.length());
+        boolean inLiteral = false;
+        for (int i = 0; i < pattern.length(); i++) {
+            char ch = pattern.charAt(i);
+            if (ch == '\'') {
+                inLiteral = !inLiteral;
+            }
+            sb.append(!inLiteral && ch == 'c' ? 'E' : ch);
+        }
+        return sb.toString();
     }
 
     /** -1, 0 or +1: calendar-date difference of {@code a} relative to {@code b}. */
