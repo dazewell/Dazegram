@@ -110,7 +110,7 @@ public final class ChatTimeZoneRenderer {
             date = org.telegram.messenger.time.FastDateFormat
                     .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
         }
-        return date + String.format(outputLocale, " %02d:%02d",
+        return date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
