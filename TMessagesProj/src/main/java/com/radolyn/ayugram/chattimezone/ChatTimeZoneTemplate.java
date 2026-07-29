@@ -68,6 +68,10 @@ public final class ChatTimeZoneTemplate {
      * tokens are deliberately absent rather than quietly aliased to the range's start:
      * a template pasted across from the other editor should read wrong, not look right
      * and send the wrong half of the range.
+     *
+     * <p>The range and edge tokens follow the same weekday rule as {@code {my_side}}:
+     * "13:00–15:00" while the whole selection sits on one day for both parties,
+     * "Tue 23:00–Wed 01:00" once any day changes.
      */
     public static final String[] RANGE_TOKENS = {
             "{my_range}", "{peer_range}", "{my_start}", "{my_end}",
@@ -247,12 +251,14 @@ public final class ChatTimeZoneTemplate {
         String dayDiffStr = dayDiff > 0 ? "+1d" : dayDiff < 0 ? "−1d" : "";
 
         Map<String, String> vals = new LinkedHashMap<>();
-        String mySide = dayDiff == 0 ? hhmm(local) : ChatTimeZoneRenderer.formatSide(local, locale, true);
-        String peerSide = dayDiff == 0 ? hhmm(peer) : ChatTimeZoneRenderer.formatSide(peer, locale, true);
+        String mySide = dayDiff == 0 ? ChatTimeZoneRenderer.hhmm(local)
+                : ChatTimeZoneRenderer.formatSide(local, locale, true);
+        String peerSide = dayDiff == 0 ? ChatTimeZoneRenderer.hhmm(peer)
+                : ChatTimeZoneRenderer.formatSide(peer, locale, true);
         vals.put("my_side", mySide);
         vals.put("peer_side", peerSide);
-        vals.put("my_time", hhmm(local));
-        vals.put("peer_time", hhmm(peer));
+        vals.put("my_time", ChatTimeZoneRenderer.hhmm(local));
+        vals.put("peer_time", ChatTimeZoneRenderer.hhmm(peer));
         vals.put("my_day", ChatTimeZoneRenderer.weekday(local, locale));
         vals.put("peer_day", ChatTimeZoneRenderer.weekday(peer, locale));
         vals.put("peer_name", peerName);
@@ -267,6 +273,11 @@ public final class ChatTimeZoneTemplate {
      * {@code offsetMin} is taken at the start, which is where the range's own wording
      * ("+9h") is anchored; a zone change inside the span shows up in the edge times
      * themselves rather than in a second offset.
+     *
+     * <p>Weekdays are dropped, exactly as in {@link #render}, when the whole selection —
+     * both edges on both sides — lands on one calendar day: naming a day the two parties
+     * already agree on is noise. Any day change, whether the span crosses midnight or the
+     * peer is simply on another date, brings them back for every edge.
      */
     public static String renderRange(@Nullable String template,
                                      @NonNull Calendar localStart, @NonNull Calendar localEnd,
@@ -276,21 +287,25 @@ public final class ChatTimeZoneTemplate {
         if (template == null || template.trim().isEmpty()) {
             template = defaultTemplate(true, locale);
         }
+        boolean sameDay = ChatTimeZoneRenderer.compareDay(localEnd, localStart) == 0
+                && ChatTimeZoneRenderer.compareDay(peerStart, localStart) == 0
+                && ChatTimeZoneRenderer.compareDay(peerEnd, localStart) == 0;
         Map<String, String> vals = new LinkedHashMap<>();
-        vals.put("my_range", ChatTimeZoneRenderer.formatRange(localStart, localEnd, locale));
-        vals.put("peer_range", ChatTimeZoneRenderer.formatRange(peerStart, peerEnd, locale));
-        vals.put("my_start", ChatTimeZoneRenderer.formatSide(localStart, locale));
-        vals.put("my_end", ChatTimeZoneRenderer.formatSide(localEnd, locale));
-        vals.put("peer_start", ChatTimeZoneRenderer.formatSide(peerStart, locale));
-        vals.put("peer_end", ChatTimeZoneRenderer.formatSide(peerEnd, locale));
+        vals.put("my_range", ChatTimeZoneRenderer.formatRange(localStart, localEnd, locale, !sameDay));
+        vals.put("peer_range", ChatTimeZoneRenderer.formatRange(peerStart, peerEnd, locale, !sameDay));
+        vals.put("my_start", edge(localStart, locale, sameDay));
+        vals.put("my_end", edge(localEnd, locale, sameDay));
+        vals.put("peer_start", edge(peerStart, locale, sameDay));
+        vals.put("peer_end", edge(peerEnd, locale, sameDay));
         vals.put("duration", ChatTimeZoneRenderer.formatDuration(durationMs));
         vals.put("peer_name", peerName);
         vals.put("offset", formatOffset(offsetMin));
         return applyTokens(template, vals);
     }
 
-    private static String hhmm(Calendar c) {
-        return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+    /** One range edge: bare "18:15" on a single-day selection, "Tue 18:15" otherwise. */
+    private static String edge(@NonNull Calendar c, @Nullable Locale locale, boolean sameDay) {
+        return sameDay ? ChatTimeZoneRenderer.hhmm(c) : ChatTimeZoneRenderer.formatSide(c, locale);
     }
 
     /** Single pass so a substituted value can't accidentally match another token. */

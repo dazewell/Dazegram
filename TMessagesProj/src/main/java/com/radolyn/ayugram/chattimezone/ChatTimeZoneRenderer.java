@@ -45,7 +45,7 @@ public final class ChatTimeZoneRenderer {
         String cached = NOW_CACHE.get(tz);
         if (cached != null) return cached;
         Calendar c = Calendar.getInstance(tz);
-        String s = String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        String s = hhmm(c);
         NOW_CACHE.put(tz, s);
         return s;
     }
@@ -54,6 +54,11 @@ public final class ChatTimeZoneRenderer {
     public static String formatAt(long unixSec, @NonNull TimeZone tz) {
         Calendar c = Calendar.getInstance(tz);
         c.setTimeInMillis(unixSec * 1000L);
+        return hhmm(c);
+    }
+
+    /** "18:00" — the calendar's wall clock, 24h and locale-independent. */
+    public static String hhmm(@NonNull Calendar c) {
         return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
@@ -82,8 +87,7 @@ public final class ChatTimeZoneRenderer {
 
     /** "Tue 18:00" in the given calendar's zone, weekday in the given locale (app locale when {@code null}). */
     public static String formatSide(@NonNull Calendar c, @Nullable Locale locale) {
-        return weekday(c, locale) + String.format(Locale.US, " %02d:%02d",
-                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        return weekday(c, locale) + " " + hhmm(c);
     }
 
     /**
@@ -104,10 +108,47 @@ public final class ChatTimeZoneRenderer {
         if (pattern == null || pattern.isEmpty()) {
             pattern = FALLBACK_DATE_PATTERN;
         }
-        String date = org.telegram.messenger.time.FastDateFormat
-                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
-        return date + String.format(Locale.US, " %02d:%02d",
-                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        String date = formatDate(pattern, c, outputLocale);
+        return date + " " + hhmm(c);
+    }
+
+    /**
+     * Formats {@code c}'s own date fields with a CLDR pattern. The pattern comes from
+     * ICU, which speaks more of CLDR than {@link org.telegram.messenger.time.FastDateFormat}
+     * does: several locales (ru, fi, ...) get the standalone weekday {@code ccc}, which
+     * the printer rejects outright with an IllegalArgumentException. Standalone fields are
+     * rewritten to their format-context equivalents, and anything else the printer still
+     * dislikes (it signals a bad pattern with a runtime exception) falls back to the plain
+     * pattern -- a wrong-for-the-locale word order beats taking the app down while someone
+     * scrolls a strip across midnight.
+     */
+    private static String formatDate(String pattern, @NonNull Calendar c, @NonNull Locale locale) {
+        try {
+            return org.telegram.messenger.time.FastDateFormat
+                    .getInstance(standaloneToFormatFields(pattern), c.getTimeZone(), locale).format(c);
+        } catch (RuntimeException ignore) {
+            return org.telegram.messenger.time.FastDateFormat
+                    .getInstance(FALLBACK_DATE_PATTERN, c.getTimeZone(), locale).format(c);
+        }
+    }
+
+    /**
+     * Maps the standalone weekday field {@code c} onto {@code E} outside quoted literals
+     * ({@code L} needs no mapping -- the printer already treats it as a month). Same field,
+     * same width; only the grammatical case can differ, and not in the short forms used here.
+     */
+    private static String standaloneToFormatFields(String pattern) {
+        if (pattern.indexOf('c') < 0) return pattern;
+        StringBuilder sb = new StringBuilder(pattern.length());
+        boolean inLiteral = false;
+        for (int i = 0; i < pattern.length(); i++) {
+            char ch = pattern.charAt(i);
+            if (ch == '\'') {
+                inLiteral = !inLiteral;
+            }
+            sb.append(!inLiteral && ch == 'c' ? 'E' : ch);
+        }
+        return sb.toString();
     }
 
     /** -1, 0 or +1: calendar-date difference of {@code a} relative to {@code b}. */
@@ -125,10 +166,20 @@ public final class ChatTimeZoneRenderer {
      */
     public static String formatRange(@NonNull Calendar start, @NonNull Calendar end,
                                      @Nullable Locale locale) {
-        String tail = compareDay(end, start) == 0
-                ? String.format(Locale.US, "%02d:%02d", end.get(Calendar.HOUR_OF_DAY), end.get(Calendar.MINUTE))
-                : formatSide(end, locale);
-        return formatSide(start, locale) + "–" + tail;
+        return formatRange(start, end, locale, true);
+    }
+
+    /**
+     * Like {@link #formatRange(Calendar, Calendar, Locale)}, but drops the leading weekday
+     * too when {@code withDay} is false, leaving a bare "13:00–15:00". Callers pass false
+     * when the whole selection sits on one calendar day for both parties, so naming the day
+     * adds nothing. The end's weekday still appears if the range itself crosses midnight --
+     * that one carries information no matter what the other side is doing.
+     */
+    public static String formatRange(@NonNull Calendar start, @NonNull Calendar end,
+                                     @Nullable Locale locale, boolean withDay) {
+        String tail = compareDay(end, start) == 0 ? hhmm(end) : formatSide(end, locale);
+        return (withDay ? formatSide(start, locale) : hhmm(start)) + "–" + tail;
     }
 
     /**
