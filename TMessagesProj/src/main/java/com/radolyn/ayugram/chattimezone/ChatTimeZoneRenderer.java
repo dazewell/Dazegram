@@ -19,7 +19,6 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.ColoredImageSpan;
 
-import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Locale;
 import java.util.TimeZone;
@@ -99,9 +98,8 @@ public final class ChatTimeZoneRenderer {
         }
         Locale outputLocale = locale != null ? locale : Locale.getDefault();
         String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "MMMd");
-        SimpleDateFormat dateFormat = new SimpleDateFormat(pattern, outputLocale);
-        dateFormat.setTimeZone(c.getTimeZone());
-        String date = dateFormat.format(c.getTime());
+        String date = org.telegram.messenger.time.FastDateFormat
+                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
         return weekday(c, locale) + ", " + date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
