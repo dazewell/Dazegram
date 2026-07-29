@@ -101,14 +101,11 @@ public final class ChatTimeZoneRenderer {
         Locale outputLocale = locale != null ? locale
                 : currentLocale != null ? currentLocale : Locale.getDefault();
         String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMM d");
-        String date;
         if (pattern == null || pattern.isEmpty()) {
-            date = org.telegram.messenger.time.FastDateFormat
-                    .getInstance(FALLBACK_DATE_PATTERN, c.getTimeZone(), outputLocale).format(c);
-        } else {
-            date = org.telegram.messenger.time.FastDateFormat
-                    .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
+            pattern = FALLBACK_DATE_PATTERN;
         }
+        String date = org.telegram.messenger.time.FastDateFormat
+                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
         return date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
