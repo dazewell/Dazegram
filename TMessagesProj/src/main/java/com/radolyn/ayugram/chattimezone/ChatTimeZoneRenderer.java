@@ -102,9 +102,11 @@ public final class ChatTimeZoneRenderer {
         String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMM d");
         String date;
         if (pattern == null || pattern.isEmpty()) {
+            java.text.DateFormat fallback = java.text.DateFormat
+                    .getDateInstance(java.text.DateFormat.MEDIUM, outputLocale);
+            fallback.setTimeZone(c.getTimeZone());
             date = weekday(c, outputLocale) + ", "
-                    + java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM, outputLocale)
-                    .format(c.getTime());
+                    + fallback.format(c.getTime());
         } else {
             date = org.telegram.messenger.time.FastDateFormat
                     .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
