@@ -105,8 +105,7 @@ public final class ChatTimeZoneRenderer {
             java.text.DateFormat fallback = java.text.DateFormat
                     .getDateInstance(java.text.DateFormat.MEDIUM, outputLocale);
             fallback.setTimeZone(c.getTimeZone());
-            date = weekday(c, outputLocale) + ", "
-                    + fallback.format(c.getTime());
+            date = fallback.format(c.getTime());
         } else {
             date = org.telegram.messenger.time.FastDateFormat
                     .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
