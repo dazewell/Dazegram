@@ -33,7 +33,7 @@ import xyz.nextalone.nagram.NaConfig;
  *
  * <p>Supported {@code {token}} placeholders:
  * <ul>
- *   <li>{@code {my_side}} / {@code {peer_side}} — "Tue 18:15"</li>
+ *   <li>{@code {my_side}} / {@code {peer_side}} — "Tue 18:15", or just "18:15" when both sides share a day</li>
  *   <li>{@code {my_time}} / {@code {peer_time}} — "18:15"</li>
  *   <li>{@code {my_day}} / {@code {peer_day}} — "Tue"</li>
  *   <li>{@code {peer_name}} — the counterpart's name</li>
@@ -247,8 +247,10 @@ public final class ChatTimeZoneTemplate {
         String dayDiffStr = dayDiff > 0 ? "+1d" : dayDiff < 0 ? "−1d" : "";
 
         Map<String, String> vals = new LinkedHashMap<>();
-        vals.put("my_side", ChatTimeZoneRenderer.formatSide(local, locale));
-        vals.put("peer_side", ChatTimeZoneRenderer.formatSide(peer, locale));
+        String mySide = dayDiff == 0 ? hhmm(local) : ChatTimeZoneRenderer.formatSide(local, locale, true);
+        String peerSide = dayDiff == 0 ? hhmm(peer) : ChatTimeZoneRenderer.formatSide(peer, locale, true);
+        vals.put("my_side", mySide);
+        vals.put("peer_side", peerSide);
         vals.put("my_time", hhmm(local));
         vals.put("peer_time", hhmm(peer));
         vals.put("my_day", ChatTimeZoneRenderer.weekday(local, locale));
