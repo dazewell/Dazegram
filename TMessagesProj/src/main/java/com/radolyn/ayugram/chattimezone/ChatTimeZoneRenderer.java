@@ -96,8 +96,11 @@ public final class ChatTimeZoneRenderer {
         if (!withDate) {
             return formatSide(c, locale);
         }
-        String date = org.telegram.messenger.LocaleController.getInstance().getFormatterScheduleDay().format(c);
-        return weekday(c, locale) + ", " + date + String.format(Locale.US, " %02d:%02d",
+        Locale outputLocale = locale != null ? locale : Locale.getDefault();
+        String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMMd");
+        String date = org.telegram.messenger.time.FastDateFormat
+                .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
+        return date + String.format(Locale.US, " %02d:%02d",
                 c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
