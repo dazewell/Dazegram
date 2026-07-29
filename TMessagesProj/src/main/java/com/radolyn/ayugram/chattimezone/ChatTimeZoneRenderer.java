@@ -29,6 +29,7 @@ import java.util.TimeZone;
  */
 public final class ChatTimeZoneRenderer {
 
+    private static final String FALLBACK_DATE_PATTERN = "EEE MMM d";
     private static long lastCacheTimeMin = -1; // invalidated each minute
     private static final java.util.HashMap<TimeZone, String> NOW_CACHE = new java.util.HashMap<>();
 
@@ -102,10 +103,8 @@ public final class ChatTimeZoneRenderer {
         String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "EEE MMM d");
         String date;
         if (pattern == null || pattern.isEmpty()) {
-            java.text.DateFormat fallback = java.text.DateFormat
-                    .getDateInstance(java.text.DateFormat.MEDIUM, outputLocale);
-            fallback.setTimeZone(c.getTimeZone());
-            date = fallback.format(c.getTime());
+            date = org.telegram.messenger.time.FastDateFormat
+                    .getInstance(FALLBACK_DATE_PATTERN, c.getTimeZone(), outputLocale).format(c);
         } else {
             date = org.telegram.messenger.time.FastDateFormat
                     .getInstance(pattern, c.getTimeZone(), outputLocale).format(c);
