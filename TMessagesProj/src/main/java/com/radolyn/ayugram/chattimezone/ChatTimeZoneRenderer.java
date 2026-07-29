@@ -45,7 +45,7 @@ public final class ChatTimeZoneRenderer {
         String cached = NOW_CACHE.get(tz);
         if (cached != null) return cached;
         Calendar c = Calendar.getInstance(tz);
-        String s = String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        String s = hhmm(c);
         NOW_CACHE.put(tz, s);
         return s;
     }
@@ -54,6 +54,11 @@ public final class ChatTimeZoneRenderer {
     public static String formatAt(long unixSec, @NonNull TimeZone tz) {
         Calendar c = Calendar.getInstance(tz);
         c.setTimeInMillis(unixSec * 1000L);
+        return hhmm(c);
+    }
+
+    /** "18:00" — the calendar's wall clock, 24h and locale-independent. */
+    public static String hhmm(@NonNull Calendar c) {
         return String.format(Locale.US, "%02d:%02d", c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
     }
 
@@ -82,8 +87,7 @@ public final class ChatTimeZoneRenderer {
 
     /** "Tue 18:00" in the given calendar's zone, weekday in the given locale (app locale when {@code null}). */
     public static String formatSide(@NonNull Calendar c, @Nullable Locale locale) {
-        return weekday(c, locale) + String.format(Locale.US, " %02d:%02d",
-                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        return weekday(c, locale) + " " + hhmm(c);
     }
 
     /**
@@ -105,8 +109,7 @@ public final class ChatTimeZoneRenderer {
             pattern = FALLBACK_DATE_PATTERN;
         }
         String date = formatDate(pattern, c, outputLocale);
-        return date + String.format(Locale.US, " %02d:%02d",
-                c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE));
+        return date + " " + hhmm(c);
     }
 
     /**
@@ -163,10 +166,20 @@ public final class ChatTimeZoneRenderer {
      */
     public static String formatRange(@NonNull Calendar start, @NonNull Calendar end,
                                      @Nullable Locale locale) {
-        String tail = compareDay(end, start) == 0
-                ? String.format(Locale.US, "%02d:%02d", end.get(Calendar.HOUR_OF_DAY), end.get(Calendar.MINUTE))
-                : formatSide(end, locale);
-        return formatSide(start, locale) + "–" + tail;
+        return formatRange(start, end, locale, true);
+    }
+
+    /**
+     * Like {@link #formatRange(Calendar, Calendar, Locale)}, but drops the leading weekday
+     * too when {@code withDay} is false, leaving a bare "13:00–15:00". Callers pass false
+     * when the whole selection sits on one calendar day for both parties, so naming the day
+     * adds nothing. The end's weekday still appears if the range itself crosses midnight --
+     * that one carries information no matter what the other side is doing.
+     */
+    public static String formatRange(@NonNull Calendar start, @NonNull Calendar end,
+                                     @Nullable Locale locale, boolean withDay) {
+        String tail = compareDay(end, start) == 0 ? hhmm(end) : formatSide(end, locale);
+        return (withDay ? formatSide(start, locale) : hhmm(start)) + "–" + tail;
     }
 
     /**
