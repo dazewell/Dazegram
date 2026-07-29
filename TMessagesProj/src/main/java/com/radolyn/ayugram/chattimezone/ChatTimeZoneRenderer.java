@@ -97,7 +97,9 @@ public final class ChatTimeZoneRenderer {
         if (!withDate) {
             return formatSide(c, locale);
         }
-        SimpleDateFormat dateFormat = new SimpleDateFormat("MMM d", locale != null ? locale : Locale.getDefault());
+        Locale outputLocale = locale != null ? locale : Locale.getDefault();
+        String pattern = android.text.format.DateFormat.getBestDateTimePattern(outputLocale, "MMMd");
+        SimpleDateFormat dateFormat = new SimpleDateFormat(pattern, outputLocale);
         dateFormat.setTimeZone(c.getTimeZone());
         String date = dateFormat.format(c.getTime());
         return weekday(c, locale) + ", " + date + String.format(Locale.US, " %02d:%02d",
