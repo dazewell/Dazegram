@@ -899,6 +899,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val downloadFolderUri =
+        addConfig(
+            "DownloadFolderUri",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val downloadFolderName =
+        addConfig(
+            "DownloadFolderName",
+            ConfigItem.configTypeString,
+            ""
+        )
     val silentMessageByDefault =
         addConfig(
             "SilentMessageByDefault",

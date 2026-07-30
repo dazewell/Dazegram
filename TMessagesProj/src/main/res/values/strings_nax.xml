@@ -144,6 +144,15 @@
     <string name="ResetSettingsAlert">Are you sure you want to reset all N-Settings?</string>
     <string name="DontAutoPlayNextVoice">Don\'t Auto Play Next Voice Message</string>
     <string name="SaveToChatSubfolder">Save Attachments by Chat Name</string>
+    <string name="DownloadFolder">Downloaded Media Folder</string>
+    <string name="DownloadFolderChoose">Choose Folder</string>
+    <string name="DownloadFolderUseDefault">Use Downloads/Nagram</string>
+    <string name="DownloadFolderDefault">Downloads/Nagram</string>
+    <string name="DownloadFolderSelected">Selected folder</string>
+    <string name="DownloadFolderUnavailable">The selected download folder is no longer available. Using Downloads/Nagram.</string>
+    <string name="DownloadFolderPermissionFailed">NagramX could not use that folder.</string>
+    <string name="MediaSubfolderName">Media Subfolder Name</string>
+    <string name="MediaSubfolderNameHint">Used for Pictures, Movies, Music, and the default Downloads folder</string>
     <string name="MessageColoredBackground">Colorful Message Backgrounds</string>
     <string name="ColoredBackgroundNotice">Background color and emojis for replies, quotes, and link previews.</string>
     <string name="ChatMenu">Chat Menu</string>

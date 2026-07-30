@@ -7,11 +7,14 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
 import android.os.Environment;
 import android.os.Parcelable;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
 import android.text.TextUtils;
 import android.view.View;
 
@@ -29,10 +32,12 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UnifiedPushService;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.SimpleTextView;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.UndoView;
@@ -40,6 +45,8 @@ import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 import java.util.Locale;
+
+import com.radolyn.ayugram.downloads.DownloadFolderHelper;
 
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.config.CellGroup;
@@ -58,6 +65,8 @@ import xyz.nextalone.nagram.NaConfig;
 @SuppressLint("RtlHardcoded")
 @SuppressWarnings({"unused", "FieldCanBeLocal"})
 public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
+
+    private static final int REQUEST_DOWNLOAD_FOLDER = 42;
 
     private ListAdapter listAdapter;
 
@@ -110,11 +119,21 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
 
     // Storage
     private final AbstractConfigCell headerStorage = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.StorageSettings)));
+    private final AbstractConfigCell downloadFolderRow = cellGroup.appendCell(new ConfigCellTextDetail(
+            NaConfig.INSTANCE.getDownloadFolderUri(),
+            (view, position) -> showDownloadFolderOptions(),
+            getString(R.string.DownloadFolderDefault),
+            false,
+            getString(R.string.DownloadFolder),
+            value -> DownloadFolderHelper.isConfigured() ? DownloadFolderHelper.getDisplayName() : getString(R.string.DownloadFolderDefault),
+            null,
+            null,
+            null));
     private final AbstractConfigCell saveToChatSubfolderRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getSaveToChatSubfolder()));
     private final AbstractConfigCell customSavePathRow = cellGroup.appendCell(new ConfigCellTextDetail(
             NekoConfig.customSavePath,
-            getString(R.string.customSavePath),
-            getString(R.string.customSavePathHint),
+            getString(R.string.MediaSubfolderName),
+            getString(R.string.MediaSubfolderNameHint),
             this::sanitizeCustomSavePath,
             this::shouldShowCustomSavePathInputError,
             this::formatCustomSavePathDetail));
@@ -681,6 +700,68 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
             parentLayout.rebuildFragments(flags);
             layoutManager.onRestoreInstanceState(recyclerViewState);
         }
+    }
+
+    private void showDownloadFolderOptions() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(getString(R.string.DownloadFolder));
+        builder.setItems(new CharSequence[]{
+                getString(R.string.DownloadFolderChoose),
+                getString(R.string.DownloadFolderUseDefault)
+        }, (index, __) -> {
+            if (index == 0) {
+                openDownloadFolderPicker();
+            } else {
+                DownloadFolderHelper.clearFolder();
+                listAdapter.notifyItemChanged(cellGroup.rows.indexOf(downloadFolderRow));
+            }
+        });
+        showDialog(builder.create());
+    }
+
+    private void openDownloadFolderPicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        intent.putExtra("android.content.extra.SHOW_ADVANCED", true);
+        intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:Download"));
+        try {
+            startActivityForResult(intent, REQUEST_DOWNLOAD_FOLDER);
+        } catch (Exception e) {
+            BulletinFactory.of(this).createErrorBulletin(getString(R.string.DownloadFolderPermissionFailed)).show();
+        }
+    }
+
+    @Override
+    public void onActivityResultFragment(int requestCode, int resultCode, Intent data) {
+        super.onActivityResultFragment(requestCode, resultCode, data);
+        if (requestCode != REQUEST_DOWNLOAD_FOLDER || resultCode != Activity.RESULT_OK || data == null) {
+            return;
+        }
+        Uri uri = data.getData();
+        if (uri == null) {
+            return;
+        }
+        int flags = data.getFlags();
+        Utilities.globalQueue.postRunnable(() -> {
+            boolean saved = DownloadFolderHelper.setFolder(uri, flags);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getParentActivity() == null || listAdapter == null) {
+                    return;
+                }
+                if (saved) {
+                    listAdapter.notifyItemChanged(cellGroup.rows.indexOf(downloadFolderRow));
+                } else {
+                    BulletinFactory.of(this).createErrorBulletin(getString(R.string.DownloadFolderPermissionFailed)).show();
+                }
+            });
+        });
     }
 
     private String formatCustomSavePathDetail(String rawValue) {

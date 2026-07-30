@@ -95,6 +95,10 @@ Two spots used to throw away what you'd typed if you swiped back by accident, be
 
 ## Media and camera
 
+### Pick a download folder <!-- #download-folder -->
+
+Settings → General → Storage has a *Downloaded Media Folder* row for choosing where *Save to Downloads* puts files. Android's folder picker grants access only to the folder you choose, so the app does not need broad storage access. Multi-select saves use it too, and the existing *Save Attachments by Chat Name* option can still sort files into chat folders inside it. Use *Use Downloads/Nagram* from the same row to switch back. On Android 11 and newer, Android does not allow apps to select the Downloads root itself, but any folder the picker enables can be used.
+
 ### Video message playback modes <!-- #video-playback-modes -->
 
 A button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.

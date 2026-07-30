@@ -5166,10 +5166,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
             new Thread(() -> {
                 try {
-                    if (Build.VERSION.SDK_INT >= 29) {
+                    // NagramX: SAF keeps user-selected download destinations writable across Android versions.
+                    com.radolyn.ayugram.downloads.DownloadFolderHelper.Session downloadFolder =
+                            isMusic ? null : com.radolyn.ayugram.downloads.DownloadFolderHelper.createSession();
+                    if (Build.VERSION.SDK_INT >= 29 || downloadFolder != null) {
                         for (int b = 0, N = messageObjects.size(); b < N; b++) {
                             MessageObject message = messageObjects.get(b);
-                            if (processLivePhotoMessage(message)) {
+                            if (processLivePhotoMessage(message, downloadFolder)) {
                                 continue;
                             }
                             String path = message.messageOwner.attachPath;
@@ -5216,8 +5219,12 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 FileLog.d("saving file: correcting path from " + path + " to " + (sourceFile == null ? null : sourceFile.getAbsolutePath()));
                             }
                             if (sourceFile != null && sourceFile.exists()) {
-                                saveFileInternal(isMusic ? 3 : 2, sourceFile, name, message);
-                                copiedFiles++;
+                                Uri savedUri = downloadFolder != null
+                                        ? downloadFolder.saveFile(sourceFile, name, message.getMimeType(), message, () -> cancelled, null)
+                                        : saveFileInternal(isMusic ? 3 : 2, sourceFile, name, message);
+                                if (savedUri != null) {
+                                    copiedFiles++;
+                                }
                             }
                         }
                     } else {
@@ -5238,7 +5245,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         dir.mkdirs();
                         for (int b = 0, N = messageObjects.size(); b < N; b++) {
                             MessageObject message = messageObjects.get(b);
-                            if (processLivePhotoMessage(message)) {
+                            if (processLivePhotoMessage(message, null)) {
                                 continue;
                             }
                             TLRPC.Document document = message.getDocument();
@@ -5323,7 +5330,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             });
         }
 
-        private boolean processLivePhotoMessage(MessageObject messageObject) throws Exception {
+        private boolean processLivePhotoMessage(MessageObject messageObject, com.radolyn.ayugram.downloads.DownloadFolderHelper.Session downloadFolder) throws Exception {
             if (!messageObject.isLivePhoto()) {
                 return false;
             }
@@ -5383,7 +5390,15 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             }
             final String filename = AndroidUtilities.generateFileName(0, coverExt);
             final String outputMime = coverMime;
-            if (Build.VERSION.SDK_INT >= 29) {
+            if (downloadFolder != null) {
+                final File outputPhotoFile = photoFile;
+                final File outputVideoFile = videoFile;
+                Uri dst = downloadFolder.saveGeneratedFile(filename, outputMime, messageObject, () -> cancelled,
+                        output -> writeMotionPhoto(outputPhotoFile, outputVideoFile, output, null));
+                if (dst != null) {
+                    copiedFiles++;
+                }
+            } else if (Build.VERSION.SDK_INT >= 29) {
                 final ContentValues cv = new ContentValues();
                 final Uri uriToInsert = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY);
                 final File dirDest = new File(Environment.DIRECTORY_DOWNLOADS, "Telegram");
@@ -5610,7 +5625,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         String chatFolderName = ChatsHelper.getChatFolderName(selectedObject);
                         folderName = folderName + File.separator + chatFolderName;
                     }
-                    if (Build.VERSION.SDK_INT >= 29) {
+                    // NagramX: the persisted tree grant replaces hard-coded Downloads storage when selected.
+                    com.radolyn.ayugram.downloads.DownloadFolderHelper.Session downloadFolder =
+                            type == 2 ? com.radolyn.ayugram.downloads.DownloadFolderHelper.createSession() : null;
+                    if (downloadFolder != null) {
+                        uri = downloadFolder.saveFile(sourceFile, name, mime, selectedObject, () -> cancelled[0],
+                                progress -> AndroidUtilities.runOnUIThread(() -> SaveToDownloadReceiver.updateNotification(notificationId, progress)));
+                        result = uri != null;
+                    } else if (Build.VERSION.SDK_INT >= 29) {
                         uri = saveFileInternal(type, sourceFile, name, selectedObject);
                         result = uri != null;
                     } else {
