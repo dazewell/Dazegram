@@ -132,8 +132,8 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell saveToChatSubfolderRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getSaveToChatSubfolder()));
     private final AbstractConfigCell customSavePathRow = cellGroup.appendCell(new ConfigCellTextDetail(
             NekoConfig.customSavePath,
-            getString(R.string.MediaSubfolderName),
-            getString(R.string.MediaSubfolderNameHint),
+            getString(R.string.customSavePath),
+            getString(R.string.customSavePathHint),
             this::sanitizeCustomSavePath,
             this::shouldShowCustomSavePathInputError,
             this::formatCustomSavePathDetail));
@@ -711,7 +711,7 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
         builder.setItems(new CharSequence[]{
                 getString(R.string.DownloadFolderChoose),
                 getString(R.string.DownloadFolderUseDefault)
-        }, (index, __) -> {
+        }, (dialog, index) -> {
             if (index == 0) {
                 openDownloadFolderPicker();
             } else {

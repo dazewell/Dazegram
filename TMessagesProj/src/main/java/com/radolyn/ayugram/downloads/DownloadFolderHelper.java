@@ -226,10 +226,6 @@ public final class DownloadFolderHelper {
                 if (destination == null) {
                     return null;
                 }
-                if (!supportsDelete(destination)) {
-                    delete(destination);
-                    return null;
-                }
                 try (OutputStream output = resolver.openOutputStream(destination, "w")) {
                     if (output == null) {
                         throw new IllegalStateException("Unable to open selected download folder");
@@ -281,10 +277,6 @@ public final class DownloadFolderHelper {
             try {
                 destination = DocumentsContract.createDocument(resolver, parent, mimeType, filename);
                 if (destination == null) {
-                    return null;
-                }
-                if (!supportsDelete(destination)) {
-                    delete(destination);
                     return null;
                 }
                 try (OutputStream output = resolver.openOutputStream(destination, "w")) {
@@ -354,16 +346,6 @@ public final class DownloadFolderHelper {
             }
         }
 
-        private boolean supportsDelete(Uri uri) {
-            try (Cursor cursor = resolver.query(uri, new String[]{DocumentsContract.Document.COLUMN_FLAGS}, null, null, null)) {
-                return cursor != null
-                        && cursor.moveToFirst()
-                        && (cursor.getInt(0) & DocumentsContract.Document.FLAG_SUPPORTS_DELETE) != 0;
-            } catch (Exception e) {
-                FileLog.e(e);
-                return false;
-            }
-        }
     }
 
     public interface OutputWriter {

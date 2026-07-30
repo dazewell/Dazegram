@@ -5394,7 +5394,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 final File outputPhotoFile = photoFile;
                 final File outputVideoFile = videoFile;
                 Uri dst = downloadFolder.saveGeneratedFile(filename, outputMime, messageObject, () -> cancelled,
-                        output -> writeMotionPhoto(outputPhotoFile, outputVideoFile, output, null));
+                        output -> writeMotionPhotoCancellable(outputPhotoFile, outputVideoFile, output, () -> cancelled));
                 if (dst != null) {
                     copiedFiles++;
                 }
@@ -5845,6 +5845,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     }
 
     private static void writeMotionPhoto(File photoFile, File videoFile, OutputStream out, boolean[] cancelled) throws IOException {
+        writeMotionPhotoCancellable(photoFile, videoFile, out, () -> cancelled != null && cancelled[0]);
+    }
+
+    private static void writeMotionPhotoCancellable(File photoFile, File videoFile, OutputStream out, java.util.function.BooleanSupplier cancelled) throws IOException {
         final long videoLength = videoFile.length();
         final String xmp = buildMotionPhotoXmp(videoLength);
         final byte[] xmpHeader = "http://ns.adobe.com/xap/1.0/ ".getBytes("UTF-8");
@@ -5871,7 +5875,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             final byte[] buf = new byte[64 * 1024];
             int n;
             while ((n = pis.read(buf)) > 0) {
-                if (cancelled != null && cancelled[0]) return;
+                if (cancelled.getAsBoolean()) return;
                 out.write(buf, 0, n);
             }
         }
@@ -5879,7 +5883,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             final byte[] buf = new byte[64 * 1024];
             int n;
             while ((n = vis.read(buf)) > 0) {
-                if (cancelled != null && cancelled[0]) return;
+                if (cancelled.getAsBoolean()) return;
                 out.write(buf, 0, n);
             }
         }
