@@ -357,6 +357,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 offsetX = -dp(8);
             }
             offsetX += getPaddingLeft();
+            if (rightDrawable2 != null && (gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
+                offsetX += rightDrawable2OffsetX / 2;
+            }
             int rightDrawableWidth = 0;
             if (rightDrawableInside) {
                 if (rightDrawable != null && !rightDrawableOutside) {
@@ -693,7 +696,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
             return;
         }
         rightDrawable2OffsetX = offset;
-        invalidate();
+        if (!recreateLayoutMaybe()) {
+            invalidate();
+        }
     }
 
     public void setRightDrawableScale(float scale) {

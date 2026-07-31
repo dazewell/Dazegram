@@ -1193,8 +1193,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
             titleTextView.setRightDrawable2(mutedIcon);
         }
-        checkActionBar(true);
         updateTitleIconSpacing();
+        checkActionBar(true);
     }
 
     private void updateTitleIconSpacing() {
@@ -1205,9 +1205,13 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             offset = Math.max(0, emojiStatusDrawable.getIntrinsicWidth()
                     - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatusDrawable));
         }
+        boolean changed = titleRightDrawable2Offset != offset;
         titleRightDrawable2Offset = offset;
         // NagramX: the default premium star leaves empty space at the end of its status box.
         titleTextView.setRightDrawable2OffsetX(offset);
+        if (changed) {
+            requestLayout();
+        }
     }
 
     public AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable getBotVerificationDrawable(long icon, boolean animated) {
@@ -1286,8 +1290,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             titleTextView.setRightDrawable(null);
             rightDrawableContentDescription = null;
         }
-        checkActionBar(animated);
         updateTitleIconSpacing();
+        checkActionBar(animated);
     }
 
     private Drawable emojiStatusDefaultDrawable;
