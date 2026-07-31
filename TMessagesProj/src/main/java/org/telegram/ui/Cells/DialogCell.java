@@ -2824,6 +2824,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         double widthpx;
         float left;
+        // NagramX: match the title's spacing when the premium star is followed by mute.
+        int premiumStatusTrailingSpace = drawPremium ? Math.max(0, emojiStatus.getIntrinsicWidth()
+                - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus)) : 0;
         if (LocaleController.isRTL) {
             if (nameLayout != null && nameLayout.getLineCount() > 0) {
                 left = nameLayout.getLineLeft(0);
@@ -2838,7 +2841,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((dialogMuted || drawUnmute || dialogMutedProgress > 0) && !drawVerified && drawScam == 0) {
                     if (drawPremium) {
                         nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                        nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                        nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                                + premiumStatusTrailingSpace;
                     } else {
                         nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
                     }
@@ -2938,7 +2942,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((dialogMuted || true) || drawUnmute || drawVerified || drawPremium || drawScam != 0) {
                     nameMuteLeft = (int) (nameLeft + left + dp(6));
                     if (drawPremium) {
-                        nameMutedIconLeft = nameMuteLeft + dp(24 + 6);
+                        nameMutedIconLeft = nameMuteLeft + dp(24 + 6) - premiumStatusTrailingSpace;
                     }
                 }
             }
