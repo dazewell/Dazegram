@@ -949,7 +949,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             }
             rightDrawable2.setBounds(x, y, x + dw, y + dh);
             rightDrawable2.draw(canvas);
-            totalWidth += drawablePadding + dw;
+            totalWidth += drawablePadding + dw - rightDrawable2OffsetX;
         }
         int nextScrollX = totalWidth + dp(DIST_BETWEEN_SCROLLING_TEXT);
 
@@ -1092,7 +1092,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 }
                 rightDrawable2.setBounds(x, y, x + dw, y + dh);
                 rightDrawable2.draw(canvas);
-                totalWidth += drawablePadding + dw;
+                totalWidth += drawablePadding + dw - rightDrawable2OffsetX;
             }
             if (fade) {
                 if (scrollingOffset < dp(10)) {
