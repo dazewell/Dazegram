@@ -2850,7 +2850,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_verifiedDrawable.getIntrinsicWidth());
                 } else if (drawPremium) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                    nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                    nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                            + premiumStatusTrailingSpace;
                 } else if (drawScam != 0) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - (drawScam == 1 ? Theme.dialogs_scamDrawable : Theme.dialogs_fakeDrawable).getIntrinsicWidth());
                 } else {
@@ -4260,7 +4261,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 {
                     int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
                     if (reserved > 0) {
-                        boolean hasMute = dialogMuted || drawUnmute || dialogMutedProgress > 0;
+                        boolean hasMute = dialogMuted || isHiddenInCommunity || drawUnmute || dialogMutedProgress > 0;
                         int pillX;
                         // Hug the pill to a lone trailing emoji status / premium star with the same
                         // dp(4) the chat header uses; mute/verified/scam (and a mute drawn after the
