@@ -2369,7 +2369,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (drawPremium && emojiStatus.getDrawable() != null) {
             int w = dp(6 + 24 + 6);
             if (reserveMuteSlot) {
-                w += dp(6) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                w += dp(4) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
             }
             nameWidth -= w;
             nameAdditionalsForChannelSubscriber += w;
@@ -2377,7 +2377,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 nameLeft += w;
             }
         } else if (reserveMuteSlot) {
-            int w = dp(6) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+            int w = dp(4) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
             if (drawPremium) {
                 w += dp(6 + 24 + 6);
             }
@@ -2841,21 +2841,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((dialogMuted || drawUnmute || dialogMutedProgress > 0) && !drawVerified && drawScam == 0) {
                     if (drawPremium) {
                         nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                        nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                        nameMutedIconLeft = nameMuteLeft - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
                                 + premiumStatusTrailingSpace;
                     } else {
-                        nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
+                        nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
                     }
                 } else if (drawVerified) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_verifiedDrawable.getIntrinsicWidth());
                 } else if (drawPremium) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                    nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                    nameMutedIconLeft = nameMuteLeft - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
                             + premiumStatusTrailingSpace;
                 } else if (drawScam != 0) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - (drawScam == 1 ? Theme.dialogs_scamDrawable : Theme.dialogs_fakeDrawable).getIntrinsicWidth());
                 } else {
-                    nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
+                    nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
                 }
                 if (left == 0) {
                     if (widthpx < nameWidth) {
@@ -2941,9 +2941,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     nameLeft += dp(21);
                 }
                 if ((dialogMuted || true) || drawUnmute || drawVerified || drawPremium || drawScam != 0) {
-                    nameMuteLeft = (int) (nameLeft + left + dp(6));
+                    nameMuteLeft = (int) (nameLeft + left + dp(reserveMuteSlot && !drawPremium ? 4 : 6));
                     if (drawPremium) {
-                        nameMutedIconLeft = nameMuteLeft + dp(24 + 6) - premiumStatusTrailingSpace;
+                        nameMutedIconLeft = nameMuteLeft + dp(24 + 4) - premiumStatusTrailingSpace;
                     }
                 }
             }
