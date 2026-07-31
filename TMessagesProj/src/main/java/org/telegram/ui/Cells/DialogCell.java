@@ -4285,8 +4285,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             // re-add the contextual gap so RTL mirrors the LTR spacing exactly.
                             pillX = iconsLeft - (reserved - dp(6)) - pillGap;
                         } else {
-                            // In LTR the decorations are drawn starting at nameMuteLeft (which is set to the
-                            // end of the rendered name + dp(6)). Anchor the pill just past the actual icon's
+                            // In LTR the decorations start at nameMuteLeft, just after the rendered name.
+                            // Anchor the pill just past the actual icon's
                             // right edge -- using the tight icon width, not the generously reserved slot.
                             int iconsRight;
                             if (drawVerified) {
