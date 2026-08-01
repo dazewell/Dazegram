@@ -48,7 +48,7 @@ public final class InputSatellites {
     private final ArrayList<View> extraColumn = new ArrayList<>();
     /** Requested before the blur factory arrives from ChatActivity; applied on {@link #attach}. */
     private final ArrayList<View> pendingFills = new ArrayList<>();
-    private final ArrayList<BlurredBackgroundDrawable> fills = new ArrayList<>();
+    private final ArrayList<GlassFill> fills = new ArrayList<>();
 
     private @Nullable ChatInputViewsContainer island;
     private @Nullable BlurredBackgroundDrawableViewFactory factory;
@@ -114,7 +114,16 @@ public final class InputSatellites {
 
     public void updateColors() {
         for (int i = 0; i < fills.size(); i++) {
-            fills.get(i).updateColors();
+            final GlassFill fill = fills.get(i);
+            fill.drawable.updateColors();
+            // A theme change is also where a button is most likely to have had its background replaced
+            // from under us — upstream re-creates ripples there. Put ours back if that happened.
+            if (fill.view != null && fill.view.getBackground() != fill.applied) {
+                apply(fill);
+            }
+        }
+        if (manualFill != null) {
+            manualFill.updateColors();
         }
     }
 
@@ -165,13 +174,18 @@ public final class InputSatellites {
     }
 
     private void applyFill(View view) {
-        final BlurredBackgroundDrawable drawable = createFill(view);
-        final Drawable previous = view.getBackground();
-        if (previous == null) {
-            view.setBackground(drawable);
-        } else {
-            view.setBackground(new LayerDrawable(new Drawable[]{drawable, previous}));
-        }
+        final GlassFill fill = new GlassFill(view, createFill(view));
+        fills.add(fill);
+        apply(fill);
+    }
+
+    /** (Re-)installs the glass circle under whatever background the button is wearing right now. */
+    private void apply(GlassFill fill) {
+        final Drawable previous = fill.view.getBackground();
+        fill.applied = previous == null
+                ? fill.drawable
+                : new LayerDrawable(new Drawable[]{fill.drawable, previous});
+        fill.view.setBackground(fill.applied);
     }
 
     private BlurredBackgroundDrawable createFill(View view) {
@@ -180,7 +194,17 @@ public final class InputSatellites {
         drawable.setPadding(dp(FILL_MARGIN));
         // Purely visual inset — it must not become view padding and shift the icon.
         drawable.setHasPadding(false);
-        fills.add(drawable);
         return drawable;
+    }
+
+    private static final class GlassFill {
+        final View view;
+        final BlurredBackgroundDrawable drawable;
+        Drawable applied;
+
+        GlassFill(View view, BlurredBackgroundDrawable drawable) {
+            this.view = view;
+            this.drawable = drawable;
+        }
     }
 }

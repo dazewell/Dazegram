@@ -234,7 +234,9 @@ public class ChatInputViewsContainer extends FrameLayout {
         }
         satelliteOffsetLeft = left;
         satelliteOffsetRight = right;
-        invalidate();
+        // Published from the composer's draw pass, so coalesce to one redraw per frame instead of
+        // asking an ancestor to invalidate while it is drawing.
+        postInvalidateOnAnimation();
     }
 
     public float getInputBubbleHeight() {

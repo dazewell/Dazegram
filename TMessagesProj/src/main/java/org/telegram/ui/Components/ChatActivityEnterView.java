@@ -2827,6 +2827,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         frameLayout.setClipChildren(false);
         // NagramX (#input-satellites): the island's right edge now sits inside the send column, so the text
         // block keeps a little more clearance to stay within the glass instead of running under its edge.
+        // The island retreats by the painted button width + 10dp, which is 48dp for the usual 38dp disc —
+        // this margin has to stay above that, and the extra 4dp is the text's breathing room.
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, DEFAULT_HEIGHT + 8, 0));
 
         emojiButton = new ChatActivityEnterViewAnimatedIconView(context) {
@@ -17187,6 +17189,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX (#input-satellites): how wide this button actually paints, price pill included, so the
         // island knows how far to retreat.
         public float getVisualWidth() {
+            if (getMeasuredWidth() <= 0) {
+                return 0;
+            }
             checkBackgroundRect();
             return backgroundRect.width();
         }
