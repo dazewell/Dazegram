@@ -41,6 +41,14 @@ public final class InputSatellites {
     /** Inset of the painted fill inside its button, matching the accent disc the mic slot draws. */
     private static final int FILL_MARGIN = 3;
     private static final int FILL_RADIUS = 19;
+    /**
+     * Redraws requested right after a circle is created. The blur source only captures the wallpaper
+     * under a glass drawable once that drawable is registered *and* has recorded itself once, so the
+     * very first recording of a fresh circle is empty. Every redraw re-records it, but a satellite
+     * that arrives into a still screen — the stickers arrow, which appears when the emoji panel opens
+     * and nothing moves afterwards — would never get one, and would stay an empty circle for good.
+     */
+    private static final int WARMUP_FRAMES = 3;
 
     private final View enterView;
     private final ViewGroup sendButtonContainer;
@@ -123,6 +131,7 @@ public final class InputSatellites {
             }
             if (fill.drawable == null) {
                 fill.drawable = createFill(view);
+                fill.warmup = WARMUP_FRAMES;
             }
             canvas.save();
             canvas.translate(view.getLeft() + view.getTranslationX(), view.getTop() + view.getTranslationY());
@@ -131,6 +140,10 @@ public final class InputSatellites {
             fill.drawable.setBounds(0, 0, view.getWidth(), view.getHeight());
             fill.drawable.draw(canvas);
             canvas.restore();
+            if (fill.warmup > 0) {
+                fill.warmup--;
+                sendButtonContainer.postInvalidateOnAnimation();
+            }
         }
     }
 
@@ -205,6 +218,7 @@ public final class InputSatellites {
         final View view;
         final @Nullable Condition when;
         @Nullable BlurredBackgroundDrawable drawable;
+        int warmup;
 
         GlassFill(View view, @Nullable Condition when) {
             this.view = view;
