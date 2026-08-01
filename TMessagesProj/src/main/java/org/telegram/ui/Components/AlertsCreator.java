@@ -4650,6 +4650,9 @@ public class AlertsCreator {
         // NagramX: the moment the wheels get seeded, so the Remember toggle can measure its offset
         // from the same minute and an untouched sheet stores back exactly what it opened with.
         final long naxSeededAt = System.currentTimeMillis();
+        // NagramX: shared by the delay slider block and the Remember button in the confirm row;
+        // null whenever that slider isn't there to remember anything (editing, bulk reschedule).
+        final ScheduleTimeHelper.RememberToggle naxRemember = ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate) ? new ScheduleTimeHelper.RememberToggle() : null;
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
         // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
@@ -4674,6 +4677,7 @@ public class AlertsCreator {
                     dayPicker,
                     hourPicker,
                     minutePicker,
+                    naxRemember,
                     () -> {
                         // NagramX: same peer-mode delegation as the wheel listener; the slider writes
                         // device-local values, so the helper re-expresses them as peer wall-clock in peer mode.
@@ -4819,7 +4823,8 @@ public class AlertsCreator {
         if (isReschedule) {
             buttonTextView.setText(getString(R.string.Reschedule));
         }
-        container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
+        // NagramX: the Remember toggle rides in this row instead of costing the sheet its own.
+        container.addView(ScheduleTimeHelper.wrapConfirmRow(context, buttonTextView, naxRemember, datePickerColors.buttonBackgroundColor, datePickerColors.buttonTextColor), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             canceled[0] = false;
             // NagramX: if the "Peer's time" tab is active, snap the wheels back to device-local first so

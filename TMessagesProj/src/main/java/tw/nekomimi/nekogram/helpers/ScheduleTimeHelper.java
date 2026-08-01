@@ -4,10 +4,13 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.graphics.PorterDuff;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -18,8 +21,8 @@ import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
+import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SeekBarView;
-import org.telegram.ui.Components.Switch;
 
 import java.util.Calendar;
 
@@ -86,6 +89,82 @@ public final class ScheduleTimeHelper {
         return getDefaultScheduleMinutes(getDefaultScheduleStep(NaConfig.INSTANCE.getDefaultScheduledTime().Int()));
     }
 
+    /**
+     * Sheet-scoped glue for the Remember toggle. The state itself lives in NaConfig, but the toggle
+     * sits in the confirm row while the slider block that reacts to it is built earlier and higher
+     * up the sheet, so each side registers what it needs to redraw when the other flips it.
+     */
+    public static final class RememberToggle {
+
+        private Utilities.Callback<Boolean> onSliderBlock;
+        private Utilities.Callback<Boolean> onButton;
+
+        public boolean isOn() {
+            return NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
+        }
+
+        private void set(boolean on, boolean animated) {
+            NaConfig.INSTANCE.getRememberScheduleOffset().setConfigBool(on);
+            if (!on) {
+                forgetOffset();
+            }
+            if (onSliderBlock != null) {
+                onSliderBlock.run(animated);
+            }
+            if (onButton != null) {
+                onButton.run(animated);
+            }
+        }
+    }
+
+    /**
+     * Wraps the sheet's confirm button so the Remember toggle rides in the same row instead of
+     * costing the sheet another row of height. With no toggle to show (editing an existing
+     * schedule, bulk reschedule) the button is handed back untouched, layout unchanged.
+     */
+    public static View wrapConfirmRow(Context context, TextView buttonTextView, RememberToggle remember, int buttonBackgroundColor, int buttonTextColor) {
+        if (remember == null) {
+            return buttonTextView;
+        }
+
+        final LinearLayout row = new LinearLayout(context);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.addView(buttonTextView, LayoutHelper.createLinear(0, 48, 1f));
+
+        final ImageView toggle = new ImageView(context) {
+            @Override
+            public CharSequence getAccessibilityClassName() {
+                return android.widget.ToggleButton.class.getName();
+            }
+
+            @Override
+            public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setCheckable(true);
+                info.setChecked(remember.isOn());
+            }
+        };
+        toggle.setImageResource(R.drawable.baseline_bookmark_24);
+        toggle.setScaleType(ImageView.ScaleType.CENTER);
+        toggle.setContentDescription(getString(R.string.ScheduleRemember));
+        ScaleStateListAnimator.apply(toggle, .06f, 1.2f);
+        final LinearLayout.LayoutParams toggleParams = LayoutHelper.createLinear(48, 48, Gravity.CENTER_VERTICAL);
+        // Start margin rather than left, so the gap stays between the two buttons in RTL.
+        toggleParams.setMarginStart(dp(6));
+        row.addView(toggle, toggleParams);
+
+        final Utilities.Callback<Boolean> updateToggle = animated -> {
+            final boolean on = remember.isOn();
+            toggle.setBackground(Theme.AdaptiveRipple.filledRect(on ? buttonBackgroundColor : Theme.multAlpha(buttonBackgroundColor, .15f), 24));
+            toggle.setColorFilter(on ? buttonTextColor : buttonBackgroundColor, PorterDuff.Mode.SRC_IN);
+        };
+        remember.onButton = updateToggle;
+        updateToggle.run(false);
+
+        toggle.setOnClickListener(v -> remember.set(!remember.isOn(), true));
+        return row;
+    }
+
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
         calendar.setTimeInMillis(System.currentTimeMillis());
         calendar.set(Calendar.MINUTE, 0);
@@ -109,6 +188,7 @@ public final class ScheduleTimeHelper {
             NumberPicker dayPicker,
             NumberPicker hourPicker,
             NumberPicker minutePicker,
+            RememberToggle remember,
             Runnable onPickersChanged
     ) {
         final LinearLayout quickScheduleLayout = new LinearLayout(context);
@@ -143,86 +223,43 @@ public final class ScheduleTimeHelper {
 
         final float initialProgress = getDefaultScheduleProgress(step);
 
-        final LinearLayout rememberRow = new LinearLayout(context) {
-            @Override
-            public CharSequence getAccessibilityClassName() {
-                return android.widget.Switch.class.getName();
-            }
-
-            @Override
-            public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info) {
-                super.onInitializeAccessibilityNodeInfo(info);
-                info.setCheckable(true);
-                info.setChecked(NaConfig.INSTANCE.getRememberScheduleOffset().Bool());
-            }
-        };
-        rememberRow.setOrientation(LinearLayout.HORIZONTAL);
-        rememberRow.setGravity(Gravity.CENTER_VERTICAL);
-        quickScheduleLayout.addView(rememberRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 32, 22, 0, 22, 0));
-
-        final TextView rememberTitle = new TextView(context);
-        rememberTitle.setText(getString(R.string.ScheduleRemember));
-        rememberTitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourcesProvider));
-        rememberTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        rememberTitle.setGravity(Gravity.CENTER_VERTICAL);
-        rememberTitle.setSingleLine(true);
-        rememberTitle.setEllipsize(TextUtils.TruncateAt.END);
-        rememberRow.addView(rememberTitle, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
-
-        final TextView rememberValue = new TextView(context);
-        rememberValue.setTextColor(accentColor);
-        rememberValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        rememberValue.setGravity(Gravity.CENTER_VERTICAL);
-        rememberValue.setSingleLine(true);
-        rememberValue.setEllipsize(TextUtils.TruncateAt.END);
-        // Padding instead of a margin so the gap before the switch survives RTL.
-        rememberValue.setPadding(dp(8), 0, dp(8), 0);
-        rememberRow.addView(rememberValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-
-        final Switch rememberSwitch = new Switch(context, resourcesProvider);
-        rememberSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
-        rememberSwitch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        rememberRow.addView(rememberSwitch, LayoutHelper.createLinear(37, 20, Gravity.CENTER_VERTICAL));
-
-        final Utilities.Callback<Boolean> updateRemember = animated -> {
-            boolean on = NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
-            int remembered = getRememberedMinutes();
-            rememberSwitch.setChecked(on, animated);
-            rememberValue.setText(remembered > 0 ? formatDefaultScheduleMinutes(remembered) : "");
-            rememberValue.setVisibility(remembered > 0 ? View.VISIBLE : View.GONE);
-            // The row itself reports checked state to the screen reader, so this is just label + value.
-            rememberRow.setContentDescription(remembered > 0
-                    ? rememberTitle.getText() + ", " + rememberValue.getText()
-                    : rememberTitle.getText());
-        };
-        updateRemember.run(false);
-
-        rememberRow.setOnClickListener(v -> {
-            boolean on = !NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
-            NaConfig.INSTANCE.getRememberScheduleOffset().setConfigBool(on);
-            if (!on) {
-                forgetOffset();
-            }
-            updateRemember.run(true);
-        });
-
         final SeekBarView quickScheduleSeekBar = new SeekBarView(context, resourcesProvider);
         quickScheduleSeekBar.setReportChanges(true);
         quickScheduleSeekBar.setSeparatorsCount(DEFAULT_SCHEDULE_STEP_COUNT);
+
+        // What the slider is sitting on, which is what the header falls back to once nothing is
+        // remembered any more.
+        final int[] sliderMinutes = { minutes };
+        final Utilities.Callback<Boolean> updateRemember = animated -> {
+            final int remembered = remember.isOn() ? getRememberedMinutes() : 0;
+            // With an offset remembered the wheels opened on it, not on the slider, so the header
+            // says so and the slider dims to show it's only the fallback now.
+            quickScheduleTitle.setText(getString(remembered > 0 ? R.string.ScheduleRememberedDelay : R.string.DefaultScheduleDelay));
+            quickScheduleValue.setText(formatDefaultScheduleMinutes(remembered > 0 ? remembered : sliderMinutes[0]));
+            final float alpha = remembered > 0 ? .4f : 1f;
+            if (animated) {
+                quickScheduleSeekBar.animate().alpha(alpha).setDuration(180).start();
+            } else {
+                quickScheduleSeekBar.setAlpha(alpha);
+            }
+        };
+        remember.onSliderBlock = updateRemember;
+        updateRemember.run(false);
+
         quickScheduleSeekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
             @Override
             public void onSeekBarDrag(boolean stop, float progress) {
                 int step = Math.round(progress * (DEFAULT_SCHEDULE_STEP_COUNT - 1));
                 int minutes = getDefaultScheduleMinutes(step);
-                quickScheduleValue.setText(formatDefaultScheduleMinutes(minutes));
+                sliderMinutes[0] = minutes;
                 if (NaConfig.INSTANCE.getDefaultScheduledTime().Int() != minutes) {
                     NaConfig.INSTANCE.getDefaultScheduledTime().setConfigInt(minutes);
                 }
                 // Touching the slider is a fresh choice of delay, so the remembered one is dropped:
                 // it would fight the value the wheels are being set to right here.
-                if (NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
-                    NaConfig.INSTANCE.getRememberScheduleOffset().setConfigBool(false);
-                    forgetOffset();
+                if (remember.isOn()) {
+                    remember.set(false, true);
+                } else {
                     updateRemember.run(true);
                 }
                 setPickersFromTargetTime(getTargetTimeFromNow(minutes), calendar, dayPicker, hourPicker, minutePicker);
