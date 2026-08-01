@@ -51,15 +51,19 @@ public final class ScheduleTimeHelper {
 
     /**
      * Stores the offset the user just confirmed so the next sheet opens on it. Measured from the
-     * same minute boundary the pickers were seeded off, so confirming an untouched sheet writes
-     * back exactly the offset it opened with instead of creeping a minute per use.
+     * minute the sheet was seeded off, so confirming an untouched sheet writes back exactly the
+     * offset it opened with even if a minute ticks over while it's up.
      */
-    public static void rememberOffset(long currentDate, long targetTime) {
+    public static void rememberOffset(long currentDate, long openedAt, long targetTime) {
         if (!shouldUseDefaultSchedule(currentDate) || !NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
             return;
         }
-        long minutes = (targetTime / 60000L * 60000L - roundUpToScheduleMinute(System.currentTimeMillis())) / 60000L;
-        int offset = (int) Math.max(1, Math.min(MAX_REMEMBERED_MINUTES, minutes));
+        final long now = System.currentTimeMillis();
+        // Past a minute open the seeded time is stale (validation drags it forward), so from then on
+        // measure what's actually left rather than what was seeded.
+        final long from = roundUpToScheduleMinute(now - openedAt > 60000L ? now : openedAt);
+        final long minutes = (targetTime / 60000L * 60000L - from) / 60000L;
+        final int offset = (int) Math.max(1, Math.min(MAX_REMEMBERED_MINUTES, minutes));
         if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != offset) {
             NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(offset);
         }

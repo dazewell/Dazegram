@@ -4647,6 +4647,9 @@ public class AlertsCreator {
         linearLayout.addView(minutePicker, LayoutHelper.createLinear(0, 54 * 5, 0.3f));
         minutePicker.setOnValueChangedListener(onValueChangeListener);
 
+        // NagramX: the moment the wheels get seeded, so the Remember toggle can measure its offset
+        // from the same minute and an untouched sheet stores back exactly what it opened with.
+        final long naxSeededAt = System.currentTimeMillis();
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
         // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
@@ -4853,7 +4856,7 @@ public class AlertsCreator {
                 calendar.set(Calendar.MILLISECOND, 0);
             }
             // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
-            ScheduleTimeHelper.rememberOffset(currentDate, calendar.getTimeInMillis());
+            ScheduleTimeHelper.rememberOffset(currentDate, naxSeededAt, calendar.getTimeInMillis());
             // NagramX: arm the event trigger before the send fires so it can claim the local echo.
             if (naxEventRow != null) {
                 naxEventRow.commit((int) (calendar.getTimeInMillis() / 1000), repeat[0]);
