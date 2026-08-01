@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, avoiding force pushes, or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, avoiding force pushes, or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -210,7 +210,10 @@ Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `staging.yml` runs 
 the PR, builds the **merge ref** (`dev` + the branch) as the release-signed
 dual-package APK, and uploads it to Telegram (labelled a *test* build). Push more
 commits to iterate; each push rebuilds. This is the same artifact users get, not
-a separate debug build. `commit-tag.yml` also runs and fails the PR if any commit
+a separate debug build. It doubles as the compile gate whenever the change was
+written without a local Android toolchain — see `nagramx-workflow` step 4; in
+that case say so in the PR body so no one installs a build that CI hasn't
+confirmed yet. `commit-tag.yml` also runs and fails the PR if any commit
 is missing its tag.
 
 For a **user-visible feature this PR is opened by default** (don't wait to be
@@ -249,7 +252,7 @@ The original branch is usually gone — that's fine, the tag carries the link.
 ```powershell
 git switch dev; git pull --ff-only origin dev
 git switch -c <YYYY-MM-DD>_<slug>-fix dev
-# ...implement, compile gate, review...
+# ...implement, compile gate (local, else the staging build on the PR), review...
 git commit -m "<what the fix does> #<slug>"   # SAME slug as the feature
 ```
 PR it into `dev`, merge, delete. Now `git log --grep '#<slug>'` shows the feature
