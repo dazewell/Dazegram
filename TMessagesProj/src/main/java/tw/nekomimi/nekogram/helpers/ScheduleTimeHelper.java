@@ -212,11 +212,13 @@ public final class ScheduleTimeHelper {
 
             // Where the button ended up in the sheet, so the arrow points at it whichever side the
             // layout direction puts it on and however tall the sheet's own rows made the confirm row.
+            // Those coordinates are from the container's outer edge while the hint is laid out inside
+            // its padding (the sheet's shadow inset), so the padding comes back off both axes.
             final Rect bounds = new Rect(0, 0, button.getWidth(), button.getHeight());
             container.offsetDescendantRectToMyCoords(button, bounds);
             container.addView(hint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, HINT_HEIGHT_DP, Gravity.TOP));
-            hint.setJointPx(0, bounds.centerX() - dp(8));
-            hint.setTranslationY(bounds.top - dp(HINT_HEIGHT_DP + 2));
+            hint.setJointPx(0, bounds.centerX() - container.getPaddingLeft() - dp(8));
+            hint.setTranslationY(bounds.top - container.getPaddingTop() - dp(HINT_HEIGHT_DP + 2));
             hint.show();
         };
 
