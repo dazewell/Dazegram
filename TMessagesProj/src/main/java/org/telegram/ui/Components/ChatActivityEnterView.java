@@ -3360,11 +3360,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final RectF backgroundRect = new RectF();
 
+            // NagramX (#input-satellites): true while the slot paints no accent disc of its own.
+            private boolean drawsNoAccentDisc() {
+                return audioVideoButtonContainerForbidden || (audioVideoSendButton != null
+                        && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU);
+            }
+
+            @Override
+            public void draw(@NonNull Canvas canvas) {
+                // NagramX (#input-satellites): without the accent disc the slot would float over the wallpaper
+                // bare, so it wears the same glass circle as the other satellites. It is painted here rather
+                // than in dispatchDraw() so it lands *under* the button's own ripple background instead of
+                // hiding it — in the attach-menu state that ripple is the only press feedback the slot has.
+                if (inputSatellites != null && drawsNoAccentDisc()) {
+                    inputSatellites.drawFill(canvas, this);
+                }
+                super.draw(canvas);
+            }
+
             @Override
             protected void dispatchDraw(@NonNull Canvas canvas) {
-                boolean isMenuState = audioVideoSendButton != null
-                        && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU;
-                if (!audioVideoButtonContainerForbidden && !isMenuState) {
+                if (!drawsNoAccentDisc()) {
                     float s = 1;
                     if (expandStickersButton != null) {
                         if (expandStickersButton.getVisibility() == View.VISIBLE) {
@@ -3388,10 +3404,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     canvas.scale(s, s, backgroundRect.centerX(), backgroundRect.centerY());
                     canvas.drawRoundRect(backgroundRect, r, r, paint);
                     canvas.restore();
-                } else if (inputSatellites != null) {
-                    // NagramX (#input-satellites): no accent disc in this state, so the slot would float over
-                    // the wallpaper bare — give it the same glass circle the other satellites wear.
-                    inputSatellites.drawFill(canvas, this);
                 }
                 super.dispatchDraw(canvas);
             }

@@ -98,7 +98,8 @@ public final class InputSatellites {
 
     /**
      * Same circle as {@link #glass(View)}, but painted by the caller. Used by the mic slot, which swaps its
-     * own background between a ripple and nothing depending on state and would overwrite ours.
+     * own background between a ripple and nothing depending on state and would overwrite ours. Call it from
+     * {@code draw()} before {@code super.draw()} so the circle stays below the button's ripple.
      */
     public void drawFill(Canvas canvas, View host) {
         if (factory == null || host == null) {
