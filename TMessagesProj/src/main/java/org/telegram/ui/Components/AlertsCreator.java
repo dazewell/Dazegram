@@ -4852,6 +4852,8 @@ public class AlertsCreator {
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);
             }
+            // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
+            ScheduleTimeHelper.rememberOffset(currentDate, calendar.getTimeInMillis());
             // NagramX: arm the event trigger before the send fires so it can claim the local echo.
             if (naxEventRow != null) {
                 naxEventRow.commit((int) (calendar.getTimeInMillis() / 1000), repeat[0]);

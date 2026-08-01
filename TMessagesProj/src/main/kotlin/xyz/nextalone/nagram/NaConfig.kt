@@ -1361,6 +1361,18 @@ object NaConfig {
             ConfigItem.configTypeInt,
             10
         )
+    val rememberScheduleOffset =
+        addConfig(
+            "RememberScheduleOffset",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val rememberedScheduleOffset =
+        addConfig(
+            "RememberedScheduleOffset",
+            ConfigItem.configTypeInt,
+            0 // minutes; 0 means nothing remembered yet
+        )
     val eventScheduleLastTypes =
         addConfig(
             "EventScheduleLastTypes",

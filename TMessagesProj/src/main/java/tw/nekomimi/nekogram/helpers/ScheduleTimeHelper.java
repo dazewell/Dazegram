@@ -1,11 +1,13 @@
 package tw.nekomimi.nekogram.helpers;
 
+import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -17,6 +19,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
 import org.telegram.ui.Components.SeekBarView;
+import org.telegram.ui.Components.Switch;
 
 import java.util.Calendar;
 
@@ -28,6 +31,8 @@ public final class ScheduleTimeHelper {
     private static final int DEFAULT_SCHEDULE_LAST_MINUTE_STEP = 11;
     private static final int DEFAULT_SCHEDULE_LAST_HOUR_STEP = 22;
     private static final long SEND_WHEN_ONLINE_DATE = 0x7FFFFFFEL;
+    // The day wheel stops at 365, so an offset past that could never be picked again.
+    private static final int MAX_REMEMBERED_MINUTES = 365 * 24 * 60;
 
     private ScheduleTimeHelper() {
     }
@@ -38,11 +43,43 @@ public final class ScheduleTimeHelper {
 
     public static long getInitialTargetTime(long currentDate) {
         if (shouldUseDefaultSchedule(currentDate)) {
-            int step = getDefaultScheduleStep(NaConfig.INSTANCE.getDefaultScheduledTime().Int());
-            int minutes = getDefaultScheduleMinutes(step);
-            return getTargetTimeFromNow(minutes);
+            int remembered = getRememberedMinutes();
+            return getTargetTimeFromNow(remembered > 0 ? remembered : getSliderMinutes());
         }
         return currentDate * 1000L;
+    }
+
+    /**
+     * Stores the offset the user just confirmed so the next sheet opens on it. Measured from the
+     * same minute boundary the pickers were seeded off, so confirming an untouched sheet writes
+     * back exactly the offset it opened with instead of creeping a minute per use.
+     */
+    public static void rememberOffset(long currentDate, long targetTime) {
+        if (!shouldUseDefaultSchedule(currentDate) || !NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
+            return;
+        }
+        long minutes = (targetTime / 60000L * 60000L - roundUpToScheduleMinute(System.currentTimeMillis())) / 60000L;
+        int offset = (int) Math.max(1, Math.min(MAX_REMEMBERED_MINUTES, minutes));
+        if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != offset) {
+            NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(offset);
+        }
+    }
+
+    private static int getRememberedMinutes() {
+        if (!NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
+            return 0;
+        }
+        return Utilities.clamp(NaConfig.INSTANCE.getRememberedScheduleOffset().Int(), MAX_REMEMBERED_MINUTES, 0);
+    }
+
+    private static void forgetOffset() {
+        if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != 0) {
+            NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(0);
+        }
+    }
+
+    private static int getSliderMinutes() {
+        return getDefaultScheduleMinutes(getDefaultScheduleStep(NaConfig.INSTANCE.getDefaultScheduledTime().Int()));
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
@@ -102,6 +139,54 @@ public final class ScheduleTimeHelper {
 
         final float initialProgress = getDefaultScheduleProgress(step);
 
+        final LinearLayout rememberRow = new LinearLayout(context);
+        rememberRow.setOrientation(LinearLayout.HORIZONTAL);
+        rememberRow.setGravity(Gravity.CENTER_VERTICAL);
+        quickScheduleLayout.addView(rememberRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 32, 22, 0, 22, 0));
+
+        final TextView rememberTitle = new TextView(context);
+        rememberTitle.setText(getString(R.string.ScheduleRemember));
+        rememberTitle.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3, resourcesProvider));
+        rememberTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        rememberTitle.setGravity(Gravity.CENTER_VERTICAL);
+        rememberTitle.setSingleLine(true);
+        rememberTitle.setEllipsize(TextUtils.TruncateAt.END);
+        rememberRow.addView(rememberTitle, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
+
+        final TextView rememberValue = new TextView(context);
+        rememberValue.setTextColor(accentColor);
+        rememberValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        rememberValue.setGravity(Gravity.CENTER_VERTICAL);
+        // Padding instead of a margin so the gap before the switch survives RTL.
+        rememberValue.setPadding(dp(8), 0, dp(8), 0);
+        rememberRow.addView(rememberValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+
+        final Switch rememberSwitch = new Switch(context, resourcesProvider);
+        rememberSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
+        rememberSwitch.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        rememberRow.addView(rememberSwitch, LayoutHelper.createLinear(37, 20, Gravity.CENTER_VERTICAL));
+
+        final Utilities.Callback<Boolean> updateRemember = animated -> {
+            boolean on = NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
+            int remembered = on ? NaConfig.INSTANCE.getRememberedScheduleOffset().Int() : 0;
+            rememberSwitch.setChecked(on, animated);
+            rememberValue.setText(remembered > 0 ? formatDefaultScheduleMinutes(remembered) : "");
+            rememberValue.setVisibility(remembered > 0 ? View.VISIBLE : View.GONE);
+            rememberRow.setContentDescription(rememberTitle.getText() + ", "
+                    + (remembered > 0 ? rememberValue.getText() + ", " : "")
+                    + getString(on ? R.string.NotificationsOn : R.string.NotificationsOff));
+        };
+        updateRemember.run(false);
+
+        rememberRow.setOnClickListener(v -> {
+            boolean on = !NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
+            NaConfig.INSTANCE.getRememberScheduleOffset().setConfigBool(on);
+            if (!on) {
+                forgetOffset();
+            }
+            updateRemember.run(true);
+        });
+
         final SeekBarView quickScheduleSeekBar = new SeekBarView(context, resourcesProvider);
         quickScheduleSeekBar.setReportChanges(true);
         quickScheduleSeekBar.setSeparatorsCount(DEFAULT_SCHEDULE_STEP_COUNT);
@@ -113,6 +198,13 @@ public final class ScheduleTimeHelper {
                 quickScheduleValue.setText(formatDefaultScheduleMinutes(minutes));
                 if (NaConfig.INSTANCE.getDefaultScheduledTime().Int() != minutes) {
                     NaConfig.INSTANCE.getDefaultScheduledTime().setConfigInt(minutes);
+                }
+                // Touching the slider is a fresh choice of delay, so the remembered one is dropped:
+                // it would fight the value the wheels are being set to right here.
+                if (NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
+                    NaConfig.INSTANCE.getRememberScheduleOffset().setConfigBool(false);
+                    forgetOffset();
+                    updateRemember.run(true);
                 }
                 setPickersFromTargetTime(getTargetTimeFromNow(minutes), calendar, dayPicker, hourPicker, minutePicker);
                 onPickersChanged.run();
@@ -163,12 +255,28 @@ public final class ScheduleTimeHelper {
     }
 
     private static String formatDefaultScheduleMinutes(int minutes) {
-        if (minutes < 60 || minutes % 60 != 0) {
-            return LocaleController.formatPluralString("Minutes", minutes);
-        } else if (minutes < 24 * 60 || minutes % (24 * 60) != 0) {
-            return LocaleController.formatPluralString("Hours", minutes / 60);
+        // Slider values are always whole minutes/hours/days, but a remembered offset can be any
+        // mix of them, so build the label from whichever parts are non-zero.
+        final int days = minutes / (24 * 60);
+        final int hours = minutes / 60 % 24;
+        final int mins = minutes % 60;
+        final StringBuilder sb = new StringBuilder();
+        if (days > 0) {
+            sb.append(LocaleController.formatPluralString("Days", days));
         }
-        return LocaleController.formatPluralString("Days", minutes / (24 * 60));
+        if (hours > 0) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(LocaleController.formatPluralString("Hours", hours));
+        }
+        if (mins > 0 || sb.length() == 0) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append(LocaleController.formatPluralString("Minutes", mins));
+        }
+        return sb.toString();
     }
 
     private static long getTargetTimeFromNow(int minutes) {
