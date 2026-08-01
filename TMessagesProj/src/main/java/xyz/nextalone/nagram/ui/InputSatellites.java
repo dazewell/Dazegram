@@ -3,8 +3,6 @@ package xyz.nextalone.nagram.ui;
 import static org.telegram.messenger.AndroidUtilities.dp;
 
 import android.graphics.Canvas;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.LayerDrawable;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -31,7 +29,10 @@ import java.util.ArrayList;
  * <p>
  * The buttons that paint no fill of their own (stickers arrow, cancel-inline-bot, slow mode, and the
  * mic slot while it acts as the attach menu) get the same glass circle the other floating controls use,
- * so a satellite never sits naked over the wallpaper.
+ * so a satellite never sits naked over the wallpaper. Those are plain {@code ImageView}/{@code TextView}s
+ * that cannot host the circle in their own draw pass, so {@link #sendButtonContainer} paints all of them
+ * from the children's live bounds — one code path, no backgrounds replaced, nothing to re-install when
+ * upstream swaps a ripple.
  */
 public final class InputSatellites {
 
@@ -46,16 +47,12 @@ public final class InputSatellites {
 
     /** Right-column buttons that live outside {@link #sendButtonContainer} (the edit-mode done button). */
     private final ArrayList<View> extraColumn = new ArrayList<>();
-    /** Requested before the blur factory arrives from ChatActivity; applied on {@link #attach}. */
-    private final ArrayList<View> pendingFills = new ArrayList<>();
+    /** Satellites that paint no fill of their own and get the glass circle from the container. */
     private final ArrayList<GlassFill> fills = new ArrayList<>();
 
     private @Nullable ChatInputViewsContainer island;
     private @Nullable BlurredBackgroundDrawableViewFactory factory;
     private @Nullable BlurredBackgroundColorProvider colorProvider;
-
-    private @Nullable BlurredBackgroundDrawable manualFill;
-    private @Nullable View manualFillView;
 
     private float publishedOffset = -1;
 
@@ -70,10 +67,6 @@ public final class InputSatellites {
         this.island = island;
         this.factory = factory;
         this.colorProvider = colorProvider;
-        for (int i = 0; i < pendingFills.size(); i++) {
-            applyFill(pendingFills.get(i));
-        }
-        pendingFills.clear();
         update();
     }
 
@@ -84,47 +77,69 @@ public final class InputSatellites {
         }
     }
 
-    /** Gives a fill-less satellite the standard glass circle, keeping whatever ripple it already had. */
+    /** Gives a fill-less satellite the standard glass circle, leaving its own background untouched. */
     public void glass(View view) {
-        if (view == null) {
-            return;
-        }
-        if (factory == null) {
-            pendingFills.add(view);
-        } else {
-            applyFill(view);
-        }
+        glass(view, null);
     }
 
     /**
-     * Same circle as {@link #glass(View)}, but painted by the caller. Used by the mic slot, which swaps its
-     * own background between a ripple and nothing depending on state and would overwrite ours. Call it from
-     * {@code draw()} before {@code super.draw()} so the circle stays below the button's ripple.
+     * Same circle as {@link #glass(View)}, drawn only while {@code when} says so. Used by the mic slot,
+     * which paints an accent disc of its own in every state but the attach-menu one.
      */
-    public void drawFill(Canvas canvas, View host) {
-        if (factory == null || host == null) {
+    public void glass(View view, @Nullable Condition when) {
+        if (view == null) {
             return;
         }
-        if (manualFill == null || manualFillView != host) {
-            manualFillView = host;
-            manualFill = createFill(host);
+        for (int i = 0; i < fills.size(); i++) {
+            if (fills.get(i).view == view) {
+                return;
+            }
         }
-        manualFill.setBounds(0, 0, host.getMeasuredWidth(), host.getMeasuredHeight());
-        manualFill.draw(canvas);
+        fills.add(new GlassFill(view, when));
+    }
+
+    /**
+     * Paints the satellites' glass circles. Called from {@link #sendButtonContainer}'s draw pass before its
+     * children, so a circle lands under the button's own ripple instead of hiding it, and follows the alpha,
+     * scale and translation of the button it belongs to.
+     */
+    public void drawFills(Canvas canvas) {
+        if (factory == null) {
+            return;
+        }
+        for (int i = 0; i < fills.size(); i++) {
+            final GlassFill fill = fills.get(i);
+            final View view = fill.view;
+            if (view.getVisibility() != View.VISIBLE || view.getParent() != sendButtonContainer) {
+                continue;
+            }
+            final float alpha = view.getAlpha();
+            final float scaleX = view.getScaleX(), scaleY = view.getScaleY();
+            if (alpha <= 0.01f || scaleX == 0 || scaleY == 0) {
+                continue;
+            }
+            if (fill.when != null && !fill.when.holds()) {
+                continue;
+            }
+            if (fill.drawable == null) {
+                fill.drawable = createFill(view);
+            }
+            canvas.save();
+            canvas.translate(view.getLeft() + view.getTranslationX(), view.getTop() + view.getTranslationY());
+            canvas.scale(scaleX, scaleY, view.getPivotX(), view.getPivotY());
+            fill.drawable.setAlpha((int) (alpha * 255));
+            fill.drawable.setBounds(0, 0, view.getWidth(), view.getHeight());
+            fill.drawable.draw(canvas);
+            canvas.restore();
+        }
     }
 
     public void updateColors() {
         for (int i = 0; i < fills.size(); i++) {
-            final GlassFill fill = fills.get(i);
-            fill.drawable.updateColors();
-            // A theme change is also where a button is most likely to have had its background replaced
-            // from under us — upstream re-creates ripples there. Put ours back if that happened.
-            if (fill.view != null && fill.view.getBackground() != fill.applied) {
-                apply(fill);
+            final BlurredBackgroundDrawable drawable = fills.get(i).drawable;
+            if (drawable != null) {
+                drawable.updateColors();
             }
-        }
-        if (manualFill != null) {
-            manualFill.updateColors();
         }
     }
 
@@ -174,38 +189,26 @@ public final class InputSatellites {
         return Math.max(0, view.getWidth() - dp(FILL_MARGIN) * 2);
     }
 
-    private void applyFill(View view) {
-        final GlassFill fill = new GlassFill(view, createFill(view));
-        fills.add(fill);
-        apply(fill);
-    }
-
-    /** (Re-)installs the glass circle under whatever background the button is wearing right now. */
-    private void apply(GlassFill fill) {
-        final Drawable previous = fill.view.getBackground();
-        fill.applied = previous == null
-                ? fill.drawable
-                : new LayerDrawable(new Drawable[]{fill.drawable, previous});
-        fill.view.setBackground(fill.applied);
-    }
-
     private BlurredBackgroundDrawable createFill(View view) {
         final BlurredBackgroundDrawable drawable = factory.create(view, colorProvider);
         drawable.setRadius(dp(FILL_RADIUS));
         drawable.setPadding(dp(FILL_MARGIN));
-        // Purely visual inset — it must not become view padding and shift the icon.
-        drawable.setHasPadding(false);
         return drawable;
+    }
+
+    /** Whether a satellite currently wants its glass circle. */
+    public interface Condition {
+        boolean holds();
     }
 
     private static final class GlassFill {
         final View view;
-        final BlurredBackgroundDrawable drawable;
-        Drawable applied;
+        final @Nullable Condition when;
+        @Nullable BlurredBackgroundDrawable drawable;
 
-        GlassFill(View view, BlurredBackgroundDrawable drawable) {
+        GlassFill(View view, @Nullable Condition when) {
             this.view = view;
-            this.drawable = drawable;
+            this.when = when;
         }
     }
 }

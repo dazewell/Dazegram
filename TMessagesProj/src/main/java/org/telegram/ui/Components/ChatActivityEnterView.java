@@ -3083,6 +3083,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             @Override
+            protected void dispatchDraw(Canvas canvas) {
+                // NagramX (#input-satellites): the satellites that paint no fill of their own are plain
+                // ImageView/TextViews, so their glass circles are painted here, before the children, which
+                // also keeps each circle under the button's own ripple.
+                if (inputSatellites != null) {
+                    inputSatellites.drawFills(canvas);
+                }
+                super.dispatchDraw(canvas);
+            }
+
+            @Override
+            public void onDescendantInvalidated(View child, View target) {
+                super.onDescendantInvalidated(child, target);
+                // The circles are positioned from the children's live alpha/scale/bounds, so this draw pass
+                // has to be re-recorded whenever one of them moves.
+                if (inputSatellites != null) {
+                    invalidate();
+                }
+            }
+
+            @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 if (!isSendButtonEnabled()) {
                     return false;
@@ -3360,27 +3381,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
             private final RectF backgroundRect = new RectF();
 
-            // NagramX (#input-satellites): true while the slot paints no accent disc of its own.
-            private boolean drawsNoAccentDisc() {
-                return audioVideoButtonContainerForbidden || (audioVideoSendButton != null
-                        && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU);
-            }
-
-            @Override
-            public void draw(@NonNull Canvas canvas) {
-                // NagramX (#input-satellites): without the accent disc the slot would float over the wallpaper
-                // bare, so it wears the same glass circle as the other satellites. It is painted here rather
-                // than in dispatchDraw() so it lands *under* the button's own ripple background instead of
-                // hiding it — in the attach-menu state that ripple is the only press feedback the slot has.
-                if (inputSatellites != null && drawsNoAccentDisc()) {
-                    inputSatellites.drawFill(canvas, this);
-                }
-                super.draw(canvas);
-            }
-
             @Override
             protected void dispatchDraw(@NonNull Canvas canvas) {
-                if (!drawsNoAccentDisc()) {
+                if (!micSlotDrawsNoAccentDisc()) {
                     float s = 1;
                     if (expandStickersButton != null) {
                         if (expandStickersButton.getVisibility() == View.VISIBLE) {
@@ -3434,6 +3437,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         audioVideoButtonContainer.setSoundEffectsEnabled(false);
         sendButtonContainer.addView(audioVideoButtonContainer, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
+        // NagramX (#input-satellites): without its accent disc the slot would float over the wallpaper bare,
+        // so it wears the same glass circle as the other satellites while it acts as the attach menu.
+        if (inputSatellites != null) inputSatellites.glass(audioVideoButtonContainer, this::micSlotDrawsNoAccentDisc);
         audioVideoButtonContainer.setFocusable(true);
         audioVideoButtonContainer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
@@ -17306,6 +17312,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (inputSatellites != null) {
             inputSatellites.update();
         }
+    }
+
+    /** NagramX (#input-satellites): true while the mic slot paints no accent disc of its own. */
+    private boolean micSlotDrawsNoAccentDisc() {
+        return audioVideoButtonContainerForbidden || (audioVideoSendButton != null
+                && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU);
     }
 
     public void setSideButtonsForAttach(ChatActivitySideControlsButtonsLayout sideButtons) {
