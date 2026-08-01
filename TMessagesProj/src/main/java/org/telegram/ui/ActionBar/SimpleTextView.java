@@ -72,6 +72,8 @@ public class SimpleTextView extends View implements Drawable.Callback {
     private float replacingDrawableTextOffset;
     private float rightDrawableScale = 1.0f;
     private int drawablePadding = dp(4);
+    // NagramX: let a following title icon overlap empty space inside the premium-status box.
+    private int rightDrawable2OffsetX;
     private int leftDrawableTopPadding;
     private int rightDrawableTopPadding;
     private boolean buildFullLayout;
@@ -355,6 +357,9 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 offsetX = -dp(8);
             }
             offsetX += getPaddingLeft();
+            if (rightDrawable2 != null && (gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.CENTER_HORIZONTAL) {
+                offsetX += rightDrawable2OffsetX / 2;
+            }
             int rightDrawableWidth = 0;
             if (rightDrawableInside) {
                 if (rightDrawable != null && !rightDrawableOutside) {
@@ -686,6 +691,16 @@ public class SimpleTextView extends View implements Drawable.Callback {
         return rightDrawable2;
     }
 
+    public void setRightDrawable2OffsetX(int offset) {
+        if (rightDrawable2OffsetX == offset) {
+            return;
+        }
+        rightDrawable2OffsetX = offset;
+        if (!recreateLayoutMaybe()) {
+            invalidate();
+        }
+    }
+
     public void setRightDrawableScale(float scale) {
         rightDrawableScale = scale;
     }
@@ -923,6 +938,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                     (gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) {
                 x += offsetX;
             }
+            x -= rightDrawable2OffsetX;
             int dw = (int) (rightDrawable2.getIntrinsicWidth() * rightDrawableScale);
             int dh = (int) (rightDrawable2.getIntrinsicHeight() * rightDrawableScale);
             int y;
@@ -933,7 +949,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             }
             rightDrawable2.setBounds(x, y, x + dw, y + dh);
             rightDrawable2.draw(canvas);
-            totalWidth += drawablePadding + dw;
+            totalWidth += drawablePadding + dw - rightDrawable2OffsetX;
         }
         int nextScrollX = totalWidth + dp(DIST_BETWEEN_SCROLLING_TEXT);
 
@@ -971,6 +987,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 if (rightDrawable != null) {
                     x += (int) (rightDrawable.getIntrinsicWidth() * rightDrawableScale) + drawablePadding;
                 }
+                x -= rightDrawable2OffsetX;
                 int y;
                 if ((gravity & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.CENTER_VERTICAL) {
                     y = (getMeasuredHeight() - dh) / 2 + rightDrawableTopPadding;
@@ -1064,6 +1081,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                         (gravity & Gravity.HORIZONTAL_GRAVITY_MASK) == Gravity.RIGHT) {
                     x += offsetX;
                 }
+                x -= rightDrawable2OffsetX;
                 int dw = (int) (rightDrawable2.getIntrinsicWidth() * rightDrawableScale);
                 int dh = (int) (rightDrawable2.getIntrinsicHeight() * rightDrawableScale);
                 int y;
@@ -1074,7 +1092,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
                 }
                 rightDrawable2.setBounds(x, y, x + dw, y + dh);
                 rightDrawable2.draw(canvas);
-                totalWidth += drawablePadding + dw;
+                totalWidth += drawablePadding + dw - rightDrawable2OffsetX;
             }
             if (fade) {
                 if (scrollingOffset < dp(10)) {
@@ -1142,6 +1160,7 @@ public class SimpleTextView extends View implements Drawable.Callback {
             if (rightDrawable != null) {
                 x += (int) (rightDrawable.getIntrinsicWidth() * rightDrawableScale) + drawablePadding;
             }
+            x -= rightDrawable2OffsetX;
             int dw = (int) (rightDrawable2.getIntrinsicWidth() * rightDrawableScale);
             int dh = (int) (rightDrawable2.getIntrinsicHeight() * rightDrawableScale);
             int y;

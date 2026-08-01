@@ -2369,7 +2369,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
         if (drawPremium && emojiStatus.getDrawable() != null) {
             int w = dp(6 + 24 + 6);
             if (reserveMuteSlot) {
-                w += dp(6) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                w += dp(4) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
             }
             nameWidth -= w;
             nameAdditionalsForChannelSubscriber += w;
@@ -2377,7 +2377,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 nameLeft += w;
             }
         } else if (reserveMuteSlot) {
-            int w = dp(6) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
+            int w = dp(4) + Theme.dialogs_muteDrawable.getIntrinsicWidth();
             if (drawPremium) {
                 w += dp(6 + 24 + 6);
             }
@@ -2824,6 +2824,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         double widthpx;
         float left;
+        // NagramX: match the title's spacing when the premium star is followed by mute.
+        int premiumStatusTrailingSpace = drawPremium ? Math.max(0, emojiStatus.getIntrinsicWidth()
+                - com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.emojiStatusGlyphWidth(emojiStatus)) : 0;
         if (LocaleController.isRTL) {
             if (nameLayout != null && nameLayout.getLineCount() > 0) {
                 left = nameLayout.getLineLeft(0);
@@ -2838,19 +2841,21 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 if ((dialogMuted || drawUnmute || dialogMutedProgress > 0) && !drawVerified && drawScam == 0) {
                     if (drawPremium) {
                         nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                        nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                        nameMutedIconLeft = nameMuteLeft - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                                + premiumStatusTrailingSpace;
                     } else {
-                        nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
+                        nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
                     }
                 } else if (drawVerified) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_verifiedDrawable.getIntrinsicWidth());
                 } else if (drawPremium) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx - left) - dp(24));
-                    nameMutedIconLeft = nameMuteLeft - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth();
+                    nameMutedIconLeft = nameMuteLeft - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth()
+                            + premiumStatusTrailingSpace;
                 } else if (drawScam != 0) {
                     nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - (drawScam == 1 ? Theme.dialogs_scamDrawable : Theme.dialogs_fakeDrawable).getIntrinsicWidth());
                 } else {
-                    nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(6) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
+                    nameMuteLeft = (int) (nameLeft + (nameWidth - widthpx) - dp(4) - Theme.dialogs_muteDrawable.getIntrinsicWidth());
                 }
                 if (left == 0) {
                     if (widthpx < nameWidth) {
@@ -2936,9 +2941,9 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                     nameLeft += dp(21);
                 }
                 if ((dialogMuted || true) || drawUnmute || drawVerified || drawPremium || drawScam != 0) {
-                    nameMuteLeft = (int) (nameLeft + left + dp(6));
+                    nameMuteLeft = (int) (nameLeft + left + dp(reserveMuteSlot && !drawPremium ? 4 : 6));
                     if (drawPremium) {
-                        nameMutedIconLeft = nameMuteLeft + dp(24 + 6);
+                        nameMutedIconLeft = nameMuteLeft + dp(24 + 4) - premiumStatusTrailingSpace;
                     }
                 }
             }
@@ -4256,7 +4261,7 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                 {
                     int reserved = com.radolyn.ayugram.chattimezone.ChatTimeZoneRenderer.measurePillForDialog(currentAccount, currentDialogId);
                     if (reserved > 0) {
-                        boolean hasMute = dialogMuted || drawUnmute || dialogMutedProgress > 0;
+                        boolean hasMute = dialogMuted || isHiddenInCommunity || drawUnmute || dialogMutedProgress > 0;
                         int pillX;
                         // Hug the pill to a lone trailing emoji status / premium star with the same
                         // dp(4) the chat header uses; mute/verified/scam (and a mute drawn after the
@@ -4280,8 +4285,8 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
                             // re-add the contextual gap so RTL mirrors the LTR spacing exactly.
                             pillX = iconsLeft - (reserved - dp(6)) - pillGap;
                         } else {
-                            // In LTR the decorations are drawn starting at nameMuteLeft (which is set to the
-                            // end of the rendered name + dp(6)). Anchor the pill just past the actual icon's
+                            // In LTR the decorations start at nameMuteLeft, just after the rendered name.
+                            // Anchor the pill just past the actual icon's
                             // right edge -- using the tight icon width, not the generously reserved slot.
                             int iconsRight;
                             if (drawVerified) {
