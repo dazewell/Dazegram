@@ -8706,6 +8706,8 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
+        // NagramX (#input-satellites): let the send column float outside the input island
+        chatActivityEnterView.attachInputSatellites(chatInputViewsContainer, glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
             textToSet = null;
@@ -50089,6 +50091,11 @@ public class ChatActivity extends BaseFragment implements
         checkUi_emptyContainerPosition();
         checkUi_chatListViewPaddings();
         checkUi_expandedInputGlassReprime();
+        if (chatActivityEnterView != null) {
+            // NagramX (#input-satellites): the composer shares the island with the search bar and the
+            // bottom overlays, and those swaps don't redraw it — recheck the island's edge from here too.
+            chatActivityEnterView.updateInputSatellites();
+        }
     }
 
     // NagramX: the fullscreen input toggle jumps the island by hundreds of dp; once the height

@@ -686,6 +686,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     @Nullable
     private SendButton doneButton;
     private AnimatorSet doneButtonAnimation;
+
+    // NagramX (#input-satellites): lets the send column float outside the input island — see the helper.
+    private xyz.nextalone.nagram.ui.InputSatellites inputSatellites;
     protected View topView;
     private BotKeyboardView botKeyboardView;
     private ImageView notifyButton;
@@ -2822,7 +2825,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         };
         frameLayout.setClipChildren(false);
-        textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, DEFAULT_HEIGHT, 0));
+        // NagramX (#input-satellites): the island's right edge now sits inside the send column, so the text
+        // block keeps a little more clearance to stay within the glass instead of running under its edge.
+        // The island retreats by the painted button width + 10dp, which is 48dp for the usual 38dp disc —
+        // this margin has to stay above that, and the extra 4dp is the text's breathing room.
+        textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, DEFAULT_HEIGHT + 8, 0));
 
         emojiButton = new ChatActivityEnterViewAnimatedIconView(context) {
             @Override
@@ -3034,7 +3041,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleX(0.6f);
         aiButton.setScaleY(0.6f);
 
-        richButton = new ImageView(context);
+        richButton = new ImageView(context) {
+            @Override
+            public void draw(Canvas canvas) {
+                // NagramX (#input-satellites): this button floats above the send button, outside the island,
+                // so it wears the same glass circle as the rest of the column. Painted before the background
+                // so the circle sits under the ripple rather than over it.
+                if (inputSatellites != null) {
+                    inputSatellites.drawFill(canvas, this);
+                }
+                super.draw(canvas);
+            }
+        };
         richButton.setImageResource(R.drawable.iv_fullscreen);
         richButton.setScaleType(ImageView.ScaleType.CENTER);
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
@@ -3076,6 +3094,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             @Override
+            protected void dispatchDraw(Canvas canvas) {
+                // NagramX (#input-satellites): the satellites that paint no fill of their own are plain
+                // ImageView/TextViews, so their glass circles are painted here, before the children, which
+                // also keeps each circle under the button's own ripple.
+                if (inputSatellites != null) {
+                    inputSatellites.drawFills(canvas);
+                }
+                super.dispatchDraw(canvas);
+            }
+
+            @Override
+            public void onDescendantInvalidated(View child, View target) {
+                super.onDescendantInvalidated(child, target);
+                // The circles are positioned from the children's live alpha/scale/bounds, so this draw pass
+                // has to be re-recorded whenever one of them moves.
+                if (inputSatellites != null) {
+                    invalidate();
+                }
+            }
+
+            @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 if (!isSendButtonEnabled()) {
                     return false;
@@ -3094,6 +3133,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonContainer.setClipChildren(false);
         sendButtonContainer.setClipToPadding(false);
         textFieldContainer.addView(sendButtonContainer, LayoutHelper.createFrame(100, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+        inputSatellites = new xyz.nextalone.nagram.ui.InputSatellites(this, sendButtonContainer); // NagramX (#input-satellites)
+        // NagramX (#input-satellites): the rich-editor button is built before the helper exists and lives in
+        // textFieldContainer rather than the send column, so it registers here: it is counted in the island's
+        // retreat like the edit-mode done button, and wears the same glass circle as the other satellites.
+        inputSatellites.track(richButton);
+        inputSatellites.glass(richButton);
 
         audioVideoButtonContainer = new FrameLayout(context) {
 
@@ -3354,9 +3399,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             protected void dispatchDraw(@NonNull Canvas canvas) {
-                boolean isMenuState = audioVideoSendButton != null
-                        && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU;
-                if (!audioVideoButtonContainerForbidden && !isMenuState) {
+                if (!micSlotDrawsNoAccentDisc()) {
                     float s = 1;
                     if (expandStickersButton != null) {
                         if (expandStickersButton.getVisibility() == View.VISIBLE) {
@@ -3410,6 +3453,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         audioVideoButtonContainer.setSoundEffectsEnabled(false);
         sendButtonContainer.addView(audioVideoButtonContainer, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
+        // NagramX (#input-satellites): without its accent disc the slot would float over the wallpaper bare,
+        // so it wears the same glass circle as the other satellites while it acts as the attach menu.
+        if (inputSatellites != null) inputSatellites.glass(audioVideoButtonContainer, this::micSlotDrawsNoAccentDisc);
         audioVideoButtonContainer.setFocusable(true);
         audioVideoButtonContainer.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
 
@@ -3625,6 +3671,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         cancelBotButton.setAlpha(0.0f);
         cancelBotButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         sendButtonContainer.addView(cancelBotButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
+        if (inputSatellites != null) inputSatellites.glass(cancelBotButton); // NagramX (#input-satellites)
         cancelBotButton.setOnClickListener(view -> {
             String text = messageEditText != null ? messageEditText.getText().toString() : "";
             int idx = text.indexOf(' ');
@@ -3695,6 +3742,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         slowModeButton.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
         slowModeButton.setTextColor(getThemedColor(Theme.key_glass_defaultIcon));
         sendButtonContainer.addView(slowModeButton, LayoutHelper.createFrame(74, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
+        if (inputSatellites != null) inputSatellites.glass(slowModeButton); // NagramX (#input-satellites)
         slowModeButton.setOnClickListener(v -> {
             if (delegate != null) {
                 if (delegate.checkCanRemoveRestrictionsByBoosts()) {
@@ -4119,6 +4167,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             ScaleStateListAnimator.apply(doneButton);
         }
         textFieldContainer.addView(doneButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+        if (inputSatellites != null) inputSatellites.track(doneButton); // NagramX (#input-satellites)
     }
 
     @SuppressLint("AppCompatCustomView")
@@ -4159,6 +4208,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         expandStickersButton.setAlpha(0.0f);
         expandStickersButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         sendButtonContainer.addView(expandStickersButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
+        if (inputSatellites != null) inputSatellites.glass(expandStickersButton); // NagramX (#input-satellites)
         expandStickersButton.setOnClickListener(v -> {
             if (expandStickersButton.getVisibility() != VISIBLE || expandStickersButton.getAlpha() != 1.0f || waitingForKeyboardOpen || (keyboardVisible && messageEditText != null && messageEditText.isFocused())) {
                 return;
@@ -11993,6 +12043,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         deleteRichDraftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         deleteRichDraftButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
         sendOutlineView.setColorFilter(getThemedColor(Theme.key_telegram_color), PorterDuff.Mode.SRC_IN);
+        if (inputSatellites != null) {
+            inputSatellites.updateColors(); // NagramX (#input-satellites)
+        }
     }
 
     private void updateAudioVideoSendButtonColor() {
@@ -16351,6 +16404,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        updateInputSatellites(); // NagramX (#input-satellites)
         if (emojiView == null || emojiView.getVisibility() != View.VISIBLE || emojiView.getStickersExpandOffset() == 0) {
             super.dispatchDraw(canvas);
         } else {
@@ -17166,6 +17220,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         private final RectF backgroundRect = new RectF();
         private static final int RADIUS = 19;
 
+        // NagramX (#input-satellites): how wide this button actually paints, price pill included, so the
+        // island knows how far to retreat.
+        public float getVisualWidth() {
+            if (getMeasuredWidth() <= 0) {
+                return 0;
+            }
+            checkBackgroundRect();
+            return backgroundRect.width();
+        }
+
         private void checkBackgroundRect() {
             final float margin = dpf2(3);
             final float height = dpf2(38);
@@ -17252,6 +17316,26 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private ChatActivitySideControlsButtonsLayout sideButtons;
+    public void attachInputSatellites(org.telegram.ui.Components.chat.ChatInputViewsContainer island,
+                                      org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory factory,
+                                      org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider colorProvider) {
+        if (inputSatellites != null) {
+            inputSatellites.attach(island, factory, colorProvider);
+        }
+    }
+
+    public void updateInputSatellites() {
+        if (inputSatellites != null) {
+            inputSatellites.update();
+        }
+    }
+
+    /** NagramX (#input-satellites): true while the mic slot paints no accent disc of its own. */
+    private boolean micSlotDrawsNoAccentDisc() {
+        return audioVideoButtonContainerForbidden || (audioVideoSendButton != null
+                && audioVideoSendButton.getCurrentState() == ChatActivityEnterViewAnimatedIconView.State.MENU);
+    }
+
     public void setSideButtonsForAttach(ChatActivitySideControlsButtonsLayout sideButtons) {
         this.sideButtons = sideButtons;
     }
