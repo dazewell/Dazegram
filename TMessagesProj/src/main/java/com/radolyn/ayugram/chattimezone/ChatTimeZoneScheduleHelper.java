@@ -157,6 +157,11 @@ public final class ChatTimeZoneScheduleHelper {
             return peerMode;
         }
 
+        /** The instant the wheels are on, read in whichever zone the active tab puts them in. */
+        public long getSelectedInstant() {
+            return peerMode ? instantFromPeerWheels() : instantFromLocalWheels();
+        }
+
         /**
          * Re-renders the readout, and in peer mode also runs the peer-zone
          * validation the caller skipped. Call after a wheel value may have changed.

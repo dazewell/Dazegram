@@ -68,15 +68,32 @@ public final class ScheduleTimeHelper {
         if (!shouldUseDefaultSchedule(currentDate) || !NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
             return;
         }
+        final int offset = getOffsetMinutes(openedAt, targetTime);
+        if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != offset) {
+            NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(offset);
+        }
+    }
+
+    /** The offset {@code targetTime} would be stored as, so the header can show it before it's confirmed. */
+    private static int getOffsetMinutes(long openedAt, long targetTime) {
         final long now = System.currentTimeMillis();
         // Past a minute open the seeded time is stale (validation drags it forward), so from then on
         // measure what's actually left rather than what was seeded.
         final long from = roundUpToScheduleMinute(now - openedAt > 60000L ? now : openedAt);
         final long minutes = (targetTime / 60000L * 60000L - from) / 60000L;
-        final int offset = (int) Math.max(1, Math.min(MAX_REMEMBERED_MINUTES, minutes));
-        if (NaConfig.INSTANCE.getRememberedScheduleOffset().Int() != offset) {
-            NaConfig.INSTANCE.getRememberedScheduleOffset().setConfigInt(offset);
-        }
+        return (int) Math.max(1, Math.min(MAX_REMEMBERED_MINUTES, minutes));
+    }
+
+    /** The instant the wheels are sitting on, read as device-local time. */
+    public static long getTargetTimeFromPickers(NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
+        final Calendar calendar = Calendar.getInstance();
+        calendar.setTimeInMillis(System.currentTimeMillis());
+        calendar.add(Calendar.DAY_OF_YEAR, dayPicker.getValue());
+        calendar.set(Calendar.HOUR_OF_DAY, hourPicker.getValue());
+        calendar.set(Calendar.MINUTE, minutePicker.getValue());
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        return calendar.getTimeInMillis();
     }
 
     private static int getRememberedMinutes() {
@@ -103,13 +120,38 @@ public final class ScheduleTimeHelper {
      */
     public static final class RememberToggle {
 
+        private final long openedAt;
+        private final Utilities.Callback0Return<Long> selectedTime;
         private Utilities.Callback<Boolean> onSliderBlock;
+        private Runnable onPickers;
         private Utilities.Callback<Boolean> onButton;
         private View button;
         private Runnable showHint;
 
+        /**
+         * @param openedAt     the minute the wheels were seeded off, the baseline every offset is
+         *                     measured from so the header can't disagree with what gets stored
+         * @param selectedTime the instant the wheels are on right now, device-local whichever
+         *                     time-zone tab is showing
+         */
+        public RememberToggle(long openedAt, Utilities.Callback0Return<Long> selectedTime) {
+            this.openedAt = openedAt;
+            this.selectedTime = selectedTime;
+        }
+
         public boolean isOn() {
             return NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
+        }
+
+        /** The wheels moved: with the toggle on, the header is tracking them, so re-read it. */
+        public void onPickersChanged() {
+            if (onPickers != null) {
+                onPickers.run();
+            }
+        }
+
+        private int getLiveOffsetMinutes() {
+            return getOffsetMinutes(openedAt, selectedTime.run());
         }
 
         private void set(boolean on, boolean animated) {
@@ -293,15 +335,18 @@ public final class ScheduleTimeHelper {
         // What the slider is sitting on, which is what the header falls back to once nothing is
         // remembered any more.
         final int[] sliderMinutes = { minutes };
+        // With the toggle on the header tracks the wheels rather than a stored number, so it reads
+        // as the delay being chosen right now — and what it shows is what confirming would store.
+        final Runnable updateValue = () -> quickScheduleValue.setText(formatDefaultScheduleMinutes(
+                remember.isOn() ? remember.getLiveOffsetMinutes() : sliderMinutes[0]));
         final Utilities.Callback<Boolean> updateRemember = animated -> {
             final boolean on = remember.isOn();
-            final int remembered = getRememberedMinutes();
             // The header follows the button the moment it's tapped, so the tap is visibly about the
             // delay above. Until something is actually saved the slider still seeds the wheels, so it
             // keeps its value and stays lit; once there's an offset it dims to the fallback it is.
             quickScheduleTitle.setText(getString(on ? R.string.ScheduleRememberedDelay : R.string.DefaultScheduleDelay));
-            quickScheduleValue.setText(formatDefaultScheduleMinutes(remembered > 0 ? remembered : sliderMinutes[0]));
-            final float alpha = remembered > 0 ? .4f : 1f;
+            updateValue.run();
+            final float alpha = getRememberedMinutes() > 0 ? .4f : 1f;
             if (animated) {
                 quickScheduleSeekBar.animate().alpha(alpha).setDuration(180).start();
             } else {
@@ -309,6 +354,7 @@ public final class ScheduleTimeHelper {
             }
         };
         remember.onSliderBlock = updateRemember;
+        remember.onPickers = updateValue;
         updateRemember.run(false);
 
         quickScheduleSeekBar.setDelegate(new SeekBarView.SeekBarViewDelegate() {

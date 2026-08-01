@@ -4617,6 +4617,17 @@ public class AlertsCreator {
         // NagramX: chat-time-zone tab + readout under the pickers (null when no differing zone is
         // configured). Holder because the controls are built only after the pickers are populated, below.
         final com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[] tz = new com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[1];
+        // NagramX: the moment the wheels get seeded (a few statements below), so the Remember toggle
+        // can measure its offset from the same minute and an untouched sheet stores back exactly what
+        // it opened with. Declared up here because the wheel listener reports changes to the toggle.
+        final long naxSeededAt = System.currentTimeMillis();
+        // NagramX: shared by the delay slider block and the Remember button in the confirm row;
+        // null whenever that slider isn't there to remember anything (editing, bulk reschedule).
+        final ScheduleTimeHelper.RememberToggle naxRemember = ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)
+                ? new ScheduleTimeHelper.RememberToggle(naxSeededAt, () -> tz[0] != null
+                        ? tz[0].getSelectedInstant()
+                        : ScheduleTimeHelper.getTargetTimeFromPickers(dayPicker, hourPicker, minutePicker))
+                : null;
         final int scheduleType = forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0;
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
             // NagramX: in "Peer's time" mode the wheels hold peer wall-clock and the helper owns
@@ -4630,6 +4641,10 @@ public class AlertsCreator {
             }
             if (intervalControls[0] != null) {
                 intervalControls[0].update();
+            }
+            // NagramX: with Remember on, the delay header tracks the wheels, so it re-reads them here.
+            if (naxRemember != null) {
+                naxRemember.onPickersChanged();
             }
         };
         dayPicker.setOnValueChangedListener(onValueChangeListener);
@@ -4647,12 +4662,6 @@ public class AlertsCreator {
         linearLayout.addView(minutePicker, LayoutHelper.createLinear(0, 54 * 5, 0.3f));
         minutePicker.setOnValueChangedListener(onValueChangeListener);
 
-        // NagramX: the moment the wheels get seeded, so the Remember toggle can measure its offset
-        // from the same minute and an untouched sheet stores back exactly what it opened with.
-        final long naxSeededAt = System.currentTimeMillis();
-        // NagramX: shared by the delay slider block and the Remember button in the confirm row;
-        // null whenever that slider isn't there to remember anything (editing, bulk reschedule).
-        final ScheduleTimeHelper.RememberToggle naxRemember = ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate) ? new ScheduleTimeHelper.RememberToggle() : null;
         ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
         // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
