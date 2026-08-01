@@ -33,6 +33,12 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 The calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. When a draft wraps to more than one line the calendar drops into a strip below the text instead of narrowing every line, so only the last line makes room for it.
 
+### Floating input controls <!-- #input-satellites -->
+
+The send column no longer rides inside the input card. The glass card now stops short of the send / mic button, so that button (and the slow-mode countdown, the stickers arrow, the cancel-inline-bot cross, the done button while editing) floats beside the card as its own circle instead of sitting on top of it. Buttons that used to paint nothing of their own get the same glass circle the rest of the floating controls wear, so every control on that side reads the same way.
+
+The card's edge follows whatever the column is actually painting at that moment — a wider stars-price pill or the slow-mode timer pushes it further left on its own, and it snaps back to full width when the composer is replaced by the search bar or a join / unblock button.
+
 ### Message input text size <!-- #input-text-size -->
 
 The text you type in the compose box has its own size, separate from the chat bubbles. A slider in the chat settings (right under the quick schedule toggle) runs from 14 to 20 — the default 18 matches stock Telegram, and dropping it a couple of points fits more of a long draft on screen. It's one size in every state now: the box uses your chosen size whether it's the normal compose row, expanded fullscreen, or an edit, so the text doesn't change size as the box grows.
