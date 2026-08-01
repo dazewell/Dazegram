@@ -391,6 +391,8 @@
     <string name="DeepLTranslateKeyNotice">Configure DeepL API Key, leave blank to use built-in credentials.</string>
     <string name="DefaultScheduleDelay">Default delay</string>
     <string name="ScheduleRemember">Remember</string>
+    <string name="ScheduleRememberHint">Opens the picker at the delay you last scheduled with, instead of the one on the slider</string>
+    <string name="ScheduleRememberHintEmpty">Nothing saved yet — whatever delay you schedule next is the one it\'ll open with</string>
     <string name="ScheduleRememberedDelay">Remembered delay</string>
     <string name="ScheduleOnceUnavailable">View-once messages can\'t be scheduled</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>

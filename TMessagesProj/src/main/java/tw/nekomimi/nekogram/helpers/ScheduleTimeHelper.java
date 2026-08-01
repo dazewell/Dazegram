@@ -5,10 +5,13 @@ import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
+import android.text.Layout;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -18,11 +21,13 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.SeekBarView;
+import org.telegram.ui.Stories.recorder.HintView2;
 
 import java.util.Calendar;
 
@@ -36,6 +41,8 @@ public final class ScheduleTimeHelper {
     private static final long SEND_WHEN_ONLINE_DATE = 0x7FFFFFFEL;
     // The day wheel stops at 365, so an offset past that could never be picked again.
     private static final int MAX_REMEMBERED_MINUTES = 365 * 24 * 60;
+    // Room for two lines of hint plus its arrow; the hint draws bottom-up inside it.
+    private static final int HINT_HEIGHT_DP = 120;
 
     private ScheduleTimeHelper() {
     }
@@ -98,6 +105,8 @@ public final class ScheduleTimeHelper {
 
         private Utilities.Callback<Boolean> onSliderBlock;
         private Utilities.Callback<Boolean> onButton;
+        private View button;
+        private Runnable showHint;
 
         public boolean isOn() {
             return NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
@@ -113,6 +122,11 @@ public final class ScheduleTimeHelper {
             }
             if (onButton != null) {
                 onButton.run(animated);
+            }
+            // Switched on with nothing saved yet, so the sheet still opens on the slider and the tap
+            // looks like it did nothing. Say what it's waiting for instead of leaving that unexplained.
+            if (on && showHint != null && getRememberedMinutes() == 0) {
+                showHint.run();
             }
         }
     }
@@ -162,7 +176,54 @@ public final class ScheduleTimeHelper {
         updateToggle.run(false);
 
         toggle.setOnClickListener(v -> remember.set(!remember.isOn(), true));
+        remember.button = toggle;
         return row;
+    }
+
+    /**
+     * The button is a bare icon, so what it does has to be sayable: long-pressing it explains the
+     * toggle, and switching it on with nothing saved yet says so on its own. The hint is hung on the
+     * sheet's container because the confirm row is one button tall and would clip a tooltip away.
+     */
+    public static void setupRememberHint(BottomSheet bottomSheet, RememberToggle remember) {
+        if (remember == null || remember.button == null || bottomSheet.getContainerView() == null) {
+            return;
+        }
+        final View button = remember.button;
+        final ViewGroup container = bottomSheet.getContainerView();
+        final HintView2[] shown = new HintView2[1];
+
+        remember.showHint = () -> {
+            if (shown[0] != null) {
+                shown[0].hide();
+                shown[0] = null;
+            }
+            final HintView2 hint = shown[0] = new HintView2(button.getContext(), HintView2.DIRECTION_BOTTOM);
+            hint.setMultilineText(true);
+            hint.setTextAlign(Layout.Alignment.ALIGN_CENTER);
+            hint.setRounding(12);
+            hint.setPadding(dp(8), 0, dp(8), 0);
+            hint.setMaxWidth(240);
+            hint.setDuration(5_000L);
+            hint.setText(getString(remember.isOn() && getRememberedMinutes() == 0
+                    ? R.string.ScheduleRememberHintEmpty
+                    : R.string.ScheduleRememberHint));
+            hint.setOnHiddenListener(() -> AndroidUtilities.removeFromParent(hint));
+
+            // Where the button ended up in the sheet, so the arrow points at it whichever side the
+            // layout direction puts it on and however tall the sheet's own rows made the confirm row.
+            final Rect bounds = new Rect(0, 0, button.getWidth(), button.getHeight());
+            container.offsetDescendantRectToMyCoords(button, bounds);
+            container.addView(hint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, HINT_HEIGHT_DP, Gravity.TOP));
+            hint.setJointPx(0, bounds.centerX() - dp(8));
+            hint.setTranslationY(bounds.top - dp(HINT_HEIGHT_DP + 2));
+            hint.show();
+        };
+
+        button.setOnLongClickListener(v -> {
+            remember.showHint.run();
+            return true;
+        });
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
@@ -231,10 +292,12 @@ public final class ScheduleTimeHelper {
         // remembered any more.
         final int[] sliderMinutes = { minutes };
         final Utilities.Callback<Boolean> updateRemember = animated -> {
-            final int remembered = remember.isOn() ? getRememberedMinutes() : 0;
-            // With an offset remembered the wheels opened on it, not on the slider, so the header
-            // says so and the slider dims to show it's only the fallback now.
-            quickScheduleTitle.setText(getString(remembered > 0 ? R.string.ScheduleRememberedDelay : R.string.DefaultScheduleDelay));
+            final boolean on = remember.isOn();
+            final int remembered = getRememberedMinutes();
+            // The header follows the button the moment it's tapped, so the tap is visibly about the
+            // delay above. Until something is actually saved the slider still seeds the wheels, so it
+            // keeps its value and stays lit; once there's an offset it dims to the fallback it is.
+            quickScheduleTitle.setText(getString(on ? R.string.ScheduleRememberedDelay : R.string.DefaultScheduleDelay));
             quickScheduleValue.setText(formatDefaultScheduleMinutes(remembered > 0 ? remembered : sliderMinutes[0]));
             final float alpha = remembered > 0 ? .4f : 1f;
             if (animated) {

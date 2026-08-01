@@ -4882,6 +4882,9 @@ public class AlertsCreator {
         bottomSheet.setBackgroundColor(datePickerColors.backgroundColor);
         bottomSheet.fixNavigationBar(datePickerColors.backgroundColor);
 
+        // NagramX: hint for the Remember button, hung on the sheet container so it can draw over the wheels.
+        ScheduleTimeHelper.setupRememberHint(bottomSheet, naxRemember);
+
         if (repeatTextView != null) {
             repeatTextView.setOnClickListener(v -> {
                 if (!UserConfig.getInstance(UserConfig.selectedAccount).isPremium()) {
