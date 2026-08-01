@@ -143,7 +143,19 @@ public final class ScheduleTimeHelper {
 
         final float initialProgress = getDefaultScheduleProgress(step);
 
-        final LinearLayout rememberRow = new LinearLayout(context);
+        final LinearLayout rememberRow = new LinearLayout(context) {
+            @Override
+            public CharSequence getAccessibilityClassName() {
+                return android.widget.Switch.class.getName();
+            }
+
+            @Override
+            public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setCheckable(true);
+                info.setChecked(NaConfig.INSTANCE.getRememberScheduleOffset().Bool());
+            }
+        };
         rememberRow.setOrientation(LinearLayout.HORIZONTAL);
         rememberRow.setGravity(Gravity.CENTER_VERTICAL);
         quickScheduleLayout.addView(rememberRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 32, 22, 0, 22, 0));
@@ -161,6 +173,8 @@ public final class ScheduleTimeHelper {
         rememberValue.setTextColor(accentColor);
         rememberValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         rememberValue.setGravity(Gravity.CENTER_VERTICAL);
+        rememberValue.setSingleLine(true);
+        rememberValue.setEllipsize(TextUtils.TruncateAt.END);
         // Padding instead of a margin so the gap before the switch survives RTL.
         rememberValue.setPadding(dp(8), 0, dp(8), 0);
         rememberRow.addView(rememberValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
@@ -172,13 +186,14 @@ public final class ScheduleTimeHelper {
 
         final Utilities.Callback<Boolean> updateRemember = animated -> {
             boolean on = NaConfig.INSTANCE.getRememberScheduleOffset().Bool();
-            int remembered = on ? NaConfig.INSTANCE.getRememberedScheduleOffset().Int() : 0;
+            int remembered = getRememberedMinutes();
             rememberSwitch.setChecked(on, animated);
             rememberValue.setText(remembered > 0 ? formatDefaultScheduleMinutes(remembered) : "");
             rememberValue.setVisibility(remembered > 0 ? View.VISIBLE : View.GONE);
-            rememberRow.setContentDescription(rememberTitle.getText() + ", "
-                    + (remembered > 0 ? rememberValue.getText() + ", " : "")
-                    + getString(on ? R.string.NotificationsOn : R.string.NotificationsOff));
+            // The row itself reports checked state to the screen reader, so this is just label + value.
+            rememberRow.setContentDescription(remembered > 0
+                    ? rememberTitle.getText() + ", " + rememberValue.getText()
+                    : rememberTitle.getText());
         };
         updateRemember.run(false);
 
