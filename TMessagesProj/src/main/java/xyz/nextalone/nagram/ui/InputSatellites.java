@@ -27,12 +27,14 @@ import java.util.ArrayList;
  * price pill, the edit-mode done button and the stickers arrow all stay correct without this class
  * knowing which state the composer is in.
  * <p>
- * The buttons that paint no fill of their own (stickers arrow, cancel-inline-bot, slow mode, and the
- * mic slot while it acts as the attach menu) get the same glass circle the other floating controls use,
- * so a satellite never sits naked over the wallpaper. Those are plain {@code ImageView}/{@code TextView}s
- * that cannot host the circle in their own draw pass, so {@link #sendButtonContainer} paints all of them
- * from the children's live bounds — one code path, no backgrounds replaced, nothing to re-install when
- * upstream swaps a ripple.
+ * The buttons that paint no fill of their own (stickers arrow, cancel-inline-bot, slow mode, the mic slot
+ * while it acts as the attach menu, and the rich-editor button that sits above the send button once a draft
+ * wraps past two lines) get the same glass circle the other floating controls use, so a satellite never sits
+ * naked over the wallpaper. Those are plain {@code ImageView}/{@code TextView}s that cannot host the circle
+ * in their own background, so {@link #sendButtonContainer} paints the ones it owns from the children's live
+ * bounds, and the rich-editor button — which lives in the text field container instead — paints its own from
+ * {@link #drawFill}. No backgrounds are replaced, so there is nothing to re-install when upstream swaps a
+ * ripple.
  */
 public final class InputSatellites {
 
@@ -53,9 +55,12 @@ public final class InputSatellites {
     private final View enterView;
     private final ViewGroup sendButtonContainer;
 
-    /** Right-column buttons that live outside {@link #sendButtonContainer} (the edit-mode done button). */
+    /**
+     * Right-column buttons that live outside {@link #sendButtonContainer}: the edit-mode done button and the
+     * rich-editor button.
+     */
     private final ArrayList<View> extraColumn = new ArrayList<>();
-    /** Satellites that paint no fill of their own and get the glass circle from the container. */
+    /** Satellites that paint no fill of their own and get the glass circle from here. */
     private final ArrayList<GlassFill> fills = new ArrayList<>();
 
     private @Nullable ChatInputViewsContainer island;
@@ -118,7 +123,7 @@ public final class InputSatellites {
         for (int i = 0; i < fills.size(); i++) {
             final GlassFill fill = fills.get(i);
             final View view = fill.view;
-            if (view.getVisibility() != View.VISIBLE || view.getParent() != sendButtonContainer) {
+            if (view.getParent() != sendButtonContainer || !wants(fill)) {
                 continue;
             }
             final float alpha = view.getAlpha();
@@ -126,24 +131,57 @@ public final class InputSatellites {
             if (alpha <= 0.01f || scaleX == 0 || scaleY == 0) {
                 continue;
             }
-            if (fill.when != null && !fill.when.holds()) {
-                continue;
-            }
-            if (fill.drawable == null) {
-                fill.drawable = createFill(view);
-                fill.warmup = WARMUP_FRAMES;
-            }
             canvas.save();
             canvas.translate(view.getLeft() + view.getTranslationX(), view.getTop() + view.getTranslationY());
             canvas.scale(scaleX, scaleY, view.getPivotX(), view.getPivotY());
-            fill.drawable.setAlpha((int) (alpha * 255));
-            fill.drawable.setBounds(0, 0, view.getWidth(), view.getHeight());
-            fill.drawable.draw(canvas);
+            paintFill(canvas, fill, (int) (alpha * 255), sendButtonContainer);
             canvas.restore();
-            if (fill.warmup > 0) {
-                fill.warmup--;
-                sendButtonContainer.postInvalidateOnAnimation();
+        }
+    }
+
+    /**
+     * The same circle, painted by the satellite itself from its own draw pass, in its own coordinate space:
+     * alpha, scale and translation then come from the parent's child transform for free. Used by the
+     * rich-editor button, the one satellite that hangs off the text field container rather than the send
+     * column — that container carries the whole composer row, and re-recording its draw pass on every
+     * descendant invalidation, every cursor blink of a long draft, to place one circle would be a poor trade.
+     */
+    public void drawFill(Canvas canvas, View view) {
+        if (factory == null) {
+            return;
+        }
+        for (int i = 0; i < fills.size(); i++) {
+            final GlassFill fill = fills.get(i);
+            if (fill.view == view) {
+                if (wants(fill)) {
+                    paintFill(canvas, fill, 255, view);
+                }
+                return;
             }
+        }
+    }
+
+    /** Whether a registered satellite is on screen and currently asking for its circle. */
+    private boolean wants(GlassFill fill) {
+        return fill.view.getVisibility() == View.VISIBLE && (fill.when == null || fill.when.holds());
+    }
+
+    /**
+     * Draws one circle over the satellite's own bounds, the canvas already carrying whatever transform the
+     * caller needs. A freshly created drawable asks {@code invalidationTarget} for a few more frames before
+     * it settles — see {@link #WARMUP_FRAMES}.
+     */
+    private void paintFill(Canvas canvas, GlassFill fill, int alpha, View invalidationTarget) {
+        if (fill.drawable == null) {
+            fill.drawable = createFill(fill.view);
+            fill.warmup = WARMUP_FRAMES;
+        }
+        fill.drawable.setAlpha(alpha);
+        fill.drawable.setBounds(0, 0, fill.view.getWidth(), fill.view.getHeight());
+        fill.drawable.draw(canvas);
+        if (fill.warmup > 0) {
+            fill.warmup--;
+            invalidationTarget.postInvalidateOnAnimation();
         }
     }
 

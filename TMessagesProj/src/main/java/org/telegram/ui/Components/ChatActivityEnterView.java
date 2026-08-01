@@ -3041,7 +3041,18 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleX(0.6f);
         aiButton.setScaleY(0.6f);
 
-        richButton = new ImageView(context);
+        richButton = new ImageView(context) {
+            @Override
+            public void draw(Canvas canvas) {
+                // NagramX (#input-satellites): this button floats above the send button, outside the island,
+                // so it wears the same glass circle as the rest of the column. Painted before the background
+                // so the circle sits under the ripple rather than over it.
+                if (inputSatellites != null) {
+                    inputSatellites.drawFill(canvas, this);
+                }
+                super.draw(canvas);
+            }
+        };
         richButton.setImageResource(R.drawable.iv_fullscreen);
         richButton.setScaleType(ImageView.ScaleType.CENTER);
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
@@ -3123,6 +3134,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonContainer.setClipToPadding(false);
         textFieldContainer.addView(sendButtonContainer, LayoutHelper.createFrame(100, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
         inputSatellites = new xyz.nextalone.nagram.ui.InputSatellites(this, sendButtonContainer); // NagramX (#input-satellites)
+        // NagramX (#input-satellites): the rich-editor button is built before the helper exists and lives in
+        // textFieldContainer rather than the send column, so it registers here: it is counted in the island's
+        // retreat like the edit-mode done button, and wears the same glass circle as the other satellites.
+        inputSatellites.track(richButton);
+        inputSatellites.glass(richButton);
 
         audioVideoButtonContainer = new FrameLayout(context) {
 
