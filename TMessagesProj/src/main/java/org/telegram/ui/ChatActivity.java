@@ -8896,12 +8896,26 @@ public class ChatActivity extends BaseFragment implements
             return false;
         });
 
-        replyCloseImageView = new ImageView(context);
+        // NagramX (#input-satellites): this cross sits in the band the island gives up for the send column,
+        // so it wears the same glass circle. Square and column-width so the circle matches the ones below it;
+        // the reply/edit rows keep their own right margins, so their text is unaffected.
+        replyCloseImageView = new ImageView(context) {
+            @Override
+            public void draw(Canvas canvas) {
+                if (chatActivityEnterView != null) {
+                    chatActivityEnterView.drawInputSatelliteGlass(canvas, this);
+                }
+                super.draw(canvas);
+            }
+        };
         replyCloseImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         replyCloseImageView.setImageResource(R.drawable.input_clear);
         replyCloseImageView.setScaleType(ImageView.ScaleType.CENTER);
         replyCloseImageView.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 1, AndroidUtilities.dp(19)));
-        chatActivityEnterTopView.addView(replyCloseImageView, LayoutHelper.createFrame(52, 46, Gravity.RIGHT | Gravity.TOP, 0, 0.5f, 0, 0));
+        chatActivityEnterTopView.addView(replyCloseImageView, LayoutHelper.createFrame(ChatActivityEnterView.DEFAULT_HEIGHT, ChatActivityEnterView.DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.TOP, 0, 2, 0, 0));
+        if (chatActivityEnterView != null) {
+            chatActivityEnterView.addInputSatelliteGlass(replyCloseImageView);
+        }
         replyCloseImageView.setOnClickListener(v -> {
             messageSuggestionParams = null;
             if (fieldPanelShown == 2) {
