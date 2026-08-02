@@ -8896,9 +8896,10 @@ public class ChatActivity extends BaseFragment implements
             return false;
         });
 
-        // NagramX (#input-satellites): this cross sits in the band the island gives up for the send column,
-        // so it wears the same glass circle. Square and column-width so the circle matches the ones below it;
-        // the reply/edit rows keep their own right margins, so their text is unaffected.
+        // NagramX (#input-satellites): this cross — it cancels reply, edit, forward and link preview
+        // alike — sits in the band the island gives up for the send column, so it wears the same glass
+        // circle. Square and column-width so the circle matches the ones below it; the panel rows keep
+        // their own right margins, so their text is unaffected.
         replyCloseImageView = new ImageView(context) {
             @Override
             public void draw(Canvas canvas) {

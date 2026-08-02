@@ -17331,8 +17331,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     /**
-     * NagramX (#input-satellites): registers a satellite that lives outside this view — the reply/edit
-     * cancel cross, which belongs to the top view the fragment builds. It paints its own circle from
+     * NagramX (#input-satellites): registers a satellite that lives outside this view — the cancel
+     * cross of the top panel (reply, edit, forward and link preview alike), which belongs to the top
+     * view the fragment builds. It paints its own circle from
      * {@link #drawInputSatelliteGlass}, so nothing is reparented.
      */
     public void addInputSatelliteGlass(View view) {
