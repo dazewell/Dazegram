@@ -4691,7 +4691,9 @@ public class AlertsCreator {
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
         }
 
-        if (ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
+        // NagramX: no delay slider on a reschedule sheet — dragging it rewrites the global default
+        // delay, which shouldn't happen just from moving one already scheduled message.
+        if (!naxReschedule && ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
                     container,
