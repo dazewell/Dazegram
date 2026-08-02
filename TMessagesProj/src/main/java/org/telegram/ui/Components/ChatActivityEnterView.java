@@ -17330,6 +17330,24 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    /**
+     * NagramX (#input-satellites): registers a satellite that lives outside this view — the cancel
+     * cross of the top panel (reply, edit, forward and link preview alike), which belongs to the top
+     * view the fragment builds. It paints its own circle from
+     * {@link #drawInputSatelliteGlass}, so nothing is reparented.
+     */
+    public void addInputSatelliteGlass(View view) {
+        if (inputSatellites != null) {
+            inputSatellites.glass(view);
+        }
+    }
+
+    public void drawInputSatelliteGlass(Canvas canvas, View view) {
+        if (inputSatellites != null) {
+            inputSatellites.drawFill(canvas, view);
+        }
+    }
+
     /** NagramX (#input-satellites): true while the mic slot paints no accent disc of its own. */
     private boolean micSlotDrawsNoAccentDisc() {
         return audioVideoButtonContainerForbidden || (audioVideoSendButton != null
