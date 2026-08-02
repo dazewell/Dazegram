@@ -51,10 +51,24 @@ public final class ScheduleTimeHelper {
         return currentDate <= 0 || currentDate == SEND_WHEN_ONLINE_DATE;
     }
 
-    public static long getInitialTargetTime(long currentDate) {
+    /**
+     * Whether the Remember toggle belongs on this sheet: scheduling something new, or moving an
+     * already scheduled message. A sheet seeded off some other date (a reminder taken from a date
+     * detected in a message) keeps that date and gets no toggle.
+     */
+    public static boolean canRememberOffset(long currentDate, boolean isReschedule) {
+        return isReschedule || shouldUseDefaultSchedule(currentDate);
+    }
+
+    public static long getInitialTargetTime(long currentDate, boolean isReschedule) {
+        final int remembered = getRememberedMinutes();
         if (shouldUseDefaultSchedule(currentDate)) {
-            int remembered = getRememberedMinutes();
             return getTargetTimeFromNow(remembered > 0 ? remembered : getSliderMinutes());
+        }
+        // Rescheduling with an offset saved: open on that delay rather than the time already set,
+        // which is the whole point of the toggle. With nothing saved the existing time still stands.
+        if (isReschedule && remembered > 0) {
+            return getTargetTimeFromNow(remembered);
         }
         return currentDate * 1000L;
     }
@@ -64,8 +78,8 @@ public final class ScheduleTimeHelper {
      * minute the sheet was seeded off, so confirming an untouched sheet writes back exactly the
      * offset it opened with even if a minute ticks over while it's up.
      */
-    public static void rememberOffset(long currentDate, long openedAt, long targetTime) {
-        if (!shouldUseDefaultSchedule(currentDate) || !NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
+    public static void rememberOffset(long currentDate, boolean isReschedule, long openedAt, long targetTime) {
+        if (!canRememberOffset(currentDate, isReschedule) || !NaConfig.INSTANCE.getRememberScheduleOffset().Bool()) {
             return;
         }
         final int offset = getOffsetMinutes(openedAt, targetTime);
@@ -165,7 +179,7 @@ public final class ScheduleTimeHelper {
             if (onButton != null) {
                 onButton.run(animated);
             }
-            // Switched on with nothing saved yet, so the sheet still opens on the slider and the tap
+            // Switched on with nothing saved yet, so the sheet still opens where it did and the tap
             // looks like it did nothing. Say what it's waiting for instead of leaving that unexplained.
             if (on && showHint != null && getRememberedMinutes() == 0) {
                 showHint.run();
@@ -175,8 +189,8 @@ public final class ScheduleTimeHelper {
 
     /**
      * Wraps the sheet's confirm button so the Remember toggle rides in the same row instead of
-     * costing the sheet another row of height. With no toggle to show (editing an existing
-     * schedule, bulk reschedule) the button is handed back untouched, layout unchanged.
+     * costing the sheet another row of height. With no toggle to show (a reminder seeded off a date
+     * from a message) the button is handed back untouched, layout unchanged.
      */
     public static View wrapConfirmRow(Context context, TextView buttonTextView, RememberToggle remember, int buttonBackgroundColor, int buttonTextColor) {
         if (remember == null) {
@@ -247,9 +261,7 @@ public final class ScheduleTimeHelper {
             hint.setPadding(dp(8), 0, dp(8), 0);
             hint.setMaxWidth(240);
             hint.setDuration(5_000L);
-            hint.setText(getString(remember.isOn() && getRememberedMinutes() == 0
-                    ? R.string.ScheduleRememberHintEmpty
-                    : R.string.ScheduleRememberHint));
+            hint.setText(getString(getHintText(remember)));
             hint.setOnHiddenListener(() -> AndroidUtilities.removeFromParent(hint));
 
             // Where the button ended up in the sheet, so the arrow points at it whichever side the
@@ -268,6 +280,15 @@ public final class ScheduleTimeHelper {
             remember.showHint.run();
             return true;
         });
+    }
+
+    /** Reschedule sheets carry no delay slider, so their wording can't point at one. */
+    private static int getHintText(RememberToggle remember) {
+        final boolean empty = remember.isOn() && getRememberedMinutes() == 0;
+        if (remember.onSliderBlock == null) {
+            return empty ? R.string.ScheduleRememberHintEmptyReschedule : R.string.ScheduleRememberHintReschedule;
+        }
+        return empty ? R.string.ScheduleRememberHintEmpty : R.string.ScheduleRememberHint;
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {

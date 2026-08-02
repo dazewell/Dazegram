@@ -36019,7 +36019,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, this::updateVisibleRows);
                 }
-                AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
+                AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
                         SendMessagesHelper.getInstance(currentAccount).editMessage(group.messages.get(0), null, false, ChatActivity.this, null, scheduleDate, scheduleRepeatPeriod);
                     } else {
