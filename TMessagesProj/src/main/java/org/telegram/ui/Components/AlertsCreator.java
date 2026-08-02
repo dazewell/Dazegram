@@ -4676,7 +4676,7 @@ public class AlertsCreator {
         linearLayout.addView(minutePicker, LayoutHelper.createLinear(0, 54 * 5, 0.3f));
         minutePicker.setOnValueChangedListener(onValueChangeListener);
 
-        ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate, naxReschedule), calendar, dayPicker, hourPicker, minutePicker);
+        ScheduleTimeHelper.setPickersFromTargetTime(ScheduleTimeHelper.getInitialTargetTime(currentDate), calendar, dayPicker, hourPicker, minutePicker);
 
         // Chat-time-zone tab (above the wheels) + peer/local readout (below), null when no differing zone.
         tz[0] = com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.install(

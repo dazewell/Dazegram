@@ -60,16 +60,13 @@ public final class ScheduleTimeHelper {
         return isReschedule || shouldUseDefaultSchedule(currentDate);
     }
 
-    public static long getInitialTargetTime(long currentDate, boolean isReschedule) {
-        final int remembered = getRememberedMinutes();
+    public static long getInitialTargetTime(long currentDate) {
         if (shouldUseDefaultSchedule(currentDate)) {
+            final int remembered = getRememberedMinutes();
             return getTargetTimeFromNow(remembered > 0 ? remembered : getSliderMinutes());
         }
-        // Rescheduling with an offset saved: open on that delay rather than the time already set,
-        // which is the whole point of the toggle. With nothing saved the existing time still stands.
-        if (isReschedule && remembered > 0) {
-            return getTargetTimeFromNow(remembered);
-        }
+        // A message that already has a time keeps it: a reschedule sheet still opens on the time set
+        // on the message, it only feeds what's confirmed back into the remembered offset.
         return currentDate * 1000L;
     }
 
@@ -179,9 +176,9 @@ public final class ScheduleTimeHelper {
             if (onButton != null) {
                 onButton.run(animated);
             }
-            // Switched on with nothing saved yet, so the sheet still opens where it did and the tap
-            // looks like it did nothing. Say what it's waiting for instead of leaving that unexplained.
-            if (on && showHint != null && getRememberedMinutes() == 0) {
+            // The sheet still opens where it did — always on a reschedule sheet, and until something
+            // is saved elsewhere — so the tap looks like it did nothing. Say what it does instead.
+            if (on && showHint != null && (onSliderBlock == null || getRememberedMinutes() == 0)) {
                 showHint.run();
             }
         }
@@ -282,13 +279,15 @@ public final class ScheduleTimeHelper {
         });
     }
 
-    /** Reschedule sheets carry no delay slider, so their wording can't point at one. */
+    /**
+     * Reschedule sheets carry no delay slider, so their wording can't point at one — and they always
+     * open on the time the message already has, so what they say doesn't depend on anything saved.
+     */
     private static int getHintText(RememberToggle remember) {
-        final boolean empty = remember.isOn() && getRememberedMinutes() == 0;
         if (remember.onSliderBlock == null) {
-            return empty ? R.string.ScheduleRememberHintEmptyReschedule : R.string.ScheduleRememberHintReschedule;
+            return R.string.ScheduleRememberHintReschedule;
         }
-        return empty ? R.string.ScheduleRememberHintEmpty : R.string.ScheduleRememberHint;
+        return remember.isOn() && getRememberedMinutes() == 0 ? R.string.ScheduleRememberHintEmpty : R.string.ScheduleRememberHint;
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
