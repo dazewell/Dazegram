@@ -14,3 +14,4 @@ TMessagesProj/jniLibs/
 TMessagesProj/jniRes/
 TMessagesProj/afat/
 *.session
+TMessagesProj/jni/ffmpeg/build_android
