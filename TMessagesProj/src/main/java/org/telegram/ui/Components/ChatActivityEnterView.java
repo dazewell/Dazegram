@@ -10420,7 +10420,14 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int lastAttachVisible;
+    // Beside the emoji/bot column the button box already carries whitespace around its glyph, so the text
+    // only needs a nudge past it. Once the text wraps above the buttons it sits against the island's own
+    // edge instead, with nothing to borrow room from, so that state gets its own wider inset.
     private int getComposerLeftGap() {
+        return dp(8);
+    }
+
+    private int getComposerGutterLeftGap() {
         return dp(12);
     }
 
@@ -10435,11 +10442,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private int getEmojiGutterLeftMargin() {
         if (botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
-            return getComposerLeftGap() + botCommandsMenuButton.getMeasuredWidth();
+            return getComposerGutterLeftGap() + botCommandsMenuButton.getMeasuredWidth();
         } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
-            return getComposerLeftGap() + senderSelectView.getLayoutParams().width;
+            return getComposerGutterLeftGap() + senderSelectView.getLayoutParams().width;
         }
-        return getComposerLeftGap();
+        return getComposerGutterLeftGap();
     }
 
     // Enter the gutter when the narrow layout wraps; once in it, stay until the text would again fit the
