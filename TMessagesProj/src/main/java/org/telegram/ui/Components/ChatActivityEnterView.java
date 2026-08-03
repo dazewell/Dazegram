@@ -6528,6 +6528,52 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             }
 
+            // NagramX (#composer-padding): scrolling a long draft can push text past the field's own bottom
+            // padding and over the emoji and calendar glyphs sitting in the gutter, which reads as a glitch
+            // (and that text isn't reachable anyway, the buttons own the hit area there). Erase the text
+            // layer below the padding line, ramping in over the first 16dp, so lines dissolve into the
+            // gutter and are gone well before the glyphs. An alpha ramp rather than a plate behind each
+            // button: nothing new to theme, the resting composer is untouched, and the offscreen layer is
+            // only spent while the field is actually scrolled.
+            private Paint gutterFadePaint;
+            private int gutterFadeBuiltFor = -1;
+
+            private boolean needsGutterFade() {
+                if ((!emojiGutterApplied && !scheduleGutterApplied) || getScrollY() <= 0) {
+                    return false;
+                }
+                Layout layout = getLayout();
+                return layout != null
+                        && layout.getHeight() > getHeight() - getPaddingTop() - getPaddingBottom();
+            }
+
+            @Override
+            public void draw(Canvas canvas) {
+                if (!needsGutterFade()) {
+                    super.draw(canvas);
+                    return;
+                }
+                // where the field stops laying out text; anything drawn past it is the spill we're after
+                final int textBottom = getHeight() - getPaddingBottom();
+                if (gutterFadePaint == null || gutterFadeBuiltFor != textBottom) {
+                    gutterFadeBuiltFor = textBottom;
+                    gutterFadePaint = new Paint();
+                    gutterFadePaint.setShader(new LinearGradient(0, textBottom, 0, textBottom + dp(16),
+                            0, 0xff000000, Shader.TileMode.CLAMP));
+                    gutterFadePaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
+                }
+                // the canvas comes in offset by the field's own scroll, so place the layer from there
+                final int layerLeft = getScrollX();
+                final int layerTop = getScrollY();
+                canvas.saveLayer(layerLeft, layerTop, layerLeft + getWidth(), layerTop + getHeight(), null);
+                super.draw(canvas);
+                canvas.save();
+                canvas.translate(layerLeft, layerTop);
+                canvas.drawRect(0, textBottom, getWidth(), getHeight(), gutterFadePaint);
+                canvas.restore();
+                canvas.restore();
+            }
+
             @Override
             public boolean onTextContextMenuItem(int id) {
                 if (id == android.R.id.paste && handleRichHtmlPaste()) {
@@ -10452,9 +10498,15 @@ public class ChatActivityEnterView extends FrameLayout implements
     // Enter the gutter when the narrow layout wraps; once in it, stay until the text would again fit the
     // narrow width - measured against that fixed reference, not the widened field.
     private boolean resolveEmojiGutter(boolean narrowTextWraps) {
-        if (emojiButton == null || emojiButton.getVisibility() != VISIBLE || messageEditExpanded
+        if (emojiButton == null || emojiButton.getVisibility() != VISIBLE
                 || AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() == 0) {
             return false;
+        }
+        if (messageEditExpanded) {
+            // fullscreen the buttons sit a whole screen below the first line, so holding their column open
+            // down the entire height would indent every line for nothing. Run to the island edge and clear
+            // them with the bottom gutter, same as a wrapped draft does.
+            return true;
         }
         return emojiGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1;
     }
