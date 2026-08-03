@@ -10395,22 +10395,26 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int lastAttachVisible;
+    private int getComposerLeftGap() {
+        return dp(8);
+    }
+
     private int getNormalMessageEditLeftMargin() {
         if (botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
-            return dp(55) + botCommandsMenuButton.getMeasuredWidth();
+            return dp(51) + botCommandsMenuButton.getMeasuredWidth() + getComposerLeftGap();
         } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
-            return dp(52) + senderSelectView.getLayoutParams().width;
+            return dp(48) + senderSelectView.getLayoutParams().width + getComposerLeftGap();
         }
-        return dp(48);
+        return dp(44) + getComposerLeftGap();
     }
 
     private int getEmojiGutterLeftMargin() {
         if (botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
-            return dp(2) + botCommandsMenuButton.getMeasuredWidth();
+            return getComposerLeftGap() + botCommandsMenuButton.getMeasuredWidth();
         } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
-            return dp(2) + senderSelectView.getLayoutParams().width;
+            return getComposerLeftGap() + senderSelectView.getLayoutParams().width;
         }
-        return dp(2);
+        return getComposerLeftGap();
     }
 
     private void updateFieldRight(int attachVisible) {
