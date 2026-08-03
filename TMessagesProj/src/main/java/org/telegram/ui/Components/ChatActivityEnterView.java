@@ -7111,6 +7111,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             MessagesController.getInstance(currentAccount).getTonesController().load();
         }
         shownAiButton = show;
+        updateAiButtonSlot();
         aiButton.setVisibility(View.VISIBLE);
         aiButton.animate()
             .alpha(show ? 1.0f : 0.0f)
@@ -7161,6 +7162,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         if (shownRichButton == show) return;
         shownRichButton = show;
+        updateAiButtonSlot();
         richButton.setVisibility(View.VISIBLE);
         richButton.animate()
             .alpha(show ? 1.0f : 0.0f)
@@ -7174,6 +7176,18 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
             })
             .start();
+    }
+
+    // NagramX (#composer-padding): the AI action rides one slot below the fullscreen action in the right
+    // column. Editing a message (and any account without the rich editor) drops the fullscreen action, so
+    // move AI up into the freed slot instead of leaving it hanging under a hole.
+    private void updateAiButtonSlot() {
+        final int topMargin = dp(1 + (shownRichButton ? DEFAULT_HEIGHT : 0));
+        final MarginLayoutParams params = (MarginLayoutParams) aiButton.getLayoutParams();
+        if (params.topMargin != topMargin) {
+            params.topMargin = topMargin;
+            aiButton.setLayoutParams(params);
+        }
     }
 
     public void addTextChangedListener(TextWatcher textWatcher) {
@@ -9354,6 +9368,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public void checkSendButton(boolean animated) {
         if (editingMessageObject != null || recordingAudioVideo) {
+            // NagramX (#composer-padding): everything below is send-column work these two states skip, but
+            // this is also the per-keystroke trigger that settles the emoji gutter, so keep that part.
+            postReconcileScheduleButton();
             return;
         }
         if (isPaused) {
@@ -10276,7 +10293,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int getSlowModeTextPadding() {
-        return visibleSlowModePadding + dp(4);
+        return visibleSlowModePadding + dp(8);
     }
 
     private int visibleSlowModePadding;
@@ -10305,10 +10322,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
-    private void applyScheduleGutter(boolean gutter) {
-        applyComposerGutters(emojiGutterApplied, gutter);
-    }
-
     // NagramX (#quick-schedule): single source of truth for the calendar button that stays pinned while a
     // draft is present. checkSendButton, updateScheduleButton and the draft restore each used to set the
     // button's visibility, translationX and the bottom gutter on their own, at racing times (the scheduled
@@ -10330,8 +10343,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (delegate == null || AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() == 0) {
             // no delegate yet (init/teardown), or an empty composer (whitespace-only counts as empty, to
             // match checkSendButton): the standard checkSendButton / updateScheduleButton paths own the
-            // button here; just never leave the draft gutter behind.
-            applyComposerGutters(false, false);
+            // calendar button here, so only settle the emoji side and never leave the draft gutter behind.
+            updateComposerLeft();
             return;
         }
         boolean pin = NaConfig.INSTANCE.getQuickScheduleButton().Bool()
@@ -10344,11 +10357,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             createScheduledButton();
         }
         if (scheduledButton == null) {
-            if (messageEditExpanded) {
-                updateFieldRight(lastAttachVisible);
-            } else {
-                applyComposerGutters(emojiGutterApplied, false);
-            }
+            updateComposerLeft();
             return;
         }
         if (scheduledButtonAnimation != null) {
@@ -10412,7 +10421,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private int lastAttachVisible;
     private int getComposerLeftGap() {
-        return dp(8);
+        return dp(12);
     }
 
     private int getNormalMessageEditLeftMargin() {
@@ -10433,11 +10442,41 @@ public class ChatActivityEnterView extends FrameLayout implements
         return getComposerLeftGap();
     }
 
+    // Enter the gutter when the narrow layout wraps; once in it, stay until the text would again fit the
+    // narrow width - measured against that fixed reference, not the widened field.
+    private boolean resolveEmojiGutter(boolean narrowTextWraps) {
+        if (emojiButton == null || emojiButton.getVisibility() != VISIBLE || messageEditExpanded
+                || AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() == 0) {
+            return false;
+        }
+        return emojiGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1;
+    }
+
+    // NagramX (#composer-padding): the emoji half of updateFieldRight, for the states that pin the right side
+    // themselves - editing a message fixes the field's right margin and hides the calendar, but the emoji
+    // button is still sitting in the bottom-left corner, so wrapped text should clear it there too. Passing
+    // the live right margin as the narrow reference cancels it out of the wrap check, which is what we want:
+    // only the left edge moves here.
+    private void updateComposerLeft() {
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
+        int narrowLeftMargin = getNormalMessageEditLeftMargin();
+        boolean emojiGutter = resolveEmojiGutter(textWouldWrapAtNarrowWidth(narrowLeftMargin, layoutParams.rightMargin));
+        applyComposerGutters(emojiGutter, false);
+        int leftMargin = emojiGutter ? getEmojiGutterLeftMargin() : narrowLeftMargin;
+        if (layoutParams.leftMargin != leftMargin) {
+            layoutParams.leftMargin = leftMargin;
+            messageEditText.setLayoutParams(layoutParams);
+        }
+    }
+
     private void updateFieldRight(int attachVisible) {
         lastAttachVisible = attachVisible;
-        if (messageEditText == null || (editingMessageObject != null && !editingMessageObject.needResendWhenEdit())) {
-            // never leave a composer gutter behind when the field turns into an edit box
-            applyComposerGutters(false, false);
+        if (messageEditText == null) {
+            return;
+        }
+        if (editingMessageObject != null && !editingMessageObject.needResendWhenEdit()) {
+            // edit mode owns the right side (fixed margin, no calendar); only the emoji side is still ours
+            updateComposerLeft();
             return;
         }
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
@@ -10484,12 +10523,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // fit the narrow width - measured against that fixed reference, not the widened field.
         boolean scheduleGutter = canUseScheduleGutter
                 && (scheduleGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1);
-        boolean canUseEmojiGutter = emojiButton != null
-                && emojiButton.getVisibility() == VISIBLE
-                && !messageEditExpanded
-                && AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() > 0;
-        boolean emojiGutter = canUseEmojiGutter
-                && (emojiGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1);
+        boolean emojiGutter = resolveEmojiGutter(narrowTextWraps);
         layoutParams.rightMargin = scheduleGutter ? Math.max(dp(2), minRightMargin) : narrowRightMargin;
         layoutParams.leftMargin = emojiGutter ? getEmojiGutterLeftMargin() : narrowLeftMargin;
         applyComposerGutters(emojiGutter, scheduleGutter);
@@ -11806,8 +11840,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
                 layoutParams.rightMargin = dp(4);
                 messageEditText.setLayoutParams(layoutParams);
-                // edit mode hides the schedule button, so drop any bottom gutter it left behind
-                applyScheduleGutter(false);
+                // edit mode hides the schedule button, so drop any bottom gutter it left behind and settle
+                // the emoji side against the margin just pinned
+                updateComposerLeft();
             }
             if (recordedAudioPanel != null) {
                 FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
