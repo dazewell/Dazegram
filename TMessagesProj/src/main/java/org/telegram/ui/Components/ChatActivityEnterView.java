@@ -2794,6 +2794,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                     expandDragRegion = expandGutterRegion(ev.getX());
                     expandDragHandled = false;
                     if (isEmojiTouch(ev)) {
+                        // The widened editor can cover the emoji button's x range; it remains the expand handle.
+                        expandDragRegion = -1;
                         emojiTouchInProgress = true;
                         return true;
                     }
@@ -3023,12 +3025,20 @@ public class ChatActivityEnterView extends FrameLayout implements
             updateFieldRight(1);
         }
 
-        aiButton = new ImageView(context);
+        aiButton = new ImageView(context) {
+            @Override
+            public void draw(Canvas canvas) {
+                if (inputSatellites != null) {
+                    inputSatellites.drawFill(canvas, this);
+                }
+                super.draw(canvas);
+            }
+        };
         aiButton.setImageDrawable(aiButtonIcon = new AiButtonDrawable(context));
         aiButton.setScaleType(ImageView.ScaleType.CENTER);
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         aiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
-        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.LEFT, 0, 1, 0, 0));
+        textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1 + DEFAULT_HEIGHT, 0, 0));
         aiButton.setContentDescription(getString(R.string.AIEditor));
         ScaleStateListAnimator.apply(aiButton);
         aiButton.setOnClickListener(v -> {
@@ -3188,6 +3198,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         // retreat like the edit-mode done button, and wears the same glass circle as the other satellites.
         inputSatellites.track(richButton);
         inputSatellites.glass(richButton);
+        inputSatellites.track(aiButton);
+        inputSatellites.glass(aiButton);
 
         audioVideoButtonContainer = new FrameLayout(context) {
 
@@ -7126,7 +7138,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 final HintView2 thisHint = aiHint = new HintView2(getContext(), HintView2.DIRECTION_BOTTOM);
                 aiHint.setMultilineText(true);
                 aiHint.setText(getString(R.string.AIEditorHint));
-                aiHint.setJointPx(0f, aiButton.getWidth() / 2f + dp(4));
+                aiHint.setJointPx(1f, -aiButton.getWidth() / 2f + dp(4));
                 addView(aiHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 200, Gravity.TOP, 0, -200 + 4, 0, 0));
                 aiHint.setOnHiddenListener(() -> removeView(thisHint));
                 aiHint.setDuration(4000L);
@@ -10332,7 +10344,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             createScheduledButton();
         }
         if (scheduledButton == null) {
-            applyComposerGutters(emojiGutterApplied, false);
+            if (messageEditExpanded) {
+                updateFieldRight(lastAttachVisible);
+            } else {
+                applyComposerGutters(emojiGutterApplied, false);
+            }
             return;
         }
         if (scheduledButtonAnimation != null) {
