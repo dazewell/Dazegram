@@ -2729,6 +2729,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             private float expandDragDownX, expandDragDownY;
             private int expandDragRegion;
             private boolean expandDragHandled;
+            private boolean emojiTouchInProgress;
 
             // Threshold check shared by both dispatch paths (see the two overrides below). Returns true the
             // moment the drag commits, so the caller knows to consume the rest of the stream.
@@ -2756,6 +2757,34 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return false;
             }
 
+            private boolean isEmojiTouch(MotionEvent ev) {
+                if (!emojiGutterApplied || emojiButton == null) {
+                    return false;
+                }
+                if (senderSelectView != null && senderSelectView.getVisibility() == VISIBLE
+                        && ev.getX() >= senderSelectView.getLeft() + senderSelectView.getTranslationX()
+                        && ev.getX() < senderSelectView.getRight() + senderSelectView.getTranslationX()
+                        && ev.getY() >= senderSelectView.getTop() + senderSelectView.getTranslationY()
+                        && ev.getY() < senderSelectView.getBottom() + senderSelectView.getTranslationY()) {
+                    return false;
+                }
+                final float left = emojiButton.getLeft() + emojiButton.getTranslationX();
+                final float top = emojiButton.getTop() + emojiButton.getTranslationY();
+                return ev.getX() >= left && ev.getX() < left + emojiButton.getWidth()
+                        && ev.getY() >= top && ev.getY() < top + emojiButton.getHeight();
+            }
+
+            private boolean dispatchEmojiTouch(MotionEvent ev) {
+                MotionEvent buttonEvent = MotionEvent.obtain(ev);
+                buttonEvent.offsetLocation(
+                        -emojiButton.getLeft() - emojiButton.getTranslationX(),
+                        -emojiButton.getTop() - emojiButton.getTranslationY()
+                );
+                boolean handled = emojiButton.dispatchTouchEvent(buttonEvent);
+                buttonEvent.recycle();
+                return handled;
+            }
+
             @Override
             public boolean onInterceptTouchEvent(MotionEvent ev) {
                 final int action = ev.getActionMasked();
@@ -2764,6 +2793,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                     expandDragDownY = ev.getY();
                     expandDragRegion = expandGutterRegion(ev.getX());
                     expandDragHandled = false;
+                    if (isEmojiTouch(ev)) {
+                        emojiTouchInProgress = true;
+                        return true;
+                    }
                 } else if (action == MotionEvent.ACTION_MOVE) {
                     // a button consumed the down, so we only see moves here: steal the drag once it commits
                     return evaluateExpandDrag(ev);
@@ -2773,6 +2806,22 @@ public class ChatActivityEnterView extends FrameLayout implements
 
             @Override
             public boolean onTouchEvent(MotionEvent event) {
+                if (emojiTouchInProgress) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_MOVE && evaluateExpandDrag(event)) {
+                        MotionEvent cancel = MotionEvent.obtain(event);
+                        cancel.setAction(MotionEvent.ACTION_CANCEL);
+                        dispatchEmojiTouch(cancel);
+                        cancel.recycle();
+                        emojiTouchInProgress = false;
+                        return true;
+                    }
+                    dispatchEmojiTouch(event);
+                    if (event.getActionMasked() == MotionEvent.ACTION_UP
+                            || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                        emojiTouchInProgress = false;
+                    }
+                    return true;
+                }
                 // reached for the empty-gutter path (no child took the down) and after we've intercepted a
                 // button drag; either way we own the whole gutter gesture, so claim it and run the check.
                 // Claiming the down is what keeps the framework delivering moves for the empty-space case.
@@ -4899,8 +4948,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onLineCountChanged(int oldLineCount, int newLineCount) {
-        // NagramX (#quick-schedule): a wrap in/out of multi-line flips Option D between the
-        // beside-text reservation and the bottom gutter, so re-reconcile the pinned button.
+        // NagramX (#composer-padding): a wrap in/out of multi-line flips both side controls between
+        // beside-text reservations and the shared bottom gutter.
         if ((oldLineCount > 1) != (newLineCount > 1)) {
             postReconcileScheduleButton();
         }
@@ -6580,7 +6629,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, inputTextSizeDp);
         lastAppliedInputTextSizeDp = inputTextSizeDp;
         messageEditText.setGravity(Gravity.BOTTOM);
-        messageEditText.setPadding(0, dp(9), 0, dp(10));
+        messageEditText.setPadding(0, dp(9), dp(4), dp(10));
         messageEditText.setBackgroundDrawable(null);
         messageEditText.setTextColor(getThemedColor(Theme.key_chat_messagePanelText));
         messageEditText.setLinkTextColor(getThemedColor(Theme.key_chat_messageLinkOut));
@@ -6963,6 +7012,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         // and bring it back on collapse (it only ever draws when the field is empty anyway)
         messageEditText.setHintVisible(!expanded, false);
         messageEditText.requestLayout();
+        postReconcileScheduleButton();
         // keep the line being edited on screen once the new height is applied
         AndroidUtilities.runOnUIThread(() -> {
             if (messageEditText != null && messageEditText.getSelectionStart() >= 0) {
@@ -10213,26 +10263,38 @@ public class ChatActivityEnterView extends FrameLayout implements
         postReconcileScheduleButton();
     }
 
+    private int getSlowModeTextPadding() {
+        return visibleSlowModePadding + dp(4);
+    }
+
+    private int visibleSlowModePadding;
     private void setSlowModeButtonVisible(boolean visible) {
         slowModeButton.setVisibility(visible ? VISIBLE : GONE);
-        int padding = visible ? dp(slowModeButton.isPremiumMode ? 26 : 16) : 0;
-        if (messageEditText != null && messageEditText.getPaddingRight() != padding) {
-            // keep whatever bottom padding the schedule gutter set (Option D)
-            messageEditText.setPadding(0, dp(9), padding, messageEditText.getPaddingBottom());
+        visibleSlowModePadding = visible ? dp(slowModeButton.isPremiumMode ? 26 : 16) : 0;
+        if (messageEditText != null && messageEditText.getPaddingRight() != getSlowModeTextPadding()) {
+            applyComposerGutters(emojiGutterApplied, scheduleGutterApplied);
         }
     }
 
-    // NagramX (#quick-schedule): the pinned calendar button only occupies the bottom-right corner, so
-    // rather than narrowing every line with a full-height right margin, reserve a bottom strip (one
-    // button tall) that the last line floats above while the button drops into it (Option D).
+    // NagramX (#composer-padding): the bottom controls share one gutter. This keeps wrapped lines wide
+    // while leaving the last line clear of the emoji and calendar buttons.
     private boolean scheduleGutterApplied;
-    private void applyScheduleGutter(boolean gutter) {
-        if (messageEditText == null || scheduleGutterApplied == gutter) {
+    private boolean emojiGutterApplied;
+    private void applyComposerGutters(boolean emojiGutter, boolean scheduleGutter) {
+        if (messageEditText == null) {
             return;
         }
-        scheduleGutterApplied = gutter;
-        int bottom = dp(10) + (gutter ? dp(DEFAULT_HEIGHT) : 0);
-        messageEditText.setPadding(messageEditText.getPaddingLeft(), messageEditText.getPaddingTop(), messageEditText.getPaddingRight(), bottom);
+        emojiGutterApplied = emojiGutter;
+        scheduleGutterApplied = scheduleGutter;
+        int bottom = dp(10) + (emojiGutter || scheduleGutter ? dp(DEFAULT_HEIGHT) : 0);
+        int right = getSlowModeTextPadding();
+        if (messageEditText.getPaddingBottom() != bottom || messageEditText.getPaddingRight() != right) {
+            messageEditText.setPadding(0, dp(9), right, bottom);
+        }
+    }
+
+    private void applyScheduleGutter(boolean gutter) {
+        applyComposerGutters(emojiGutterApplied, gutter);
     }
 
     // NagramX (#quick-schedule): single source of truth for the calendar button that stays pinned while a
@@ -10257,7 +10319,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // no delegate yet (init/teardown), or an empty composer (whitespace-only counts as empty, to
             // match checkSendButton): the standard checkSendButton / updateScheduleButton paths own the
             // button here; just never leave the draft gutter behind.
-            applyScheduleGutter(false);
+            applyComposerGutters(false, false);
             return;
         }
         boolean pin = NaConfig.INSTANCE.getQuickScheduleButton().Bool()
@@ -10270,7 +10332,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             createScheduledButton();
         }
         if (scheduledButton == null) {
-            applyScheduleGutter(false);
+            applyComposerGutters(false, false);
             return;
         }
         if (scheduledButtonAnimation != null) {
@@ -10311,7 +10373,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // back to one line, which would turn the gutter off, which narrows it, which re-wraps - the feedback loop
     // that made the box jump on every keystroke near the right border. Measuring the intrinsic line width
     // against a state-invariant reference removes the moving basis, so the seam has a single stable boundary.
-    private boolean textWouldWrapAtNarrowWidth(int narrowRightMargin) {
+    private boolean textWouldWrapAtNarrowWidth(int narrowLeftMargin, int narrowRightMargin) {
         Layout layout = messageEditText.getLayout();
         int width = messageEditText.getWidth();
         if (layout == null || width <= 0) {
@@ -10320,10 +10382,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (layout.getLineCount() > 1) {
             return true;
         }
-        // parent content width is invariant: current field width + whatever right margin is applied now. Re-derive
-        // the narrow text width from it so the check reads the same from either the narrow or the widened state.
-        int currentRightMargin = ((FrameLayout.LayoutParams) messageEditText.getLayoutParams()).rightMargin;
-        int narrowTextWidth = width + currentRightMargin - narrowRightMargin
+        // Parent content width is invariant: current field width plus its margins. Re-derive the narrow text
+        // width so the check reads the same from either the narrow or the widened state.
+        FrameLayout.LayoutParams currentParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
+        int narrowTextWidth = width + currentParams.leftMargin + currentParams.rightMargin
+                - narrowLeftMargin - narrowRightMargin
                 - messageEditText.getPaddingLeft() - messageEditText.getPaddingRight();
         if (narrowTextWidth <= 0) {
             return messageEditText.getLineCount() > 1;
@@ -10332,15 +10395,34 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int lastAttachVisible;
+    private int getNormalMessageEditLeftMargin() {
+        if (botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
+            return dp(55) + botCommandsMenuButton.getMeasuredWidth();
+        } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
+            return dp(52) + senderSelectView.getLayoutParams().width;
+        }
+        return dp(48);
+    }
+
+    private int getEmojiGutterLeftMargin() {
+        if (botCommandsMenuButton != null && botCommandsMenuButton.getTag() != null) {
+            return dp(2) + botCommandsMenuButton.getMeasuredWidth();
+        } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
+            return dp(2) + senderSelectView.getLayoutParams().width;
+        }
+        return dp(2);
+    }
+
     private void updateFieldRight(int attachVisible) {
         lastAttachVisible = attachVisible;
         if (messageEditText == null || (editingMessageObject != null && !editingMessageObject.needResendWhenEdit())) {
-            // never leave the schedule gutter behind when the field turns into an edit box
-            applyScheduleGutter(false);
+            // never leave a composer gutter behind when the field turns into an edit box
+            applyComposerGutters(false, false);
             return;
         }
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) messageEditText.getLayoutParams();
         int oldRightMargin = layoutParams.rightMargin;
+        int oldLeftMargin = layoutParams.leftMargin;
         // NagramX (#quick-schedule): the pinned calendar button only needs the bottom-right corner, so on a
         // wrapped draft drop it into a one-button-tall bottom gutter (Option D) and let every line run full
         // width instead of narrowing each line with a right margin. Decided up front so it wins over whichever
@@ -10376,13 +10458,22 @@ public class ChatActivityEnterView extends FrameLayout implements
             minRightMargin = Math.max(minRightMargin, Math.max(0, doneButton.width() - dp(DEFAULT_HEIGHT)));
         }
         narrowRightMargin = Math.max(narrowRightMargin, minRightMargin);
-        // enter the gutter when the narrow layout wraps; once in it, stay until the text would again fit the
-        // narrow width - measured against that fixed reference, not the widened field - so the seam can't flip-flop.
+        int narrowLeftMargin = getNormalMessageEditLeftMargin();
+        boolean narrowTextWraps = textWouldWrapAtNarrowWidth(narrowLeftMargin, narrowRightMargin);
+        // Enter the shared gutter when the narrow layout wraps; once in it, stay until the text would again
+        // fit the narrow width - measured against that fixed reference, not the widened field.
         boolean scheduleGutter = canUseScheduleGutter
-                && (scheduleGutterApplied ? textWouldWrapAtNarrowWidth(narrowRightMargin) : messageEditText.getLineCount() > 1);
+                && (scheduleGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1);
+        boolean canUseEmojiGutter = emojiButton != null
+                && emojiButton.getVisibility() == VISIBLE
+                && !messageEditExpanded
+                && AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() > 0;
+        boolean emojiGutter = canUseEmojiGutter
+                && (emojiGutterApplied ? narrowTextWraps : messageEditText.getLineCount() > 1);
         layoutParams.rightMargin = scheduleGutter ? Math.max(dp(2), minRightMargin) : narrowRightMargin;
-        applyScheduleGutter(scheduleGutter);
-        if (oldRightMargin != layoutParams.rightMargin) {
+        layoutParams.leftMargin = emojiGutter ? getEmojiGutterLeftMargin() : narrowLeftMargin;
+        applyComposerGutters(emojiGutter, scheduleGutter);
+        if (oldRightMargin != layoutParams.rightMargin || oldLeftMargin != layoutParams.leftMargin) {
             messageEditText.setLayoutParams(layoutParams);
         }
         if (recordedAudioPanel != null) {
@@ -16229,10 +16320,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 ((MarginLayoutParams) deleteRichDraftButton.getLayoutParams()).leftMargin = dp(10) + (botCommandsMenuButton == null ? 0 : botCommandsMenuButton.getMeasuredWidth());
             }
             if (messageEditText != null) {
-                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = dp(57) + (botCommandsMenuButton == null ? 0 : botCommandsMenuButton.getMeasuredWidth());
+                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() : getNormalMessageEditLeftMargin();
             }
             if (richDraftPreview != null) {
-                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = dp(57) + (botCommandsMenuButton == null ? 0 : botCommandsMenuButton.getMeasuredWidth());
+                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() - dp(8) : getNormalMessageEditLeftMargin() - dp(8);
             }
         } else if (senderSelectView != null && senderSelectView.getVisibility() == View.VISIBLE) {
             int width = senderSelectView.getLayoutParams().width, height = senderSelectView.getLayoutParams().height;
@@ -16242,10 +16335,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 ((MarginLayoutParams) deleteRichDraftButton.getLayoutParams()).leftMargin = dp(7) + width;
             }
             if (messageEditText != null) {
-                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = dp(54) + width;
+                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() : getNormalMessageEditLeftMargin();
             }
             if (richDraftPreview != null) {
-                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = dp(54) + width;
+                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() - dp(8) : getNormalMessageEditLeftMargin() - dp(8);
             }
         } else {
             ((MarginLayoutParams) emojiButton.getLayoutParams()).leftMargin = dp(3);
@@ -16253,10 +16348,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 ((MarginLayoutParams) deleteRichDraftButton.getLayoutParams()).leftMargin = dp(3);
             }
             if (messageEditText != null) {
-                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = dp(50);
+                ((MarginLayoutParams) messageEditText.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() : getNormalMessageEditLeftMargin();
             }
             if (richDraftPreview != null) {
-                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = dp(50);
+                ((MarginLayoutParams) richDraftPreview.getLayoutParams()).leftMargin = emojiGutterApplied
+                        ? getEmojiGutterLeftMargin() - dp(8) : getNormalMessageEditLeftMargin() - dp(8);
             }
         }
         // NagramX: publish the fullscreen height as the field's declared height, refreshed here so it tracks
