@@ -6629,7 +6629,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, inputTextSizeDp);
         lastAppliedInputTextSizeDp = inputTextSizeDp;
         messageEditText.setGravity(Gravity.BOTTOM);
-        messageEditText.setPadding(0, dp(9), dp(4), dp(10));
+        messageEditText.setPadding(0, dp(9), getSlowModeTextPadding(), dp(10));
         messageEditText.setBackgroundDrawable(null);
         messageEditText.setTextColor(getThemedColor(Theme.key_chat_messagePanelText));
         messageEditText.setLinkTextColor(getThemedColor(Theme.key_chat_messageLinkOut));
@@ -10332,7 +10332,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             createScheduledButton();
         }
         if (scheduledButton == null) {
-            applyComposerGutters(false, false);
+            applyComposerGutters(emojiGutterApplied, false);
             return;
         }
         if (scheduledButtonAnimation != null) {
