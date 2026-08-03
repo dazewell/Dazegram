@@ -2758,7 +2758,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
 
             private boolean isEmojiTouch(MotionEvent ev) {
-                if (!emojiGutterApplied || emojiButton == null) {
+                if (!emojiGutterApplied || emojiButton == null || emojiButton.getVisibility() != VISIBLE) {
                     return false;
                 }
                 if (senderSelectView != null && senderSelectView.getVisibility() == VISIBLE
