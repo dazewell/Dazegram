@@ -229,6 +229,10 @@ hides bot reviewers; confirm with
 `gh api repos/<owner>/<repo>/pulls/<n>/requested_reviewers` (look for `Copilot`).
 See the `nagramx-github-pr-copilot-review` memory note.
 
+Every GitHub review comment must be closed before landing: reply with the fix,
+or explain explicitly why it will not be changed, then resolve the thread.
+Verify that no review threads remain unresolved.
+
 ### Land a change
 Mark the PR ready and **merge it with a merge commit (never squash)**, so the
 change's commits — and their tags — stay whole in `dev`. The merge to `dev`

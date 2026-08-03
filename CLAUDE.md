@@ -10,6 +10,8 @@ Guidance for working in this repository. These instructions override default beh
 
 **The one hard line:** no AI mentions in git logs (commit messages, PR titles/bodies) or in the app's source (comments included) — no `Co-Authored-By`, no "Generated with" footers, no AI-flavored comments. This file, the skill, `README.md`, `FEATURES.md`, and the memory notes may describe the process openly; the history and code may not.
 
+**Every GitHub review point is closed before handoff:** reply with the fix, or explicitly explain why it will not be changed, then resolve the review thread. Verify that no review threads remain unresolved.
+
 **Every commit carries a `#<slug>` tag** placed inline in the subject or body, so all commits for a change stay greppable (`git log --grep '#chatlock'`) after its short-lived branch is deleted — the feature slug for features, a category tag (`#ci`, `#docs`, `#build`) otherwise. Merge commits are exempt. Enforced by `.githooks/commit-msg` (run `git config core.hooksPath .githooks` once per clone) and the `commit-tag.yml` CI check. Details in the `nagramx-branch-flow` skill.
 
 ## Keep the docs current

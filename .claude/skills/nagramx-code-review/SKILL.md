@@ -238,6 +238,11 @@ Fix one item at a time and re-run the compile gate — locally, or by pushing to
 the PR and reading the staging build when there's no local toolchain. On a no-go, fix in place and
 re-review; don't stack "address review" commits (see `nagramx-workflow` step 9).
 
+**GitHub review closure is required.** Every inline comment or review thread
+must receive either a fix or an explicit reply explaining why it will not be
+changed. Reply to the thread, then resolve it. Before handing off the PR,
+verify that every review thread is resolved.
+
 ## Keeping this current
 
 This file is the living definition of how NagramX review runs. When dazewell

@@ -297,6 +297,12 @@ code are not.
    runs on `dev` after landing — there is no separate debug build and no
    skip-upload switch.
 
+   **Close every GitHub review point.** Each inline comment or review thread
+   must get either a code fix or an explicit reply explaining why it will not
+   be changed. After replying, resolve the thread. Before declaring the PR
+   complete, verify that no review threads remain unresolved; do not leave
+   dazewell to infer whether a comment was seen.
+
 10. **Land it / propose it.** Landing a finished change into `dev` is a
     **merge** — mark the PR from step 9 ready and merge it with a **merge
     commit, never a squash-merge** (or, if you skipped the PR, a local
