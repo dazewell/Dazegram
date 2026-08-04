@@ -56,7 +56,7 @@ code are not.
    `2026-07-07_require-password`) — one change per branch. You PR it into `dev`
    and **delete it after merge**; keep it alive only if you'll propose that
    feature upstream. Don't commit directly to `dev`. The full topology, the
-   `#tag` every commit carries, sync, and the force-push-free rules live in
+   `#tag` every commit carries, sync, and the force-push rules live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
    they move.
 
@@ -224,11 +224,12 @@ code are not.
 8. **Merge-forward, don't rebase in the loop.** `dev` is the trunk and holds
    unique history, so it is never rebuilt or force-pushed. `base`
    fast-forwards from the base fork and is *merged forward* into `dev`;
-   changes land by merge commits. Nothing in the daily loop force-pushes. The
-   only sanctioned rewrite is the throwaway `-pr` copy when proposing a feature
-   upstream. Syncing onto the base fork, resolving an upstream conflict in the
-   `dev` merge, and the phone-triggered automation are covered in the
-   `nagramx-branch-flow` skill.
+   changes land by merge commits. The shared branches are what that protects: a
+   short-lived feature branch is yours to amend and `--force-with-lease` while
+   it's in review (step 9), and the `-pr` copy is rebased and squashed outright
+   when proposing upstream. Syncing onto the base fork, resolving an upstream
+   conflict in the `dev` merge, and the phone-triggered automation are covered
+   in the `nagramx-branch-flow` skill.
 
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
@@ -287,12 +288,15 @@ code are not.
    The round-2 architect review is the real quality gate; Copilot is one
    supplementary machine pass. If a later Copilot pass is genuinely warranted
    (e.g. the fix was large or risky), dazewell asks for it explicitly. Don't
-   stack "address Copilot" commits either — amend/fix in place.
+   stack "address Copilot" commits either — amend the commit the fix belongs to
+   and `git push --force-with-lease` (fine on a feature branch, never on `dev`
+   or `base`; see *Fold review fixes into the commit* in `nagramx-branch-flow`).
 
    Iterate by pushing to the branch (each push rebuilds + re-uploads, and
    supersedes a build still running on that PR rather than adding to it). On a
-   no-go, fix in place and push again; don't stack visible "fix review
-   comments" commits. `staging.yml` path-ignores pure doc / `.github` pushes,
+   no-go, amend and force-push-with-lease again; don't stack visible "fix
+   review comments" commits. `staging.yml` path-ignores pure doc / `.github`
+   pushes,
    so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
    runs on `dev` after landing — there is no separate debug build and no
    skip-upload switch.
