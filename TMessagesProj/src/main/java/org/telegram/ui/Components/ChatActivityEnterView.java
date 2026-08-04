@@ -6534,12 +6534,12 @@ public class ChatActivityEnterView extends FrameLayout implements
             // layer below the padding line, ramping in over the first 16dp, so lines dissolve into the
             // gutter and are gone well before the glyphs. An alpha ramp rather than a plate behind each
             // button: nothing new to theme, the resting composer is untouched, and the offscreen layer is
-            // only spent while the field is actually scrolled.
+            // only spent on a draft long enough to scroll (which is the only one that can spill).
             private Paint gutterFadePaint;
             private int gutterFadeBuiltFor = -1;
 
             private boolean needsGutterFade() {
-                if ((!emojiGutterApplied && !scheduleGutterApplied) || getScrollY() <= 0) {
+                if (!emojiGutterApplied && !scheduleGutterApplied) {
                     return false;
                 }
                 Layout layout = getLayout();
