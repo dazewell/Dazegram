@@ -25315,6 +25315,14 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == NotificationCenter.newDraftReceived) {
             long did = (Long) args[0];
             if (did == dialog_id) {
+                // NagramX (#draft-guard-fix): a reconnect's getDifference can carry an empty draft update for this
+                // dialog, and applying it wipes text that is still being composed - the field is the only copy until
+                // onPause saves it. If the stored draft went empty under us while the field still holds text, keep it
+                // and put it back on disk, since the update just deleted whatever copy was stored there.
+                if (usesDrafts() && chatActivityEnterView != null && chatActivityEnterView.getFieldText() != null && !hasStoredDraft()) {
+                    saveDraft(true);
+                    return;
+                }
                 applyDraftMaybe(true);
             }
         } else if (id == NotificationCenter.pinnedInfoDidLoad) {
@@ -31543,6 +31551,11 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void saveDraft() {
+        saveDraft(false);
+    }
+
+    // NagramX (#draft-guard-fix): localOnly stores the draft without sending it to the server (see MediaDataController).
+    public void saveDraft(boolean localOnly) {
         if (chatActivityEnterView != null && chatActivityEnterView.isRichDraftActive()) {
             return;
         }
@@ -31560,7 +31573,7 @@ public class ChatActivity extends BaseFragment implements
         long draftThreadId = computeDraftThreadId(replyMessage);
         TLRPC.DraftMessage existingDraft = getMediaDataController().getDraft(dialog_id, draftThreadId);
         TL_iv.RichMessage richMessage = existingDraft != null ? existingDraft.rich_message : null;
-        getMediaDataController().saveDraft(dialog_id, draftThreadId, message[0], entities, (replyMessage != null && !replyMessage.isTopicMainMessage && replyMessage.replyToForumTopic == null && !ignoreDraft) ? replyMessage.messageOwner : null, replyingQuote, messageSuggestionParams != null ? messageSuggestionParams.toTl() : null, chatActivityEnterView != null ? chatActivityEnterView.getEffectId() : 0, !searchWebpage, false, richMessage);
+        getMediaDataController().saveDraft(dialog_id, draftThreadId, message[0], entities, (replyMessage != null && !replyMessage.isTopicMainMessage && replyMessage.replyToForumTopic == null && !ignoreDraft) ? replyMessage.messageOwner : null, replyingQuote, messageSuggestionParams != null ? messageSuggestionParams.toTl() : null, chatActivityEnterView != null ? chatActivityEnterView.getEffectId() : 0, !searchWebpage, false, richMessage, localOnly);
     }
 
     public long getDraftThreadId() {
@@ -31620,7 +31633,7 @@ public class ChatActivity extends BaseFragment implements
         if (contentView != null) {
             contentView.onPause();
         }
-        if (chatMode == 0 || chatMode == MODE_SAVED && getUserConfig().getClientUserId() == getSavedDialogId() || chatMode == MODE_SUGGESTIONS && ChatObject.isMonoForum(currentChat)) {
+        if (usesDrafts()) {
             saveDraft();
             getMessagesController().cancelTyping(0, dialog_id, threadMessageId);
         }
@@ -31828,6 +31841,25 @@ public class ChatActivity extends BaseFragment implements
 
     public void applyDraftMaybe(boolean canClear) {
         applyDraftMaybe(canClear, false);
+    }
+
+    // NagramX (#draft-guard-fix): the draft lookup applyDraftMaybe below performs, so a caller can tell "the stored
+    // draft went empty" apart from "a real draft arrived" without duplicating the thread selection.
+    private boolean hasStoredDraft() {
+        if (isForumInViewAsMessagesMode()) {
+            Pair<Long, TLRPC.DraftMessage> pair = getMediaDataController().getOneThreadDraft(dialog_id);
+            return pair != null && pair.second != null;
+        }
+        return getMediaDataController().getDraft(dialog_id, chatMode == MODE_SAVED ? 0 : threadMessageId) != null;
+    }
+
+    // NagramX (#draft-guard-fix): the modes onPause writes a draft for (it calls this too, so the two can't drift).
+    // Scheduled, pinned and the rest borrow the same composer but have no draft of their own, so their text must
+    // never be written out as one.
+    private boolean usesDrafts() {
+        return chatMode == 0
+                || chatMode == MODE_SAVED && getUserConfig().getClientUserId() == getSavedDialogId()
+                || chatMode == MODE_SUGGESTIONS && ChatObject.isMonoForum(currentChat);
     }
 
     private int appliedDraftDate;
