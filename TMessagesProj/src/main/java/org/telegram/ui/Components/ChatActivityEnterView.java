@@ -2905,7 +2905,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 final int height = Math.max(dp(44), getMeasuredHeight());
                 if (animatorInputFieldHeight.getFactor() > 0) {
-                    animatorInputFieldHeight.animateTo(height);
+                    // NagramX (#fullscreen-input): animateTo cancels a running animation before it checks whether the
+                    // target changed, and a padding change re-measures us, so re-aiming at the height we are already
+                    // animating to would restart it from the current frame and stutter the resize.
+                    if (animatorInputFieldHeight.getToFactor() != height) {
+                        animatorInputFieldHeight.animateTo(height);
+                    }
                 } else {
                     animatorInputFieldHeight.forceFactor(height);
                 }
