@@ -1286,11 +1286,11 @@ public class MessageHelper extends BaseController {
         return originalText + MessageTransKt.TRANSLATION_SEPARATOR + translatedText;
     }
 
-    public boolean sendMessageAsCopy(MessageObject messageObject, MessageObject.GroupedMessages messageGroup, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+    public boolean sendMessageAsCopy(MessageObject messageObject, MessageObject.GroupedMessages messageGroup, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
         if (messageObject == null || messageObject.messageOwner == null) {
             return false;
         }
-        CharSequence caption = ChatActivity.getMessageCaption(messageObject, messageGroup, null);
+        CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, messageGroup, null);
         if (caption == null && (messageObject.type == 0 || messageObject.isAnimatedEmoji())) {
             caption = ChatActivity.getMessageContent(messageObject, 0, false);
         }
@@ -1333,7 +1333,7 @@ public class MessageHelper extends BaseController {
     }
 
 
-    public boolean sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+    public boolean sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
         if (messages == null || messages.isEmpty()) {
             return false;
         }
@@ -1370,7 +1370,7 @@ public class MessageHelper extends BaseController {
                     currentGroupId = groupId;
                     currentInvertMedia = invertMedia;
                 }
-                CharSequence caption = ChatActivity.getMessageCaption(messageObject, null, null);
+                CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, null, null);
                 ArrayList<TLRPC.MessageEntity> entities = caption != null ? messageObject.messageOwner.entities : null;
                 media.add(createSendingMediaInfo(messageObject, path, caption, entities));
             } else {
@@ -1380,7 +1380,7 @@ public class MessageHelper extends BaseController {
                     media = null;
                     currentGroupId = 0;
                 }
-                if (sendMessageAsCopy(messageObject, null, targetDialogId, replyTo, replyToTopMsg, quote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams)) {
+                if (sendMessageAsCopy(messageObject, null, targetDialogId, replyTo, replyToTopMsg, quote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams)) {
                     sentAny = true;
                 }
             }

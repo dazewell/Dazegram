@@ -13399,7 +13399,7 @@ public class ChatActivity extends BaseFragment implements
         Bundle args = new Bundle();
         args.putBoolean("onlySelect", true);
         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-        args.putInt("messagesCount", canForwardMessagesCount);
+        args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? selectedMessagesIds[0].size() + selectedMessagesIds[1].size() : canForwardMessagesCount);
         args.putInt("hasPoll", hasPoll);
         args.putBoolean("hasInvoice", hasInvoice);
         args.putBoolean("canSelectTopics", true);
@@ -15492,6 +15492,9 @@ public class ChatActivity extends BaseFragment implements
                 chatAdapter.checkRemoveBotForumRowsStartThreadRow(true);
             }
         }
+        if (forwardScheduledMessagesAsCopy(arrayList, dialog_id, hideCaption, notify, scheduleDate, payStars)) {
+            return;
+        }
         int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         AlertsCreator.showSendMediaAlert(result, this, themeDelegate);
         if (result != 0) {
@@ -15510,7 +15513,43 @@ public class ChatActivity extends BaseFragment implements
         if ((scheduleDate != 0) == (chatMode == MODE_SCHEDULED)) {
             waitingForSendingMessageLoad = true;
         }
+        if (forwardScheduledMessagesAsCopy(arrayList, did == 0 ? dialog_id : did, hideCaption, notify, scheduleDate, payStars)) {
+            return;
+        }
         AlertsCreator.showSendMediaAlert(getSendMessagesHelper().sendMessage(arrayList, did == 0 ? dialog_id : did, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams()), this);
+    }
+
+    private boolean forwardAsCopyFailed;
+
+    // NagramX: a scheduled message has no id in the dialog's message box yet, so messages.forwardMessages
+    // rejects it and the copies land as failed sends that keep failing on retry. Re-send their content
+    // instead, which is equivalent here because scheduled messages are always your own.
+    private boolean forwardScheduledMessagesAsCopy(ArrayList<MessageObject> messages, long did, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
+        forwardAsCopyFailed = false;
+        boolean hasScheduled = false;
+        for (int a = 0, N = messages.size(); a < N; a++) {
+            MessageObject messageObject = messages.get(a);
+            if (messageObject != null && messageObject.scheduled) {
+                hasScheduled = true;
+                break;
+            }
+        }
+        if (!hasScheduled) {
+            return false;
+        }
+        boolean toCurrentDialog = did == dialog_id;
+        if (!getMessageHelper().sendMessagesAsCopy(messages, did, null, toCurrentDialog ? getThreadMessage() : null, null, hideCaption, notify, scheduleDate, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null)) {
+            waitingForSendingMessageLoad = false;
+            forwardAsCopyFailed = true;
+            // the picker fragment on top of us is still closing, and its own bulletin would replace this one
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getParentActivity() == null || fragmentView == null || isFinishing()) {
+                    return;
+                }
+                BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
+            }, 300);
+        }
+        return true;
     }
 
     public boolean shouldShowImport() {
@@ -15832,7 +15871,9 @@ public class ChatActivity extends BaseFragment implements
                 if (messagePreviewParams.forwardMessages != null) {
                     messagePreviewParams.forwardMessages.getSelectedMessages(messagesToForward);
                 }
-                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe ? scheduleDate + 1 : scheduleDate, payStars);
+                // NagramX: the +1s offset keeps a scheduled comment ahead of the forward; when the comment is
+                // meant to follow it, the forward has to keep the picked second instead.
+                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe && !NekoConfig.sendCommentAfterForward.Bool() ? scheduleDate + 1 : scheduleDate, payStars);
             // }
             messagePreviewParams = null;
         }
@@ -20486,12 +20527,11 @@ public class ChatActivity extends BaseFragment implements
                 }
                 if (chatMode == MODE_SCHEDULED && actionModeOtherItem != null) {
                     // NagramX: copy/forward live in the overflow here; keep copy shown only when there's something to copy
-                    // and mirror the top-row forward's disabled state (forwarding scheduled messages is unsupported).
+                    // and gate forward on what can be re-sent, since scheduled messages are forwarded as copies.
                     actionModeOtherItem.setSubItemVisibility(copy, selectedMessagesCanCopyIds[0].size() + selectedMessagesCanCopyIds[1].size() != 0 && NaConfig.INSTANCE.getActionBarButtonCopy().Bool());
                     ActionBarMenuSubItem forwardSubItem = actionModeOtherItem.getSubItem(forward);
                     if (forwardSubItem != null) {
-                        // forwarding unsent scheduled messages is unsupported, so this stays greyed
-                        boolean canForwardScheduled = cantForwardMessagesCount == 0;
+                        boolean canForwardScheduled = getMessageHelper().canSendMessagesAsCopy(getSelectedMessages1());
                         forwardSubItem.setEnabled(canForwardScheduled);
                         forwardSubItem.setAlpha(canForwardScheduled ? 1.0f : 0.5f);
                     }
@@ -36381,6 +36421,9 @@ public class ChatActivity extends BaseFragment implements
 
                 messagePreviewParams = null;
                 hideFieldPanel(false);
+                // NagramX: a scheduled forward is re-sent rather than forwarded, and that can fall through
+                // when the media isn't cached - don't claim it went out in that case
+                boolean anyFailed = false;
                 for (int a = 0; a < dids.size(); a++) {
                     final long did = dids.get(a).dialogId;
                     final Long price = prices == null ? (Long) 0L : prices.get(did);
@@ -36402,8 +36445,12 @@ public class ChatActivity extends BaseFragment implements
                         params.suggestionParams = messageSuggestionParams;
                         getSendMessagesHelper().sendMessage(params);
                     }
+                    anyFailed = anyFailed || forwardAsCopyFailed;
                 }
                 fragment.finishFragment();
+                if (anyFailed) {
+                    return;
+                }
                 createUndoView();
                 if (undoView != null) {
                     if (dids.size() == 1) {
@@ -47461,7 +47508,7 @@ public class ChatActivity extends BaseFragment implements
             // When not LongClick but in a threadchat: reply to the Thread
             MessageObject replyTo = selectedObject.replyMessageObject != null ? isLongClick ? selectedObject.replyMessageObject : getThreadMessage() : getThreadMessage();
             if (replyTo != null || noforwards) {
-                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), replyingQuote, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), replyingQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
                     BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
                 }
                 return;
@@ -47469,7 +47516,7 @@ public class ChatActivity extends BaseFragment implements
         }
         if (selectedObject == null && noforwards) {
             MessageObject replyTo = getThreadMessage();
-            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, replyTo, getThreadMessage(), replyingQuote, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, replyTo, getThreadMessage(), replyingQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
                 BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
             }
             return;
