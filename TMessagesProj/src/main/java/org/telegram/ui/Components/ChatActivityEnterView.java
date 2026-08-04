@@ -2713,6 +2713,70 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 return super.dispatchTouchEvent(ev);
             }
+
+            // NagramX: the button strip beside the island (send, fullscreen, AI, done) isn't part of the
+            // input, so all of it doubles as the expand/collapse drag zone. Keeps its own down point rather
+            // than sharing the island's, so a second pointer landing here can't trample a drag already in
+            // flight. The down is never claimed, so taps and long-presses on the buttons underneath still
+            // fire; we only take the stream once the drag clears the threshold.
+            private float stripDownX, stripDownY;
+            private boolean stripDragArmed, stripDragHandled;
+
+            private boolean evaluateStripDrag(MotionEvent ev) {
+                if (!stripDragArmed || stripDragHandled) {
+                    return false;
+                }
+                final float dx = ev.getX() - stripDownX;
+                final float dy = ev.getY() - stripDownY;
+                if (Math.abs(dy) > dp(40) && Math.abs(dy) > Math.abs(dx) * 1.5f) {
+                    if (dy < 0 && !messageEditExpanded && canExpandInput()) {
+                        stripDragHandled = true;
+                        setMessageEditExpanded(true);
+                        return true;
+                    }
+                    if (dy > 0 && messageEditExpanded) {
+                        stripDragHandled = true;
+                        setMessageEditExpanded(false);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent ev) {
+                final int action = ev.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    stripDownX = ev.getX();
+                    stripDownY = ev.getY();
+                    stripDragHandled = false;
+                    // the send column is wider than the strip and overlaps the island, so the split has to
+                    // be the island's own right edge, not where that column starts. No width yet means no
+                    // layout, and every x would read as strip.
+                    stripDragArmed = canStripExpandDrag() && messageEditTextContainer != null
+                            && messageEditTextContainer.getWidth() > 0
+                            && ev.getX() > messageEditTextContainer.getX() + messageEditTextContainer.getWidth();
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    return evaluateStripDrag(ev);
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                // reached when nothing under the finger took the down (bare strip, or the send button while
+                // it's disabled); claim it so the framework keeps delivering the moves the check needs
+                if (stripDragArmed) {
+                    final int action = event.getActionMasked();
+                    if (action == MotionEvent.ACTION_MOVE) {
+                        evaluateStripDrag(event);
+                    } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                        stripDragArmed = false;
+                    }
+                    return true;
+                }
+                return super.onTouchEvent(event);
+            }
         };
         textFieldContainer.setClipChildren(false);
         textFieldContainer.setClipToPadding(false);
@@ -2720,11 +2784,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         addView(textFieldContainer, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.BOTTOM, 0, 1, 0, 0));
 
         FrameLayout frameLayout = messageEditTextContainer = new FrameLayout(context) {
-            // NagramX: drag the emoji/GIF column (bottom-left) up to expand the input to fullscreen, down
-            // to collapse; dragging down on either side gutter also collapses. A deliberate vertical drag,
-            // not a fling, so it works even in the short collapsed row (the finger keeps travelling up past
-            // the row). We only steal the stream from the button once the drag clears a firm threshold, so
-            // a tap still opens the emoji panel and a long-press still fires; the field's own touches are
+            // NagramX: drag the emoji/GIF column (bottom-left) or the attach column (bottom-right) up to
+            // expand the input to fullscreen, down to collapse. A deliberate vertical drag, not a fling,
+            // so it works even in the short collapsed row (the finger keeps travelling up past the row).
+            // We only steal the stream from the button once the drag clears a firm threshold, so a tap
+            // still opens the emoji panel and a long-press still fires; the field's own touches are
             // never claimed, so scrolling / selecting the draft is untouched.
             private float expandDragDownX, expandDragDownY;
             private int expandDragRegion;
@@ -2740,10 +2804,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 final float dx = ev.getX() - expandDragDownX;
                 final float dy = ev.getY() - expandDragDownY;
                 if (Math.abs(dy) > dp(40) && Math.abs(dy) > Math.abs(dx) * 1.5f) {
-                    // expand only from the emoji/GIF column (region -1); collapse from either gutter.
-                    // Don't arm expand when nothing can expand yet (no anchor/budget), or we'd swallow
-                    // the touch for a toggle that setMessageEditExpanded would no-op anyway.
-                    if (dy < 0 && !messageEditExpanded && expandDragRegion == -1 && canExpandInput()) {
+                    // expand or collapse from either gutter. Don't arm expand when nothing can expand yet
+                    // (no anchor/budget), or we'd swallow the touch for a toggle that setMessageEditExpanded
+                    // would no-op anyway.
+                    if (dy < 0 && !messageEditExpanded && expandDragRegion != 0 && canExpandInput()) {
                         expandDragHandled = true;
                         setMessageEditExpanded(true);
                         return true;
@@ -7010,6 +7074,19 @@ public class ChatActivityEnterView extends FrameLayout implements
     // Expand needs a live anchor (the fragment plus keyboard/emoji-panel space) to size against.
     private boolean canExpandInput() {
         return parentFragment != null && expandedInputBudget > 0;
+    }
+
+    // The strip drag must never eat the record button's own vertical gesture (slide up to lock). Requiring
+    // a draft is what does that: with text present the send button covers the mic, so the mic is never the
+    // thing under the finger. The record-state checks close the window where a take is still winding down.
+    private boolean canStripExpandDrag() {
+        return !recordingAudioVideo
+                && recordInterfaceState == 0
+                && (recordedAudioPanel == null || recordedAudioPanel.getVisibility() != View.VISIBLE)
+                && (botWebViewButton == null || botWebViewButton.getVisibility() != View.VISIBLE)
+                && messageEditText != null
+                && messageEditText.getVisibility() == View.VISIBLE
+                && AndroidUtilities.getTrimmedString(messageEditText.getTextToUse()).length() > 0;
     }
 
     // A hidden drag gesture needs a nudge: once the draft grows past a few lines (i.e. expanding is now
