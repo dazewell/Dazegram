@@ -21,7 +21,7 @@ When an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for th
 
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
-A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal — it only ever turns Ghost on, so it's safe to tap when you're already in it. It's named "Ayu Mode" so it doesn't give itself away on your home screen. If it doesn't show up after install, toggle Settings → Privacy and Security → "Suggest frequent contacts" off and on once to make it appear.
+A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal — it only ever turns Ghost on, so it's safe to tap when you're already in it. It's named "Ayu Mode" so it doesn't give itself away on your home screen.
 
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 
