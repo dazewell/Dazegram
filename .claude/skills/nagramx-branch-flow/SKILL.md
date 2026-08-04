@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, avoiding force pushes, or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, the force-push rule (and folding review fixes in by amending), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -38,8 +38,11 @@ though the original branch is long gone.
 
 **The force-push rule, by category:**
 - `base`, `dev` → **never** force-push (shared history everything depends on).
-- feature branches → append-only while alive; the one sanctioned rewrite is the
-  throwaway `-pr` copy at upstream-proposal time.
+- feature branches → yours to rewrite. Amend + `--force-with-lease` is the
+  normal way to fold a review fix into the commit it belongs to (*Fold review
+  fixes into the commit* below); the throwaway `-pr` copy is rebased and
+  squashed outright at upstream-proposal time. A branch kept alive as an
+  upstream candidate goes append-only once its commits are what you'd propose.
 
 **Worktree or in-place?** A change you expect to iterate on (back-and-forth:
 multiple review rounds, on-device testing, fixes trickling in over days) gets its
@@ -232,6 +235,21 @@ See the `nagramx-github-pr-copilot-review` memory note.
 Every GitHub review comment must be closed before landing: reply with the fix,
 or explain explicitly why it will not be changed, then resolve the thread.
 Verify that no review threads remain unresolved.
+
+### Fold review fixes into the commit (don't stack "address review" commits)
+A review point worth acting on goes into the commit it belongs to, not a
+follow-up commit that says "address review":
+```powershell
+# ...fix, re-run the compile gate...
+git add <files>; git commit --amend --no-edit
+git push --force-with-lease origin <YYYY-MM-DD>_<slug>   # feature branch only
+```
+Always `--force-with-lease`, never a bare `--force`, so the push aborts if the
+remote moved under you. This is the one routine rewrite in the daily loop and
+it's confined to a short-lived branch nothing else builds on — `dev` and `base`
+are still never force-pushed, and the merge into `dev` stays a merge commit.
+Each force-push re-triggers `staging.yml` on the PR and supersedes the build
+still running, so you get one fresh test APK rather than a stack of them.
 
 ### Land a change
 Mark the PR ready and **merge it with a merge commit (never squash)**, so the
