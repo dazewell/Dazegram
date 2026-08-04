@@ -81,7 +81,6 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.text.style.URLSpan;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -118,6 +117,7 @@ import androidx.collection.LongSparseArray;
 import androidx.core.content.ContextCompat;
 import androidx.core.content.FileProvider;
 import androidx.core.graphics.ColorUtils;
+import androidx.core.graphics.Insets;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -236,6 +236,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.ActionBar.EdgeToEdgeSupportMode;
 import org.telegram.ui.ActionBar.EmojiThemes;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.SimpleTextView;
@@ -7723,27 +7724,6 @@ public class ChatActivity extends BaseFragment implements
             jumpToDate((int) (calendar.getTime().getTime() / 1000));
         });
 
-        floatingDateView.setOnLongClickListener(view -> {
-            if (getParentActivity() == null) {
-                return false;
-            }
-            AndroidUtilities.hideKeyboard(searchItem.getSearchField());
-            Calendar calendar = Calendar.getInstance();
-            calendar.setTimeInMillis((long) floatingDateView.getCustomDate() * 1000);
-            int year = calendar.get(Calendar.YEAR);
-            int monthOfYear = calendar.get(Calendar.MONTH);
-            int dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH);
-
-            calendar.clear();
-            calendar.set(year, monthOfYear, dayOfMonth);
-            Bundle bundle = new Bundle();
-            bundle.putLong("dialog_id", dialog_id);
-            bundle.putLong("topic_id", getTopicId());
-            bundle.putInt("type", CalendarActivity.TYPE_CHAT_ACTIVITY);
-            CalendarActivity calendarActivity = new CalendarActivity(bundle, SharedMediaLayout.FILTER_PHOTOS_AND_VIDEOS, (int) (calendar.getTime().getTime() / 1000));
-            presentFragment(calendarActivity);
-            return true;
-        });
         if (currentChat != null) {
             pendingRequestsDelegate = new ChatActivityMemberRequestsDelegate(this, currentChat);
             topPanelLayout.addView(pendingRequestsDelegate.getView(), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40));
@@ -8176,9 +8156,7 @@ public class ChatActivity extends BaseFragment implements
                     topPanelLayout.setViewVisible(fragmentContextViewWrapper, visibility == VISIBLE);
                 }
             };
-
-            fragmentContextView.isInsideBubble = true;
-            fragmentLocationContextView.isInsideBubble = true;
+            topPanelLayout.setCallFragmentContextView(fragmentContextView);
             fragmentContextViewWrapper.addView(fragmentContextView);
             fragmentLocationContextViewWrapper.addView(fragmentLocationContextView);
             fragmentContextView.setEnabled(!inPreviewMode);
@@ -8706,6 +8684,8 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
+        // NagramX (#input-satellites): let the send column float outside the input island
+        chatActivityEnterView.attachInputSatellites(chatInputViewsContainer, glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
             textToSet = null;
@@ -8894,12 +8874,27 @@ public class ChatActivity extends BaseFragment implements
             return false;
         });
 
-        replyCloseImageView = new ImageView(context);
+        // NagramX (#input-satellites): this cross — it cancels reply, edit, forward and link preview
+        // alike — sits in the band the island gives up for the send column, so it wears the same glass
+        // circle. Square and column-width so the circle matches the ones below it; the panel rows keep
+        // their own right margins, so their text is unaffected.
+        replyCloseImageView = new ImageView(context) {
+            @Override
+            public void draw(Canvas canvas) {
+                if (chatActivityEnterView != null) {
+                    chatActivityEnterView.drawInputSatelliteGlass(canvas, this);
+                }
+                super.draw(canvas);
+            }
+        };
         replyCloseImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         replyCloseImageView.setImageResource(R.drawable.input_clear);
         replyCloseImageView.setScaleType(ImageView.ScaleType.CENTER);
         replyCloseImageView.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 1, AndroidUtilities.dp(19)));
-        chatActivityEnterTopView.addView(replyCloseImageView, LayoutHelper.createFrame(52, 46, Gravity.RIGHT | Gravity.TOP, 0, 0.5f, 0, 0));
+        chatActivityEnterTopView.addView(replyCloseImageView, LayoutHelper.createFrame(ChatActivityEnterView.DEFAULT_HEIGHT, ChatActivityEnterView.DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.TOP, 0, 2, 0, 0));
+        if (chatActivityEnterView != null) {
+            chatActivityEnterView.addInputSatelliteGlass(replyCloseImageView);
+        }
         replyCloseImageView.setOnClickListener(v -> {
             messageSuggestionParams = null;
             if (fieldPanelShown == 2) {
@@ -9691,12 +9686,30 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private boolean lastImeVisible;
+    private int insetSystemLeft;
+    private int insetSystemRight;
 
     @NonNull
     private WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+        final Insets systemInsets = AndroidUtilities.getDefaultWindowInsets(insets, false);
+
+        final int insetsLeft = systemInsets.left;
+        final int insetsRight = systemInsets.right;
+        if (insetSystemLeft != insetsLeft || insetSystemRight != insetsRight) {
+            insetSystemLeft = insetsLeft;
+            insetSystemRight = insetsRight;
+            contentView.requestLayout();
+        }
+
         windowInsetsStateHolder.setInsets(insets);
+        
+        if (messagesSearchListContainer != null) {
+            messagesSearchListContainer.setPadding(insetsLeft, 0, insetsRight, 0);
+        }
+        
         checkUi_chatListViewPaddings();
         checkUi_messagesSearchListPadding();
+        invalidateClipRectForBackgroundAndChatList();
 
         final boolean keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime());
         if (lastImeVisible != keyboardVisible) {
@@ -13035,14 +13048,15 @@ public class ChatActivity extends BaseFragment implements
         checkUi_chatListViewPaddings();
     }
 
-    // NagramX: absolute anchor for keeping the chat list pinned across an input-island resize (see
-    // checkUi_chatListViewPaddings). The list is bottom-anchored, so the island growing/shrinking would
+    // NagramX (#fullscreen-input): absolute anchor for keeping the chat list pinned across an input-island resize
+    // (see checkUi_chatListViewPaddings). The list is bottom-anchored, so the island growing/shrinking would
     // otherwise shift every message; we re-pin one visible message to a fixed screen spot each frame.
     private float lastIslandHeight = -1f;
+    private float lastPaddingBottom = -1f;
     private boolean islandPinActive;
     private int islandPinPosition;
     private int islandPinOffset;
-    private int islandPinStartHeight;
+    private int islandPinStartPadding;
     private void checkUi_chatListViewPaddings() {
         if (chatListView == null) {
             return;
@@ -13058,14 +13072,19 @@ public class ChatActivity extends BaseFragment implements
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
         }
 
-        // NagramX: keep the visible history in place while the input island animates its height. The list
-        // is bottom-anchored, so a growing island shifts every message up (wanted on the newest message,
-        // but a fling to the bottom while reading history). Capture one on-screen message when the resize
-        // starts, then below re-pin it to the same screen position each frame - absolute, so it can't
-        // build up the jitter a per-frame scrollBy would. Left alone when sitting on the newest message.
+        // NagramX (#fullscreen-input): keep the visible history in place while the input island animates its height.
+        // The list is bottom-anchored, so a growing island shifts every message up (wanted on the newest message,
+        // but a fling to the bottom while reading history). Capture one on-screen message when the resize starts,
+        // then below re-pin it to the same screen position each frame - absolute, so it can't build up the jitter a
+        // per-frame scrollBy would. Left alone when sitting on the newest message.
+        // Arm on the island, but correct by the whole bottom padding: in the fullscreen editor the field height is
+        // derived from a budget that subtracts the keyboard inset, so a keyboard that grows by d shrinks the island
+        // by d and leaves the padding - and the history - exactly where it was. Correcting by the island alone would
+        // scroll by that d for nothing. Plain keyboard moves never arm, because the island itself doesn't move.
         final int islandHeightNow = (int) inputIslandHeightCurrent;
         final boolean islandResizing = chatLayoutManager != null && lastIslandHeight >= 0
             && islandHeightNow != (int) lastIslandHeight;
+        final boolean paddingMoving = lastPaddingBottom >= 0 && (int) paddingBottom != (int) lastPaddingBottom;
         if (islandResizing && !islandPinActive && !chatListView.fastScrollAnimationRunning
                 && chatLayoutManager.findFirstVisibleItemPosition() != 0) {
             for (int i = 0; i < chatListView.getChildCount(); i++) {
@@ -13075,7 +13094,7 @@ public class ChatActivity extends BaseFragment implements
                     if (position >= 0) {
                         islandPinPosition = position;
                         islandPinOffset = getScrollingOffsetForView(child);
-                        islandPinStartHeight = (int) lastIslandHeight;
+                        islandPinStartPadding = (int) lastPaddingBottom;
                         islandPinActive = true;
                         break;
                     }
@@ -13083,6 +13102,7 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         lastIslandHeight = inputIslandHeightCurrent;
+        lastPaddingBottom = paddingBottom;
 
         final int paddingTop = (int) chatListViewPaddingTop;
         if (topicsTabs != null) {
@@ -13090,9 +13110,9 @@ public class ChatActivity extends BaseFragment implements
         }
         chatListViewPaddingsAnimator.setPaddings(paddingTop, paddingBottom, !chatListView.fastScrollAnimationRunning);
         if (islandPinActive) {
-            if (islandResizing) {
+            if (islandResizing || paddingMoving) {
                 try {
-                    chatLayoutManager.scrollToPositionWithOffset(islandPinPosition, islandPinOffset - (islandHeightNow - islandPinStartHeight));
+                    chatLayoutManager.scrollToPositionWithOffset(islandPinPosition, islandPinOffset - ((int) paddingBottom - islandPinStartPadding));
                 } catch (Throwable t) {
                     FileLog.e(t);
                 }
@@ -13692,7 +13712,7 @@ public class ChatActivity extends BaseFragment implements
                                     }
                                     if (!isVideo && photoEntry.imagePath != null) {
                                         info.path = photoEntry.imagePath;
-                                        if (photoEntry.isHighQuality()) {
+                                        if (!isStickerMode && photoEntry.isHighQuality()) {
                                             info.originalPhotoEntry = photoEntry.clone();
                                         }
                                     } else if (photoEntry.path != null) {
@@ -13714,7 +13734,7 @@ public class ChatActivity extends BaseFragment implements
                                     info.updateStickersOrder = SendMessagesHelper.checkUpdateStickersOrder(photoEntry.caption);
                                     info.hasMediaSpoilers = photoEntry.hasSpoiler;
                                     info.stars = photoEntry.starsAmount;
-                                    info.highQuality = photoEntry.editedInfo == null && photoEntry.isHighQuality();
+                                    info.highQuality = photoEntry.editedInfo == null && !isStickerMode && photoEntry.isHighQuality();
                                     photos.add(info);
                                     photoEntry.reset();
                                 }
@@ -15993,7 +16013,7 @@ public class ChatActivity extends BaseFragment implements
                         if (messageObjectToEdit.messageOwner != null) {
                             cs = MessageObject.replaceAnimatedEmoji(cs, messageObjectToEdit.messageOwner.entities, replyObjectTextView.getPaint().getFontMetricsInt());
                         }
-                        replyObjectTextView.setText(AnimatedEmojiSpan.cloneSpans(cs));
+                        replyObjectTextView.setText(AnimatedEmojiSpan.cloneSpans(cs, -1, replyObjectTextView.getPaint().getFontMetricsInt()));
                     }
                 }
 
@@ -16240,24 +16260,25 @@ public class ChatActivity extends BaseFragment implements
                     replyObjectText = Emoji.replaceEmoji(messageObjectToReply.messageOwner.media.game.title, replyObjectTextView.getPaint().getFontMetricsInt(), false);
                     sourceText = messageObjectToReply.messageOwner.media.game.title;
                 } else if (messageObjectToReply.messageText != null || messageObjectToReply.caption != null) {
-                    CharSequence mess = messageObjectToReply.caption != null ? messageObjectToReply.caption : messageObjectToReply.messageText;
+                    CharSequence mess = new SpannableStringBuilder(messageObjectToReply.caption != null ? messageObjectToReply.caption : messageObjectToReply.messageText);
                     mess = FormattedDateSpan.restoreFormatedDateEntities(mess);
                     sourceText = mess;
                     if (mess.length() > 150) {
                         mess = mess.subSequence(0, 150);
                     }
                     mess = AndroidUtilities.replaceNewLines(mess);
+                    mess = Emoji.replaceEmoji(mess, replyObjectTextView.getPaint().getFontMetricsInt(), false);
                     if (messageObjectToReply.messageOwner != null && messageObjectToReply.messageOwner.entities != null) {
                         mess = MessageObject.replaceAnimatedEmoji(mess, messageObjectToReply.messageOwner.entities, replyObjectTextView.getPaint().getFontMetricsInt());
                     }
-                    replyObjectText = Emoji.replaceEmoji(mess, replyObjectTextView.getPaint().getFontMetricsInt(), false);
+                    replyObjectText = mess;
                 }
                 if (replyObjectText != null) {
                     if (replyObjectText instanceof Spannable && sourceText != null) {
                         MediaDataController.addTextStyleRuns(entities, sourceText, (Spannable) replyObjectText);
                     }
 
-                    replyObjectTextView.setText(AnimatedEmojiSpan.cloneSpans(replyObjectText));
+                    replyObjectTextView.setText(AnimatedEmojiSpan.cloneSpans(replyObjectText, -1, replyObjectTextView.getPaint().getFontMetricsInt()));
                 }
                 updateBottomOverlay();
             } else if (messageObjectsToForward != null) {
@@ -17171,7 +17192,7 @@ public class ChatActivity extends BaseFragment implements
                     recyclerChatViewHeight,
                     0,
                     view.getY() + (isKeyboardVisible() ? chatListView.getTop() : actionBar.getMeasuredHeight()) - contentView.getBackgroundTranslationY() - (1f - contentPanTranslationT) * chatListViewPaddingTop,
-                    contentView.getMeasuredWidth(),
+                    chatListView.getMeasuredWidth(),
                     contentView.getBackgroundSizeY(),
                     blurredViewTopOffset,
                     blurredViewBottomOffset,
@@ -19388,13 +19409,25 @@ public class ChatActivity extends BaseFragment implements
             }*/
         }
 
+        private boolean isFullSizeIgnoreInsersChild(View child) {
+            return child != null && (child == backgroundView
+                || child == blurredView || child == searchViewPager
+                || child == fireworksOverlay || child == chatActivityFadeView
+                || child == messagesSearchListContainer
+            );
+        }
+
         @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        protected void onMeasure(int origWidthMeasureSpec, int heightMeasureSpec) {
             invalidateBlurredSourcesView.bringToFrontIfNeeded();
 
-            final int allHeight;
-            int widthSize = View.MeasureSpec.getSize(widthMeasureSpec);
-            int heightSize = allHeight = View.MeasureSpec.getSize(heightMeasureSpec);
+            final int allWidth = MeasureSpec.getSize(origWidthMeasureSpec);
+            final int allHeight = MeasureSpec.getSize(heightMeasureSpec);
+
+            final int widthSize = allWidth - insetSystemLeft - insetSystemRight;
+            final int widthMeasureSpec = MeasureSpec.makeMeasureSpec(widthSize, MeasureSpec.EXACTLY);
+
+            int heightSize = allHeight;
 
             if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
                 ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
@@ -19455,7 +19488,7 @@ public class ChatActivity extends BaseFragment implements
                 globalIgnoreLayout = false;
             }
 
-            setMeasuredDimension(widthSize, heightSize);
+            setMeasuredDimension(allWidth, heightSize);
             heightSize -= getPaddingTop();
 
             if (webBotTitle != null) {
@@ -19534,8 +19567,8 @@ public class ChatActivity extends BaseFragment implements
                 if (child == null || child.getVisibility() == GONE || child == chatActivityEnterView || child == actionBar) {
                     continue;
                 }
-                if (child == backgroundView || child == blurredView || child == searchViewPager) {
-                    int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
+                if (isFullSizeIgnoreInsersChild(child)) {
+                    int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(allWidth, View.MeasureSpec.EXACTLY);
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight, View.MeasureSpec.EXACTLY);
                     child.measure(contentWidthSpec, contentHeightSpec);
                 } else if (child == chatListView || child == chatListThanosEffect || child instanceof TextSelectionHelper.TextSelectionOverlay) {
@@ -19662,6 +19695,9 @@ public class ChatActivity extends BaseFragment implements
             final int count = getChildCount();
             int paddingBottom = 0;
 
+            final int selfWidth = getMeasuredWidth();
+            final int selfWidthWithoutInsets = selfWidth - insetSystemLeft - insetSystemRight;
+
             for (int i = 0; i < count; i++) {
                 final View child = getChildAt(i);
                 if (child == null || child.getVisibility() == GONE) {
@@ -19685,14 +19721,14 @@ public class ChatActivity extends BaseFragment implements
 
                 switch (absoluteGravity & Gravity.HORIZONTAL_GRAVITY_MASK) {
                     case Gravity.CENTER_HORIZONTAL:
-                        childLeft = (r - l - width) / 2 + lp.leftMargin - lp.rightMargin;
+                        childLeft = insetSystemLeft + (selfWidthWithoutInsets - width) / 2 + lp.leftMargin - lp.rightMargin;
                         break;
                     case Gravity.RIGHT:
-                        childLeft = r - width - lp.rightMargin;
+                        childLeft = selfWidth - insetSystemRight - width - lp.rightMargin;
                         break;
                     case Gravity.LEFT:
                     default:
-                        childLeft = lp.leftMargin;
+                        childLeft = insetSystemLeft + lp.leftMargin;
                 }
 
                 switch (verticalGravity) {
@@ -19712,7 +19748,10 @@ public class ChatActivity extends BaseFragment implements
                         childTop = lp.topMargin;
                 }
 
-                if (child == blurredView || child == messageEnterTransitionContainer || child == fireworksOverlay || child == messagesSearchListContainer || child == chatActivityFadeView || child == backgroundView || child == quickShareSelectorOverlay || child == chatInputViewsContainer || child instanceof HintView || child instanceof ChecksHintView) {
+                if (isFullSizeIgnoreInsersChild(child)) {
+                    childLeft = 0;
+                    childTop = 0;
+                } else if (child == messageEnterTransitionContainer || child == quickShareSelectorOverlay || child == chatInputViewsContainer || child instanceof HintView || child instanceof ChecksHintView) {
                     childTop = 0;
                 } else if (child instanceof TextSelectionHelper.TextSelectionOverlay) {
                     childTop = -blurredViewTopOffset;
@@ -19750,7 +19789,7 @@ public class ChatActivity extends BaseFragment implements
                     childTop = 0;
                 } else if (child instanceof MessagePreviewView) {
                     childTop = AndroidUtilities.statusBarHeight;
-                } else if (child == searchViewPager || child == roundVideoRecordBackground || child == messageMetricsView || child == pollAddOptionFieldLayout) {
+                } else if (child == roundVideoRecordBackground || child == messageMetricsView || child == pollAddOptionFieldLayout) {
                     childTop = 0;
                 }
                 child.layout(childLeft, childTop, childLeft + width, childTop + height);
@@ -21334,7 +21373,7 @@ public class ChatActivity extends BaseFragment implements
         PhotoViewer photoViewer = PhotoViewer.getInstance();
         photoViewer.setParentActivity(this);
         return photoViewer.openPhoto(index,
-            new ChatArticlePageBlocksAdapter(richMessage, pageBlocks),
+            new ChatArticlePageBlocksAdapter(richMessage, pageBlocks, messageObject),
             new ChatArticlePhotoViewerProvider(pageBlocks));
     }
 
@@ -21389,10 +21428,12 @@ public class ChatActivity extends BaseFragment implements
     private static class ChatArticlePageBlocksAdapter implements PhotoViewer.PageBlocksAdapter {
         private final TL_iv.RichMessage page;
         private final List<TL_iv.PageBlock> blocks;
+        private final MessageObject messageObject;
 
-        ChatArticlePageBlocksAdapter(TL_iv.RichMessage page, List<TL_iv.PageBlock> blocks) {
+        ChatArticlePageBlocksAdapter(TL_iv.RichMessage page, List<TL_iv.PageBlock> blocks, MessageObject messageObject) {
             this.page = page;
             this.blocks = blocks;
+            this.messageObject = messageObject;
         }
 
         @Override
@@ -21462,10 +21503,14 @@ public class ChatActivity extends BaseFragment implements
         }
 
         @Override
-        public void updateSlideshowCell(TL_iv.PageBlock currentPageBlock) {}
+        public void updateSlideshowCell(TL_iv.PageBlock currentPageBlock) {
+            if (messageObject != null && messageObject.richLayout != null) {
+                messageObject.richLayout.setSlideshowPage(currentPageBlock);
+            }
+        }
 
         @Override
-        public Object getParentObject() { return page; }
+        public Object getParentObject() { return messageObject != null ? messageObject : page; }
 
         @Override
         public boolean isHardwarePlayer(int index) { return false; }
@@ -25317,6 +25362,14 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == NotificationCenter.newDraftReceived) {
             long did = (Long) args[0];
             if (did == dialog_id) {
+                // NagramX (#draft-guard-fix): a reconnect's getDifference can carry an empty draft update for this
+                // dialog, and applying it wipes text that is still being composed - the field is the only copy until
+                // onPause saves it. If the stored draft went empty under us while the field still holds text, keep it
+                // and put it back on disk, since the update just deleted whatever copy was stored there.
+                if (usesDrafts() && chatActivityEnterView != null && chatActivityEnterView.getFieldText() != null && !hasStoredDraft()) {
+                    saveDraft(true);
+                    return;
+                }
                 applyDraftMaybe(true);
             }
         } else if (id == NotificationCenter.pinnedInfoDidLoad) {
@@ -31545,6 +31598,11 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void saveDraft() {
+        saveDraft(false);
+    }
+
+    // NagramX (#draft-guard-fix): localOnly stores the draft without sending it to the server (see MediaDataController).
+    public void saveDraft(boolean localOnly) {
         if (chatActivityEnterView != null && chatActivityEnterView.isRichDraftActive()) {
             return;
         }
@@ -31562,7 +31620,7 @@ public class ChatActivity extends BaseFragment implements
         long draftThreadId = computeDraftThreadId(replyMessage);
         TLRPC.DraftMessage existingDraft = getMediaDataController().getDraft(dialog_id, draftThreadId);
         TL_iv.RichMessage richMessage = existingDraft != null ? existingDraft.rich_message : null;
-        getMediaDataController().saveDraft(dialog_id, draftThreadId, message[0], entities, (replyMessage != null && !replyMessage.isTopicMainMessage && replyMessage.replyToForumTopic == null && !ignoreDraft) ? replyMessage.messageOwner : null, replyingQuote, messageSuggestionParams != null ? messageSuggestionParams.toTl() : null, chatActivityEnterView != null ? chatActivityEnterView.getEffectId() : 0, !searchWebpage, false, richMessage);
+        getMediaDataController().saveDraft(dialog_id, draftThreadId, message[0], entities, (replyMessage != null && !replyMessage.isTopicMainMessage && replyMessage.replyToForumTopic == null && !ignoreDraft) ? replyMessage.messageOwner : null, replyingQuote, messageSuggestionParams != null ? messageSuggestionParams.toTl() : null, chatActivityEnterView != null ? chatActivityEnterView.getEffectId() : 0, !searchWebpage, false, richMessage, localOnly);
     }
 
     public long getDraftThreadId() {
@@ -31622,7 +31680,7 @@ public class ChatActivity extends BaseFragment implements
         if (contentView != null) {
             contentView.onPause();
         }
-        if (chatMode == 0 || chatMode == MODE_SAVED && getUserConfig().getClientUserId() == getSavedDialogId() || chatMode == MODE_SUGGESTIONS && ChatObject.isMonoForum(currentChat)) {
+        if (usesDrafts()) {
             saveDraft();
             getMessagesController().cancelTyping(0, dialog_id, threadMessageId);
         }
@@ -31830,6 +31888,25 @@ public class ChatActivity extends BaseFragment implements
 
     public void applyDraftMaybe(boolean canClear) {
         applyDraftMaybe(canClear, false);
+    }
+
+    // NagramX (#draft-guard-fix): the draft lookup applyDraftMaybe below performs, so a caller can tell "the stored
+    // draft went empty" apart from "a real draft arrived" without duplicating the thread selection.
+    private boolean hasStoredDraft() {
+        if (isForumInViewAsMessagesMode()) {
+            Pair<Long, TLRPC.DraftMessage> pair = getMediaDataController().getOneThreadDraft(dialog_id);
+            return pair != null && pair.second != null;
+        }
+        return getMediaDataController().getDraft(dialog_id, chatMode == MODE_SAVED ? 0 : threadMessageId) != null;
+    }
+
+    // NagramX (#draft-guard-fix): the modes onPause writes a draft for (it calls this too, so the two can't drift).
+    // Scheduled, pinned and the rest borrow the same composer but have no draft of their own, so their text must
+    // never be written out as one.
+    private boolean usesDrafts() {
+        return chatMode == 0
+                || chatMode == MODE_SAVED && getUserConfig().getClientUserId() == getSavedDialogId()
+                || chatMode == MODE_SUGGESTIONS && ChatObject.isMonoForum(currentChat);
     }
 
     private int appliedDraftDate;
@@ -36057,7 +36134,7 @@ public class ChatActivity extends BaseFragment implements
                     }
                     com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, this::updateVisibleRows);
                 }
-                AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
+                AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
                         SendMessagesHelper.getInstance(currentAccount).editMessage(group.messages.get(0), null, false, ChatActivity.this, null, scheduleDate, scheduleRepeatPeriod);
                     } else {
@@ -41466,6 +41543,7 @@ public class ChatActivity extends BaseFragment implements
             forceUpdate(cell, anchorScroll, true, false);
         }
 
+        @Override
         public void forceUpdate(ChatMessageCell cell, boolean anchorScroll, boolean scrollByTop) {
             forceUpdate(cell, anchorScroll, false, scrollByTop);
         }
@@ -46355,7 +46433,7 @@ public class ChatActivity extends BaseFragment implements
                     src.set(0, 0, source.getWidth(), source.getHeight());
                     dst.set(0, 0, serviceBitmap.getWidth(), serviceBitmap.getHeight());
                     serviceCanvas.drawBitmap(source, src, dst, null);
-                    Utilities.blurBitmap(serviceBitmap, 3, 1, serviceBitmap.getWidth(), serviceBitmap.getHeight(), serviceBitmap.getRowBytes());
+                    Utilities.blurBitmap(serviceBitmap, 3);
                     serviceCanvas.drawColor(ColorUtils.setAlphaComponent(0xff000000, (int) (0xFF * dimAmount)));
                     serviceShader = new BitmapShader(serviceBitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
                     serviceBitmapSource = Bitmap.createBitmap(serviceBitmap);
@@ -50079,6 +50157,12 @@ public class ChatActivity extends BaseFragment implements
     public boolean isSupportEdgeToEdge() {
         return true;
     }
+
+    @Override
+    public EdgeToEdgeSupportMode getEdgeToEdgeSupportMode() {
+        return EdgeToEdgeSupportMode.FULL;
+    }
+
     @Override
     public boolean drawEdgeNavigationBar() {
         return false;
@@ -50136,6 +50220,11 @@ public class ChatActivity extends BaseFragment implements
         checkUi_emptyContainerPosition();
         checkUi_chatListViewPaddings();
         checkUi_expandedInputGlassReprime();
+        if (chatActivityEnterView != null) {
+            // NagramX (#input-satellites): the composer shares the island with the search bar and the
+            // bottom overlays, and those swaps don't redraw it — recheck the island's edge from here too.
+            chatActivityEnterView.updateInputSatellites();
+        }
     }
 
     // NagramX: the fullscreen input toggle jumps the island by hundreds of dp; once the height
@@ -50971,6 +51060,8 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
 
+        final boolean hasSideInsets = insetSystemLeft > 0 || insetSystemRight > 0;
+
         final int topClip = 0;
         final int bottomClip = (int) Math.max(0,
             windowInsetsStateHolder.getAnimatedImeBottomInset() * windowInsetsStateHolder.getAnimatedKeyboardVisibility() - dp(29));
@@ -50989,7 +51080,7 @@ public class ChatActivity extends BaseFragment implements
                 Math.min(windowInsetsStateHolder.getInAppKeyboardHeight(), windowInsetsStateHolder.getAnimatedImeBottomInset() * windowInsetsStateHolder.getAnimatedKeyboardVisibility()) - dp(29));
 
             clipBoundsTmp.set(0, 0, contentView.getMeasuredWidth(), contentView.getMeasuredHeight() - bottomClip2);
-            chatActivityFadeView.setClipBounds(clipBoundsTmp);
+            chatActivityFadeView.setClipBounds(hasSideInsets ? null : clipBoundsTmp);
         }
     }
 

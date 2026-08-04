@@ -4420,6 +4420,17 @@ public class AlertsCreator {
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule) {
+        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, false);
+    }
+
+    // NagramX: single-message "Edit schedule time". The same sheet as scheduling, but flagged as a
+    // reschedule so the Remember offset can seed and store from it — a sheet seeded off some other
+    // date (a reminder taken from a date in a message) must keep that date, so it can't be currentDate alone.
+    public static BottomSheet.Builder createEditScheduleDatePickerDialog(Context context, long dialogId, long currentDate, int currentRepeatPeriod, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
+        return createScheduleDatePickerDialog(context, null, dialogId, currentDate, currentRepeatPeriod, false, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, null, true);
+    }
+
+    public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule, final boolean isEditSchedule) {
         if (context == null) {
             return null;
         }
@@ -4427,6 +4438,9 @@ public class AlertsCreator {
 
         // NagramX: bulk reschedule reuses this sheet but spreads the selection over base + interval.
         final boolean isReschedule = reschedule != null;
+        // NagramX: both ways of moving an already scheduled message, which is what the Remember
+        // offset applies to on top of plain scheduling.
+        final boolean naxReschedule = isReschedule || isEditSchedule;
         // Reschedule floors the earliest pickable slot at 2 min (vs the 60s default), so after seconds
         // are zeroed the base is still a full minute ahead and can't land in the server's send-now window.
         // The +1min bump at confirm then only has to cover time drifting on while the sheet sits open.
@@ -4617,6 +4631,17 @@ public class AlertsCreator {
         // NagramX: chat-time-zone tab + readout under the pickers (null when no differing zone is
         // configured). Holder because the controls are built only after the pickers are populated, below.
         final com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[] tz = new com.radolyn.ayugram.chattimezone.ChatTimeZoneScheduleHelper.Controls[1];
+        // NagramX: the moment the wheels get seeded (a few statements below), so the Remember toggle
+        // can measure its offset from the same minute and an untouched sheet stores back exactly what
+        // it opened with. Declared up here because the wheel listener reports changes to the toggle.
+        final long naxSeededAt = System.currentTimeMillis();
+        // NagramX: shared by the delay slider block and the Remember button in the confirm row;
+        // null on a sheet that has no delay to remember (a reminder seeded off a date in a message).
+        final ScheduleTimeHelper.RememberToggle naxRemember = ScheduleTimeHelper.canRememberOffset(currentDate, naxReschedule)
+                ? new ScheduleTimeHelper.RememberToggle(naxSeededAt, () -> tz[0] != null
+                        ? tz[0].getSelectedInstant()
+                        : ScheduleTimeHelper.getTargetTimeFromPickers(dayPicker, hourPicker, minutePicker))
+                : null;
         final int scheduleType = forcedTitle != null ? 3 : selfUserId == dialogId ? 1 : 0;
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
             // NagramX: in "Peer's time" mode the wheels hold peer wall-clock and the helper owns
@@ -4630,6 +4655,10 @@ public class AlertsCreator {
             }
             if (intervalControls[0] != null) {
                 intervalControls[0].update();
+            }
+            // NagramX: with Remember on, the delay header tracks the wheels, so it re-reads them here.
+            if (naxRemember != null) {
+                naxRemember.onPickersChanged();
             }
         };
         dayPicker.setOnValueChangedListener(onValueChangeListener);
@@ -4662,7 +4691,9 @@ public class AlertsCreator {
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
         }
 
-        if (ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
+        // NagramX: no delay slider on a reschedule sheet — dragging it rewrites the global default
+        // delay, which shouldn't happen just from moving one already scheduled message.
+        if (!naxReschedule && ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
                     container,
@@ -4671,6 +4702,7 @@ public class AlertsCreator {
                     dayPicker,
                     hourPicker,
                     minutePicker,
+                    naxRemember,
                     () -> {
                         // NagramX: same peer-mode delegation as the wheel listener; the slider writes
                         // device-local values, so the helper re-expresses them as peer wall-clock in peer mode.
@@ -4816,7 +4848,8 @@ public class AlertsCreator {
         if (isReschedule) {
             buttonTextView.setText(getString(R.string.Reschedule));
         }
-        container.addView(buttonTextView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
+        // NagramX: the Remember toggle rides in this row instead of costing the sheet its own.
+        container.addView(ScheduleTimeHelper.wrapConfirmRow(context, buttonTextView, naxRemember, datePickerColors.buttonBackgroundColor, datePickerColors.buttonTextColor), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, Gravity.LEFT | Gravity.BOTTOM, 16, 15, 16, 16));
         buttonTextView.setOnClickListener(v -> {
             canceled[0] = false;
             // NagramX: if the "Peer's time" tab is active, snap the wheels back to device-local first so
@@ -4844,6 +4877,8 @@ public class AlertsCreator {
                     calendar.add(Calendar.MINUTE, 1);
                 }
                 final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
+                // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
+                ScheduleTimeHelper.rememberOffset(currentDate, naxReschedule, naxSeededAt, calendar.getTimeInMillis());
                 reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds);
                 builder.getDismissRunnable().run();
                 return;
@@ -4852,6 +4887,8 @@ public class AlertsCreator {
                 calendar.set(Calendar.SECOND, 0);
                 calendar.set(Calendar.MILLISECOND, 0);
             }
+            // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
+            ScheduleTimeHelper.rememberOffset(currentDate, naxReschedule, naxSeededAt, calendar.getTimeInMillis());
             // NagramX: arm the event trigger before the send fires so it can claim the local echo.
             if (naxEventRow != null) {
                 naxEventRow.commit((int) (calendar.getTimeInMillis() / 1000), repeat[0]);
@@ -4871,6 +4908,9 @@ public class AlertsCreator {
         });
         bottomSheet.setBackgroundColor(datePickerColors.backgroundColor);
         bottomSheet.fixNavigationBar(datePickerColors.backgroundColor);
+
+        // NagramX: hint for the Remember button, hung on the sheet container so it can draw over the wheels.
+        ScheduleTimeHelper.setupRememberHint(bottomSheet, naxRemember);
 
         if (repeatTextView != null) {
             repeatTextView.setOnClickListener(v -> {
@@ -8307,7 +8347,7 @@ public class AlertsCreator {
 
         // --- AyuGram hook
         final boolean[] keepLocally = {false};
-        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) {
+        if (NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool() && (selectedMessage == null || !selectedMessage.isEphemeral())) {
             if (ayuFrameLayout == null) {
                 ayuFrameLayout = new FrameLayout(activity);
                 builder.setView(ayuFrameLayout);

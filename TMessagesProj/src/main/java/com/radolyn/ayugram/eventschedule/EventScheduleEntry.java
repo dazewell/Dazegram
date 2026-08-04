@@ -20,6 +20,8 @@ import java.util.regex.Pattern;
  * mask) OR pattern (glob or regex over the incoming text/caption): a selected type that
  * matches fires on its own, otherwise the pattern is checked. At least one condition
  * must be set, and the pattern is evaluated on any message regardless of the type mask.
+ * Both pattern modes look for a hit anywhere in the text, so a bare word fires on any
+ * message containing it; anchoring is what regex mode's {@code ^} and {@code $} are for.
  *
  * <p>Persisted as JSON under {@link EventScheduleStore}; the compiled {@link Pattern}
  * and the transient runtime {@link #state} / {@link #localIds} are never stored.
@@ -60,14 +62,13 @@ public final class EventScheduleEntry {
         return dialogId + "_" + createdAt;
     }
 
-    public boolean matchesType(MessageObject message) {
+    public boolean matchesType(MessageObject message, CharSequence text) {
         if (types == 0) return false;
         if ((types & TYPE_VOICE) != 0 && message.isVoice()) return true;
         if ((types & TYPE_ROUND) != 0 && message.isRoundVideo()) return true;
         if ((types & TYPE_VIDEO) != 0 && message.isVideo() && !message.isRoundVideo()) return true;
         if ((types & TYPE_PHOTO) != 0 && message.isPhoto()) return true;
-        if ((types & TYPE_TEXT) != 0 && message.isMediaEmpty()
-                && message.messageOwner != null && !TextUtils.isEmpty(message.messageOwner.message)) {
+        if ((types & TYPE_TEXT) != 0 && message.isMediaEmpty() && !TextUtils.isEmpty(text)) {
             return true;
         }
         return false;
@@ -79,16 +80,20 @@ public final class EventScheduleEntry {
         if (compileFailed) return false;
         if (compiled == null) {
             try {
-                String p = regex ? pattern : globToRegex(pattern);
-                compiled = Pattern.compile(p, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+                int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+                // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
+                // and quotes put text on its own line; a regex author can ask for the same with (?s).
+                if (!regex) flags |= Pattern.DOTALL;
+                compiled = Pattern.compile(regex ? pattern : globToRegex(pattern), flags);
             } catch (Throwable t) {
                 compileFailed = true;
                 return false;
             }
         }
         CharSequence input = text.length() > MAX_MATCH_LEN ? text.subSequence(0, MAX_MATCH_LEN) : text;
-        // Regex is a substring search (anchoring is the user's job); glob must match the whole text.
-        return regex ? compiled.matcher(input).find() : compiled.matcher(input).matches();
+        // Both modes hit anywhere in the text: a trigger word is nearly always part of a longer
+        // message, and anchoring is what regex mode is for.
+        return compiled.matcher(input).find();
     }
 
     /** Forget the compiled pattern so a changed pattern/regex-mode recompiles on next match. */

@@ -1,6 +1,6 @@
 ---
 name: nagramx-workflow
-description: "Dazewell's process for adding or changing anything in the NagramX repo (NagramX, a personal Telegram-for-Android fork, GitHub dazewell/NagramX). Trigger this whenever work touches that repo: adding a feature, fixing a bug, touching README.md there, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when dazewell gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: what NagramX is and its legacy-Java constraints, the reuse-first / minimal-footprint hook style with concrete hook points and config systems, the two review rounds (plan review before coding, code review after), the compile gate, coding conventions, commit/history conventions (no AI mentions in git logs or source, ever), README style, on-device testing, dual-package CI, and when a PR actually gets opened."
+description: "Dazewell's process for adding or changing anything in the NagramX repo (NagramX, a personal Telegram-for-Android fork, GitHub dazewell/NagramX). Trigger this whenever work touches that repo: adding a feature, fixing a bug, touching README.md there, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when dazewell gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: what NagramX is and its legacy-Java constraints, the reuse-first / minimal-footprint hook style with concrete hook points and config systems, the two review rounds (plan review before coding, code review after), the compile gate and its staging-build fallback when no local toolchain exists, coding conventions, commit/history conventions (no AI mentions in git logs or source, ever), README style, on-device testing, dual-package CI, and when a PR actually gets opened."
 ---
 
 # NagramX contribution workflow
@@ -56,7 +56,7 @@ code are not.
    `2026-07-07_require-password`) — one change per branch. You PR it into `dev`
    and **delete it after merge**; keep it alive only if you'll propose that
    feature upstream. Don't commit directly to `dev`. The full topology, the
-   `#tag` every commit carries, sync, and the force-push-free rules live in
+   `#tag` every commit carries, sync, and the force-push rules live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
    they move.
 
@@ -129,8 +129,8 @@ code are not.
    files, most of the diff in new code, only a few lines touching anything
    pre-existing.
 
-4. **Compile gate.** After any Java/Kotlin edit, run the compile check from
-   the repo root:
+4. **Compile gate (local when the toolchain is there, CI when it isn't).**
+   After any Java/Kotlin edit, run the compile check from the repo root:
 
    ```powershell
    .\gradlew.bat :TMessagesProj:compileDebugJavaWithJavac
@@ -141,8 +141,29 @@ code are not.
    A full APK build is heavy; this compile task is the standard gate and is
    enough to validate most feature work. Don't move on until it's clean.
 
+   **If the toolchain isn't available, skip the gate — don't fight it.** On
+   dazewell's PC it's always there; in a sandboxed agent environment it often
+   isn't (no Android SDK, no `local.properties`, no network for the Gradle
+   distribution). Spend one quick check, not a setup project: is there a
+   `gradlew`/`gradlew.bat` *and* an SDK (`ANDROID_HOME` / `ANDROID_SDK_ROOT` set
+   or `local.properties` pointing at one) *and* a JDK? If yes, run the gate. If
+   no — or if the first invocation fails on the environment rather than on the
+   code (missing SDK, unresolvable dependency, no network) — stop there. Don't
+   install an SDK, vendor dependencies, or otherwise build a toolchain just to
+   satisfy the gate.
+
+   The fallback is the **staging build**: push the branch and open the PR into
+   `dev` (step 9), and `staging.yml` compiles it on every push to the PR. That
+   run *is* the compile gate in that case — read its result and fix what it
+   reports, same as a local failure. Say plainly in the PR body that the change
+   is unverified locally and that CI is the gate, so nothing is installed on a
+   phone on the assumption it compiled. Everything else in the loop is unchanged:
+   round-2 review still happens, and a red staging build blocks landing exactly
+   as a red local compile would.
+
 5. **Code review with the Chief Architect (round 2 of 2).** Once it
-   compiles, take the implemented diff back through review — the chief
+   compiles — or once it's pushed, when the staging build is the gate — take
+   the implemented diff back through review — the chief
    Android architect persona again, now reviewing real code, not a plan.
    Address the comments, re-review. This is a distinct second pass from the
    step-1 design review. Same `nagramx-code-review` skill as round 1; that
@@ -203,16 +224,17 @@ code are not.
 8. **Merge-forward, don't rebase in the loop.** `dev` is the trunk and holds
    unique history, so it is never rebuilt or force-pushed. `base`
    fast-forwards from the base fork and is *merged forward* into `dev`;
-   changes land by merge commits. Nothing in the daily loop force-pushes. The
-   only sanctioned rewrite is the throwaway `-pr` copy when proposing a feature
-   upstream. Syncing onto the base fork, resolving an upstream conflict in the
-   `dev` merge, and the phone-triggered automation are covered in the
-   `nagramx-branch-flow` skill.
+   changes land by merge commits. The shared branches are what that protects: a
+   short-lived feature branch is yours to amend and `--force-with-lease` while
+   it's in review (step 9), and the `-pr` copy is rebased and squashed outright
+   when proposing upstream. Syncing onto the base fork, resolving an upstream
+   conflict in the `dev` merge, and the phone-triggered automation are covered
+   in the `nagramx-branch-flow` skill.
 
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
-   something to wait to be told: once it compiles and passes round-2 review,
-   **commit → push → open the PR** so dazewell always has a test build to
+   something to wait to be told: once it passes the compile gate (locally, or
+   on CI once pushed) and round-2 review, **commit → push → open the PR** so dazewell always has a test build to
    install. The build dazewell
    tests on-device must be **`dev` + the change** (on top of the current fork
    state, alongside everything already landed). Open a PR from
@@ -266,15 +288,24 @@ code are not.
    The round-2 architect review is the real quality gate; Copilot is one
    supplementary machine pass. If a later Copilot pass is genuinely warranted
    (e.g. the fix was large or risky), dazewell asks for it explicitly. Don't
-   stack "address Copilot" commits either — amend/fix in place.
+   stack "address Copilot" commits either — amend the commit the fix belongs to
+   and `git push --force-with-lease` (fine on a feature branch, never on `dev`
+   or `base`; see *Fold review fixes into the commit* in `nagramx-branch-flow`).
 
    Iterate by pushing to the branch (each push rebuilds + re-uploads, and
    supersedes a build still running on that PR rather than adding to it). On a
-   no-go, fix in place and push again; don't stack visible "fix review
-   comments" commits. `staging.yml` path-ignores pure doc / `.github` pushes,
+   no-go, amend and force-push-with-lease again; don't stack visible "fix
+   review comments" commits. `staging.yml` path-ignores pure doc / `.github`
+   pushes,
    so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
    runs on `dev` after landing — there is no separate debug build and no
    skip-upload switch.
+
+   **Close every GitHub review point.** Each inline comment or review thread
+   must get either a code fix or an explicit reply explaining why it will not
+   be changed. After replying, resolve the thread. Before declaring the PR
+   complete, verify that no review threads remain unresolved; do not leave
+   dazewell to infer whether a comment was seen.
 
 10. **Land it / propose it.** Landing a finished change into `dev` is a
     **merge** — mark the PR from step 9 ready and merge it with a **merge
@@ -291,7 +322,8 @@ code are not.
 ### Commit/PR by default vs. ask first
 
 - **A user-visible feature is committed and PR'd by default** — don't wait to
-  be told. Finish the pipeline (compile, round-2 review), then commit, push, and
+  be told. Finish the pipeline (compile gate — local or staging, round-2
+  review), then commit, push, and
   open the PR into `dev` with a Copilot review requested (step 9). That's how
   dazewell gets the on-device test build; making it a standing step is the point.
 - **CI/workflow tweaks, bug fixes, and small/chore items keep the lighter

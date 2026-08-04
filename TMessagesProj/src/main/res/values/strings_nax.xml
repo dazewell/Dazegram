@@ -40,7 +40,7 @@
     <string name="LlmApiKeyNotice">Enter one or more API keys, separated by commas (e.g., key1,key2). Multiple keys will be used in rotation.</string>
     <string name="LlmApiUrlDefault" translatable="false">https://generativelanguage.googleapis.com/v1beta/openai</string>
     <string name="LlmModelNameDefault" translatable="false">gemini-flash-latest</string>
-    <string name="LlmProviderOpenAIModel" translatable="false">gpt-5.4-nano</string>
+    <string name="LlmProviderOpenAIModel" translatable="false">gpt-5.6-luna</string>
     <string name="LlmProviderGeminiModel" translatable="false">gemini-flash-lite-latest</string>
     <string name="LlmProviderGroqModel" translatable="false">openai/gpt-oss-120b</string>
     <string name="LlmProviderDeepSeekModel" translatable="false">deepseek-v4-flash</string>
@@ -390,6 +390,11 @@
     <string name="DeepLTranslateKey">DeepL API Key</string>
     <string name="DeepLTranslateKeyNotice">Configure DeepL API Key, leave blank to use built-in credentials.</string>
     <string name="DefaultScheduleDelay">Default delay</string>
+    <string name="ScheduleRemember">Remember</string>
+    <string name="ScheduleRememberHint">Opens the picker at the delay you last scheduled with, instead of the one on the slider</string>
+    <string name="ScheduleRememberHintEmpty">Nothing saved yet — it takes the next delay you schedule, and opens on the one below until then</string>
+    <string name="ScheduleRememberHintReschedule">Saves the delay you set here for the next picker — this sheet still opens on the time already set</string>
+    <string name="ScheduleRememberedDelay">Remembered delay</string>
     <string name="ScheduleOnceUnavailable">View-once messages can\'t be scheduled</string>
     <string name="QuickScheduleButton">Quick Schedule Button</string>
     <string name="QuickScheduleButtonNotice">Keep calendar button visible when typing to quickly schedule more messages</string>

@@ -222,6 +222,23 @@ public class ChatInputViewsContainer extends FrameLayout {
         invalidate();
     }
 
+    // NagramX (#input-satellites): the composer's send column asks the bubble to step aside too, so it can
+    // float outside it. Kept in its own pair of fields rather than sharing the ones above: the channel
+    // buttons write those, and two writers on one value would stomp each other. The wider request wins.
+    private float satelliteOffsetLeft;
+    private float satelliteOffsetRight;
+
+    public void setSatelliteOffsets(float left, float right) {
+        if (satelliteOffsetLeft == left && satelliteOffsetRight == right) {
+            return;
+        }
+        satelliteOffsetLeft = left;
+        satelliteOffsetRight = right;
+        // Published from the composer's draw pass, so coalesce to one redraw per frame instead of
+        // asking an ancestor to invalidate while it is drawing.
+        postInvalidateOnAnimation();
+    }
+
     public float getInputBubbleHeight() {
         return inputBubbleHeight;
     }
@@ -260,9 +277,9 @@ public class ChatInputViewsContainer extends FrameLayout {
         final int blurTop = getMeasuredHeight() - currentBlurredHeight;
 
         tmpRect.set(
-            Math.round(inputBubbleOffsetLeft),
+            Math.round(Math.max(inputBubbleOffsetLeft, satelliteOffsetLeft)),
             0,
-            getMeasuredWidth() - Math.round(inputBubbleOffsetRight),
+            getMeasuredWidth() - Math.round(Math.max(inputBubbleOffsetRight, satelliteOffsetRight)),
             inputBubbleHeightRound
         );
         tmpRect.inset(0, -dp(7));

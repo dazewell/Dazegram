@@ -405,6 +405,30 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val pushServiceTypeUnifiedSimple =
+        addConfig(
+            "PushServiceTypeUnifiedSimple",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val pushServiceTypeUnifiedWebPushPrivateKey =
+        addConfig(
+            "PushServiceTypeUnifiedWebPushPrivateKey",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val pushServiceTypeUnifiedWebPushPublicKey =
+        addConfig(
+            "PushServiceTypeUnifiedWebPushPublicKey",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val pushServiceTypeUnifiedWebPushAuthSecret =
+        addConfig(
+            "PushServiceTypeUnifiedWebPushAuthSecret",
+            ConfigItem.configTypeString,
+            ""
+        )
     val sendMp4DocumentAsVideo =
         addConfig(
             "SendMp4DocumentAsVideo",
@@ -1360,6 +1384,18 @@ object NaConfig {
             "DefaultScheduledTime",
             ConfigItem.configTypeInt,
             10
+        )
+    val rememberScheduleOffset =
+        addConfig(
+            "RememberScheduleOffset",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val rememberedScheduleOffset =
+        addConfig(
+            "RememberedScheduleOffset",
+            ConfigItem.configTypeInt,
+            0 // minutes; 0 means nothing remembered yet
         )
     val eventScheduleLastTypes =
         addConfig(

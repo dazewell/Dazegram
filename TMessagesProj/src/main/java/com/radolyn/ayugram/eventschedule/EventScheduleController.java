@@ -232,18 +232,18 @@ public final class EventScheduleController {
         if (entries.isEmpty()) return;
         for (MessageObject message : messages) {
             if (message.isOutOwner() || message.getId() <= 0 || message.messageOwner == null) continue;
-            final CharSequence text = message.messageOwner.message;
+            final String text = matchableText(message);
             for (EventScheduleEntry entry : entries) {
                 if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()) continue;
                 final String key = entry.key();
                 boolean typeSet = entry.types != 0;
                 boolean patternSet = !TextUtils.isEmpty(entry.pattern);
                 // OR: a matching type is enough on its own; otherwise the pattern can still match.
-                if (typeSet && entry.matchesType(message)) {
+                if (typeSet && entry.matchesType(message, text)) {
                     armWaiting(account, entry, key);
                     continue;
                 }
-                if (!patternSet) continue;
+                if (!patternSet || text == null) continue;
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
                     if (!entry.matchesPattern(text)) return;
@@ -251,6 +251,21 @@ public final class EventScheduleController {
                 });
             }
         }
+    }
+
+    /**
+     * The text a trigger matches against. A rich (post-format) message carries an empty
+     * {@code message} and keeps everything in {@code rich_message}, which {@link MessageObject}
+     * has already flattened into {@code messageText} -- anything else would be an app-synthesised
+     * string (a service line, a restriction reason, a media title), which no user pattern should
+     * be able to hit. Snapshotted to a String here on the UI thread, since the match runs on a
+     * background queue and {@code messageText} is a mutable Spannable.
+     */
+    private static String matchableText(MessageObject message) {
+        String text = message.messageOwner.message;
+        if (!TextUtils.isEmpty(text)) return text;
+        if (message.messageOwner.rich_message == null || message.messageText == null) return null;
+        return message.messageText.toString();
     }
 
     private static void armWaiting(int account, EventScheduleEntry entry, String key) {

@@ -166,8 +166,12 @@ and still be wrong for this repo.
   entry = blocking; `commit-msg` hook and `commit-tag.yml` enforce it anyway, so
   catch it here first.
 - **Compile gate.** Round-2 review presupposes
-  `.\gradlew.bat :TMessagesProj:compileDebugJavaWithJavac` is clean. If the diff
-  can't have compiled (obvious type/signature errors), stop and say so.
+  `.\gradlew.bat :TMessagesProj:compileDebugJavaWithJavac` is clean — or, when
+  no local toolchain was available (no Android SDK/JDK, sandboxed agent), that
+  the staging build on the PR is standing in for it. Either way, read the diff
+  as if compilation is unverified: if it can't have compiled (obvious
+  type/signature errors), stop and say so, and be that much stricter when CI is
+  the only gate.
 
 ### 5. Documentation (round 2, if user-visible)
 
@@ -230,8 +234,14 @@ legacy-API constraint, or violate YAGNI). Push back with technical reasoning and
 evidence (working code/tests, the upstream constraint) rather than
 performative agreement; involve dazewell if it's an architectural call. When the
 finding is right, just fix it — the diff shows you heard it; skip the "thanks."
-Fix one item at a time and re-run the compile gate. On a no-go, fix in place and
+Fix one item at a time and re-run the compile gate — locally, or by pushing to
+the PR and reading the staging build when there's no local toolchain. On a no-go, fix in place and
 re-review; don't stack "address review" commits (see `nagramx-workflow` step 9).
+
+**GitHub review closure is required.** Every inline comment or review thread
+must receive either a fix or an explicit reply explaining why it will not be
+changed. Reply to the thread, then resolve it. Before handing off the PR,
+verify that every review thread is resolved.
 
 ## Keeping this current
 

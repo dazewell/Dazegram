@@ -336,7 +336,9 @@
     <string name="DeepLTranslateKeyNotice">Настройте ключ API DeepL. Оставьте поле пустым, чтобы использовать встроенные учётные данные.</string>
     <string name="DefaultScheduleDelay">Задержка по умолчанию</string>
     <string name="ExportAyuDB">Экспорт базы данных</string>
-    <string name="DisableSwipeToNext">Отключить переход к следующему пролистыванием</string>
+    <string name="ImportAyuDB">Импорт базы данных</string>
+    <string name="ImportAyuDBAlert">Текущая база данных сообщений будет заменена. После импорта приложение перезапустится.</string>
+    <string name="DisableSwipeToNext">Отключить переход к следующему</string>
     <string name="ChatTimeZoneInsertPattern">%1$s моё время (%2$s твоё время)</string>
     <string name="ChatTimeZoneMessageLanguage">Язык сообщения</string>
     <string name="ChatTimeZoneLanguageDefault">Язык приложения</string>
