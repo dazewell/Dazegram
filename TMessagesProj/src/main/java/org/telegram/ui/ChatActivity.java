@@ -13048,14 +13048,15 @@ public class ChatActivity extends BaseFragment implements
         checkUi_chatListViewPaddings();
     }
 
-    // NagramX: absolute anchor for keeping the chat list pinned across an input-island resize (see
-    // checkUi_chatListViewPaddings). The list is bottom-anchored, so the island growing/shrinking would
+    // NagramX (#fullscreen-input): absolute anchor for keeping the chat list pinned across an input-island resize
+    // (see checkUi_chatListViewPaddings). The list is bottom-anchored, so the island growing/shrinking would
     // otherwise shift every message; we re-pin one visible message to a fixed screen spot each frame.
     private float lastIslandHeight = -1f;
+    private float lastPaddingBottom = -1f;
     private boolean islandPinActive;
     private int islandPinPosition;
     private int islandPinOffset;
-    private int islandPinStartHeight;
+    private int islandPinStartPadding;
     private void checkUi_chatListViewPaddings() {
         if (chatListView == null) {
             return;
@@ -13071,14 +13072,19 @@ public class ChatActivity extends BaseFragment implements
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
         }
 
-        // NagramX: keep the visible history in place while the input island animates its height. The list
-        // is bottom-anchored, so a growing island shifts every message up (wanted on the newest message,
-        // but a fling to the bottom while reading history). Capture one on-screen message when the resize
-        // starts, then below re-pin it to the same screen position each frame - absolute, so it can't
-        // build up the jitter a per-frame scrollBy would. Left alone when sitting on the newest message.
+        // NagramX (#fullscreen-input): keep the visible history in place while the input island animates its height.
+        // The list is bottom-anchored, so a growing island shifts every message up (wanted on the newest message,
+        // but a fling to the bottom while reading history). Capture one on-screen message when the resize starts,
+        // then below re-pin it to the same screen position each frame - absolute, so it can't build up the jitter a
+        // per-frame scrollBy would. Left alone when sitting on the newest message.
+        // Arm on the island, but correct by the whole bottom padding: in the fullscreen editor the field height is
+        // derived from a budget that subtracts the keyboard inset, so a keyboard that grows by d shrinks the island
+        // by d and leaves the padding - and the history - exactly where it was. Correcting by the island alone would
+        // scroll by that d for nothing. Plain keyboard moves never arm, because the island itself doesn't move.
         final int islandHeightNow = (int) inputIslandHeightCurrent;
         final boolean islandResizing = chatLayoutManager != null && lastIslandHeight >= 0
             && islandHeightNow != (int) lastIslandHeight;
+        final boolean paddingMoving = lastPaddingBottom >= 0 && (int) paddingBottom != (int) lastPaddingBottom;
         if (islandResizing && !islandPinActive && !chatListView.fastScrollAnimationRunning
                 && chatLayoutManager.findFirstVisibleItemPosition() != 0) {
             for (int i = 0; i < chatListView.getChildCount(); i++) {
@@ -13088,7 +13094,7 @@ public class ChatActivity extends BaseFragment implements
                     if (position >= 0) {
                         islandPinPosition = position;
                         islandPinOffset = getScrollingOffsetForView(child);
-                        islandPinStartHeight = (int) lastIslandHeight;
+                        islandPinStartPadding = (int) lastPaddingBottom;
                         islandPinActive = true;
                         break;
                     }
@@ -13096,6 +13102,7 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         lastIslandHeight = inputIslandHeightCurrent;
+        lastPaddingBottom = paddingBottom;
 
         final int paddingTop = (int) chatListViewPaddingTop;
         if (topicsTabs != null) {
@@ -13103,9 +13110,9 @@ public class ChatActivity extends BaseFragment implements
         }
         chatListViewPaddingsAnimator.setPaddings(paddingTop, paddingBottom, !chatListView.fastScrollAnimationRunning);
         if (islandPinActive) {
-            if (islandResizing) {
+            if (islandResizing || paddingMoving) {
                 try {
-                    chatLayoutManager.scrollToPositionWithOffset(islandPinPosition, islandPinOffset - (islandHeightNow - islandPinStartHeight));
+                    chatLayoutManager.scrollToPositionWithOffset(islandPinPosition, islandPinOffset - ((int) paddingBottom - islandPinStartPadding));
                 } catch (Throwable t) {
                     FileLog.e(t);
                 }
