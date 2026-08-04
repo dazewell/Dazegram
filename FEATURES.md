@@ -29,15 +29,17 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ## Composer and input
 
+### Composer toolbar <!-- #composer-toolbar -->
+
+The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments and schedule at the other, and the controls between them scroll only when needed.
+
 ### Quick schedule button <!-- #quick-schedule -->
 
-The calendar icon stays visible in the input bar while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. When a draft wraps to more than one line the calendar drops into a strip below the text instead of narrowing every line, so only the last line makes room for it.
+The calendar icon stays with the trailing composer actions while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. It no longer takes width from the message text.
 
 ### Floating input controls <!-- #input-satellites -->
 
-The send column no longer rides inside the input card. The glass card now stops short of the send / mic button, so that button (and the slow-mode countdown, the stickers arrow, the cancel-inline-bot cross, the done button while editing, the rich-editor button that appears above the send button once a draft passes two lines) floats beside the card as its own circle instead of sitting on top of it. Buttons that used to paint nothing of their own get the same glass circle the rest of the floating controls wear, so every control on that side reads the same way. That includes the cross that cancels the top panel — a reply, an edit, a forward or a link preview: it sits directly above the send button, in the same strip the card gives up, so it gets the same circle.
-
-The card's edge follows whatever the column is actually painting at that moment — a wider stars-price pill or the slow-mode timer pushes it further left on its own, and it snaps back to full width when the composer is replaced by the search bar or a join / unblock button.
+The floating send-column layout is gone. The glass-fill helper stays with the close button in reply, edit, forward, and link-preview panels, plus special primary-action states that need their own surface.
 
 ### Message input text size <!-- #input-text-size -->
 
@@ -101,7 +103,7 @@ Select a few messages and the selection bar's ⋯ menu gets two new actions. *Pi
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-Drag the emoji/GIF button (bottom-left of the compose row) up and the input grows to fill the space between the chat header and the keyboard, so you can read a long message all at once instead of scrolling inside a six-line box. Drag back down to return to normal. The gesture works from whichever spot is closest to your thumb: the emoji column on the left, the attach column on the right, or the whole button strip beside the box (send, fullscreen, AI), which isn't part of the text box anyway. That strip only takes the drag once there's something typed, so it stays out of the way of holding the mic to record. It's a deliberate vertical drag, not a flick, so it works even when the box is still short, and a normal tap on any of those buttons does its usual job. The first couple of times a draft gets long enough to be worth expanding, a tip points at the button so the gesture is easy to find. Keeping the gesture off the text itself is deliberate: scrolling through a long draft never collapses it by accident. It doesn't stick around: it turns itself off when you send, clear the text, tap out of the box, or start recording a voice or video message. Formatting (bold, spoilers, custom emoji, links) and your cursor position stay put, since it's the same text box. It also works while editing a message, and behaves in landscape and split-screen.
+When there is a draft and the keyboard or emoji panel leaves room, the toolbar shows an expand button. Tap it to grow the input between the chat header and the input method; tap it again to return to the normal height. It turns off when the draft is cleared, focus leaves the field, or recording starts. Formatting and cursor position stay put because it is the same text box.
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 

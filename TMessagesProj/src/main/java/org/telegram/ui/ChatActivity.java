@@ -8430,7 +8430,7 @@ public class ChatActivity extends BaseFragment implements
 
         instantCameraView = null;
 
-        chatActivityEnterView = new ChatActivityEnterView(getParentActivity(), contentView, this, chatMode != MODE_EDIT_BUSINESS_LINK, themeDelegate) {
+        chatActivityEnterView = new ChatActivityEnterView(getParentActivity(), contentView, this, chatMode != MODE_EDIT_BUSINESS_LINK, themeDelegate, chatMode != MODE_EDIT_BUSINESS_LINK) {
 
             int lastContentViewHeight;
             int messageEditTextPredrawHeigth;
@@ -8684,8 +8684,7 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.setMinimumHeight(AndroidUtilities.dp(51));
         chatActivityEnterView.setAllowStickersAndGifs(true, true, currentEncryptedChat == null || AndroidUtilities.getPeerLayerVersion(currentEncryptedChat.layer) >= 46);
         chatActivityEnterView.shouldDrawBackground = false;
-        // NagramX (#input-satellites): let the send column float outside the input island
-        chatActivityEnterView.attachInputSatellites(chatInputViewsContainer, glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
+        chatActivityEnterView.setInputSatelliteGlassFactory(glassBackgroundDrawableFactory, blurredBackgroundColorProvider);
         if (textToSet != null) {
             chatActivityEnterView.setFieldText(textToSet);
             textToSet = null;
@@ -8874,10 +8873,7 @@ public class ChatActivity extends BaseFragment implements
             return false;
         });
 
-        // NagramX (#input-satellites): this cross — it cancels reply, edit, forward and link preview
-        // alike — sits in the band the island gives up for the send column, so it wears the same glass
-        // circle. Square and column-width so the circle matches the ones below it; the panel rows keep
-        // their own right margins, so their text is unaffected.
+        // NagramX (#input-satellites): the top-panel close control needs the same glass fill as the composer.
         replyCloseImageView = new ImageView(context) {
             @Override
             public void draw(Canvas canvas) {
@@ -50213,6 +50209,7 @@ public class ChatActivity extends BaseFragment implements
         inputIslandHeightTarget = calculateInputIslandHeight(true);
 
         chatInputViewsContainer.setInputBubbleHeight(inputIslandHeightCurrent);
+        chatInputViewsContainer.setInputBubbleBottomInset(chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
         updatePagedownButtonsPosition();
         updateBotforumTabsBottomMargin();
         checkUi_botMenuPosition();
@@ -50220,11 +50217,6 @@ public class ChatActivity extends BaseFragment implements
         checkUi_emptyContainerPosition();
         checkUi_chatListViewPaddings();
         checkUi_expandedInputGlassReprime();
-        if (chatActivityEnterView != null) {
-            // NagramX (#input-satellites): the composer shares the island with the search bar and the
-            // bottom overlays, and those swaps don't redraw it — recheck the island's edge from here too.
-            chatActivityEnterView.updateInputSatellites();
-        }
     }
 
     // NagramX: the fullscreen input toggle jumps the island by hundreds of dp; once the height

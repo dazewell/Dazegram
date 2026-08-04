@@ -1,0 +1,441 @@
+package xyz.nextalone.nagram.ui;
+
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.content.Context;
+import android.graphics.Canvas;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
+import android.widget.LinearLayout;
+
+import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
+import org.telegram.ui.Components.CubicBezierInterpolator;
+import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+
+/**
+ * Presentation-only row for the chat composer controls.
+ *
+ * The controls keep their original ownership and state transitions in
+ * ChatActivityEnterView; this class only gives them stable slots.
+ */
+public final class ComposerToolbarLayout extends FrameLayout {
+
+    public static final int HEIGHT = 48;
+
+    private final ControlsLayout controls;
+    private final FrameLayout startSlot;
+    private final HorizontalScrollView middleScrollView;
+    private final CollapsingLinearLayout middleLeadingSlot;
+    private final CollapsingLinearLayout actionSlot;
+    private final CollapsingLinearLayout endSlot;
+
+    public ComposerToolbarLayout(Context context) {
+        super(context);
+        setClipChildren(false);
+        setClipToPadding(false);
+
+        controls = new ControlsLayout(context);
+        controls.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        controls.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+        addView(controls, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
+
+        startSlot = createFrameSlot(context);
+        startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        middleScrollView = new HorizontalScrollView(context);
+        middleScrollView.setHorizontalScrollBarEnabled(false);
+        middleScrollView.setHorizontalFadingEdgeEnabled(true);
+        middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(12));
+        middleScrollView.setFillViewport(false);
+        middleScrollView.setFocusable(false);
+        middleScrollView.setFocusableInTouchMode(false);
+        middleScrollView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        middleScrollView.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+
+        LinearLayout middle = createLinearSlot(context);
+        middle.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        middle.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+        middleScrollView.addView(middle, new HorizontalScrollView.LayoutParams(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+
+        middleLeadingSlot = createCollapsingSlot(context);
+        middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        actionSlot = createCollapsingSlot(context);
+        middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+        middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+
+        endSlot = createCollapsingSlot(context);
+        endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+
+        controls.setSlots(startSlot, middleScrollView, middle, endSlot);
+        middle.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) {
+                pinMiddleToStart();
+            }
+        });
+        middleScrollView.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) {
+                pinMiddleToStart();
+            }
+        });
+        middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    public void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
+        controls.attachGlass(factory, colorProvider);
+    }
+
+    public void updateColors() {
+        controls.updateColors();
+    }
+
+    public void addStart(View view) {
+        addToFrame(startSlot, view, HEIGHT, HEIGHT, Gravity.CENTER);
+    }
+
+    public void addMiddleLeading(View view, int width, int height, float horizontalMargin, float verticalMargin, int index) {
+        AndroidUtilities.removeFromParent(view);
+        middleLeadingSlot.addView(view, Math.min(index, middleLeadingSlot.getChildCount()),
+                LayoutHelper.createLinear(width, height, horizontalMargin, verticalMargin, horizontalMargin, verticalMargin));
+        middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    public void addContextGroup(View view) {
+        AndroidUtilities.removeFromParent(view);
+        endSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+    }
+
+    public void addContextAction(View view) {
+        AndroidUtilities.removeFromParent(view);
+        endSlot.addView(view, LayoutHelper.createLinear(HEIGHT, HEIGHT));
+    }
+
+    public void addAction(View view) {
+        addAction(view, actionSlot.getChildCount());
+    }
+
+    public void addAction(View view, int index) {
+        AndroidUtilities.removeFromParent(view);
+        actionSlot.addView(view, Math.min(index, actionSlot.getChildCount()), LayoutHelper.createLinear(HEIGHT, HEIGHT));
+    }
+
+    public void addQuickAction(View view) {
+        addContextAction(view);
+    }
+
+    public void addReplacement(View view) {
+        AndroidUtilities.removeFromParent(view);
+        addView(view, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.BOTTOM));
+    }
+
+    public void setControlsVisible(boolean visible) {
+        controls.setPanelVisible(visible);
+    }
+
+    private void pinMiddleToStart() {
+        View child = middleScrollView.getChildAt(0);
+        if (child == null) {
+            return;
+        }
+        int scrollX = LocaleController.isRTL
+                ? Math.max(0, child.getWidth() - middleScrollView.getWidth())
+                : 0;
+        if (middleScrollView.getScrollX() != scrollX) {
+            middleScrollView.scrollTo(scrollX, 0);
+        }
+    }
+
+    private static FrameLayout createFrameSlot(Context context) {
+        FrameLayout slot = new FrameLayout(context);
+        slot.setClipChildren(false);
+        slot.setClipToPadding(false);
+        return slot;
+    }
+
+    private static LinearLayout createLinearSlot(Context context) {
+        LinearLayout slot = new LinearLayout(context);
+        slot.setOrientation(LinearLayout.HORIZONTAL);
+        slot.setGravity(Gravity.CENTER_VERTICAL);
+        slot.setClipChildren(false);
+        return slot;
+    }
+
+    private static CollapsingLinearLayout createCollapsingSlot(Context context) {
+        CollapsingLinearLayout slot = new CollapsingLinearLayout(context);
+        slot.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
+        return slot;
+    }
+
+    private static void addToFrame(FrameLayout parent, View view, int width, int height, int gravity) {
+        AndroidUtilities.removeFromParent(view);
+        parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
+    }
+
+    private static final class ControlsLayout extends FrameLayout {
+        private FrameLayout startSlot;
+        private HorizontalScrollView middleScrollView;
+        private LinearLayout middleContent;
+        private CollapsingLinearLayout endSlot;
+        private BlurredBackgroundDrawable glass;
+        private ValueAnimator boundsAnimator;
+        private int measuredPanelWidth = -1;
+        private boolean laidOut;
+        private boolean pendingBoundsAnimation;
+        private float pendingVisualLeft;
+        private float pendingVisualWidth;
+        private float animatedGlassWidth = -1;
+
+        ControlsLayout(Context context) {
+            super(context);
+            setClipChildren(false);
+            setClipToPadding(false);
+        }
+
+        void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
+            this.startSlot = startSlot;
+            this.middleScrollView = middleScrollView;
+            this.middleContent = middleContent;
+            this.endSlot = endSlot;
+
+            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
+            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
+            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
+        }
+
+        void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
+            glass = factory.create(this, colorProvider);
+            glass.setRadius(AndroidUtilities.dp(22));
+            glass.setPadding(AndroidUtilities.dp(4));
+            invalidate();
+        }
+
+        void updateColors() {
+            if (glass != null) {
+                glass.updateColors();
+                invalidate();
+            }
+        }
+
+        void setPanelVisible(boolean visible) {
+            int visibility = visible ? VISIBLE : GONE;
+            if (getVisibility() != visibility) {
+                if (!visible) {
+                    cancelBoundsAnimation();
+                    setTranslationX(0);
+                }
+                setVisibility(visibility);
+            }
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int availableWidth = MeasureSpec.getSize(widthMeasureSpec);
+            int height = AndroidUtilities.dp(HEIGHT);
+            int heightSpec = MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY);
+            int unboundedWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+
+            startSlot.measure(unboundedWidthSpec, heightSpec);
+            endSlot.measure(unboundedWidthSpec, heightSpec);
+            middleContent.measure(unboundedWidthSpec, heightSpec);
+
+            int startWidth = startSlot.getMeasuredWidth();
+            int endWidth = endSlot.getMeasuredWidth();
+            int middleWidth = middleContent.getMeasuredWidth();
+            int desiredWidth = startWidth + middleWidth + endWidth;
+            int panelWidth = Math.min(desiredWidth, availableWidth);
+            int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - startWidth - endWidth));
+
+            middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
+            if (laidOut && measuredPanelWidth != panelWidth) {
+                captureVisualState();
+                pendingBoundsAnimation = true;
+            }
+            measuredPanelWidth = panelWidth;
+            setMeasuredDimension(panelWidth, height);
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            int startWidth = startSlot.getMeasuredWidth();
+            int middleWidth = middleScrollView.getMeasuredWidth();
+            int endWidth = endSlot.getMeasuredWidth();
+            if (getLayoutDirection() == LAYOUT_DIRECTION_RTL) {
+                endSlot.layout(0, 0, endWidth, getHeight());
+                middleScrollView.layout(endWidth, 0, endWidth + middleWidth, getHeight());
+                startSlot.layout(getWidth() - startWidth, 0, getWidth(), getHeight());
+            } else {
+                startSlot.layout(0, 0, startWidth, getHeight());
+                middleScrollView.layout(startWidth, 0, startWidth + middleWidth, getHeight());
+                endSlot.layout(getWidth() - endWidth, 0, getWidth(), getHeight());
+            }
+            if (!laidOut) {
+                laidOut = true;
+                animatedGlassWidth = getWidth();
+            } else if (pendingBoundsAnimation) {
+                pendingBoundsAnimation = false;
+                startBoundsAnimation();
+            } else {
+                animatedGlassWidth = getWidth();
+            }
+        }
+
+        @Override
+        protected void dispatchDraw(Canvas canvas) {
+            drawGlass(canvas);
+            super.dispatchDraw(canvas);
+        }
+
+        private void drawGlass(Canvas canvas) {
+            if (glass == null || getWidth() <= 0 || getHeight() <= 0) {
+                return;
+            }
+            int inset = AndroidUtilities.dp(2);
+            int width = Math.round(animatedGlassWidth < 0 ? getWidth() : animatedGlassWidth);
+            if (width <= inset * 2 || getHeight() <= inset * 2) {
+                return;
+            }
+            glass.setBounds(inset, inset, width - inset, getHeight() - inset);
+            glass.draw(canvas);
+        }
+
+        private void captureVisualState() {
+            pendingVisualLeft = getLeft() + getTranslationX();
+            pendingVisualWidth = animatedGlassWidth >= 0 ? animatedGlassWidth : getWidth();
+            cancelBoundsAnimation();
+        }
+
+        private void startBoundsAnimation() {
+            float finalWidth = getWidth();
+            float initialTranslation = pendingVisualLeft - getLeft();
+            float initialWidth = pendingVisualWidth;
+            if (initialTranslation == 0 && initialWidth == finalWidth) {
+                animatedGlassWidth = finalWidth;
+                return;
+            }
+            setTranslationX(initialTranslation);
+            animatedGlassWidth = initialWidth;
+            boundsAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
+            boundsAnimator.setDuration(220);
+            boundsAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+            boundsAnimator.addUpdateListener(animation -> {
+                float progress = (float) animation.getAnimatedValue();
+                setTranslationX(initialTranslation * (1.0f - progress));
+                animatedGlassWidth = initialWidth + (finalWidth - initialWidth) * progress;
+                invalidate();
+            });
+            boundsAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (animation == boundsAnimator) {
+                        boundsAnimator = null;
+                        setTranslationX(0);
+                        animatedGlassWidth = getWidth();
+                        invalidate();
+                    }
+                }
+            });
+            boundsAnimator.start();
+        }
+
+        private void cancelBoundsAnimation() {
+            if (boundsAnimator != null) {
+                boundsAnimator.cancel();
+                boundsAnimator = null;
+            }
+        }
+    }
+
+    private static final class CollapsingLinearLayout extends LinearLayout {
+        private int occupiedChildCount;
+
+        CollapsingLinearLayout(Context context) {
+            super(context);
+            setOrientation(HORIZONTAL);
+            setGravity(Gravity.CENTER_VERTICAL);
+            setClipChildren(false);
+            setClipToPadding(false);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int width = getPaddingLeft() + getPaddingRight();
+            int height = getPaddingTop() + getPaddingBottom();
+            int state = 0;
+            int occupiedChildCount = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (!isOccupied(child)) {
+                    continue;
+                }
+                occupiedChildCount++;
+                measureChildWithMargins(child, widthMeasureSpec, width, heightMeasureSpec, 0);
+                LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+                width += layoutParams.leftMargin + child.getMeasuredWidth() + layoutParams.rightMargin;
+                height = Math.max(height, getPaddingTop() + layoutParams.topMargin + child.getMeasuredHeight() + layoutParams.bottomMargin + getPaddingBottom());
+                state = combineMeasuredStates(state, child.getMeasuredState());
+            }
+            this.occupiedChildCount = occupiedChildCount;
+            setMeasuredDimension(
+                    resolveSizeAndState(Math.max(width, getSuggestedMinimumWidth()), widthMeasureSpec, state),
+                    resolveSizeAndState(Math.max(height, getSuggestedMinimumHeight()), heightMeasureSpec, state << MEASURED_HEIGHT_STATE_SHIFT)
+            );
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            boolean rtl = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
+            int x = rtl ? getWidth() - getPaddingRight() : getPaddingLeft();
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (!isOccupied(child)) {
+                    child.layout(x, getPaddingTop(), x, getPaddingTop());
+                    continue;
+                }
+                LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+                int childHeight = child.getMeasuredHeight();
+                int availableHeight = getHeight() - getPaddingTop() - getPaddingBottom() - layoutParams.topMargin - layoutParams.bottomMargin;
+                int childTop = getPaddingTop() + layoutParams.topMargin + Math.max(0, (availableHeight - childHeight) / 2);
+                if (rtl) {
+                    x -= layoutParams.rightMargin + child.getMeasuredWidth();
+                    child.layout(x, childTop, x + child.getMeasuredWidth(), childTop + childHeight);
+                    x -= layoutParams.leftMargin;
+                } else {
+                    x += layoutParams.leftMargin;
+                    child.layout(x, childTop, x + child.getMeasuredWidth(), childTop + childHeight);
+                    x += child.getMeasuredWidth() + layoutParams.rightMargin;
+                }
+            }
+        }
+
+        @Override
+        public void onDescendantInvalidated(View child, View target) {
+            super.onDescendantInvalidated(child, target);
+            int occupiedChildCount = getOccupiedChildCount();
+            if (this.occupiedChildCount != occupiedChildCount) {
+                this.occupiedChildCount = occupiedChildCount;
+                requestLayout();
+            }
+            invalidate();
+        }
+
+        private int getOccupiedChildCount() {
+            int count = 0;
+            for (int i = 0; i < getChildCount(); i++) {
+                if (isOccupied(getChildAt(i))) {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        private static boolean isOccupied(View child) {
+            return child.getVisibility() == VISIBLE && child.getAlpha() > 0.0f;
+        }
+    }
+}
