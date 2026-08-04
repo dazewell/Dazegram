@@ -7167,6 +7167,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         }
         checkAppUpdate(false, null);
 
+        // NagramX: logging out of any account clears the launcher shortcuts for the whole app, and
+        // nothing rebuilds them on a path that reliably runs (with "Suggest frequent contacts" off,
+        // loadHints returns before it gets there), so they stay gone. Put them back on resume.
+        xyz.nextalone.nagram.helper.ShortcutHelper.restoreLauncherShortcuts();
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             ApplicationLoader.canDrawOverlays = Settings.canDrawOverlays(this);
         }
