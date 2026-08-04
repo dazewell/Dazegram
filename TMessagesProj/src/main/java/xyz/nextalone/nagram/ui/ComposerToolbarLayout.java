@@ -27,12 +27,14 @@ import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorPro
  */
 public final class ComposerToolbarLayout extends FrameLayout {
 
-    public static final int HEIGHT = 48;
+    public static final int HEIGHT = 56;
+    public static final int BUTTON_SIZE = 48;
 
     private final ControlsLayout controls;
     private final FrameLayout startSlot;
     private final HorizontalScrollView middleScrollView;
     private final CollapsingLinearLayout middleLeadingSlot;
+    private final LinearLayout formattingSlot;
     private final CollapsingLinearLayout actionSlot;
     private final CollapsingLinearLayout endSlot;
 
@@ -57,6 +59,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.setFocusable(false);
         middleScrollView.setFocusableInTouchMode(false);
         middleScrollView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        middleScrollView.setClipChildren(true);
+        middleScrollView.setClipToPadding(true);
         middleScrollView.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
 
         LinearLayout middle = createLinearSlot(context);
@@ -65,9 +69,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.addView(middle, new HorizontalScrollView.LayoutParams(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         middleLeadingSlot = createCollapsingSlot(context);
+        formattingSlot = createLinearSlot(context);
         middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        formattingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         actionSlot = createCollapsingSlot(context);
         middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+        middle.addView(formattingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
         middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
 
         endSlot = createCollapsingSlot(context);
@@ -96,13 +103,19 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     public void addStart(View view) {
-        addToFrame(startSlot, view, HEIGHT, HEIGHT, Gravity.CENTER);
+        addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
     }
 
     public void addMiddleLeading(View view, int width, int height, float horizontalMargin, float verticalMargin, int index) {
         AndroidUtilities.removeFromParent(view);
         middleLeadingSlot.addView(view, Math.min(index, middleLeadingSlot.getChildCount()),
                 LayoutHelper.createLinear(width, height, horizontalMargin, verticalMargin, horizontalMargin, verticalMargin));
+        middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    public void addFormatting(View view) {
+        AndroidUtilities.removeFromParent(view);
+        formattingSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
         middleScrollView.post(this::pinMiddleToStart);
     }
 
@@ -113,7 +126,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addContextAction(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, LayoutHelper.createLinear(HEIGHT, HEIGHT));
+        endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
     }
 
     public void addAction(View view) {
@@ -122,7 +135,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addAction(View view, int index) {
         AndroidUtilities.removeFromParent(view);
-        actionSlot.addView(view, Math.min(index, actionSlot.getChildCount()), LayoutHelper.createLinear(HEIGHT, HEIGHT));
+        actionSlot.addView(view, Math.min(index, actionSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
     }
 
     public void addQuickAction(View view) {
@@ -136,6 +149,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void setControlsVisible(boolean visible) {
         controls.setPanelVisible(visible);
+    }
+
+    public boolean isStartOrEndTouch(float x, float y) {
+        return controls.getVisibility() == VISIBLE
+                && (isTouchInSlot(startSlot, x, y) || isTouchInSlot(endSlot, x, y));
+    }
+
+    private boolean isTouchInSlot(View slot, float x, float y) {
+        if (slot.getVisibility() != VISIBLE || slot.getWidth() == 0 || slot.getHeight() == 0) {
+            return false;
+        }
+        float left = controls.getX() + slot.getX();
+        float top = controls.getY() + slot.getY();
+        return x >= left && x < left + slot.getWidth() && y >= top && y < top + slot.getHeight();
     }
 
     private void pinMiddleToStart() {
@@ -193,8 +220,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         ControlsLayout(Context context) {
             super(context);
-            setClipChildren(false);
-            setClipToPadding(false);
+            setClipChildren(true);
+            setClipToPadding(true);
+            setPaddingRelative(AndroidUtilities.dp(8), AndroidUtilities.dp(4), AndroidUtilities.dp(8), AndroidUtilities.dp(4));
         }
 
         void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -210,7 +238,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
             glass = factory.create(this, colorProvider);
-            glass.setRadius(AndroidUtilities.dp(22));
+            glass.setRadius(AndroidUtilities.dp(26));
             glass.setPadding(AndroidUtilities.dp(4));
             invalidate();
         }
@@ -237,7 +265,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int availableWidth = MeasureSpec.getSize(widthMeasureSpec);
             int height = AndroidUtilities.dp(HEIGHT);
-            int heightSpec = MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY);
+            int contentHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
+            int heightSpec = MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY);
             int unboundedWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
 
             startSlot.measure(unboundedWidthSpec, heightSpec);
@@ -247,9 +276,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int startWidth = startSlot.getMeasuredWidth();
             int endWidth = endSlot.getMeasuredWidth();
             int middleWidth = middleContent.getMeasuredWidth();
-            int desiredWidth = startWidth + middleWidth + endWidth;
+            int horizontalPadding = getPaddingLeft() + getPaddingRight();
+            int desiredWidth = horizontalPadding + startWidth + middleWidth + endWidth;
             int panelWidth = Math.min(desiredWidth, availableWidth);
-            int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - startWidth - endWidth));
+            int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth));
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
             if (laidOut && measuredPanelWidth != panelWidth) {
@@ -265,14 +295,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int startWidth = startSlot.getMeasuredWidth();
             int middleWidth = middleScrollView.getMeasuredWidth();
             int endWidth = endSlot.getMeasuredWidth();
+            int contentLeft = getPaddingLeft();
+            int contentRight = getWidth() - getPaddingRight();
+            int contentTop = getPaddingTop();
+            int contentBottom = getHeight() - getPaddingBottom();
             if (getLayoutDirection() == LAYOUT_DIRECTION_RTL) {
-                endSlot.layout(0, 0, endWidth, getHeight());
-                middleScrollView.layout(endWidth, 0, endWidth + middleWidth, getHeight());
-                startSlot.layout(getWidth() - startWidth, 0, getWidth(), getHeight());
+                endSlot.layout(contentLeft, contentTop, contentLeft + endWidth, contentBottom);
+                middleScrollView.layout(contentLeft + endWidth, contentTop, contentLeft + endWidth + middleWidth, contentBottom);
+                startSlot.layout(contentRight - startWidth, contentTop, contentRight, contentBottom);
             } else {
-                startSlot.layout(0, 0, startWidth, getHeight());
-                middleScrollView.layout(startWidth, 0, startWidth + middleWidth, getHeight());
-                endSlot.layout(getWidth() - endWidth, 0, getWidth(), getHeight());
+                startSlot.layout(contentLeft, contentTop, contentLeft + startWidth, contentBottom);
+                middleScrollView.layout(contentLeft + startWidth, contentTop, contentLeft + startWidth + middleWidth, contentBottom);
+                endSlot.layout(contentRight - endWidth, contentTop, contentRight, contentBottom);
             }
             if (!laidOut) {
                 laidOut = true;
@@ -434,8 +468,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return count;
         }
 
+        // A control claims its slot once its fade is past halfway and gives it up at the same point on
+        // the way out. Releasing only at alpha 0 made a leaving control hold the row open for its whole
+        // fade, so the panel reflowed twice - once when its replacement arrived, again when it finally
+        // let go - and the neighbouring buttons crawled back into place.
         private static boolean isOccupied(View child) {
-            return child.getVisibility() == VISIBLE && child.getAlpha() > 0.0f;
+            return child.getVisibility() == VISIBLE && child.getAlpha() >= 0.5f;
         }
     }
 }

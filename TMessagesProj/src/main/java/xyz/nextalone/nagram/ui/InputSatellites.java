@@ -8,6 +8,7 @@ import android.view.ViewGroup;
 
 import androidx.annotation.Nullable;
 
+import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
@@ -18,14 +19,56 @@ public final class InputSatellites {
 
     private static final int FILL_MARGIN = 5;
     private static final int WARMUP_FRAMES = 3;
+    private static final int RIGHT_COLUMN_FILL_MARGIN = 3;
+    private static final int RIGHT_COLUMN_GAP = 7;
+    private static final int RIGHT_OFFSET_DELTA = 4;
 
     private final ArrayList<GlassFill> fills = new ArrayList<>();
+    private final ArrayList<View> rightColumnExtras = new ArrayList<>();
     private @Nullable BlurredBackgroundDrawableViewFactory factory;
     private @Nullable BlurredBackgroundColorProvider colorProvider;
+    private @Nullable View enterView;
+    private @Nullable ViewGroup rightColumn;
+    private int publishedRightOffset;
 
     public void configure(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
         this.factory = factory;
         this.colorProvider = colorProvider;
+    }
+
+    public void configureRightColumn(View enterView, ViewGroup rightColumn) {
+        this.enterView = enterView;
+        this.rightColumn = rightColumn;
+    }
+
+    public void trackRightColumn(View view) {
+        if (view != null && !rightColumnExtras.contains(view)) {
+            rightColumnExtras.add(view);
+        }
+    }
+
+    public boolean updateRightOffset() {
+        int width = 0;
+        if (enterView != null && enterView.getVisibility() == View.VISIBLE && enterView.getAlpha() > 0.01f) {
+            if (rightColumn != null && rightColumn.getVisibility() == View.VISIBLE) {
+                for (int i = 0; i < rightColumn.getChildCount(); i++) {
+                    width = Math.max(width, visualWidth(rightColumn.getChildAt(i)));
+                }
+            }
+            for (int i = 0; i < rightColumnExtras.size(); i++) {
+                width = Math.max(width, visualWidth(rightColumnExtras.get(i)));
+            }
+        }
+        int offset = width == 0 ? 0 : width + dp(RIGHT_COLUMN_FILL_MARGIN + RIGHT_COLUMN_GAP);
+        if (offset == publishedRightOffset || publishedRightOffset != 0 && offset != 0 && Math.abs(offset - publishedRightOffset) < dp(RIGHT_OFFSET_DELTA)) {
+            return false;
+        }
+        publishedRightOffset = offset;
+        return true;
+    }
+
+    public int getPublishedRightOffset() {
+        return publishedRightOffset;
     }
 
     public void glass(View view) {
@@ -96,6 +139,16 @@ public final class InputSatellites {
 
     private boolean wants(GlassFill fill) {
         return fill.view.getVisibility() == View.VISIBLE && (fill.condition == null || fill.condition.holds());
+    }
+
+    private int visualWidth(View view) {
+        if (view == null || view.getVisibility() != View.VISIBLE || view.getAlpha() < 0.5f || view.getScaleX() < 0.5f) {
+            return 0;
+        }
+        if (view instanceof ChatActivityEnterView.SendButton) {
+            return ((ChatActivityEnterView.SendButton) view).getVisualWidth();
+        }
+        return Math.max(0, view.getWidth() - dp(RIGHT_COLUMN_FILL_MARGIN * 2));
     }
 
     private void paintFill(Canvas canvas, GlassFill fill, View target, int alpha, View invalidationTarget) {

@@ -31,7 +31,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Composer toolbar <!-- #composer-toolbar -->
 
-The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments and schedule at the other, and the controls between them scroll only when needed.
+The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments and schedule at the other, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, Bold, and Clear stay in the toolbar and enable when text is selected.
 
 ### Quick schedule button <!-- #quick-schedule -->
 

@@ -536,6 +536,8 @@ public class ChatActivity extends BaseFragment implements
 
     private FrameLayout chatInputBubbleContainer;
     private FrameLayout chatInputInAppContainer;
+    private float inputBubbleChannelOffsetLeft;
+    private float inputBubbleChannelOffsetRight;
     private WallpaperBitmapProvider wallpaperBitmapProvider = new WallpaperBitmapProvider();
 
     private ChatActivityFadeView chatActivityFadeView;
@@ -2369,13 +2371,14 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onTextSelectionChanged(int start, int end) {
-            if (editTextItem == null) {
-                return;
-            }
-            ActionBarMenu menu = actionBar.createMenu();
             if (suggestEmojiPanel != null) {
                 suggestEmojiPanel.onTextSelectionChanged(start, end);
             }
+            // NagramX: the composer toolbar replaces this duplicate selection surface.
+            if (chatActivityEnterView.isComposerToolbarEnabled() || editTextItem == null) {
+                return;
+            }
+            ActionBarMenu menu = actionBar.createMenu();
             if (end - start > 0) {
                 if (editTextItem.getTag() == null) {
                     editTextItem.setTag(1);
@@ -8442,6 +8445,11 @@ public class ChatActivity extends BaseFragment implements
             }
 
             @Override
+            protected void onChangedInputPrimaryWidth() {
+                updateInputBubbleOffsets();
+            }
+
+            @Override
             public boolean onInterceptTouchEvent(MotionEvent ev) {
                 if (getAlpha() != 1.0f) {
                     return false;
@@ -9088,7 +9096,9 @@ public class ChatActivity extends BaseFragment implements
             }
         });
         bottomChannelButtonsLayout.setOnButtonsTotalWidthChanged((l, r) -> {
-            chatInputViewsContainer.setInputBubbleOffsets(l, r);
+            inputBubbleChannelOffsetLeft = l;
+            inputBubbleChannelOffsetRight = r;
+            updateInputBubbleOffsets();
         });
 
         chatInputBubbleContainer.addView(bottomChannelButtonsLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, (44 - 56) / 2));
@@ -50210,6 +50220,7 @@ public class ChatActivity extends BaseFragment implements
 
         chatInputViewsContainer.setInputBubbleHeight(inputIslandHeightCurrent);
         chatInputViewsContainer.setInputBubbleBottomInset(chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
+        updateInputBubbleOffsets();
         updatePagedownButtonsPosition();
         updateBotforumTabsBottomMargin();
         checkUi_botMenuPosition();
@@ -50217,6 +50228,21 @@ public class ChatActivity extends BaseFragment implements
         checkUi_emptyContainerPosition();
         checkUi_chatListViewPaddings();
         checkUi_expandedInputGlassReprime();
+    }
+
+    private void updateInputBubbleOffsets() {
+        if (chatInputViewsContainer == null) {
+            return;
+        }
+        float left = inputBubbleChannelOffsetLeft;
+        float right = inputBubbleChannelOffsetRight;
+        float primaryEndInset = chatActivityEnterView != null ? chatActivityEnterView.getInputBubblePrimaryEndInset() : 0;
+        if (LocaleController.isRTL) {
+            left = Math.max(left, primaryEndInset);
+        } else {
+            right = Math.max(right, primaryEndInset);
+        }
+        chatInputViewsContainer.setInputBubbleOffsets(left, right);
     }
 
     // NagramX: the fullscreen input toggle jumps the island by hundreds of dp; once the height

@@ -666,6 +666,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private static final int COMPOSER_TEXT_HORIZONTAL_INSET = 16;
     // The normal row's 9/10 padding centers its line box half a dp above the pill.
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
+    private boolean composerPrimaryGeometryPosted;
 
     private final boolean composerToolbarEnabled;
     private boolean messageEditExpanded;
@@ -683,6 +684,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     public FrameLayout textFieldContainer;
     public FrameLayout sendButtonContainer;
     private xyz.nextalone.nagram.ui.ComposerToolbarLayout composerToolbar;
+    private xyz.nextalone.nagram.ui.ComposerFormattingActions composerFormattingActions;
     private boolean toolbarReplacementVisible;
     private boolean inputPrimarySuppressed;
     private int inputPrimaryVisibility;
@@ -2720,12 +2722,71 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendByEnter = preferences.getBoolean("send_by_enter", false);
 
         textFieldContainer = new FrameLayout(context) {
+            private float expandDragDownX;
+            private float expandDragDownY;
+            private boolean expandDragArmed;
+            private boolean expandDragHandled;
+
+            private boolean evaluateExpandDrag(MotionEvent event) {
+                if (!expandDragArmed || expandDragHandled) {
+                    return false;
+                }
+                float dx = event.getX() - expandDragDownX;
+                float dy = event.getY() - expandDragDownY;
+                if (Math.abs(dy) <= dp(40) || Math.abs(dy) <= Math.abs(dx) * 1.5f) {
+                    return false;
+                }
+                if (dy < 0 && !messageEditExpanded && canExpandInput()) {
+                    expandDragHandled = true;
+                    setMessageEditExpanded(true);
+                    return true;
+                }
+                if (dy > 0 && messageEditExpanded) {
+                    expandDragHandled = true;
+                    setMessageEditExpanded(false);
+                    return true;
+                }
+                return false;
+            }
+
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 if (botWebViewButton != null && botWebViewButton.getVisibility() == VISIBLE) {
                     return botWebViewButton.dispatchTouchEvent(ev);
                 }
                 return super.dispatchTouchEvent(ev);
+            }
+
+            @Override
+            public boolean onInterceptTouchEvent(MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    // Keep the scrollable middle and text handles free for their own gestures.
+                    expandDragDownX = event.getX();
+                    expandDragDownY = event.getY();
+                    expandDragHandled = false;
+                    expandDragArmed = canExpandInputGesture()
+                            && isComposerExpandDragTarget(event.getX(), event.getY());
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    return evaluateExpandDrag(event);
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    expandDragArmed = false;
+                }
+                return false;
+            }
+
+            @Override
+            public boolean onTouchEvent(MotionEvent event) {
+                if (expandDragArmed) {
+                    int action = event.getActionMasked();
+                    if (action == MotionEvent.ACTION_MOVE) {
+                        evaluateExpandDrag(event);
+                    } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                        expandDragArmed = false;
+                    }
+                    return true;
+                }
+                return super.onTouchEvent(event);
             }
         };
         textFieldContainer.setClipChildren(false);
@@ -2770,6 +2831,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
                 if (child != null && child == messageEditText) {
+                    if (textTransitionIsRunning && !messageEditExpanded) {
+                        return true;
+                    }
                     return drawMessageEditText(canvas, () -> super.drawChild(canvas, child, drawingTime));
                 }
                 if (shouldDrawRecordedAudioPanelInParent && child == recordedAudioPanel) {
@@ -2782,6 +2846,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, composerToolbarEnabled ? 0 : DEFAULT_HEIGHT + 8, 0));
         if (composerToolbarEnabled) {
             composerToolbar = new xyz.nextalone.nagram.ui.ComposerToolbarLayout(context);
+            composerFormattingActions = new xyz.nextalone.nagram.ui.ComposerFormattingActions(this, resourcesProvider, isChat);
+            composerToolbar.addFormatting(composerFormattingActions.getView());
             messageEditTextContainer.addView(composerToolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, COMPOSER_TOOLBAR_HEIGHT, Gravity.BOTTOM));
         }
 
@@ -2881,7 +2947,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             };
             attachLayout.setOrientation(LinearLayout.HORIZONTAL);
             attachLayout.setEnabled(false);
-            attachLayout.setClipChildren(false);
+            // NagramX: the toolbar collapses this group to zero width while it fades out, and its children keep
+            // their last measured widths, so without clipping they'd paint over whatever slid into the gap.
+            attachLayout.setClipChildren(composerToolbarEnabled);
             if (composerToolbarEnabled) {
                 attachLayout.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
                 composerToolbar.addContextGroup(attachLayout);
@@ -3038,11 +3106,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (composerToolbarEnabled) {
             expandInputButton = new ImageView(context);
             expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
-            expandInputButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
+            updateExpandInputButtonColor();
             expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
             composerToolbar.addAction(expandInputButton, 2);
             ScaleStateListAnimator.apply(expandInputButton);
-            expandInputButton.setOnClickListener(v -> setMessageEditExpanded(!messageEditExpanded));
+            expandInputButton.setOnClickListener(v -> {
+                if (!messageEditExpanded && !canExpandInput()) {
+                    return;
+                }
+                setMessageEditExpanded(!messageEditExpanded);
+            });
             expandInputButton.setVisibility(View.GONE);
             expandInputButton.setAlpha(0.0f);
             expandInputButton.setScaleX(0.6f);
@@ -3053,12 +3126,30 @@ public class ChatActivityEnterView extends FrameLayout implements
             createRecordAudioPanel();
         }
 
-        sendOutlineView = new ImageView(context);
+        sendOutlineView = new ImageView(context) {
+            @Override
+            public void setVisibility(int visibility) {
+                if (getVisibility() == visibility) {
+                    return;
+                }
+                super.setVisibility(visibility);
+                refreshComposerPrimaryOffset();
+            }
+
+            @Override
+            protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+                super.onSizeChanged(w, h, oldw, oldh);
+                if (w != oldw) {
+                    refreshComposerPrimaryOffset();
+                }
+            }
+        };
         sendOutlineView.setImageResource(R.drawable.send_outline);
         sendOutlineView.setScaleType(ImageView.ScaleType.CENTER);
         sendOutlineView.setVisibility(View.GONE);
         sendOutlineView.setColorFilter(getThemedColor(Theme.key_telegram_color), PorterDuff.Mode.SRC_IN);
-        textFieldContainer.addView(sendOutlineView, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+        textFieldContainer.addView(sendOutlineView, createPrimaryInputLayoutParams(DEFAULT_HEIGHT));
+        inputSatellites.trackRightColumn(sendOutlineView);
 
         sendButtonContainer = new FrameLayout(context) {
             @Override
@@ -3066,6 +3157,18 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onSizeChanged(w, h, oldw, oldh);
                 setPivotX(w - dp(22));
                 setPivotY(h - dp(22));
+                if (w != oldw) {
+                    refreshComposerPrimaryOffset();
+                }
+            }
+
+            @Override
+            public void setVisibility(int visibility) {
+                if (getVisibility() == visibility) {
+                    return;
+                }
+                super.setVisibility(visibility);
+                refreshComposerPrimaryOffset();
             }
 
             @Override
@@ -3094,7 +3197,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         };
         sendButtonContainer.setClipChildren(false);
         sendButtonContainer.setClipToPadding(false);
-        textFieldContainer.addView(sendButtonContainer, LayoutHelper.createFrame(100, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+        textFieldContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
+        inputSatellites.configureRightColumn(this, sendButtonContainer);
         audioVideoButtonContainer = new FrameLayout(context) {
 
             @Override
@@ -4119,12 +4223,39 @@ public class ChatActivityEnterView extends FrameLayout implements
             public boolean isInactive() {
                 return !doneButtonEnabled;
             }
+
+            @Override
+            public void setVisibility(int visibility) {
+                if (getVisibility() == visibility) {
+                    return;
+                }
+                super.setVisibility(visibility);
+                refreshComposerPrimaryOffset();
+            }
+
+            @Override
+            protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+                super.onSizeChanged(w, h, oldw, oldh);
+                if (w != oldw) {
+                    refreshComposerPrimaryOffset();
+                }
+            }
         };
         doneButton.setContentDescription(getString(R.string.EditMessage));
         if (bounceable) {
             ScaleStateListAnimator.apply(doneButton);
         }
-        textFieldContainer.addView(doneButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+        textFieldContainer.addView(doneButton, createPrimaryInputLayoutParams(DEFAULT_HEIGHT));
+        inputSatellites.trackRightColumn(doneButton);
+    }
+
+    private FrameLayout.LayoutParams createPrimaryInputLayoutParams(int width) {
+        if (!composerToolbarEnabled) {
+            return LayoutHelper.createFrame(width, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT);
+        }
+        int endGravity = LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT;
+        return LayoutHelper.createFrame(width, DEFAULT_HEIGHT, Gravity.BOTTOM | endGravity, 0, 0, 0,
+                COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP);
     }
 
     @SuppressLint("AppCompatCustomView")
@@ -6219,6 +6350,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         @Override
         protected void onSelectionChanged(int selStart, int selEnd) {
             super.onSelectionChanged(selStart, selEnd);
+            // NagramX: direct formatting follows the caption's existing selection stream.
+            if (composerFormattingActions != null) {
+                composerFormattingActions.onSelectionChanged();
+            }
             if (delegate != null) {
                 delegate.onTextSelectionChanged(selStart, selEnd);
             }
@@ -6246,7 +6381,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (isInitLineCount) {
                 lineCount = getLineCount();
                 showAiButton(lineCount > 2 && !TextUtils.isEmpty(getText().toString().trim()));
-                showRichButton(lineCount > 2 && !TextUtils.isEmpty(getText().toString().trim()));
+                showRichButton(hasSimpleDraft());
                 updateExpandInputButton();
             }
             isInitLineCount = false;
@@ -6565,7 +6700,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
                 if (lineCount != messageEditText.getLineCount()) {
                     showAiButton(messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
-                    showRichButton(messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
+                    showRichButton(hasSimpleDraft());
+                    if (composerToolbarEnabled) {
+                        applyComposerTextGeometry();
+                    }
                 }
             }
         };
@@ -6579,6 +6717,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public void onSpansChanged() {
                 messageEditText.invalidateEffects();
+                if (composerFormattingActions != null) {
+                    composerFormattingActions.refresh();
+                }
                 if (delegate != null) {
                     delegate.onTextSpansChanged(messageEditText.getTextToUse());
                 }
@@ -6604,9 +6745,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         int inputTextSizeDp = getInputTextSizeDp();
         messageEditText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, inputTextSizeDp);
         lastAppliedInputTextSizeDp = inputTextSizeDp;
-        messageEditText.setGravity(Gravity.BOTTOM);
+        messageEditText.setGravity(Gravity.BOTTOM | Gravity.START);
         if (composerToolbarEnabled) {
             messageEditText.setPadding(0, dp(9), 0, dp(10));
+            // NagramX: with the controls moved out of the field, one text line only measures ~38dp,
+            // but the island bubble never draws shorter than DEFAULT_HEIGHT. The bubble is anchored to
+            // the field's top, so the extra height hung off the bottom: the text read too high and the
+            // send button, which bottom-aligns to the field, overflowed the island's top clip and got
+            // sliced. Floor the field at the same height the bubble floors at and the two agree again.
+            messageEditText.setMinimumHeight(dp(DEFAULT_HEIGHT));
         } else {
             messageEditText.setPadding(0, dp(9), getSlowModeTextPadding(), dp(10));
         }
@@ -6626,10 +6773,16 @@ public class ChatActivityEnterView extends FrameLayout implements
                 AndroidUtilities.cancelRunOnUIThread(collapseIfBlurred);
                 AndroidUtilities.runOnUIThread(collapseIfBlurred, 100);
             }
+            if (composerFormattingActions != null) {
+                composerFormattingActions.refresh();
+            }
         });
         messageEditTextContainer.addView(messageEditText, 1, composerToolbarEnabled
                 ? LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, 0, COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP)
                 : LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 52, 0, isChat ? 50 : 2, 1.5f));
+        if (composerFormattingActions != null) {
+            composerFormattingActions.refresh();
+        }
 
         richDraftPreview = new RichMessageLayout.PreviewView(getContext(), currentAccount, resourcesProvider);
         richDraftPreview.setAllowActions(false);
@@ -6759,7 +6912,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     lineCount = messageEditText.getLineCount();
                     showAiButton(lineCount > 2 && charSequence != null && !TextUtils.isEmpty(charSequence.toString().trim()));
-                    showRichButton(lineCount > 2 && charSequence != null && !TextUtils.isEmpty(charSequence.toString().trim()));
+                    showRichButton(hasSimpleDraft());
+                    if (composerToolbarEnabled) {
+                        applyComposerTextGeometry();
+                    }
                 } else {
                     heightShouldBeChanged = false;
                 }
@@ -6874,8 +7030,11 @@ public class ChatActivityEnterView extends FrameLayout implements
 
                 showAiButton(lineCount > 2 && editable != null && !TextUtils.isEmpty(editable.toString().trim()));
                 checkIsEphemeralMessage(true);
-                showRichButton(lineCount > 2 && editable != null && !TextUtils.isEmpty(editable.toString().trim()));
+                showRichButton(hasSimpleDraft());
                 updateExpandInputButton();
+                if (composerFormattingActions != null) {
+                    composerFormattingActions.onTextChanged();
+                }
             }
         });
         messageEditText.addTextChangedListener(new EditTextSuggestionsFix());
@@ -6916,7 +7075,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     // Expand needs a live anchor (the fragment plus keyboard/emoji-panel space) to size against.
     private boolean canExpandInput() {
-        return parentFragment != null && expandedInputBudget > 0;
+        return parentFragment != null && expandedInputAnchorVisible && expandedInputBudget > 0;
     }
 
     public void setMessageEditExpanded(boolean expanded) {
@@ -6986,10 +7145,11 @@ public class ChatActivityEnterView extends FrameLayout implements
     // the action bar and whatever input method (keyboard or emoji panel) is up
     public void updateExpandedInputBudget(int budget, boolean inputMethodVisible) {
         final boolean changed = expandedInputBudget != budget;
+        final boolean anchorChanged = expandedInputAnchorVisible != inputMethodVisible;
         final boolean anchorLost = expandedInputAnchorVisible && !inputMethodVisible;
         expandedInputBudget = budget;
         expandedInputAnchorVisible = inputMethodVisible;
-        if (changed && composerToolbarEnabled && messageEditText != null) {
+        if ((changed || anchorChanged) && composerToolbarEnabled && messageEditText != null) {
             CharSequence text = messageEditText.getTextToUse();
             showAiButton(messageEditText.getLineCount() > 2 && text != null && !TextUtils.isEmpty(text.toString().trim()));
             updateExpandInputButton();
@@ -7010,8 +7170,40 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (!composerToolbarEnabled || expandInputButton == null || messageEditText == null || richDraftActive || !canExpandInput()) {
             return false;
         }
-        CharSequence text = messageEditText.getTextToUse();
-        return text != null && !TextUtils.isEmpty(AndroidUtilities.getTrimmedString(text));
+        return true;
+    }
+
+    private boolean canExpandInputGesture() {
+        return composerToolbarEnabled
+                && !recordingAudioVideo
+                && recordInterfaceState == 0
+                && (recordedAudioPanel == null || recordedAudioPanel.getVisibility() != VISIBLE)
+                && (botWebViewButton == null || botWebViewButton.getVisibility() != VISIBLE)
+                && messageEditText != null
+                && messageEditText.getVisibility() == VISIBLE;
+    }
+
+    private boolean isComposerExpandDragTarget(float x, float y) {
+        if (composerToolbar != null && messageEditTextContainer != null) {
+            float toolbarX = messageEditTextContainer.getX() + composerToolbar.getX();
+            float toolbarY = messageEditTextContainer.getY() + composerToolbar.getY();
+            if (composerToolbar.isStartOrEndTouch(x - toolbarX, y - toolbarY)) {
+                return true;
+            }
+        }
+        return (isTouchInView(sendButtonContainer, x, y)
+                    && sendButton != null
+                    && sendButton.getVisibility() == VISIBLE)
+                || isTouchInView(doneButton, x, y);
+    }
+
+    private static boolean isTouchInView(View view, float x, float y) {
+        return view != null
+                && view.getVisibility() == VISIBLE
+                && x >= view.getX()
+                && x < view.getX() + view.getWidth()
+                && y >= view.getY()
+                && y < view.getY() + view.getHeight();
     }
 
     private boolean shownExpandInputButton;
@@ -7024,6 +7216,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         int animationId = ++expandInputButtonAnimationId;
         expandInputButton.animate().cancel();
         expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.baseline_fullscreen_24);
+        updateExpandInputButtonColor();
         expandInputButton.setContentDescription(getString(messageEditExpanded ? R.string.CollapseMessageField : R.string.ExpandMessageField));
         if (shownExpandInputButton == show) {
             if (show) {
@@ -7055,6 +7248,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 .start();
     }
 
+    // NagramX: in the toolbar these actions share a row with the attach column, whose own fades run at 100ms.
+    // At the old 420ms a leaving action still held its slot long after its replacement had arrived,
+    // so the row reflowed twice; matching the row's own transition keeps it to one move.
+    private int getComposerActionFadeDuration() {
+        return composerToolbarEnabled ? 220 : 420;
+    }
+
     // NagramX: while expanded the field fills the budget ChatActivity measured (action bar to keyboard)
     // minus what else stacks inside the island (the reply/edit header and the field's bottom margin).
     // Floored at a normal row so a momentarily silly budget can't squash it to nothing.
@@ -7081,7 +7281,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             .scaleX(show ? 1.0f : 0.6f)
             .scaleY(show ? 1.0f : 0.6f)
             .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-            .setDuration(420)
+            .setDuration(getComposerActionFadeDuration())
             .withEndAction(() -> {
                 if (!show) {
                     aiButton.setVisibility(View.GONE);
@@ -7120,6 +7320,14 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private boolean shownRichButton;
+    private boolean hasSimpleDraft() {
+        if (messageEditText == null) {
+            return false;
+        }
+        CharSequence text = messageEditText.getTextToUse();
+        return text != null && !TextUtils.isEmpty(AndroidUtilities.getTrimmedString(text));
+    }
+
     private void showRichButton(boolean show_) {
         final boolean show = (richDraftActive || show_) && parentFragment != null && !parentFragment.isSecretChat() && editingMessageObject == null && MessagesController.getInstance(currentAccount).richEditorAvailable();
 
@@ -7132,7 +7340,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             .scaleX(show ? 1.0f : 0.6f)
             .scaleY(show ? 1.0f : 0.6f)
             .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-            .setDuration(420)
+            .setDuration(getComposerActionFadeDuration())
             .withEndAction(() -> {
                 if (!show) {
                     richButton.setVisibility(View.GONE);
@@ -7685,6 +7893,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public void onDestroy() {
+        if (composerFormattingActions != null) {
+            composerFormattingActions.onDestroy();
+        }
         if (audioTimelineView != null) {
             audioTimelineView.destroy();
         }
@@ -7842,6 +8053,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         isPaused = false;
         // NagramX (#input-text-size): pick up a slider change made while this chat was backgrounded
         refreshInputTextSize();
+        if (composerFormattingActions != null) {
+            composerFormattingActions.refresh();
+        }
         if (hideKeyboardRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(hideKeyboardRunnable);
             hideKeyboardRunnable = null;
@@ -10282,7 +10496,16 @@ public class ChatActivityEnterView extends FrameLayout implements
             messageEditText.setPadding(0, dp(9), 0, dp(10));
         }
         int inset = dp(COMPOSER_TEXT_HORIZONTAL_INSET);
+        publishComposerPrimaryOffset();
         int endInset = getComposerTextEndInset();
+        boolean compact = !messageEditExpanded && !richDraftActive && messageEditText.getLineCount() <= 1;
+        int gravity = messageEditExpanded
+                ? Gravity.TOP | Gravity.START
+                : compact ? Gravity.CENTER_VERTICAL | Gravity.START : Gravity.BOTTOM | Gravity.START;
+        if (messageEditText.getGravity() != gravity) {
+            messageEditText.setGravity(gravity);
+        }
+        // NagramX: the field's 9/10dp padding leaves the single line half a dp high of centre; nudge it back
         float translationY = messageEditExpanded ? 0.0f : dpf2(COMPOSER_TEXT_OPTICAL_OFFSET);
         if (messageEditText.getTranslationY() != translationY) {
             messageEditText.setTranslationY(translationY);
@@ -10303,20 +10526,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private int getComposerTextEndInset() {
-        int endInset = dp(COMPOSER_TEXT_HORIZONTAL_INSET);
-        if (sendButtonContainer != null && sendButtonContainer.getVisibility() == VISIBLE) {
-            endInset = Math.max(endInset, dp(DEFAULT_HEIGHT));
-            if (sendButton != null && sendButton.getVisibility() == VISIBLE) {
-                endInset = Math.max(endInset, sendButton.width());
-            }
-            endInset = Math.max(endInset, getVisiblePrimaryActionWidth(slowModeButton));
-            endInset = Math.max(endInset, getVisiblePrimaryActionWidth(cancelBotButton));
-            endInset = Math.max(endInset, getVisiblePrimaryActionWidth(expandStickersButton));
-        }
-        if (doneButton != null && doneButton.getVisibility() == VISIBLE) {
-            endInset = Math.max(endInset, Math.max(dp(DEFAULT_HEIGHT), doneButton.width()));
-        }
-        return endInset;
+        return Math.max(dp(COMPOSER_TEXT_HORIZONTAL_INSET), inputSatellites.getPublishedRightOffset());
     }
 
     // NagramX (#composer-padding): the bottom controls share one gutter. This keeps wrapped lines wide
@@ -10576,17 +10786,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             layoutParams2.rightMargin = editingMessageObject == null ? Math.max(0, sendButton.width() - dp(DEFAULT_HEIGHT)) : 0;
             recordedAudioPanel.setLayoutParams(layoutParams2);
         }
-    }
-
-    private int getVisiblePrimaryActionWidth(View view) {
-        if (view == null || view.getVisibility() != VISIBLE) {
-            return 0;
-        }
-        if (view.getWidth() > 0) {
-            return view.getWidth();
-        }
-        ViewGroup.LayoutParams layoutParams = view.getLayoutParams();
-        return layoutParams != null && layoutParams.width > 0 ? layoutParams.width : dp(DEFAULT_HEIGHT);
     }
 
     public void startMessageTransition() {
@@ -11836,7 +12035,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             } else {
                 doneButton.setStarsPrice(0, 1, true);
             }
-            doneButton.setLayoutParams(LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
+            doneButton.setLayoutParams(createPrimaryInputLayoutParams(DEFAULT_HEIGHT));
             doneButton.requestLayout();
 
             doneButton.setOnLongClickListener(v -> {
@@ -12309,8 +12508,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         updateAudioVideoSendButtonColor();
         emojiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         emojiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
+        updateExpandInputButtonColor();
         deleteRichDraftButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
         deleteRichDraftButton.setBackground(Theme.createInsetRoundRectDrawable(getThemedColor(Theme.key_listSelector), dp(19), dp(1), dp(3)));
+        if (composerFormattingActions != null) {
+            composerFormattingActions.updateColors();
+        }
         sendOutlineView.setColorFilter(getThemedColor(Theme.key_telegram_color), PorterDuff.Mode.SRC_IN);
         inputSatellites.updateColors(); // NagramX (#input-satellites)
         if (composerToolbar != null) {
@@ -12330,6 +12533,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         audioVideoButtonContainer.setBackground(isMenuState
                 ? Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector))
                 : null);
+    }
+
+    private void updateExpandInputButtonColor() {
+        if (expandInputButton != null) {
+            expandInputButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.SRC_IN));
+        }
     }
 
     private void updateRecordedDeleteIconColors() {
@@ -12482,6 +12691,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public boolean hasText() {
         return messageEditText != null && messageEditText.length() > 0;
+    }
+
+    public boolean isComposerToolbarEnabled() {
+        return composerToolbarEnabled;
     }
 
     @Nullable
@@ -12703,13 +12916,16 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         updateButtons();
         if (wasActive != richDraftActive) {
+            if (composerFormattingActions != null) {
+                composerFormattingActions.refresh();
+            }
             checkSendButton(true);
         }
     }
 
     private void updateButtons() {
         showAiButton(messageEditText != null && messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
-        showRichButton(messageEditText != null && messageEditText.getLineCount() > 2 && messageEditText.getText() != null && !TextUtils.isEmpty(messageEditText.getText().toString().trim()));
+        showRichButton(hasSimpleDraft());
         updateExpandInputButton();
     }
 
@@ -16682,6 +16898,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     public void setTextTransitionIsRunning(boolean b) {
         textTransitionIsRunning = b;
         sendButtonContainer.invalidate();
+        if (messageEditTextContainer != null) {
+            messageEditTextContainer.invalidate();
+        }
     }
 
     public float getTopViewHeight() {
@@ -16702,6 +16921,15 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     @Override
     protected void dispatchDraw(Canvas canvas) {
+        if (publishComposerPrimaryOffset() && !composerPrimaryGeometryPosted) {
+            composerPrimaryGeometryPosted = true;
+            post(() -> {
+                composerPrimaryGeometryPosted = false;
+                if (!destroyed) {
+                    applyComposerTextGeometry();
+                }
+            });
+        }
         if (emojiView == null || emojiView.getVisibility() != View.VISIBLE || emojiView.getStickersExpandOffset() == 0) {
             super.dispatchDraw(canvas);
         } else {
@@ -16752,8 +16980,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 //        if (recordedAudioTimeTextView != null) {
 //            recordedAudioTimeTextView.setTranslationX(leftPadding);
 //        }
-        sendButtonContainer.setTranslationX(rightPadding);
-        sendButtonContainer.setAlpha(progress);
+        if (!composerToolbarEnabled) {
+            sendButtonContainer.setTranslationX(rightPadding);
+            sendButtonContainer.setAlpha(progress);
+        }
         if (suggestButton != null) {
             suggestButton.setAlpha(suggestButton.getScaleX() > 0.7f ? progress : 0);
         }
@@ -17433,6 +17663,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             return width(getMeasuredHeight());
         }
 
+        public int getVisualWidth() {
+            float width = Math.max(dpf2(38), dpf2(10 + 10) + priceText.getAnimateToWidth());
+            return Math.round(lerp(width, dpf2(38), sameWidthFactor));
+        }
+
         public int width(int h) {
             final float openProgress = isOpen() ? 1.0f : 0.0f;
             final float priceProgress = starsPrice > 0 ? 1.0f : 0.0f;
@@ -17624,6 +17859,27 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
     }
 
+    public int getInputBubblePrimaryEndInset() {
+        if (!composerToolbarEnabled || toolbarReplacementVisible || inputPrimarySuppressed) {
+            return 0;
+        }
+        return inputSatellites.getPublishedRightOffset();
+    }
+
+    private boolean publishComposerPrimaryOffset() {
+        if (!composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
+            return false;
+        }
+        onChangedInputPrimaryWidth();
+        return true;
+    }
+
+    private void refreshComposerPrimaryOffset() {
+        if (publishComposerPrimaryOffset()) {
+            applyComposerTextGeometry();
+        }
+    }
+
     private ChatActivitySideControlsButtonsLayout sideButtons;
     public void setInputSatelliteGlassFactory(org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory factory,
                                               org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider colorProvider) {
@@ -17753,6 +18009,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onChangedIslandTotalHeight(float newTotalHeight) {
+
+    }
+
+    protected void onChangedInputPrimaryWidth() {
 
     }
 
