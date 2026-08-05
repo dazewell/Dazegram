@@ -11655,6 +11655,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                 || recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE;
         boolean replaceInput = replacementVisible || recordingVisible;
         composerToolbar.setControlsVisible(!replaceInput);
+        // NagramX (#composer-toolbar): the record and review panels are shorter than the toolbar, so an empty
+        // toolbar left in the row would stretch the input background well above them. The bot web view lives
+        // inside the toolbar, so that one replacement has to keep it.
+        composerToolbar.setVisibility(recordingVisible && !replacementVisible ? GONE : VISIBLE);
         if (replaceInput) {
             toolbarReplacementVisible = true;
             // NagramX (#composer-toolbar): the record and review panels still send through the primary column
