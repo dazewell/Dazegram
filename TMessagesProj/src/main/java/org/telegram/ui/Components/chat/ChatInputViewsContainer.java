@@ -28,9 +28,9 @@ public class ChatInputViewsContainer extends FrameLayout {
     public static final int INPUT_KEYBOARD_RADIUS = 29;
 
     public static final int INPUT_BUBBLE_BOTTOM = 9;
-    // NagramX: a bottom inset can shorten the pill, but never past one normal composer row
-    // (ChatActivityEnterView.DEFAULT_HEIGHT), or the toolbar's inset would eat the text line itself.
-    private static final int INPUT_BUBBLE_MIN_HEIGHT = 44;
+    // NagramX: a bottom inset can shorten the pill, but never past one normal composer row,
+    // or the toolbar's inset would eat the text line itself.
+    private static final int INPUT_BUBBLE_MIN_HEIGHT = org.telegram.ui.Components.ChatActivityEnterView.DEFAULT_HEIGHT;
 
     private WindowInsetsProvider windowInsetsProvider;
 
