@@ -10438,8 +10438,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
+    // NagramX (#composer-toolbar): the satellite offset is where the bubble's end edge lands, not where the
+    // text should stop. Using it as the text margin left the last line running up to that edge with only the
+    // island's own side margin to spare, while the start side kept its full inset. Reserve the column and
+    // then inset the text off it, same as the start.
     private int getComposerTextEndInset() {
-        return Math.max(dp(COMPOSER_TEXT_HORIZONTAL_INSET), inputSatellites.getPublishedRightOffset());
+        return inputSatellites.getPublishedRightOffset() + dp(COMPOSER_TEXT_HORIZONTAL_INSET);
     }
 
     // NagramX (#composer-padding): the bottom controls share one gutter. This keeps wrapped lines wide
