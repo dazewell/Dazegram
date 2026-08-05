@@ -13041,12 +13041,24 @@ public class ChatActivityEnterView extends FrameLayout implements
             birthdayHint.setMultilineText(true);
             setBirthdayHintText();
             birthdayHint.setPadding(dp(12), 0, dp(12), 0);
-            birthdayHint.setJointPx(1f, -(getWidth() - dp(12) - (messageEditTextContainer.getX() + attachLayout.getX() + giftButton.getX() + giftButton.getMeasuredWidth() / 2f)));
+            birthdayHint.setJointPx(1f, -(getWidth() - dp(12) - getCenterXInEnterView(giftButton)));
             addView(birthdayHint, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 200, Gravity.TOP, 0, -200 + 8, 0, 0));
             birthdayHint.setOnHiddenListener(() -> removeView(birthdayHint));
             birthdayHint.setDuration(8000);
             birthdayHint.show();
         }
+    }
+
+    // NagramX: these hints used to add up a fixed parent chain, which stopped matching once the toolbar
+    // reparented the buttons - walk whatever chain the button actually has.
+    private float getCenterXInEnterView(View view) {
+        float x = view.getX() + view.getMeasuredWidth() / 2f;
+        android.view.ViewParent parent = view.getParent();
+        while (parent instanceof View && parent != this) {
+            x += ((View) parent).getX();
+            parent = parent.getParent();
+        }
+        return x;
     }
 
     private void setBirthdayHintText() {
@@ -13062,7 +13074,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             sendSuggestHintView.setMultilineText(true);
             sendSuggestHintView.setText(LocaleController.formatString(R.string.SuggestAPostBelowHint, ForumUtilities.getMonoForumTitle(currentAccount, dialog_id, true)));
             sendSuggestHintView.setPadding(dp(12), 0, dp(12), 0);
-            sendSuggestHintView.setJointPx(1f, -(getWidth() - dp(12) - (messageEditTextContainer.getX() + attachLayout.getX() + suggestButton.getX() + suggestButton.getMeasuredWidth() / 2f)));
+            sendSuggestHintView.setJointPx(1f, -(getWidth() - dp(12) - getCenterXInEnterView(suggestButton)));
             addView(sendSuggestHintView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 200, Gravity.TOP, 0, -200 + 8, 0, 0));
             sendSuggestHintView.setOnHiddenListener(() -> AndroidUtilities.removeFromParent(sendSuggestHintView));
             sendSuggestHintView.setDuration(8000);
