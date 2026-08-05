@@ -11684,6 +11684,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 richDraftPreview.setVisibility(richDraftActive ? VISIBLE : GONE);
             }
             restoreInputPrimaryAfterReplacement();
+            // NagramX (#composer-toolbar): the formatting row keys off the edit field being visible, and the
+            // replacement hid it. Nothing else re-checks until a keystroke, so it would stay empty until typing.
+            if (composerFormattingActions != null) {
+                composerFormattingActions.refresh();
+            }
         }
         applyComposerReplacementGeometry();
         messageEditTextContainer.requestLayout();
