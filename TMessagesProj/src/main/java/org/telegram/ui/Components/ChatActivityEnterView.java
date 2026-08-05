@@ -4195,7 +4195,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         int endGravity = LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT;
         return LayoutHelper.createFrame(width, DEFAULT_HEIGHT, Gravity.BOTTOM | endGravity, 0, 0, 0,
-                COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP);
+                getPrimaryColumnBottomMargin());
+    }
+
+    // NagramX (#composer-toolbar): the primary column rides above the toolbar, except while a record or review
+    // panel owns the row: there is no toolbar under it then, so it drops to the bottom.
+    private int getPrimaryColumnBottomMargin() {
+        return toolbarReplacementVisible ? 0 : COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP;
     }
 
     @SuppressLint("AppCompatCustomView")
@@ -11651,7 +11657,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         composerToolbar.setControlsVisible(!replaceInput);
         if (replaceInput) {
             toolbarReplacementVisible = true;
-            suppressInputPrimaryForReplacement();
+            // NagramX (#composer-toolbar): the record and review panels still send through the primary column
+            // (the mic button owns the record gesture, the send button owns the review), so only the bot web
+            // view may take it away.
+            if (replacementVisible) {
+                suppressInputPrimaryForReplacement();
+            } else {
+                restoreInputPrimaryAfterReplacement();
+            }
             if (messageEditText != null) {
                 messageEditText.setVisibility(GONE);
             }
@@ -11668,9 +11681,39 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             restoreInputPrimaryAfterReplacement();
         }
+        applyComposerReplacementGeometry();
         messageEditTextContainer.requestLayout();
         if (wasReplacementVisible != toolbarReplacementVisible) {
             onChangedIslandTotalHeight(currentIslandTotalHeight);
+        }
+    }
+
+    // NagramX (#composer-toolbar): with the row replaced there is no toolbar under it, so the primary column
+    // drops to the bottom, and the review panel gives back the width the send button needs.
+    private void applyComposerReplacementGeometry() {
+        int bottomMargin = dp(getPrimaryColumnBottomMargin());
+        setPrimaryColumnBottomMargin(sendButtonContainer, bottomMargin);
+        setPrimaryColumnBottomMargin(sendOutlineView, bottomMargin);
+        setPrimaryColumnBottomMargin(doneButton, bottomMargin);
+        if (recordedAudioPanel != null && recordedAudioPanel.getParent() == messageEditTextContainer) {
+            FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
+            int endMargin = toolbarReplacementVisible && !inputPrimarySuppressed
+                    ? inputSatellites.getPublishedRightOffset() : 0;
+            if (layoutParams.getMarginEnd() != endMargin) {
+                layoutParams.setMarginEnd(endMargin);
+                recordedAudioPanel.setLayoutParams(layoutParams);
+            }
+        }
+    }
+
+    private void setPrimaryColumnBottomMargin(View view, int bottomMargin) {
+        if (view == null) {
+            return;
+        }
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) view.getLayoutParams();
+        if (layoutParams.bottomMargin != bottomMargin) {
+            layoutParams.bottomMargin = bottomMargin;
+            view.setLayoutParams(layoutParams);
         }
     }
 
@@ -17767,7 +17810,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     public int getInputBubblePrimaryEndInset() {
-        if (!composerToolbarEnabled || toolbarReplacementVisible || inputPrimarySuppressed) {
+        if (!composerToolbarEnabled || inputPrimarySuppressed) {
             return 0;
         }
         return inputSatellites.getPublishedRightOffset();
@@ -17783,6 +17826,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     private void refreshComposerPrimaryOffset() {
         if (publishComposerPrimaryOffset()) {
+            if (toolbarReplacementVisible) {
+                applyComposerReplacementGeometry();
+            }
             applyComposerTextGeometry();
         }
     }
