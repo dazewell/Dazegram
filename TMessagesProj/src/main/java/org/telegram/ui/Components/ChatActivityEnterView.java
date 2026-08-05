@@ -13050,7 +13050,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     // NagramX: these hints used to add up a fixed parent chain, which stopped matching once the toolbar
-    // reparented the buttons - walk whatever chain the button actually has.
+    // reparented the buttons - walk whatever chain the button actually has. Assumes no scrolling ancestor.
     private float getCenterXInEnterView(View view) {
         float x = view.getX() + view.getMeasuredWidth() / 2f;
         android.view.ViewParent parent = view.getParent();

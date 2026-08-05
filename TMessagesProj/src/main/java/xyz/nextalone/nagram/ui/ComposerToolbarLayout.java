@@ -9,6 +9,7 @@ import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
@@ -20,6 +21,10 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 
 /**
  * Presentation-only row for the chat composer controls.
@@ -175,11 +180,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
         return slot;
     }
 
-    private static LinearLayout createLinearSlot(Context context) {
-        LinearLayout slot = new LinearLayout(context);
-        slot.setOrientation(LinearLayout.HORIZONTAL);
-        slot.setGravity(Gravity.CENTER_VERTICAL);
-        slot.setClipChildren(false);
+    private static SlidingLinearLayout createLinearSlot(Context context) {
+        SlidingLinearLayout slot = new SlidingLinearLayout(context);
+        slot.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         return slot;
     }
 
@@ -192,6 +195,14 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static void addToFrame(FrameLayout parent, View view, int width, int height, int gravity) {
         AndroidUtilities.removeFromParent(view);
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
+    }
+
+    // The panel and its slots react to the same layout passes, so they share one settle schedule and start
+    // moving on the same frame. Each further change pushes the start back, capped so a slot that keeps
+    // resizing cannot hold everything frozen.
+    private static long getSettleDelay(long holdStartTime) {
+        long held = SystemClock.elapsedRealtime() - holdStartTime;
+        return Math.max(0, Math.min(BOUNDS_SETTLE_DELAY, BOUNDS_SETTLE_MAX - held));
     }
 
     private static final class ControlsLayout extends FrameLayout {
@@ -249,6 +260,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 if (!visible) {
                     cancelBoundsAnimation();
                     resetBounds();
+                    SlidingLinearLayout.cancelSlidesIn(this);
                 }
                 setVisibility(visibility);
             }
@@ -360,8 +372,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // Each further change pushes the start back, so cap the wait: a slot that keeps resizing must not
         // leave the panel frozen.
         private long getRemainingSettleDelay() {
-            long held = SystemClock.elapsedRealtime() - holdStartTime;
-            return Math.max(0, Math.min(BOUNDS_SETTLE_DELAY, BOUNDS_SETTLE_MAX - held));
+            return getSettleDelay(holdStartTime);
         }
 
         private void startBoundsAnimation() {
@@ -425,16 +436,25 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
     }
 
-    private static final class CollapsingLinearLayout extends LinearLayout {
-        private int occupiedChildCount;
+    private static class SlidingLinearLayout extends LinearLayout {
+        private final HashMap<View, int[]> slides = new HashMap<>();
+        private final HashSet<View> hiddenFromAccessibility = new HashSet<>();
+        private final Runnable slideStarter = this::startSlides;
+        private ValueAnimator slideAnimator;
+        private long slideHoldStart;
+        protected int occupiedChildCount;
         private boolean swallowingTouch;
 
-        CollapsingLinearLayout(Context context) {
+        SlidingLinearLayout(Context context) {
             super(context);
             setOrientation(HORIZONTAL);
             setGravity(Gravity.CENTER_VERTICAL);
             setClipChildren(false);
             setClipToPadding(false);
+        }
+
+        boolean isOccupied(View child) {
+            return child.getVisibility() != GONE;
         }
 
         @Override
@@ -466,24 +486,133 @@ public final class ComposerToolbarLayout extends FrameLayout {
         protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
             boolean rtl = getLayoutDirection() == View.LAYOUT_DIRECTION_RTL;
             int x = rtl ? getWidth() - getPaddingRight() : getPaddingLeft();
+            slides.clear();
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
+                int previousLeft = child.getLeft();
+                int previousWidth = child.getWidth();
                 if (!isOccupied(child)) {
                     layoutReleasedChild(child, x);
                     continue;
                 }
                 LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
+                int childWidth = child.getMeasuredWidth();
                 int childHeight = child.getMeasuredHeight();
                 int availableHeight = getHeight() - getPaddingTop() - getPaddingBottom() - layoutParams.topMargin - layoutParams.bottomMargin;
                 int childTop = getPaddingTop() + layoutParams.topMargin + Math.max(0, (availableHeight - childHeight) / 2);
+                int childLeft;
                 if (rtl) {
-                    x -= layoutParams.rightMargin + child.getMeasuredWidth();
-                    child.layout(x, childTop, x + child.getMeasuredWidth(), childTop + childHeight);
+                    x -= layoutParams.rightMargin + childWidth;
+                    childLeft = x;
                     x -= layoutParams.leftMargin;
                 } else {
                     x += layoutParams.leftMargin;
-                    child.layout(x, childTop, x + child.getMeasuredWidth(), childTop + childHeight);
-                    x += child.getMeasuredWidth() + layoutParams.rightMargin;
+                    childLeft = x;
+                    x += childWidth + layoutParams.rightMargin;
+                }
+                child.layout(childLeft, childTop, childLeft + childWidth, childTop + childHeight);
+                setHiddenFromAccessibility(child, false);
+                // Lay the control out where it belongs, push it back to where it was drawn, then ease it
+                // across. It offsets rather than translates because the enter view already drives
+                // translationX on several of these controls.
+                if (previousWidth > 0 && previousLeft != childLeft) {
+                    slides.put(child, new int[]{childLeft, previousLeft - childLeft});
+                    child.offsetLeftAndRight(previousLeft - childLeft);
+                }
+            }
+            if (slides.isEmpty()) {
+                cancelSlides();
+            } else {
+                scheduleSlides();
+            }
+        }
+
+        private void scheduleSlides() {
+            // Something already moving should keep moving: only a settled row waits for the panel's
+            // coalescing window.
+            boolean animating = slideAnimator != null;
+            if (slideHoldStart == 0) {
+                slideHoldStart = SystemClock.elapsedRealtime();
+            }
+            // Children are already sitting where they were drawn, so drop a running animation instead of
+            // letting it finish against the new targets at whatever progress it had reached.
+            if (animating) {
+                ValueAnimator running = slideAnimator;
+                slideAnimator = null;
+                running.cancel();
+            }
+            AndroidUtilities.cancelRunOnUIThread(slideStarter);
+            AndroidUtilities.runOnUIThread(slideStarter, animating ? 0 : getSettleDelay(slideHoldStart));
+        }
+
+        private void startSlides() {
+            slideHoldStart = 0;
+            if (slides.isEmpty()) {
+                return;
+            }
+            slideAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
+            slideAnimator.setDuration(220);
+            slideAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+            slideAnimator.addUpdateListener(animation -> applySlides((float) animation.getAnimatedValue()));
+            slideAnimator.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    if (animation == slideAnimator) {
+                        slideAnimator = null;
+                        applySlides(1.0f);
+                        slides.clear();
+                    }
+                }
+            });
+            slideAnimator.start();
+        }
+
+        private void applySlides(float progress) {
+            for (Map.Entry<View, int[]> entry : slides.entrySet()) {
+                View child = entry.getKey();
+                if (child.getParent() != this) {
+                    continue;
+                }
+                int[] slide = entry.getValue();
+                child.offsetLeftAndRight(slide[0] + Math.round(slide[1] * (1.0f - progress)) - child.getLeft());
+            }
+        }
+
+        private void cancelSlides() {
+            AndroidUtilities.cancelRunOnUIThread(slideStarter);
+            slideHoldStart = 0;
+            if (slideAnimator != null) {
+                ValueAnimator running = slideAnimator;
+                slideAnimator = null;
+                running.cancel();
+            }
+            applySlides(1.0f);
+            slides.clear();
+        }
+
+        @Override
+        public void onViewRemoved(View child) {
+            super.onViewRemoved(child);
+            slides.remove(child);
+            setHiddenFromAccessibility(child, false);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            cancelSlides();
+        }
+
+        // Hiding the row does not detach the slots, and a GONE -> VISIBLE round trip is not guaranteed to
+        // lay out again, so a half-finished slide would come back stuck.
+        static void cancelSlidesIn(View view) {
+            if (view instanceof SlidingLinearLayout) {
+                ((SlidingLinearLayout) view).cancelSlides();
+            }
+            if (view instanceof ViewGroup) {
+                ViewGroup group = (ViewGroup) view;
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    cancelSlidesIn(group.getChildAt(i));
                 }
             }
         }
@@ -494,9 +623,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private void layoutReleasedChild(View child, int x) {
             if (child.getWidth() > 0 && child.getVisibility() == VISIBLE && child.getAlpha() > 0) {
                 child.layout(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+                setHiddenFromAccessibility(child, true);
                 return;
             }
+            setHiddenFromAccessibility(child, false);
             child.layout(x, getPaddingTop(), x, getPaddingTop());
+        }
+
+        // Touch is swallowed below, but a screen reader would still reach a control that is on its way out.
+        private void setHiddenFromAccessibility(View child, boolean hidden) {
+            if (hidden ? !hiddenFromAccessibility.add(child) : !hiddenFromAccessibility.remove(child)) {
+                return;
+            }
+            child.setImportantForAccessibility(hidden
+                    ? IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                    : IMPORTANT_FOR_ACCESSIBILITY_AUTO);
         }
 
         // A control still fading keeps its hit rect, and it overlaps whatever took its place. Swallow the tap
@@ -519,7 +660,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private boolean isInsideReleasedChild(float x, float y) {
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
-                if (isOccupied(child) || child.getWidth() == 0) {
+                if (isOccupied(child) || child.getWidth() == 0 || child.getVisibility() != VISIBLE || child.getAlpha() <= 0) {
                     continue;
                 }
                 if (x >= child.getLeft() && x < child.getRight() && y >= child.getTop() && y < child.getBottom()) {
@@ -527,6 +668,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 }
             }
             return false;
+        }
+    }
+
+    private static final class CollapsingLinearLayout extends SlidingLinearLayout {
+        CollapsingLinearLayout(Context context) {
+            super(context);
+        }
+
+        // A control claims its slot once its fade is past halfway and gives it up at the same point on
+        // the way out. Releasing only at alpha 0 made a leaving control hold the row open for its whole
+        // fade, so the panel reflowed twice - once when its replacement arrived, again when it finally
+        // let go - and the neighbouring buttons crawled back into place.
+        @Override
+        boolean isOccupied(View child) {
+            return child.getVisibility() == VISIBLE && child.getAlpha() >= 0.5f;
         }
 
         @Override
@@ -556,14 +712,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 return true;
             }
             return releasedChildVisible;
-        }
-
-        // A control claims its slot once its fade is past halfway and gives it up at the same point on
-        // the way out. Releasing only at alpha 0 made a leaving control hold the row open for its whole
-        // fade, so the panel reflowed twice - once when its replacement arrived, again when it finally
-        // let go - and the neighbouring buttons crawled back into place.
-        private static boolean isOccupied(View child) {
-            return child.getVisibility() == VISIBLE && child.getAlpha() >= 0.5f;
         }
     }
 }
