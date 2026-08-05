@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -29,6 +30,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public static final int HEIGHT = 56;
     public static final int BUTTON_SIZE = 48;
+    private static final int BOUNDS_SETTLE_DELAY = 48;
+    private static final int BOUNDS_SETTLE_MAX = 150;
 
     private final ControlsLayout controls;
     private final FrameLayout startSlot;
@@ -203,6 +206,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private float pendingVisualLeft;
         private float pendingVisualWidth;
         private float animatedGlassWidth = -1;
+        private boolean holdingBounds;
+        private long holdStartTime;
+        private final Runnable boundsAnimationStarter = this::startBoundsAnimation;
 
         ControlsLayout(Context context) {
             super(context);
@@ -241,7 +247,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             if (getVisibility() != visibility) {
                 if (!visible) {
                     cancelBoundsAnimation();
-                    setTranslationX(0);
+                    resetBounds();
                 }
                 setVisibility(visibility);
             }
@@ -299,8 +305,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 animatedGlassWidth = getWidth();
             } else if (pendingBoundsAnimation) {
                 pendingBoundsAnimation = false;
-                startBoundsAnimation();
-            } else {
+                holdCapturedVisualState();
+                AndroidUtilities.runOnUIThread(boundsAnimationStarter, getRemainingSettleDelay());
+            } else if (!holdingBounds) {
                 animatedGlassWidth = getWidth();
             }
         }
@@ -330,11 +337,34 @@ public final class ComposerToolbarLayout extends FrameLayout {
             cancelBoundsAnimation();
         }
 
+        // Hold the panel exactly where it was drawn instead of moving straight away. Erasing a draft flips two
+        // slots a frame or two apart (attach arrives, the action beside it leaves), and each flip remeasures;
+        // waiting for the width to settle turns what used to be two consecutive slides into one.
+        private void holdCapturedVisualState() {
+            if (holdStartTime == 0) {
+                holdStartTime = SystemClock.elapsedRealtime();
+            }
+            holdingBounds = true;
+            setTranslationX(pendingVisualLeft - getLeft());
+            animatedGlassWidth = pendingVisualWidth;
+            invalidate();
+        }
+
+        // Each further change pushes the start back, so cap the wait: a slot that keeps resizing must not
+        // leave the panel frozen.
+        private long getRemainingSettleDelay() {
+            long held = SystemClock.elapsedRealtime() - holdStartTime;
+            return Math.max(0, Math.min(BOUNDS_SETTLE_DELAY, BOUNDS_SETTLE_MAX - held));
+        }
+
         private void startBoundsAnimation() {
+            holdingBounds = false;
+            holdStartTime = 0;
             float finalWidth = getWidth();
             float initialTranslation = pendingVisualLeft - getLeft();
             float initialWidth = pendingVisualWidth;
             if (initialTranslation == 0 && initialWidth == finalWidth) {
+                setTranslationX(0);
                 animatedGlassWidth = finalWidth;
                 return;
             }
@@ -364,10 +394,27 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         private void cancelBoundsAnimation() {
+            holdingBounds = false;
+            AndroidUtilities.cancelRunOnUIThread(boundsAnimationStarter);
             if (boundsAnimator != null) {
                 boundsAnimator.cancel();
                 boundsAnimator = null;
             }
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            cancelBoundsAnimation();
+            resetBounds();
+        }
+
+        private void resetBounds() {
+            pendingBoundsAnimation = false;
+            holdingBounds = false;
+            holdStartTime = 0;
+            setTranslationX(0);
+            animatedGlassWidth = getWidth();
         }
     }
 
