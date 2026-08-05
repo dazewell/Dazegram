@@ -104,30 +104,6 @@ public final class InputSatellites {
         }
     }
 
-    public void drawFills(Canvas canvas, ViewGroup parent) {
-        if (factory == null) {
-            return;
-        }
-        for (int i = 0; i < fills.size(); i++) {
-            GlassFill fill = fills.get(i);
-            View view = fill.view;
-            if (view.getParent() != parent || !wants(fill)) {
-                continue;
-            }
-            float alpha = view.getAlpha();
-            float scaleX = view.getScaleX();
-            float scaleY = view.getScaleY();
-            if (alpha <= 0.01f || scaleX == 0 || scaleY == 0) {
-                continue;
-            }
-            canvas.save();
-            canvas.translate(view.getLeft() + view.getTranslationX(), view.getTop() + view.getTranslationY());
-            canvas.scale(scaleX, scaleY, view.getPivotX(), view.getPivotY());
-            paintFill(canvas, fill, view, (int) (alpha * 255), parent);
-            canvas.restore();
-        }
-    }
-
     public void updateColors() {
         for (int i = 0; i < fills.size(); i++) {
             BlurredBackgroundDrawable drawable = fills.get(i).drawable;

@@ -28,6 +28,9 @@ public class ChatInputViewsContainer extends FrameLayout {
     public static final int INPUT_KEYBOARD_RADIUS = 29;
 
     public static final int INPUT_BUBBLE_BOTTOM = 9;
+    // NagramX: a bottom inset can shorten the pill, but never past one normal composer row
+    // (ChatActivityEnterView.DEFAULT_HEIGHT), or the toolbar's inset would eat the text line itself.
+    private static final int INPUT_BUBBLE_MIN_HEIGHT = 44;
 
     private WindowInsetsProvider windowInsetsProvider;
 
@@ -267,7 +270,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private final RectF tmpRectF = new RectF();
 
     private void updateInputBubbleGeometry() {
-        appliedInputBubbleBottomInset = Math.min(inputBubbleBottomInset, Math.max(0, inputBubbleHeightRound - dp(44)));
+        appliedInputBubbleBottomInset = Math.min(inputBubbleBottomInset, Math.max(0, inputBubbleHeightRound - dp(INPUT_BUBBLE_MIN_HEIGHT)));
         final int blurTop = getMeasuredHeight() - currentBlurredHeight;
         inputBubbleFullBounds.set(
             Math.round(inputBubbleOffsetLeft),
