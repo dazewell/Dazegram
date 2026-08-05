@@ -7,6 +7,7 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -274,6 +275,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth));
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
+            // A control fading out inside the middle group sits past the viewport edge, so only clip once the
+            // group actually scrolls - that is the case the clip exists for.
+            boolean clipMiddle = middleWidth > middleViewportWidth;
+            if (middleScrollView.getClipChildren() != clipMiddle) {
+                middleScrollView.setClipChildren(clipMiddle);
+            }
             if (laidOut && measuredPanelWidth != panelWidth) {
                 captureVisualState();
                 pendingBoundsAnimation = true;
@@ -420,6 +427,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     private static final class CollapsingLinearLayout extends LinearLayout {
         private int occupiedChildCount;
+        private boolean swallowingTouch;
 
         CollapsingLinearLayout(Context context) {
             super(context);
@@ -461,7 +469,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             for (int i = 0; i < getChildCount(); i++) {
                 View child = getChildAt(i);
                 if (!isOccupied(child)) {
-                    child.layout(x, getPaddingTop(), x, getPaddingTop());
+                    layoutReleasedChild(child, x);
                     continue;
                 }
                 LayoutParams layoutParams = (LayoutParams) child.getLayoutParams();
@@ -480,25 +488,74 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
         }
 
+        // A control that gave up its slot keeps the box it last held until its fade actually ends. Collapsing
+        // it the moment the row stops counting it wiped it off screen at half opacity, so every swap looked
+        // like a pop rather than a fade.
+        private void layoutReleasedChild(View child, int x) {
+            if (child.getWidth() > 0 && child.getVisibility() == VISIBLE && child.getAlpha() > 0) {
+                child.layout(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
+                return;
+            }
+            child.layout(x, getPaddingTop(), x, getPaddingTop());
+        }
+
+        // A control still fading keeps its hit rect, and it overlaps whatever took its place. Swallow the tap
+        // rather than firing the action the user can no longer see.
+        @Override
+        public boolean dispatchTouchEvent(MotionEvent event) {
+            int action = event.getActionMasked();
+            if (action == MotionEvent.ACTION_DOWN) {
+                swallowingTouch = isInsideReleasedChild(event.getX(), event.getY());
+            }
+            if (swallowingTouch) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    swallowingTouch = false;
+                }
+                return true;
+            }
+            return super.dispatchTouchEvent(event);
+        }
+
+        private boolean isInsideReleasedChild(float x, float y) {
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                if (isOccupied(child) || child.getWidth() == 0) {
+                    continue;
+                }
+                if (x >= child.getLeft() && x < child.getRight() && y >= child.getTop() && y < child.getBottom()) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         @Override
         public void onDescendantInvalidated(View child, View target) {
             super.onDescendantInvalidated(child, target);
-            int occupiedChildCount = getOccupiedChildCount();
-            if (this.occupiedChildCount != occupiedChildCount) {
-                this.occupiedChildCount = occupiedChildCount;
+            if (needsRelayout()) {
                 requestLayout();
             }
             invalidate();
         }
 
-        private int getOccupiedChildCount() {
-            int count = 0;
+        // Occupancy changes reflow the row; a finished fade has to reflow too, otherwise the control that
+        // just went invisible keeps its box (and its hit rect) forever.
+        private boolean needsRelayout() {
+            int occupied = 0;
+            boolean releasedChildVisible = false;
             for (int i = 0; i < getChildCount(); i++) {
-                if (isOccupied(getChildAt(i))) {
-                    count++;
+                View child = getChildAt(i);
+                if (isOccupied(child)) {
+                    occupied++;
+                } else if (child.getWidth() > 0 && (child.getVisibility() != VISIBLE || child.getAlpha() <= 0)) {
+                    releasedChildVisible = true;
                 }
             }
-            return count;
+            if (occupiedChildCount != occupied) {
+                occupiedChildCount = occupied;
+                return true;
+            }
+            return releasedChildVisible;
         }
 
         // A control claims its slot once its fade is past halfway and gives it up at the same point on
