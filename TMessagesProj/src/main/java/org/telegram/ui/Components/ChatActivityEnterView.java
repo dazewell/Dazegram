@@ -2889,6 +2889,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             // their last measured widths, so without clipping they'd paint over whatever slid into the gap.
             attachLayout.setClipChildren(composerToolbarEnabled);
             if (composerToolbarEnabled) {
+                // NagramX: the group's buttons are 44dp inside a 48dp row, so centre them with the rest of the toolbar
+                attachLayout.setGravity(Gravity.CENTER_VERTICAL);
                 attachLayout.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
                 composerToolbar.addContextGroup(attachLayout);
             } else {

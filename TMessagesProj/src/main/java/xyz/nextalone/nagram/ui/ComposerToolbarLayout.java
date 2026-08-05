@@ -73,9 +73,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         formattingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         actionSlot = createCollapsingSlot(context);
-        middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
-        middle.addView(formattingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
-        middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+        middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        middle.addView(formattingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         endSlot = createCollapsingSlot(context);
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -115,13 +115,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addFormatting(View view) {
         AndroidUtilities.removeFromParent(view);
-        formattingSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+        formattingSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
         middleScrollView.post(this::pinMiddleToStart);
     }
 
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, HEIGHT));
+        endSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
     }
 
     public void addContextAction(View view) {
