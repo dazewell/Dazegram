@@ -356,7 +356,9 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
                         transition.start();
                     }
                 } else {
-                    if (SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW && Math.abs(view.getTranslationY()) < recyclerListView.getMeasuredHeight()) {
+                    if (!activity.getChatActivityEnterView().isComposerToolbarEnabled()
+                            && SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW
+                            && Math.abs(view.getTranslationY()) < recyclerListView.getMeasuredHeight()) {
                         TextMessageEnterTransition transition = new TextMessageEnterTransition(chatMessageCell, activity, recyclerListView, activity.messageEnterTransitionContainer, resourcesProvider);
                         transition.start();
                     }
@@ -1732,4 +1734,3 @@ public class ChatListItemAnimator extends DefaultItemAnimator {
         this.getThanosEffectContainer = getThanosEffectContainer;
     }
 }
-

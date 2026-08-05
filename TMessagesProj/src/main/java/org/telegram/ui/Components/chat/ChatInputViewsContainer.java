@@ -28,6 +28,9 @@ public class ChatInputViewsContainer extends FrameLayout {
     public static final int INPUT_KEYBOARD_RADIUS = 29;
 
     public static final int INPUT_BUBBLE_BOTTOM = 9;
+    // NagramX: a bottom inset can shorten the pill, but never past one normal composer row,
+    // or the toolbar's inset would eat the text line itself.
+    private static final int INPUT_BUBBLE_MIN_HEIGHT = org.telegram.ui.Components.ChatActivityEnterView.DEFAULT_HEIGHT;
 
     private WindowInsetsProvider windowInsetsProvider;
 
@@ -135,9 +138,13 @@ public class ChatInputViewsContainer extends FrameLayout {
         checkViewsPositions();
 
         final int blurredHeight = inputBubbleHeightRound + dp(INPUT_BUBBLE_BOTTOM) + Math.round(maxBottomInset);
-        if (currentBlurredHeight != blurredHeight || force) {
+        final boolean changed = currentBlurredHeight != blurredHeight;
+        if (changed || force) {
             currentBlurredHeight = blurredHeight;
+        }
+        updateInputBubbleGeometry();
 
+        if (changed || force) {
             final int r = dp(INPUT_KEYBOARD_RADIUS);
             tmpRectF.set(0, getMeasuredHeight() - imeBottomInset, getMeasuredWidth(), getMeasuredHeight());
             underKeyboardPath.rewind();
@@ -210,33 +217,29 @@ public class ChatInputViewsContainer extends FrameLayout {
 
     private float inputBubbleHeight;
     private int inputBubbleHeightRound;
+    private float inputBubbleBottomInset;
+    private float appliedInputBubbleBottomInset;
     public void setInputBubbleHeight(float height) {
         inputBubbleHeight = height;
         inputBubbleHeightRound = Math.round(inputBubbleHeight);
         checkBlurredHeight(false);
     }
 
-    public void setInputBubbleOffsets(float left, float right) {
-        inputBubbleOffsetLeft = left;
-        inputBubbleOffsetRight = right;
+    public void setInputBubbleBottomInset(float inset) {
+        inset = Math.max(0, inset);
+        if (inputBubbleBottomInset == inset) {
+            return;
+        }
+        inputBubbleBottomInset = inset;
+        checkBlurredHeight(false);
         invalidate();
     }
 
-    // NagramX (#input-satellites): the composer's send column asks the bubble to step aside too, so it can
-    // float outside it. Kept in its own pair of fields rather than sharing the ones above: the channel
-    // buttons write those, and two writers on one value would stomp each other. The wider request wins.
-    private float satelliteOffsetLeft;
-    private float satelliteOffsetRight;
-
-    public void setSatelliteOffsets(float left, float right) {
-        if (satelliteOffsetLeft == left && satelliteOffsetRight == right) {
-            return;
-        }
-        satelliteOffsetLeft = left;
-        satelliteOffsetRight = right;
-        // Published from the composer's draw pass, so coalesce to one redraw per frame instead of
-        // asking an ancestor to invalidate while it is drawing.
-        postInvalidateOnAnimation();
+    public void setInputBubbleOffsets(float left, float right) {
+        inputBubbleOffsetLeft = left;
+        inputBubbleOffsetRight = right;
+        updateInputBubbleGeometry();
+        invalidate();
     }
 
     public float getInputBubbleHeight() {
@@ -263,7 +266,21 @@ public class ChatInputViewsContainer extends FrameLayout {
     /* Render */
 
     private final Rect tmpRect = new Rect();
+    private final Rect inputBubbleFullBounds = new Rect();
     private final RectF tmpRectF = new RectF();
+
+    private void updateInputBubbleGeometry() {
+        appliedInputBubbleBottomInset = Math.min(inputBubbleBottomInset, Math.max(0, inputBubbleHeightRound - dp(INPUT_BUBBLE_MIN_HEIGHT)));
+        final int blurTop = getMeasuredHeight() - currentBlurredHeight;
+        inputBubbleFullBounds.set(
+            Math.round(inputBubbleOffsetLeft),
+            0,
+            getMeasuredWidth() - Math.round(inputBubbleOffsetRight),
+            inputBubbleHeightRound
+        );
+        inputBubbleFullBounds.inset(0, -dp(7));
+        inputBubbleFullBounds.offset(0, blurTop + (int) bubbleInputTranlationY);
+    }
 
     @Override
     protected void dispatchDraw(@NonNull Canvas canvas) {
@@ -274,17 +291,18 @@ public class ChatInputViewsContainer extends FrameLayout {
             Math.max(getMeasuredHeight(), getMeasuredHeight() - (int) imeBottomInset + dp(INPUT_KEYBOARD_RADIUS * 2))
         );
 
+        updateInputBubbleGeometry();
         final int blurTop = getMeasuredHeight() - currentBlurredHeight;
+        final int drawnBubbleHeight = Math.max(0, inputBubbleHeightRound - Math.round(appliedInputBubbleBottomInset));
 
         tmpRect.set(
-            Math.round(Math.max(inputBubbleOffsetLeft, satelliteOffsetLeft)),
+            Math.round(inputBubbleOffsetLeft),
             0,
-            getMeasuredWidth() - Math.round(Math.max(inputBubbleOffsetRight, satelliteOffsetRight)),
-            inputBubbleHeightRound
+            getMeasuredWidth() - Math.round(inputBubbleOffsetRight),
+            drawnBubbleHeight
         );
         tmpRect.inset(0, -dp(7));
         tmpRect.offset(0, blurTop + (int) bubbleInputTranlationY);
-
         blurredBackgroundDrawable.setBounds(tmpRect);
         if (drawInputBackground)
             blurredBackgroundDrawable.draw(canvas);
@@ -333,6 +351,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private float bubbleInputTranlationY;
     public void setInputBubbleTranslationY(float translationY) {
         this.bubbleInputTranlationY = translationY;
+        updateInputBubbleGeometry();
         invalidate();
     }
 
@@ -369,7 +388,7 @@ public class ChatInputViewsContainer extends FrameLayout {
             final int x = (int) event.getX();
             final int y = (int) event.getY();
 
-            captured = blurredBackgroundDrawable != null && blurredBackgroundDrawable.getAlpha() == 255 && blurredBackgroundDrawable.getBounds().contains(x, y)
+            captured = blurredBackgroundDrawable != null && blurredBackgroundDrawable.getAlpha() == 255 && inputBubbleFullBounds.contains(x, y)
                 || underKeyboardBackgroundDrawable != null && underKeyboardBackgroundDrawable.getBounds().contains(x, y);
 
         }
