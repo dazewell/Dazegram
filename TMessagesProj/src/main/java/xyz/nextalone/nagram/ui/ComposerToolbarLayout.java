@@ -151,20 +151,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls.setPanelVisible(visible);
     }
 
-    public boolean isStartOrEndTouch(float x, float y) {
-        return controls.getVisibility() == VISIBLE
-                && (isTouchInSlot(startSlot, x, y) || isTouchInSlot(endSlot, x, y));
-    }
-
-    private boolean isTouchInSlot(View slot, float x, float y) {
-        if (slot.getVisibility() != VISIBLE || slot.getWidth() == 0 || slot.getHeight() == 0) {
-            return false;
-        }
-        float left = controls.getX() + slot.getX();
-        float top = controls.getY() + slot.getY();
-        return x >= left && x < left + slot.getWidth() && y >= top && y < top + slot.getHeight();
-    }
-
     private void pinMiddleToStart() {
         View child = middleScrollView.getChildAt(0);
         if (child == null) {

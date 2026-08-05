@@ -2722,71 +2722,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendByEnter = preferences.getBoolean("send_by_enter", false);
 
         textFieldContainer = new FrameLayout(context) {
-            private float expandDragDownX;
-            private float expandDragDownY;
-            private boolean expandDragArmed;
-            private boolean expandDragHandled;
-
-            private boolean evaluateExpandDrag(MotionEvent event) {
-                if (!expandDragArmed || expandDragHandled) {
-                    return false;
-                }
-                float dx = event.getX() - expandDragDownX;
-                float dy = event.getY() - expandDragDownY;
-                if (Math.abs(dy) <= dp(40) || Math.abs(dy) <= Math.abs(dx) * 1.5f) {
-                    return false;
-                }
-                if (dy < 0 && !messageEditExpanded && canExpandInput()) {
-                    expandDragHandled = true;
-                    setMessageEditExpanded(true);
-                    return true;
-                }
-                if (dy > 0 && messageEditExpanded) {
-                    expandDragHandled = true;
-                    setMessageEditExpanded(false);
-                    return true;
-                }
-                return false;
-            }
-
             @Override
             public boolean dispatchTouchEvent(MotionEvent ev) {
                 if (botWebViewButton != null && botWebViewButton.getVisibility() == VISIBLE) {
                     return botWebViewButton.dispatchTouchEvent(ev);
                 }
                 return super.dispatchTouchEvent(ev);
-            }
-
-            @Override
-            public boolean onInterceptTouchEvent(MotionEvent event) {
-                int action = event.getActionMasked();
-                if (action == MotionEvent.ACTION_DOWN) {
-                    // Keep the scrollable middle and text handles free for their own gestures.
-                    expandDragDownX = event.getX();
-                    expandDragDownY = event.getY();
-                    expandDragHandled = false;
-                    expandDragArmed = canExpandInputGesture()
-                            && isComposerExpandDragTarget(event.getX(), event.getY());
-                } else if (action == MotionEvent.ACTION_MOVE) {
-                    return evaluateExpandDrag(event);
-                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                    expandDragArmed = false;
-                }
-                return false;
-            }
-
-            @Override
-            public boolean onTouchEvent(MotionEvent event) {
-                if (expandDragArmed) {
-                    int action = event.getActionMasked();
-                    if (action == MotionEvent.ACTION_MOVE) {
-                        evaluateExpandDrag(event);
-                    } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                        expandDragArmed = false;
-                    }
-                    return true;
-                }
-                return super.onTouchEvent(event);
             }
         };
         textFieldContainer.setClipChildren(false);
@@ -7171,39 +7112,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             return false;
         }
         return true;
-    }
-
-    private boolean canExpandInputGesture() {
-        return composerToolbarEnabled
-                && !recordingAudioVideo
-                && recordInterfaceState == 0
-                && (recordedAudioPanel == null || recordedAudioPanel.getVisibility() != VISIBLE)
-                && (botWebViewButton == null || botWebViewButton.getVisibility() != VISIBLE)
-                && messageEditText != null
-                && messageEditText.getVisibility() == VISIBLE;
-    }
-
-    private boolean isComposerExpandDragTarget(float x, float y) {
-        if (composerToolbar != null && messageEditTextContainer != null) {
-            float toolbarX = messageEditTextContainer.getX() + composerToolbar.getX();
-            float toolbarY = messageEditTextContainer.getY() + composerToolbar.getY();
-            if (composerToolbar.isStartOrEndTouch(x - toolbarX, y - toolbarY)) {
-                return true;
-            }
-        }
-        return (isTouchInView(sendButtonContainer, x, y)
-                    && sendButton != null
-                    && sendButton.getVisibility() == VISIBLE)
-                || isTouchInView(doneButton, x, y);
-    }
-
-    private static boolean isTouchInView(View view, float x, float y) {
-        return view != null
-                && view.getVisibility() == VISIBLE
-                && x >= view.getX()
-                && x < view.getX() + view.getWidth()
-                && y >= view.getY()
-                && y < view.getY() + view.getHeight();
     }
 
     private boolean shownExpandInputButton;
