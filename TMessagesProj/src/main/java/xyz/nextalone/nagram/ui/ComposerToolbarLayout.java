@@ -27,6 +27,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
+import xyz.nextalone.nagram.ui.composer.ComposerButtons;
+import xyz.nextalone.nagram.ui.composer.ComposerLayout;
+
 /**
  * Presentation-only row for the chat composer controls.
  *
@@ -47,9 +50,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final FrameLayout startSlot;
     private final HorizontalScrollView middleScrollView;
     private final CollapsingLinearLayout middleLeadingSlot;
-    private final LinearLayout formattingSlot;
-    private final CollapsingLinearLayout actionSlot;
+    private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
+    private final Map<View, String> configuredKeys = new HashMap<>();
     private View pinnedTrailingView;
 
     public ComposerToolbarLayout(Context context) {
@@ -83,13 +86,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.addView(middle, new HorizontalScrollView.LayoutParams(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         middleLeadingSlot = createCollapsingSlot(context);
-        formattingSlot = createLinearSlot(context);
         middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        formattingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        actionSlot = createCollapsingSlot(context);
+        orderedSlot = createCollapsingSlot(context);
+        orderedSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middle.addView(formattingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        middle.addView(orderedSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         endSlot = createCollapsingSlot(context);
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -121,6 +122,52 @@ public final class ComposerToolbarLayout extends FrameLayout {
         applyAnimatedIconBox(view);
     }
 
+    /**
+     * Places a button the user is allowed to move. The zone and the position inside it come from the
+     * saved layout, resolved as each view arrives: schedule, the send-as avatar and the bot pill are
+     * all created long after the constructor, so there is no single moment where everything is present
+     * and the whole row could be sorted in one pass.
+     */
+    public void addConfigurable(String key, View view) {
+        AndroidUtilities.removeFromParent(view);
+        configuredKeys.put(view, key);
+        int zone = ComposerLayout.zoneOf(key);
+        if (zone == ComposerButtons.ZONE_HIDDEN) {
+            // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
+            // to decide its own geometry, so a removed button has to keep whatever visibility it had.
+            return;
+        }
+        if (zone == ComposerButtons.ZONE_START) {
+            addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
+            applyAnimatedIconBox(view);
+            return;
+        }
+        if (zone == ComposerButtons.ZONE_END) {
+            if (key.equals(ComposerLayout.trailingKey())) {
+                pinnedTrailingView = view;
+                endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+            } else {
+                endSlot.addView(view, insertIndex(endSlot, key, endContextIndex()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+            }
+            return;
+        }
+        orderedSlot.addView(view, insertIndex(orderedSlot, key, orderedSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    // Walks the siblings already in the slot and stops in front of the first one the saved layout puts
+    // after this button. Views with no key (the attach group) are left where they are.
+    private int insertIndex(ViewGroup slot, String key, int limit) {
+        int order = ComposerLayout.indexOf(key);
+        for (int i = 0; i < limit && i < slot.getChildCount(); i++) {
+            String other = configuredKeys.get(slot.getChildAt(i));
+            if (other != null && ComposerLayout.indexOf(other) > order) {
+                return i;
+            }
+        }
+        return limit;
+    }
+
     public void addMiddleLeading(View view, int width, int height, float horizontalMargin, float verticalMargin, int index) {
         AndroidUtilities.removeFromParent(view);
         middleLeadingSlot.addView(view, Math.min(index, middleLeadingSlot.getChildCount()),
@@ -128,47 +175,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.post(this::pinMiddleToStart);
     }
 
-    public void addFormatting(View view) {
-        AndroidUtilities.removeFromParent(view);
-        formattingSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middleScrollView.post(this::pinMiddleToStart);
-    }
-
+    // The attach group is not user-placeable, so it stays at the head of the trailing zone and the
+    // configured buttons order themselves after it.
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-    }
-
-    public void addContextAction(View view) {
-        AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
-    }
-
-    // Attach is the button that gets reached for most, so it holds the trailing edge and nothing that comes
-    // and goes beside it can push it around: a control arriving to its left only widens the capsule, which
-    // the panel already animates as one move.
-    public void addPinnedTrailingAction(View view) {
-        AndroidUtilities.removeFromParent(view);
-        pinnedTrailingView = view;
-        endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        endSlot.addView(view, 0, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
     }
 
     private int endContextIndex() {
         int index = pinnedTrailingView != null ? endSlot.indexOfChild(pinnedTrailingView) : -1;
         return index < 0 ? endSlot.getChildCount() : index;
-    }
-
-    public void addAction(View view) {
-        addAction(view, actionSlot.getChildCount());
-    }
-
-    public void addAction(View view, int index) {
-        AndroidUtilities.removeFromParent(view);
-        actionSlot.addView(view, Math.min(index, actionSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
-    }
-
-    public void addQuickAction(View view) {
-        addContextAction(view);
     }
 
     public void addReplacement(View view) {

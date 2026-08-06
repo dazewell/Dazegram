@@ -1367,6 +1367,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val composerToolbarLayout =
+        addConfig(
+            "ComposerToolbarLayout",
+            ConfigItem.configTypeString,
+            ""
+        )
+    val composerLayoutMigrated =
+        addConfig(
+            "ComposerToolbarLayoutMigrated",
+            ConfigItem.configTypeBool,
+            false
+        )
     val inputTextSize =
         addConfig(
             "InputTextSize",
@@ -1610,6 +1622,7 @@ object NaConfig {
         if (translatorMode.Int() !in 0..2) {
             translatorMode.setConfigInt(0)
         }
+        xyz.nextalone.nagram.ui.composer.ComposerLayout.migrate()
         if (!getPreferences().contains(idDcType.key) && !getPreferences().getBoolean(
                 "ShowIdAndDc", true
             )

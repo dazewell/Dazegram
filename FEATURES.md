@@ -33,6 +33,10 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, and Clear stay in the toolbar and enable when text is selected.
 
+### Composer toolbar layout editor <!-- #composer-layout -->
+
+The button row under the compose box is yours to arrange. A new editor in the chat settings lists every button — emoji, attachments, expand, schedule, rich draft, AI, all of the formatting actions (bold, italic, underline, strikethrough, monospace, code block, spoiler, quote, link, and clear formatting) and a new Select All — and you drag them into the order you want. Three zones: one leading button pinned at the start, a scrolling middle that holds as many as you like, and a trailing group at the end where attachments and schedule live because they carry their own show/hide behaviour. Anything you don't want goes in the Hidden section and stops taking up space. Reset puts it back to the stock arrangement. Your existing toolbar carries over on upgrade, so nothing moves until you move it.
+
 ### Quick schedule button <!-- #quick-schedule -->
 
 The calendar icon stays with the trailing composer actions while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. It no longer takes width from the message text.
