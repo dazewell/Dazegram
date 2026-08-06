@@ -2940,7 +2940,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             attachButton.setImageResource(R.drawable.msg_input_attach2);
             attachButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             if (composerToolbarEnabled) {
-                composerToolbar.addContextAction(attachButton);
+                // NagramX: attach holds the trailing edge - it is the one always reached for, so it stays put
+                // while everything beside it comes and goes
+                composerToolbar.addPinnedTrailingAction(attachButton);
             } else {
                 messageEditTextContainer.addView(attachButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
             }
@@ -3048,9 +3050,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton.setScaleType(ImageView.ScaleType.CENTER);
             updateExpandInputButtonColor();
             expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
-            // NagramX: fullscreen expand sits with the pinned trailing actions, not in the scrolling group -
-            // it gets used far more than the article editor, so it must never scroll out of reach
-            composerToolbar.addContextAction(expandInputButton, 0);
+            // NagramX: fullscreen expand stays in the pinned trailing group beside attach rather than the
+            // scrolling one - it gets used far more than the article editor, so it must never scroll out of reach
+            composerToolbar.addContextAction(expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
                 if (!messageEditExpanded && !canExpandInput()) {
