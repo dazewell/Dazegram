@@ -139,12 +139,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     public boolean WRITE_TO_FILE_IN_BACKGROUND;
 
+    // NagramX: infinite video message toggle states
+    public static final int INFINITE_RECORDING_UNAVAILABLE = -1;
+    public static final int INFINITE_RECORDING_OFF = 0;
+    public static final int INFINITE_RECORDING_ON = 1;
+
     private int currentAccount = UserConfig.selectedAccount;
     private InstantViewCameraContainer cameraContainer;
     private Delegate delegate;
     private Paint paint;
     private RectF rect;
     private final FlashViews.ImageViewInvertable flashButton;
+    private final ImageView infiniteButton; // NagramX
     private final FlashViews flashViews;
     private RLottieDrawable flashOnDrawable, flashOffDrawable;
     private ImageView muteImageView;
@@ -342,7 +348,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         addView(cameraContainer, new LayoutParams(AndroidUtilities.roundPlayingMessageSize, AndroidUtilities.roundPlayingMessageSize, Gravity.CENTER));
         addView(flashViews.foregroundView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.FILL));
 
-        zoomControlView = new InstantZoomControlView(context, resourcesProvider.isDark(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
+        zoomControlView = new InstantZoomControlView(context, isDarkAppearance(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
         zoomControlView.setAlpha(0.0f);
         zoomControlView.setContentDescription(LocaleController.getString(R.string.AccDescrZoomControl));
         zoomControlView.setDelegate(new InstantZoomControlView.Delegate() {
@@ -403,9 +409,26 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         if (!isNewDesign) {
             flashViews.add(flashButton);
-        } else if (!resourcesProvider.isDark()) {
-            flashButton.setInvert(0.6f);
+        } else {
+            applyGlyphColor(flashButton, glyphColor(isDarkAppearance()));
         }
+
+        // NagramX: infinite video message: the same toggle the camera-choice popup offers, but reachable
+        // once the recording is already running (and in the fixed front/rear camera modes, where that
+        // popup never appears). In practice you reach it after locking the recording: while your finger is
+        // still down the gesture belongs to the record button, same as the flash button next to it.
+        infiniteButton = new ImageView(context);
+        infiniteButton.setScaleType(ImageView.ScaleType.CENTER);
+        infiniteButton.setImageResource(R.drawable.nax_infinite);
+        buttonsLayout.addView(infiniteButton, LayoutHelper.createLinear(44, 44));
+        infiniteButton.setOnClickListener(v -> {
+            // the button row only fades out for the preview, it stays clickable, so ignore taps that land
+            // there once the recording has already stopped
+            if (delegate != null && recording) {
+                applyInfiniteRecordingState(delegate.toggleInfiniteRecording());
+            }
+        });
+        updateInfiniteButton();
 
         muteImageView = new ImageView(context);
         muteImageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -598,14 +621,57 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // NagramX: the recorder is built once per chat and reused, so a live theme flip (e.g. battery-saver
     // dark mode) has to be pushed into the controls that snapshot their colors, or they keep the old ones
     private void updateThemeColors() {
+        final boolean dark = isDarkAppearance();
         if (zoomControlView != null) {
-            zoomControlView.updateColors(resourcesProvider.isDark(), Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
+            zoomControlView.updateColors(dark, Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider));
         }
-        // NagramX: only the new-design flash button carries a fixed invert here; the legacy one is driven
-        // by flashViews, so leave it alone. strip the light-theme invert outright when going dark
+        // NagramX: only the new-design flash button carries a fixed tint here; the legacy one is driven
+        // by flashViews, so leave it alone
         if (flashButton != null && isNewDesign) {
-            flashButton.setInvert(resourcesProvider.isDark() ? 0f : 0.6f);
+            applyGlyphColor(flashButton, glyphColor(dark));
         }
+        updateInfiniteButton();
+    }
+
+    // NagramX: resourcesProvider.isDark() answers for the global theme, so a chat carrying its own dark
+    // theme (or a night wallpaper) left the glyphs inverted as if the panel were light. Read the panel
+    // color these controls actually sit on instead.
+    private boolean isDarkAppearance() {
+        return ColorUtils.calculateLuminance(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider)) <= 0.5f;
+    }
+
+    private int glyphColor(boolean dark) {
+        return dark ? Color.WHITE : ColorUtils.blendARGB(Color.WHITE, Color.BLACK, 0.6f);
+    }
+
+    // NagramX: the flash glyphs are single-channel lotties, so RLottieDrawable draws them as a bare alpha
+    // mask and installs its own SRC_IN white filter to give them a color. setInvert() replaces that with a
+    // MULTIPLY filter, which has nothing to multiply against and leaves the mask black in every theme, so
+    // tint with SRC_IN instead — the same way the zoom chips next to it are colored.
+    private void applyGlyphColor(ImageView view, int color) {
+        view.setColorFilter(new android.graphics.PorterDuffColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN));
+    }
+
+    // NagramX: infinite video message: the toggle can go dead mid-recording (view-once armed, slow mode
+    // started, last segment reached), so the button is re-read at every point that can move it instead of
+    // only on click
+    public void updateInfiniteButton() {
+        applyInfiniteRecordingState(delegate == null ? INFINITE_RECORDING_UNAVAILABLE : delegate.getInfiniteRecordingState());
+    }
+
+    private void applyInfiniteRecordingState(int state) {
+        if (infiniteButton == null) {
+            return;
+        }
+        if (state == INFINITE_RECORDING_UNAVAILABLE) {
+            infiniteButton.setVisibility(GONE);
+            return;
+        }
+        final boolean on = state == INFINITE_RECORDING_ON;
+        infiniteButton.setVisibility(VISIBLE);
+        infiniteButton.setBackground(on ? Theme.createCircleDrawable(dp(44), Color.WHITE) : null);
+        applyGlyphColor(infiniteButton, on ? Color.BLACK : glyphColor(isDarkAppearance()));
+        infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 
     @Override
@@ -1231,6 +1297,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         recordedTime = 0;
         progress = 0;
         invalidate();
+        updateInfiniteButton();
     }
 
     // NagramX: send a finished infinite-mode segment as its own round message. Mirrors the normal round-video
@@ -4485,6 +4552,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         View getFragmentView();
         void sendMedia(MediaController.PhotoEntry entry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean b1, long stars);
+
+        // NagramX: infinite video message: state for the in-recording toggle. Unavailable covers both "this
+        // chat can't take unattended segments" and "the segment ceiling is reached", since the button has
+        // nothing useful to do in either case.
+        default int getInfiniteRecordingState() {
+            return INFINITE_RECORDING_UNAVAILABLE;
+        }
+
+        default int toggleInfiniteRecording() {
+            return INFINITE_RECORDING_UNAVAILABLE;
+        }
 
         // NagramX: infinite video message: send a finished segment while the recorder keeps going. The normal
         // sendMedia treats a round video as the end of the session and tears the camera down 3s later.
