@@ -46,6 +46,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final LinearLayout formattingSlot;
     private final CollapsingLinearLayout actionSlot;
     private final CollapsingLinearLayout endSlot;
+    private View pinnedTrailingView;
 
     public ComposerToolbarLayout(Context context) {
         super(context);
@@ -130,16 +131,26 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
     }
 
     public void addContextAction(View view) {
-        addContextAction(view, endSlot.getChildCount());
+        AndroidUtilities.removeFromParent(view);
+        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
     }
 
-    public void addContextAction(View view, int index) {
+    // A control that comes and goes as often as expand does must not push the rest of the pinned group
+    // around: parked at the trailing edge, its arrival only widens the capsule, which the panel already
+    // animates as one move. Anywhere else in the row and every neighbour slides at the same time.
+    public void addPinnedTrailingAction(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, Math.min(index, endSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        pinnedTrailingView = view;
+        endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+    }
+
+    private int endContextIndex() {
+        int index = pinnedTrailingView != null ? endSlot.indexOfChild(pinnedTrailingView) : -1;
+        return index < 0 ? endSlot.getChildCount() : index;
     }
 
     public void addAction(View view) {
@@ -224,6 +235,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private float animatedGlassWidth = -1;
         private boolean holdingBounds;
         private long holdStartTime;
+        private int previousRightAnchoredLeft;
+        private boolean hasRightAnchoredLeft;
+        private View rightAnchoredSlot;
+        private float pendingEndShift;
+        private boolean resumingMidAnimation;
         private final Runnable boundsAnimationStarter = this::startBoundsAnimation;
 
         ControlsLayout(Context context) {
@@ -325,15 +341,32 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 middleScrollView.layout(contentLeft + startWidth, contentTop, contentLeft + startWidth + middleWidth, contentBottom);
                 endSlot.layout(contentRight - endWidth, contentTop, contentRight, contentBottom);
             }
+            // Whichever slot is pinned to the panel's right edge is laid out against the new width the
+            // instant a control claims its slot, so it jumps ahead while the glass is still easing over.
+            // Hand its catch-up to the bounds animator below rather than giving it its own, so the group
+            // and the edge it is pinned to move on the same frames.
+            View trailingSlot = getLayoutDirection() == LAYOUT_DIRECTION_RTL ? startSlot : endSlot;
+            if (trailingSlot != rightAnchoredSlot) {
+                if (rightAnchoredSlot != null) {
+                    rightAnchoredSlot.setTranslationX(0);
+                }
+                rightAnchoredSlot = trailingSlot;
+                hasRightAnchoredLeft = false;
+            }
+            int anchoredLeft = trailingSlot.getLeft();
+            int endShift = hasRightAnchoredLeft ? previousRightAnchoredLeft - anchoredLeft : 0;
+            previousRightAnchoredLeft = anchoredLeft;
+            hasRightAnchoredLeft = true;
             if (!laidOut) {
                 laidOut = true;
                 animatedGlassWidth = getWidth();
             } else if (pendingBoundsAnimation) {
                 pendingBoundsAnimation = false;
-                holdCapturedVisualState();
-                AndroidUtilities.runOnUIThread(boundsAnimationStarter, getRemainingSettleDelay());
+                holdCapturedVisualState(endShift);
+                AndroidUtilities.runOnUIThread(boundsAnimationStarter, resumingMidAnimation ? 0 : getRemainingSettleDelay());
             } else if (!holdingBounds) {
                 animatedGlassWidth = getWidth();
+                trailingSlot.setTranslationX(0);
             }
         }
 
@@ -359,19 +392,26 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private void captureVisualState() {
             pendingVisualLeft = getLeft() + getTranslationX();
             pendingVisualWidth = animatedGlassWidth >= 0 ? animatedGlassWidth : getWidth();
+            // A slot that is already sliding restarts on the spot rather than waiting out the coalescing
+            // window again, so the panel has to skip it too or the glass edge falls behind its own buttons.
+            resumingMidAnimation = boundsAnimator != null;
             cancelBoundsAnimation();
         }
 
         // Hold the panel exactly where it was drawn instead of moving straight away. Erasing a draft flips two
         // slots a frame or two apart (attach arrives, the action beside it leaves), and each flip remeasures;
         // waiting for the width to settle turns what used to be two consecutive slides into one.
-        private void holdCapturedVisualState() {
+        private void holdCapturedVisualState(int endShift) {
             if (holdStartTime == 0) {
                 holdStartTime = SystemClock.elapsedRealtime();
             }
             holdingBounds = true;
             setTranslationX(pendingVisualLeft - getLeft());
             animatedGlassWidth = pendingVisualWidth;
+            // A hold arriving mid-animation stacks on whatever is left of the last one, so the group keeps
+            // the distance it still had to cover instead of snapping back to the new edge.
+            pendingEndShift = rightAnchoredSlot.getTranslationX() + endShift;
+            rightAnchoredSlot.setTranslationX(pendingEndShift);
             invalidate();
         }
 
@@ -384,16 +424,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private void startBoundsAnimation() {
             holdingBounds = false;
             holdStartTime = 0;
+            resumingMidAnimation = false;
             float finalWidth = getWidth();
             float initialTranslation = pendingVisualLeft - getLeft();
             float initialWidth = pendingVisualWidth;
-            if (initialTranslation == 0 && initialWidth == finalWidth) {
+            float initialEndShift = pendingEndShift;
+            View anchored = rightAnchoredSlot;
+            pendingEndShift = 0;
+            if (initialTranslation == 0 && initialWidth == finalWidth && initialEndShift == 0) {
                 setTranslationX(0);
                 animatedGlassWidth = finalWidth;
+                setAnchoredTranslation(anchored, 0);
                 return;
             }
             setTranslationX(initialTranslation);
             animatedGlassWidth = initialWidth;
+            setAnchoredTranslation(anchored, initialEndShift);
             boundsAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
             boundsAnimator.setDuration(220);
             boundsAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
@@ -401,6 +447,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 float progress = (float) animation.getAnimatedValue();
                 setTranslationX(initialTranslation * (1.0f - progress));
                 animatedGlassWidth = initialWidth + (finalWidth - initialWidth) * progress;
+                setAnchoredTranslation(anchored, initialEndShift * (1.0f - progress));
                 invalidate();
             });
             boundsAnimator.addListener(new AnimatorListenerAdapter() {
@@ -410,6 +457,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
                         boundsAnimator = null;
                         setTranslationX(0);
                         animatedGlassWidth = getWidth();
+                        setAnchoredTranslation(anchored, 0);
                         invalidate();
                     }
                 }
@@ -421,8 +469,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
             holdingBounds = false;
             AndroidUtilities.cancelRunOnUIThread(boundsAnimationStarter);
             if (boundsAnimator != null) {
-                boundsAnimator.cancel();
+                // Drop the reference before cancelling: cancel() runs the end listener, which would settle
+                // the panel and the pinned group on their final bounds. A recapture reads what is left of
+                // the current move, so it has to still be there. resetBounds is the path that clears them.
+                ValueAnimator running = boundsAnimator;
                 boundsAnimator = null;
+                running.cancel();
             }
         }
 
@@ -437,8 +489,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             pendingBoundsAnimation = false;
             holdingBounds = false;
             holdStartTime = 0;
+            pendingEndShift = 0;
+            resumingMidAnimation = false;
+            hasRightAnchoredLeft = false;
             setTranslationX(0);
             animatedGlassWidth = getWidth();
+            setAnchoredTranslation(rightAnchoredSlot, 0);
+        }
+
+        private static void setAnchoredTranslation(View slot, float translation) {
+            if (slot != null) {
+                slot.setTranslationX(translation);
+            }
         }
     }
 

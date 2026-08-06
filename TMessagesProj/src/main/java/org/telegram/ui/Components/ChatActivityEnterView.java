@@ -3050,7 +3050,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
             // NagramX: fullscreen expand sits with the pinned trailing actions, not in the scrolling group -
             // it gets used far more than the article editor, so it must never scroll out of reach
-            composerToolbar.addContextAction(expandInputButton, 0);
+            composerToolbar.addPinnedTrailingAction(expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
                 if (!messageEditExpanded && !canExpandInput()) {
