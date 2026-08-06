@@ -31,7 +31,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Composer toolbar <!-- #composer-toolbar -->
 
-The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, expand, attachments and schedule at the other, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, and Clear stay in the toolbar and enable when text is selected.
+The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, and Clear stay in the toolbar and enable when text is selected.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
@@ -136,6 +136,8 @@ When camera mode is set to Ask, the camera choice popup now has an External Micr
 Round video messages stop dead at 60 seconds, which is annoying when you're mid-sentence. With camera mode set to Ask, the camera choice popup has an *Infinite Recording* toggle under the microphone one. Turn it on and the 60-second mark stops being a wall: the recorder closes off that minute, sends it as its own round message, and carries straight on into the next one. The camera doesn't blink and the mic never restarts, so a Bluetooth headset stays connected through the handover. You stop it the normal way, by lifting your finger or tapping send, and the last piece goes through like any other video message. There's a ceiling of ten minutes, after which it stops on its own and leaves the final piece in the preview for you.
 
 Unlike the microphone toggle, this one is off every time you start a recording. It keeps sending on its own, so it should be a decision you make each time rather than something you forget is on. It's also greyed out where sending unattended wouldn't work: slow mode, paid messages, scheduled messages, secret chats, and when view-once is armed. If you arm view-once or slow mode kicks in partway through, the recording just stops at the next minute the way it normally would.
+
+You don't have to decide up front, though. The round camera's button row (next to the flash) carries the same toggle while the recording runs, so you can flip infinite mode on when you realise halfway through that a minute won't be enough — and off again if you change your mind, in which case the recording just runs to the 60-second mark and lands in the preview as usual. You'll normally reach it after locking the recording, since while your finger is still on the record button that button owns the gesture, the same as the flash. Anything already sent stays sent. The button is white-filled while infinite mode is on, and it disappears where the mode can't run: the wrong kind of chat, view-once armed, or the tenth and last minute, where there's nothing left to roll over into. It shows up in the fixed Front and Rear camera modes too, which never get the popup at all.
 
 ### Smoother video message zoom <!-- #video-zoom -->
 

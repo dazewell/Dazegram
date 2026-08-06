@@ -347,6 +347,8 @@
     <string name="CameraInVideoMessagesAsk">Ask</string>
     <string name="CameraInVideoMessagesExternalMic">External Microphone</string>
     <string name="CameraInVideoMessagesInfinite">Infinite Recording</string>
+    <string name="AccDescrInfiniteRecordingOn">Turn on infinite recording</string>
+    <string name="AccDescrInfiniteRecordingOff">Turn off infinite recording</string>
     <string name="CameraSettings">Camera</string>
     <string name="ContactNotes">Notes</string>
     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>
