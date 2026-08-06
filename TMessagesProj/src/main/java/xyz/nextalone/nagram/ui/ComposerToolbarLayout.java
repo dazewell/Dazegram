@@ -18,6 +18,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
@@ -36,6 +37,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public static final int HEIGHT = 56;
     public static final int BUTTON_SIZE = 48;
+    private static final int ANIMATED_ICON_SIZE = 29;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
 
@@ -114,6 +116,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addStart(View view) {
         addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
+        applyAnimatedIconBox(view);
     }
 
     public void addMiddleLeading(View view, int width, int height, float horizontalMargin, float verticalMargin, int index) {
@@ -139,9 +142,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
         endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
     }
 
-    // A control that comes and goes as often as expand does must not push the rest of the pinned group
-    // around: parked at the trailing edge, its arrival only widens the capsule, which the panel already
-    // animates as one move. Anywhere else in the row and every neighbour slides at the same time.
+    // Attach is the button that gets reached for most, so it holds the trailing edge and nothing that comes
+    // and goes beside it can push it around: a control arriving to its left only widens the capsule, which
+    // the panel already animates as one move.
     public void addPinnedTrailingAction(View view) {
         AndroidUtilities.removeFromParent(view);
         pinnedTrailingView = view;
@@ -210,6 +213,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static void addToFrame(FrameLayout parent, View view, int width, int height, int gravity) {
         AndroidUtilities.removeFromParent(view);
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
+    }
+
+    // Upstream draws each icon at its own intrinsic size and has already sized them to match: the 24dp and
+    // 28dp assets carry different margins and land on the same glyph. The emoji animation is the exception -
+    // it is built at 32dp with no margin of its own, so in a 48dp cell it towers over the row. Give it the
+    // box the stock composer gives it and the row evens out.
+    private static void applyAnimatedIconBox(View view) {
+        if (!(view instanceof RLottieImageView)) {
+            return;
+        }
+        int inset = AndroidUtilities.dp((BUTTON_SIZE - ANIMATED_ICON_SIZE) / 2.0f);
+        view.setPadding(inset, inset, inset, inset);
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
@@ -583,9 +598,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 // Lay the control out where it belongs, push it back to where it was drawn, then ease it
                 // across. It offsets rather than translates because the enter view already drives
                 // translationX on several of these controls.
-                if (previousWidth > 0 && previousLeft != childLeft) {
-                    slides.put(child, new int[]{childLeft, previousLeft - childLeft});
-                    child.offsetLeftAndRight(previousLeft - childLeft);
+                int offset = previousLeft - childLeft;
+                if (previousWidth > 0 && offset != 0) {
+                    slides.put(child, new int[]{childLeft, offset});
+                    child.offsetLeftAndRight(offset);
                 }
             }
             if (slides.isEmpty()) {
