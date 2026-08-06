@@ -27,7 +27,7 @@ public final class ComposerFormattingActions {
     private final boolean isChat;
     private final ImageView quoteAction;
     private final ImageView spoilerAction;
-    private final ImageView monoAction;
+    private final ImageView selectAllAction;
     private final ImageView clearAction;
     private boolean updating;
     private boolean destroyed;
@@ -46,11 +46,11 @@ public final class ComposerFormattingActions {
 
         quoteAction = addAction(R.drawable.formatting_quote, R.string.Quote, R.id.menu_quote);
         spoilerAction = addAction(R.drawable.formatting_spoiler, R.string.Spoiler, R.id.menu_spoiler);
-        monoAction = addAction(R.drawable.formatting_code, R.string.Mono, R.id.menu_mono);
+        selectAllAction = addAction(R.drawable.nax_formatting_select_all, R.string.SelectAll, v -> selectAll());
         clearAction = addAction(R.drawable.nax_formatting_clear, R.string.Regular, R.id.menu_regular);
         setActionEnabled(quoteAction, false);
         setActionEnabled(spoilerAction, false);
-        setActionEnabled(monoAction, false);
+        setActionEnabled(selectAllAction, false);
         setActionEnabled(clearAction, false);
         group.setVisibility(View.GONE);
     }
@@ -92,19 +92,20 @@ public final class ComposerFormattingActions {
             }
             boolean quoteVisible = composerAvailable && isChat && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextQuote().Bool();
             boolean spoilerVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextSpoiler().Bool();
-            boolean monoVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextMono().Bool();
+            boolean selectAllVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextSelectAll().Bool();
             boolean clearVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextRegular().Bool();
             quoteAction.setVisibility(quoteVisible ? View.VISIBLE : View.GONE);
             spoilerAction.setVisibility(spoilerVisible ? View.VISIBLE : View.GONE);
-            monoAction.setVisibility(monoVisible ? View.VISIBLE : View.GONE);
+            selectAllAction.setVisibility(selectAllVisible ? View.VISIBLE : View.GONE);
             clearAction.setVisibility(clearVisible ? View.VISIBLE : View.GONE);
+            boolean hasText = composerAvailable && editText.getText() != null && editText.getText().length() > 0;
             setActionEnabled(quoteAction, hasSelection && isQuoteAvailable(editText.getText(), start, end));
             setActionEnabled(spoilerAction, hasSelection);
-            setActionEnabled(monoAction, hasSelection);
+            setActionEnabled(selectAllAction, hasText);
             setActionEnabled(clearAction, hasSelection);
             group.setVisibility(quoteVisible
                     || spoilerVisible
-                    || monoVisible
+                    || selectAllVisible
                     || clearVisible ? View.VISIBLE : View.GONE);
         } finally {
             updating = false;
@@ -131,6 +132,10 @@ public final class ComposerFormattingActions {
     }
 
     private ImageView addAction(int drawable, int string, int menuAction) {
+        return addAction(drawable, string, v -> apply(menuAction));
+    }
+
+    private ImageView addAction(int drawable, int string, View.OnClickListener onClick) {
         ImageView action = new ImageView(group.getContext());
         action.setImageResource(drawable);
         action.setScaleType(ImageView.ScaleType.CENTER);
@@ -138,9 +143,22 @@ public final class ComposerFormattingActions {
         action.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(16)));
         action.setContentDescription(LocaleController.getString(string));
         ScaleStateListAnimator.apply(action);
-        action.setOnClickListener(v -> apply(menuAction));
+        action.setOnClickListener(onClick);
         group.addView(action, LayoutHelper.createLinear(ComposerToolbarLayout.BUTTON_SIZE, ComposerToolbarLayout.BUTTON_SIZE));
         return action;
+    }
+
+    private void selectAll() {
+        if (updating || destroyed) {
+            return;
+        }
+        EditTextCaption editText = enterView.getEditField();
+        Editable editable = editText != null ? editText.getText() : null;
+        if (editable == null || editable.length() == 0) {
+            return;
+        }
+        editText.requestFocus();
+        editText.setSelection(0, editable.length());
     }
 
     private void apply(int menuAction) {
