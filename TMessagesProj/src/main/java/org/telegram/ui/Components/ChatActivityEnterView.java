@@ -2778,6 +2778,19 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             protected boolean drawChild(Canvas canvas, View child, long drawingTime) {
                 if (child != null && child == messageEditText) {
+                    // NagramX (#composer-toolbar): a wrap onto a new line offsets the whole text block down by a
+                    // line and slides it back up while the island grows. We keep clipChildren off here, and the
+                    // toolbar sits right under the bubble, so that offset line was painting over the toolbar for
+                    // the length of the animation. Cut the field's draw at its own bottom (the bubble's edge) and
+                    // the wrapped word slides in from behind it instead. Top stays open: shrinking offsets the
+                    // text the other way, and that side is already clipped against the animated island top.
+                    if (composerToolbarEnabled) {
+                        canvas.save();
+                        canvas.clipRect(0, -getHeight(), getWidth(), child.getY() + child.getHeight());
+                        final boolean result = drawMessageEditText(canvas, () -> super.drawChild(canvas, child, drawingTime));
+                        canvas.restore();
+                        return result;
+                    }
                     return drawMessageEditText(canvas, () -> super.drawChild(canvas, child, drawingTime));
                 }
                 if (shouldDrawRecordedAudioPanelInParent && child == recordedAudioPanel) {
