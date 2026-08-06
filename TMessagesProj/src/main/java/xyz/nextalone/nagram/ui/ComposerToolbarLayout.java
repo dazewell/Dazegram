@@ -40,6 +40,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int ANIMATED_ICON_SIZE = 29;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
+    // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
+    private static final int RELAYOUT_SETTLE_DELAY = 300;
 
     private final ControlsLayout controls;
     private final FrameLayout startSlot;
@@ -756,6 +758,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static final class CollapsingLinearLayout extends SlidingLinearLayout {
+        private final Runnable settleCheck = () -> {
+            if (needsRelayout()) {
+                requestLayout();
+            }
+        };
+
         CollapsingLinearLayout(Context context) {
             super(context);
         }
@@ -774,12 +782,36 @@ public final class ComposerToolbarLayout extends FrameLayout {
             super.onDescendantInvalidated(child, target);
             if (needsRelayout()) {
                 requestLayout();
+                scheduleSettleCheck();
             }
             invalidate();
         }
 
+        // Asking from here only gets as far as the first parent that is already waiting on a layout, and if
+        // that parent's own measure is skipped its request never reaches the root, so nothing ever comes
+        // back down to this row. Opening the keyboard on the way into edit mode is long enough for every
+        // ask during a control's fade to land that way. Once the pass is over the chain is clear again, so
+        // a look from outside it gets through: this runs after the fade, and only asks again if the row
+        // still has not been measured.
+        private void scheduleSettleCheck() {
+            AndroidUtilities.cancelRunOnUIThread(settleCheck);
+            AndroidUtilities.runOnUIThread(settleCheck, RELAYOUT_SETTLE_DELAY);
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();
+            AndroidUtilities.cancelRunOnUIThread(settleCheck);
+        }
+
         // Occupancy changes reflow the row; a finished fade has to reflow too, otherwise the control that
         // just went invisible keeps its box (and its hit rect) forever.
+        // Only onMeasure writes occupiedChildCount, so it records what the row actually laid out rather
+        // than what it meant to. Recording the new count here instead used to strand a control: the panel
+        // re-measures its slots with the same specs every pass, so a slot skips onMeasure unless a layout
+        // was requested for it, and a request that got lost mid-pass left the count already updated. The
+        // mismatch was gone, nothing asked again, and the control sat visible inside a zero-width box for
+        // the rest of the session. Leaving the count alone keeps the mismatch until a measure clears it.
         private boolean needsRelayout() {
             int occupied = 0;
             boolean releasedChildVisible = false;
@@ -791,11 +823,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     releasedChildVisible = true;
                 }
             }
-            if (occupiedChildCount != occupied) {
-                occupiedChildCount = occupied;
-                return true;
-            }
-            return releasedChildVisible;
+            return occupiedChildCount != occupied || releasedChildVisible;
         }
     }
 }
