@@ -1914,6 +1914,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                     return true;
                 } else if (oncePressed && onceRect.contains(x, y)) {
                     voiceOnce = !voiceOnce;
+                    // NagramX: arming view-once kills the rollover, so drop infinite mode with it instead of
+                    // leaving the overlay button looking armed
+                    if (voiceOnce) {
+                        infiniteVideoMessage = false;
+                    }
+                    updateInfiniteRecordingButton();
                     periodDrawable.setValue(1, voiceOnce, true);
                     MediaDataController.getInstance(currentAccount).toggleDraftVoiceOnce(dialog_id, parentFragment != null && parentFragment.isTopic ? parentFragment.getTopicId() : 0, voiceOnce);
                     if (voiceOnce) {
@@ -7547,6 +7553,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private void updateSlowModeText() {
+        // NagramX: slow mode starting or expiring flips whether infinite mode can roll over, and our own
+        // segments are what start it, so the overlay button follows the transition rather than the 100ms tick
+        final boolean wasSlowModeBlocking = slowModeTimer > 0;
         int serverTime = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
         AndroidUtilities.cancelRunOnUIThread(updateSlowModeRunnable);
         updateSlowModeRunnable = null;
@@ -7582,6 +7591,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         if (!isInScheduleMode()) {
             checkSendButton(true);
+        }
+        if (wasSlowModeBlocking != (slowModeTimer > 0)) {
+            updateInfiniteRecordingButton();
         }
     }
 
@@ -18069,6 +18081,29 @@ public class ChatActivityEnterView extends FrameLayout implements
         return !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
                 && !DialogObject.isEncryptedDialog(dialog_id)
                 && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
+    }
+
+    // NagramX: infinite video message: what the button on the camera overlay shows. The last allowed segment
+    // reads as unavailable because there is no rollover left to arm.
+    public int getInfiniteRecordingState() {
+        if (!isInfiniteVideoAvailable() || infiniteVideoSegments >= INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+            return InstantCameraView.INFINITE_RECORDING_UNAVAILABLE;
+        }
+        return infiniteVideoMessage ? InstantCameraView.INFINITE_RECORDING_ON : InstantCameraView.INFINITE_RECORDING_OFF;
+    }
+
+    public int toggleInfiniteRecording() {
+        if (getInfiniteRecordingState() == InstantCameraView.INFINITE_RECORDING_UNAVAILABLE) {
+            return InstantCameraView.INFINITE_RECORDING_UNAVAILABLE;
+        }
+        infiniteVideoMessage = !infiniteVideoMessage;
+        return getInfiniteRecordingState();
+    }
+
+    private void updateInfiniteRecordingButton() {
+        if (parentFragment != null && parentFragment.instantCameraView != null) {
+            parentFragment.instantCameraView.updateInfiniteButton();
+        }
     }
 
     // NagramX: custom row so the label keeps ActionBarMenuSubItem's 43dp icon gap while taking leftover

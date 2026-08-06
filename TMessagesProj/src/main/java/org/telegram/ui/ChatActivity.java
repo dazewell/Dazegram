@@ -37958,6 +37958,18 @@ public class ChatActivity extends BaseFragment implements
         afterMessageSend();
     }
 
+    // NagramX: infinite video message: the toggle on the camera overlay reads and flips the enter view's
+    // recording state, which is where it already lives
+    @Override
+    public int getInfiniteRecordingState() {
+        return chatActivityEnterView == null ? InstantCameraView.INFINITE_RECORDING_UNAVAILABLE : chatActivityEnterView.getInfiniteRecordingState();
+    }
+
+    @Override
+    public int toggleInfiniteRecording() {
+        return chatActivityEnterView == null ? InstantCameraView.INFINITE_RECORDING_UNAVAILABLE : chatActivityEnterView.toggleInfiniteRecording();
+    }
+
     // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
     // send animation is only ever classified once per message.
     private boolean isKeepRecordingSegment(MessageObject obj) {
