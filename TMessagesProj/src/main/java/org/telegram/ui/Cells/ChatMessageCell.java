@@ -3115,6 +3115,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         return useTranscribeButton && (!isPlayingRound || getVideoTranscriptionProgress() > 0 || wasTranscriptionOpen) && transcribeButton != null && transcribeButton.onTouch(event.getAction(), getEventX(event), getEventY(event));
     }
 
+    private boolean checkVideoCaptionsButtonMotionEvent(MotionEvent event) { // NagramX
+        return videoCaptionsButton != null && videoCaptionsButton.onTouch(event.getAction(), getEventX(event), getEventY(event));
+    }
+
     private boolean checkLinkPreviewMotionEvent(MotionEvent event) {
         if (currentMessageObject.type != MessageObject.TYPE_TEXT && currentMessageObject.type != MessageObject.TYPE_STORY_MENTION || !hasLinkPreview) {
             return false;
@@ -5050,6 +5054,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         }
         if (!result) {
             result = checkExplanationMotionEvent(event);
+        }
+        if (!result) {
+            result = checkVideoCaptionsButtonMotionEvent(event); // NagramX
         }
         if (!result) {
             result = checkTranscribeButtonMotionEvent(event);
@@ -14969,7 +14976,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     documentAttachType == DOCUMENT_ATTACH_TYPE_AUDIO ? 0 : 1f - getVideoTranscriptionProgress()
                 );
                 transcribeButton.draw(canvas, transcribeAlpha);
+                drawVideoCaptionsButton(canvas, transcribeAlpha); // NagramX
                 canvas.restore();
+            } else if (videoCaptionsButton != null) { // NagramX
+                videoCaptionsButton.hide();
             }
 
             if (documentAttachType == DOCUMENT_ATTACH_TYPE_AUDIO) {
@@ -15357,6 +15367,36 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         mediaSpoilerEffect2.draw(canvas, this, (int) photoImage.getImageWidth(), (int) photoImage.getImageHeight(), photoImage.getAlpha(), drawingToBitmap);
         canvas.restore();
         invalidate();
+    }
+
+    private tw.nekomimi.nekogram.ui.components.VideoCaptionsButton videoCaptionsButton; // NagramX
+
+    // NagramX: CC rides one slot above the transcribe button, in the same corner and drawn the same
+    // way, so the transcribe button gets to keep doing only what it always did.
+    private void drawVideoCaptionsButton(Canvas canvas, float alpha) {
+        if (!canCaptionCurrentMessage()) {
+            if (videoCaptionsButton != null) {
+                videoCaptionsButton.hide();
+            }
+            return;
+        }
+        if (videoCaptionsButton == null) {
+            videoCaptionsButton = new tw.nekomimi.nekogram.ui.components.VideoCaptionsButton(this) {
+                @Override
+                public void onTap() {
+                    tw.nekomimi.nekogram.ui.components.VideoCaptionsButton.press(currentAccount, currentMessageObject, delegate);
+                    invalidate();
+                }
+            };
+        }
+        videoCaptionsButton.setBounds((int) transcribeX, (int) transcribeY - dp(40), dp(32));
+        videoCaptionsButton.draw(canvas, alpha, currentMessageObject, tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isTranscribingForCaptions(currentAccount, currentMessageObject));
+    }
+
+    // NagramX
+    private boolean canCaptionCurrentMessage() {
+        return documentAttachType == DOCUMENT_ATTACH_TYPE_ROUND
+                && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.canCaption(currentAccount, currentMessageObject);
     }
 
     private float getUseTranscribeButtonProgress() {
@@ -27182,6 +27222,7 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         public static final int POLL_HINT = 495;
         public static final int FORWARD = 494;
         public static final int TRANSCRIBE = 493;
+        public static final int VIDEO_CAPTIONS = 488; // NagramX
         public static final int CONTACT = 492;
         public static final int CONTACT_VIEW = 491;
         public static final int CONTACT_ADD = 490;
@@ -27553,6 +27594,9 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
                 if (useTranscribeButton && transcribeButton != null) {
                     info.addChild(ChatMessageCell.this, TRANSCRIBE);
+                    if (videoCaptionsButton != null && canCaptionCurrentMessage()) { // NagramX
+                        info.addChild(ChatMessageCell.this, VIDEO_CAPTIONS);
+                    }
                 }
 
                 int i;
@@ -28009,6 +28053,16 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     rect.offset(pos[0], pos[1]);
                     info.setBoundsInScreen(rect);
                     info.setClickable(true);
+                } else if (virtualViewId == VIDEO_CAPTIONS && videoCaptionsButton != null && canCaptionCurrentMessage()) { // NagramX
+                    info.setClassName("android.widget.Button");
+                    info.setEnabled(true);
+                    info.setText(getString("VideoMessagesCaptions", R.string.VideoMessagesCaptions));
+                    info.addAction(AccessibilityNodeInfo.ACTION_CLICK);
+                    videoCaptionsButton.getBounds(rect);
+                    info.setBoundsInParent(rect);
+                    rect.offset(pos[0], pos[1]);
+                    info.setBoundsInScreen(rect);
+                    info.setClickable(true);
                 }
                 info.setFocusable(true);
                 info.setVisibleToUser(true);
@@ -28124,6 +28178,8 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         }
                     } else if (virtualViewId == TRANSCRIBE && transcribeButton != null) {
                         transcribeButton.onTap();
+                    } else if (virtualViewId == VIDEO_CAPTIONS && videoCaptionsButton != null && canCaptionCurrentMessage()) { // NagramX
+                        videoCaptionsButton.onTap();
                     }
                 } else if (action == AccessibilityNodeInfo.ACTION_LONG_CLICK) {
                     ClickableSpan link = getLinkById(virtualViewId, virtualViewId >= LINK_CAPTION_IDS_START);

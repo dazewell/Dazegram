@@ -706,6 +706,29 @@ public class TranscribeButton {
         return videoTranscriptionsOpen != null && (!messageObject.isRoundVideo() || videoTranscriptionsOpen.contains(reqInfoHash(messageObject)));
     }
 
+    // NagramX: the CC button transcribes without swapping the circle out for a text bubble, so the
+    // video keeps playing. Which button started the request decides that, not the current arming:
+    // toggling CC off mid-request must not turn its own result into a bubble, and the transcribe
+    // button has to keep opening one whether captions are armed or not.
+    public static void transcribeForCaptions(MessageObject messageObject, ChatMessageCell.ChatMessageCellDelegate delegate) {
+        if (messageObject == null || isTranscribing(messageObject)) {
+            return;
+        }
+        transcribePressed(messageObject, true, delegate, true);
+    }
+
+    // NagramX: CC on a message that's already showing its text bubble puts the circle back first,
+    // otherwise captions would run over a message that isn't showing the video.
+    public static void closeVideoTranscriptionForCaptions(MessageObject messageObject) {
+        if (messageObject == null || !messageObject.isRoundVideo() || !messageObject.isVoiceTranscriptionOpen()) {
+            return;
+        }
+        closeVoiceTranscriptionIfOpen(messageObject);
+        if (videoTranscriptionsOpen != null) {
+            videoTranscriptionsOpen.remove((Integer) reqInfoHash(messageObject));
+        }
+    }
+
     public static void resetVideoTranscriptionsOpen() {
         if (videoTranscriptionsOpen != null) {
             videoTranscriptionsOpen.clear();
@@ -720,9 +743,14 @@ public class TranscribeButton {
     }
 
     private static void transcribePressed(MessageObject messageObject, boolean open, ChatMessageCell.ChatMessageCellDelegate delegate) {
+        transcribePressed(messageObject, open, delegate, false); // NagramX
+    }
+
+    private static void transcribePressed(MessageObject messageObject, boolean open, ChatMessageCell.ChatMessageCellDelegate delegate, boolean captionsOnly) {
         if (messageObject == null || messageObject.messageOwner == null || !messageObject.isSent()) {
             return;
         }
+        final boolean captions = captionsOnly && messageObject.isRoundVideo(); // NagramX
         int account = messageObject.currentAccount;
         final long start = SystemClock.elapsedRealtime(), minDuration = 350;
         TLRPC.InputPeer peer = MessagesController.getInstance(account).getInputPeer(messageObject.messageOwner.peer_id);
@@ -730,7 +758,9 @@ public class TranscribeButton {
         int messageId = messageObject.messageOwner.id;
         if (open) {
             if (messageObject.messageOwner.voiceTranscription != null && messageObject.messageOwner.voiceTranscriptionFinal) {
-                TranscribeButton.openVideoTranscription(messageObject);
+                if (!captions) { // NagramX
+                    TranscribeButton.openVideoTranscription(messageObject);
+                }
                 messageObject.messageOwner.voiceTranscriptionOpen = true;
                 MessagesStorage.getInstance(account).updateMessageVoiceTranscriptionOpen(dialogId, messageId, messageObject.messageOwner);
                 AndroidUtilities.runOnUIThread(() -> {
@@ -751,16 +781,20 @@ public class TranscribeButton {
                     long id = Utilities.random.nextLong();
                     setActiveRequest(messageObject, id);
                     transcribeOperationsByDialogPosition.put(reqInfoHash(messageObject), messageObject);
-                    TranscribeHelper.sendRequest(path, messageObject.isRoundVideo(), (text, exception) -> {
+                    TranscribeHelper.sendTimedRequest(path, messageObject.isRoundVideo(), (result, exception) -> {
                         if (!isActiveRequest(messageObject, id)) {
                             return;
                         }
+                        String text = result == null ? null : result.fullText;
                         if (text != null) {
                             transcribeOperationsById.put(id, messageObject);
                             messageObject.messageOwner.voiceTranscriptionId = id;
 
                             final long duration = SystemClock.elapsedRealtime() - start;
-                            TranscribeButton.openVideoTranscription(messageObject);
+                            tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
+                            if (!captions) { // NagramX
+                                TranscribeButton.openVideoTranscription(messageObject);
+                            }
                             messageObject.messageOwner.voiceTranscriptionOpen = true;
                             messageObject.messageOwner.voiceTranscriptionFinal = true;
 
@@ -832,7 +866,9 @@ public class TranscribeButton {
                     final String finalText = text;
                     final long finalId = id;
                     final long duration = SystemClock.elapsedRealtime() - start;
-                    TranscribeButton.openVideoTranscription(messageObject);
+                    if (!captions) { // NagramX
+                        TranscribeButton.openVideoTranscription(messageObject);
+                    }
                     messageObject.messageOwner.voiceTranscriptionOpen = true;
                     messageObject.messageOwner.voiceTranscriptionFinal = isFinal;
                     if (BuildVars.LOGS_ENABLED) {
@@ -894,15 +930,17 @@ public class TranscribeButton {
         // rebind and animate into the loading spinner, matching how a fresh press looks.
         NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.voiceTranscriptionUpdate, messageObject);
         NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.updateTranscriptionLock);
-        BiConsumer<String, Exception> callback = (text, exception) -> {
+        BiConsumer<TranscribeHelper.TimedResult, Exception> callback = (result, exception) -> {
             if (!isActiveRequest(messageObject, id)) {
                 return;
             }
+            String text = result == null ? null : result.fullText;
             if (text != null) {
                 transcribeOperationsById.put(id, messageObject);
                 messageObject.messageOwner.voiceTranscriptionId = id;
 
                 final long duration = SystemClock.elapsedRealtime() - start;
+                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
                 TranscribeButton.openVideoTranscription(messageObject);
                 messageObject.messageOwner.voiceTranscriptionOpen = true;
                 messageObject.messageOwner.voiceTranscriptionFinal = true;
@@ -920,9 +958,9 @@ public class TranscribeButton {
             }
         };
         if (provider == null) {
-            TranscribeHelper.sendRequest(path, messageObject.isRoundVideo(), callback);
+            TranscribeHelper.sendTimedRequest(path, messageObject.isRoundVideo(), callback);
         } else {
-            TranscribeHelper.sendRequest(path, messageObject.isRoundVideo(), provider, callback);
+            TranscribeHelper.sendTimedRequest(path, messageObject.isRoundVideo(), provider, callback);
         }
     }
 

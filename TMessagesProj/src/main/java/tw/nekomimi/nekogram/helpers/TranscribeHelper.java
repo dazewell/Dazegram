@@ -388,6 +388,51 @@ public class TranscribeHelper {
         return HttpClient.INSTANCE.getTranscribeInstance();
     }
 
+    // A transcription plus, when the provider gives them, the timings closed captions need.
+    // Whisper-family providers (Groq, Workers AI) return per-segment start/end; the LLM providers
+    // only ever return prose, so those come back with no segments and callers fall back to the
+    // whole text.
+    public static class TimedSegment {
+        public final long startMs;
+        public final long endMs;
+        public final String text;
+
+        public TimedSegment(long startMs, long endMs, String text) {
+            this.startMs = startMs;
+            this.endMs = endMs;
+            this.text = text;
+        }
+    }
+
+    public static class TimedResult {
+        public final String fullText;
+        public final List<TimedSegment> segments;
+
+        public TimedResult(String fullText, List<TimedSegment> segments) {
+            this.fullText = fullText;
+            this.segments = segments;
+        }
+
+        public boolean isTimed() {
+            return segments != null && !segments.isEmpty();
+        }
+    }
+
+    private static TimedResult untimed(String text) {
+        return new TimedResult(text, null);
+    }
+
+    // extractAudio writes next to the source file, so the leftover has to go once it's been read
+    // or uploaded, otherwise every transcription leaves an orphan beside the video in the cache.
+    private static void deleteExtractedAudio(String audioPath, String sourcePath) {
+        if (audioPath == null || audioPath.equals(sourcePath)) {
+            return;
+        }
+        try {
+            new File(audioPath).delete();
+        } catch (Exception ignored) {}
+    }
+
     private static void extractAudio(String inputFilePath, String outputFilePath) throws IOException {
         var extractor = new MediaExtractor();
         extractor.setDataSource(inputFilePath);
@@ -442,6 +487,14 @@ public class TranscribeHelper {
     }
 
     public static void sendRequest(String path, boolean video, int provider, BiConsumer<String, Exception> callback) {
+        sendTimedRequest(path, video, provider, (result, exception) -> callback.accept(result == null ? null : result.fullText, exception));
+    }
+
+    public static void sendTimedRequest(String path, boolean video, BiConsumer<TimedResult, Exception> callback) {
+        sendTimedRequest(path, video, NaConfig.INSTANCE.getTranscribeProvider().Int(), callback);
+    }
+
+    public static void sendTimedRequest(String path, boolean video, int provider, BiConsumer<TimedResult, Exception> callback) {
         switch (provider) {
             case TRANSCRIBE_AUTO:
                 if (!TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderGeminiApiKey().String()) ||
@@ -538,7 +591,7 @@ public class TranscribeHelper {
         return TRANSCRIBE_WORKERSAI;
     }
 
-    private static void requestWorkersAi(String path, boolean video, BiConsumer<String, Exception> callback) {
+    private static void requestWorkersAi(String path, boolean video, BiConsumer<TimedResult, Exception> callback) {
         if (TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderCfAccountID().String()) || TextUtils.isEmpty(NaConfig.INSTANCE.getTranscribeProviderCfApiToken().String())) {
             callback.accept(null, new Exception(getString(R.string.CloudflareCredentialsNotSet)));
             return;
@@ -563,6 +616,8 @@ public class TranscribeHelper {
             } catch (IOException e) {
                 callback.accept(null, e);
                 return;
+            } finally {
+                deleteExtractedAudio(audioPath, path);
             }
             String base64Audio = Base64.encodeToString(audioBytes, Base64.NO_WRAP);
             var whisperRequest = new WhisperRequest();
@@ -589,7 +644,7 @@ public class TranscribeHelper {
                 var body = response.body().string();
                 var whisperResponse = gson.fromJson(body, WhisperResponse.class);
                 if (whisperResponse.success && whisperResponse.result != null) {
-                    callback.accept(whisperResponse.result.text, null);
+                    callback.accept(buildWorkersAiResult(whisperResponse.result), null);
                 } else {
                     var errors = whisperResponse.errors;
                     callback.accept(null, new Exception(errors.size() == 1 ? errors.get(0).message : errors.toString()));
@@ -600,7 +655,7 @@ public class TranscribeHelper {
         });
     }
 
-    private static void requestGeminiAi(String path, boolean video, BiConsumer<String, Exception> callback) {
+    private static void requestGeminiAi(String path, boolean video, BiConsumer<TimedResult, Exception> callback) {
         String apiKey = NaConfig.INSTANCE.getTranscribeProviderGeminiApiKey().String();
         if (TextUtils.isEmpty(apiKey)) {
             apiKey = NaConfig.INSTANCE.getLlmProviderGeminiKey().String().split(",")[0].trim();
@@ -613,7 +668,7 @@ public class TranscribeHelper {
         final String finalApiKey = apiKey;
         final String finalPrompt = customPrompt.isEmpty() ? GEMINI_PROMPT : customPrompt;
         executorService.submit(() -> {
-            String audioPath;
+            String audioPath = null;
             try {
                 if (video) {
                     var audioFile = new File(path + ".m4a");
@@ -660,7 +715,7 @@ public class TranscribeHelper {
                                     .findFirst()
                                     .orElse(null);
                             if (transcribedText != null) {
-                                callback.accept(transcribedText.trim(), null);
+                                callback.accept(untimed(transcribedText.trim()), null);
                             } else {
                                 String finishReason = firstCandidate.finishReason;
                                 List<GeminiResponse.SafetyRating> safetyRatings = firstCandidate.safetyRatings;
@@ -681,19 +736,21 @@ public class TranscribeHelper {
             } catch (Exception e) {
                 FileLog.e("Gemini transcription error", e);
                 callback.accept(null, e);
+            } finally {
+                deleteExtractedAudio(audioPath, path);
             }
         });
     }
 
-    private static void requestGroq(String path, boolean video, BiConsumer<String, Exception> callback) {
+    private static void requestGroq(String path, boolean video, BiConsumer<TimedResult, Exception> callback) {
         String apiKey = NaConfig.INSTANCE.getTranscribeProviderGroqApiKey().String();
         if (TextUtils.isEmpty(apiKey)) {
             callback.accept(null, new Exception(getString(R.string.GroqApiKeyNotSet)));
             return;
         }
         executorService.submit(() -> {
+            String audioPath = null;
             try {
-                String audioPath;
                 String fileName;
                 String mimeType;
                 if (video) {
@@ -766,9 +823,9 @@ public class TranscribeHelper {
                         throw new IOException(TextUtils.isEmpty(detail) ? message + "\nBody: " + responseBody : message + " - " + detail);
                     }
                     GroqVerboseResponse result = gson.fromJson(responseBody, GroqVerboseResponse.class);
-                    String text = result == null ? null : dropGroqSilenceHallucinations(result);
-                    if (!TextUtils.isEmpty(text)) {
-                        callback.accept(text, null);
+                    TimedResult timed = result == null ? null : dropGroqSilenceHallucinations(result);
+                    if (timed != null && !TextUtils.isEmpty(timed.fullText)) {
+                        callback.accept(timed, null);
                     } else {
                         callback.accept(null, new Exception("Invalid or empty response from Groq API: " + responseBody));
                     }
@@ -776,6 +833,8 @@ public class TranscribeHelper {
             } catch (Exception e) {
                 FileLog.e("Groq transcription error", e);
                 callback.accept(null, e);
+            } finally {
+                deleteExtractedAudio(audioPath, path);
             }
         });
     }
@@ -784,24 +843,60 @@ public class TranscribeHelper {
     // verbose_json scores each segment, so drop the ones Whisper itself would treat as non-speech: high
     // no_speech_prob paired with low avg_logprob (its own default thresholds). Falls back to the raw text
     // if every segment looked like silence, so a normal message never comes back empty.
-    private static String dropGroqSilenceHallucinations(GroqVerboseResponse response) {
+    private static TimedResult dropGroqSilenceHallucinations(GroqVerboseResponse response) {
+        String raw = response.text == null ? null : response.text.trim();
         if (response.segments == null || response.segments.isEmpty()) {
-            return response.text == null ? null : response.text.trim();
+            return untimed(raw);
         }
         StringBuilder sb = new StringBuilder();
+        List<TimedSegment> segments = new ArrayList<>();
         for (GroqVerboseResponse.Segment segment : response.segments) {
             if (segment.text == null) continue;
             if (segment.noSpeechProb > 0.6f && segment.avgLogprob < -1.0f) continue;
             sb.append(segment.text);
+            String text = segment.text.trim();
+            if (!text.isEmpty()) {
+                segments.add(new TimedSegment((long) (segment.start * 1000f), (long) (segment.end * 1000f), text));
+            }
         }
         String filtered = sb.toString().trim();
         if (!filtered.isEmpty()) {
-            return filtered;
+            return new TimedResult(filtered, segments);
         }
-        return response.text == null ? null : response.text.trim();
+        return untimed(raw);
     }
 
-    private static void requestOpenAiCompatible(String path, boolean video, BiConsumer<String, Exception> callback) {
+    // Workers AI returns the same Whisper segment shape as Groq, minus the per-segment scores, so
+    // there's nothing to filter here: keep whatever came back and carry the timings through.
+    private static TimedResult buildWorkersAiResult(Result result) {
+        String text = result.text == null ? null : result.text.trim();
+        if (result.segments == null || result.segments.isEmpty()) {
+            return untimed(text);
+        }
+        List<TimedSegment> segments = new ArrayList<>();
+        for (Result.Segment segment : result.segments) {
+            if (segment.text == null) continue;
+            String segmentText = segment.text.trim();
+            if (!segmentText.isEmpty()) {
+                segments.add(new TimedSegment((long) (segment.start * 1000f), (long) (segment.end * 1000f), segmentText));
+            }
+        }
+        if (text == null || text.isEmpty()) {
+            // Some Workers AI responses only carry segments, and every caller downstream reads
+            // fullText to decide whether the transcription worked at all.
+            StringBuilder joined = new StringBuilder();
+            for (TimedSegment segment : segments) {
+                if (joined.length() > 0) {
+                    joined.append(' ');
+                }
+                joined.append(segment.text);
+            }
+            text = joined.length() == 0 ? null : joined.toString();
+        }
+        return new TimedResult(text, segments);
+    }
+
+    private static void requestOpenAiCompatible(String path, boolean video, BiConsumer<TimedResult, Exception> callback) {
         String apiBaseUrl = NaConfig.INSTANCE.getTranscribeProviderOpenAiApiBase().String();
         String model = NaConfig.INSTANCE.getTranscribeProviderOpenAiModel().String();
         String apiKey = NaConfig.INSTANCE.getTranscribeProviderOpenAiApiKey().String();
@@ -816,7 +911,7 @@ public class TranscribeHelper {
         final String endpointUrl = apiBaseUrl.trim().replaceAll("(/chat/completions)?/*$", "") + "/chat/completions";
 
         executorService.submit(() -> {
-            String audioPathToUse;
+            String audioPathToUse = null;
             String audioFormatForApi = "wav"; // mp3 or wav
 
             try {
@@ -873,7 +968,7 @@ public class TranscribeHelper {
                     if (openAiResponse != null && openAiResponse.choices != null && !openAiResponse.choices.isEmpty()) {
                         OpenAiChatResponse.Choice firstChoice = openAiResponse.choices.get(0);
                         if (firstChoice.message != null && !TextUtils.isEmpty(firstChoice.message.content)) {
-                            callback.accept(firstChoice.message.content.trim(), null);
+                            callback.accept(untimed(firstChoice.message.content.trim()), null);
                         } else {
                             callback.accept(null, new Exception("OpenAI response structure invalid (no message content). Finish Reason: " + firstChoice.finishReason));
                         }
@@ -886,6 +981,8 @@ public class TranscribeHelper {
             } catch (Exception e) {
                 FileLog.e("OpenAI compatible transcription error", e);
                 callback.accept(null, e);
+            } finally {
+                deleteExtractedAudio(audioPathToUse, path);
             }
         });
     }
@@ -906,6 +1003,21 @@ public class TranscribeHelper {
         @SerializedName("text")
         @Expose
         public String text;
+        @SerializedName("segments")
+        @Expose
+        public List<Segment> segments;
+
+        private static class Segment {
+            @SerializedName("start")
+            @Expose
+            public float start;
+            @SerializedName("end")
+            @Expose
+            public float end;
+            @SerializedName("text")
+            @Expose
+            public String text;
+        }
     }
 
     private static class GroqVerboseResponse {
@@ -917,6 +1029,12 @@ public class TranscribeHelper {
         public List<Segment> segments;
 
         private static class Segment {
+            @SerializedName("start")
+            @Expose
+            public float start;
+            @SerializedName("end")
+            @Expose
+            public float end;
             @SerializedName("text")
             @Expose
             public String text;
