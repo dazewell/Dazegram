@@ -780,6 +780,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         // Occupancy changes reflow the row; a finished fade has to reflow too, otherwise the control that
         // just went invisible keeps its box (and its hit rect) forever.
+        // Only onMeasure writes occupiedChildCount, so it records what the row actually laid out rather
+        // than what it meant to. Recording the new count here instead used to strand a control: the panel
+        // re-measures its slots with the same specs every pass, so a slot skips onMeasure unless a layout
+        // was requested for it, and a request that got lost mid-pass left the count already updated. The
+        // mismatch was gone, nothing asked again, and the control sat visible inside a zero-width box for
+        // the rest of the session. Leaving the count alone keeps the mismatch until a measure clears it.
         private boolean needsRelayout() {
             int occupied = 0;
             boolean releasedChildVisible = false;
@@ -791,11 +797,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     releasedChildVisible = true;
                 }
             }
-            if (occupiedChildCount != occupied) {
-                occupiedChildCount = occupied;
-                return true;
-            }
-            return releasedChildVisible;
+            return occupiedChildCount != occupied || releasedChildVisible;
         }
     }
 }
