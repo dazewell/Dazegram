@@ -31,7 +31,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Composer toolbar <!-- #composer-toolbar -->
 
-The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments and schedule at the other, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, Bold, and Clear stay in the toolbar and enable when text is selected.
+The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, expand, attachments and schedule at the other, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, and Clear stay in the toolbar and enable when text is selected.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
@@ -103,7 +103,7 @@ Select a few messages and the selection bar's ⋯ menu gets two new actions. *Pi
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-When there is a draft and the keyboard or emoji panel leaves room, the toolbar shows an expand button. Tap it to grow the input between the chat header and the input method; tap it again to return to the normal height. It turns off when the draft is cleared, focus leaves the field, or recording starts. Formatting and cursor position stay put because it is the same text box.
+When there is a draft and the keyboard or emoji panel leaves room, the toolbar shows an expand button. It sits with the pinned trailing actions next to attachments and schedule, so it stays put instead of scrolling away with the rest of the controls. Tap it to grow the input between the chat header and the input method; tap it again to return to the normal height. It turns off when the draft is cleared, focus leaves the field, or recording starts. Formatting and cursor position stay put because it is the same text box.
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 

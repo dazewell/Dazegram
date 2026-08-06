@@ -28,7 +28,6 @@ public final class ComposerFormattingActions {
     private final ImageView quoteAction;
     private final ImageView spoilerAction;
     private final ImageView monoAction;
-    private final ImageView boldAction;
     private final ImageView clearAction;
     private boolean updating;
     private boolean destroyed;
@@ -48,12 +47,10 @@ public final class ComposerFormattingActions {
         quoteAction = addAction(R.drawable.formatting_quote, R.string.Quote, R.id.menu_quote);
         spoilerAction = addAction(R.drawable.formatting_spoiler, R.string.Spoiler, R.id.menu_spoiler);
         monoAction = addAction(R.drawable.formatting_code, R.string.Mono, R.id.menu_mono);
-        boldAction = addAction(R.drawable.formatting_bold, R.string.Bold, R.id.menu_bold);
         clearAction = addAction(R.drawable.nax_formatting_clear, R.string.Regular, R.id.menu_regular);
         setActionEnabled(quoteAction, false);
         setActionEnabled(spoilerAction, false);
         setActionEnabled(monoAction, false);
-        setActionEnabled(boldAction, false);
         setActionEnabled(clearAction, false);
         group.setVisibility(View.GONE);
     }
@@ -96,22 +93,18 @@ public final class ComposerFormattingActions {
             boolean quoteVisible = composerAvailable && isChat && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextQuote().Bool();
             boolean spoilerVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextSpoiler().Bool();
             boolean monoVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextMono().Bool();
-            boolean boldVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextBold().Bool();
             boolean clearVisible = composerAvailable && xyz.nextalone.nagram.NaConfig.INSTANCE.getShowTextRegular().Bool();
             quoteAction.setVisibility(quoteVisible ? View.VISIBLE : View.GONE);
             spoilerAction.setVisibility(spoilerVisible ? View.VISIBLE : View.GONE);
             monoAction.setVisibility(monoVisible ? View.VISIBLE : View.GONE);
-            boldAction.setVisibility(boldVisible ? View.VISIBLE : View.GONE);
             clearAction.setVisibility(clearVisible ? View.VISIBLE : View.GONE);
             setActionEnabled(quoteAction, hasSelection && isQuoteAvailable(editText.getText(), start, end));
             setActionEnabled(spoilerAction, hasSelection);
             setActionEnabled(monoAction, hasSelection);
-            setActionEnabled(boldAction, hasSelection);
             setActionEnabled(clearAction, hasSelection);
             group.setVisibility(quoteVisible
                     || spoilerVisible
                     || monoVisible
-                    || boldVisible
                     || clearVisible ? View.VISIBLE : View.GONE);
         } finally {
             updating = false;
