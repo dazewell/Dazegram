@@ -32,6 +32,13 @@ code are not.
   `TMessagesProj/src/main/kotlin`).
 - dazewell works on **Windows** — give all shell commands in **PowerShell**
   syntax by default.
+- **Machine matters: don't assume you can build.** Some of dazewell's machines
+  (the Surface Book 2) are too slow to build on — even the compile gate drags,
+  and a full `assemble` runs for an hour-plus. Never kick off a Gradle build
+  there, including "just the compile gate". Ask which machine you're on if it
+  isn't obvious, and when it's a slow one, treat the toolchain as unavailable
+  and fall back to CI exactly as step 4 describes. dazewell builds manually on
+  a faster machine when he wants an artifact.
 
 ## The pipeline, in order
 
@@ -141,9 +148,9 @@ code are not.
    A full APK build is heavy; this compile task is the standard gate and is
    enough to validate most feature work. Don't move on until it's clean.
 
-   **If the toolchain isn't available, skip the gate — don't fight it.** On
-   dazewell's PC it's always there; in a sandboxed agent environment it often
-   isn't (no Android SDK, no `local.properties`, no network for the Gradle
+   **If the toolchain isn't available — or the machine is too slow — skip the
+   gate, don't fight it.** In a sandboxed agent environment the toolchain often
+   isn't there (no Android SDK, no `local.properties`, no network for the Gradle
    distribution). Spend one quick check, not a setup project: is there a
    `gradlew`/`gradlew.bat` *and* an SDK (`ANDROID_HOME` / `ANDROID_SDK_ROOT` set
    or `local.properties` pointing at one) *and* a JDK? If yes, run the gate. If
@@ -151,6 +158,12 @@ code are not.
    code (missing SDK, unresolvable dependency, no network) — stop there. Don't
    install an SDK, vendor dependencies, or otherwise build a toolchain just to
    satisfy the gate.
+
+   Same answer on a slow machine even though everything's installed: on the
+   Surface Book 2 the compile gate takes ~5 minutes and a full `assemble` runs
+   over an hour, so **don't start either one there**. Use CI as the gate and
+   leave building an artifact to dazewell on a faster machine (see the machine
+   note above).
 
    The fallback is the **staging build**: push the branch and open the PR into
    `dev` (step 9), and `staging.yml` compiles it on every push to the PR. That
