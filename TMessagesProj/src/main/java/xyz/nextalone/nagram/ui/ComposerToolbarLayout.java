@@ -134,8 +134,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     public void addContextAction(View view) {
+        addContextAction(view, endSlot.getChildCount());
+    }
+
+    public void addContextAction(View view, int index) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        endSlot.addView(view, Math.min(index, endSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
     }
 
     public void addAction(View view) {
@@ -226,7 +230,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             super(context);
             setClipChildren(true);
             setClipToPadding(true);
-            setPaddingRelative(AndroidUtilities.dp(8), AndroidUtilities.dp(4), AndroidUtilities.dp(8), AndroidUtilities.dp(4));
+            // 2dp of glass inset plus 2dp of breathing room: the press animation only overshoots by a
+            // fraction of a dp, so anything wider is just dead space at both ends of the capsule.
+            setPaddingRelative(AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4));
         }
 
         void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
