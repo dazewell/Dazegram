@@ -19592,8 +19592,14 @@ public class ChatActivity extends BaseFragment implements
                 } else if (child == instantCameraView) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
                     int contentHeightSpec = View.MeasureSpec.makeMeasureSpec(allHeight, View.MeasureSpec.EXACTLY);
+                    final int recorderBottomChrome = (int) inputIslandHeightTarget + dp(9 + 3);
                     instantCameraView.setInternalPadding(windowInsetsStateHolder.getCurrentMaxBottomInset()
-                        + (int) inputIslandHeightTarget + dp(9 + 3));
+                        + recorderBottomChrome,
+                        // NagramX: second value is the same padding without the soft keyboard, which is what
+                        // the preview size is measured against. A panel that stays up (emoji, stickers) still
+                        // counts, since that one really does eat the room below the circle.
+                        Math.max(windowInsetsStateHolder.getInsets(WindowInsetsCompat.Type.systemBars()).bottom,
+                            windowInsetsStateHolder.getInAppKeyboardHeight()) + recorderBottomChrome);
 
                     child.measure(contentWidthSpec, contentHeightSpec);
                 } else if (child == overlayView) {

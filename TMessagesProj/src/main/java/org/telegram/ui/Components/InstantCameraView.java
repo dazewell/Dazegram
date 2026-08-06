@@ -508,9 +508,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private int internalPaddingBottom;
+    private int keyboardFreePaddingBottom;
 
-    public void setInternalPadding(int padding) {
+    // NagramX: the preview size is picked once, at the first measure after the camera opens, so a soft
+    // keyboard still sliding out at that moment used to shrink it for the whole recording. Recording
+    // always ends with the keyboard gone, so size against the keyboard-free padding while the layout
+    // itself keeps following the animated one.
+    public void setInternalPadding(int padding, int keyboardFreePadding) {
         internalPaddingBottom = padding;
+        keyboardFreePaddingBottom = keyboardFreePadding;
         setPadding(0, 0, 0, padding);
     }
 
@@ -518,7 +524,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         if (updateTextureViewSize) {
             int newSize;
-            if ((MeasureSpec.getSize(heightMeasureSpec) - getPaddingBottom()) > MeasureSpec.getSize(widthMeasureSpec) * 1.3f) {
+            if ((MeasureSpec.getSize(heightMeasureSpec) - keyboardFreePaddingBottom) > MeasureSpec.getSize(widthMeasureSpec) * 1.3f) {
                 newSize = AndroidUtilities.roundPlayingMessageSize;
             } else {
                 newSize = AndroidUtilities.roundMessageSize;
