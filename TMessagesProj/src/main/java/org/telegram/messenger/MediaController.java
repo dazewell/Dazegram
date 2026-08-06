@@ -2592,6 +2592,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             playingMessageObject = null;
             downloadingCurrentMessage = false;
             if (notify) {
+                // NagramX: captions last exactly one play. Guarded by notify so the teardown that
+                // restarts a video once it finishes downloading doesn't count as that play ending.
+                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(lastFile);
                 NotificationsController.audioManager.abandonAudioFocus(this);
                 hasAudioFocus = 0;
                 int index = -1;
@@ -3722,6 +3725,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (!messageObject.isOut() && (messageObject.isContentUnread())) {
             MessagesController.getInstance(messageObject.currentAccount).markMessageContentAsRead(messageObject);
         }
+        // NagramX: a different message is taking the player, so drop any captions (and any pending
+        // CC transcription) still attached to the one it's replacing.
+        tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.onPlaybackStarting(messageObject);
         boolean saved = false;
         boolean notify = !playMusicAgain;
         MessageObject oldMessageObject = playingMessageObject;

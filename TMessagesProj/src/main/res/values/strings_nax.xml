@@ -11,6 +11,7 @@
     <string name="VideoMessagesHalSmoothZoomCheckFailed">Couldn\'t check the camera right now, try again with the camera closed</string>
     <string name="VideoMessagesMute">Mute video messages</string>
     <string name="VideoMessagesUnmute">Unmute video messages</string>
+    <string name="VideoMessagesCaptions">Closed captions</string>
     <string name="HideLastMessage">Hide Last Message</string>
     <string name="HideLastMessageTitle">Hide last message</string>
     <string name="HideLastMessageInfo">Replace this chat\'s last message in the chat list with a placeholder, so it can\'t be read at a glance. The real message is still shown when you open the chat.</string>

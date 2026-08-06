@@ -1136,6 +1136,7 @@ public class ChatActivity extends BaseFragment implements
     private String startVideoEdit;
 
     private FrameLayout videoPlayerContainer;
+    private tw.nekomimi.nekogram.ui.components.VideoMessageCaptionView videoCaptionView; // NagramX: closed captions strip under a playing video message
     private ChatMessageCell drawLaterRoundProgressCell;
     private AspectRatioFrameLayout aspectRatioFrameLayout;
     private TextureView videoTextureView;
@@ -4093,6 +4094,8 @@ public class ChatActivity extends BaseFragment implements
         pollHintView = null;
         timerHintView = null;
         videoPlayerContainer = null;
+        videoCaptionView = null; // NagramX
+        tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.cancelPlayback(currentAccount, dialog_id); // NagramX
         voiceHintTextView = null;
         blurredView = null;
         dummyMessageCell = null;
@@ -9481,6 +9484,11 @@ public class ChatActivity extends BaseFragment implements
                 if (MediaController.getInstance().isPlayingMessage(messageObject)) {
                     contentView.removeView(videoPlayerContainer);
                     videoPlayerContainer = null;
+                    if (videoCaptionView != null) { // NagramX
+                        videoCaptionView.clear();
+                        contentView.removeView(videoCaptionView);
+                        videoCaptionView = null;
+                    }
                     videoTextureView = null;
                     aspectRatioFrameLayout = null;
                 }
@@ -13234,12 +13242,55 @@ public class ChatActivity extends BaseFragment implements
         if (parent == null) {
             contentView.addView(videoPlayerContainer, 1, new FrameLayout.LayoutParams(AndroidUtilities.roundPlayingMessageSize(isSideMenued()), AndroidUtilities.roundPlayingMessageSize(isSideMenued())));
         }
+        // NagramX: captions ride along with the player, kept above the composer so the input's
+        // blur and the toolbar under it can't paint over the strip
+        if (videoCaptionView == null) {
+            videoCaptionView = new tw.nekomimi.nekogram.ui.components.VideoMessageCaptionView(getParentActivity());
+            // Walking back into a chat mid-playback doesn't fire a "started" notification, so take
+            // the message off the player rather than waiting for one that already happened.
+            MessageObject playingCaptioned = MediaController.getInstance().getPlayingMessageObject();
+            if (playingCaptioned != null && playingCaptioned.isRoundVideo()) {
+                videoCaptionView.setMessage(currentAccount, playingCaptioned);
+            }
+        }
+        if (videoCaptionView.getParent() != contentView) {
+            if (videoCaptionView.getParent() != null) {
+                ((ViewGroup) videoCaptionView.getParent()).removeView(videoCaptionView);
+            }
+            int captionIndex = contentView.indexOfChild(chatInputViewsContainer);
+            contentView.addView(videoCaptionView, captionIndex < 0 ? contentView.getChildCount() : captionIndex + 1, new FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        }
         videoPlayerContainer.setTag(null);
         aspectRatioFrameLayout.setDrawingReady(false);
         return videoTextureView;
     }
 
+    private final int[] videoCaptionAnchorLocation = new int[2]; // NagramX
+
+    // NagramX: pin the captions pill to the real top edge of the composer capsule. Measuring it on
+    // screen instead of asking the container for its bubble metrics keeps it right through the
+    // keyboard animation, the expanded input, and whatever panel is stacked under the capsule.
+    private void updateVideoCaptionAnchor() {
+        if (videoCaptionView == null) {
+            return;
+        }
+        View anchor = chatActivityEnterView != null && chatActivityEnterView.getVisibility() == View.VISIBLE
+                ? chatActivityEnterView : chatInputBubbleContainer;
+        if (anchor == null || anchor.getHeight() == 0) {
+            return;
+        }
+        anchor.getLocationOnScreen(videoCaptionAnchorLocation);
+        int anchorTop = videoCaptionAnchorLocation[1];
+        videoCaptionView.getLocationOnScreen(videoCaptionAnchorLocation);
+        videoCaptionView.setAnchorBottom(anchorTop - videoCaptionAnchorLocation[1]);
+    }
+
     private void destroyTextureView() {
+        if (videoCaptionView != null) { // NagramX
+            videoCaptionView.clear();
+            contentView.removeView(videoCaptionView);
+            videoCaptionView = null;
+        }
         if (videoPlayerContainer == null || videoPlayerContainer.getParent() == null) {
             return;
         }
@@ -24322,6 +24373,10 @@ public class ChatActivity extends BaseFragment implements
                 } else {
                     MediaController.getInstance().setTextureView(createTextureView(true), aspectRatioFrameLayout, videoPlayerContainer, true);
                 }
+                if (videoCaptionView != null) { // NagramX
+                    updateVideoCaptionAnchor();
+                    videoCaptionView.setMessage(currentAccount, messageObject);
+                }
             }
 
             if (chatListView != null) {
@@ -24397,6 +24452,11 @@ public class ChatActivity extends BaseFragment implements
             if (injecting) {
                 contentView.removeView(videoPlayerContainer);
                 videoPlayerContainer = null;
+                if (videoCaptionView != null) { // NagramX
+                    videoCaptionView.clear();
+                    contentView.removeView(videoCaptionView);
+                    videoCaptionView = null;
+                }
                 videoTextureView = null;
                 aspectRatioFrameLayout = null;
             } else {
@@ -24433,6 +24493,9 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == NotificationCenter.messagePlayingDidReset || id == NotificationCenter.messagePlayingPlayStateChanged) {
             if (id == NotificationCenter.messagePlayingDidReset) {
                 AndroidUtilities.runOnUIThread(destroyTextureViewRunnable);
+                if (videoCaptionView != null) { // NagramX
+                    videoCaptionView.clear();
+                }
             }
             int messageId = (int) args[0];
             if (chatListView != null) {
@@ -24499,6 +24562,18 @@ public class ChatActivity extends BaseFragment implements
     private void didReceivedNotification5(int id, int account, final Object... args) {
         if (id == NotificationCenter.messagePlayingProgressDidChanged) {
             Integer mid = (Integer) args[0];
+            // NagramX: driven off the player, not off a visible cell, so captions keep advancing
+            // once the message scrolls out of the list.
+            if (videoCaptionView != null) {
+                MessageObject player = MediaController.getInstance().getPlayingMessageObject();
+                if (player != null && player.isRoundVideo()) {
+                    videoCaptionView.setProgress((long) (player.audioProgress * player.getDuration() * 1000L));
+                    // Two getLocationOnScreen calls per tick is worth skipping while the strip is empty.
+                    if (videoCaptionView.getVisibility() == View.VISIBLE) {
+                        updateVideoCaptionAnchor();
+                    }
+                }
+            }
             if (chatListView != null) {
                 int count = chatListView.getChildCount();
                 for (int a = 0; a < count; a++) {
@@ -24763,6 +24838,18 @@ public class ChatActivity extends BaseFragment implements
                     }
                     if (args.length > 4 && args[4] != null) {
                         messageObject.messageOwner.voiceTranscriptionFinal = (Boolean) args[4];
+                    }
+                    // NagramX: CC was pressed on a video that still had to be transcribed, so this
+                    // is where it finally gets to play. Waits for the request to settle, since this
+                    // notification also fires the moment it starts.
+                    if (!TranscribeButton.isTranscribing(messageObject)
+                            && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.consumePlayback(currentAccount, messageObject)) {
+                        if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.hasFinalText(messageObject)) {
+                            MediaController.getInstance().playMessage(messageObject);
+                        } else {
+                            // Nothing came back, so don't leave it armed to caption some later play.
+                            tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
+                        }
                     }
 
                     int index = messages.indexOf(messageObject);
