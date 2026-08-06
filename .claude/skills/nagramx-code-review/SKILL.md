@@ -235,8 +235,11 @@ evidence (working code/tests, the upstream constraint) rather than
 performative agreement; involve dazewell if it's an architectural call. When the
 finding is right, just fix it — the diff shows you heard it; skip the "thanks."
 Fix one item at a time and re-run the compile gate — locally, or by pushing to
-the PR and reading the staging build when there's no local toolchain. On a no-go, fix in place and
-re-review; don't stack "address review" commits (see `nagramx-workflow` step 9).
+the PR and reading the staging build when there's no local toolchain. On a no-go, fix it and
+push a **new commit** describing that fix (`#<slug>`-tagged) — don't amend and
+force-push, and don't write "address review" as the message; the branch history
+is meant to show how the change evolved (see `nagramx-workflow` step 9 and
+*Follow up with a new commit* in `nagramx-branch-flow`).
 
 **GitHub review closure is required.** Every inline comment or review thread
 must receive either a fix or an explicit reply explaining why it will not be

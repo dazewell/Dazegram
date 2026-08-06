@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, the force-push rule (and folding review fixes in by amending), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/NagramX, base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, the mandatory `<YYYY-MM-DD>_<slug>` branch naming, the no-force-push rule (follow-ups are new commits, not amends), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -28,7 +28,8 @@ branches are short-lived scaffolding you delete after merging.
 - `<YYYY-MM-DD>_<slug>` (the date you start it, e.g. `2026-07-07_chatlock`) —
   one branch per change, cut from `dev`, PR'd into `dev`, then **deleted after
   merge**. Keep it alive *only* if you intend to propose that feature upstream
-  (then it stays append-only).
+  (then it stays append-only). **The date prefix is mandatory** — an undated
+  name like `video-cc` is wrong; see *Branch naming* below.
 
 **The tag that replaces permanent branches:** every commit carries an inline
 `#<slug>` hashtag (e.g. `#chatlock`). That — not a surviving branch — is how you
@@ -38,11 +39,17 @@ though the original branch is long gone.
 
 **The force-push rule, by category:**
 - `base`, `dev` → **never** force-push (shared history everything depends on).
-- feature branches → yours to rewrite. Amend + `--force-with-lease` is the
-  normal way to fold a review fix into the commit it belongs to (*Fold review
-  fixes into the commit* below); the throwaway `-pr` copy is rebased and
-  squashed outright at upstream-proposal time. A branch kept alive as an
-  upstream candidate goes append-only once its commits are what you'd propose.
+- feature branches → **append-only by default. Don't amend, don't force-push.**
+  A bug found in review, a follow-up improvement, a second iteration — each gets
+  its **own new commit** with the same `#slug` tag (*Follow up with a new
+  commit* below). The point is a readable history of how the artifact evolved,
+  not ten pushes that all show the same commit message. Rewriting a feature
+  branch happens only when dazewell explicitly asks for it (or something must
+  genuinely be erased, e.g. a leaked secret or a bad blob), and then only with
+  `--force-with-lease`.
+- the throwaway `-pr` copy → rebased and squashed outright at upstream-proposal
+  time. That's a separate branch made for that purpose, so it doesn't conflict
+  with the append-only rule above.
 
 **Worktree or in-place?** A change you expect to iterate on (back-and-forth:
 multiple review rounds, on-device testing, fixes trickling in over days) gets its
@@ -143,6 +150,51 @@ the name matches in CI too.)
 - **`<YYYY-MM-DD>_<slug>`** — short-lived change branch. Cut from `dev`, PR'd in,
   deleted after merge (kept only for upstream candidates).
 
+## Branch naming (mandatory — the date prefix is not optional)
+
+Every change branch is **`<YYYY-MM-DD>_<slug>`** — lowercase, an **underscore**
+between the date and the slug, hyphens inside the slug:
+
+```
+2026-08-05_video-cc          2026-07-07_chatlock          2026-08-06_ci-tag-check
+```
+
+- **Date first, always.** It's the date you *start* the branch, so the branch
+  list reads chronologically and stale scaffolding is obvious at a glance. A
+  name with no date (`video-cc`, `fix-expand-button-edit-mode`,
+  `composer-select-all`) is **wrong** — that's the most common slip and it has
+  to be caught before the first push.
+- **Underscore separates date from slug; hyphens inside the slug.** The
+  underscore makes the date boundary readable at a glance and lets the slug
+  match the `#tag` verbatim. Nothing in the stack objects to it — git, GitHub
+  PRs, `staging.yml`, and `commit-tag.yml` all handle it (see
+  `2026-07-26_infinite-video`, `2026-07-25_timezone-strip-cursor`, merged
+  as-is). No camelCase, no spaces.
+- **Slug matches the commit `#tag`.** Branch `2026-08-05_video-cc` →
+  commits tagged `#video-cc`. Same words, so the branch and the permanent
+  `git log --grep` handle line up.
+- **No owner prefix.** The branch name is exactly `<YYYY-MM-DD>_<slug>` and
+  nothing more — no `dazewell-` in front. Older branches carry one
+  (`dazewell-2026-08-05-video-cc`) because a tool prepended it automatically;
+  that setting is off now, so new branches shouldn't have it. If a tool adds
+  one anyway, drop it (rename, below) rather than adopting it.
+- **The one tooling caveat:** a session/branch generator that insists on
+  kebab-case may flatten the underscore to a hyphen
+  (`2026-08-05-video-cc`). That's a cosmetic loss, not a broken
+  branch — leave it rather than renaming just for the separator. **The date is
+  the part that must never be dropped**; if the generated name lost the date,
+  rename it.
+- **Wrong name already created?** Rename it before it accumulates review
+  history, rather than living with it:
+  ```powershell
+  git branch -m <old-name> <YYYY-MM-DD>_<slug>
+  git push origin :<old-name>                              # drop the old remote ref
+  git push origin -u <YYYY-MM-DD>_<slug>
+  ```
+  (Deleting and re-pushing a *branch ref* isn't a history rewrite — the commits
+  are untouched, so this doesn't conflict with the no-force-push rule. If a PR
+  is already open on the old name, just retarget/reopen it on the new branch.)
+
 ## Do I keep feature branches updated? (no — and usually don't keep them at all)
 
 You don't rebase or "catch up" a change branch. It's cut from `dev`, carries its
@@ -182,7 +234,7 @@ worktree once its branch has landed and been deleted (*Land a change*).
 git fetch source dev
 git switch base; git merge --ff-only source/dev        # keep the mirror current
 git switch dev;  git merge --no-edit base               # bring upstream into the trunk
-git switch -c <YYYY-MM-DD>_<slug> dev                   # cut the change branch (date-stamped) from the trunk
+git switch -c <YYYY-MM-DD>_<slug> dev                   # cut the change branch from the trunk; DATE PREFIX REQUIRED (e.g. 2026-08-05_video-cc)
 git config core.hooksPath .githooks                     # once per clone, if not set
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
@@ -195,7 +247,7 @@ the code — it rides in with the feature (see `nagramx-workflow` step 6).
 git fetch source dev
 git switch base; git merge --ff-only source/dev        # keep the mirror current
 git switch dev;  git merge --no-edit base               # bring upstream into the trunk
-git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # sibling folder on a fresh branch cut from dev
+git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # sibling folder on a fresh branch cut from dev; DATE PREFIX REQUIRED
 cd ..\NagramX-<slug>                                    # work here; the main clone stays on dev
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
 ```
@@ -236,20 +288,30 @@ Every GitHub review comment must be closed before landing: reply with the fix,
 or explain explicitly why it will not be changed, then resolve the thread.
 Verify that no review threads remain unresolved.
 
-### Fold review fixes into the commit (don't stack "address review" commits)
-A review point worth acting on goes into the commit it belongs to, not a
-follow-up commit that says "address review":
+### Follow up with a new commit (don't amend, don't force-push)
+A review fix, a bug found on-device, a follow-up improvement — each lands as a
+**new commit on top**, never by amending what's already pushed:
 ```powershell
 # ...fix, re-run the compile gate...
-git add <files>; git commit --amend --no-edit
-git push --force-with-lease origin <YYYY-MM-DD>_<slug>   # feature branch only
+git add <files>; git commit -m "<what this fix actually does> #<slug>"
+git push origin <YYYY-MM-DD>_<slug>
 ```
-Always `--force-with-lease`, never a bare `--force`, so the push aborts if the
-remote moved under you. This is the one routine rewrite in the daily loop and
-it's confined to a short-lived branch nothing else builds on — `dev` and `base`
-are still never force-pushed, and the merge into `dev` stays a merge commit.
-Each force-push re-triggers `staging.yml` on the PR and supersedes the build
-still running, so you get one fresh test APK rather than a stack of them.
+The history should read as the story of the change: what was tried, what broke,
+what was corrected. Ten pushes of the same amended message tell you nothing.
+So write each follow-up commit message for what *that* commit does ("clamp pin
+count to the free-tier limit #multi-pin"), not a generic "address review" or a
+copy of the original subject. Each commit still carries the `#<slug>` tag, so
+the whole story stays greppable, and the merge into `dev` keeps all of it.
+
+Every push re-triggers `staging.yml` on the PR and supersedes the build still
+running, so you still get one fresh test APK per push rather than a stack.
+
+Rewriting (`--amend`, `rebase -i`, `push --force-with-lease`) is **off by
+default**, even on a feature branch. Do it only when dazewell explicitly asks,
+or when something must genuinely be erased from history (a committed secret, a
+huge stray binary) — and then always `--force-with-lease`, never a bare
+`--force`, so the push aborts if the remote moved under you. `dev` and `base`
+are never force-pushed under any circumstances.
 
 ### Land a change
 Mark the PR ready and **merge it with a merge commit (never squash)**, so the

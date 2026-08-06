@@ -52,11 +52,14 @@ code are not.
    for *what* this review actually checks.
 
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
-   `<YYYY-MM-DD>_<short-slug>` (the date you start it, e.g.
-   `2026-07-07_require-password`) — one change per branch. You PR it into `dev`
-   and **delete it after merge**; keep it alive only if you'll propose that
-   feature upstream. Don't commit directly to `dev`. The full topology, the
-   `#tag` every commit carries, sync, and the force-push rules live in
+   `<YYYY-MM-DD>_<short-slug>` — **the date prefix is mandatory** (the date you
+   start it, e.g. `2026-07-07_require-password`), underscore between date and
+   slug, hyphens inside the slug. An undated name like `require-password` is
+   wrong; fix it before the first push. One change per branch. You PR it into
+   `dev` and **delete it after merge**; keep it alive only if you'll propose
+   that feature upstream. Don't commit directly to `dev`. The full topology,
+   branch-naming rules, the
+   `#tag` every commit carries, sync, and the no-force-push rule live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
    they move.
 
@@ -215,18 +218,22 @@ code are not.
      Chores use a category tag (`#ci`, `#docs`, `#build`). The
      `.githooks/commit-msg` hook and `commit-tag.yml` enforce this. See the
      `nagramx-branch-flow` skill.
-   - **One change = one short-lived branch.** A change's commits accumulate on
-     its `<YYYY-MM-DD>_<slug>` branch, then land into `dev` by a merge commit
-     and the branch is deleted. Squashing to one clean commit happens only when
-     you propose the feature to the base fork, on a throwaway `-pr` copy. See
-     the `nagramx-branch-flow` skill.
+   - **One change = one short-lived branch, append-only.** A change's commits
+     accumulate on its `<YYYY-MM-DD>_<slug>` branch, then land into `dev` by a
+     merge commit and the branch is deleted. Each iteration — a review fix, a
+     bug caught on-device, a later improvement — is a **new commit** describing
+     that specific fix, not an amend of an earlier one; the branch history is
+     the record of how the change evolved. Squashing to one clean commit
+     happens only when you propose the feature to the base fork, on a throwaway
+     `-pr` copy. See the `nagramx-branch-flow` skill.
 
 8. **Merge-forward, don't rebase in the loop.** `dev` is the trunk and holds
    unique history, so it is never rebuilt or force-pushed. `base`
    fast-forwards from the base fork and is *merged forward* into `dev`;
-   changes land by merge commits. The shared branches are what that protects: a
-   short-lived feature branch is yours to amend and `--force-with-lease` while
-   it's in review (step 9), and the `-pr` copy is rebased and squashed outright
+   changes land by merge commits. Feature branches are **append-only too**: a
+   review fix or a follow-up improvement is a **new commit**, not an amend +
+   force-push (step 9), so the history shows how the change evolved. The one
+   place rewriting happens is the throwaway `-pr` copy, rebased and squashed
    when proposing upstream. Syncing onto the base fork, resolving an upstream
    conflict in the `dev` merge, and the phone-triggered automation are covered
    in the `nagramx-branch-flow` skill.
@@ -287,15 +294,16 @@ code are not.
    re-requesting after each fix turns into endless churn on diminishing returns.
    The round-2 architect review is the real quality gate; Copilot is one
    supplementary machine pass. If a later Copilot pass is genuinely warranted
-   (e.g. the fix was large or risky), dazewell asks for it explicitly. Don't
-   stack "address Copilot" commits either — amend the commit the fix belongs to
-   and `git push --force-with-lease` (fine on a feature branch, never on `dev`
-   or `base`; see *Fold review fixes into the commit* in `nagramx-branch-flow`).
+   (e.g. the fix was large or risky), dazewell asks for it explicitly. Fixes go
+   in as **new commits** — don't amend and force-push, and don't write
+   "address Copilot review" either; say what the commit actually changes and
+   tag it `#<slug>` (see *Follow up with a new commit* in
+   `nagramx-branch-flow`).
 
    Iterate by pushing to the branch (each push rebuilds + re-uploads, and
    supersedes a build still running on that PR rather than adding to it). On a
-   no-go, amend and force-push-with-lease again; don't stack visible "fix
-   review comments" commits. `staging.yml` path-ignores pure doc / `.github`
+   no-go, fix it and push another commit describing that fix.
+   `staging.yml` path-ignores pure doc / `.github`
    pushes,
    so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
    runs on `dev` after landing — there is no separate debug build and no
