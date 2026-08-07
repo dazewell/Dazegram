@@ -38,6 +38,8 @@ public final class ScheduleTimeHelper {
     private static final int DEFAULT_SCHEDULE_STEP_COUNT = 34;
     private static final int DEFAULT_SCHEDULE_LAST_MINUTE_STEP = 11;
     private static final int DEFAULT_SCHEDULE_LAST_HOUR_STEP = 22;
+    private static final int DEFAULT_SCHEDULE_DAY_STEP_COUNT = 7;
+    private static final int DEFAULT_SCHEDULE_FIRST_MONTH_STEP = DEFAULT_SCHEDULE_LAST_HOUR_STEP + DEFAULT_SCHEDULE_DAY_STEP_COUNT + 1;
     private static final int DEFAULT_SCHEDULE_ONE_MONTH_MINUTES = 30 * 24 * 60;
     private static final int DEFAULT_SCHEDULE_THREE_MONTHS_MINUTES = 90 * 24 * 60;
     private static final int DEFAULT_SCHEDULE_SIX_MONTHS_MINUTES = 180 * 24 * 60;
@@ -424,15 +426,15 @@ public final class ScheduleTimeHelper {
             return (step + 1) * 5;
         } else if (step <= DEFAULT_SCHEDULE_LAST_HOUR_STEP) {
             return (step - 10) * 60;
-        } else if (step <= 29) {
+        } else if (step < DEFAULT_SCHEDULE_FIRST_MONTH_STEP) {
             return (step - DEFAULT_SCHEDULE_LAST_HOUR_STEP) * 24 * 60;
         }
         switch (step) {
-            case 30:
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP:
                 return DEFAULT_SCHEDULE_ONE_MONTH_MINUTES;
-            case 31:
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP + 1:
                 return DEFAULT_SCHEDULE_THREE_MONTHS_MINUTES;
-            case 32:
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP + 2:
                 return DEFAULT_SCHEDULE_SIX_MONTHS_MINUTES;
             default:
                 return DEFAULT_SCHEDULE_TWELVE_MONTHS_MINUTES;
