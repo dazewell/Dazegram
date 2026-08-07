@@ -8450,6 +8450,7 @@ public class ChatActivity extends BaseFragment implements
             @Override
             protected void onChangedInputPrimaryWidth() {
                 updateInputBubbleOffsets();
+                checkUi_botMenuPosition();
             }
 
             @Override
@@ -19683,14 +19684,15 @@ public class ChatActivity extends BaseFragment implements
                     }
                 } else if (child == mentionContainer) {
                     FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) mentionContainer.getLayoutParams();
+                    int mentionWidth = Math.max(0, widthSize - layoutParams.leftMargin - layoutParams.rightMargin);
                     if (mentionContainer.getAdapter().isBannedInline()) {
-                        child.measure(View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(heightSize, View.MeasureSpec.AT_MOST));
+                        child.measure(View.MeasureSpec.makeMeasureSpec(mentionWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(heightSize, View.MeasureSpec.AT_MOST));
                     } else {
                         mentionContainer.setIgnoreLayout(true);
                         layoutParams.height = heightSize;
                         layoutParams.topMargin = 0;
                         mentionContainer.setIgnoreLayout(false);
-                        child.measure(View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(layoutParams.height, View.MeasureSpec.EXACTLY));
+                        child.measure(View.MeasureSpec.makeMeasureSpec(mentionWidth, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec(layoutParams.height, View.MeasureSpec.EXACTLY));
                     }
                 } else if (child == textSelectionHelper.getOverlayView(getContext())) {
                     int contentWidthSpec = View.MeasureSpec.makeMeasureSpec(widthSize, View.MeasureSpec.EXACTLY);
@@ -50254,12 +50256,28 @@ public class ChatActivity extends BaseFragment implements
     private void checkUi_botMenuPosition() {
         final float margin = windowInsetsStateHolder.getAnimatedMaxBottomInset()
             + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
-            + (chatInputViewsContainer.getInputBubbleHeight() + dp(9 + 6));
+            + (chatInputViewsContainer.getInputBubbleHeight() + dp(9 + 6))
+            + (chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleSuggestionBottomInset() : 0);
 
         if (chatActivityEnterView != null && chatActivityEnterView.botCommandsMenuContainer != null) {
             chatActivityEnterView.botCommandsMenuContainer.setTranslationY(-margin);
         }
         if (mentionContainer != null) {
+            FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) mentionContainer.getLayoutParams();
+            if (layoutParams != null) {
+                int endInset = chatActivityEnterView != null ? chatActivityEnterView.getInputBubblePrimaryEndInset() : 0;
+                if (LocaleController.isRTL) {
+                    if (layoutParams.leftMargin != endInset || layoutParams.rightMargin != 0) {
+                        layoutParams.leftMargin = endInset;
+                        layoutParams.rightMargin = 0;
+                        mentionContainer.setLayoutParams(layoutParams);
+                    }
+                } else if (layoutParams.leftMargin != 0 || layoutParams.rightMargin != endInset) {
+                    layoutParams.leftMargin = 0;
+                    layoutParams.rightMargin = endInset;
+                    mentionContainer.setLayoutParams(layoutParams);
+                }
+            }
             mentionContainer.setTranslationY(mentionContainer.isReversed() ? dp(5) : -margin);
         }
     }

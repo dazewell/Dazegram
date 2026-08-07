@@ -17933,6 +17933,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
     }
 
+    public int getInputBubbleSuggestionBottomInset() {
+        return composerToolbarEnabled ? getInputBubbleBottomInset() : 0;
+    }
+
     public int getInputBubblePrimaryEndInset() {
         if (!composerToolbarEnabled || inputPrimarySuppressed) {
             return 0;
