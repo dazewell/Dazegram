@@ -684,7 +684,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     public FrameLayout textFieldContainer;
     public FrameLayout sendButtonContainer;
     private xyz.nextalone.nagram.ui.ComposerToolbarLayout composerToolbar;
-    private xyz.nextalone.nagram.ui.ComposerFormattingActions composerFormattingActions;
+    private xyz.nextalone.nagram.ui.composer.ComposerFormattingActions composerFormattingActions;
     private boolean toolbarReplacementVisible;
     private boolean inputPrimarySuppressed;
     private int inputPrimaryVisibility;
@@ -2803,8 +2803,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, composerToolbarEnabled ? 0 : DEFAULT_HEIGHT + 8, 0));
         if (composerToolbarEnabled) {
             composerToolbar = new xyz.nextalone.nagram.ui.ComposerToolbarLayout(context);
-            composerFormattingActions = new xyz.nextalone.nagram.ui.ComposerFormattingActions(this, resourcesProvider, isChat);
-            composerToolbar.addFormatting(composerFormattingActions.getView());
+            composerFormattingActions = new xyz.nextalone.nagram.ui.composer.ComposerFormattingActions(this, composerToolbar, resourcesProvider, isChat);
             messageEditTextContainer.addView(composerToolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, COMPOSER_TOOLBAR_HEIGHT, Gravity.BOTTOM));
         }
 
@@ -2860,7 +2859,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         });
         if (composerToolbarEnabled) {
-            composerToolbar.addStart(emojiButton);
+            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EMOJI, emojiButton);
         } else {
             messageEditTextContainer.addView(emojiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.LEFT, 2, 0, 0, 0));
         }
@@ -2923,9 +2922,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             notifyButton.setContentDescription(silent ? getString("AccDescrChanSilentOn", R.string.AccDescrChanSilentOn) : getString("AccDescrChanSilentOff", R.string.AccDescrChanSilentOff));
             notifyButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
             notifyButton.setScaleType(ImageView.ScaleType.CENTER);
+            if (composerToolbarEnabled) {
+                // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons.
+                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
+            }
             notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
-            attachLayout.addView(notifyButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+            int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+            attachLayout.addView(notifyButton, LayoutHelper.createLinear(composerContextSize, composerContextSize));
             notifyButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -2936,6 +2940,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     notifySilentDrawable.setCrossOut(silent, true);
                     notifyButton.setImageDrawable(notifySilentDrawable);
+                    if (composerToolbarEnabled) {
+                        xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
+                    }
                     MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + dialog_id, silent).commit();
                     NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(dialog_id, fragment == null ? 0 : fragment.getTopicId());
                     UndoView undoView = fragment.getUndoView();
@@ -2961,7 +2968,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (composerToolbarEnabled) {
                 // NagramX: attach holds the trailing edge - it is the one always reached for, so it stays put
                 // while everything beside it comes and goes
-                composerToolbar.addPinnedTrailingAction(attachButton);
+                composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.ATTACH, attachButton);
             } else {
                 messageEditTextContainer.addView(attachButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
             }
@@ -2981,7 +2988,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         aiButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
         if (composerToolbarEnabled) {
-            composerToolbar.addAction(aiButton, 1);
+            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.AI, aiButton);
         } else {
             textFieldContainer.addView(aiButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1 + DEFAULT_HEIGHT, 0, 0));
         }
@@ -3052,7 +3059,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         richButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
         if (composerToolbarEnabled) {
-            composerToolbar.addAction(richButton, 0);
+            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.RICH, richButton);
         } else {
             textFieldContainer.addView(richButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.TOP | Gravity.RIGHT, 0, 1, 0, 0));
         }
@@ -3071,7 +3078,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             expandInputButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));
             // NagramX: fullscreen expand stays in the pinned trailing group beside attach rather than the
             // scrolling one - it gets used far more than the article editor, so it must never scroll out of reach
-            composerToolbar.addContextAction(expandInputButton);
+            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
                 if (!messageEditExpanded && !canExpandInput()) {
@@ -3932,7 +3939,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduledButton.setScaleType(ImageView.ScaleType.CENTER);
         scheduledButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         if (composerToolbarEnabled) {
-            composerToolbar.addQuickAction(scheduledButton);
+            composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.SCHEDULE, scheduledButton);
         } else {
             messageEditTextContainer.addView(scheduledButton, 2, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT));
         }
@@ -3996,8 +4003,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         giftButton.setVisibility(GONE);
         giftButton.setContentDescription(getString(R.string.GiftPremium));
         giftButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(giftButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
+        }
         giftButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
-        attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
+        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+        attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(composerContextSize, composerContextSize, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
         giftButton.setOnClickListener(v -> {
             SharedPreferences.Editor edit = MessagesController.getInstance(currentAccount).getMainSettings().edit();
             if (BirthdayController.isToday(parentFragment.getCurrentUserInfo())) {
@@ -4042,6 +4053,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         suggestButton = new ImageView(getContext());
         suggestButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(suggestButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
+        }
         suggestButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         suggestButton.setImageResource(R.drawable.input_suggest_paid_24);
         suggestButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
@@ -4049,7 +4063,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             suggestButton.setTranslationX(dp(42));
             textFieldContainer.addView(suggestButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 6 + DEFAULT_HEIGHT, 0));
         } else {
-            attachLayout.addView(suggestButton, 0, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+            int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+            attachLayout.addView(suggestButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         }
         suggestButton.setOnClickListener(v -> {
             if (adjustPanLayoutHelper != null && adjustPanLayoutHelper.animationInProgress() || attachLayoutPaddingAlpha == 0f) {
@@ -4137,10 +4152,14 @@ public class ChatActivityEnterView extends FrameLayout implements
         botButtonDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         botButtonDrawable.setIcon(R.drawable.input_bot2, false);
         botButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(botButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
+        }
         botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         botButton.setVisibility(GONE);
         AndroidUtilities.updateViewVisibilityAnimated(botButton, false, 0.1f, false);
-        attachLayout.addView(botButton, 0, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+        attachLayout.addView(botButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         botButton.setOnClickListener(v -> {
 //            if (hasBotWebView() && botCommandsMenuIsShowing()) {
 //                botWebViewMenuContainer.dismiss(v::callOnClick);
@@ -7152,7 +7171,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         boolean show = canShowExpandInputButton();
         int animationId = ++expandInputButtonAnimationId;
         expandInputButton.animate().cancel();
-        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.baseline_fullscreen_24);
+        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.nax_composer_expand);
         updateExpandInputButtonColor();
         expandInputButton.setContentDescription(getString(messageEditExpanded ? R.string.CollapseMessageField : R.string.ExpandMessageField));
         if (shownExpandInputButton == show) {
@@ -8391,6 +8410,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 parentActivity.getResources().getDrawable(targetRes)
         });
         transitionDrawable.setCrossFadeEnabled(true);
+        transitionDrawable.setBounds(0, 0, dp(24), dp(24));
 
         imageView.setImageDrawable(transitionDrawable);
         imageView.post(() -> transitionDrawable.startTransition(duration));
@@ -8445,6 +8465,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 delegate.didPressAttachButton();
             });
             attachButton.setContentDescription(LocaleController.getString("AccDescrAttachButton", R.string.AccDescrAttachButton));
+        }
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(
+                    attachButton,
+                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE,
+                    xyz.nextalone.nagram.ui.composer.ComposerButtons.iconScaleForResource(targetRes));
         }
         if (duration == 0) {
             attachButton.setImageResource(targetRes);
@@ -10548,9 +10574,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduledButton.setScaleX(pin ? 1.0f : 0.0f);
         scheduledButton.setScaleY(1.0f);
         // attach layout hidden (attach menu off, or stories) frees the rightmost slot for the calendar;
-        // otherwise it sits one slot to the left of the still-present attach button.
+        // otherwise it sits one slot to the left of the still-present attach button. With the composer
+        // toolbar on, the trailing slot is a linear row that closes the gap itself, so shifting the
+        // button by a slot width would only push it off its own position.
         boolean attachHidden = !NekoConfig.useChatAttachMediaMenu.Bool() || isStories;
-        scheduledButton.setTranslationX(dp(pin && attachHidden ? DEFAULT_HEIGHT : 0));
+        scheduledButton.setTranslationX(dp(!composerToolbarEnabled && pin && attachHidden ? DEFAULT_HEIGHT : 0));
         updateFieldRight(lastAttachVisible);
     }
 
@@ -13198,6 +13226,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 notifySilentDrawable.setCrossOut(silent, false);
                 notifyButton.setImageDrawable(notifySilentDrawable);
+                if (composerToolbarEnabled) {
+                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
+                }
             }
             if (attachLayout != null) {
                 updateFieldRight(attachLayout.getVisibility() == VISIBLE ? 1 : 0);

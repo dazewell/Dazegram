@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -27,6 +28,9 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
+import xyz.nextalone.nagram.ui.composer.ComposerButtons;
+import xyz.nextalone.nagram.ui.composer.ComposerLayout;
+
 /**
  * Presentation-only row for the chat composer controls.
  *
@@ -37,7 +41,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public static final int HEIGHT = 56;
     public static final int BUTTON_SIZE = 48;
-    private static final int ANIMATED_ICON_SIZE = 29;
+    private static final int ICON_GLYPH = 24;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
@@ -47,9 +51,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final FrameLayout startSlot;
     private final HorizontalScrollView middleScrollView;
     private final CollapsingLinearLayout middleLeadingSlot;
-    private final LinearLayout formattingSlot;
-    private final CollapsingLinearLayout actionSlot;
+    private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
+    private final Map<View, String> configuredKeys = new HashMap<>();
     private View pinnedTrailingView;
 
     public ComposerToolbarLayout(Context context) {
@@ -83,13 +87,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.addView(middle, new HorizontalScrollView.LayoutParams(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         middleLeadingSlot = createCollapsingSlot(context);
-        formattingSlot = createLinearSlot(context);
         middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        formattingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-        actionSlot = createCollapsingSlot(context);
+        orderedSlot = createCollapsingSlot(context);
+        orderedSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middle.addView(formattingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middle.addView(actionSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        middle.addView(orderedSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         endSlot = createCollapsingSlot(context);
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -118,7 +120,56 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addStart(View view) {
         addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
-        applyAnimatedIconBox(view);
+        applyIconBox(null, view);
+    }
+
+    /**
+     * Places a button the user is allowed to move. The zone and the position inside it come from the
+     * saved layout, resolved as each view arrives: schedule, the send-as avatar and the bot pill are
+     * all created long after the constructor, so there is no single moment where everything is present
+     * and the whole row could be sorted in one pass.
+     */
+    public void addConfigurable(String key, View view) {
+        AndroidUtilities.removeFromParent(view);
+        configuredKeys.put(view, key);
+        // One sizing gate for every configurable button, whatever zone it lands in: the source assets
+        // range from 16dp to 32dp and the stock scale type draws each at its own intrinsic size, so
+        // without this the row is a jumble of glyph sizes.
+        applyIconBox(key, view);
+        int zone = ComposerLayout.zoneOf(key);
+        if (zone == ComposerButtons.ZONE_HIDDEN) {
+            // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
+            // to decide its own geometry, so a removed button has to keep whatever visibility it had.
+            return;
+        }
+        if (zone == ComposerButtons.ZONE_START) {
+            addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
+            return;
+        }
+        if (zone == ComposerButtons.ZONE_END) {
+            if (key.equals(ComposerLayout.trailingKey())) {
+                pinnedTrailingView = view;
+                endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+            } else {
+                endSlot.addView(view, insertIndex(endSlot, key, endContextIndex()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+            }
+            return;
+        }
+        orderedSlot.addView(view, insertIndex(orderedSlot, key, orderedSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    // Walks the siblings already in the slot and stops in front of the first one the saved layout puts
+    // after this button. Views with no key (the attach group) are left where they are.
+    private int insertIndex(ViewGroup slot, String key, int limit) {
+        int order = ComposerLayout.indexOf(key);
+        for (int i = 0; i < limit && i < slot.getChildCount(); i++) {
+            String other = configuredKeys.get(slot.getChildAt(i));
+            if (other != null && ComposerLayout.indexOf(other) > order) {
+                return i;
+            }
+        }
+        return limit;
     }
 
     public void addMiddleLeading(View view, int width, int height, float horizontalMargin, float verticalMargin, int index) {
@@ -128,47 +179,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
         middleScrollView.post(this::pinMiddleToStart);
     }
 
-    public void addFormatting(View view) {
-        AndroidUtilities.removeFromParent(view);
-        formattingSlot.addView(view, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-        middleScrollView.post(this::pinMiddleToStart);
-    }
-
+    // The attach group is not user-placeable, so it stays at the head of the trailing zone and the
+    // configured buttons order themselves after it.
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
-    }
-
-    public void addContextAction(View view) {
-        AndroidUtilities.removeFromParent(view);
-        endSlot.addView(view, endContextIndex(), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
-    }
-
-    // Attach is the button that gets reached for most, so it holds the trailing edge and nothing that comes
-    // and goes beside it can push it around: a control arriving to its left only widens the capsule, which
-    // the panel already animates as one move.
-    public void addPinnedTrailingAction(View view) {
-        AndroidUtilities.removeFromParent(view);
-        pinnedTrailingView = view;
-        endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        endSlot.addView(view, 0, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
     }
 
     private int endContextIndex() {
         int index = pinnedTrailingView != null ? endSlot.indexOfChild(pinnedTrailingView) : -1;
         return index < 0 ? endSlot.getChildCount() : index;
-    }
-
-    public void addAction(View view) {
-        addAction(view, actionSlot.getChildCount());
-    }
-
-    public void addAction(View view, int index) {
-        AndroidUtilities.removeFromParent(view);
-        actionSlot.addView(view, Math.min(index, actionSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
-    }
-
-    public void addQuickAction(View view) {
-        addContextAction(view);
     }
 
     public void addReplacement(View view) {
@@ -217,16 +237,33 @@ public final class ComposerToolbarLayout extends FrameLayout {
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
-    // Upstream draws each icon at its own intrinsic size and has already sized them to match: the 24dp and
-    // 28dp assets carry different margins and land on the same glyph. The emoji animation is the exception -
-    // it is built at 32dp with no margin of its own, so in a 48dp cell it towers over the row. Give it the
-    // box the stock composer gives it and the row evens out.
-    private static void applyAnimatedIconBox(View view) {
-        if (!(view instanceof RLottieImageView)) {
+    // Every glyph gets the same 24dp visual box. Registry scales are authored optical corrections
+    // for assets whose keyline is intentionally smaller or larger than that shared box.
+    public static void applyIconBox(View view, int cellDp, float scale) {
+        int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
+        int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH) * scale);
+        int remainingPx = Math.max(0, cellPx - glyphPx);
+        int startInset = remainingPx / 2;
+        int endInset = remainingPx - startInset;
+        if (view instanceof RLottieImageView) {
+            view.setPadding(startInset, startInset, endInset, endInset);
             return;
         }
-        int inset = AndroidUtilities.dp((BUTTON_SIZE - ANIMATED_ICON_SIZE) / 2.0f);
-        view.setPadding(inset, inset, inset, inset);
+        if (!(view instanceof ImageView)) {
+            return;
+        }
+        ImageView icon = (ImageView) view;
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        icon.setPadding(startInset, startInset, endInset, endInset);
+    }
+
+    private static void applyIconBox(String key, View view) {
+        ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
+        float scale = button != null ? button.iconScale : 1f;
+        // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
+        // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
+        // first tap.
+        applyIconBox(view, BUTTON_SIZE, scale);
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
