@@ -17,6 +17,8 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -55,6 +57,9 @@ public final class EventScheduleController {
 
     // Written only on the UI thread (armPending/claim/onIdRemap/killPending all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
+    private static final Map<String, ArrayList<EventScheduleEntry>> QUEUES = new HashMap<>();
+    private static final Map<String, Boolean> RUNNING_QUEUES = new HashMap<>();
+    private static final Map<String, Integer> QUEUE_TOKENS = new HashMap<>();
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
     private static final Object OBSERVED_LOCK = new Object();
@@ -65,6 +70,21 @@ public final class EventScheduleController {
     private static String pendingKey(int account, long dialogId) {
         return account + "_" + dialogId;
     }
+
+    private static String queueKey(int account, EventScheduleEntry entry) {
+        return account + "_" + entry.dialogId + "_" + entry.triggerKey();
+    }
+
+    private static final Comparator<EventScheduleEntry> QUEUE_ORDER = (a, b) -> {
+        int result = Integer.compare(a.fallbackDate, b.fallbackDate);
+        if (result == 0) result = Long.compare(a.createdAt, b.createdAt);
+        if (result == 0) {
+            int aId = a.serverIds.isEmpty() ? Integer.MAX_VALUE : a.serverIds.get(0);
+            int bId = b.serverIds.isEmpty() ? Integer.MAX_VALUE : b.serverIds.get(0);
+            result = Integer.compare(aId, bId);
+        }
+        return result;
+    };
 
     private static boolean hasState(int account) {
         return EventScheduleStore.hasAny(account) || (pendingAccounts & (1L << account)) != 0;
@@ -149,6 +169,7 @@ public final class EventScheduleController {
 
     /** Replaces an already-armed (server-side) entry in place after an edit. */
     public static void updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+        removeFromQueue(account, entry);
         entry.types = types;
         entry.pattern = pattern == null ? "" : pattern;
         entry.regex = regex;
@@ -271,14 +292,85 @@ public final class EventScheduleController {
     private static void armWaiting(int account, EventScheduleEntry entry, String key) {
         if (entry.state != EventScheduleEntry.STATE_ARMED || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
-        AndroidUtilities.runOnUIThread(() -> fire(account, entry), entry.delaySeconds * 1000L);
+        String queueKey = queueKey(account, entry);
+        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
+        if (queue == null) {
+            queue = new ArrayList<>();
+            QUEUES.put(queueKey, queue);
+        }
+        if (!queue.contains(entry)) {
+            queue.add(entry);
+            Collections.sort(queue, QUEUE_ORDER);
+        }
+        startQueue(account, queueKey);
     }
 
-    private static void fire(int account, EventScheduleEntry entry) {
+    private static void startQueue(int account, String queueKey) {
+        if (Boolean.TRUE.equals(RUNNING_QUEUES.get(queueKey))) return;
+        RUNNING_QUEUES.put(queueKey, true);
+        advanceQueue(account, queueKey);
+    }
+
+    private static void advanceQueue(int account, String queueKey) {
+        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
+        while (queue != null && !queue.isEmpty()) {
+            EventScheduleEntry entry = queue.get(0);
+            if (entry.state == EventScheduleEntry.STATE_WAITING && EventScheduleStore.contains(account, entry.key())) {
+                int token = QUEUE_TOKENS.containsKey(queueKey) ? QUEUE_TOKENS.get(queueKey) + 1 : 1;
+                QUEUE_TOKENS.put(queueKey, token);
+                AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token), entry.delaySeconds * 1000L);
+                return;
+            }
+            queue.remove(0);
+        }
+        QUEUES.remove(queueKey);
+        RUNNING_QUEUES.remove(queueKey);
+        QUEUE_TOKENS.remove(queueKey);
+    }
+
+    private static void releaseQueue(int account, String queueKey, EventScheduleEntry current, boolean removeCurrent) {
+        ArrayList<EventScheduleEntry> queue = QUEUES.remove(queueKey);
+        RUNNING_QUEUES.remove(queueKey);
+        if (queue == null) return;
+        for (EventScheduleEntry entry : queue) {
+            if (entry == current && removeCurrent) {
+                EventScheduleStore.remove(account, entry);
+            } else if (entry.state == EventScheduleEntry.STATE_WAITING) {
+                entry.state = EventScheduleEntry.STATE_ARMED;
+            }
+        }
+    }
+
+    private static void removeFromQueue(int account, EventScheduleEntry entry) {
+        String queueKey = queueKey(account, entry);
+        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
+        if (queue == null) return;
+        boolean wasHead = !queue.isEmpty() && queue.get(0) == entry;
+        queue.remove(entry);
+        if (queue.isEmpty()) {
+            QUEUES.remove(queueKey);
+            RUNNING_QUEUES.remove(queueKey);
+            QUEUE_TOKENS.remove(queueKey);
+        } else if (wasHead) {
+            advanceQueue(account, queueKey);
+        }
+    }
+
+    static void onEntryRemoved(int account, EventScheduleEntry entry) {
+        removeFromQueue(account, entry);
+    }
+
+    private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token) {
         // The delay window may have outlived the entry (edited, deleted, or the fallback already fired).
-        if (entry.state != EventScheduleEntry.STATE_WAITING || !EventScheduleStore.contains(account, entry.key())) return;
+        ArrayList<EventScheduleEntry> queue = QUEUES.get(expectedQueueKey);
+        if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))
+                || entry.state != EventScheduleEntry.STATE_WAITING || !EventScheduleStore.contains(account, entry.key())
+                || queue == null || queue.isEmpty() || queue.get(0) != entry) {
+            return;
+        }
         if (entry.serverIds.isEmpty()) {
             entry.state = EventScheduleEntry.STATE_ARMED;
+            releaseQueue(account, expectedQueueKey, entry, false);
             return;
         }
         entry.state = EventScheduleEntry.STATE_SENDING;
@@ -305,11 +397,14 @@ public final class EventScheduleController {
                     EventScheduleNotifier.notifySent(account, dialogId);
                 });
             } else if (error.text != null && error.text.startsWith("SLOWMODE_WAIT_")) {
-                // Next matching message retries; the fallback date covers it regardless.
-                AndroidUtilities.runOnUIThread(() -> entry.state = EventScheduleEntry.STATE_ARMED);
+                // Next matching message retries; keep the remaining queue in scheduled-page order.
+                AndroidUtilities.runOnUIThread(() -> {
+                    entry.state = EventScheduleEntry.STATE_ARMED;
+                    releaseQueue(account, expectedQueueKey, entry, false);
+                });
             } else {
                 // Already sent / deleted / still processing server-side: nothing left to do.
-                AndroidUtilities.runOnUIThread(() -> EventScheduleStore.remove(account, entry));
+                AndroidUtilities.runOnUIThread(() -> releaseQueue(account, expectedQueueKey, entry, true));
             }
         });
     }
