@@ -3429,16 +3429,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                     }
 
-                    final float r = dpf2(19);
+                    // NagramX (#composer-toolbar): the mic slot sits outside the text pill now, so it fills
+                    // its whole DEFAULT_HEIGHT box and lines up with the pill's edges instead of the old
+                    // 38dp disc that read 3dp short on every side.
+                    final float size = dpf2(DEFAULT_HEIGHT);
+                    final float r = size / 2f;
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
-                    final float margin = dpf2(3);
-                    final float height = dpf2(38);
-                    final float width = dpf2(38);
                     backgroundRect.set(
-                            getMeasuredWidth() - width - margin,
-                            getMeasuredHeight() - height - margin,
-                            getMeasuredWidth() - margin,
-                            getMeasuredHeight() - margin
+                            getMeasuredWidth() - size,
+                            getMeasuredHeight() - size,
+                            getMeasuredWidth(),
+                            getMeasuredHeight()
                     );
 
                     canvas.save();
@@ -17668,8 +17669,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public int getVisualWidth() {
-            float width = Math.max(dpf2(38), dpf2(10 + 10) + priceText.getAnimateToWidth());
-            return Math.round(lerp(width, dpf2(38), sameWidthFactor));
+            float width = Math.max(dpf2(DEFAULT_HEIGHT), dpf2(10 + 10) + priceText.getAnimateToWidth());
+            return Math.round(lerp(width, dpf2(DEFAULT_HEIGHT), sameWidthFactor));
         }
 
         public int width(int h) {
@@ -17692,8 +17693,18 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (getAlpha() <= 0f) { // for accessibility
                 return false;
             }
-            if (event.getAction() == MotionEvent.ACTION_DOWN && (event.getX() < getWidth() - width() || event.getY() < getHeight() - height())) {
-                return false;
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                // NagramX (#composer-toolbar): the new-design pill paints its full DEFAULT_HEIGHT box, so hit-test
+                // against what's actually drawn instead of the smaller circle bounds, or its top/left edge goes dead.
+                float w = width(), h = height();
+                if (isNewDesignSendButton) {
+                    checkBackgroundRect();
+                    w = Math.max(w, backgroundRect.width());
+                    h = Math.max(h, backgroundRect.height());
+                }
+                if (event.getX() < getWidth() - w || event.getY() < getHeight() - h) {
+                    return false;
+                }
             }
             return super.onTouchEvent(event);
         }
@@ -17772,19 +17783,20 @@ public class ChatActivityEnterView extends FrameLayout implements
         /* * */
 
         private final RectF backgroundRect = new RectF();
-        private static final int RADIUS = 19;
+        // NagramX (#composer-toolbar): the pill fills its whole DEFAULT_HEIGHT box so it matches the text
+        // island beside it. It used to draw 38dp inside a 44dp slot, which read 3dp short on every side.
+        private static final int RADIUS = DEFAULT_HEIGHT / 2;
 
         private void checkBackgroundRect() {
-            final float margin = dpf2(3);
-            final float height = dpf2(38);
+            final float height = dpf2(DEFAULT_HEIGHT);
             final float width = lerp(
                 Math.max(height, dpf2(10 + 10) + priceText.getCurrentWidth()),
                 height, sameWidthFactor);
             backgroundRect.set(
-                    getMeasuredWidth() - width - margin,
-                    getMeasuredHeight() - height - margin,
-                    getMeasuredWidth() - margin,
-                    getMeasuredHeight() - margin
+                    getMeasuredWidth() - width,
+                    getMeasuredHeight() - height,
+                    getMeasuredWidth(),
+                    getMeasuredHeight()
             );
         }
     }
