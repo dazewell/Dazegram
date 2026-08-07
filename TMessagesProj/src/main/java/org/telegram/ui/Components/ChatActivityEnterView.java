@@ -2925,7 +2925,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (composerToolbarEnabled) {
                 // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons
                 // without changing the attach group's 44dp layout geometry.
-                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.85f);
+                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 1f);
             }
             notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
