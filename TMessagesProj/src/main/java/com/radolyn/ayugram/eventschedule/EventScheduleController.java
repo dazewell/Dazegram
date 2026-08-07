@@ -1,5 +1,6 @@
 package com.radolyn.ayugram.eventschedule;
 
+import android.os.Looper;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -170,6 +171,7 @@ public final class EventScheduleController {
 
     /** Replaces an already-armed (server-side) entry in place after an edit. */
     public static void updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+        entry.revision++;
         removeFromQueue(account, entry);
         entry.types = types;
         entry.pattern = pattern == null ? "" : pattern;
@@ -183,6 +185,11 @@ public final class EventScheduleController {
     }
 
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            ArrayList<MessageObject> snapshot = messages == null ? null : new ArrayList<>(messages);
+            AndroidUtilities.runOnUIThread(() -> onNewMessages(account, dialogId, snapshot, scheduled));
+            return;
+        }
         ensureWarm(account);
         if (!hasState(account) || messages == null || messages.isEmpty()) return;
         if (scheduled) {
@@ -262,14 +269,15 @@ public final class EventScheduleController {
                 boolean patternSet = !TextUtils.isEmpty(entry.pattern);
                 // OR: a matching type is enough on its own; otherwise the pattern can still match.
                 if (typeSet && entry.matchesType(message, text)) {
-                    armWaiting(account, entry, key);
+                    armWaiting(account, entry, key, entry.revision);
                     continue;
                 }
                 if (!patternSet || text == null) continue;
+                final long revision = entry.revision;
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
                     if (!entry.matchesPattern(text)) return;
-                    AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key));
+                    AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key, revision));
                 });
             }
         }
@@ -290,8 +298,9 @@ public final class EventScheduleController {
         return message.messageText.toString();
     }
 
-    private static void armWaiting(int account, EventScheduleEntry entry, String key) {
-        if (entry.state != EventScheduleEntry.STATE_ARMED || !EventScheduleStore.contains(account, key)) return;
+    private static void armWaiting(int account, EventScheduleEntry entry, String key, long revision) {
+        if (entry.state != EventScheduleEntry.STATE_ARMED || entry.revision != revision
+                || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
         String queueKey = queueKey(account, entry);
         ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
@@ -319,7 +328,8 @@ public final class EventScheduleController {
             if (entry.state == EventScheduleEntry.STATE_WAITING && EventScheduleStore.contains(account, entry.key())) {
                 int token = ++nextQueueToken;
                 QUEUE_TOKENS.put(queueKey, token);
-                AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token), entry.delaySeconds * 1000L);
+                long revision = entry.revision;
+                AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token, revision), entry.delaySeconds * 1000L);
                 return;
             }
             queue.remove(0);
@@ -361,11 +371,12 @@ public final class EventScheduleController {
         removeFromQueue(account, entry);
     }
 
-    private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token) {
+    private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long revision) {
         // The delay window may have outlived the entry (edited, deleted, or the fallback already fired).
         ArrayList<EventScheduleEntry> queue = QUEUES.get(expectedQueueKey);
         if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))
-                || entry.state != EventScheduleEntry.STATE_WAITING || !EventScheduleStore.contains(account, entry.key())
+                || entry.state != EventScheduleEntry.STATE_WAITING || entry.revision != revision
+                || !EventScheduleStore.contains(account, entry.key())
                 || queue == null || queue.isEmpty() || queue.get(0) != entry) {
             return;
         }
@@ -376,6 +387,7 @@ public final class EventScheduleController {
         }
         entry.state = EventScheduleEntry.STATE_SENDING;
         final long dialogId = entry.dialogId;
+        final long sendRevision = entry.revision;
         final TLRPC.TL_messages_sendScheduledMessages req = new TLRPC.TL_messages_sendScheduledMessages();
         req.peer = MessagesController.getInstance(account).getInputPeer(dialogId);
         req.id.addAll(entry.serverIds);
@@ -393,19 +405,27 @@ public final class EventScheduleController {
                 AndroidUtilities.runOnUIThread(() -> {
                     NotificationCenter.getInstance(account).postNotificationName(
                             NotificationCenter.messagesDeleted, req.id, channelId, true, true);
-                    EventScheduleStore.remove(account, entry);
-                    // Local heads-up: the trigger fired while the user may not be looking at the chat.
-                    EventScheduleNotifier.notifySent(account, dialogId);
+                    if (EventScheduleStore.contains(account, entry.key())) {
+                        // An edit can change the revision while this request is in flight, but the
+                        // same scheduled IDs are still no longer eligible for another trigger.
+                        EventScheduleStore.remove(account, entry);
+                        // Local heads-up: the trigger fired while the user may not be looking at the chat.
+                        EventScheduleNotifier.notifySent(account, dialogId);
+                    }
                 });
             } else if (error.text != null && error.text.startsWith("SLOWMODE_WAIT_")) {
                 // Next matching message retries; keep the remaining queue in scheduled-page order.
                 AndroidUtilities.runOnUIThread(() -> {
+                    if (entry.revision != sendRevision) return;
                     entry.state = EventScheduleEntry.STATE_ARMED;
                     releaseQueue(account, expectedQueueKey, entry, false);
                 });
             } else {
                 // Already sent / deleted / still processing server-side: nothing left to do.
-                AndroidUtilities.runOnUIThread(() -> releaseQueue(account, expectedQueueKey, entry, true));
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (entry.revision != sendRevision) return;
+                    releaseQueue(account, expectedQueueKey, entry, true);
+                });
             }
         });
     }

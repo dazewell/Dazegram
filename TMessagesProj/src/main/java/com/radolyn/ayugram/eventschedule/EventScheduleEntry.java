@@ -54,6 +54,7 @@ public final class EventScheduleEntry {
     public int fallbackDate;
     public long createdAt;
     public int state = STATE_ARMED;
+    public long revision;
 
     private volatile Pattern compiled;
     private volatile boolean compileFailed;
