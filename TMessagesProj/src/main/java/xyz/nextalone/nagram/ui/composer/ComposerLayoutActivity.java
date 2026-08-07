@@ -589,10 +589,12 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 iconView.setVisibility(INVISIBLE);
             }
-            // Always reassigned, never left on a recycled row: a loose asset's correction would
-            // otherwise stay behind and inflate whatever button reuses the view.
-            iconView.setScaleX(button.iconScale);
-            iconView.setScaleY(button.iconScale);
+            // Measured, not guessed: the assets fill their own bounds by wildly different amounts,
+            // so fitting them all to 24dp still leaves them reading as different sizes. Always
+            // reassigned, never left on a recycled row.
+            float scale = ComposerIconMetrics.clamp(ComposerIconMetrics.scaleFor(button.iconRes) * button.iconScale);
+            iconView.setScaleX(scale);
+            iconView.setScaleY(scale);
             titleView.setText(LocaleController.getString(button.titleRes));
         }
 
@@ -671,8 +673,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
-                icon.setScaleX(button.iconScale);
-                icon.setScaleY(button.iconScale);
+                float scale = ComposerIconMetrics.clamp(ComposerIconMetrics.scaleFor(button.iconRes) * button.iconScale);
+                icon.setScaleX(scale);
+                icon.setScaleY(scale);
                 icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }

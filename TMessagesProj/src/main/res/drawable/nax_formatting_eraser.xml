@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Eraser resting on the line it clears: the rubber end is solid and the holder is drawn as an
+         outline, so the two halves stay readable at 24dp instead of merging into one diamond. -->
+    <path
+        android:fillColor="#ffffff"
+        android:fillType="evenOdd"
+        android:pathData="M3.22,12.64L6.75,9.11L12.69,15.05L9.16,18.58ZM7.39,8.47L12.84,3.02L18.78,8.96L13.33,14.41ZM9.89,9.34L13.71,5.52L16.28,8.09L12.46,11.91ZM3,20L21,20L21,21.8L3,21.8Z" />
+</vector>

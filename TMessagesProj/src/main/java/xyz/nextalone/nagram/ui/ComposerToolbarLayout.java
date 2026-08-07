@@ -29,6 +29,7 @@ import java.util.HashSet;
 import java.util.Map;
 
 import xyz.nextalone.nagram.ui.composer.ComposerButtons;
+import xyz.nextalone.nagram.ui.composer.ComposerIconMetrics;
 import xyz.nextalone.nagram.ui.composer.ComposerLayout;
 
 /**
@@ -237,14 +238,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
-    // The composer assets were authored at anything from 16dp to 32dp, and the stock scale type draws
-    // each at its own intrinsic size, so a 28dp calendar sat beside a 24dp bold glyph reads as a
-    // bigger button rather than a different icon. Fitting every glyph into the same box inside the
-    // 48dp cell makes the row even and keeps a future asset of any size in line automatically.
+    // The composer assets were authored at anything from 16dp to 32dp, and they disagree just as much
+    // about how much of their own bounds the ink covers, so a full-bleed calendar sat beside a bold
+    // glyph drawn inside a wide margin reads as a bigger button rather than a different icon. Every
+    // glyph is driven onto the same measured ink size inside the 48dp cell, which keeps the row even
+    // and takes a future asset of any size in hand automatically.
     private static void applyIconBox(String key, View view) {
         ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
-        float scale = button != null ? button.iconScale : 1f;
-        // Expressed as a smaller inset rather than a view scale: these buttons carry a press
+        float scale = 1f;
+        if (button != null) {
+            // Lottie draws its own composition rather than the registry drawable, so measuring that
+            // drawable would size the box for a glyph this view never shows. It keeps the plain box.
+            boolean measurable = !(view instanceof RLottieImageView);
+            scale = ComposerIconMetrics.clamp((measurable ? ComposerIconMetrics.scaleFor(button.iconRes) : 1f) * button.iconScale);
+        }
+        // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
         // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
         // first tap.
         int inset = AndroidUtilities.dp((BUTTON_SIZE - ICON_GLYPH * scale) / 2.0f);
