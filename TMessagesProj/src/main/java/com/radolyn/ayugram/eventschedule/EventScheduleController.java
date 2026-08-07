@@ -60,6 +60,7 @@ public final class EventScheduleController {
     private static final Map<String, ArrayList<EventScheduleEntry>> QUEUES = new HashMap<>();
     private static final Map<String, Boolean> RUNNING_QUEUES = new HashMap<>();
     private static final Map<String, Integer> QUEUE_TOKENS = new HashMap<>();
+    private static int nextQueueToken;
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
     private static final Object OBSERVED_LOCK = new Object();
@@ -316,7 +317,7 @@ public final class EventScheduleController {
         while (queue != null && !queue.isEmpty()) {
             EventScheduleEntry entry = queue.get(0);
             if (entry.state == EventScheduleEntry.STATE_WAITING && EventScheduleStore.contains(account, entry.key())) {
-                int token = QUEUE_TOKENS.containsKey(queueKey) ? QUEUE_TOKENS.get(queueKey) + 1 : 1;
+                int token = ++nextQueueToken;
                 QUEUE_TOKENS.put(queueKey, token);
                 AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token), entry.delaySeconds * 1000L);
                 return;
