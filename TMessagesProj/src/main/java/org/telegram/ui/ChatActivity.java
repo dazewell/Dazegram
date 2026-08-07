@@ -8446,6 +8446,11 @@ public class ChatActivity extends BaseFragment implements
             }
 
             @Override
+            protected void onChangedInputPrimaryWidth() {
+                updatePagedownButtonsPosition();
+            }
+
+            @Override
             public boolean onInterceptTouchEvent(MotionEvent ev) {
                 if (getAlpha() != 1.0f) {
                     return false;
@@ -11859,9 +11864,18 @@ public class ChatActivity extends BaseFragment implements
         }
 
         if (suggestEmojiPanel != null) {
+            // NagramX (#composer-suggestion-strip): the panel's own bottom stands in for the text field's, and
+            // SuggestEmojiView offsets up from there by the field's height to reach the emoji's line. The fork's
+            // action row sits under the field, so lift the panel by it or the whole callout lands that much too
+            // low, over the field and the row. Same number the drawn pill is shortened by, so the two agree by
+            // construction; it reads 0 while a record or review panel owns the row, and the field is GONE then.
             float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
-                - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 7);
+                - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 7)
+                - (chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
             suggestEmojiPanel.setTranslationY(baseTranslationY2);
+            // NagramX (#composer-suggestion-strip): the send and mic column is drawn inside the input's own
+            // trailing end, which the panel spans too. Hold the callout off it on the same line the text stops at.
+            suggestEmojiPanel.setEndPadding(chatActivityEnterView != null ? chatActivityEnterView.getComposerPrimaryEndInset() : 0);
         }
     }
 

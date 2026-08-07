@@ -17950,11 +17950,26 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
     }
 
+    // NagramX (#composer-suggestion-strip): the near edge of the send/record column drawn inside the input,
+    // measured from the input's trailing edge. A floating panel anchored to this view reserves this much and
+    // adds its own side padding on top, which lands its content the same few dp inside the text as on the
+    // start side — and keeps the callout's arrow, which tracks the text and not the panel, within its body.
+    public int getComposerPrimaryEndInset() {
+        if (!composerToolbarEnabled || inputPrimarySuppressed) {
+            return 0;
+        }
+        return inputSatellites.getPublishedRightOffset();
+    }
+
     // NagramX (#composer-input): the send and mic column sits inside the input bubble, so the bubble runs the
     // full width and it's the content beside the column that gets held off it: the text field, plus the review
     // panel while that owns the row. This only reports that the column's width moved, so they can re-measure.
     private boolean publishComposerPrimaryOffset() {
-        return composerToolbarEnabled && inputSatellites.updateRightOffset();
+        if (!composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
+            return false;
+        }
+        onChangedInputPrimaryWidth();
+        return true;
     }
 
     private void refreshComposerPrimaryOffset() {
@@ -18095,6 +18110,12 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onChangedIslandTotalHeight(float newTotalHeight) {
+
+    }
+
+    // NagramX (#composer-suggestion-strip): the column's width moved, so anything the fragment holds off it
+    // has to re-read getComposerPrimaryEndInset(). Nothing inside this view listens; it re-insets directly.
+    protected void onChangedInputPrimaryWidth() {
 
     }
 

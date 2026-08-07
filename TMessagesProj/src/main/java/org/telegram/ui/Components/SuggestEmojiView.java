@@ -68,6 +68,7 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
     private Adapter adapter;
     private int direction = DIRECTION_TO_BOTTOM;
     private int horizontalPadding = AndroidUtilities.dp(10);
+    private int endPadding;
 
     public interface AnchorViewDelegate {
         BaseFragment getParentFragment();
@@ -255,7 +256,13 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
 
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-                this.setPadding(horizontalPadding, direction == DIRECTION_TO_BOTTOM ? AndroidUtilities.dp(8) : AndroidUtilities.dp(6.66f), horizontalPadding, direction == DIRECTION_TO_BOTTOM ? AndroidUtilities.dp(6.66f) : AndroidUtilities.dp(8));
+                // NagramX (#composer-suggestion-strip): the anchor view can carry controls inside its own
+                // trailing end. Reserving that band here rather than at each clamp keeps the drawn path, the
+                // fade gradients, the touch rect and the list's own laid-out width on one number.
+                final int endPad = horizontalPadding + endPadding;
+                final int leftPad = LocaleController.isRTL ? endPad : horizontalPadding;
+                final int rightPad = LocaleController.isRTL ? horizontalPadding : endPad;
+                this.setPadding(leftPad, direction == DIRECTION_TO_BOTTOM ? AndroidUtilities.dp(8) : AndroidUtilities.dp(6.66f), rightPad, direction == DIRECTION_TO_BOTTOM ? AndroidUtilities.dp(6.66f) : AndroidUtilities.dp(8));
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             }
 
@@ -352,6 +359,23 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
 
     public void setHorizontalPadding(int padding) {
         this.horizontalPadding = padding;
+    }
+
+    /**
+     * NagramX (#composer-suggestion-strip): px to keep clear at the trailing end of the panel, for controls
+     * the anchor view draws inside its own end. Laid out as container padding, so the callout, its gradients,
+     * its touch rect and the list's items all stop short of them.
+     */
+    public void setEndPadding(int padding) {
+        if (endPadding == padding) {
+            return;
+        }
+        endPadding = padding;
+        if (containerView != null) {
+            // the padding is applied from containerView's own measure pass, so it is the one that has to be
+            // marked dirty; requesting on the panel alone leaves the child's spec unchanged and skips it
+            containerView.requestLayout();
+        }
     }
 
     public AnchorViewDelegate getDelegate() {
