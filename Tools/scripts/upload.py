@@ -11,8 +11,12 @@ from pyrogram.types import InputMediaDocument
 
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
-artifacts_path = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
+artifacts_root = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
 metadata_chat_id = argv[4] if len(argv) > 4 else None
+VARIANTS = (
+    ("Official", "org.telegram.messenger.beta"),
+    ("Unofficial", "nekox.messenger"),
+)
 
 # Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
 # which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
@@ -21,8 +25,8 @@ metadata_chat_id = argv[4] if len(argv) > 4 else None
 SLEEP_THRESHOLD = 300
 MAX_FLOOD_WAIT = 900
 
-def find_apk(abi: str) -> Path | None:
-    return next((apk for apk in artifacts_path.rglob("*.apk") if abi in apk.name), None)
+def find_apk(artifact_path: Path, abi: str) -> Path | None:
+    return next((apk for apk in sorted(artifact_path.rglob("*.apk")) if abi in apk.name), None)
 
 def get_commit_info():
     commit_id_raw = os.environ.get("COMMIT_ID") or "unknown"
@@ -32,39 +36,41 @@ def get_commit_info():
     branch = os.environ.get("BRANCH") or "unknown"
     return commit_id, commit_url, commit_message, branch
 
+def truncate_text(text: str, budget: int) -> str:
+    if budget <= 0:
+        return ""
+    if tg_len(text) <= budget:
+        return text
+    suffix = "…"
+    text = text.rstrip()
+    while text and tg_len(text + suffix) > budget:
+        text = text[:-1]
+    return text.rstrip() + suffix
+
 def get_caption(commit_msg_budget=None) -> str:
     commit_id, commit_url, commit_message, branch = get_commit_info()
     # Trimming the plain-text commit message (never the assembled HTML) keeps
     # the caption valid while leaving room for the AI summary.
-    if commit_msg_budget is not None and len(commit_message) > commit_msg_budget:
-        commit_message = commit_message[: max(0, commit_msg_budget - 1)].rstrip() + "…"
+    if commit_msg_budget is not None:
+        commit_message = truncate_text(commit_message, commit_msg_budget)
     caption = ""
-    header = ""
-    if build_label := os.environ.get("BUILD_LABEL"):
-        header += f"{build_label} build\n"
-    if package_name := os.environ.get("PACKAGE_NAME"):
-        header += f"Package: <code>{package_name}</code>\n"
-    if header:
-        caption += header + "\n"
+    caption += "Official + Unofficial build\n"
+    for build_label, package_name in VARIANTS:
+        caption += f"{build_label} package: <code>{package_name}</code>\n"
+    caption += "\n"
     caption += f"Commit Message:\n<blockquote expandable>{commit_message}</blockquote>\n\n"
     caption += f"See commit details [{commit_id}]({commit_url}) on <code>{branch}</code>"
     return caption
 
 def get_document() -> list["InputMediaDocument"]:
     documents = []
-    abis = ["arm64-v8a"]
-    for abi in abis:
-        if apk := find_apk(abi):
-            documents.append(
-                InputMediaDocument(
-                    media = str(apk),
-                )
+    for build_label, _ in VARIANTS:
+        apk = find_apk(artifacts_root / build_label, "arm64-v8a")
+        if not apk:
+            raise FileNotFoundError(
+                f"no arm64-v8a APK found for {build_label} under {artifacts_root / build_label}"
             )
-    if not documents:
-        documents.append(
-        InputMediaDocument(
-            media = str("TMessagesProj/src/main/" + "ic_launcher_nagram_block_round-playstore.png")
-        ))
+        documents.append(InputMediaDocument(media = str(apk)))
     # Telegram caps captions at 1024 chars, measured as visible text in UTF-16
     # units (tg_len) — not Python's len(). Split the budget so the commit
     # message always keeps a share (it used to be starved to "…" by a long
@@ -73,7 +79,7 @@ def get_document() -> list["InputMediaDocument"]:
     overhead = tg_len(get_caption(commit_msg_budget=0))
     content_budget = max(0, limit - overhead)
     commit_message = get_commit_info()[2]
-    msg_reserve = min(len(commit_message), content_budget // 2)
+    msg_reserve = min(tg_len(commit_message), content_budget // 2)
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
