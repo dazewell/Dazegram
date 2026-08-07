@@ -39,7 +39,7 @@ The separate glass text pill keeps its renderer 16dp from both logical edges and
 
 ### Send and mic inside the input <!-- #composer-input -->
 
-Send and the mic used to sit outside the text pill, in their own column past its end. Now the pill runs the full width of the row and they sit inside it, drawn a few dp in from its rounded end so a thin ring of the pill's glass shows all the way around them. The text still stops short of them, on every line, so nothing runs underneath. Same buttons, same gestures, same long-press menu.
+Send and the mic used to sit outside the text pill, in their own column past its end. Now the pill runs the full width of the row and they sit inside it, drawn a few dp in from its rounded end so a thin ring of the pill's glass shows all the way around them. The text stops 16dp short of them on every line, matching the inset on the start side, so nothing runs underneath and the row reads even on both sides. Same buttons, same gestures, same long-press menu.
 
 ### Composer toolbar layout editor <!-- #composer-layout -->
 
