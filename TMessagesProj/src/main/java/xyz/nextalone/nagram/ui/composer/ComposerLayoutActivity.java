@@ -508,15 +508,16 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static class PreviewCell extends FrameLayout {
 
+        private final TextView header;
         private final LinearLayout row;
+        private List<List<String>> zones;
 
         PreviewCell(Context context) {
             super(context);
             setWillNotDraw(false);
             setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
 
-            TextView header = new TextView(context);
-            header.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader));
+            header = new TextView(context);
             header.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 15);
             header.setTypeface(AndroidUtilities.bold());
             header.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
@@ -533,12 +534,23 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
 
         void setLayout(List<List<String>> zones) {
+            this.zones = zones;
+            header.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader));
             row.removeAllViews();
             addZone(zones.get(ComposerButtons.ZONE_START));
             addGap();
             addZone(zones.get(ComposerButtons.ZONE_MIDDLE));
             addGap();
             addZone(zones.get(ComposerButtons.ZONE_END));
+        }
+
+        /** The preview colours its own children at build time, so a live theme switch has to rebuild
+         * it rather than just repaint the background. */
+        void applyTheme() {
+            setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+            if (zones != null) {
+                setLayout(zones);
+            }
         }
 
         private void addZone(List<String> keys) {
@@ -582,9 +594,15 @@ public class ComposerLayoutActivity extends BaseFragment {
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         ArrayList<ThemeDescription> descriptions = new ArrayList<>();
 
+        ThemeDescription.ThemeDescriptionDelegate delegate = () -> {
+            if (previewCell != null) {
+                previewCell.applyTheme();
+            }
+        };
+
         descriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
         descriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{HeaderCell.class, ButtonRowCell.class, PlaceholderCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
-        descriptions.add(new ThemeDescription(previewCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
+        descriptions.add(new ThemeDescription(previewCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, delegate, Theme.key_windowBackgroundWhite));
 
         descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
