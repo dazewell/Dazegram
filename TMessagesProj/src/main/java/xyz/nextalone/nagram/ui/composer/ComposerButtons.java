@@ -54,13 +54,7 @@ public final class ComposerButtons {
         public final boolean trailingOnly;
         /** Present for the whole life of the toolbar, so it can safely anchor the trailing edge. */
         public final boolean stable;
-        /**
-         * Manual override on top of the measured ink scale, for the rare glyph the measurement
-         * misjudges. 1 everywhere it is not needed, which should be everywhere; a value other than 1
-         * means an asset wants re-cropping rather than a constant.
-         *
-         * @see ComposerIconMetrics
-         */
+        /** Authored optical size inside the shared icon box. */
         public final float iconScale;
 
         Button(String key, int titleRes, int iconRes, int kind, int defaultZone, int menuAction, boolean trailingOnly, boolean stable) {
@@ -103,7 +97,7 @@ public final class ComposerButtons {
         register(new Button(AI, R.string.AIEditor, R.drawable.input_ai_star, KIND_CORE, ZONE_MIDDLE, 0, false, false));
 
         register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
-        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true));
+        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true, 0.85f));
         register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true));
         register(new Button("regular", R.string.Regular, R.drawable.nax_formatting_eraser, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_regular, false, true));
 
@@ -114,11 +108,11 @@ public final class ComposerButtons {
         register(new Button("strike", R.string.Strike, R.drawable.formatting_strikethrough, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_strike, false, true));
         register(new Button("underline", R.string.Underline, R.drawable.formatting_underline, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_underline, false, true));
         register(new Button("link", R.string.CreateLink, R.drawable.menu_link_create2, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_link, false, true));
-        register(new Button("mention", R.string.CreateMention, R.drawable.deproko_baseline_mention_24, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mention, false, true));
+        register(new Button("mention", R.string.CreateMention, R.drawable.deproko_baseline_mention_24, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mention, false, true, 1.05f));
         register(new Button("date", R.string.FormattedDate, R.drawable.input_calendar_add_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_date, false, true));
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
-        register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.baseline_fullscreen_24, KIND_CORE, ZONE_END, 0, false, true));
+        register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.baseline_fullscreen_24, KIND_CORE, ZONE_END, 0, false, true, 0.82f));
         register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false));
         register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true));
     }

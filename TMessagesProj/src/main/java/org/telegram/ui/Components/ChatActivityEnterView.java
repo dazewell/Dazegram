@@ -2922,6 +2922,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             notifyButton.setContentDescription(silent ? getString("AccDescrChanSilentOn", R.string.AccDescrChanSilentOn) : getString("AccDescrChanSilentOff", R.string.AccDescrChanSilentOff));
             notifyButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
             notifyButton.setScaleType(ImageView.ScaleType.CENTER);
+            if (composerToolbarEnabled) {
+                // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons
+                // without changing the attach group's 44dp layout geometry.
+                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.85f);
+            }
             notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
             attachLayout.addView(notifyButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
@@ -3995,6 +4000,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         giftButton.setVisibility(GONE);
         giftButton.setContentDescription(getString(R.string.GiftPremium));
         giftButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(giftButton, DEFAULT_HEIGHT, 1f);
+        }
         giftButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
         giftButton.setOnClickListener(v -> {
@@ -4041,6 +4049,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         suggestButton = new ImageView(getContext());
         suggestButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(suggestButton, DEFAULT_HEIGHT, 1f);
+        }
         suggestButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         suggestButton.setImageResource(R.drawable.input_suggest_paid_24);
         suggestButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
@@ -4136,6 +4147,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         botButtonDrawable.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         botButtonDrawable.setIcon(R.drawable.input_bot2, false);
         botButton.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(botButton, DEFAULT_HEIGHT, 1f);
+        }
         botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         botButton.setVisibility(GONE);
         AndroidUtilities.updateViewVisibilityAnimated(botButton, false, 0.1f, false);

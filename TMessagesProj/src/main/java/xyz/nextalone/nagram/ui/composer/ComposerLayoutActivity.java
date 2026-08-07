@@ -542,6 +542,15 @@ public class ComposerLayoutActivity extends BaseFragment {
             armAnimator.start();
         }
 
+        @Override
+        protected void onDetachedFromWindow() {
+            if (armAnimator != null) {
+                armAnimator.cancel();
+                armAnimator = null;
+            }
+            super.onDetachedFromWindow();
+        }
+
         ButtonRowCell(Context context) {
             super(context);
             setWillNotDraw(false);
@@ -553,7 +562,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             // than 24dp and CENTER would draw them at their intrinsic size, which is why the AI
             // star arrived as a speck.
             iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            iconView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+            iconView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
             addView(iconView, LayoutHelper.createFrame(24, 24, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 20, 0, 20, 0));
 
             titleView = new SimpleTextView(context);
@@ -568,7 +577,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             reorderView = new ImageView(context);
             reorderView.setScaleType(ImageView.ScaleType.CENTER);
             reorderView.setImageResource(R.drawable.list_reorder);
-            reorderView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_stickers_menu), PorterDuff.Mode.MULTIPLY));
+            reorderView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_stickers_menu), PorterDuff.Mode.SRC_IN));
             reorderView.setContentDescription(LocaleController.getString(R.string.FilterReorder));
             reorderView.setClickable(true);
             addView(reorderView, LayoutHelper.createFrame(48, 48, (rtl ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, 6, 0, 6, 0));
@@ -589,13 +598,16 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 iconView.setVisibility(INVISIBLE);
             }
-            // Measured, not guessed: the assets fill their own bounds by wildly different amounts,
-            // so fitting them all to 24dp still leaves them reading as different sizes. Always
-            // reassigned, never left on a recycled row.
-            float scale = ComposerIconMetrics.clamp(ComposerIconMetrics.scaleFor(button.iconRes) * button.iconScale);
-            iconView.setScaleX(scale);
-            iconView.setScaleY(scale);
+            // Reassigned on every bind because these rows are recycled.
+            iconView.setScaleX(button.iconScale);
+            iconView.setScaleY(button.iconScale);
             titleView.setText(LocaleController.getString(button.titleRes));
+        }
+
+        void applyTheme() {
+            iconView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
+            reorderView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_stickers_menu), PorterDuff.Mode.SRC_IN));
+            titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
         }
 
         @Override
@@ -673,10 +685,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
-                float scale = ComposerIconMetrics.clamp(ComposerIconMetrics.scaleFor(button.iconRes) * button.iconScale);
-                icon.setScaleX(scale);
-                icon.setScaleY(scale);
-                icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+                icon.setScaleX(button.iconScale);
+                icon.setScaleY(button.iconScale);
+                icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }
         }
@@ -708,6 +719,14 @@ public class ComposerLayoutActivity extends BaseFragment {
         ArrayList<ThemeDescription> descriptions = new ArrayList<>();
 
         ThemeDescription.ThemeDescriptionDelegate delegate = () -> {
+            if (listView != null) {
+                for (int i = 0; i < listView.getChildCount(); i++) {
+                    View child = listView.getChildAt(i);
+                    if (child instanceof ButtonRowCell) {
+                        ((ButtonRowCell) child).applyTheme();
+                    }
+                }
+            }
             if (previewCell != null) {
                 previewCell.applyTheme();
             }
@@ -727,8 +746,6 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"titleView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
-        descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"iconView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayIcon));
-        descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"reorderView"}, null, null, null, Theme.key_stickers_menu));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{PlaceholderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
 
         return descriptions;

@@ -29,7 +29,6 @@ import java.util.HashSet;
 import java.util.Map;
 
 import xyz.nextalone.nagram.ui.composer.ComposerButtons;
-import xyz.nextalone.nagram.ui.composer.ComposerIconMetrics;
 import xyz.nextalone.nagram.ui.composer.ComposerLayout;
 
 /**
@@ -238,27 +237,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
-    // The composer assets were authored at anything from 16dp to 32dp, and they disagree just as much
-    // about how much of their own bounds the ink covers, so a full-bleed calendar sat beside a bold
-    // glyph drawn inside a wide margin reads as a bigger button rather than a different icon. Every
-    // glyph is driven onto the same measured ink size inside the 48dp cell, which keeps the row even
-    // and takes a future asset of any size in hand automatically.
-    private static void applyIconBox(String key, View view) {
-        ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
-        float scale = 1f;
-        if (button != null) {
-            // Lottie draws its own composition rather than the registry drawable, so measuring that
-            // drawable would size the box for a glyph this view never shows. It keeps the plain box.
-            boolean measurable = !(view instanceof RLottieImageView);
-            scale = ComposerIconMetrics.clamp((measurable ? ComposerIconMetrics.scaleFor(button.iconRes) : 1f) * button.iconScale);
-        }
-        // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
-        // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
-        // first tap.
-        int inset = AndroidUtilities.dp((BUTTON_SIZE - ICON_GLYPH * scale) / 2.0f);
+    // Every glyph gets the same 24dp visual box. Registry scales are authored optical corrections
+    // for assets whose keyline is intentionally smaller or larger than that shared box.
+    public static void applyIconBox(View view, int cellDp, float scale) {
+        int inset = Math.max(0, AndroidUtilities.dp((cellDp - ICON_GLYPH * scale) / 2.0f));
         if (view instanceof RLottieImageView) {
-            // Lottie renders into a fixed-size bitmap rather than a scalable drawable, so it only
-            // responds to the box, not to a scale type.
+            // Lottie renders into a fixed bitmap, so it responds to the box rather than a drawable
+            // scale type.
             view.setPadding(inset, inset, inset, inset);
             return;
         }
@@ -268,6 +253,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
         ImageView icon = (ImageView) view;
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         icon.setPadding(inset, inset, inset, inset);
+    }
+
+    private static void applyIconBox(String key, View view) {
+        ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
+        float scale = button != null ? button.iconScale : 1f;
+        // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
+        // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
+        // first tap.
+        applyIconBox(view, BUTTON_SIZE, scale);
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
