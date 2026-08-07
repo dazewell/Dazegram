@@ -42,10 +42,10 @@ def truncate_text(text: str, budget: int) -> str:
     if tg_len(text) <= budget:
         return text
     suffix = "…"
-    text = text[: max(0, len(text) - 1)]
+    text = text.rstrip()
     while text and tg_len(text + suffix) > budget:
         text = text[:-1]
-    return text + suffix
+    return text.rstrip() + suffix
 
 def get_caption(commit_msg_budget=None) -> str:
     commit_id, commit_url, commit_message, branch = get_commit_info()
@@ -67,7 +67,9 @@ def get_document() -> list["InputMediaDocument"]:
     for build_label, _ in VARIANTS:
         apk = find_apk(artifacts_root / build_label, "arm64-v8a")
         if not apk:
-            raise FileNotFoundError(f"no arm64-v8a APK found for {build_label}")
+            raise FileNotFoundError(
+                f"no arm64-v8a APK found for {build_label} under {artifacts_root / build_label}"
+            )
         documents.append(InputMediaDocument(media = str(apk)))
     # Telegram caps captions at 1024 chars, measured as visible text in UTF-16
     # units (tg_len) — not Python's len(). Split the budget so the commit
@@ -81,7 +83,7 @@ def get_document() -> list["InputMediaDocument"]:
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
-    documents[-1].caption = base_caption + ai_summary
+    documents[0].caption = base_caption + ai_summary
     return documents
 
 def get_metadata():
