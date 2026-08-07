@@ -10,7 +10,7 @@ object BookmarksHelper {
     const val KEY_PREFIX = "nax_bookmarks_"
     private const val LEGACY_KEY_PREFIX = "nax_bookmarks_v1_"
     private const val CURRENT_KEY_PREFIX = "nax_bookmarks_v2_"
-    const val MAX_PER_CHAT: Int = 30
+    const val MAX_PER_CHAT: Int = 300
 
     private val cache = ConcurrentHashMap<String, IntArray>()
     private val migratedOwners = ConcurrentHashMap<Int, Long>()
@@ -116,6 +116,44 @@ object BookmarksHelper {
         }
     }
 
+    @JvmStatic
+    fun sanitizeBackupValue(key: String, raw: String): String? {
+        // v1 keys contain an account slot, not a stable user identity.
+        val prefix = CURRENT_KEY_PREFIX
+        if (!key.startsWith(prefix)) {
+            return null
+        }
+        val suffix = key.substring(prefix.length)
+        val separator = suffix.indexOf('_')
+        if (separator <= 0 || separator == suffix.lastIndex) {
+            return null
+        }
+        if (suffix.substring(0, separator).toLongOrNull() == null ||
+            suffix.substring(separator + 1).toLongOrNull() == null
+        ) {
+            return null
+        }
+
+        val ids = LinkedHashSet<Int>()
+        for (part in raw.split(',')) {
+            val id = part.trim().toIntOrNull() ?: return null
+            if (id == 0) {
+                return null
+            }
+            ids.add(id)
+        }
+        if (ids.isEmpty()) {
+            return null
+        }
+        return ids.toList().takeLast(MAX_PER_CHAT).joinToString(",")
+    }
+
+    @JvmStatic
+    fun invalidateCaches() {
+        cache.clear()
+        migratedOwners.clear()
+    }
+
     private fun normalizeMessageIds(messageIds: IntArray): List<Int> {
         if (messageIds.isEmpty()) {
             return emptyList()
@@ -186,7 +224,12 @@ object BookmarksHelper {
                 }
             }
         }
-        cache.clear()
+        val cachePrefixes = arrayOf(currentPrefix, legacyPrefix)
+        cache.keys.toList().forEach { key ->
+            if (cachePrefixes.any { key.startsWith(it) }) {
+                cache.remove(key)
+            }
+        }
         migratedOwners.remove(accountId)
     }
 

@@ -219,6 +219,17 @@ public final class SettingsBackupHelper {
                     continue;
                 }
                 JsonPrimitive value = config.getValue().getAsJsonPrimitive();
+                if ("nkmrcfg".equals(spName) && key.startsWith(BookmarksHelper.KEY_PREFIX)) {
+                    if (!value.isString()) {
+                        continue;
+                    }
+                    String sanitized = BookmarksHelper.sanitizeBackupValue(key, value.getAsString());
+                    if (sanitized == null) {
+                        continue;
+                    }
+                    editor.putString(key, sanitized);
+                    continue;
+                }
                 if ("nkmrcfg".equals(spName)) {
                     boolean shouldSkip = true;
                     for (String prefix : preservePrefixes) {
@@ -266,6 +277,7 @@ public final class SettingsBackupHelper {
             }
             editor.commit();
         }
+        BookmarksHelper.invalidateCaches();
         PushListenerController.reconcilePushRegistration();
     }
 
