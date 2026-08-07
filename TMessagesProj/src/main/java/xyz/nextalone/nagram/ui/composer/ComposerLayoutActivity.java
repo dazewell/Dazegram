@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -44,7 +45,6 @@ import java.util.List;
  */
 public class ComposerLayoutActivity extends BaseFragment {
 
-    private static final int TYPE_PREVIEW = 0;
     private static final int TYPE_HEADER = 1;
     private static final int TYPE_BUTTON = 2;
     private static final int TYPE_PLACEHOLDER = 3;
@@ -62,6 +62,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     private RecyclerListView listView;
     private ListAdapter adapter;
     private ItemTouchHelper itemTouchHelper;
+    private PreviewCell previewCell;
 
     private final ArrayList<Item> items = new ArrayList<>();
     private List<List<String>> lastSaved;
@@ -114,10 +115,22 @@ public class ComposerLayoutActivity extends BaseFragment {
         listView.setVerticalScrollBarEnabled(false);
         itemTouchHelper = new ItemTouchHelper(new TouchHelperCallback());
         itemTouchHelper.attachToRecyclerView(listView);
-        frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, 0, 96, 0, 0));
         listView.setAdapter(adapter = new ListAdapter(context));
 
+        // Pinned rather than scrolled with the list: it is the feedback surface for every drag, so
+        // it has to stay on screen while the user works down a twenty-row list.
+        previewCell = new PreviewCell(context);
+        frameLayout.addView(previewCell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 96, Gravity.TOP | Gravity.LEFT));
+        updatePreview();
+
         return fragmentView;
+    }
+
+    private void updatePreview() {
+        if (previewCell != null) {
+            previewCell.setLayout(collect());
+        }
     }
 
     @Override
@@ -136,7 +149,6 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private void buildItems(List<List<String>> zones) {
         items.clear();
-        items.add(new Item(TYPE_PREVIEW, -1, null));
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
@@ -147,11 +159,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                     items.add(new Item(TYPE_BUTTON, zone, key));
                 }
             }
-            if (zone == ComposerButtons.ZONE_START) {
-                items.add(new Item(TYPE_INFO, ComposerButtons.ZONE_START, null));
-            }
+            // Every zone is closed by its own footer, which both explains the zone and draws the
+            // shadow that separates it from the next one.
+            items.add(new Item(TYPE_INFO, zone, null));
         }
-        items.add(new Item(TYPE_INFO, -1, null));
     }
 
     /** Rebuilds the four zone lists from the current flat order, taking each button's zone from the
@@ -220,6 +231,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
+        updatePreview();
         rebuildPending = true;
     }
 
@@ -251,9 +263,6 @@ public class ComposerLayoutActivity extends BaseFragment {
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View view;
             switch (viewType) {
-                case TYPE_PREVIEW:
-                    view = new PreviewCell(context);
-                    break;
                 case TYPE_HEADER:
                     view = new HeaderCell(context);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -284,9 +293,6 @@ public class ComposerLayoutActivity extends BaseFragment {
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             Item item = items.get(position);
             switch (item.type) {
-                case TYPE_PREVIEW:
-                    ((PreviewCell) holder.itemView).setLayout(collect());
-                    break;
                 case TYPE_HEADER:
                     ((HeaderCell) holder.itemView).setText(headerTitle(item.zone));
                     break;
@@ -294,8 +300,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(R.string.ComposerZoneEmpty));
                     break;
                 case TYPE_INFO:
-                    int infoRes = item.zone == ComposerButtons.ZONE_START ? R.string.ComposerZoneLeadingInfo : R.string.ComposerLayoutInfo;
-                    ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(infoRes));
+                    ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -315,6 +320,19 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return LocaleController.getString(R.string.ComposerZoneTrailing);
             default:
                 return LocaleController.getString(R.string.ComposerZoneHidden);
+        }
+    }
+
+    private static int footerText(int zone) {
+        switch (zone) {
+            case ComposerButtons.ZONE_START:
+                return R.string.ComposerZoneLeadingInfo;
+            case ComposerButtons.ZONE_MIDDLE:
+                return R.string.ComposerZoneScrollingInfo;
+            case ComposerButtons.ZONE_END:
+                return R.string.ComposerZoneTrailingInfo;
+            default:
+                return R.string.ComposerLayoutInfo;
         }
     }
 
@@ -367,6 +385,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
             items.add(to, items.remove(from));
             adapter.notifyItemMoved(from, to);
+            updatePreview();
             return true;
         }
 
@@ -395,6 +414,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             persist();
             buildItems(lastSaved);
             adapter.notifyDataSetChanged();
+            updatePreview();
         }
     }
 
@@ -407,13 +427,13 @@ public class ComposerLayoutActivity extends BaseFragment {
             textView = new TextView(context);
             textView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
             textView.setTextSize(15);
-            textView.setGravity(Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
-            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT, 22, 0, 22, 0));
+            textView.setGravity(Gravity.CENTER);
+            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER, 22, 0, 22, 0));
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(48), MeasureSpec.EXACTLY));
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(56), MeasureSpec.EXACTLY));
         }
     }
 
@@ -421,7 +441,6 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         final ImageView iconView;
         final SimpleTextView titleView;
-        final TextView subtitleView;
         final ImageView reorderView;
         private boolean needDivider;
 
@@ -432,7 +451,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             boolean rtl = LocaleController.isRTL;
 
             iconView = new ImageView(context);
-            iconView.setScaleType(ImageView.ScaleType.CENTER);
+            // FIT_CENTER, not CENTER: a couple of the registry drawables are authored much smaller
+            // than 24dp and CENTER would draw them at their intrinsic size, which is why the AI
+            // star arrived as a speck.
+            iconView.setScaleType(ImageView.ScaleType.FIT_CENTER);
             iconView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
             addView(iconView, LayoutHelper.createFrame(24, 24, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 20, 0, 20, 0));
 
@@ -440,19 +462,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             titleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
             titleView.setTextSize(16);
             titleView.setMaxLines(1);
-            titleView.setGravity((rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
-            addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 64, 8, 64, 0));
-
-            subtitleView = new TextView(context);
-            subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
-            subtitleView.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 13);
-            subtitleView.setLines(1);
-            subtitleView.setMaxLines(1);
-            subtitleView.setSingleLine(true);
-            subtitleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            subtitleView.setGravity(rtl ? Gravity.RIGHT : Gravity.LEFT);
-            addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 64, 32, 64, 0));
-            subtitleView.setVisibility(GONE);
+            titleView.setGravity((rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
+            // Centred against the row rather than pinned to a top offset, so the title, the icon and
+            // the drag handle all sit on one line no matter what the row contains.
+            addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, rtl ? 56 : 64, 0, rtl ? 64 : 56, 0));
 
             reorderView = new ImageView(context);
             reorderView.setScaleType(ImageView.ScaleType.CENTER);
@@ -469,7 +482,6 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (button == null) {
                 iconView.setVisibility(INVISIBLE);
                 titleView.setText("");
-                subtitleView.setVisibility(GONE);
                 return;
             }
             if (button.iconRes != 0) {
@@ -479,25 +491,17 @@ public class ComposerLayoutActivity extends BaseFragment {
                 iconView.setVisibility(INVISIBLE);
             }
             titleView.setText(LocaleController.getString(button.titleRes));
-            if (button.kind == ComposerButtons.KIND_FORMAT) {
-                subtitleView.setVisibility(VISIBLE);
-                subtitleView.setText(LocaleController.getString(R.string.ComposerFormatNeedsSelection));
-                titleView.setTranslationY(-dp(8));
-            } else {
-                subtitleView.setVisibility(GONE);
-                titleView.setTranslationY(0);
-            }
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(56), MeasureSpec.EXACTLY));
         }
 
         @Override
         protected void onDraw(Canvas canvas) {
             if (needDivider) {
-                canvas.drawLine(dp(LocaleController.isRTL ? 0 : 64), getHeight() - 1, getWidth() - dp(LocaleController.isRTL ? 64 : 0), getHeight() - 1, Theme.dividerPaint);
+                canvas.drawLine(dp(LocaleController.isRTL ? 0 : 64), getHeight() - dp(1), getWidth() - dp(LocaleController.isRTL ? 64 : 0), getHeight() - dp(1), Theme.dividerPaint);
             }
         }
     }
@@ -508,22 +512,32 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         PreviewCell(Context context) {
             super(context);
+            setWillNotDraw(false);
             setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+
+            TextView header = new TextView(context);
+            header.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueHeader));
+            header.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 15);
+            header.setTypeface(AndroidUtilities.bold());
+            header.setGravity(LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+            header.setText(LocaleController.getString(R.string.ComposerPreviewHeader));
+            addView(header, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 22, 13, 22, 0));
+
             row = new LinearLayout(context);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             // The real toolbar mirrors under RTL, so the preview has to as well or leading and
             // trailing read backwards against the row they are describing.
             row.setLayoutDirection(LocaleController.isRTL ? LAYOUT_DIRECTION_RTL : LAYOUT_DIRECTION_LTR);
-            addView(row, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL, 12, 0, 12, 0));
+            addView(row, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 48, Gravity.TOP | Gravity.LEFT, 12, 40, 12, 0));
         }
 
         void setLayout(List<List<String>> zones) {
             row.removeAllViews();
             addZone(zones.get(ComposerButtons.ZONE_START));
-            addSpacer();
+            addGap();
             addZone(zones.get(ComposerButtons.ZONE_MIDDLE));
-            addSpacer();
+            addGap();
             addZone(zones.get(ComposerButtons.ZONE_END));
         }
 
@@ -534,24 +548,33 @@ public class ComposerLayoutActivity extends BaseFragment {
                     continue;
                 }
                 ImageView icon = new ImageView(getContext());
-                icon.setScaleType(ImageView.ScaleType.CENTER);
+                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
                 icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
-                if (button.kind == ComposerButtons.KIND_FORMAT) {
-                    icon.setAlpha(0.4f);
-                }
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }
         }
 
-        private void addSpacer() {
-            View spacer = new View(getContext());
-            row.addView(spacer, LayoutHelper.createLinear(0, 0, 1f));
+        /** Weighted gap with a hairline in the middle, so the three zones stay visually separable
+         * even when the row is nearly full. */
+        private void addGap() {
+            row.addView(new View(getContext()), LayoutHelper.createLinear(0, 0, 1f));
+            View mark = new View(getContext());
+            mark.setBackgroundColor(Theme.getColor(Theme.key_divider));
+            row.addView(mark, LayoutHelper.createLinear(1, 20, 0f, Gravity.CENTER_VERTICAL));
+            row.addView(new View(getContext()), LayoutHelper.createLinear(0, 0, 1f));
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            canvas.drawLine(0, getHeight() - dp(1), getWidth(), getHeight() - dp(1), Theme.dividerPaint);
         }
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(56), MeasureSpec.EXACTLY));
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(96), MeasureSpec.EXACTLY));
         }
     }
 
@@ -560,7 +583,8 @@ public class ComposerLayoutActivity extends BaseFragment {
         ArrayList<ThemeDescription> descriptions = new ArrayList<>();
 
         descriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
-        descriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{HeaderCell.class, ButtonRowCell.class, PlaceholderCell.class, PreviewCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
+        descriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{HeaderCell.class, ButtonRowCell.class, PlaceholderCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
+        descriptions.add(new ThemeDescription(previewCell, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
 
         descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         descriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
@@ -572,7 +596,6 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"titleView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
-        descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"subtitleView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"iconView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayIcon));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{ButtonRowCell.class}, new String[]{"reorderView"}, null, null, null, Theme.key_stickers_menu));
         descriptions.add(new ThemeDescription(listView, 0, new Class[]{PlaceholderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText2));
