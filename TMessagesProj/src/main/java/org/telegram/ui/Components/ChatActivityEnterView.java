@@ -666,6 +666,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private static final int COMPOSER_TEXT_HORIZONTAL_INSET = 16;
     // The normal row's 9/10 padding centers its line box half a dp above the pill.
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
+    // How far the send/mic control is drawn inside its slot, so a ring of the input's glass stays visible around it.
+    private static final int COMPOSER_PRIMARY_INSET = 3;
     private boolean composerPrimaryGeometryPosted;
 
     private final boolean composerToolbarEnabled;
@@ -3115,7 +3117,17 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         };
         sendOutlineView.setImageResource(R.drawable.send_outline);
-        sendOutlineView.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            // NagramX (#composer-input): the outline stands in for the send pill, so it takes the same inset
+            // and leaves the same ring of input glass around it. The drawable is shared, so scale it down here
+            // rather than resizing the asset. Padding is an int, so round the disc's own float inset to the
+            // nearest pixel instead of dp()'s ceil, or the outline lands half a pixel tighter than the disc.
+            final int outlineInset = Math.round(dpf2(COMPOSER_PRIMARY_INSET));
+            sendOutlineView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            sendOutlineView.setPadding(outlineInset, outlineInset, outlineInset, outlineInset);
+        } else {
+            sendOutlineView.setScaleType(ImageView.ScaleType.CENTER);
+        }
         sendOutlineView.setVisibility(View.GONE);
         sendOutlineView.setColorFilter(getThemedColor(Theme.key_telegram_color), PorterDuff.Mode.SRC_IN);
         textFieldContainer.addView(sendOutlineView, createPrimaryInputLayoutParams(DEFAULT_HEIGHT));
@@ -3437,16 +3449,18 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
 
                     // NagramX (#composer-input): the mic slot sits inside the text pill, at its trailing end.
-                    // A DEFAULT_HEIGHT disc is the same 22dp radius as the pill's own end cap and shares its
-                    // centre, so it lands exactly on that cap rather than floating short of it.
-                    final float size = dpf2(DEFAULT_HEIGHT);
+                    // Drawing the disc a few dp inside its DEFAULT_HEIGHT slot keeps a ring of the pill's own
+                    // glass visible all around it, so the control reads as sitting in the pill rather than
+                    // capping it. The disc keeps the slot's centre, so the icon on top of it doesn't move.
+                    final float margin = composerToolbarEnabled ? dpf2(COMPOSER_PRIMARY_INSET) : 0;
+                    final float size = dpf2(DEFAULT_HEIGHT) - 2 * margin;
                     final float r = size / 2f;
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
                     backgroundRect.set(
-                            getMeasuredWidth() - size,
-                            getMeasuredHeight() - size,
-                            getMeasuredWidth(),
-                            getMeasuredHeight()
+                            getMeasuredWidth() - margin - size,
+                            getMeasuredHeight() - margin - size,
+                            getMeasuredWidth() - margin,
+                            getMeasuredHeight() - margin
                     );
 
                     canvas.save();
@@ -3738,6 +3752,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButton.setVisibility(INVISIBLE);
         sendButton.setContentDescription(getString(R.string.Send));
         sendButton.setSoundEffectsEnabled(false);
+        if (composerToolbarEnabled) {
+            sendButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         sendButton.setScaleX(0.1f);
         sendButton.setScaleY(0.1f);
         sendButton.setAlpha(0.0f);
@@ -3755,6 +3772,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         sendButtonBlockedByTypingView = new SendButtonBlockedByTypingView(context, resourcesProvider);
         sendButtonBlockedByTypingView.setVisibility(View.INVISIBLE);
+        if (composerToolbarEnabled) {
+            sendButtonBlockedByTypingView.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         sendButtonContainer.addView(sendButtonBlockedByTypingView, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
 
         slowModeButton = new SlowModeBtn(context);
@@ -4225,6 +4245,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         };
         doneButton.setContentDescription(getString(R.string.EditMessage));
+        if (composerToolbarEnabled) {
+            doneButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         if (bounceable) {
             ScaleStateListAnimator.apply(doneButton);
         }
@@ -17467,7 +17490,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             updateColors();
             checkBackgroundRect();
             if (isNewDesignSendButton) {
-                canvas.drawRoundRect(backgroundRect, dp(RADIUS), dp(RADIUS), backgroundPaint);
+                final float radius = backgroundRect.height() / 2f;
+                canvas.drawRoundRect(backgroundRect, radius, radius, backgroundPaint);
             }
 
             final boolean inactive = isInactive();
@@ -17725,13 +17749,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return false;
             }
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                // NagramX (#composer-toolbar): the new-design pill paints its full DEFAULT_HEIGHT box, so hit-test
-                // against what's actually drawn instead of the smaller circle bounds, or its top/left edge goes dead.
+                // NagramX (#composer-toolbar): the new-design pill can paint outside the circle bounds, so hit-test
+                // against where it's actually drawn instead, or the part beyond them goes dead.
                 float w = width(), h = height();
                 if (isNewDesignSendButton) {
                     checkBackgroundRect();
-                    w = Math.max(w, backgroundRect.width());
-                    h = Math.max(h, backgroundRect.height());
+                    w = Math.max(w, getMeasuredWidth() - backgroundRect.left);
+                    h = Math.max(h, getMeasuredHeight() - backgroundRect.top);
                 }
                 if (event.getX() < getWidth() - w || event.getY() < getHeight() - h) {
                     return false;
@@ -17789,6 +17813,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             btn.animatedPriceVisible.force(animatedPriceVisible.get());
             btn.setCircleSize(circleWidth, circleHeight);
             btn.setCirclePadding(circlePadX, circlePadY);
+            btn.setBackgroundInset(backgroundInset);
         }
 
         private ValueAnimator bounceCountAnimator;
@@ -17814,20 +17839,28 @@ public class ChatActivityEnterView extends FrameLayout implements
         /* * */
 
         private final RectF backgroundRect = new RectF();
-        // NagramX (#composer-input): the send pill sits inside the text pill, at its trailing end. Drawing it
-        // at DEFAULT_HEIGHT with the same 22dp radius puts it right on the input's end cap.
-        private static final int RADIUS = DEFAULT_HEIGHT / 2;
+        // NagramX (#composer-input): the send pill sits inside the text pill, at its trailing end. Drawn a few
+        // dp inside its DEFAULT_HEIGHT slot it keeps a ring of the input's glass visible around it; the slot's
+        // centre is unchanged, so the icon on top of it doesn't move. Zero for every other user of this view.
+        private float backgroundInset;
+
+        public void setBackgroundInset(float inset) {
+            if (backgroundInset != inset) {
+                backgroundInset = inset;
+                invalidate();
+            }
+        }
 
         private void checkBackgroundRect() {
-            final float height = dpf2(DEFAULT_HEIGHT);
+            final float height = dpf2(DEFAULT_HEIGHT) - 2 * backgroundInset;
             final float width = lerp(
                 Math.max(height, dpf2(10 + 10) + priceText.getCurrentWidth()),
                 height, sameWidthFactor);
             backgroundRect.set(
-                    getMeasuredWidth() - width,
-                    getMeasuredHeight() - height,
-                    getMeasuredWidth(),
-                    getMeasuredHeight()
+                    getMeasuredWidth() - backgroundInset - width,
+                    getMeasuredHeight() - backgroundInset - height,
+                    getMeasuredWidth() - backgroundInset,
+                    getMeasuredHeight() - backgroundInset
             );
         }
     }
