@@ -282,12 +282,7 @@ jobs:
           export COMMIT_ID="$SHA"
           export COMMIT_URL="$SERVER_URL/$REPO/commit/$SHA"
           export COMMIT_MESSAGE=$(git log -1 --pretty=%B "$SHA")
-          # send each package variant via telegram bot api
+          # Send both package variants as one Telegram album.
           python -m pip install -r Tools/scripts/requirements.txt
-          for entry in "nekox.messenger:Unofficial" "org.telegram.messenger.beta:Official"; do
-            export PACKAGE_NAME="${entry%%:*}"
-            export BUILD_LABEL="${entry##*:}"
-            export ARTIFACTS_PATH="artifacts/$BUILD_LABEL"
-            echo "Uploading $BUILD_LABEL ($PACKAGE_NAME) from $ARTIFACTS_PATH"
-            python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} "$BUILD_TYPE"
-          done
+          export ARTIFACTS_PATH="artifacts"
+          python Tools/scripts/upload.py ${{ secrets.HELPER_BOT_TOKEN }} ${{ secrets.HELPER_BOT_TARGET }} "$BUILD_TYPE"
