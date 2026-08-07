@@ -240,11 +240,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
     // Every glyph gets the same 24dp visual box. Registry scales are authored optical corrections
     // for assets whose keyline is intentionally smaller or larger than that shared box.
     public static void applyIconBox(View view, int cellDp, float scale) {
-        int inset = Math.max(0, AndroidUtilities.dp((cellDp - ICON_GLYPH * scale) / 2.0f));
+        int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
+        int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH) * scale);
+        int remainingPx = Math.max(0, cellPx - glyphPx);
+        int startInset = remainingPx / 2;
+        int endInset = remainingPx - startInset;
         if (view instanceof RLottieImageView) {
-            // Lottie renders into a fixed bitmap, so it responds to the box rather than a drawable
-            // scale type.
-            view.setPadding(inset, inset, inset, inset);
+            view.setPadding(startInset, startInset, endInset, endInset);
             return;
         }
         if (!(view instanceof ImageView)) {
@@ -252,7 +254,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
         ImageView icon = (ImageView) view;
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        icon.setPadding(inset, inset, inset, inset);
+        icon.setPadding(startInset, startInset, endInset, endInset);
     }
 
     private static void applyIconBox(String key, View view) {

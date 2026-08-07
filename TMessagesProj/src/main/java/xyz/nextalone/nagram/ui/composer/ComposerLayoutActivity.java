@@ -38,6 +38,7 @@ import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 
+import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -682,14 +683,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                     continue;
                 }
                 ImageView icon = new ImageView(getContext());
-                icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
-                float scale = button.iconRes == R.drawable.msg_input_attach2
-                        ? ComposerButtons.iconScaleForResource(button.iconRes)
-                        : button.iconScale;
-                icon.setScaleX(scale);
-                icon.setScaleY(scale);
+                ComposerToolbarLayout.applyIconBox(icon, 32, button.iconScale);
                 icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }

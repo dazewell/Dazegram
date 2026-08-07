@@ -93,12 +93,12 @@ public final class ComposerButtons {
 
     static {
         register(new Button(EMOJI, R.string.AccDescrEmojiButton, R.drawable.input_smile_solar, KIND_CORE, ZONE_START, 0, false, true));
-        register(new Button(RICH, R.string.ArticleEditor, R.drawable.iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false));
+        register(new Button(RICH, R.string.ArticleEditor, R.drawable.iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false, 1.19f));
         register(new Button(AI, R.string.AIEditor, R.drawable.input_ai_star, KIND_CORE, ZONE_MIDDLE, 0, false, false));
 
-        register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
-        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true, 0.85f));
-        register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true));
+        register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true, 1.16f));
+        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true, 1.29f));
+        register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true, 1.06f));
         register(new Button("regular", R.string.Regular, R.drawable.nax_formatting_eraser, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_regular, false, true));
 
         register(new Button("mono", R.string.Mono, R.drawable.formatting_code, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mono, false, true));
@@ -112,9 +112,9 @@ public final class ComposerButtons {
         register(new Button("date", R.string.FormattedDate, R.drawable.input_calendar_add_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_date, false, true));
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
-        register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.baseline_fullscreen_24, KIND_CORE, ZONE_END, 0, false, true, 0.82f));
-        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false));
-        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.78f));
+        register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
+        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false, 0.88f));
+        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.89f));
     }
 
     private static final List<Button> ALL = Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
@@ -132,10 +132,10 @@ public final class ComposerButtons {
 
     public static float iconScaleForResource(int resource) {
         if (resource == R.drawable.msg_input_attach2) {
-            return 0.78f;
+            return get(ATTACH).iconScale;
         }
         if (resource == R.drawable.input_attach) {
-            return 0.92f;
+            return 0.76f;
         }
         if (resource == R.drawable.ic_ab_other) {
             return 1.10f;

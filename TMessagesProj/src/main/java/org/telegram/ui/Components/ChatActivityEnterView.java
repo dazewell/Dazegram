@@ -2923,13 +2923,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             notifyButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
             notifyButton.setScaleType(ImageView.ScaleType.CENTER);
             if (composerToolbarEnabled) {
-                // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons
-                // without changing the attach group's 44dp layout geometry.
-                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
+                // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons.
+                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
             }
             notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
-            attachLayout.addView(notifyButton, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+            int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+            attachLayout.addView(notifyButton, LayoutHelper.createLinear(composerContextSize, composerContextSize));
             notifyButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -2941,7 +2941,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     notifySilentDrawable.setCrossOut(silent, true);
                     notifyButton.setImageDrawable(notifySilentDrawable);
                     if (composerToolbarEnabled) {
-                        xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
+                        xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
                     }
                     MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + dialog_id, silent).commit();
                     NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(dialog_id, fragment == null ? 0 : fragment.getTopicId());
@@ -4004,10 +4004,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         giftButton.setContentDescription(getString(R.string.GiftPremium));
         giftButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(giftButton, DEFAULT_HEIGHT, 1f);
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(giftButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
         }
         giftButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
-        attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
+        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+        attachLayout.addView(giftButton, 0, LayoutHelper.createFrame(composerContextSize, composerContextSize, Gravity.CENTER_VERTICAL | Gravity.RIGHT));
         giftButton.setOnClickListener(v -> {
             SharedPreferences.Editor edit = MessagesController.getInstance(currentAccount).getMainSettings().edit();
             if (BirthdayController.isToday(parentFragment.getCurrentUserInfo())) {
@@ -4053,7 +4054,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         suggestButton = new ImageView(getContext());
         suggestButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(suggestButton, DEFAULT_HEIGHT, 1f);
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(suggestButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
         }
         suggestButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         suggestButton.setImageResource(R.drawable.input_suggest_paid_24);
@@ -4062,7 +4063,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             suggestButton.setTranslationX(dp(42));
             textFieldContainer.addView(suggestButton, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.BOTTOM | Gravity.RIGHT, 0, 0, 6 + DEFAULT_HEIGHT, 0));
         } else {
-            attachLayout.addView(suggestButton, 0, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+            int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+            attachLayout.addView(suggestButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         }
         suggestButton.setOnClickListener(v -> {
             if (adjustPanLayoutHelper != null && adjustPanLayoutHelper.animationInProgress() || attachLayoutPaddingAlpha == 0f) {
@@ -4151,12 +4153,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         botButtonDrawable.setIcon(R.drawable.input_bot2, false);
         botButton.setScaleType(ImageView.ScaleType.CENTER);
         if (composerToolbarEnabled) {
-            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(botButton, DEFAULT_HEIGHT, 1f);
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(botButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 1f);
         }
         botButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
         botButton.setVisibility(GONE);
         AndroidUtilities.updateViewVisibilityAnimated(botButton, false, 0.1f, false);
-        attachLayout.addView(botButton, 0, LayoutHelper.createLinear(DEFAULT_HEIGHT, DEFAULT_HEIGHT));
+        int composerContextSize = composerToolbarEnabled ? xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE : DEFAULT_HEIGHT;
+        attachLayout.addView(botButton, 0, LayoutHelper.createLinear(composerContextSize, composerContextSize));
         botButton.setOnClickListener(v -> {
 //            if (hasBotWebView() && botCommandsMenuIsShowing()) {
 //                botWebViewMenuContainer.dismiss(v::callOnClick);
@@ -7168,7 +7171,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         boolean show = canShowExpandInputButton();
         int animationId = ++expandInputButtonAnimationId;
         expandInputButton.animate().cancel();
-        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.baseline_fullscreen_24);
+        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.nax_composer_expand);
         updateExpandInputButtonColor();
         expandInputButton.setContentDescription(getString(messageEditExpanded ? R.string.CollapseMessageField : R.string.ExpandMessageField));
         if (shownExpandInputButton == show) {
@@ -13224,7 +13227,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 notifySilentDrawable.setCrossOut(silent, false);
                 notifyButton.setImageDrawable(notifySilentDrawable);
                 if (composerToolbarEnabled) {
-                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
+                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE, 0.85f);
                 }
             }
             if (attachLayout != null) {
