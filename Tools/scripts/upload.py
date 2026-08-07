@@ -83,7 +83,7 @@ def get_document() -> list["InputMediaDocument"]:
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
-    documents[0].caption = base_caption + ai_summary
+    documents[-1].caption = base_caption + ai_summary
     return documents
 
 def get_metadata():
