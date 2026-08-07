@@ -19,6 +19,10 @@ Flag a chat from its in-chat ⋯ menu to swap its last message in the chat list 
 
 When an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens — however you reach it: a tap, a notification, a shortcut, a search result, or a long-press peek. Turning it on also hides the chat's last message in the list. Once unlocked, the chat stays open until you background the app, then it asks again. The lock leans on the app passcode, so removing that passcode leaves the flagged chats open until you set one again.
 
+### Message bookmarks <!-- #bookmarks-300 -->
+
+Save up to 300 messages per chat from the message menu. Bookmarks keep their existing per-account storage and are included in settings backup and restore.
+
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal — it only ever turns Ghost on, so it's safe to tap when you're already in it. It's named "Ayu Mode" so it doesn't give itself away on your home screen.
