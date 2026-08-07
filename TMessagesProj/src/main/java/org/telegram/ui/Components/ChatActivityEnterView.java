@@ -3436,9 +3436,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                     }
 
-                    // NagramX (#composer-toolbar): the mic slot sits outside the text pill now, so it fills
-                    // its whole DEFAULT_HEIGHT box and lines up with the pill's edges instead of the old
-                    // 38dp disc that read 3dp short on every side.
+                    // NagramX (#composer-input): the mic slot sits inside the text pill, at its trailing end.
+                    // A DEFAULT_HEIGHT disc is the same 22dp radius as the pill's own end cap and shares its
+                    // centre, so it lands exactly on that cap rather than floating short of it.
                     final float size = dpf2(DEFAULT_HEIGHT);
                     final float r = size / 2f;
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
@@ -10494,10 +10494,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
-    // NagramX (#composer-toolbar): the satellite offset is where the bubble's end edge lands, not where the
-    // text should stop. Using it as the text margin left the last line running up to that edge with only the
-    // island's own side margin to spare, while the start side kept its full inset. Reserve the column and
-    // then inset the text off it, same as the start.
+    // NagramX (#composer-input): the satellite offset is the column the send and mic controls occupy inside
+    // the bubble, not where the text should stop. Using it straight as the text margin left the last line
+    // running up against the control, while the start side kept its full inset. Reserve the column and then
+    // inset the text off it, same as the start.
     private int getComposerTextEndInset() {
         return inputSatellites.getPublishedRightOffset() + dp(COMPOSER_TEXT_HORIZONTAL_INSET);
     }
@@ -17814,8 +17814,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         /* * */
 
         private final RectF backgroundRect = new RectF();
-        // NagramX (#composer-toolbar): the pill fills its whole DEFAULT_HEIGHT box so it matches the text
-        // island beside it. It used to draw 38dp inside a 44dp slot, which read 3dp short on every side.
+        // NagramX (#composer-input): the send pill sits inside the text pill, at its trailing end. Drawing it
+        // at DEFAULT_HEIGHT with the same 22dp radius puts it right on the input's end cap.
         private static final int RADIUS = DEFAULT_HEIGHT / 2;
 
         private void checkBackgroundRect() {
@@ -17906,19 +17906,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
     }
 
-    public int getInputBubblePrimaryEndInset() {
-        if (!composerToolbarEnabled || inputPrimarySuppressed) {
-            return 0;
-        }
-        return inputSatellites.getPublishedRightOffset();
-    }
-
+    // NagramX (#composer-input): the send and mic column sits inside the input bubble, so the bubble runs the
+    // full width and it's the content beside the column that gets held off it: the text field, plus the review
+    // panel while that owns the row. This only reports that the column's width moved, so they can re-measure.
     private boolean publishComposerPrimaryOffset() {
-        if (!composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
-            return false;
-        }
-        onChangedInputPrimaryWidth();
-        return true;
+        return composerToolbarEnabled && inputSatellites.updateRightOffset();
     }
 
     private void refreshComposerPrimaryOffset() {
@@ -18059,10 +18051,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onChangedIslandTotalHeight(float newTotalHeight) {
-
-    }
-
-    protected void onChangedInputPrimaryWidth() {
 
     }
 
