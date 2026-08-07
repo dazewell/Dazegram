@@ -17693,8 +17693,18 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (getAlpha() <= 0f) { // for accessibility
                 return false;
             }
-            if (event.getAction() == MotionEvent.ACTION_DOWN && (event.getX() < getWidth() - width() || event.getY() < getHeight() - height())) {
-                return false;
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                // NagramX (#composer-toolbar): the new-design pill paints its full DEFAULT_HEIGHT box, so hit-test
+                // against what's actually drawn instead of the smaller circle bounds, or its top/left edge goes dead.
+                float w = width(), h = height();
+                if (isNewDesignSendButton) {
+                    checkBackgroundRect();
+                    w = Math.max(w, backgroundRect.width());
+                    h = Math.max(h, backgroundRect.height());
+                }
+                if (event.getX() < getWidth() - w || event.getY() < getHeight() - h) {
+                    return false;
+                }
             }
             return super.onTouchEvent(event);
         }
