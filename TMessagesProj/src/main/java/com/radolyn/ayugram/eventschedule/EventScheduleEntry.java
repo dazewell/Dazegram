@@ -62,6 +62,10 @@ public final class EventScheduleEntry {
         return dialogId + "_" + createdAt;
     }
 
+    public String triggerKey() {
+        return types + ":" + regex + ":" + (pattern == null ? "" : pattern);
+    }
+
     public boolean matchesType(MessageObject message, CharSequence text) {
         if (types == 0) return false;
         if ((types & TYPE_VOICE) != 0 && message.isVoice()) return true;
