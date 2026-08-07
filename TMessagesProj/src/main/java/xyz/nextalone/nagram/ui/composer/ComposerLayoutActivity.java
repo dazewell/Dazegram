@@ -685,8 +685,11 @@ public class ComposerLayoutActivity extends BaseFragment {
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
-                icon.setScaleX(button.iconScale);
-                icon.setScaleY(button.iconScale);
+                float scale = button.iconRes == R.drawable.msg_input_attach2
+                        ? ComposerButtons.iconScaleForResource(button.iconRes)
+                        : button.iconScale;
+                icon.setScaleX(scale);
+                icon.setScaleY(scale);
                 icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.SRC_IN));
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }
@@ -697,8 +700,9 @@ public class ComposerLayoutActivity extends BaseFragment {
         private void addGap() {
             row.addView(new View(getContext()), LayoutHelper.createLinear(0, 0, 1f));
             View mark = new View(getContext());
-            mark.setBackgroundColor(Theme.getColor(Theme.key_divider));
-            row.addView(mark, LayoutHelper.createLinear(1, 20, 0f, Gravity.CENTER_VERTICAL));
+            mark.setBackgroundColor(ColorUtils.setAlphaComponent(
+                    Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), 0x3D));
+            row.addView(mark, LayoutHelper.createLinear(2, 24, 0f, Gravity.CENTER_VERTICAL));
             row.addView(new View(getContext()), LayoutHelper.createLinear(0, 0, 1f));
         }
 

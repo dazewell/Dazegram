@@ -2925,7 +2925,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (composerToolbarEnabled) {
                 // NagramX: keep this wrapped bitmap in the same 24dp visual box as configurable icons
                 // without changing the attach group's 44dp layout geometry.
-                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 1f);
+                xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
             }
             notifyButton.setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             notifyButton.setVisibility(canWriteToChannel && (delegate == null || !delegate.hasScheduledMessages()) ? VISIBLE : GONE);
@@ -2940,6 +2940,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     notifySilentDrawable.setCrossOut(silent, true);
                     notifyButton.setImageDrawable(notifySilentDrawable);
+                    if (composerToolbarEnabled) {
+                        xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
+                    }
                     MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("silent_" + dialog_id, silent).commit();
                     NotificationsController.getInstance(currentAccount).updateServerNotificationsSettings(dialog_id, fragment == null ? 0 : fragment.getTopicId());
                     UndoView undoView = fragment.getUndoView();
@@ -8404,6 +8407,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 parentActivity.getResources().getDrawable(targetRes)
         });
         transitionDrawable.setCrossFadeEnabled(true);
+        transitionDrawable.setBounds(0, 0, dp(24), dp(24));
 
         imageView.setImageDrawable(transitionDrawable);
         imageView.post(() -> transitionDrawable.startTransition(duration));
@@ -8458,6 +8462,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 delegate.didPressAttachButton();
             });
             attachButton.setContentDescription(LocaleController.getString("AccDescrAttachButton", R.string.AccDescrAttachButton));
+        }
+        if (composerToolbarEnabled) {
+            xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(
+                    attachButton,
+                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.BUTTON_SIZE,
+                    xyz.nextalone.nagram.ui.composer.ComposerButtons.iconScaleForResource(targetRes));
         }
         if (duration == 0) {
             attachButton.setImageResource(targetRes);
@@ -13213,6 +13223,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 notifySilentDrawable.setCrossOut(silent, false);
                 notifyButton.setImageDrawable(notifySilentDrawable);
+                if (composerToolbarEnabled) {
+                    xyz.nextalone.nagram.ui.ComposerToolbarLayout.applyIconBox(notifyButton, DEFAULT_HEIGHT, 0.94f);
+                }
             }
             if (attachLayout != null) {
                 updateFieldRight(attachLayout.getVisibility() == VISIBLE ? 1 : 0);

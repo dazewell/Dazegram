@@ -114,7 +114,7 @@ public final class ComposerButtons {
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.baseline_fullscreen_24, KIND_CORE, ZONE_END, 0, false, true, 0.82f));
         register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false));
-        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true));
+        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.78f));
     }
 
     private static final List<Button> ALL = Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
@@ -128,6 +128,19 @@ public final class ComposerButtons {
 
     public static Button get(String key) {
         return key == null ? null : REGISTRY.get(key);
+    }
+
+    public static float iconScaleForResource(int resource) {
+        if (resource == R.drawable.msg_input_attach2) {
+            return 0.78f;
+        }
+        if (resource == R.drawable.input_attach) {
+            return 0.92f;
+        }
+        if (resource == R.drawable.ic_ab_other) {
+            return 1.10f;
+        }
+        return 1f;
     }
 
     public static boolean isFormat(String key) {
