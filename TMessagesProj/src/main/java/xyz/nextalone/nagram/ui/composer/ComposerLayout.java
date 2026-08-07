@@ -6,6 +6,7 @@ import xyz.nextalone.nagram.NaConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 
@@ -31,7 +32,10 @@ public final class ComposerLayout {
 
     public static synchronized List<String> zone(int zone) {
         parse();
-        return zones.get(zone);
+        // The cache is shared by every toolbar being built, so hand out a read-only view of it
+        // rather than the list itself - a caller that sorted or trimmed it in place would silently
+        // rewrite the layout for every other composer.
+        return Collections.unmodifiableList(zones.get(zone));
     }
 
     public static synchronized int zoneOf(String key) {

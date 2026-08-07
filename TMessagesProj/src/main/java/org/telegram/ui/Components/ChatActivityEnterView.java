@@ -10546,9 +10546,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         scheduledButton.setScaleX(pin ? 1.0f : 0.0f);
         scheduledButton.setScaleY(1.0f);
         // attach layout hidden (attach menu off, or stories) frees the rightmost slot for the calendar;
-        // otherwise it sits one slot to the left of the still-present attach button.
+        // otherwise it sits one slot to the left of the still-present attach button. With the composer
+        // toolbar on, the trailing slot is a linear row that closes the gap itself, so shifting the
+        // button by a slot width would only push it off its own position.
         boolean attachHidden = !NekoConfig.useChatAttachMediaMenu.Bool() || isStories;
-        scheduledButton.setTranslationX(dp(pin && attachHidden ? DEFAULT_HEIGHT : 0));
+        scheduledButton.setTranslationX(dp(!composerToolbarEnabled && pin && attachHidden ? DEFAULT_HEIGHT : 0));
         updateFieldRight(lastAttachVisible);
     }
 

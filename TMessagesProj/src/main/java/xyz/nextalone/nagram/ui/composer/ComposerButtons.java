@@ -81,9 +81,9 @@ public final class ComposerButtons {
     }
 
     static {
-        register(new Button(EMOJI, R.string.AccDescrEmojiButton, 0, KIND_CORE, ZONE_START, 0, false, true));
+        register(new Button(EMOJI, R.string.AccDescrEmojiButton, R.drawable.input_smile_solar, KIND_CORE, ZONE_START, 0, false, true));
         register(new Button(RICH, R.string.ArticleEditor, R.drawable.iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false));
-        register(new Button(AI, R.string.AIEditor, 0, KIND_CORE, ZONE_MIDDLE, 0, false, false));
+        register(new Button(AI, R.string.AIEditor, R.drawable.input_ai_star, KIND_CORE, ZONE_MIDDLE, 0, false, false));
 
         register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
         register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true));

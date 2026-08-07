@@ -65,6 +65,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private final ArrayList<Item> items = new ArrayList<>();
     private List<List<String>> lastSaved;
+    private boolean rebuildPending;
 
     private static final class Item {
         final int type;
@@ -123,11 +124,13 @@ public class ComposerLayoutActivity extends BaseFragment {
     public void onPause() {
         super.onPause();
         persist();
+        flushRebuild();
     }
 
     @Override
     public void onFragmentDestroy() {
         persist();
+        flushRebuild();
         super.onFragmentDestroy();
     }
 
@@ -196,6 +199,17 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
         ComposerLayout.save(current);
         lastSaved = current;
+        // The stored layout is the toolbar's only input, so it is written on every drop; the rebuild
+        // that picks it up is deferred to leaving the screen, since rebuilding every chat behind the
+        // editor after each micro-drag buys nothing the preview row isn't already showing.
+        rebuildPending = true;
+    }
+
+    private void flushRebuild() {
+        if (!rebuildPending) {
+            return;
+        }
+        rebuildPending = false;
         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.reloadInterface);
     }
 
@@ -206,7 +220,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.reloadInterface);
+        rebuildPending = true;
     }
 
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
@@ -427,7 +441,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             titleView.setTextSize(16);
             titleView.setMaxLines(1);
             titleView.setGravity((rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
-            addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, rtl ? 64 : 64, 8, rtl ? 64 : 64, 0));
+            addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 64, 8, 64, 0));
 
             subtitleView = new TextView(context);
             subtitleView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
@@ -437,7 +451,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             subtitleView.setSingleLine(true);
             subtitleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
             subtitleView.setGravity(rtl ? Gravity.RIGHT : Gravity.LEFT);
-            addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, rtl ? 64 : 64, 32, rtl ? 64 : 64, 0));
+            addView(subtitleView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (rtl ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 64, 32, 64, 0));
             subtitleView.setVisibility(GONE);
 
             reorderView = new ImageView(context);
@@ -453,6 +467,9 @@ public class ComposerLayoutActivity extends BaseFragment {
             needDivider = divider;
             setWillNotDraw(!needDivider);
             if (button == null) {
+                iconView.setVisibility(INVISIBLE);
+                titleView.setText("");
+                subtitleView.setVisibility(GONE);
                 return;
             }
             if (button.iconRes != 0) {
@@ -495,6 +512,9 @@ public class ComposerLayoutActivity extends BaseFragment {
             row = new LinearLayout(context);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
+            // The real toolbar mirrors under RTL, so the preview has to as well or leading and
+            // trailing read backwards against the row they are describing.
+            row.setLayoutDirection(LocaleController.isRTL ? LAYOUT_DIRECTION_RTL : LAYOUT_DIRECTION_LTR);
             addView(row, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL, 12, 0, 12, 0));
         }
 
