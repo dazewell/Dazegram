@@ -35,9 +35,15 @@ import xyz.nextalone.nagram.NaConfig;
 
 public final class ScheduleTimeHelper {
 
-    private static final int DEFAULT_SCHEDULE_STEP_COUNT = 30;
+    private static final int DEFAULT_SCHEDULE_STEP_COUNT = 34;
     private static final int DEFAULT_SCHEDULE_LAST_MINUTE_STEP = 11;
     private static final int DEFAULT_SCHEDULE_LAST_HOUR_STEP = 22;
+    private static final int DEFAULT_SCHEDULE_DAY_STEP_COUNT = 7;
+    private static final int DEFAULT_SCHEDULE_FIRST_MONTH_STEP = DEFAULT_SCHEDULE_LAST_HOUR_STEP + DEFAULT_SCHEDULE_DAY_STEP_COUNT + 1;
+    private static final int DEFAULT_SCHEDULE_ONE_MONTH_MINUTES = 30 * 24 * 60;
+    private static final int DEFAULT_SCHEDULE_THREE_MONTHS_MINUTES = 90 * 24 * 60;
+    private static final int DEFAULT_SCHEDULE_SIX_MONTHS_MINUTES = 180 * 24 * 60;
+    private static final int DEFAULT_SCHEDULE_TWELVE_MONTHS_MINUTES = 365 * 24 * 60;
     private static final long SEND_WHEN_ONLINE_DATE = 0x7FFFFFFEL;
     // The day wheel stops at 365, so an offset past that could never be picked again.
     private static final int MAX_REMEMBERED_MINUTES = 365 * 24 * 60;
@@ -420,8 +426,19 @@ public final class ScheduleTimeHelper {
             return (step + 1) * 5;
         } else if (step <= DEFAULT_SCHEDULE_LAST_HOUR_STEP) {
             return (step - 10) * 60;
+        } else if (step < DEFAULT_SCHEDULE_FIRST_MONTH_STEP) {
+            return (step - DEFAULT_SCHEDULE_LAST_HOUR_STEP) * 24 * 60;
         }
-        return (step - DEFAULT_SCHEDULE_LAST_HOUR_STEP) * 24 * 60;
+        switch (step) {
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP:
+                return DEFAULT_SCHEDULE_ONE_MONTH_MINUTES;
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP + 1:
+                return DEFAULT_SCHEDULE_THREE_MONTHS_MINUTES;
+            case DEFAULT_SCHEDULE_FIRST_MONTH_STEP + 2:
+                return DEFAULT_SCHEDULE_SIX_MONTHS_MINUTES;
+            default:
+                return DEFAULT_SCHEDULE_TWELVE_MONTHS_MINUTES;
+        }
     }
 
     private static int getDefaultScheduleStep(int minutes) {
@@ -442,6 +459,15 @@ public final class ScheduleTimeHelper {
     }
 
     private static String formatDefaultScheduleMinutes(int minutes) {
+        if (minutes == DEFAULT_SCHEDULE_ONE_MONTH_MINUTES) {
+            return LocaleController.formatPluralString("Months", 1);
+        } else if (minutes == DEFAULT_SCHEDULE_THREE_MONTHS_MINUTES) {
+            return LocaleController.formatPluralString("Months", 3);
+        } else if (minutes == DEFAULT_SCHEDULE_SIX_MONTHS_MINUTES) {
+            return LocaleController.formatPluralString("Months", 6);
+        } else if (minutes == DEFAULT_SCHEDULE_TWELVE_MONTHS_MINUTES) {
+            return LocaleController.formatPluralString("Months", 12);
+        }
         // Slider values are always whole minutes/hours/days, but a remembered offset can be any
         // mix of them, so build the label from whichever parts are non-zero.
         final int days = minutes / (24 * 60);
