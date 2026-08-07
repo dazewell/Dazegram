@@ -28,6 +28,7 @@ public final class InputSatellites {
     private @Nullable BlurredBackgroundColorProvider colorProvider;
     private @Nullable View enterView;
     private @Nullable ViewGroup rightColumn;
+    private int measuredRightColumnWidth;
     private int publishedRightOffset;
 
     public void configure(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
@@ -40,6 +41,10 @@ public final class InputSatellites {
         this.rightColumn = rightColumn;
     }
 
+    public void setMeasuredRightColumnWidth(int width) {
+        measuredRightColumnWidth = Math.max(0, width);
+    }
+
     public void trackRightColumn(View view) {
         if (view != null && !rightColumnExtras.contains(view)) {
             rightColumnExtras.add(view);
@@ -50,6 +55,7 @@ public final class InputSatellites {
         int width = 0;
         if (enterView != null && enterView.getVisibility() == View.VISIBLE && enterView.getAlpha() > 0.01f) {
             if (rightColumn != null && rightColumn.getVisibility() == View.VISIBLE) {
+                width = Math.max(width, measuredRightColumnWidth);
                 for (int i = 0; i < rightColumn.getChildCount(); i++) {
                     width = Math.max(width, visualWidth(rightColumn.getChildAt(i)));
                 }

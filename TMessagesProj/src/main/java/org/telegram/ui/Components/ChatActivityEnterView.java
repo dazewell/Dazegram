@@ -3127,6 +3127,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onSizeChanged(w, h, oldw, oldh);
                 setPivotX(w - dp(22));
                 setPivotY(h - dp(22));
+                if (composerToolbarEnabled) {
+                    inputSatellites.setMeasuredRightColumnWidth(w);
+                }
                 if (w != oldw) {
                     refreshComposerPrimaryOffset();
                 }
@@ -3167,7 +3170,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         };
         sendButtonContainer.setClipChildren(false);
         sendButtonContainer.setClipToPadding(false);
-        textFieldContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
+        if (composerToolbarEnabled) {
+            messageEditTextContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
+        } else {
+            textFieldContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
+        }
         inputSatellites.configureRightColumn(this, sendButtonContainer);
         audioVideoButtonContainer = new FrameLayout(context) {
 
@@ -7217,7 +7224,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private int getExpandedInputHeight() {
         return Math.max(dp(DEFAULT_HEIGHT),
             expandedInputBudget - (isTopViewVisible() ? topView.getLayoutParams().height : 0)
-                - (composerToolbarEnabled ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0) - dp(3));
+                - (composerToolbarEnabled ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP + DEFAULT_HEIGHT) : 0) - dp(3));
     }
 
     private boolean shownAiButton;
@@ -10466,8 +10473,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         int inset = dp(COMPOSER_TEXT_HORIZONTAL_INSET);
         publishComposerPrimaryOffset();
-        int endInset = getComposerTextEndInset();
         boolean compact = !messageEditExpanded && !richDraftActive && messageEditText.getLineCount() <= 1;
+        int endInset = compact ? getComposerTextEndInset() : inset;
         int gravity = messageEditExpanded
                 ? Gravity.TOP | Gravity.START
                 : compact ? Gravity.CENTER_VERTICAL | Gravity.START : Gravity.BOTTOM | Gravity.START;
@@ -10479,18 +10486,38 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (messageEditText.getTranslationY() != translationY) {
             messageEditText.setTranslationY(translationY);
         }
-        applyComposerTextMargins(messageEditText, inset, endInset);
+        int bottomInset = dp(getPrimaryColumnBottomMargin())
+                + (compact ? 0 : dp(DEFAULT_HEIGHT));
+        applyComposerTextMargins(messageEditText, inset, endInset, bottomInset);
         if (richDraftPreview != null) {
-            applyComposerTextMargins(richDraftPreview, inset, endInset);
+            applyComposerTextMargins(richDraftPreview, inset, endInset, bottomInset);
+        }
+        applyComposerActionGeometry();
+    }
+
+    private void applyComposerTextMargins(View view, int startInset, int endInset, int bottomMargin) {
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) view.getLayoutParams();
+        if (layoutParams != null && (layoutParams.getMarginStart() != startInset || layoutParams.getMarginEnd() != endInset
+                || layoutParams.bottomMargin != bottomMargin)) {
+            layoutParams.setMarginStart(startInset);
+            layoutParams.setMarginEnd(endInset);
+            layoutParams.bottomMargin = bottomMargin;
+            view.setLayoutParams(layoutParams);
         }
     }
 
-    private void applyComposerTextMargins(View view, int startInset, int endInset) {
-        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) view.getLayoutParams();
-        if (layoutParams != null && (layoutParams.getMarginStart() != startInset || layoutParams.getMarginEnd() != endInset)) {
-            layoutParams.setMarginStart(startInset);
-            layoutParams.setMarginEnd(endInset);
-            view.setLayoutParams(layoutParams);
+    private void applyComposerActionGeometry() {
+        if (!composerToolbarEnabled || sendButtonContainer == null) {
+            return;
+        }
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) sendButtonContainer.getLayoutParams();
+        if (layoutParams == null) {
+            return;
+        }
+        int bottomMargin = dp(getPrimaryColumnBottomMargin());
+        if (layoutParams.bottomMargin != bottomMargin) {
+            layoutParams.bottomMargin = bottomMargin;
+            sendButtonContainer.setLayoutParams(layoutParams);
         }
     }
 
