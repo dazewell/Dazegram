@@ -19,7 +19,6 @@ public final class InputSatellites {
 
     private static final int FILL_MARGIN = 5;
     private static final int WARMUP_FRAMES = 3;
-    private static final int RIGHT_COLUMN_GAP = 7;
     private static final int RIGHT_OFFSET_DELTA = 4;
 
     private final ArrayList<GlassFill> fills = new ArrayList<>();
@@ -29,10 +28,19 @@ public final class InputSatellites {
     private @Nullable View enterView;
     private @Nullable ViewGroup rightColumn;
     private int publishedRightOffset;
+    private int contentInset;
 
     public void configure(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
         this.factory = factory;
         this.colorProvider = colorProvider;
+    }
+
+    /**
+     * How far inside its slot each right-column control draws itself, in px. Everything published here is the
+     * drawn control's edge rather than the slot's, so callers can inset off it once instead of guessing.
+     */
+    public void setContentInset(int inset) {
+        contentInset = inset;
     }
 
     public void configureRightColumn(View enterView, ViewGroup rightColumn) {
@@ -58,7 +66,7 @@ public final class InputSatellites {
                 width = Math.max(width, visualWidth(rightColumnExtras.get(i)));
             }
         }
-        int offset = width == 0 ? 0 : width + dp(RIGHT_COLUMN_GAP);
+        int offset = width == 0 ? 0 : width + contentInset;
         if (offset == publishedRightOffset || publishedRightOffset != 0 && offset != 0 && Math.abs(offset - publishedRightOffset) < dp(RIGHT_OFFSET_DELTA)) {
             return false;
         }
@@ -123,7 +131,7 @@ public final class InputSatellites {
         if (view instanceof ChatActivityEnterView.SendButton) {
             return ((ChatActivityEnterView.SendButton) view).getVisualWidth();
         }
-        return view.getWidth();
+        return Math.max(0, view.getWidth() - 2 * contentInset);
     }
 
     private void paintFill(Canvas canvas, GlassFill fill, View target, int alpha, View invalidationTarget) {

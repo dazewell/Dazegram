@@ -3181,6 +3181,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonContainer.setClipToPadding(false);
         textFieldContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
         inputSatellites.configureRightColumn(this, sendButtonContainer);
+        if (composerToolbarEnabled) {
+            // NagramX (#composer-input): the column's controls draw inside their slots, so tell the tracker how
+            // far in and let it publish the drawn edge. Round the disc's own float inset rather than taking
+            // dp()'s ceil, so the reserved column ends exactly where the control starts.
+            inputSatellites.setContentInset(Math.round(dpf2(COMPOSER_PRIMARY_INSET)));
+        }
         audioVideoButtonContainer = new FrameLayout(context) {
 
             @Override
@@ -10517,10 +10523,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
-    // NagramX (#composer-input): the satellite offset is the column the send and mic controls occupy inside
-    // the bubble, not where the text should stop. Using it straight as the text margin left the last line
-    // running up against the control, while the start side kept its full inset. Reserve the column and then
-    // inset the text off it, same as the start.
+    // NagramX (#composer-input): the satellite offset reaches the near edge of the drawn send or mic control
+    // inside the bubble, not the point the text should stop at. Using it straight as the text margin left the
+    // last line running up against the control, while the start side kept its full inset. Reserve the control
+    // and then inset the text off it, same as the start.
     private int getComposerTextEndInset() {
         return inputSatellites.getPublishedRightOffset() + dp(COMPOSER_TEXT_HORIZONTAL_INSET);
     }
@@ -11783,7 +11789,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     // NagramX (#composer-toolbar): with the row replaced there is no toolbar under it, so the primary column
-    // drops to the bottom, and the review panel gives back the width the send button needs.
+    // drops to the bottom, and the review panel gives back the width the send button needs. The panel is held
+    // off the control by the same rule as the text, so the waveform doesn't butt against it.
     private void applyComposerReplacementGeometry() {
         int bottomMargin = dp(getPrimaryColumnBottomMargin());
         setPrimaryColumnBottomMargin(sendButtonContainer, bottomMargin);
@@ -11792,7 +11799,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (recordedAudioPanel != null && recordedAudioPanel.getParent() == messageEditTextContainer) {
             FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
             int endMargin = toolbarReplacementVisible && !inputPrimarySuppressed
-                    ? inputSatellites.getPublishedRightOffset() : 0;
+                    ? getComposerTextEndInset() : 0;
             if (layoutParams.getMarginEnd() != endMargin) {
                 layoutParams.setMarginEnd(endMargin);
                 recordedAudioPanel.setLayoutParams(layoutParams);
@@ -17724,8 +17731,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public int getVisualWidth() {
-            float width = Math.max(dpf2(DEFAULT_HEIGHT), dpf2(10 + 10) + priceText.getAnimateToWidth());
-            return Math.round(lerp(width, dpf2(DEFAULT_HEIGHT), sameWidthFactor));
+            // NagramX (#composer-input): report the drawn control, not its slot. This is what the text and the
+            // review panel are held off, and checkBackgroundRect() floors at the same inset height, so the two
+            // agree in the price-widened state too. Identical to the slot at inset zero.
+            final float height = dpf2(DEFAULT_HEIGHT) - 2 * backgroundInset;
+            float width = Math.max(height, dpf2(10 + 10) + priceText.getAnimateToWidth());
+            return Math.round(lerp(width, height, sameWidthFactor));
         }
 
         public int width(int h) {
