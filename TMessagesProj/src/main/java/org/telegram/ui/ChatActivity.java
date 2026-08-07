@@ -2343,7 +2343,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onSwitchRecordMode(boolean video) {
-            showVoiceHint(false, video);
+            showVoiceHintIfNeeded(video);
         }
 
         @Override
@@ -14196,6 +14196,19 @@ public class ChatActivity extends BaseFragment implements
         voiceHintTextView.showForView(chatActivityEnterView.getAudioVideoButtonContainer(), true);
     }
 
+    private boolean showVoiceHintIfNeeded(boolean video) {
+        boolean isChannel = currentChat != null && ChatObject.isChannel(currentChat) && !currentChat.megagroup;
+        HintsController.Hint hint = isChannel ?
+            HintsController.Hint.RoundHintChannel2 :
+            HintsController.Hint.RoundHint2;
+        if (!hint.show()) {
+            return false;
+        }
+        hint.increment();
+        showVoiceHint(false, video);
+        return true;
+    }
+
     public boolean checkSlowMode(View view) {
         CharSequence time = chatActivityEnterView.getSlowModeTimer();
         if (time != null) {
@@ -25689,7 +25702,7 @@ public class ChatActivity extends BaseFragment implements
             }
             int time = (Integer) args[2];
             if (time < 100) {
-                showVoiceHint(false, (Boolean) args[1]);
+                showVoiceHintIfNeeded((Boolean) args[1]);
             }
         } else if (id == NotificationCenter.videoLoadingStateChanged) {
             if (chatListView != null) {
@@ -28951,18 +28964,7 @@ public class ChatActivity extends BaseFragment implements
             }
 
             if (!hintShown && chatActivityEnterView.hasRecordVideo() && !chatActivityEnterView.isSendButtonVisible()) {
-                boolean isChannel = false;
-                if (currentChat != null) {
-                    isChannel = ChatObject.isChannel(currentChat) && !currentChat.megagroup;
-                }
-
-                final HintsController.Hint hint = isChannel ?
-                    HintsController.Hint.RoundHintChannel2 :
-                    HintsController.Hint.RoundHint2;
-
-                if (hint.show()) {
-                    hint.increment();
-                    showVoiceHint(false, chatActivityEnterView.isInVideoMode());
+                if (showVoiceHintIfNeeded(chatActivityEnterView.isInVideoMode())) {
                     hintShown = true;
                 }
             }
