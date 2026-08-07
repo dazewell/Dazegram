@@ -110,7 +110,10 @@ public final class EventScheduleStore {
 
     public static synchronized void remove(int account, String key) {
         HashMap<String, EventScheduleEntry> m = cache(account);
-        m.remove(key);
+        EventScheduleEntry removed = m.remove(key);
+        if (removed != null) {
+            EventScheduleController.onEntryRemoved(account, removed);
+        }
         try {
             ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
                     .edit().remove(key).apply();

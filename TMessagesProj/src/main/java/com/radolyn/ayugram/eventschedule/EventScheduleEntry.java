@@ -54,12 +54,17 @@ public final class EventScheduleEntry {
     public int fallbackDate;
     public long createdAt;
     public int state = STATE_ARMED;
+    public long revision;
 
     private volatile Pattern compiled;
     private volatile boolean compileFailed;
 
     public String key() {
         return dialogId + "_" + createdAt;
+    }
+
+    public String triggerKey() {
+        return types + ":" + regex + ":" + (pattern == null ? "" : pattern);
     }
 
     public boolean matchesType(MessageObject message, CharSequence text) {
