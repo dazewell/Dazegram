@@ -2343,7 +2343,7 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         public void onSwitchRecordMode(boolean video) {
-            showVoiceHint(false, video);
+            showVoiceHintIfNeeded(video);
         }
 
         @Override
@@ -14168,23 +14168,25 @@ public class ChatActivity extends BaseFragment implements
         showDialog(builder.create());
     }
 
-    private void showVoiceHint(boolean hide, boolean video) {
+    private boolean showVoiceHint(boolean hide, boolean video) {
         if (getParentActivity() == null || fragmentView == null || hide && voiceHintTextView == null || chatMode != 0 || chatActivityEnterView == null  || chatActivityEnterView.getAudioVideoButtonContainer() == null || chatActivityEnterView.getAudioVideoButtonContainer().getVisibility() != View.VISIBLE || isInPreviewMode()) {
-            return;
+            return false;
         }
-        if (NekoConfig.useChatAttachMediaMenu.Bool()) return;
+        if (NekoConfig.useChatAttachMediaMenu.Bool()) {
+            return false;
+        }
         if (voiceHintTextView == null) {
             SizeNotifierFrameLayout frameLayout = contentView;
             int index = frameLayout.indexOfChild(chatInputViewsContainer);
             if (index == -1) {
-                return;
+                return false;
             }
             voiceHintTextView = new HintView(getParentActivity(), 9, themeDelegate);
             frameLayout.addView(voiceHintTextView, index + 1, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.TOP, 10, 0, 10, 0));
         }
         if (hide) {
             voiceHintTextView.hide();
-            return;
+            return true;
         }
 
         if (chatActivityEnterView.hasRecordVideo()) {
@@ -14194,6 +14196,25 @@ public class ChatActivity extends BaseFragment implements
         }
 
         voiceHintTextView.showForView(chatActivityEnterView.getAudioVideoButtonContainer(), true);
+        return true;
+    }
+
+    private boolean showVoiceHintIfNeeded(boolean video) {
+        if (voiceHintTextView != null && voiceHintTextView.getVisibility() == View.VISIBLE) {
+            return showVoiceHint(false, video);
+        }
+        boolean isChannel = currentChat != null && ChatObject.isChannel(currentChat) && !currentChat.megagroup;
+        HintsController.Hint hint = isChannel ?
+            HintsController.Hint.RoundHintChannel2 :
+            HintsController.Hint.RoundHint2;
+        if (!hint.show()) {
+            return false;
+        }
+        if (!showVoiceHint(false, video)) {
+            return false;
+        }
+        hint.increment();
+        return true;
     }
 
     public boolean checkSlowMode(View view) {
@@ -25689,7 +25710,7 @@ public class ChatActivity extends BaseFragment implements
             }
             int time = (Integer) args[2];
             if (time < 100) {
-                showVoiceHint(false, (Boolean) args[1]);
+                showVoiceHintIfNeeded((Boolean) args[1]);
             }
         } else if (id == NotificationCenter.videoLoadingStateChanged) {
             if (chatListView != null) {
@@ -28951,18 +28972,7 @@ public class ChatActivity extends BaseFragment implements
             }
 
             if (!hintShown && chatActivityEnterView.hasRecordVideo() && !chatActivityEnterView.isSendButtonVisible()) {
-                boolean isChannel = false;
-                if (currentChat != null) {
-                    isChannel = ChatObject.isChannel(currentChat) && !currentChat.megagroup;
-                }
-
-                final HintsController.Hint hint = isChannel ?
-                    HintsController.Hint.RoundHintChannel2 :
-                    HintsController.Hint.RoundHint2;
-
-                if (hint.show()) {
-                    hint.increment();
-                    showVoiceHint(false, chatActivityEnterView.isInVideoMode());
+                if (showVoiceHintIfNeeded(chatActivityEnterView.isInVideoMode())) {
                     hintShown = true;
                 }
             }

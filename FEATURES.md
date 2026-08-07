@@ -119,6 +119,10 @@ Two spots used to throw away what you'd typed if you swiped back by accident, be
 
 ## Media and camera
 
+### Recording mode hint <!-- #media-tooltip-repeat -->
+
+The hint that explains how to switch between voice and round-video recording appears only a few times, then stays out of your way.
+
 ### Video message playback modes <!-- #video-playback-modes -->
 
 A button in the player bar cycles how round video messages play — *play once* (stop after the current one), *play all* (keep going through the chat's video messages, the default), or *repeat one* (loop the current one). The choice is remembered.
