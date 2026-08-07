@@ -77,7 +77,11 @@ public final class ComposerButtons {
     private static final LinkedHashMap<String, Button> REGISTRY = new LinkedHashMap<>();
 
     private static void register(Button button) {
-        REGISTRY.put(button.key, button);
+        if (REGISTRY.put(button.key, button) != null) {
+            // A second registration under the same key silently replaces the first, so the button
+            // would quietly take the later entry's zone and constraints. Fail while it is obvious.
+            throw new IllegalStateException("duplicate composer button: " + button.key);
+        }
     }
 
     static {
@@ -100,7 +104,6 @@ public final class ComposerButtons {
         register(new Button("mention", R.string.CreateMention, R.drawable.deproko_baseline_mention_24, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mention, false, true));
         register(new Button("date", R.string.FormattedDate, R.drawable.input_calendar_add_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_date, false, true));
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
-        register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_HIDDEN, 0, false, true));
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.baseline_fullscreen_24, KIND_CORE, ZONE_END, 0, false, true));
         register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false));
