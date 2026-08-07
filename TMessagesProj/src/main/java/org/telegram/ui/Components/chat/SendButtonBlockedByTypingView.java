@@ -1,7 +1,5 @@
 package org.telegram.ui.Components.chat;
 
-import static org.telegram.messenger.AndroidUtilities.dp;
-
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Canvas;
@@ -60,7 +58,8 @@ public class SendButtonBlockedByTypingView extends View {
     protected void onDraw(@NonNull Canvas canvas) {
         super.onDraw(canvas);
         paint.setColor(Theme.getColor(Theme.key_chat_messagePanelSend, resourcesProvider));
-        canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, dp(19), paint);
+        // NagramX (#composer-toolbar): fills the slot like the send pill it stands in for
+        canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, Math.min(getWidth(), getHeight()) / 2f, paint);
 
         DrawableUtils.drawWithScale(canvas, typingDotsDrawable, 1.35f);
         invalidate();

@@ -54,7 +54,6 @@ def get_caption(commit_msg_budget=None) -> str:
     if commit_msg_budget is not None:
         commit_message = truncate_text(commit_message, commit_msg_budget)
     caption = ""
-    caption += "Official + Unofficial build\n"
     for build_label, package_name in VARIANTS:
         caption += f"{build_label} package: <code>{package_name}</code>\n"
     caption += "\n"

@@ -19,7 +19,6 @@ public final class InputSatellites {
 
     private static final int FILL_MARGIN = 5;
     private static final int WARMUP_FRAMES = 3;
-    private static final int RIGHT_COLUMN_FILL_MARGIN = 3;
     private static final int RIGHT_COLUMN_GAP = 7;
     private static final int RIGHT_OFFSET_DELTA = 4;
 
@@ -59,7 +58,7 @@ public final class InputSatellites {
                 width = Math.max(width, visualWidth(rightColumnExtras.get(i)));
             }
         }
-        int offset = width == 0 ? 0 : width + dp(RIGHT_COLUMN_FILL_MARGIN + RIGHT_COLUMN_GAP);
+        int offset = width == 0 ? 0 : width + dp(RIGHT_COLUMN_GAP);
         if (offset == publishedRightOffset || publishedRightOffset != 0 && offset != 0 && Math.abs(offset - publishedRightOffset) < dp(RIGHT_OFFSET_DELTA)) {
             return false;
         }
@@ -124,7 +123,7 @@ public final class InputSatellites {
         if (view instanceof ChatActivityEnterView.SendButton) {
             return ((ChatActivityEnterView.SendButton) view).getVisualWidth();
         }
-        return Math.max(0, view.getWidth() - dp(RIGHT_COLUMN_FILL_MARGIN * 2));
+        return view.getWidth();
     }
 
     private void paintFill(Canvas canvas, GlassFill fill, View target, int alpha, View invalidationTarget) {
