@@ -35,7 +35,11 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Composer toolbar <!-- #composer-toolbar -->
 
-The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge, drawn at the pill's own height so the two read as one row. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Select All, and Clear stay in the toolbar. Quote, Spoiler, and Clear enable when text is selected; Select All enables whenever the field has text and selects the whole draft. Monospace is gone from the row (still there in the long-press selection menu). Toggle any of them off in settings.
+The separate glass text pill keeps its renderer 16dp from both logical edges and holds Send or mic at its trailing end. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Select All, and Clear stay in the toolbar. Quote, Spoiler, and Clear enable when text is selected; Select All enables whenever the field has text and selects the whole draft. Monospace is gone from the row (still there in the long-press selection menu). Toggle any of them off in settings.
+
+### Send and mic inside the input <!-- #composer-input -->
+
+Send and the mic used to sit outside the text pill, in their own column past its end. Now the pill runs the full width of the row and they sit inside it, drawn a few dp in from its rounded end so a thin ring of the pill's glass shows all the way around them. The text stops 16dp short of them on every line, matching the inset on the start side, so nothing runs underneath and the row reads even on both sides. Same buttons, same gestures, same long-press menu.
 
 ### Composer toolbar layout editor <!-- #composer-layout -->
 

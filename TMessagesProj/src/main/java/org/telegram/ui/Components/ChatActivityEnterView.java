@@ -666,6 +666,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     private static final int COMPOSER_TEXT_HORIZONTAL_INSET = 16;
     // The normal row's 9/10 padding centers its line box half a dp above the pill.
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
+    // How far the send/mic control is drawn inside its slot, so a ring of the input's glass stays visible around it.
+    private static final int COMPOSER_PRIMARY_INSET = 3;
     private boolean composerPrimaryGeometryPosted;
 
     private final boolean composerToolbarEnabled;
@@ -3115,7 +3117,17 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         };
         sendOutlineView.setImageResource(R.drawable.send_outline);
-        sendOutlineView.setScaleType(ImageView.ScaleType.CENTER);
+        if (composerToolbarEnabled) {
+            // NagramX (#composer-input): the outline stands in for the send pill, so it takes the same inset
+            // and leaves the same ring of input glass around it. The drawable is shared, so scale it down here
+            // rather than resizing the asset. Padding is an int, so round the disc's own float inset to the
+            // nearest pixel instead of dp()'s ceil, or the outline lands half a pixel tighter than the disc.
+            final int outlineInset = Math.round(dpf2(COMPOSER_PRIMARY_INSET));
+            sendOutlineView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            sendOutlineView.setPadding(outlineInset, outlineInset, outlineInset, outlineInset);
+        } else {
+            sendOutlineView.setScaleType(ImageView.ScaleType.CENTER);
+        }
         sendOutlineView.setVisibility(View.GONE);
         sendOutlineView.setColorFilter(getThemedColor(Theme.key_telegram_color), PorterDuff.Mode.SRC_IN);
         textFieldContainer.addView(sendOutlineView, createPrimaryInputLayoutParams(DEFAULT_HEIGHT));
@@ -3169,6 +3181,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButtonContainer.setClipToPadding(false);
         textFieldContainer.addView(sendButtonContainer, createPrimaryInputLayoutParams(100));
         inputSatellites.configureRightColumn(this, sendButtonContainer);
+        if (composerToolbarEnabled) {
+            // NagramX (#composer-input): the column's controls draw inside their slots, so tell the tracker how
+            // far in and let it publish the drawn edge. Round the disc's own float inset rather than taking
+            // dp()'s ceil, so the reserved column ends exactly where the control starts.
+            inputSatellites.setContentInset(Math.round(dpf2(COMPOSER_PRIMARY_INSET)));
+        }
         audioVideoButtonContainer = new FrameLayout(context) {
 
             @Override
@@ -3436,17 +3454,19 @@ public class ChatActivityEnterView extends FrameLayout implements
                         }
                     }
 
-                    // NagramX (#composer-toolbar): the mic slot sits outside the text pill now, so it fills
-                    // its whole DEFAULT_HEIGHT box and lines up with the pill's edges instead of the old
-                    // 38dp disc that read 3dp short on every side.
-                    final float size = dpf2(DEFAULT_HEIGHT);
+                    // NagramX (#composer-input): the mic slot sits inside the text pill, at its trailing end.
+                    // Drawing the disc a few dp inside its DEFAULT_HEIGHT slot keeps a ring of the pill's own
+                    // glass visible all around it, so the control reads as sitting in the pill rather than
+                    // capping it. The disc keeps the slot's centre, so the icon on top of it doesn't move.
+                    final float margin = composerToolbarEnabled ? dpf2(COMPOSER_PRIMARY_INSET) : 0;
+                    final float size = dpf2(DEFAULT_HEIGHT) - 2 * margin;
                     final float r = size / 2f;
                     paint.setColor(getThemedColor(Theme.key_chat_messagePanelSend));
                     backgroundRect.set(
-                            getMeasuredWidth() - size,
-                            getMeasuredHeight() - size,
-                            getMeasuredWidth(),
-                            getMeasuredHeight()
+                            getMeasuredWidth() - margin - size,
+                            getMeasuredHeight() - margin - size,
+                            getMeasuredWidth() - margin,
+                            getMeasuredHeight() - margin
                     );
 
                     canvas.save();
@@ -3738,6 +3758,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         sendButton.setVisibility(INVISIBLE);
         sendButton.setContentDescription(getString(R.string.Send));
         sendButton.setSoundEffectsEnabled(false);
+        if (composerToolbarEnabled) {
+            sendButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         sendButton.setScaleX(0.1f);
         sendButton.setScaleY(0.1f);
         sendButton.setAlpha(0.0f);
@@ -3755,6 +3778,9 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         sendButtonBlockedByTypingView = new SendButtonBlockedByTypingView(context, resourcesProvider);
         sendButtonBlockedByTypingView.setVisibility(View.INVISIBLE);
+        if (composerToolbarEnabled) {
+            sendButtonBlockedByTypingView.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         sendButtonContainer.addView(sendButtonBlockedByTypingView, LayoutHelper.createFrame(DEFAULT_HEIGHT, DEFAULT_HEIGHT, Gravity.RIGHT | Gravity.BOTTOM));
 
         slowModeButton = new SlowModeBtn(context);
@@ -4225,6 +4251,9 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
         };
         doneButton.setContentDescription(getString(R.string.EditMessage));
+        if (composerToolbarEnabled) {
+            doneButton.setBackgroundInset(dpf2(COMPOSER_PRIMARY_INSET));
+        }
         if (bounceable) {
             ScaleStateListAnimator.apply(doneButton);
         }
@@ -10494,10 +10523,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
-    // NagramX (#composer-toolbar): the satellite offset is where the bubble's end edge lands, not where the
-    // text should stop. Using it as the text margin left the last line running up to that edge with only the
-    // island's own side margin to spare, while the start side kept its full inset. Reserve the column and
-    // then inset the text off it, same as the start.
+    // NagramX (#composer-input): the satellite offset reaches the near edge of the drawn send or mic control
+    // inside the bubble, not the point the text should stop at. Using it straight as the text margin left the
+    // last line running up against the control, while the start side kept its full inset. Reserve the control
+    // and then inset the text off it, same as the start.
     private int getComposerTextEndInset() {
         return inputSatellites.getPublishedRightOffset() + dp(COMPOSER_TEXT_HORIZONTAL_INSET);
     }
@@ -11760,7 +11789,8 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     // NagramX (#composer-toolbar): with the row replaced there is no toolbar under it, so the primary column
-    // drops to the bottom, and the review panel gives back the width the send button needs.
+    // drops to the bottom, and the review panel gives back the width the send button needs. The panel is held
+    // off the control by the same rule as the text, so the waveform doesn't butt against it.
     private void applyComposerReplacementGeometry() {
         int bottomMargin = dp(getPrimaryColumnBottomMargin());
         setPrimaryColumnBottomMargin(sendButtonContainer, bottomMargin);
@@ -11769,7 +11799,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (recordedAudioPanel != null && recordedAudioPanel.getParent() == messageEditTextContainer) {
             FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) recordedAudioPanel.getLayoutParams();
             int endMargin = toolbarReplacementVisible && !inputPrimarySuppressed
-                    ? inputSatellites.getPublishedRightOffset() : 0;
+                    ? getComposerTextEndInset() : 0;
             if (layoutParams.getMarginEnd() != endMargin) {
                 layoutParams.setMarginEnd(endMargin);
                 recordedAudioPanel.setLayoutParams(layoutParams);
@@ -17467,7 +17497,8 @@ public class ChatActivityEnterView extends FrameLayout implements
             updateColors();
             checkBackgroundRect();
             if (isNewDesignSendButton) {
-                canvas.drawRoundRect(backgroundRect, dp(RADIUS), dp(RADIUS), backgroundPaint);
+                final float radius = backgroundRect.height() / 2f;
+                canvas.drawRoundRect(backgroundRect, radius, radius, backgroundPaint);
             }
 
             final boolean inactive = isInactive();
@@ -17700,8 +17731,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
 
         public int getVisualWidth() {
-            float width = Math.max(dpf2(DEFAULT_HEIGHT), dpf2(10 + 10) + priceText.getAnimateToWidth());
-            return Math.round(lerp(width, dpf2(DEFAULT_HEIGHT), sameWidthFactor));
+            // NagramX (#composer-input): report the drawn control, not its slot. This is what the text and the
+            // review panel are held off, and checkBackgroundRect() floors at the same inset height, so the two
+            // agree in the price-widened state too. Identical to the slot at inset zero.
+            final float height = dpf2(DEFAULT_HEIGHT) - 2 * backgroundInset;
+            float width = Math.max(height, dpf2(10 + 10) + priceText.getAnimateToWidth());
+            return Math.round(lerp(width, height, sameWidthFactor));
         }
 
         public int width(int h) {
@@ -17725,13 +17760,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 return false;
             }
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                // NagramX (#composer-toolbar): the new-design pill paints its full DEFAULT_HEIGHT box, so hit-test
-                // against what's actually drawn instead of the smaller circle bounds, or its top/left edge goes dead.
+                // NagramX (#composer-toolbar): the new-design pill can paint outside the circle bounds, so hit-test
+                // against where it's actually drawn instead, or the part beyond them goes dead.
                 float w = width(), h = height();
                 if (isNewDesignSendButton) {
                     checkBackgroundRect();
-                    w = Math.max(w, backgroundRect.width());
-                    h = Math.max(h, backgroundRect.height());
+                    w = Math.max(w, getMeasuredWidth() - backgroundRect.left);
+                    h = Math.max(h, getMeasuredHeight() - backgroundRect.top);
                 }
                 if (event.getX() < getWidth() - w || event.getY() < getHeight() - h) {
                     return false;
@@ -17789,6 +17824,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             btn.animatedPriceVisible.force(animatedPriceVisible.get());
             btn.setCircleSize(circleWidth, circleHeight);
             btn.setCirclePadding(circlePadX, circlePadY);
+            btn.setBackgroundInset(backgroundInset);
         }
 
         private ValueAnimator bounceCountAnimator;
@@ -17814,20 +17850,28 @@ public class ChatActivityEnterView extends FrameLayout implements
         /* * */
 
         private final RectF backgroundRect = new RectF();
-        // NagramX (#composer-toolbar): the pill fills its whole DEFAULT_HEIGHT box so it matches the text
-        // island beside it. It used to draw 38dp inside a 44dp slot, which read 3dp short on every side.
-        private static final int RADIUS = DEFAULT_HEIGHT / 2;
+        // NagramX (#composer-input): the send pill sits inside the text pill, at its trailing end. Drawn a few
+        // dp inside its DEFAULT_HEIGHT slot it keeps a ring of the input's glass visible around it; the slot's
+        // centre is unchanged, so the icon on top of it doesn't move. Zero for every other user of this view.
+        private float backgroundInset;
+
+        public void setBackgroundInset(float inset) {
+            if (backgroundInset != inset) {
+                backgroundInset = inset;
+                invalidate();
+            }
+        }
 
         private void checkBackgroundRect() {
-            final float height = dpf2(DEFAULT_HEIGHT);
+            final float height = dpf2(DEFAULT_HEIGHT) - 2 * backgroundInset;
             final float width = lerp(
                 Math.max(height, dpf2(10 + 10) + priceText.getCurrentWidth()),
                 height, sameWidthFactor);
             backgroundRect.set(
-                    getMeasuredWidth() - width,
-                    getMeasuredHeight() - height,
-                    getMeasuredWidth(),
-                    getMeasuredHeight()
+                    getMeasuredWidth() - backgroundInset - width,
+                    getMeasuredHeight() - backgroundInset - height,
+                    getMeasuredWidth() - backgroundInset,
+                    getMeasuredHeight() - backgroundInset
             );
         }
     }
@@ -17906,19 +17950,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
     }
 
-    public int getInputBubblePrimaryEndInset() {
-        if (!composerToolbarEnabled || inputPrimarySuppressed) {
-            return 0;
-        }
-        return inputSatellites.getPublishedRightOffset();
-    }
-
+    // NagramX (#composer-input): the send and mic column sits inside the input bubble, so the bubble runs the
+    // full width and it's the content beside the column that gets held off it: the text field, plus the review
+    // panel while that owns the row. This only reports that the column's width moved, so they can re-measure.
     private boolean publishComposerPrimaryOffset() {
-        if (!composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
-            return false;
-        }
-        onChangedInputPrimaryWidth();
-        return true;
+        return composerToolbarEnabled && inputSatellites.updateRightOffset();
     }
 
     private void refreshComposerPrimaryOffset() {
@@ -18059,10 +18095,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     protected void onChangedIslandTotalHeight(float newTotalHeight) {
-
-    }
-
-    protected void onChangedInputPrimaryWidth() {
 
     }
 
