@@ -119,6 +119,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             true
         )
+    val showTextSelectAll =
+        addConfig(
+            "TextSelectAll",
+            ConfigItem.configTypeBool,
+            true
+        )
     val showTextTranslate =
         addConfig(
             "TextTranslate",

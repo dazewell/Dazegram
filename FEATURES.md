@@ -31,7 +31,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title used to vani
 
 ### Composer toolbar <!-- #composer-toolbar -->
 
-The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Monospace, and Clear stay in the toolbar and enable when text is selected.
+The separate glass text pill keeps its renderer 16dp from both logical edges and keeps Send or mic at its trailing edge. A shared glass action capsule sits below it: emoji stays at one edge, attachments holds the other with expand and schedule beside it, and the controls between them scroll only when needed. Quote, Spoiler, Select All, and Clear stay in the toolbar. Quote, Spoiler, and Clear enable when text is selected; Select All enables whenever the field has text and selects the whole draft. Monospace is gone from the row (still there in the long-press selection menu). Toggle any of them off in settings.
 
 ### Composer toolbar layout editor <!-- #composer-layout -->
 
