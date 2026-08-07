@@ -3127,9 +3127,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                 super.onSizeChanged(w, h, oldw, oldh);
                 setPivotX(w - dp(22));
                 setPivotY(h - dp(22));
-                if (composerToolbarEnabled) {
-                    inputSatellites.setMeasuredRightColumnWidth(w);
-                }
                 if (w != oldw) {
                     refreshComposerPrimaryOffset();
                 }
@@ -7224,7 +7221,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private int getExpandedInputHeight() {
         return Math.max(dp(DEFAULT_HEIGHT),
             expandedInputBudget - (isTopViewVisible() ? topView.getLayoutParams().height : 0)
-                - (composerToolbarEnabled ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP + DEFAULT_HEIGHT) : 0) - dp(3));
+                - (composerToolbarEnabled ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0) - dp(3));
     }
 
     private boolean shownAiButton;
@@ -10486,8 +10483,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (messageEditText.getTranslationY() != translationY) {
             messageEditText.setTranslationY(translationY);
         }
-        int bottomInset = dp(getPrimaryColumnBottomMargin())
-                + (compact ? 0 : dp(DEFAULT_HEIGHT));
+        int bottomInset = dp(getPrimaryColumnBottomMargin());
         applyComposerTextMargins(messageEditText, inset, endInset, bottomInset);
         if (richDraftPreview != null) {
             applyComposerTextMargins(richDraftPreview, inset, endInset, bottomInset);
