@@ -498,17 +498,17 @@
     <string name="ChatTimeZoneSchedulePeerTime">Peer\'s time</string>
     <string name="ChatTimeZoneScheduleYourTime">Your time: %1$s</string>
 
-    <string name="ComposerLayout">Composer toolbar</string>
-    <string name="ComposerLayoutTitle">Composer toolbar</string>
+    <string name="ComposerLayout">Composer Toolbar</string>
+    <string name="ComposerLayoutTitle">Composer Toolbar</string>
     <string name="ComposerLayoutInfo">Drag buttons between sections to choose what shows in the message composer and in what order. Drag a button to Hidden to take it out of the toolbar.</string>
     <string name="ComposerPreviewHeader">Preview</string>
     <string name="ComposerZoneLeading">Leading</string>
-    <string name="ComposerZoneLeadingInfo">Holds a single button on the leading edge.</string>
+    <string name="ComposerZoneLeadingInfo">Holds a single button on the leading edge. Drop another button here to replace it.</string>
     <string name="ComposerZoneScrolling">Scrolling</string>
     <string name="ComposerZoneScrollingInfo">Scrolls when it runs out of room. Formatting buttons here stay dimmed until you select text in the composer.</string>
     <string name="ComposerZoneTrailing">Trailing</string>
     <string name="ComposerZoneTrailingInfo">Sits on the trailing edge, next to the send button.</string>
     <string name="ComposerZoneHidden">Hidden</string>
-    <string name="ComposerZoneEmpty">Drop a button here</string>
+    <string name="ComposerZoneEmpty">No buttons — drag one here</string>
     <string name="ComposerLayoutReset">Reset to default</string>
 </resources>

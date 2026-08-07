@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -40,7 +41,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public static final int HEIGHT = 56;
     public static final int BUTTON_SIZE = 48;
-    private static final int ANIMATED_ICON_SIZE = 29;
+    private static final int ICON_GLYPH = 24;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
@@ -119,7 +120,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void addStart(View view) {
         addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
-        applyAnimatedIconBox(view);
+        applyIconBox(null, view);
     }
 
     /**
@@ -131,6 +132,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
     public void addConfigurable(String key, View view) {
         AndroidUtilities.removeFromParent(view);
         configuredKeys.put(view, key);
+        // One sizing gate for every configurable button, whatever zone it lands in: the source assets
+        // range from 16dp to 32dp and the stock scale type draws each at its own intrinsic size, so
+        // without this the row is a jumble of glyph sizes.
+        applyIconBox(key, view);
         int zone = ComposerLayout.zoneOf(key);
         if (zone == ComposerButtons.ZONE_HIDDEN) {
             // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
@@ -139,7 +144,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
         if (zone == ComposerButtons.ZONE_START) {
             addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
-            applyAnimatedIconBox(view);
             return;
         }
         if (zone == ComposerButtons.ZONE_END) {
@@ -233,16 +237,29 @@ public final class ComposerToolbarLayout extends FrameLayout {
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
-    // Upstream draws each icon at its own intrinsic size and has already sized them to match: the 24dp and
-    // 28dp assets carry different margins and land on the same glyph. The emoji animation is the exception -
-    // it is built at 32dp with no margin of its own, so in a 48dp cell it towers over the row. Give it the
-    // box the stock composer gives it and the row evens out.
-    private static void applyAnimatedIconBox(View view) {
-        if (!(view instanceof RLottieImageView)) {
+    // The composer assets were authored at anything from 16dp to 32dp, and the stock scale type draws
+    // each at its own intrinsic size, so a 28dp calendar sat beside a 24dp bold glyph reads as a
+    // bigger button rather than a different icon. Fitting every glyph into the same box inside the
+    // 48dp cell makes the row even and keeps a future asset of any size in line automatically.
+    private static void applyIconBox(String key, View view) {
+        ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
+        float scale = button != null ? button.iconScale : 1f;
+        // Expressed as a smaller inset rather than a view scale: these buttons carry a press
+        // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
+        // first tap.
+        int inset = AndroidUtilities.dp((BUTTON_SIZE - ICON_GLYPH * scale) / 2.0f);
+        if (view instanceof RLottieImageView) {
+            // Lottie renders into a fixed-size bitmap rather than a scalable drawable, so it only
+            // responds to the box, not to a scale type.
+            view.setPadding(inset, inset, inset, inset);
             return;
         }
-        int inset = AndroidUtilities.dp((BUTTON_SIZE - ANIMATED_ICON_SIZE) / 2.0f);
-        view.setPadding(inset, inset, inset, inset);
+        if (!(view instanceof ImageView)) {
+            return;
+        }
+        ImageView icon = (ImageView) view;
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        icon.setPadding(inset, inset, inset, inset);
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start

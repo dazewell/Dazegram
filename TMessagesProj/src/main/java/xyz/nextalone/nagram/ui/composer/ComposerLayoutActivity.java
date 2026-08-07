@@ -2,8 +2,10 @@ package xyz.nextalone.nagram.ui.composer;
 
 import static org.telegram.messenger.AndroidUtilities.dp;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.view.Gravity;
@@ -16,6 +18,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -36,6 +39,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -67,6 +71,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     private final ArrayList<Item> items = new ArrayList<>();
     private List<List<String>> lastSaved;
     private boolean rebuildPending;
+    private boolean startZoneArmed;
 
     private static final class Item {
         final int type;
@@ -153,7 +158,11 @@ public class ComposerLayoutActivity extends BaseFragment {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
             if (keys.isEmpty()) {
-                items.add(new Item(TYPE_PLACEHOLDER, zone, null));
+                // Leading is guaranteed to hold exactly one button, so it never needs the empty
+                // state; the other zones can legitimately be emptied.
+                if (zone != ComposerButtons.ZONE_START) {
+                    items.add(new Item(TYPE_PLACEHOLDER, zone, null));
+                }
             } else {
                 for (String key : keys) {
                     items.add(new Item(TYPE_BUTTON, zone, key));
@@ -193,14 +202,21 @@ public class ComposerLayoutActivity extends BaseFragment {
         return -1;
     }
 
-    private int buttonCountInZone(int zone, int exclude) {
-        int count = 0;
-        for (int i = 0; i < items.size(); i++) {
-            if (i != exclude && items.get(i).type == TYPE_BUTTON && zoneAt(i) == zone) {
-                count++;
+    private void setStartZoneArmed(boolean armed) {
+        if (startZoneArmed == armed) {
+            return;
+        }
+        startZoneArmed = armed;
+        for (int i = 0; i < listView.getChildCount(); i++) {
+            View child = listView.getChildAt(i);
+            if (!(child instanceof ButtonRowCell)) {
+                continue;
+            }
+            int position = listView.getChildAdapterPosition(child);
+            if (position != RecyclerView.NO_POSITION && zoneAt(position) == ComposerButtons.ZONE_START) {
+                ((ButtonRowCell) child).setArmed(armed, true);
             }
         }
-        return count;
     }
 
     private void persist() {
@@ -304,7 +320,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
-                    ((ButtonRowCell) holder.itemView).setButton(button, position + 1 < items.size() && items.get(position + 1).type == TYPE_BUTTON);
+                    ButtonRowCell cell = (ButtonRowCell) holder.itemView;
+                    cell.setButton(button, position + 1 < items.size() && items.get(position + 1).type == TYPE_BUTTON);
+                    // The leading slot holds exactly one button and cannot be emptied, so there is
+                    // nothing to drag: showing a handle there would promise a gesture that does not
+                    // exist. It stays a drop target - replacing it is a swap driven by the incoming
+                    // button, not by this row.
+                    cell.setFixed(item.zone == ComposerButtons.ZONE_START);
+                    cell.setArmed(item.zone == ComposerButtons.ZONE_START && startZoneArmed, false);
                     break;
             }
         }
@@ -348,6 +371,11 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (viewHolder.getItemViewType() != TYPE_BUTTON) {
                 return makeMovementFlags(0, 0);
             }
+            // The leading button is not draggable - it is replaced by dropping another button on
+            // it, which keeps the slot permanently filled instead of leaving a hole behind.
+            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START) {
+                return makeMovementFlags(0, 0);
+            }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
         }
 
@@ -380,7 +408,25 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (button == null || !button.canSitIn(targetZone)) {
                 return false;
             }
-            if (targetZone == ComposerButtons.ZONE_START && buttonCountInZone(ComposerButtons.ZONE_START, from) >= ComposerButtons.START_CAPACITY) {
+            if (targetZone == ComposerButtons.ZONE_START) {
+                // Leading is a single occupied slot: the drop exchanges the two buttons in one
+                // gesture, so the count never changes and the slot never empties. Repeating the
+                // gesture puts things back.
+                ComposerButtons.Button incumbent = ComposerButtons.get(items.get(to).key);
+                int sourceZone = zoneAt(from);
+                if (targetType != TYPE_BUTTON || incumbent == null || sourceZone < 0 || !incumbent.canSitIn(sourceZone)) {
+                    return false;
+                }
+                Collections.swap(items, from, to);
+                adapter.notifyItemMoved(from, to);
+                adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
+                updatePreview();
+                return true;
+            }
+            // A button that was just swapped into Leading is still mid-gesture and still carries the
+            // movement flags it started with, so without this it could be dragged straight back out
+            // and leave the slot empty until drop.
+            if (zoneAt(from) == ComposerButtons.ZONE_START) {
                 return false;
             }
             items.add(to, items.remove(from));
@@ -397,6 +443,17 @@ public class ComposerLayoutActivity extends BaseFragment {
                     viewHolder.itemView.setPressed(true);
                 }
             }
+            boolean arm = false;
+            if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
+                int position = viewHolder.getAdapterPosition();
+                if (position != RecyclerView.NO_POSITION) {
+                    ComposerButtons.Button button = ComposerButtons.get(items.get(position).key);
+                    // Only light up for a button that is actually allowed in there; the absence of
+                    // the highlight is how a trailing-only button says "not here".
+                    arm = button != null && button.canSitIn(ComposerButtons.ZONE_START);
+                }
+            }
+            setStartZoneArmed(arm);
             super.onSelectedChanged(viewHolder, actionState);
         }
 
@@ -408,6 +465,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         public void clearView(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
+            setStartZoneArmed(false);
             // A cross-section move can empty the source zone or drop a button next to a stale
             // placeholder. Persist takes the flat order as truth, then a rebuild restores one
             // placeholder per empty zone and drops the redundant ones.
@@ -443,6 +501,46 @@ public class ComposerLayoutActivity extends BaseFragment {
         final SimpleTextView titleView;
         final ImageView reorderView;
         private boolean needDivider;
+        private float armProgress;
+        private ValueAnimator armAnimator;
+        private final Paint armPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        void setFixed(boolean fixed) {
+            reorderView.setVisibility(fixed ? GONE : VISIBLE);
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) titleView.getLayoutParams();
+            // Reclaim the handle gutter so the label is not left sitting against empty space.
+            int trailing = dp(fixed ? 22 : 56);
+            boolean rtl = LocaleController.isRTL;
+            if ((rtl ? params.leftMargin : params.rightMargin) != trailing) {
+                if (rtl) {
+                    params.leftMargin = trailing;
+                } else {
+                    params.rightMargin = trailing;
+                }
+                titleView.setLayoutParams(params);
+            }
+        }
+
+        /** Marks the row as the live drop target while a compatible button is being dragged. */
+        void setArmed(boolean armed, boolean animated) {
+            float target = armed ? 1f : 0f;
+            if (armAnimator != null) {
+                armAnimator.cancel();
+                armAnimator = null;
+            }
+            if (!animated) {
+                armProgress = target;
+                invalidate();
+                return;
+            }
+            armAnimator = ValueAnimator.ofFloat(armProgress, target);
+            armAnimator.setDuration(150);
+            armAnimator.addUpdateListener(a -> {
+                armProgress = (float) a.getAnimatedValue();
+                invalidate();
+            });
+            armAnimator.start();
+        }
 
         ButtonRowCell(Context context) {
             super(context);
@@ -478,9 +576,10 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         void setButton(ComposerButtons.Button button, boolean divider) {
             needDivider = divider;
-            setWillNotDraw(!needDivider);
             if (button == null) {
                 iconView.setVisibility(INVISIBLE);
+                iconView.setScaleX(1f);
+                iconView.setScaleY(1f);
                 titleView.setText("");
                 return;
             }
@@ -490,6 +589,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 iconView.setVisibility(INVISIBLE);
             }
+            // Always reassigned, never left on a recycled row: a loose asset's correction would
+            // otherwise stay behind and inflate whatever button reuses the view.
+            iconView.setScaleX(button.iconScale);
+            iconView.setScaleY(button.iconScale);
             titleView.setText(LocaleController.getString(button.titleRes));
         }
 
@@ -500,6 +603,11 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         protected void onDraw(Canvas canvas) {
+            if (armProgress > 0) {
+                int wash = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText);
+                armPaint.setColor(ColorUtils.setAlphaComponent(wash, (int) (26 * armProgress)));
+                canvas.drawRect(0, 0, getWidth(), getHeight(), armPaint);
+            }
             if (needDivider) {
                 canvas.drawLine(dp(LocaleController.isRTL ? 0 : 64), getHeight() - dp(1), getWidth() - dp(LocaleController.isRTL ? 64 : 0), getHeight() - dp(1), Theme.dividerPaint);
             }
@@ -563,6 +671,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
                 icon.setPadding(dp(4), dp(4), dp(4), dp(4));
                 icon.setImageResource(button.iconRes);
+                icon.setScaleX(button.iconScale);
+                icon.setScaleY(button.iconScale);
                 icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
                 row.addView(icon, LayoutHelper.createLinear(32, 32));
             }
