@@ -137,8 +137,8 @@ public final class ComposerLayout {
         if (NaConfig.INSTANCE.getShowTextSpoiler().Bool()) {
             seeded.get(ComposerButtons.ZONE_MIDDLE).add("spoiler");
         }
-        if (NaConfig.INSTANCE.getShowTextMono().Bool()) {
-            seeded.get(ComposerButtons.ZONE_MIDDLE).add("mono");
+        if (NaConfig.INSTANCE.getShowTextSelectAll().Bool()) {
+            seeded.get(ComposerButtons.ZONE_MIDDLE).add(ComposerButtons.SELECT_ALL);
         }
         if (NaConfig.INSTANCE.getShowTextRegular().Bool()) {
             seeded.get(ComposerButtons.ZONE_MIDDLE).add("regular");

@@ -159,7 +159,12 @@ public final class ComposerFormattingActions {
                 return;
             }
             if (button.kind == ComposerButtons.KIND_TEXT) {
-                editText.onTextContextMenuItem(android.R.id.selectAll);
+                // Setting the selection directly rather than firing the platform menu action, which
+                // would also raise the text context popup over the composer.
+                if (editable.length() > 0) {
+                    editText.requestFocus();
+                    editText.setSelection(0, editable.length());
+                }
                 return;
             }
             if (selectionStart < 0 || selectionEnd <= selectionStart || selectionEnd > editable.length()) {

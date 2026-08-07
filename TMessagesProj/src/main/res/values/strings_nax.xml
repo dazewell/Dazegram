@@ -498,7 +498,6 @@
     <string name="ChatTimeZoneSchedulePeerTime">Peer\'s time</string>
     <string name="ChatTimeZoneScheduleYourTime">Your time: %1$s</string>
 
-    <string name="ComposerSelectAll">Select All</string>
     <string name="ComposerLayout">Composer toolbar</string>
     <string name="ComposerLayoutTitle">Composer toolbar</string>
     <string name="ComposerLayoutInfo">Drag buttons between sections to choose what shows in the message composer and in what order. Drag a button to Hidden to take it out of the toolbar.</string>
