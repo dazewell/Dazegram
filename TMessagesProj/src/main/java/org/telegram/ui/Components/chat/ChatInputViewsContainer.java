@@ -137,7 +137,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private void checkBlurredHeight(boolean force) {
         checkViewsPositions();
 
-        final int blurredHeight = inputBubbleHeightRound + dp(INPUT_BUBBLE_BOTTOM) + Math.round(maxBottomInset);
+        final int blurredHeight = inputBubbleHeightRound + Math.round(getInputBubbleBottomLift()) + Math.round(maxBottomInset);
         final boolean changed = currentBlurredHeight != blurredHeight;
         if (changed || force) {
             currentBlurredHeight = blurredHeight;
@@ -189,7 +189,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     }
 
     private void checkViewsPositions() {
-        inputIslandBubbleContainer.setTranslationY(-maxBottomInset - dp(INPUT_BUBBLE_BOTTOM));
+        inputIslandBubbleContainer.setTranslationY(-maxBottomInset - getInputBubbleBottomLift());
         inAppKeyboardBubbleContainer.setTranslationY(inAppKeyboardBubbleContainer.getMeasuredHeight() - imeBottomInset);
     }
 
@@ -219,6 +219,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     private int inputBubbleHeightRound;
     private float inputBubbleBottomInset;
     private float appliedInputBubbleBottomInset;
+    private float inputBubbleBottomLiftReduction;
     public void setInputBubbleHeight(float height) {
         inputBubbleHeight = height;
         inputBubbleHeightRound = Math.round(inputBubbleHeight);
@@ -233,6 +234,27 @@ public class ChatInputViewsContainer extends FrameLayout {
         inputBubbleBottomInset = inset;
         checkBlurredHeight(false);
         invalidate();
+    }
+
+    // NagramX (#composer-toolbar): the island floats INPUT_BUBBLE_BOTTOM off the keyboard, sized for a
+    // pill whose glass runs to its own edge. The fork's formatting row is the bottom-most thing instead, and
+    // it already holds its capsule 2dp inside itself, so that lift reads as double the intended gap. Let the
+    // owner shorten it, in px to match setInputBubbleBottomInset above, rather than moving the constant:
+    // DialogsActivity shares this view and never enables the row, so it keeps the stock lift.
+    public void setInputBubbleBottomLiftReduction(float reduction) {
+        reduction = Math.max(0, Math.min(reduction, dp(INPUT_BUBBLE_BOTTOM)));
+        if (inputBubbleBottomLiftReduction == reduction) {
+            return;
+        }
+        inputBubbleBottomLiftReduction = reduction;
+        checkBlurredHeight(false);
+        invalidate();
+    }
+
+    // Everything anchored to the island's bottom reads this rather than the raw constant, so the pill, its
+    // children and the buttons parked beside them stay on the same edge.
+    public float getInputBubbleBottomLift() {
+        return dp(INPUT_BUBBLE_BOTTOM) - inputBubbleBottomLiftReduction;
     }
 
     public void setInputBubbleOffsets(float left, float right) {
@@ -251,7 +273,7 @@ public class ChatInputViewsContainer extends FrameLayout {
     }
 
     public float getInputBubbleBottom() {
-        return getMeasuredHeight() - maxBottomInset - dp(INPUT_BUBBLE_BOTTOM);
+        return getMeasuredHeight() - maxBottomInset - getInputBubbleBottomLift();
     }
 
     @Override
