@@ -25,7 +25,7 @@ Groups show a small reply glyph and a count on a message that's been replied to,
 
 Tapping that swaps the history for the message and its replies without leaving the chat — the header says how many, and the compose box stays where it is, so you can answer from inside the view. A reply you send there shows up once you go back. Back, or the arrow in the header, puts the normal history back where you left it. Tapping a reply's quote jumps to the original in the list.
 
-It counts what's stored on this device, so a reply that was never downloaded, or one you've since cleared out of the cache, won't show up. Deleted messages that Ghost Mode keeps around aren't counted either — they're gone from Telegram's own cache, which is what this reads. On by default; turn it off under *Reply threads in private chats* in chat settings.
+It counts what's stored on this device, so a reply that was never downloaded, or one you've since cleared out of the cache, won't show up. Only messages someone actually wrote count — the notices the chat posts itself, like *pinned a message*, name the message they're about but aren't replies to it. Deleted messages that Ghost Mode keeps around aren't counted either — they're gone from Telegram's own cache, which is what this reads. On by default; turn it off under *Reply threads in private chats* in chat settings.
 
 ### Message bookmarks <!-- #bookmarks-300 -->
 
