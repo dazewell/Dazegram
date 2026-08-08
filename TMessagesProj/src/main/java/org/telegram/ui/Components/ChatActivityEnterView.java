@@ -663,6 +663,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     private ImageView aiButton;
     private static final int COMPOSER_TOOLBAR_HEIGHT = xyz.nextalone.nagram.ui.ComposerToolbarLayout.HEIGHT;
     private static final int COMPOSER_TOOLBAR_GAP = 2;
+    // How far the island's bottom sits off the keyboard while the composer row owns it. The row holds its own
+    // capsule 2dp inside itself, so this lands about 4dp of visible glass-to-keyboard gap.
+    private static final int COMPOSER_TOOLBAR_ISLAND_BOTTOM = 2;
     private static final int COMPOSER_TEXT_HORIZONTAL_INSET = 16;
     // The normal row's 9/10 padding centers its line box half a dp above the pill.
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
@@ -17948,6 +17951,18 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     public int getInputBubbleBottomInset() {
         return composerToolbarEnabled && !toolbarReplacementVisible ? dp(COMPOSER_TOOLBAR_HEIGHT + COMPOSER_TOOLBAR_GAP) : 0;
+    }
+
+    // NagramX (#composer-toolbar): the island's stock lift assumes a pill that draws to its own bottom
+    // edge. With the composer row on, the bottom-most thing is that row, and its capsule stops 2dp short of
+    // the row's edge, so the lift and the inset stack into roughly double the gap that was intended. Ask for
+    // the smaller lift instead. Deliberately not gated on toolbarReplacementVisible, unlike the inset above:
+    // that flag flips synchronously when recording starts, and the lift moves real child views rather than a
+    // drawable, so following it would jump the whole island mid-animation for 7dp of nothing.
+    public int getInputBubbleBottomLiftReduction() {
+        return composerToolbarEnabled
+            ? dp(org.telegram.ui.Components.chat.ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM - COMPOSER_TOOLBAR_ISLAND_BOTTOM)
+            : 0;
     }
 
     // NagramX (#composer-suggestion-strip): the near edge of the send/record column drawn inside the input,

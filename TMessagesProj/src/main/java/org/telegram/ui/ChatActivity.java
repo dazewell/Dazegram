@@ -8717,6 +8717,9 @@ public class ChatActivity extends BaseFragment implements
         checkSendButtonBlockedByTyping(false);
 
         chatInputBubbleContainer.addView(chatActivityEnterView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.BOTTOM, 7, 0, 7, 0));
+        // NagramX (#composer-toolbar): prime the lift as soon as the enter view can report it. The height
+        // pass that normally pushes it runs after the first measure, and the island would slide on that frame.
+        chatInputViewsContainer.setInputBubbleBottomLiftReduction(calculateInputIslandBottomLiftReduction());
 
         int chatListIndex = contentView.indexOfChild(chatListView);
         chatListIndex = chatListIndex < 0 ? contentView.getChildCount() : (chatListIndex + 1);
@@ -9755,7 +9758,8 @@ public class ChatActivity extends BaseFragment implements
             windowInsetsStateHolder.getInAppKeyboardHeight());
         int budget = contentView.getMeasuredHeight() - contentView.getPaddingTop()
             - maxBottomInset
-            - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 10);
+            - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 10)
+            + (chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomLiftReduction() : 0);
         if (actionBar != null && actionBar.getVisibility() == View.VISIBLE) {
             budget -= actionBar.getMeasuredHeight();
         }
@@ -11932,7 +11936,7 @@ public class ChatActivity extends BaseFragment implements
             float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
                 - chatInputViewsContainer.getInputBubbleHeight()
                 - getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
-                - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 4);
+                - chatInputViewsContainer.getInputBubbleBottomLift() - dp(4);
             sideControlsButtonsLayout.setTranslationY(baseTranslationY2);
         }
 
@@ -11943,7 +11947,7 @@ public class ChatActivity extends BaseFragment implements
             // low, over the field and the row. Same number the drawn pill is shortened by, so the two agree by
             // construction; it reads 0 while a record or review panel owns the row, and the field is GONE then.
             float baseTranslationY2 = -windowInsetsStateHolder.getAnimatedMaxBottomInset()
-                - dp(ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM + 7)
+                - chatInputViewsContainer.getInputBubbleBottomLift() - dp(7)
                 - (chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
             suggestEmojiPanel.setTranslationY(baseTranslationY2);
             // NagramX (#composer-suggestion-strip): the send and mic column is drawn inside the input's own
@@ -13158,7 +13162,7 @@ public class ChatActivity extends BaseFragment implements
         if (isInsideContainer && parentChatActivity == null) {
             paddingBottom = AndroidUtilities.navigationBarHeight;
         } else {
-            paddingBottom = blurredViewBottomOffset + dp(9 + 7)
+            paddingBottom = blurredViewBottomOffset + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)
                 + inputIslandHeightCurrent
                 + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
                 + windowInsetsStateHolder.getAnimatedMaxBottomInset();
@@ -13236,7 +13240,7 @@ public class ChatActivity extends BaseFragment implements
 
         if (undoView != null) {
             undoView.setAdditionalTranslationY(
-                windowInsetsStateHolder.getAnimatedMaxBottomInset() + dp(9 + 7)
+                windowInsetsStateHolder.getAnimatedMaxBottomInset() + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)
                     + chatInputViewsContainer.getInputBubbleHeight() + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM));
         }
 
@@ -31661,7 +31665,7 @@ public class ChatActivity extends BaseFragment implements
 
                 return Math.round(windowInsetsStateHolder.getAnimatedMaxBottomInset()
                     + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
-                    + (chatInputViewsContainer.getInputBubbleHeight() + dp(9 + 7)));
+                    + (chatInputViewsContainer.getInputBubbleHeight() + chatInputViewsContainer.getInputBubbleBottomLift() + dp(7)));
             }
 
             @Override
@@ -50369,7 +50373,7 @@ public class ChatActivity extends BaseFragment implements
         }
 
         final float margin = windowInsetsStateHolder.getAnimatedMaxBottomInset() +
-                (chatInputViewsContainer.getInputBubbleHeight() + dp(9) - dp(5));
+                (chatInputViewsContainer.getInputBubbleHeight() + chatInputViewsContainer.getInputBubbleBottomLift() - dp(5));
 
         topicsTabs.setSideMenuBackgroundMarginBottom(margin);
     }
@@ -50377,7 +50381,7 @@ public class ChatActivity extends BaseFragment implements
     private void checkUi_botMenuPosition() {
         final float margin = windowInsetsStateHolder.getAnimatedMaxBottomInset()
             + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM)
-            + (chatInputViewsContainer.getInputBubbleHeight() + dp(9 + 6));
+            + (chatInputViewsContainer.getInputBubbleHeight() + chatInputViewsContainer.getInputBubbleBottomLift() + dp(6));
 
         if (chatActivityEnterView != null && chatActivityEnterView.botCommandsMenuContainer != null) {
             chatActivityEnterView.botCommandsMenuContainer.setTranslationY(-margin);
@@ -50434,6 +50438,19 @@ public class ChatActivity extends BaseFragment implements
     private float inputIslandHeightCurrent;
     private float inputIslandHeightTarget;
 
+    // NagramX (#composer-toolbar): the tighter lift belongs to the composer row, but the island it moves
+    // also carries the unblock/join bar, the channel buttons and the search field. Fade it in on the same
+    // factor the island's height already uses, so those keep the stock lift when they own the bottom and the
+    // handover between them is a slide rather than a jump.
+    private float calculateInputIslandBottomLiftReduction() {
+        if (chatActivityEnterView == null) {
+            return 0;
+        }
+        final float enterViewFactor = bottomViewsVisibilityController.getVisibility(MESSAGE_INPUT_CONTAINER);
+        final float visibility = 1f - bottomViewsVisibilityController.getVisibility(0);
+        return chatActivityEnterView.getInputBubbleBottomLiftReduction() * enterViewFactor * visibility;
+    }
+
     public float getInputIslandHeightTarget() {
         return inputIslandHeightCurrent;
     }
@@ -50448,6 +50465,7 @@ public class ChatActivity extends BaseFragment implements
 
         chatInputViewsContainer.setInputBubbleHeight(inputIslandHeightCurrent);
         chatInputViewsContainer.setInputBubbleBottomInset(chatActivityEnterView != null ? chatActivityEnterView.getInputBubbleBottomInset() : 0);
+        chatInputViewsContainer.setInputBubbleBottomLiftReduction(calculateInputIslandBottomLiftReduction());
         updatePagedownButtonsPosition();
         updateBotforumTabsBottomMargin();
         checkUi_botMenuPosition();
@@ -50483,7 +50501,7 @@ public class ChatActivity extends BaseFragment implements
     private static final Rect clipBoundsRect = new Rect();
     private void checkUi_BlurHeight() {
         final float inputHeight = shouldHideBottomForGesture() ? 0 : windowInsetsStateHolder.getAnimatedMaxBottomInset()
-            + dp(9) + chatInputViewsContainer.getInputBubbleHeight() + dp(7)
+            + chatInputViewsContainer.getInputBubbleBottomLift() + chatInputViewsContainer.getInputBubbleHeight() + dp(7)
             + getTopicTabsSideSize(TopicsTabsView.Position.BOTTOM);
 
         chatActivityFadeView.setFadeZoneBottom((int) inputHeight);
