@@ -86,8 +86,9 @@ quote only the specific rule you are acting on.
    from the plan review, and the implementer's own summary is an unverified
    claim, not evidence.
 
-7. **Land it properly.** Branch off `dev`, named `<YYYY-MM-DD>_<slug>` with the
-   date prefix mandatory. Every commit carries an inline `#<slug>` tag — the
+7. **Land it properly.** Branch off `dev`, named `<YYYY-MM-DD>` +
+   separator + `<slug>` with the date prefix mandatory (`_` or `-` between them
+   both valid). Every commit carries an inline `#<slug>` tag — the
    feature slug for features, a category tag (`#ci`, `#docs`, `#build`) for
    chores — so all commits for a change stay greppable after the branch is
    deleted. Commit subjects are lowercase and imperative, with no type prefix and
