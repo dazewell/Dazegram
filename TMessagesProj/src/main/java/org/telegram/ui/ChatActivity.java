@@ -491,6 +491,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_viewDeleted = 2101;
     private final static int nkheaderbtn_hide_last_message = 2102;
     private final static int nkheaderbtn_chat_lock = 2103;
+    private final static int nkbtn_personal_replies = 2104;
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
     public boolean shareAlertDebugTopicsSlowMotion;
@@ -3231,6 +3232,7 @@ public class ChatActivity extends BaseFragment implements
             .add(NotificationCenter.chatInfoCantLoad)
             .add(NotificationCenter.userInfoDidLoad)
             .add(NotificationCenter.chatTimeZoneChanged)
+            .add(NotificationCenter.personalRepliesCountsUpdated)
             .add(NotificationCenter.pinnedInfoDidLoad)
             .add(NotificationCenter.topicsDidLoaded)
             .add(NotificationCenter.chatWasBoostedByUser)
@@ -4139,6 +4141,11 @@ public class ChatActivity extends BaseFragment implements
                     } else if (actionBar.isActionModeShowed()) {
                         clearSelectionMode();
                     } else {
+                        if (personalRepliesTopId != 0) {
+                            // NagramX: the header back arrow bypasses onBackPressed(), so close the reply view here too
+                            closePersonalReplies(true);
+                            return;
+                        }
                         if (chatMode == MODE_QUICK_REPLIES && (messages.isEmpty() || threadMessageId == 0)) {
                             showQuickRepliesRemoveAlert();
                             return;
@@ -9929,6 +9936,11 @@ public class ChatActivity extends BaseFragment implements
     }
     private void setFilterMessages(boolean filter, boolean ignoreMessageNotFound, boolean animated) {
         if (chatAdapter == null || chatAdapter.isFiltered == filter) return;
+        if (!filter) {
+            // NagramX: whoever turns the filtered list off ends the personal reply view with it
+            personalRepliesTopId = 0;
+            personalRepliesMessages.clear();
+        }
         chatAdapter.isFiltered = filter;
         createEmptyView(true);
         if (filter) {
@@ -10135,7 +10147,12 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void updateFilteredMessages(boolean notify) {
-        ArrayList<MessageObject> results = new ArrayList<>(MediaDataController.getInstance(currentAccount).getFoundMessageObjects());
+        // NagramX: the personal reply view borrows the filtered list, but its messages come from stored history
+        // rather than a tag search, and they must keep their real sender direction
+        final boolean personalReplies = personalRepliesTopId != 0;
+        ArrayList<MessageObject> results = personalReplies
+                ? new ArrayList<>(personalRepliesMessages)
+                : new ArrayList<>(MediaDataController.getInstance(currentAccount).getFoundMessageObjects());
         if (filteredMessagesDict == null) {
             filteredMessagesDict = new LongSparseArray<>();
         }
@@ -10179,7 +10196,7 @@ public class ChatActivity extends BaseFragment implements
                 msg.stableId = lastStableId++;
             }
             msg.isOutOwnerCached = null;
-            if (msg.messageOwner != null) {
+            if (msg.messageOwner != null && !personalReplies) {
                 msg.messageOwner.out = true;
             }
             msg.isOutOwner();
@@ -10297,7 +10314,7 @@ public class ChatActivity extends BaseFragment implements
                 i++;
             }
         }
-        chatAdapter.filteredEndReached = MediaDataController.getInstance(currentAccount).searchEndReached();
+        chatAdapter.filteredEndReached = personalReplies || MediaDataController.getInstance(currentAccount).searchEndReached();
         if (notify) {
             chatAdapter.updateRowsSafe();
             chatAdapter.notifyDataSetChanged(true);
@@ -10312,6 +10329,60 @@ public class ChatActivity extends BaseFragment implements
                     chatListView.checkIfEmpty();
                 }
             }
+        }
+    }
+
+    // NagramX: personal reply view. Swaps the history for one message and its stored replies without
+    // leaving the chat, so the composer and everything else stay live. It rides on the adapter's
+    // filtered list because the whole adapter and every live-update handler already branch on that;
+    // personalRepliesTopId is only the marker saying which kind of filtered list is on screen.
+    private int personalRepliesTopId;
+    private final ArrayList<MessageObject> personalRepliesMessages = new ArrayList<>();
+
+    private void openPersonalReplies(MessageObject message) {
+        if (message == null || chatAdapter == null || personalRepliesTopId != 0) {
+            return;
+        }
+        final int topId = message.getId();
+        final long dialogId = dialog_id;
+        com.radolyn.ayugram.personalreplies.PersonalRepliesController.loadThread(currentAccount, dialogId, topId, loaded -> {
+            if (chatAdapter == null || dialogId != dialog_id || personalRepliesTopId != 0 || loaded.size() < 2) {
+                return;
+            }
+            personalRepliesMessages.clear();
+            for (int i = 0; i < loaded.size(); i++) {
+                MessageObject object = loaded.get(i);
+                MessageObject live = messagesDict[0].get(object.getId());
+                // reuse the live object where the chat already has it, so a message shown in both
+                // places keeps one identity and the list animations stay sane
+                personalRepliesMessages.add(live != null ? live : object);
+                if (live == null) {
+                    object.stableId = lastStableId++;
+                }
+            }
+            personalRepliesTopId = topId;
+            setFilterMessages(true, true, true);
+            if (!chatAdapter.isFiltered) {
+                personalRepliesTopId = 0;
+                personalRepliesMessages.clear();
+                return;
+            }
+            updateTitle(true);
+            scrollToMessageId(topId, 0, false, 0, true, 0);
+        });
+    }
+
+    private void closePersonalReplies(boolean scrollBack) {
+        if (personalRepliesTopId == 0) {
+            return;
+        }
+        final int topId = personalRepliesTopId;
+        personalRepliesTopId = 0;
+        personalRepliesMessages.clear();
+        setFilterMessages(false, true, true);
+        updateTitle(true);
+        if (scrollBack) {
+            scrollToMessageId(topId, 0, true, 0, true, 0);
         }
     }
 
@@ -18100,6 +18171,10 @@ public class ChatActivity extends BaseFragment implements
         forceNextPinnedMessageId = Math.abs(forcePinnedMessageId);
         forceScrollToFirst = forcePinnedMessageId > 0;
         wasManualScroll = true;
+        if (personalRepliesTopId != 0 && (filteredMessagesDict == null || filteredMessagesDict.get(id) == null)) {
+            // NagramX: asked to jump somewhere the reply view doesn't hold, so hand back to the real history first
+            closePersonalReplies(false);
+        }
         MessageObject object = chatAdapter.isFiltered ? (filteredMessagesDict != null ? filteredMessagesDict.get(id) : null) : messagesDict[loadIndex].get(id);
         boolean query = false;
         int scrollDirection = RecyclerAnimationScrollHelper.SCROLL_DIRECTION_UNSET;
@@ -20864,6 +20939,11 @@ public class ChatActivity extends BaseFragment implements
 
     public void updateTitle(boolean animated) {
         if (avatarContainer == null) {
+            return;
+        }
+        if (personalRepliesTopId != 0) {
+            // NagramX: the reply view retitles the header in place, so say how many replies are being shown
+            avatarContainer.setTitle(LocaleController.formatPluralString("Replies", Math.max(0, personalRepliesMessages.size() - 1)));
             return;
         }
         if (chatMode == MODE_SUGGESTIONS && currentChat != null) {
@@ -25617,6 +25697,11 @@ public class ChatActivity extends BaseFragment implements
                 if (avatarContainer != null) {
                     avatarContainer.updateTimeZonePill();
                 }
+            }
+        } else if (id == NotificationCenter.personalRepliesCountsUpdated) {
+            // NagramX: locally derived private reply counts landed, so redraw the rows that show them
+            if (args != null && args.length > 0 && args[0] instanceof Long && (Long) args[0] == dialog_id) {
+                updateVisibleRows();
             }
         } else if (id == NotificationCenter.didSetNewWallpapper) {
             if (fragmentView != null) {
@@ -36797,6 +36882,10 @@ public class ChatActivity extends BaseFragment implements
         } else if (isInPollAddOptionMode()) {
             if (invoked) pollAddOptionModeClose();
             return false;
+        } else if (personalRepliesTopId != 0) {
+            // NagramX: back out of the personal reply view before it leaves the chat
+            if (invoked) closePersonalReplies(true);
+            return false;
         }
         if (invoked) {
             if (backToPreviousFragment != null) {
@@ -39412,7 +39501,7 @@ public class ChatActivity extends BaseFragment implements
                 rowCount += messages.size();
                 messagesEndRow = rowCount;
 
-                if (currentUser != null && !UserObject.isBot(currentUser) && !UserObject.isReplyUser(currentUser) && !UserInfoCell.isEmpty(getMessagesController().getPeerSettings(currentUser.id)) && !MessagesController.isSupportUser(currentUser) && chatMode == MODE_DEFAULT && endReached[0]) {
+                if (currentUser != null && !UserObject.isBot(currentUser) && !UserObject.isReplyUser(currentUser) && !UserInfoCell.isEmpty(getMessagesController().getPeerSettings(currentUser.id)) && !MessagesController.isSupportUser(currentUser) && chatMode == MODE_DEFAULT && endReached[0] && !isFiltered) {
                     final TLRPC.PeerSettings peerSettings = getMessagesController().getPeerSettings(currentUser.id);
                     if (peerSettings.name_change_date != 0 && peerSettings.photo_change_date != 0) {
                         if (peerSettings.name_change_date < peerSettings.photo_change_date) {
@@ -39431,7 +39520,7 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                     userInfoRow = rowCount++;
-                } else if ((UserObject.isReplyUser(currentUser) || currentUser != null && currentUser.bot && !MessagesController.isSupportUser(currentUser) && chatMode == MODE_DEFAULT) && endReached[0]) {
+                } else if ((UserObject.isReplyUser(currentUser) || currentUser != null && currentUser.bot && !MessagesController.isSupportUser(currentUser) && chatMode == MODE_DEFAULT) && endReached[0] && !isFiltered) {
                     botInfoRow = rowCount++;
                 }
 
@@ -43529,7 +43618,10 @@ public class ChatActivity extends BaseFragment implements
                             progressDialogAtMessageType = PROGRESS_REPLY;
                         });
                     };
-                    if (chatAdapter.isFiltered) {
+                    if (personalRepliesTopId != 0 && filteredMessagesDict != null && filteredMessagesDict.get(id) != null) {
+                        // NagramX: in the personal reply view the original sits in the list already, so jump to it in place
+                        scroll.run();
+                    } else if (chatAdapter.isFiltered) {
                         setFilterMessages(searchingFiltered = false, true, false);
                         updateSearchButtons(getMediaDataController().getMask(), getMediaDataController().getSearchPosition(), getMediaDataController().getSearchCount());
                         AndroidUtilities.runOnUIThread(scroll, 80);
@@ -47540,6 +47632,10 @@ public class ChatActivity extends BaseFragment implements
                 break;
 
             }
+            case nkbtn_personal_replies: {
+                openPersonalReplies(selectedObjectGroup != null ? selectedObjectGroup.findPrimaryMessageObject() : selectedObject);
+                break;
+            }
             case nkbtn_view_in_chat: {
                 if (selectedObject == null)
                     return;
@@ -49417,6 +49513,16 @@ public class ChatActivity extends BaseFragment implements
                     options.add(nkbtn_view_in_chat);
                     icons.add(R.drawable.msg_viewreplies);
                     items.add(LocaleController.getString(R.string.ViewInChat));
+                }
+                // NagramX: same entry for one-to-one chats, counted from the history stored on this device
+                if (!isThreadChat() && chatMode == MODE_DEFAULT && !isInsideContainer && personalRepliesTopId == 0 && primaryMessage != null
+                        && com.radolyn.ayugram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, dialog_id)) {
+                    int personalReplies = com.radolyn.ayugram.personalreplies.PersonalRepliesController.getCount(currentAccount, primaryMessage);
+                    if (personalReplies > 0) {
+                        items.add(LocaleController.formatPluralString("ViewReplies", personalReplies));
+                        options.add(nkbtn_personal_replies);
+                        icons.add(R.drawable.msg_viewreplies);
+                    }
                 }
                 if (!isEphemeral && !selectedObject.isSponsored() && chatMode != MODE_SCHEDULED && ChatObject.isChannel(currentChat) && !ChatObject.isMonoForum(currentChat) && selectedObject.getDialogId() != mergeDialogId && !selectedObject.isAyuDeleted()) {
                     allowCopyLink = true;
