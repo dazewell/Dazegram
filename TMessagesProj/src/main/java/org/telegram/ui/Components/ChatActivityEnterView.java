@@ -17960,9 +17960,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     // that flag flips synchronously when recording starts, and the lift moves real child views rather than a
     // drawable, so following it would jump the whole island mid-animation for 7dp of nothing.
     public int getInputBubbleBottomLiftReduction() {
-        return composerToolbarEnabled
-            ? dp(org.telegram.ui.Components.chat.ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM - COMPOSER_TOOLBAR_ISLAND_BOTTOM)
-            : 0;
+        if (!composerToolbarEnabled) {
+            return 0;
+        }
+        // Subtract the two converted values rather than converting the difference: dp() rounds up, so
+        // dp(9 - 2) would leave the settled lift a pixel off dp(2) on the usual fractional densities.
+        return dp(org.telegram.ui.Components.chat.ChatInputViewsContainer.INPUT_BUBBLE_BOTTOM)
+            - dp(COMPOSER_TOOLBAR_ISLAND_BOTTOM);
     }
 
     // NagramX (#composer-suggestion-strip): the near edge of the send/record column drawn inside the input,
