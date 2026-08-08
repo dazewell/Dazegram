@@ -28115,7 +28115,7 @@ public class ChatActivity extends BaseFragment implements
             }
             if (obj != null) {
                 // NagramX: match the increment path so service-message payloads are not decremented as replies.
-                if (obj.messageOwner.reply_to != null && !MessagesStorage.isMessageActionTypeWithReply(obj.messageOwner.action)) {
+                if (obj.isReply() && !MessagesStorage.isMessageActionTypeWithReply(obj.messageOwner.action)) {
                     int replyId = obj.getReplyAnyMsgId();
                     if (threadMessageObject != null && threadMessageObject.getId() == replyId) {
                         if (!hasChatInBack && threadMessageObject.hasReplies()) {
