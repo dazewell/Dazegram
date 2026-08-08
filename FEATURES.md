@@ -23,7 +23,7 @@ When an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for th
 
 Groups show a small reply glyph and a count on a message that's been replied to, and let you open those replies on their own. One-to-one chats never got that, because Telegram only keeps a reply counter for groups. This works it out from the history already on your phone: a message someone has replied to picks up the same glyph and count next to its timestamp, and its menu gains *View N Replies*.
 
-Tapping that swaps the history for the message and its replies without leaving the chat — the header says how many, and the compose box stays where it is, so you can answer from inside the view. Back, or the arrow in the header, puts the normal history back where you left it. Tapping a reply's quote jumps to the original in the list.
+Tapping that swaps the history for the message and its replies without leaving the chat — the header says how many, and the compose box stays where it is, so you can answer from inside the view. A reply you send there shows up once you go back. Back, or the arrow in the header, puts the normal history back where you left it. Tapping a reply's quote jumps to the original in the list.
 
 It counts what's stored on this device, so a reply that was never downloaded, or one you've since cleared out of the cache, won't show up. Deleted messages that Ghost Mode keeps around aren't counted either — they're gone from Telegram's own cache, which is what this reads. On by default; turn it off under *Reply threads in private chats* in chat settings.
 

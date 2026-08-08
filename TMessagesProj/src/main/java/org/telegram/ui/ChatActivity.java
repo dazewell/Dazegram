@@ -10340,7 +10340,7 @@ public class ChatActivity extends BaseFragment implements
     private final ArrayList<MessageObject> personalRepliesMessages = new ArrayList<>();
 
     private void openPersonalReplies(MessageObject message) {
-        if (message == null || chatAdapter == null || personalRepliesTopId != 0) {
+        if (message == null || chatAdapter == null || chatAdapter.isFiltered || personalRepliesTopId != 0) {
             return;
         }
         final int topId = message.getId();
@@ -10358,11 +10358,9 @@ public class ChatActivity extends BaseFragment implements
                 MessageObject object = loaded.get(i);
                 MessageObject live = messagesDict[0].get(object.getId());
                 // reuse the live object where the chat already has it, so a message shown in both
-                // places keeps one identity and the list animations stay sane
+                // places keeps one identity and the list animations stay sane. Fresh ones keep
+                // stableId 0 so the filtered rebuild checks their media state before handing them out
                 personalRepliesMessages.add(live != null ? live : object);
-                if (live == null) {
-                    object.stableId = lastStableId++;
-                }
             }
             personalRepliesTopId = topId;
             setFilterMessages(true, true, true);
@@ -11431,7 +11429,7 @@ public class ChatActivity extends BaseFragment implements
                                 updateFilteredMessages = true;
                             }
                         }
-                        if (chatAdapter.isFiltered && !messageObject.hasReaction(searchingReaction)) {
+                        if (chatAdapter.isFiltered && searchingReaction != null && !messageObject.hasReaction(searchingReaction)) {
                             final MessageObject msg = messageObject;
                             final MessageObject.GroupedMessages groupedMessages = getValidGroupedMessage(msg);
                             if (groupedMessages != null) {
@@ -49072,7 +49070,7 @@ public class ChatActivity extends BaseFragment implements
                 updateFilteredMessages(false);
             }
         }
-        if (chatAdapter.isFiltered && !messageObject.hasReaction(searchingReaction)) {
+        if (chatAdapter.isFiltered && searchingReaction != null && !messageObject.hasReaction(searchingReaction)) {
             final MessageObject msg = messageObject;
             final MessageObject.GroupedMessages groupedMessages = getValidGroupedMessage(msg);
             if (groupedMessages != null) {
