@@ -222,6 +222,12 @@ public final class PersonalRepliesStorage {
         if (message == null || message.reply_to == null || message.reply_to.reply_to_msg_id == 0) {
             return false;
         }
+        // a pin names the message it pins in reply_to, so it inherits its thread_reply_id and lands
+        // in the same bucket as real replies; no service message is ever one, so drop the whole class
+        // rather than the actions that happen to carry reply_to today
+        if (message instanceof TLRPC.TL_messageService || message.action != null) {
+            return false;
+        }
         if (message.reply_to.reply_to_peer_id == null) {
             return true;
         }
