@@ -45,8 +45,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
     private static final int ICON_GLYPH = 24;
-    // Glass inset and its breathing room stay fixed: they are blur geometry and press overshoot
-    // headroom, not part of the cell size, so scaling them would fight the drawable.
     private static final int GLASS_INSET = 4;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
@@ -143,7 +141,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * Places a button against a caller supplied layout rather than the saved one. The settings
      * preview needs this: it renders the arrangement being dragged, which is deliberately not
      * written to config until the drag ends, so resolving placement from the stored string there
-     * would show the previous layout for the whole gesture.
+     * would show the previous layout for the whole gesture. The order is local to the supplied
+     * zone, matching ComposerLayout.indexOf().
      */
     public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
         AndroidUtilities.removeFromParent(view);
@@ -279,8 +278,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * 24dp visual box; the registry scales are authored optical corrections for assets whose keyline
      * is intentionally smaller or larger than that shared box.
      */
-    public static void applyPanelIconBox(View view, float scale) {
-        applyIconBox(view, buttonSize(), scale * scale());
+    public static void applyPanelIconBox(View view, float iconScale) {
+        applyIconBox(view, buttonSize(), iconScale * scale());
+    }
+
+    private static int glassInset() {
+        return Math.max(1, Math.round(GLASS_INSET * scale()));
     }
 
     private static void applyIconBox(View view, int cellDp, float scale) {
@@ -349,7 +352,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setClipToPadding(true);
             // 2dp of glass inset plus 2dp of breathing room: the press animation only overshoots by a
             // fraction of a dp, so anything wider is just dead space at both ends of the capsule.
-            setPaddingRelative(AndroidUtilities.dp(GLASS_INSET), AndroidUtilities.dp(GLASS_INSET), AndroidUtilities.dp(GLASS_INSET), AndroidUtilities.dp(GLASS_INSET));
+            int inset = glassInset();
+            setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
         }
 
         void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -367,8 +371,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             glass = factory.create(this, colorProvider);
             // Half the drawn capsule - the row minus the 4dp inset it is painted within. Derived rather
             // than a fixed 26dp so a scaled row still ends in a semicircle instead of squared off corners.
-            glass.setRadius(AndroidUtilities.dp((height() - GLASS_INSET) / 2f));
-            glass.setPadding(AndroidUtilities.dp(GLASS_INSET));
+            int inset = glassInset();
+            glass.setRadius(AndroidUtilities.dp((height() - inset) / 2f));
+            glass.setPadding(AndroidUtilities.dp(inset));
             invalidate();
         }
 

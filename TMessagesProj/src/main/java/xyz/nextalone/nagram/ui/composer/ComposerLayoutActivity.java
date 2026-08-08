@@ -172,7 +172,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         if (previewCell == null) {
             return;
         }
-        previewCell.setLayout(collect());
+        previewCell.setLayout(ComposerLayout.normalize(collect()));
         // The capsule grows with the scale, so the pinned preview and the space the list leaves for
         // it are re-applied together - a stale margin would either clip the panel or float the list.
         int height = dp(previewHeight());
