@@ -53,6 +53,10 @@ Send and the mic used to sit outside the text pill, in their own column past its
 
 The button row under the compose box is yours to arrange. A new editor in the chat settings lists every button — emoji, attachments, expand, schedule, rich draft, AI, all of the formatting actions (bold, italic, underline, strikethrough, monospace, code block, spoiler, quote, link, and clear formatting) and a new Select All — and you drag them into the order you want. Three zones: one leading button pinned at the start, a scrolling middle that holds as many as you like, and a trailing group at the end where attachments and schedule live because they carry their own show/hide behaviour. Anything you don't want goes in the Hidden section and stops taking up space. Reset puts it back to the stock arrangement. Your existing toolbar carries over on upgrade, so nothing moves until you move it.
 
+### Composer toolbar size <!-- #composer-scale -->
+
+The toolbar row can be scaled from 75% to 125% in 5% steps, from a slider at the top of the layout editor. It scales the whole thing together — the row height, the button cells and the glyphs inside them — so the capsule keeps its proportions and its rounded ends at every size, rather than just spacing the same buttons further apart. The preview above the slider is the real toolbar on your own chat wallpaper, so you see the actual result as you drag. Defaults to 100%, and Reset puts it back.
+
 ### Quick schedule button <!-- #quick-schedule -->
 
 The calendar icon stays with the trailing composer actions while you type. One tap to schedule instead of long-pressing Send. Toggle it off in settings if you prefer the default. It no longer takes width from the message text.

@@ -59,7 +59,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final CollapsingLinearLayout middleLeadingSlot;
     private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
-    private final Map<View, String> configuredKeys = new HashMap<>();
+    private final Map<View, Integer> configuredOrder = new HashMap<>();
     private View pinnedTrailingView;
 
     public ComposerToolbarLayout(Context context) {
@@ -136,13 +136,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * and the whole row could be sorted in one pass.
      */
     public void addConfigurable(String key, View view) {
+        addConfigurable(key, view, ComposerLayout.zoneOf(key), ComposerLayout.indexOf(key), ComposerLayout.trailingKey());
+    }
+
+    /**
+     * Places a button against a caller supplied layout rather than the saved one. The settings
+     * preview needs this: it renders the arrangement being dragged, which is deliberately not
+     * written to config until the drag ends, so resolving placement from the stored string there
+     * would show the previous layout for the whole gesture.
+     */
+    public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
         AndroidUtilities.removeFromParent(view);
-        configuredKeys.put(view, key);
+        configuredOrder.put(view, order);
         // One sizing gate for every configurable button, whatever zone it lands in: the source assets
         // range from 16dp to 32dp and the stock scale type draws each at its own intrinsic size, so
         // without this the row is a jumble of glyph sizes.
         applyIconBox(key, view);
-        int zone = ComposerLayout.zoneOf(key);
         if (zone == ComposerButtons.ZONE_HIDDEN) {
             // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
             // to decide its own geometry, so a removed button has to keep whatever visibility it had.
@@ -153,25 +162,24 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return;
         }
         if (zone == ComposerButtons.ZONE_END) {
-            if (key.equals(ComposerLayout.trailingKey())) {
+            if (key.equals(trailingKey)) {
                 pinnedTrailingView = view;
                 endSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
             } else {
-                endSlot.addView(view, insertIndex(endSlot, key, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
+                endSlot.addView(view, insertIndex(endSlot, order, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
             }
             return;
         }
-        orderedSlot.addView(view, insertIndex(orderedSlot, key, orderedSlot.getChildCount()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
+        orderedSlot.addView(view, insertIndex(orderedSlot, order, orderedSlot.getChildCount()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
         middleScrollView.post(this::pinMiddleToStart);
     }
 
-    // Walks the siblings already in the slot and stops in front of the first one the saved layout puts
-    // after this button. Views with no key (the attach group) are left where they are.
-    private int insertIndex(ViewGroup slot, String key, int limit) {
-        int order = ComposerLayout.indexOf(key);
+    // Walks the siblings already in the slot and stops in front of the first one the layout puts
+    // after this button. Views with no recorded order (the attach group) are left where they are.
+    private int insertIndex(ViewGroup slot, int order, int limit) {
         for (int i = 0; i < limit && i < slot.getChildCount(); i++) {
-            String other = configuredKeys.get(slot.getChildAt(i));
-            if (other != null && ComposerLayout.indexOf(other) > order) {
+            Integer other = configuredOrder.get(slot.getChildAt(i));
+            if (other != null && other > order) {
                 return i;
             }
         }
@@ -267,17 +275,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Sizes a glyph for a real panel cell, folding in the user's panel scale. Separate from the raw
-     * {@link #applyIconBox(View, int, float)} so callers that deliberately draw a different cell -
-     * the settings preview's miniature - keep sizing their glyphs their own way.
+     * Sizes a glyph for a panel cell, folding in the user's panel scale. Every glyph gets the same
+     * 24dp visual box; the registry scales are authored optical corrections for assets whose keyline
+     * is intentionally smaller or larger than that shared box.
      */
     public static void applyPanelIconBox(View view, float scale) {
         applyIconBox(view, buttonSize(), scale * scale());
     }
 
-    // Every glyph gets the same 24dp visual box. Registry scales are authored optical corrections
-    // for assets whose keyline is intentionally smaller or larger than that shared box.
-    public static void applyIconBox(View view, int cellDp, float scale) {
+    private static void applyIconBox(View view, int cellDp, float scale) {
         int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
         // Kept in pixel space rather than rounded to whole dp: at the odd steps the scaled glyph
         // lands on a fraction of a dp, and rounding it first would bias the two insets apart and
