@@ -18676,7 +18676,7 @@ public class MessagesStorage extends BaseController {
         return value;
     }
 
-    private static boolean isMessageActionTypeWithReply(TLRPC.MessageAction action) {
+    public static boolean isMessageActionTypeWithReply(TLRPC.MessageAction action) {
         return action instanceof TLRPC.TL_messageActionPinMessage
             || action instanceof TLRPC.TL_messageActionPaymentSent
             || action instanceof TLRPC.TL_messageActionGameScore

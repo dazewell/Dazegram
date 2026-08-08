@@ -7618,7 +7618,8 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                             final TL_update.TL_updateNewChannelMessage newMessage = (TL_update.TL_updateNewChannelMessage) update;
                             long channelId = MessagesController.getUpdateChannelId(newMessage);
                             TLRPC.Chat chat = getMessagesController().getChat(channelId);
-                            if ((chat == null || chat.megagroup) && newMessage.message.reply_to != null && (newMessage.message.reply_to.reply_to_top_id != 0 || newMessage.message.reply_to.reply_to_msg_id != 0)) {
+                            // NagramX: service actions store a reply target for their payload, not as a thread reply.
+                            if ((chat == null || chat.megagroup) && newMessage.message.reply_to != null && (newMessage.message.reply_to.reply_to_top_id != 0 || newMessage.message.reply_to.reply_to_msg_id != 0) && !MessagesStorage.isMessageActionTypeWithReply(newMessage.message.action)) {
                                 if (channelReplies == null) {
                                     channelReplies = new LongSparseArray<>();
                                 }
@@ -8138,7 +8139,8 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                     final TL_update.TL_updateNewChannelMessage newMessage = (TL_update.TL_updateNewChannelMessage) update;
                                     long channelId = MessagesController.getUpdateChannelId(newMessage);
                                     TLRPC.Chat chat = getMessagesController().getChat(channelId);
-                                    if ((chat == null || chat.megagroup) && newMessage.message.reply_to != null && (newMessage.message.reply_to.reply_to_top_id != 0 || newMessage.message.reply_to.reply_to_msg_id != 0)) {
+                                    // NagramX: service actions store a reply target for their payload, not as a thread reply.
+                                    if ((chat == null || chat.megagroup) && newMessage.message.reply_to != null && (newMessage.message.reply_to.reply_to_top_id != 0 || newMessage.message.reply_to.reply_to_msg_id != 0) && !MessagesStorage.isMessageActionTypeWithReply(newMessage.message.action)) {
                                         if (channelReplies == null) {
                                             channelReplies = new LongSparseArray<>();
                                         }

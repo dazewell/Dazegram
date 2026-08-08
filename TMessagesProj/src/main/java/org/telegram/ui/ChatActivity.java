@@ -27386,7 +27386,8 @@ public class ChatActivity extends BaseFragment implements
                 if (obj.messageOwner instanceof TLRPC.TL_messageEmpty) {
                     continue;
                 }
-                if (!isTopic && threadMessageObject != null && obj.isReply() && !(obj.messageOwner.action instanceof TLRPC.TL_messageActionPinMessage)) {
+                // NagramX: service actions store a reply target for their payload, not as a thread reply.
+                if (!isTopic && threadMessageObject != null && obj.isReply() && !MessagesStorage.isMessageActionTypeWithReply(obj.messageOwner.action)) {
                     int mid = obj.getReplyAnyMsgId();
                     if (threadMessageObject.getId() == mid) {
                         threadMessageObject.messageOwner.replies.replies++;
@@ -27533,7 +27534,8 @@ public class ChatActivity extends BaseFragment implements
                 if (obj.messageOwner instanceof TLRPC.TL_messageEmpty) {
                     continue;
                 }
-                if (threadMessageObject != null && threadMessageObject.messageOwner.replies != null && obj.isReply() && !(obj.messageOwner.action instanceof TLRPC.TL_messageActionPinMessage)) {
+                // NagramX: service actions store a reply target for their payload, not as a thread reply.
+                if (threadMessageObject != null && threadMessageObject.messageOwner.replies != null && obj.isReply() && !MessagesStorage.isMessageActionTypeWithReply(obj.messageOwner.action)) {
                     int mid = obj.getReplyAnyMsgId();
                     if (threadMessageObject.getId() == mid) {
                         threadMessageObject.messageOwner.replies.replies++;
@@ -28110,7 +28112,8 @@ public class ChatActivity extends BaseFragment implements
                 updateReplyMessageOwners(mid, null);
             }
             if (obj != null) {
-                if (obj.messageOwner.reply_to != null && !(obj.messageOwner.action instanceof TLRPC.TL_messageActionPinMessage)) {
+                // NagramX: match the increment path so service-message payloads are not decremented as replies.
+                if (obj.isReply() && !MessagesStorage.isMessageActionTypeWithReply(obj.messageOwner.action)) {
                     int replyId = obj.getReplyAnyMsgId();
                     if (threadMessageObject != null && threadMessageObject.getId() == replyId) {
                         if (!hasChatInBack && threadMessageObject.hasReplies()) {
