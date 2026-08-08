@@ -1187,6 +1187,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val personalReplies =
+        addConfig(
+            "PersonalReplies",
+            ConfigItem.configTypeBool,
+            true
+        )
     val transcribeProviderGeminiPrompt =
         addConfig(
             "TranscribeProviderGeminiPrompt",

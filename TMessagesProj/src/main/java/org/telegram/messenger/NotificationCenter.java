@@ -387,6 +387,8 @@ public class NotificationCenter {
     public static final int chatTimeZoneChanged = totalEvents++;
     // posted with (Integer guid, Float progress) while the round video preview plays
     public static final int videoPreviewProgressChanged = totalEvents++;
+    // posted with (Long dialogId) when locally derived private reply counts change
+    public static final int personalRepliesCountsUpdated = totalEvents++;
 
     private final SparseArray<ArrayList<NotificationCenterDelegate>> observers = new SparseArray<>();
     private final SparseArray<ArrayList<NotificationCenterDelegate>> removeAfterBroadcast = new SparseArray<>();
