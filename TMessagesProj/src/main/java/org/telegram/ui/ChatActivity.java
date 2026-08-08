@@ -28081,9 +28081,7 @@ public class ChatActivity extends BaseFragment implements
             Integer mid = markAsDeletedMessages.get(a);
             MessageObject obj = chatAdapter != null && chatAdapter.isFiltered ? filteredMessagesDict.get(mid) :  messagesDict[loadIndex].get(mid);
 
-            if (!AyuSavePreferences.saveDeletedMessageFor(currentAccount, getDialogId(), obj) || AyuState.isDeletePermitted(getDialogId(), mid)) {
-                AyuState.messageDeleted(getDialogId(), mid);
-            } else {
+            if (AyuSavePreferences.saveDeletedMessageFor(currentAccount, getDialogId(), obj) && !AyuState.isDeletePermitted(currentAccount, getDialogId(), mid)) {
                 continue;
             }
 
@@ -36964,7 +36962,7 @@ public class ChatActivity extends BaseFragment implements
         if (error == null) {
             getMessagesController().processUpdates((TLRPC.Updates) response, false);
             for (int i = 0; i < req.id.size(); i++) {
-                AyuState.permitDeleteMessage(dialog_id, req.id.get(i));
+                AyuState.permitDeleteMessage(currentAccount, dialog_id, req.id.get(i));
             }
             AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(currentAccount).postNotificationName(
                     NotificationCenter.messagesDeleted, req.id,

@@ -400,7 +400,7 @@ public final class EventScheduleController {
             if (error == null) {
                 MessagesController.getInstance(account).processUpdates((TLRPC.Updates) response, false);
                 for (int i = 0; i < req.id.size(); i++) {
-                    AyuState.permitDeleteMessage(dialogId, req.id.get(i));
+                    AyuState.permitDeleteMessage(account, dialogId, req.id.get(i));
                 }
                 AndroidUtilities.runOnUIThread(() -> {
                     NotificationCenter.getInstance(account).postNotificationName(
