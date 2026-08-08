@@ -18784,7 +18784,8 @@ public class MessagesController extends BaseController implements NotificationCe
                 ImageLoader.saveMessageThumbs(message);
 
                 MessageObject.getDialogId(message);
-                if (baseUpdate instanceof TL_update.TL_updateNewChannelMessage && message.reply_to != null && !(message.action instanceof TLRPC.TL_messageActionPinMessage)) {
+                // NagramX: service actions store a reply target for their payload, not as a thread reply.
+                if (baseUpdate instanceof TL_update.TL_updateNewChannelMessage && message.reply_to != null && !MessagesStorage.isMessageActionTypeWithReply(message.action)) {
                     if (channelReplies == null) {
                         channelReplies = new LongSparseArray<>();
                     }
