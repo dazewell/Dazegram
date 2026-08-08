@@ -1701,7 +1701,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 mode = ChatActivity.MODE_SCHEDULED;
             }
             for (int i = 0; i < messageIds.size(); i++) {
-                AyuState.permitDeleteMessage(currentAccount, dialogId, messageIds.get(i));
+                AyuState.permitDeleteMessage(currentAccount, dialogId, messageIds.get(i), scheduled);
             }
             getMessagesController().deleteMessages(messageIds, null, null, dialogId, topicId, false, mode);
         }

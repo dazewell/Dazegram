@@ -8396,7 +8396,7 @@ public class AlertsCreator {
                         ids.add(messageObject.getId());
                         // --- AyuGram hook
                         if (!keepLocally[0]) {
-                            AyuState.permitDeleteMessage(currentAccount, dialogId, messageObject.getId());
+                            AyuState.permitDeleteMessage(currentAccount, dialogId, messageObject.getId(), mode == ChatActivity.MODE_SCHEDULED);
                         } else {
                             var prefs = new AyuSavePreferences(messageObject.messageOwner, currentAccount);
                             prefs.setDialogId(dialogId);
@@ -8417,7 +8417,7 @@ public class AlertsCreator {
                         ids.add(selectedMessage.getId());
                         // --- AyuGram hook
                     if (!keepLocally[0]) {
-                        AyuState.permitDeleteMessage(currentAccount, dialogId, selectedMessage.getId());
+                        AyuState.permitDeleteMessage(currentAccount, dialogId, selectedMessage.getId(), mode == ChatActivity.MODE_SCHEDULED);
                     } else {
                         var prefs = new AyuSavePreferences(selectedMessage.messageOwner, currentAccount);
                         prefs.setDialogId(dialogId);
@@ -8454,7 +8454,7 @@ public class AlertsCreator {
                         ids.add(selectedMessages[a].keyAt(b));
                         // --- AyuGram hook
                         if (!keepLocally[0]) {
-                            AyuState.permitDeleteMessage(currentAccount, dialogId, selectedMessages[a].keyAt(b));
+                            AyuState.permitDeleteMessage(currentAccount, dialogId, selectedMessages[a].keyAt(b), mode == ChatActivity.MODE_SCHEDULED);
                         } else {
                             var prefs = new AyuSavePreferences(selectedMessages[a].valueAt(b).messageOwner, currentAccount);
                             prefs.setDialogId(dialogId);
