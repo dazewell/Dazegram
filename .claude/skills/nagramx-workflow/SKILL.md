@@ -60,8 +60,9 @@ code are not.
 
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
    `<YYYY-MM-DD>_<short-slug>` — **the date prefix is mandatory** (the date you
-   start it, e.g. `2026-07-07_require-password`), underscore between date and
-   slug, hyphens inside the slug. An undated name like `require-password` is
+   start it, e.g. `2026-07-07_require-password`), `_` or `-` between date and
+   slug (both fine — tooling normalizes it), hyphens inside the slug. An undated
+   name like `require-password` is
    wrong; fix it before the first push. One change per branch. You PR it into
    `dev` and **delete it after merge**; keep it alive only if you'll propose
    that feature upstream. Don't commit directly to `dev`. The full topology,

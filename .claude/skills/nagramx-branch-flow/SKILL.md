@@ -152,11 +152,12 @@ the name matches in CI too.)
 
 ## Branch naming (mandatory — the date prefix is not optional)
 
-Every change branch is **`<YYYY-MM-DD>_<slug>`** — lowercase, an **underscore**
-between the date and the slug, hyphens inside the slug:
+Every change branch is **`<YYYY-MM-DD>` + separator + `<slug>`** — lowercase, the
+**date prefix mandatory**, either `_` or `-` between the date and the slug,
+hyphens inside the slug. Both forms are valid and equal:
 
 ```
-2026-08-05_video-cc          2026-07-07_chatlock          2026-08-06_ci-tag-check
+2026-08-05_video-cc          2026-08-05-video-cc          2026-08-06_ci-tag-check
 ```
 
 - **Date first, always.** It's the date you *start* the branch, so the branch
@@ -164,12 +165,15 @@ between the date and the slug, hyphens inside the slug:
   name with no date (`video-cc`, `fix-expand-button-edit-mode`,
   `composer-select-all`) is **wrong** — that's the most common slip and it has
   to be caught before the first push.
-- **Underscore separates date from slug; hyphens inside the slug.** The
-  underscore makes the date boundary readable at a glance and lets the slug
-  match the `#tag` verbatim. Nothing in the stack objects to it — git, GitHub
-  PRs, `staging.yml`, and `commit-tag.yml` all handle it (see
-  `2026-07-26_infinite-video`, `2026-07-25_timezone-strip-cursor`, merged
-  as-is). No camelCase, no spaces.
+- **Separator between date and slug is flexible — `_` or `-`, both fine.** An
+  underscore reads slightly cleaner because it marks the date boundary at a
+  glance and lets the slug match the `#tag` verbatim, so it's a mild stylistic
+  preference — but it is **not required and not something to flag or "fix"**.
+  Branch tooling normalizes names to kebab-case and flattens `_` to `-` (and
+  refuses a second rename), so requiring the underscore was unsatisfiable
+  through the normal path; a hyphen there is fully valid. Nothing in the stack
+  objects to either form — git, GitHub PRs, `staging.yml`, and `commit-tag.yml`
+  all handle both. No camelCase, no spaces.
 - **Slug matches the commit `#tag`.** Branch `2026-08-05_video-cc` →
   commits tagged `#video-cc`. Same words, so the branch and the permanent
   `git log --grep` handle line up.
@@ -178,12 +182,11 @@ between the date and the slug, hyphens inside the slug:
   (`dazewell-2026-08-05-video-cc`) because a tool prepended it automatically;
   that setting is off now, so new branches shouldn't have it. If a tool adds
   one anyway, drop it (rename, below) rather than adopting it.
-- **The one tooling caveat:** a session/branch generator that insists on
-  kebab-case may flatten the underscore to a hyphen
-  (`2026-08-05-video-cc`). That's a cosmetic loss, not a broken
-  branch — leave it rather than renaming just for the separator. **The date is
-  the part that must never be dropped**; if the generated name lost the date,
-  rename it.
+- **The one thing that must never be dropped is the date.** A session/branch
+  generator that insists on kebab-case will render the separator as a hyphen
+  (`2026-08-05-video-cc`) — that's a valid name, leave it. **The date is the
+  part that must never be lost**; if the generated name lost the date, rename
+  it.
 - **Wrong name already created?** Rename it before it accumulates review
   history, rather than living with it:
   ```powershell
