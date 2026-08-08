@@ -18771,10 +18771,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             currentUnlockString = str.length() >= 2 ? str.substring(0, 1).toUpperCase(Locale.ROOT) + str.substring(1).toLowerCase(Locale.ROOT) : str;
             unlockTextWidth = (int) Math.ceil(Theme.chat_unlockExtendedMediaTextPaint.measureText(currentUnlockString));
         }
-        if (isChat && isMegagroup && (!isThreadChat || isMonoForum) && hasReplies
+        if ((isChat && isMegagroup && (!isThreadChat || isMonoForum) && hasReplies)
                 // NagramX: same glyph for the locally derived count in one-to-one chats, where none of the above holds
-                || !isThreadChat && !messageObject.scheduled && messageObject.searchType == 0 && getRepliesCount() > 0
-                && com.radolyn.ayugram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, messageObject.getDialogId())) {
+                || (!isThreadChat && !messageObject.scheduled && messageObject.searchType == 0 && getRepliesCount() > 0
+                    && com.radolyn.ayugram.personalreplies.PersonalRepliesController.isEligibleDialog(currentAccount, messageObject.getDialogId()))) {
             currentRepliesString = String.format("%s", LocaleController.formatShortNumber(getRepliesCount(), null));
             repliesTextWidth = (int) Math.ceil(Theme.chat_timePaint.measureText(currentRepliesString));
             float drawableWidth = Theme.chat_msgInRepliesDrawable.getIntrinsicWidth() * (Theme.chat_timePaint.getTextSize() - dp(2)) / Theme.chat_msgInRepliesDrawable.getIntrinsicHeight();

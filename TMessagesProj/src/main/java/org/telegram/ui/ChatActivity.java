@@ -10349,6 +10349,10 @@ public class ChatActivity extends BaseFragment implements
             if (chatAdapter == null || dialogId != dialog_id || personalRepliesTopId != 0 || loaded.size() < 2) {
                 return;
             }
+            if (loaded.get(0).getId() != topId) {
+                // the message being replied to isn't in the cache any more, so there's nothing to anchor the view on
+                return;
+            }
             personalRepliesMessages.clear();
             for (int i = 0; i < loaded.size(); i++) {
                 MessageObject object = loaded.get(i);

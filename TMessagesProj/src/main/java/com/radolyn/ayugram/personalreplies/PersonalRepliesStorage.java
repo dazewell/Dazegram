@@ -12,6 +12,7 @@ import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_stories;
 
 import java.util.ArrayList;
 import java.util.Locale;
@@ -36,7 +37,10 @@ public final class PersonalRepliesStorage {
     /** Ceiling on rows examined for one page of counts. */
     private static final int CANDIDATE_LIMIT = 4000;
 
-    /** Ceiling on replies shown for one message. */
+    /**
+     * Ceiling on replies for one message, applied to both the count and the
+     * view so the glyph, the menu label and the list can't disagree.
+     */
     public static final int THREAD_LIMIT = 500;
 
     private PersonalRepliesStorage() {}
@@ -83,7 +87,7 @@ public final class PersonalRepliesStorage {
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT thread_reply_id, data FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) LIMIT %d",
+                    "SELECT thread_reply_id, data FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id, mid LIMIT %d",
                     dialogId, TextUtils.join(",", parentIds), CANDIDATE_LIMIT));
             while (cursor.next()) {
                 int parentId = cursor.intValue(0);
@@ -97,7 +101,7 @@ public final class PersonalRepliesStorage {
                 TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                 data.reuse();
                 if (isReplyInDialog(message, dialogId)) {
-                    counts.put(parentId, counts.get(parentId) + 1);
+                    counts.put(parentId, Math.min(THREAD_LIMIT, counts.get(parentId) + 1));
                 }
             }
         } catch (Throwable t) {
@@ -128,8 +132,7 @@ public final class PersonalRepliesStorage {
             cursor = database.queryFinalized(String.format(Locale.US,
                     "SELECT m.read_state, m.data, m.send_state, m.mid, m.date, m.replydata, m.media, m.ttl, m.mention, m.imp, m.forwards, m.replies_data, m.custom_params "
                             + "FROM messages_v2 as m WHERE m.uid = %d AND (m.mid = %d OR m.thread_reply_id = %d) ORDER BY m.mid ASC LIMIT %d",
-                    dialogId, topId, topId, THREAD_LIMIT + 1));
-            while (cursor.next()) {
+                    dialogId, topId, topId, THREAD_LIMIT + 1));            while (cursor.next()) {
                 NativeByteBuffer data = cursor.byteBufferValue(1);
                 if (data == null) {
                     continue;
@@ -181,13 +184,18 @@ public final class PersonalRepliesStorage {
                     MessageCustomParamsHelper.readLocalParams(message, customParams);
                     customParams.reuse();
                 }
-                if (message.reply_to != null && message.reply_to.reply_to_msg_id != 0 && !cursor.isNull(5)) {
+                if (message.reply_to != null && !cursor.isNull(5)) {
                     NativeByteBuffer replyData = cursor.byteBufferValue(5);
                     if (replyData != null) {
-                        message.replyMessage = TLRPC.Message.TLdeserialize(replyData, replyData.readInt32(false), false);
-                        if (message.replyMessage != null) {
-                            message.replyMessage.readAttachPath(replyData, selfId);
-                            MessagesStorage.addUsersAndChatsFromMessage(message.replyMessage, usersToLoad, chatsToLoad, null);
+                        if (message.reply_to.reply_to_msg_id != 0) {
+                            message.replyMessage = TLRPC.Message.TLdeserialize(replyData, replyData.readInt32(false), false);
+                            if (message.replyMessage != null) {
+                                message.replyMessage.readAttachPath(replyData, selfId);
+                                MessagesStorage.addUsersAndChatsFromMessage(message.replyMessage, usersToLoad, chatsToLoad, null);
+                            }
+                        } else if (message.reply_to.story_id != 0) {
+                            // the same blob holds the story a message replies to, and the top message can be one
+                            message.replyStory = TL_stories.StoryItem.TLdeserialize(replyData, replyData.readInt32(false), false);
                         }
                         replyData.reuse();
                     }
