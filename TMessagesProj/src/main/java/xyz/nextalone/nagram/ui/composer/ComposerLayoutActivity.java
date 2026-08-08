@@ -602,7 +602,9 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
+            int width = MeasureSpec.getSize(widthMeasureSpec);
+            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+                    MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
             // Only seeded when the bar is idle. The preview now resizes as the slider moves, which
             // re-measures this row mid gesture, and re-asserting the quantised value there would
             // snap the thumb out from under the finger.
@@ -819,12 +821,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             stage.removeAllViews();
 
             toolbar = new ComposerToolbarLayout(getContext());
-            // A flat themed fill rather than the chat's render node blur: there is no live chat
-            // behind this row to sample, and the capsule's shape, size and translucency - the things
-            // the preview exists to show - do not depend on what is behind it.
-            toolbar.attachGlass(
-                    new BlurredBackgroundDrawableViewFactory(wallpaperProvider.updateSourceFromBackgroundViewDrawable(Theme.getCachedWallpaperNonBlocking())),
-                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
+            // Fed the wallpaper as a static source rather than the chat's render node blur: there is
+            // no live chat behind this row to sample from, but the capsule still has to be drawn over
+            // the same backdrop it is composited against, or its translucency reads wrong.
+            attachGlass(Theme.getCachedWallpaperNonBlocking());
 
             String trailingKey = trailingKeyOf(zones.get(ComposerButtons.ZONE_END));
             for (int zone : PREVIEW_ZONES) {
@@ -842,6 +842,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                 }
             }
             stage.addView(toolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, ComposerToolbarLayout.height(), Gravity.CENTER));
+        }
+
+        /** Points the capsule's glass at whatever the chat wallpaper currently is. A null wallpaper
+         * still yields a usable source, so the capsule is never left unpainted. */
+        private void attachGlass(Drawable wallpaper) {
+            toolbar.attachGlass(
+                    new BlurredBackgroundDrawableViewFactory(wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper)),
+                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
         }
 
         /** Mirrors {@link ComposerLayout#trailingKey()} against the layout being dragged rather than
@@ -886,11 +894,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (wallpaper != backgroundDrawable) {
                 backgroundDrawable = wallpaper;
                 // The glass samples the wallpaper it is drawn over, so a wallpaper that arrives
-                // after the toolbar was built has to be handed to it, not just painted here.
-                if (toolbar != null && wallpaper != null) {
-                    toolbar.attachGlass(
-                            new BlurredBackgroundDrawableViewFactory(wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper)),
-                            new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
+                // after the toolbar was built has to be handed to it, not just painted here. Only on
+                // an actual change, so this stays off the per frame path.
+                if (toolbar != null) {
+                    attachGlass(wallpaper);
                 }
             }
             if (wallpaper == null) {
