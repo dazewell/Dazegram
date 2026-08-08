@@ -662,7 +662,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private AiButtonDrawable aiButtonIcon;
     private ImageView aiButton;
     private static final int COMPOSER_TOOLBAR_HEIGHT = xyz.nextalone.nagram.ui.ComposerToolbarLayout.HEIGHT;
-    private static final int COMPOSER_TOOLBAR_GAP = 6;
+    private static final int COMPOSER_TOOLBAR_GAP = 2;
     private static final int COMPOSER_TEXT_HORIZONTAL_INSET = 16;
     // The normal row's 9/10 padding centers its line box half a dp above the pill.
     private static final float COMPOSER_TEXT_OPTICAL_OFFSET = 0.5f;
