@@ -1391,6 +1391,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val composerToolbarScale =
+        addConfig(
+            "ComposerToolbarScale",
+            ConfigItem.configTypeInt,
+            100 // percent; slider range 75..125 in 5% steps (see ComposerLayoutActivity)
+        )
     val inputTextSize =
         addConfig(
             "InputTextSize",

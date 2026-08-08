@@ -37,11 +37,14 @@ import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.SlideChooseView;
 
+import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Lets the user place each composer toolbar button into a zone and order it, by dragging rows
@@ -54,6 +57,11 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int TYPE_BUTTON = 2;
     private static final int TYPE_PLACEHOLDER = 3;
     private static final int TYPE_INFO = 4;
+    private static final int TYPE_SCALE = 5;
+
+    private static final int SCALE_MIN = 75;
+    private static final int SCALE_MAX = 125;
+    private static final int SCALE_STEP = 5;
 
     private static final int reset_id = 1;
 
@@ -155,6 +163,10 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private void buildItems(List<List<String>> zones) {
         items.clear();
+        // Sits above the zone list so the size control is the first thing under the preview, rather
+        // than something the user only finds after scrolling past twenty draggable rows.
+        items.add(new Item(TYPE_SCALE, -1, null));
+        items.add(new Item(TYPE_INFO, -1, null));
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
@@ -243,6 +255,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private void resetLayout() {
         ComposerLayout.reset();
+        NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(100);
         lastSaved = ComposerLayout.snapshot();
         buildItems(lastSaved);
         if (adapter != null) {
@@ -291,6 +304,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 case TYPE_INFO:
                     view = new TextInfoPrivacyCell(context);
                     break;
+                case TYPE_SCALE:
+                    view = new ScaleCell(context);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
                 default:
                     ButtonRowCell cell = new ButtonRowCell(context);
                     cell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -318,6 +335,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_INFO:
                     ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
+                    break;
+                case TYPE_SCALE:
+                    ((ScaleCell) holder.itemView).update();
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -349,6 +369,8 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static int footerText(int zone) {
         switch (zone) {
+            case -1:
+                return R.string.ComposerScaleInfo;
             case ComposerButtons.ZONE_START:
                 return R.string.ComposerZoneLeadingInfo;
             case ComposerButtons.ZONE_MIDDLE:
@@ -475,6 +497,40 @@ public class ComposerLayoutActivity extends BaseFragment {
             adapter.notifyDataSetChanged();
             updatePreview();
         }
+    }
+
+    /** Scales the whole panel - row, cells and glyphs together - between 75% and 125%. */
+    private class ScaleCell extends FrameLayout {
+
+        private final SlideChooseView slider;
+        private final String[] options;
+
+        ScaleCell(Context context) {
+            super(context);
+            slider = new SlideChooseView(context);
+            options = new String[(SCALE_MAX - SCALE_MIN) / SCALE_STEP + 1];
+            for (int i = 0; i < options.length; i++) {
+                options[i] = String.format(Locale.US, "%d%%", SCALE_MIN + i * SCALE_STEP);
+            }
+            slider.setOptions(indexOfScale(), options);
+            slider.setCallback(index -> {
+                NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(SCALE_MIN + index * SCALE_STEP);
+                // Deferred to leaving the screen like the layout itself: rebuilding every chat behind
+                // the editor on each step of the drag would stutter for no visible gain here.
+                rebuildPending = true;
+            });
+            addView(slider, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
+        }
+
+        void update() {
+            slider.setOptions(indexOfScale(), options);
+        }
+    }
+
+    private static int indexOfScale() {
+        int percent = NaConfig.INSTANCE.getComposerToolbarScale().Int();
+        percent = Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent));
+        return Math.round((percent - SCALE_MIN) / (float) SCALE_STEP);
     }
 
     private static class PlaceholderCell extends FrameLayout {
