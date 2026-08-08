@@ -638,7 +638,7 @@ public class MessageHelper extends BaseController {
                 Runnable deleteAction = () -> {
                     for (ArrayList<Integer> list : lists) {
                         for (int msgId : list) {
-                            AyuState.permitDeleteMessage(dialogId, msgId);
+                            AyuState.permitDeleteMessage(currentAccount, dialogId, msgId);
                         }
                         getMessagesController().deleteMessages(list, null, null, dialogId, 0, true, 0);
                     }

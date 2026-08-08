@@ -1265,13 +1265,13 @@ public class DeleteMessagesBottomSheet extends BottomSheetWithRecyclerListView {
         } else {
             if (!supergroupMessageIds.isEmpty()) {
                 for (int i = 0; i < supergroupMessageIds.size(); i++) {
-                AyuState.permitDeleteMessage(-inChat.id, supergroupMessageIds.get(i));
+                AyuState.permitDeleteMessage(currentAccount, -inChat.id, supergroupMessageIds.get(i), mode == ChatActivity.MODE_SCHEDULED);
             }
             MessagesController.getInstance(currentAccount).deleteMessages(supergroupMessageIds, null, null, -inChat.id, topicId, false, mode);
         }
         if (!groupMessageIds.isEmpty()) {
             for (int i = 0; i < groupMessageIds.size(); i++) {
-                AyuState.permitDeleteMessage(mergeDialogId, groupMessageIds.get(i));
+                AyuState.permitDeleteMessage(currentAccount, mergeDialogId, groupMessageIds.get(i), mode == ChatActivity.MODE_SCHEDULED);
             }
                 MessagesController.getInstance(currentAccount).deleteMessages(groupMessageIds, null, null, mergeDialogId, topicId, true, mode);
             }

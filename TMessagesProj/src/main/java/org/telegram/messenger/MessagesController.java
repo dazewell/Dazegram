@@ -9470,7 +9470,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
                     for (int a = 0; a < messagesCopy.size(); a++) {
                         int msgId = messagesCopy.get(a);
-                        if (AyuState.isDeletePermitted(dialogIdFinal, msgId)) {
+                        if (AyuState.isDeletePermitted(currentAccount, dialogIdFinal, msgId)) {
                             continue;
                         }
                         MessageObject obj = dialogMessagesByIds.get(msgId);
@@ -9497,7 +9497,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 getMessagesStorage().getStorageQueue().postRunnable(() -> {
                     var invalidate = new ArrayList<Integer>();
                     for (var msgId : messagesCopy) {
-                        if (AyuState.isDeletePermitted(dialogIdFinal, msgId)) {
+                        if (AyuState.isDeletePermitted(currentAccount, dialogIdFinal, msgId)) {
                             continue;
                         }
                         MessageObject obj = dialogMessagesByIds.get(msgId);
@@ -9519,7 +9519,7 @@ public class MessagesController extends BaseController implements NotificationCe
                 var userId = UserConfig.getInstance(currentAccount).clientUserId;
                 ArrayList<Integer> permittedForAyuDeletion = new ArrayList<>();
                 for (var msgId : messages) {
-                    if (AyuState.isDeletePermitted(dialogId, msgId)) {
+                    if (AyuState.isDeletePermitted(currentAccount, dialogId, msgId)) {
                         permittedForAyuDeletion.add(msgId);
                     }
                 }
@@ -19965,6 +19965,11 @@ public class MessagesController extends BaseController implements NotificationCe
                         var messagesToSave = MessageHelper.getInstance(currentAccount).getMessagesStorageMessages(dialogId, messageIds);
                         if (messagesToSave != null && !messagesToSave.isEmpty()) {
                             for (var msg : messagesToSave) {
+                                // the server echoes back the deletes we asked for ourselves, and this path
+                                // never checked, so our own delete came back and was saved as someone else's
+                                if (AyuState.isDeletePermitted(currentAccount, dialogId, msg.id)) {
+                                    continue;
+                                }
                                 var topicId = MessageObject.getTopicId(currentAccount, msg, isForum(dialogId));
                                 var prefs = new AyuSavePreferences(msg, currentAccount, dialogId, topicId, msg.id, (int)(currentTime / 1000));
                                 ayuMessagesController.onMessageDeleted(prefs);
