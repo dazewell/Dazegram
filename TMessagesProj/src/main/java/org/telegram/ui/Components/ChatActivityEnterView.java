@@ -676,6 +676,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     // How far the send/mic control is drawn inside its slot, so a ring of the input's glass stays visible around it.
     private static final int COMPOSER_PRIMARY_INSET = 3;
     private boolean composerPrimaryGeometryPosted;
+    private boolean composerPrimaryReady;
 
     private final boolean composerToolbarEnabled;
     private boolean messageEditExpanded;
@@ -3825,6 +3826,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         checkChannelRights();
 
         createMessageEditText();
+        composerPrimaryReady = true;
     }
 
     public void setViewParentForEmoji(ViewGroup viewParent) {
@@ -17986,8 +17988,12 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX (#composer-input): the send and mic column sits inside the input bubble, so the bubble runs the
     // full width and it's the content beside the column that gets held off it: the text field, plus the review
     // panel while that owns the row. This only reports that the column's width moved, so they can re-measure.
+    // Nothing publishes until the constructor has finished wiring the right column: createMessageEditText() runs as
+    // the constructor's last statement and already reaches here, and the send button reports a layout-independent
+    // width, so an early publish can call onChangedInputPrimaryWidth() on a subclass whose fields aren't assigned
+    // yet. The first real publish is the first dispatchDraw(), which is post-construction and post-layout.
     private boolean publishComposerPrimaryOffset() {
-        if (!composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
+        if (!composerPrimaryReady || !composerToolbarEnabled || !inputSatellites.updateRightOffset()) {
             return false;
         }
         onChangedInputPrimaryWidth();
