@@ -3840,7 +3840,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         public void drainEncoder(boolean endOfStream) throws Exception {
             // NagramX: a failed rollover leaves no muxer behind; there is nothing to drain into
             if (mediaMuxer == null) {
-                if (endOfStream) {
+                if (endOfStream && videoEncoder != null) {
                     videoEncoder.signalEndOfInputStream();
                 }
                 return;
