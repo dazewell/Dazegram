@@ -13,6 +13,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.SystemClock;
 import android.text.TextPaint;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -435,6 +436,49 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
+    private static final long START_ZONE_SWAP_DWELL_MS = 350;
+
+    private int pendingStartSwapFrom = RecyclerView.NO_POSITION;
+    private int pendingStartSwapTo = RecyclerView.NO_POSITION;
+    private long pendingStartSwapSince;
+
+    /** Tap shortcut for Hidden <-> Scrolling: dragging across a long Hidden list is fiddly, so a plain
+     * tap flips a row to the other side without needing to reach the row's spot at all. Start and End
+     * stay drag-only - they are capacity/anchor constrained (single slot, trailing-pinned) in ways a
+     * blind tap-to-the-end can't express. */
+    private void toggleHiddenMiddle(int position) {
+        if (position < 0 || position >= items.size()) {
+            return;
+        }
+        Item item = items.get(position);
+        if (item.type != TYPE_BUTTON) {
+            return;
+        }
+        int zone = zoneAt(position);
+        if (zone != ComposerButtons.ZONE_MIDDLE && zone != ComposerButtons.ZONE_HIDDEN) {
+            return;
+        }
+        ComposerButtons.Button button = ComposerButtons.get(item.key);
+        int targetZone = zone == ComposerButtons.ZONE_HIDDEN ? ComposerButtons.ZONE_MIDDLE : ComposerButtons.ZONE_HIDDEN;
+        if (button == null || !button.canSitIn(targetZone)) {
+            return;
+        }
+        List<List<String>> zones = collect();
+        zones.get(zone).remove(item.key);
+        // Appended at the end of the target zone: a sensible, predictable default rather than trying
+        // to guess where in the middle of an existing order a tapped button "should" go.
+        zones.get(targetZone).add(item.key);
+        buildItems(zones);
+        adapter.notifyDataSetChanged();
+        persist();
+        updatePreview();
+    }
+
+    private void clearPendingStartSwap() {
+        pendingStartSwapFrom = RecyclerView.NO_POSITION;
+        pendingStartSwapTo = RecyclerView.NO_POSITION;
+    }
+
     private class TouchHelperCallback extends ItemTouchHelper.Callback {
 
         @Override
@@ -493,12 +537,28 @@ public class ComposerLayoutActivity extends BaseFragment {
                 if (targetType != TYPE_BUTTON || incumbent == null || sourceZone < 0 || !incumbent.canSitIn(sourceZone)) {
                     return false;
                 }
+                // Autoscroll carries the dragged row over Leading just passing through on the way to
+                // a zone further up the list, and onMove fires on every one of those scroll ticks, so
+                // committing on the first hit turned "scrolling past the top" into an accidental swap.
+                // Require the same pair to keep showing up for a short dwell before it actually commits.
+                long now = SystemClock.uptimeMillis();
+                if (pendingStartSwapFrom != from || pendingStartSwapTo != to) {
+                    pendingStartSwapFrom = from;
+                    pendingStartSwapTo = to;
+                    pendingStartSwapSince = now;
+                    return false;
+                }
+                if (now - pendingStartSwapSince < START_ZONE_SWAP_DWELL_MS) {
+                    return false;
+                }
+                clearPendingStartSwap();
                 Collections.swap(items, from, to);
                 adapter.notifyItemMoved(from, to);
                 adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
                 updatePreview();
                 return true;
             }
+            clearPendingStartSwap();
             // A button that was just swapped into Leading is still mid-gesture and still carries the
             // movement flags it started with, so without this it could be dragged straight back out
             // and leave the slot empty until drop.
@@ -542,6 +602,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
             setStartZoneArmed(false);
+            clearPendingStartSwap();
             // A cross-section move can empty the source zone or drop a button next to a stale
             // placeholder. Persist takes the flat order as truth, then a rebuild restores one
             // placeholder per empty zone and drops the redundant ones.
