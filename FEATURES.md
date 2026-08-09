@@ -99,7 +99,7 @@ Matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software
 
 ### Cite <!-- #cite -->
 
-Select text in a message and tap *Cite* to drop it into your input box as a quote block, formatting and all. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few messages and answer them all in one.
+Select text in a message and tap *Cite* to drop it into your input box as a quote block, formatting and all. Unlike the regular Quote option, it doesn't start a reply — the quote just becomes part of what you're typing, so you can cite a few messages and answer them all in one. If you've already typed something, a citation gets a blank line before it so it doesn't run into your text, and your cursor always lands on a fresh line below the quote.
 
 ### Reschedule selected messages <!-- #reschedule -->
 

@@ -3980,9 +3980,23 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
             SpannableStringBuilder builder = new SpannableStringBuilder(editField.getText());
-            // A single line break before the quote; putQuoteToEditable inserts it when needed.
+            // Leave a blank line before a citation appended after existing text, so it reads as
+            // a separate block rather than butting up against whatever was already typed. Top up
+            // however many trailing \n are already there instead of always adding two, or a lone
+            // trailing \n (e.g. the user just pressed Enter) would end up with a double gap.
+            int len = builder.length();
+            if (len > 0) {
+                int trailingNewlines = 0;
+                while (trailingNewlines < 2 && trailingNewlines < len && builder.charAt(len - 1 - trailingNewlines) == '\n') {
+                    trailingNewlines++;
+                }
+                for (int i = trailingNewlines; i < 2; i++) {
+                    builder.append('\n');
+                }
+            }
             int start = builder.length();
             builder.append(cite);
+            // putQuoteToEditable always leaves a trailing \n after the quote, so typed text lands outside it.
             QuoteSpan.putQuoteToEditable(builder, start, builder.length(), false);
             if (chatActivity.actionBar != null && chatActivity.actionBar.isActionModeShowed()) {
                 chatActivity.clearSelectionMode();
