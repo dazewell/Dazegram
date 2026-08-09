@@ -2128,12 +2128,16 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         return end;
     }
 
-    // Widest of the title+pill group or the status line -- the smallest bubble that hugs both. This
-    // is a width only (the box-centre terms cancel out), so it's valid even before the title has been
-    // laid out. No avatar: in centered mode it keeps its own bubble on the right.
+    public boolean isCenteredContentMeasured() {
+        return titleTextView != null && titleTextView.getMeasuredWidth() > 0;
+    }
+
+    // Widest of the title+pill group or the status line -- the smallest bubble that hugs both. The
+    // box-centre terms cancel out, so this is a width only -- but it still reads the title's
+    // measured width, so it only means anything once the title has been measured. Callers check
+    // isCenteredContentMeasured() first. No avatar: in centered mode it keeps its own bubble on the right.
     public int getCenteredContentWidth() {
-        int width = centeredGroupRight() - centeredContentLeft();
-        if (subtitleTextView != null) {
+        int width = centeredGroupRight() - centeredContentLeft();        if (subtitleTextView != null) {
             // Same gradient-fade caveat as the title: clamp to the displayed width.
             width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
         } else if (animatedSubtitleTextView != null) {

@@ -2182,6 +2182,11 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (chatAvatarContainer == null || !chatAvatarContainer.isCenteredTitle()) {
             return;
         }
+        // Before the title is measured the group width collapses to zero, which would animate the
+        // bubble shut and then back open. The next layout pass calls this again with real metrics.
+        if (!chatAvatarContainer.isCenteredContentMeasured()) {
+            return;
+        }
 
         // Title/status text width only. The avatar has its own (menu) bubble.
         final int contentWidth = chatAvatarContainer.getCenteredContentWidth();
