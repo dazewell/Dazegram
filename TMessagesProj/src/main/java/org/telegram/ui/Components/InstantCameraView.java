@@ -3159,6 +3159,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     AndroidUtilities.runOnUIThread(() -> {
                         if (cameraFile == nextFile) {
                             cameraFile = stillWriting;
+                            recordStartTime = System.currentTimeMillis() - segmentDuration;
+                            recordedTime = segmentDuration;
+                            progress = Math.min(1f, segmentDuration / 60000.0f);
+                            updateInfiniteButton();
                         }
                         AutoDeleteMediaTask.unlockFile(nextFile);
                     });
