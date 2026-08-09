@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
+import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.ui.composer.ComposerButtons;
 import xyz.nextalone.nagram.ui.composer.ComposerLayout;
 
@@ -39,9 +40,12 @@ import xyz.nextalone.nagram.ui.composer.ComposerLayout;
  */
 public final class ComposerToolbarLayout extends FrameLayout {
 
-    public static final int HEIGHT = 56;
-    public static final int BUTTON_SIZE = 48;
+    private static final int BASE_HEIGHT = 56;
+    private static final int BASE_BUTTON_SIZE = 48;
+    private static final int SCALE_MIN = 75;
+    private static final int SCALE_MAX = 125;
     private static final int ICON_GLYPH = 24;
+    private static final int GLASS_INSET = 4;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
@@ -53,7 +57,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final CollapsingLinearLayout middleLeadingSlot;
     private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
-    private final Map<View, String> configuredKeys = new HashMap<>();
+    private final Map<View, Integer> configuredOrder = new HashMap<>();
     private View pinnedTrailingView;
 
     public ComposerToolbarLayout(Context context) {
@@ -64,7 +68,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls = new ControlsLayout(context);
         controls.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         controls.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
-        addView(controls, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
+        addView(controls, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
 
         startSlot = createFrameSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -119,7 +123,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     public void addStart(View view) {
-        addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
+        addToFrame(startSlot, view, buttonSize(), buttonSize(), Gravity.CENTER);
         applyIconBox(null, view);
     }
 
@@ -130,42 +134,51 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * and the whole row could be sorted in one pass.
      */
     public void addConfigurable(String key, View view) {
+        addConfigurable(key, view, ComposerLayout.zoneOf(key), ComposerLayout.indexOf(key), ComposerLayout.trailingKey());
+    }
+
+    /**
+     * Places a button against a caller supplied layout rather than the saved one. The settings
+     * preview needs this: it renders the arrangement being dragged, which is deliberately not
+     * written to config until the drag ends, so resolving placement from the stored string there
+     * would show the previous layout for the whole gesture. The order is local to the supplied
+     * zone, matching ComposerLayout.indexOf().
+     */
+    public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
         AndroidUtilities.removeFromParent(view);
-        configuredKeys.put(view, key);
+        configuredOrder.put(view, order);
         // One sizing gate for every configurable button, whatever zone it lands in: the source assets
         // range from 16dp to 32dp and the stock scale type draws each at its own intrinsic size, so
         // without this the row is a jumble of glyph sizes.
         applyIconBox(key, view);
-        int zone = ComposerLayout.zoneOf(key);
         if (zone == ComposerButtons.ZONE_HIDDEN) {
             // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
             // to decide its own geometry, so a removed button has to keep whatever visibility it had.
             return;
         }
         if (zone == ComposerButtons.ZONE_START) {
-            addToFrame(startSlot, view, BUTTON_SIZE, BUTTON_SIZE, Gravity.CENTER);
+            addToFrame(startSlot, view, buttonSize(), buttonSize(), Gravity.CENTER);
             return;
         }
         if (zone == ComposerButtons.ZONE_END) {
-            if (key.equals(ComposerLayout.trailingKey())) {
+            if (key.equals(trailingKey)) {
                 pinnedTrailingView = view;
-                endSlot.addView(view, LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+                endSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
             } else {
-                endSlot.addView(view, insertIndex(endSlot, key, endContextIndex()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+                endSlot.addView(view, insertIndex(endSlot, order, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
             }
             return;
         }
-        orderedSlot.addView(view, insertIndex(orderedSlot, key, orderedSlot.getChildCount()), LayoutHelper.createLinear(BUTTON_SIZE, BUTTON_SIZE));
+        orderedSlot.addView(view, insertIndex(orderedSlot, order, orderedSlot.getChildCount()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
         middleScrollView.post(this::pinMiddleToStart);
     }
 
-    // Walks the siblings already in the slot and stops in front of the first one the saved layout puts
-    // after this button. Views with no key (the attach group) are left where they are.
-    private int insertIndex(ViewGroup slot, String key, int limit) {
-        int order = ComposerLayout.indexOf(key);
+    // Walks the siblings already in the slot and stops in front of the first one the layout puts
+    // after this button. Views with no recorded order (the attach group) are left where they are.
+    private int insertIndex(ViewGroup slot, int order, int limit) {
         for (int i = 0; i < limit && i < slot.getChildCount(); i++) {
-            String other = configuredKeys.get(slot.getChildAt(i));
-            if (other != null && ComposerLayout.indexOf(other) > order) {
+            Integer other = configuredOrder.get(slot.getChildAt(i));
+            if (other != null && other > order) {
                 return i;
             }
         }
@@ -237,10 +250,47 @@ public final class ComposerToolbarLayout extends FrameLayout {
         parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
-    // Every glyph gets the same 24dp visual box. Registry scales are authored optical corrections
-    // for assets whose keyline is intentionally smaller or larger than that shared box.
-    public static void applyIconBox(View view, int cellDp, float scale) {
+    /**
+     * The user's panel scale as a factor, clamped to the slider's own range so a hand-edited config
+     * value cannot produce a panel that no longer fits the composer.
+     */
+    public static float scale() {
+        int percent = NaConfig.INSTANCE.getComposerToolbarScale().Int();
+        return Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent)) / 100f;
+    }
+
+    /**
+     * Row height in dp. Read at layout time rather than cached: the scale only changes while the
+     * settings screen is open, and leaving it changes it by rebuilding every fragment, so a view
+     * keeps one height for its whole life and the bounds animator never sees it move.
+     */
+    public static int height() {
+        return Math.round(BASE_HEIGHT * scale());
+    }
+
+    /** Button cell size in dp, scaled with the row so the cells stay centered in it. */
+    public static int buttonSize() {
+        return Math.round(BASE_BUTTON_SIZE * scale());
+    }
+
+    /**
+     * Sizes a glyph for a panel cell, folding in the user's panel scale. Every glyph gets the same
+     * 24dp visual box; the registry scales are authored optical corrections for assets whose keyline
+     * is intentionally smaller or larger than that shared box.
+     */
+    public static void applyPanelIconBox(View view, float iconScale) {
+        applyIconBox(view, buttonSize(), iconScale * scale());
+    }
+
+    private static int glassInset() {
+        return Math.max(1, Math.round(GLASS_INSET * scale()));
+    }
+
+    private static void applyIconBox(View view, int cellDp, float scale) {
         int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
+        // Kept in pixel space rather than rounded to whole dp: at the odd steps the scaled glyph
+        // lands on a fraction of a dp, and rounding it first would bias the two insets apart and
+        // push the icon off center inside its cell.
         int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH) * scale);
         int remainingPx = Math.max(0, cellPx - glyphPx);
         int startInset = remainingPx / 2;
@@ -263,7 +313,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
         // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
         // first tap.
-        applyIconBox(view, BUTTON_SIZE, scale);
+        applyPanelIconBox(view, scale);
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
@@ -302,7 +352,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setClipToPadding(true);
             // 2dp of glass inset plus 2dp of breathing room: the press animation only overshoots by a
             // fraction of a dp, so anything wider is just dead space at both ends of the capsule.
-            setPaddingRelative(AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4), AndroidUtilities.dp(4));
+            int inset = glassInset();
+            setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
         }
 
         void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -311,15 +362,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             this.middleContent = middleContent;
             this.endSlot = endSlot;
 
-            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
-            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
-            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, HEIGHT, Gravity.LEFT));
+            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
+            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
+            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
         }
 
         void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
             glass = factory.create(this, colorProvider);
-            glass.setRadius(AndroidUtilities.dp(26));
-            glass.setPadding(AndroidUtilities.dp(4));
+            // Half the drawn capsule - the row minus the 4dp inset it is painted within. Derived rather
+            // than a fixed 26dp so a scaled row still ends in a semicircle instead of squared off corners.
+            int inset = glassInset();
+            glass.setRadius(AndroidUtilities.dp((height() - inset) / 2f));
+            glass.setPadding(AndroidUtilities.dp(inset));
             invalidate();
         }
 
@@ -345,7 +399,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int availableWidth = MeasureSpec.getSize(widthMeasureSpec);
-            int height = AndroidUtilities.dp(HEIGHT);
+            int height = AndroidUtilities.dp(height());
             int contentHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
             int heightSpec = MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY);
             int unboundedWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
