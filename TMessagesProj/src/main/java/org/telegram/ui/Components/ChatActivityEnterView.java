@@ -7076,7 +7076,6 @@ public class ChatActivityEnterView extends FrameLayout implements
             parentFragment.applyDraftMaybe(false);
         }
         updateFieldRight(lastAttachVisible);
-        isRecordingStateChanged();
     }
 
     // NagramX: fullscreen input mode. Not persisted: it ends with the draft (send/clear), with focus,
