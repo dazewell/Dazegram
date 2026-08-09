@@ -1528,11 +1528,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     int prevWidth;
+    private boolean avatarContainerWidthDeferred;
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         int additionalTop = occupyStatusBar ? AndroidUtilities.statusBarHeight : 0;
-        if (prevWidth != getMeasuredWidth()) {
+        if (prevWidth != getMeasuredWidth() || avatarContainerWidthDeferred) {
             prevWidth = getMeasuredWidth();
             checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
         }
@@ -2179,14 +2180,35 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     public void checkAvatarContainerWidth(boolean animated) {
         // Only the centered title hugs its content. The left-aligned layout keeps the
         // full-width bubble, so there's nothing to measure there.
-        if (chatAvatarContainer == null || !chatAvatarContainer.isCenteredTitle()) {
+        if (chatAvatarContainer == null) {
+            animatorAvatarContainerHasAvatar.setValue(false, animated);
+            avatarContainerWidthDeferred = false;
+            return;
+        }
+        final View avatarView = chatAvatarContainer.getAvatarImageView();
+        animatorAvatarContainerHasAvatar.setValue(avatarView != null && avatarView.getVisibility() == View.VISIBLE, animated);
+        if (!chatAvatarContainer.isCenteredTitle()) {
+            // Centered sizing no longer applies, so any pending deferral is moot -- leaving it set
+            // would make onLayout re-enter this on every pass.
+            avatarContainerWidthDeferred = false;
             return;
         }
         // Before the title is measured the group width collapses to zero, which would animate the
-        // bubble shut and then back open. The next layout pass calls this again with real metrics.
+        // bubble shut and then back open. Defer instead -- but onLayout only re-runs this when the
+        // bar's own width changes, which may never happen again, so post a retry rather than
+        // relying on another layout pass arriving on its own.
         if (!chatAvatarContainer.isCenteredContentMeasured()) {
+            if (!avatarContainerWidthDeferred) {
+                avatarContainerWidthDeferred = true;
+                postOnAnimation(() -> {
+                    if (avatarContainerWidthDeferred) {
+                        checkAvatarContainerWidth(false);
+                    }
+                });
+            }
             return;
         }
+        avatarContainerWidthDeferred = false;
 
         // Title/status text width only. The avatar has its own (menu) bubble.
         final int contentWidth = chatAvatarContainer.getCenteredContentWidth();
@@ -2204,6 +2226,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private final FactorAnimator animatorAvatarContainerWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
+    private final BoolAnimator animatorAvatarContainerHasAvatar = new BoolAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 380);
 
     private final FactorAnimator animatorMenuItemsWidth = new FactorAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
     private final BoolAnimator animatorHasMenuItems = new BoolAnimator(0, this, CubicBezierInterpolator.EASE_OUT_QUINT, 320);
@@ -2263,7 +2286,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         if (glassDrawable != null && !glassOnlyBack) {
             final int menuWidthWithPadding = menuWidth + (hasForcedMenuWidth ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
             final int leftDefault = hasBackButton ? s + p : 0;
-            final int rightDefault = getWidth() - menuWidthWithPadding;
+            final int avatarBubbleWidth = (int) (animatorAvatarContainerHasAvatar.getFloatValue() * (s + p));
+            final int rightDefault = getWidth() - Math.max(menuWidthWithPadding, avatarBubbleWidth);
             final int widthDefault = rightDefault - leftDefault;
             int left, right;
             if (centeredTitle) {
@@ -2298,9 +2322,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             glassDrawableBack.setBounds(0, t, s + p * 2, b);
             glassDrawableBack.draw(canvas);
         }
-        if (glassDrawableMenu != null && menuWidth > 0 && !glassOnlyBack) {
+        if (glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
-            glassDrawableMenu.setAlpha(hasForcedMenuWidth ? 255 : (int) (255 * animatorHasMenuItems.getFloatValue()));
+            glassDrawableMenu.setAlpha(hasForcedMenuWidth || menuWidth == 0 ? (int) (255 * animatorAvatarContainerHasAvatar.getFloatValue()) : (int) (255 * animatorHasMenuItems.getFloatValue()));
             glassDrawableMenu.draw(canvas);
         }
 
