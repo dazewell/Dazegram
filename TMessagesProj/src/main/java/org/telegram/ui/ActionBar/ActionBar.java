@@ -2181,6 +2181,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         // Only the centered title hugs its content. The left-aligned layout keeps the
         // full-width bubble, so there's nothing to measure there.
         if (chatAvatarContainer == null || !chatAvatarContainer.isCenteredTitle()) {
+            // Centered sizing no longer applies, so any pending deferral is moot -- leaving it set
+            // would make onLayout re-enter this on every pass.
+            avatarContainerWidthDeferred = false;
             return;
         }
         // Before the title is measured the group width collapses to zero, which would animate the
