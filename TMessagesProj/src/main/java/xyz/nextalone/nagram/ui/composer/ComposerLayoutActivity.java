@@ -13,14 +13,13 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
-import android.text.TextPaint;
+import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -40,12 +39,12 @@ import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.HeaderCell;
+import org.telegram.ui.Cells.SlideIntChooseView;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
-import org.telegram.ui.Components.SeekBarView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
 import org.telegram.ui.Components.chat.WallpaperBitmapProvider;
@@ -55,7 +54,6 @@ import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Lets the user place each composer toolbar button into a zone and order it, by dragging rows
@@ -72,20 +70,32 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
-    private static final int SCALE_STEP = 5;
-    private static final int STEP_COUNT = (SCALE_MAX - SCALE_MIN) / SCALE_STEP + 1;
+    private static final int[] SCALE_STEPS = {
+            75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125
+    };
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
     private static final int PREVIEW_PADDING = 12;
+    /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
+     * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
+     * where the real field actually stops next to it. */
+    private static final int SEND_BUTTON_INSET_DP = 3;
 
     private static final int[] PREVIEW_ZONES = {
             ComposerButtons.ZONE_START,
             ComposerButtons.ZONE_MIDDLE,
             ComposerButtons.ZONE_END,
     };
+
+    /** Configured but only conditionally shown in a real chat (draft state, live layout budget,
+     * pending scheduled messages) - dimmed in the preview rather than drawn at full strength, since
+     * there is no live chat here to decide whether they would actually be visible right now. */
+    private static final java.util.Set<String> CONDITIONAL_PREVIEW_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
+            ComposerButtons.AI, ComposerButtons.RICH, ComposerButtons.EXPAND, ComposerButtons.SCHEDULE));
+    private static final float CONDITIONAL_PREVIEW_ALPHA = 0.45f;
 
     /** One height for the pinned preview and the list's matching top margin, so the two cannot
      * drift apart as the scale changes the capsule's size. */
@@ -112,6 +122,11 @@ public class ComposerLayoutActivity extends BaseFragment {
     private List<List<String>> lastSaved;
     private boolean rebuildPending;
     private boolean startZoneArmed;
+    // The view holder mid-drag, if any. getMovementFlags() must keep allowing this one to move even
+    // while it is transiently sitting at a Leading adapter position (right after the dwell swap) -
+    // Leading itself stays undraggable for every *other* row, which is how a fresh drag can never be
+    // started on the permanently-occupied slot.
+    private RecyclerView.ViewHolder draggedViewHolder;
 
     private static final class Item {
         final int type;
@@ -322,7 +337,12 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return false;
+            // RecyclerListView disables the child view whenever this returns false (see
+            // onChildAttachedToWindow), and a disabled view silently swallows setOnClickListener -
+            // it never reaches performClick. Button rows need to stay enabled for the Hidden/Middle
+            // tap-toggle to fire; everything else (headers, footers, placeholders, the scale slider)
+            // has no click behaviour, so it can stay disabled as before.
+            return holder.getItemViewType() == TYPE_BUTTON;
         }
 
         @Override
@@ -352,7 +372,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     view = new TextInfoPrivacyCell(context);
                     break;
                 case TYPE_SCALE:
-                    view = new ScaleCell(context);
+                    view = new SlideIntChooseView(context, null);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 default:
@@ -363,6 +383,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                             itemTouchHelper.startDrag(listView.getChildViewHolder(cell));
                         }
                         return false;
+                    });
+                    cell.setOnClickListener(v -> {
+                        int position = listView.getChildAdapterPosition(cell);
+                        if (position != RecyclerView.NO_POSITION) {
+                            toggleHiddenMiddle(position);
+                        }
                     });
                     view = cell;
                     break;
@@ -384,7 +410,15 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
                     break;
                 case TYPE_SCALE:
-                    ((ScaleCell) holder.itemView).update();
+                    SlideIntChooseView scaleView = (SlideIntChooseView) holder.itemView;
+                    scaleView.set(currentScale(), scaleOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerToolbarScale().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -429,6 +463,55 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
+    private static final long START_ZONE_SWAP_DWELL_MS = 350;
+
+    private int pendingStartSwapFrom = RecyclerView.NO_POSITION;
+    private int pendingStartSwapTo = RecyclerView.NO_POSITION;
+    private long pendingStartSwapSince;
+    // Set for exactly one onMove() right after a Leading swap, to block the immediate
+    // back-swap the very next call would otherwise see (the dragged row is still hovering
+    // over the same spot it just swapped into). Cleared right after that single check so the
+    // drag is free to continue out of Leading on every call after - without this reset it
+    // read as "from is in Leading" forever and the drag could never leave the slot again.
+    private boolean justSwappedIntoStart;
+
+    /** Tap shortcut for Hidden <-> Scrolling: dragging across a long Hidden list is fiddly, so a plain
+     * tap flips a row to the other side without needing to reach the row's spot at all. Start and End
+     * stay drag-only - they are capacity/anchor constrained (single slot, trailing-pinned) in ways a
+     * blind tap-to-the-end can't express. */
+    private void toggleHiddenMiddle(int position) {
+        if (position < 0 || position >= items.size()) {
+            return;
+        }
+        Item item = items.get(position);
+        if (item.type != TYPE_BUTTON) {
+            return;
+        }
+        int zone = zoneAt(position);
+        if (zone != ComposerButtons.ZONE_MIDDLE && zone != ComposerButtons.ZONE_HIDDEN) {
+            return;
+        }
+        ComposerButtons.Button button = ComposerButtons.get(item.key);
+        int targetZone = zone == ComposerButtons.ZONE_HIDDEN ? ComposerButtons.ZONE_MIDDLE : ComposerButtons.ZONE_HIDDEN;
+        if (button == null || !button.canSitIn(targetZone)) {
+            return;
+        }
+        List<List<String>> zones = collect();
+        zones.get(zone).remove(item.key);
+        // Appended at the end of the target zone: a sensible, predictable default rather than trying
+        // to guess where in the middle of an existing order a tapped button "should" go.
+        zones.get(targetZone).add(item.key);
+        buildItems(zones);
+        adapter.notifyDataSetChanged();
+        persist();
+        updatePreview();
+    }
+
+    private void clearPendingStartSwap() {
+        pendingStartSwapFrom = RecyclerView.NO_POSITION;
+        pendingStartSwapTo = RecyclerView.NO_POSITION;
+    }
+
     private class TouchHelperCallback extends ItemTouchHelper.Callback {
 
         @Override
@@ -442,8 +525,11 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return makeMovementFlags(0, 0);
             }
             // The leading button is not draggable - it is replaced by dropping another button on
-            // it, which keeps the slot permanently filled instead of leaving a hole behind.
-            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START) {
+            // it, which keeps the slot permanently filled instead of leaving a hole behind. The
+            // one exception is the row actively being dragged: the dwell swap in onMove() moves it
+            // into the Leading adapter position mid-gesture, and if this froze it too the drag would
+            // dead-end there with no way to keep moving it out into Middle.
+            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START && viewHolder != draggedViewHolder) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -487,16 +573,37 @@ public class ComposerLayoutActivity extends BaseFragment {
                 if (targetType != TYPE_BUTTON || incumbent == null || sourceZone < 0 || !incumbent.canSitIn(sourceZone)) {
                     return false;
                 }
+                // Autoscroll carries the dragged row over Leading just passing through on the way to
+                // a zone further up the list, and onMove fires on every one of those scroll ticks, so
+                // committing on the first hit turned "scrolling past the top" into an accidental swap.
+                // Require the same pair to keep showing up for a short dwell before it actually commits.
+                long now = SystemClock.uptimeMillis();
+                if (pendingStartSwapFrom != from || pendingStartSwapTo != to) {
+                    pendingStartSwapFrom = from;
+                    pendingStartSwapTo = to;
+                    pendingStartSwapSince = now;
+                    return false;
+                }
+                if (now - pendingStartSwapSince < START_ZONE_SWAP_DWELL_MS) {
+                    return false;
+                }
+                clearPendingStartSwap();
                 Collections.swap(items, from, to);
                 adapter.notifyItemMoved(from, to);
                 adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
+                justSwappedIntoStart = true;
                 updatePreview();
                 return true;
             }
-            // A button that was just swapped into Leading is still mid-gesture and still carries the
-            // movement flags it started with, so without this it could be dragged straight back out
-            // and leave the slot empty until drop.
-            if (zoneAt(from) == ComposerButtons.ZONE_START) {
+            // A button that was just swapped into Leading (previous onMove call) is still mid-gesture
+            // at that adapter position; on the very next call it can still appear as "from is in
+            // Leading" before ItemTouchHelper has re-settled, so skip just that one check rather than
+            // blocking every subsequent move away from Leading - a permanent block here is what used
+            // to pin the drag at Leading with no way back out into Middle.
+            clearPendingStartSwap();
+            if (justSwappedIntoStart) {
+                justSwappedIntoStart = false;
+            } else if (zoneAt(from) == ComposerButtons.ZONE_START && source != draggedViewHolder) {
                 return false;
             }
             items.add(to, items.remove(from));
@@ -513,6 +620,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     viewHolder.itemView.setPressed(true);
                 }
             }
+            draggedViewHolder = actionState == ItemTouchHelper.ACTION_STATE_DRAG ? viewHolder : null;
             boolean arm = false;
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
                 int position = viewHolder.getAdapterPosition();
@@ -536,6 +644,9 @@ public class ComposerLayoutActivity extends BaseFragment {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
             setStartZoneArmed(false);
+            draggedViewHolder = null;
+            justSwappedIntoStart = false;
+            clearPendingStartSwap();
             // A cross-section move can empty the source zone or drop a button next to a stale
             // placeholder. Persist takes the flat order as truth, then a rebuild restores one
             // placeholder per empty zone and drops the redundant ones.
@@ -546,81 +657,9 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
-    /**
-     * Scales the whole panel - row, cells and glyphs together - between 75% and 125%. Modelled on the
-     * sticker size row: an unlabelled track with the value in the corner, rather than a label under
-     * every stop, which at eleven stops collides at the crowded end of the track.
-     */
-    private class ScaleCell extends FrameLayout {
-
-        private final SeekBarView sizeBar;
-        private final TextPaint textPaint;
-
-        ScaleCell(Context context) {
-            super(context);
-            setWillNotDraw(false);
-
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            textPaint.setTextSize(dp(16));
-
-            sizeBar = new SeekBarView(context);
-            sizeBar.setReportChanges(true);
-            sizeBar.setSeparatorsCount(STEP_COUNT);
-            sizeBar.setDelegate((stop, progress) -> {
-                int percent = SCALE_MIN + Math.round(progress * (STEP_COUNT - 1)) * SCALE_STEP;
-                if (percent == NaConfig.INSTANCE.getComposerToolbarScale().Int()) {
-                    return;
-                }
-                NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(percent);
-                // Deferred to leaving the screen like the layout itself: rebuilding every chat behind
-                // the editor on each step of the drag would stutter for no visible gain here.
-                rebuildPending = true;
-                invalidate();
-                // The preview is the whole point of the slider, so it does follow the drag. It
-                // rebuilds a single toolbar, which is cheap next to the eleven stops of a sweep.
-                updatePreview();
-            });
-            addView(sizeBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.LEFT | Gravity.TOP, 9, 5, 43, 11));
-        }
-
-        @Override
-        public CharSequence getAccessibilityClassName() {
-            return SeekBar.class.getName();
-        }
-
-        @Override
-        public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info) {
-            super.onInitializeAccessibilityNodeInfo(info);
-            // Announced as a percentage rather than the raw slider sweep, so the default is still a
-            // landmark to come back to without seeing the value in the corner.
-            info.setContentDescription(LocaleController.formatString(
-                    R.string.ComposerScaleAccDescr, currentScale()));
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
-            String value = String.format(Locale.US, "%d%%", currentScale());
-            canvas.drawText(value, getMeasuredWidth() - dp(39), dp(28), textPaint);
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int width = MeasureSpec.getSize(widthMeasureSpec);
-            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
-            // Only seeded when the bar is idle. The preview now resizes as the slider moves, which
-            // re-measures this row mid gesture, and re-asserting the quantised value there would
-            // snap the thumb out from under the finger.
-            if (!sizeBar.isDragging()) {
-                sizeBar.setProgress((currentScale() - SCALE_MIN) / (float) (SCALE_MAX - SCALE_MIN));
-            }
-        }
-
-        void update() {
-            sizeBar.setProgress((currentScale() - SCALE_MIN) / (float) (SCALE_MAX - SCALE_MIN));
-            invalidate();
-        }
+    private static SlideIntChooseView.Options scaleOptions() {
+        return SlideIntChooseView.Options.make(0, SCALE_STEPS, 1,
+                (type, value) -> value + "%");
     }
 
     private static int currentScale() {
@@ -842,6 +881,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ImageView icon = new ImageView(getContext());
                     icon.setImageResource(button.iconRes);
                     icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
+                    // AI, Rich draft, Expand and Schedule's own pin only actually show in a real chat
+                    // once its live state allows them (draft length/content, a measured expand budget,
+                    // pending scheduled messages) - there is no live chat here to evaluate that against,
+                    // so dim them the same way a disabled format button dims, rather than implying they
+                    // are always on the row like Emoji or Attach are.
+                    if (CONDITIONAL_PREVIEW_KEYS.contains(key)) {
+                        icon.setAlpha(CONDITIONAL_PREVIEW_ALPHA);
+                    }
                     toolbar.addConfigurable(key, icon, zone, order, trailingKey);
                 }
             }
@@ -869,26 +916,40 @@ public class ComposerLayoutActivity extends BaseFragment {
 
             TextView hint = new TextView(getContext());
             hint.setText(LocaleController.getString(R.string.Message));
-            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+            // Mirrors the real field's own text size (NaConfig-driven, defaults to 18dp) rather than a
+            // hardcoded preview constant, so a user who bumped their message text size sees that reflected
+            // here too instead of the preview silently drifting from what the real field will show.
+            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,
+                    Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int())));
             hint.setTextColor(Theme.getColor(Theme.key_chat_messagePanelHint));
             hint.setGravity(Gravity.CENTER_VERTICAL);
             hint.setFocusable(false);
             hint.setClickable(false);
             FrameLayout.LayoutParams hintParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
                     LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.START, 0, 0, 0, 0);
-            hintParams.setMarginStart(dp(8));
-            hintParams.setMarginEnd(dp(47));
+            // Real field: ChatActivityEnterView.COMPOSER_TEXT_HORIZONTAL_INSET (16dp) on the start side.
+            // The 8dp used before was an approximation that read visibly closer to the bubble's edge than
+            // the real field ever sits.
+            int textInsetDp = 16;
+            hintParams.setMarginStart(dp(textInsetDp));
+            // Real field's end inset is InputSatellites' published right offset (the send button's own
+            // drawn footprint, i.e. its slot minus its own background inset on both sides, plus that same
+            // inset again as InputSatellites' own content margin) plus the 16dp text inset on top of that -
+            // not just the slot height plus a flat 3dp, which read the placeholder noticeably closer to the
+            // button than the real field's text ever gets.
+            int sendDrawnWidthDp = PREVIEW_INPUT_HEIGHT - 2 * SEND_BUTTON_INSET_DP;
+            hintParams.setMarginEnd(dp(sendDrawnWidthDp + SEND_BUTTON_INSET_DP + textInsetDp));
             body.addView(hint, hintParams);
 
             ChatActivityEnterView.SendButton send = new ChatActivityEnterView.SendButton(
                     getContext(), R.drawable.send_plane_24, null, true);
-            send.setBackgroundInset(dp(3));
+            send.setBackgroundInset(dp(SEND_BUTTON_INSET_DP));
             send.setFocusable(false);
             send.setClickable(false);
             send.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             FrameLayout.LayoutParams sendParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
                     PREVIEW_INPUT_HEIGHT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.END);
-            sendParams.setMarginEnd(dp(3));
+            sendParams.setMarginEnd(dp(SEND_BUTTON_INSET_DP));
             body.addView(send, sendParams);
             stage.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT,
                     Gravity.TOP | Gravity.START));

@@ -23,7 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The text actions in the composer toolbar: every style the selection menu offers, plus Select All.
+ * The text actions in the composer toolbar: every style the selection menu offers, Select All, and
+ * Cut/Copy/Paste.
  *
  * Each one is its own view registered with the toolbar under its own key, so the saved layout can put
  * them wherever the user wants and interleave them with the rest of the row.
@@ -56,7 +57,7 @@ public final class ComposerFormattingActions {
         this.resourcesProvider = resourcesProvider;
         this.isChat = isChat;
         for (ComposerButtons.Button button : ComposerButtons.all()) {
-            if (button.kind != ComposerButtons.KIND_FORMAT && button.kind != ComposerButtons.KIND_TEXT) {
+            if (button.kind != ComposerButtons.KIND_FORMAT && button.kind != ComposerButtons.KIND_TEXT && button.kind != ComposerButtons.KIND_CLIPBOARD) {
                 continue;
             }
             if (!ComposerLayout.isVisible(button.key)) {
@@ -109,6 +110,9 @@ public final class ComposerFormattingActions {
                 }
                 if (action.button.kind == ComposerButtons.KIND_TEXT) {
                     setActionEnabled(action.view, hasText);
+                } else if (ComposerButtons.PASTE.equals(action.button.key)) {
+                    // Pasting replaces/inserts at the cursor regardless of selection, so it doesn't need one.
+                    setActionEnabled(action.view, composerAvailable);
                 } else if ("quote".equals(action.button.key)) {
                     setActionEnabled(action.view, hasSelection && isQuoteAvailable(editText.getText(), start, end));
                 } else {
@@ -165,6 +169,23 @@ public final class ComposerFormattingActions {
                     editText.requestFocus();
                     editText.setSelection(0, editable.length());
                 }
+                return;
+            }
+            if (button.kind == ComposerButtons.KIND_CLIPBOARD) {
+                // Cut/copy/paste run through onTextContextMenuItem directly: it's the fork's own
+                // clipboard logic (HTML-aware paste, quote-span handling), and unlike performMenuAction
+                // it must not go through the platform selection popup.
+                editText.requestFocus();
+                if (ComposerButtons.PASTE.equals(button.key)) {
+                    editText.onTextContextMenuItem(button.menuAction);
+                    return;
+                }
+                if (selectionStart < 0 || selectionEnd <= selectionStart || selectionEnd > editable.length()) {
+                    clearSelection();
+                    return;
+                }
+                editText.setSelection(selectionStart, selectionEnd);
+                editText.onTextContextMenuItem(button.menuAction);
                 return;
             }
             if (selectionStart < 0 || selectionEnd <= selectionStart || selectionEnd > editable.length()) {

@@ -2812,6 +2812,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         textFieldContainer.addView(frameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM, 0, 0, composerToolbarEnabled ? 0 : DEFAULT_HEIGHT + 8, 0));
         if (composerToolbarEnabled) {
             composerToolbar = new xyz.nextalone.nagram.ui.ComposerToolbarLayout(context);
+            // NagramX: the toolbar owns the delayed gesture so holding any visible control can reach
+            // the same layout editor without replacing that control's normal click/long-click handlers.
+            composerToolbar.setConfigurationLongPress(() -> {
+                if (parentFragment != null) {
+                    parentFragment.presentFragment(new xyz.nextalone.nagram.ui.composer.ComposerLayoutActivity());
+                }
+            });
             composerFormattingActions = new xyz.nextalone.nagram.ui.composer.ComposerFormattingActions(this, composerToolbar, resourcesProvider, isChat);
             messageEditTextContainer.addView(composerToolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, composerToolbarHeight(), Gravity.BOTTOM));
         }
