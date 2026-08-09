@@ -364,6 +364,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                         }
                         return false;
                     });
+                    cell.setOnClickListener(v -> {
+                        int position = listView.getChildAdapterPosition(cell);
+                        if (position != RecyclerView.NO_POSITION) {
+                            toggleHiddenMiddle(position);
+                        }
+                    });
                     view = cell;
                     break;
             }
