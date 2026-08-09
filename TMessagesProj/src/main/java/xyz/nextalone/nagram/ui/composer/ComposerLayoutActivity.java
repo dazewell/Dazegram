@@ -86,6 +86,13 @@ public class ComposerLayoutActivity extends BaseFragment {
             ComposerButtons.ZONE_END,
     };
 
+    /** Configured but only conditionally shown in a real chat (draft state, live layout budget,
+     * pending scheduled messages) - dimmed in the preview rather than drawn at full strength, since
+     * there is no live chat here to decide whether they would actually be visible right now. */
+    private static final java.util.Set<String> CONDITIONAL_PREVIEW_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
+            ComposerButtons.AI, ComposerButtons.RICH, ComposerButtons.EXPAND, ComposerButtons.SCHEDULE));
+    private static final float CONDITIONAL_PREVIEW_ALPHA = 0.45f;
+
     /** One height for the pinned preview and the list's matching top margin, so the two cannot
      * drift apart as the scale changes the capsule's size. */
     private static int previewHeight() {
@@ -870,6 +877,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ImageView icon = new ImageView(getContext());
                     icon.setImageResource(button.iconRes);
                     icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
+                    // AI, Rich draft, Expand and Schedule's own pin only actually show in a real chat
+                    // once its live state allows them (draft length/content, a measured expand budget,
+                    // pending scheduled messages) - there is no live chat here to evaluate that against,
+                    // so dim them the same way a disabled format button dims, rather than implying they
+                    // are always on the row like Emoji or Attach are.
+                    if (CONDITIONAL_PREVIEW_KEYS.contains(key)) {
+                        icon.setAlpha(CONDITIONAL_PREVIEW_ALPHA);
+                    }
                     toolbar.addConfigurable(key, icon, zone, order, trailingKey);
                 }
             }
