@@ -132,13 +132,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        if (configurationLongPressTriggered && event.getActionMasked() != MotionEvent.ACTION_DOWN) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP || event.getActionMasked() == MotionEvent.ACTION_CANCEL) {
+                removeCallbacks(configurationLongPressRunnable);
+            }
+            return true;
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 configurationLongPressTriggered = false;
                 configurationLongPressX = event.getX();
                 configurationLongPressY = event.getY();
                 removeCallbacks(configurationLongPressRunnable);
-                postDelayed(configurationLongPressRunnable, CONFIGURATION_LONG_PRESS_MS);
+                if (configurationLongPress != null) {
+                    postDelayed(configurationLongPressRunnable, CONFIGURATION_LONG_PRESS_MS);
+                }
                 break;
             case MotionEvent.ACTION_MOVE:
                 if (!configurationLongPressTriggered
