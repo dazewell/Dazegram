@@ -3090,10 +3090,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
-                if (!messageEditExpanded && !canExpandInput()) {
-                    return;
+                if (messageEditExpanded) {
+                    setMessageEditExpanded(false);
+                } else if (canExpandInput()) {
+                    setMessageEditExpanded(true);
+                } else {
+                    requestExpandWithKeyboard();
                 }
-                setMessageEditExpanded(!messageEditExpanded);
             });
             expandInputButton.setVisibility(View.GONE);
             expandInputButton.setAlpha(0.0f);
@@ -6794,6 +6797,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         // Defer the collapse: the keyboard-forcing clearFocus()+requestFocus() idiom blurs then re-focuses
         // in the same frame, and we don't want that transient to drop the user out of fullscreen.
         messageEditText.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                cancelPendingExpandInput();
+            }
             if (!hasFocus && messageEditExpanded) {
                 AndroidUtilities.cancelRunOnUIThread(collapseIfBlurred);
                 AndroidUtilities.runOnUIThread(collapseIfBlurred, 100);
@@ -7103,7 +7109,32 @@ public class ChatActivityEnterView extends FrameLayout implements
         return parentFragment != null && expandedInputAnchorVisible && expandedInputBudget > 0;
     }
 
+    // NagramX: with the keyboard down there is no anchor to size the field against, so a tap raises the
+    // keyboard and the expand is applied from updateExpandedInputBudget once the anchor lands. The latch
+    // is short-lived on purpose: a request that never gets its keyboard must not fire on the next one.
+    private boolean pendingExpandInput;
+    private final Runnable clearPendingExpandInput = () -> pendingExpandInput = false;
+
+    private void requestExpandWithKeyboard() {
+        if (parentFragment == null || hasBotWebView() && botCommandsMenuIsShowing() || BaseFragment.hasSheets(parentFragment)) {
+            return;
+        }
+        pendingExpandInput = true;
+        AndroidUtilities.cancelRunOnUIThread(clearPendingExpandInput);
+        AndroidUtilities.runOnUIThread(clearPendingExpandInput, 800);
+        openKeyboard();
+    }
+
+    private void cancelPendingExpandInput() {
+        if (!pendingExpandInput) {
+            return;
+        }
+        pendingExpandInput = false;
+        AndroidUtilities.cancelRunOnUIThread(clearPendingExpandInput);
+    }
+
     public void setMessageEditExpanded(boolean expanded) {
+        cancelPendingExpandInput();
         if (messageEditExpanded == expanded || messageEditText == null
                 || (expanded && !canExpandInput())) {
             return;
@@ -7179,6 +7210,16 @@ public class ChatActivityEnterView extends FrameLayout implements
             showAiButton(messageEditText.getLineCount() > 2 && text != null && !TextUtils.isEmpty(text.toString().trim()));
             updateExpandInputButton();
         }
+        if (pendingExpandInput && canExpandInput()) {
+            // the budget is refreshed from a measure pass, so apply the deferred expand on the next frame
+            // rather than re-entering layout from inside it
+            cancelPendingExpandInput();
+            AndroidUtilities.runOnUIThread(() -> {
+                if (canExpandInput()) {
+                    setMessageEditExpanded(true);
+                }
+            });
+        }
         if (!messageEditExpanded) {
             return;
         }
@@ -7192,7 +7233,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     private boolean canShowExpandInputButton() {
-        if (!composerToolbarEnabled || expandInputButton == null || messageEditText == null || richDraftActive || !canExpandInput()) {
+        if (!composerToolbarEnabled || expandInputButton == null || messageEditText == null || richDraftActive || parentFragment == null) {
             return false;
         }
         return true;
@@ -7259,7 +7300,7 @@ public class ChatActivityEnterView extends FrameLayout implements
     private boolean shownAiButton;
     private void showAiButton(boolean show_) {
         final boolean show = (show_ || richDraftActive) && parentFragment != null && !parentFragment.isSecretChat()
-                && !canShowExpandInputButton();
+                && !(canShowExpandInputButton() && canExpandInput());
 
         if (shownAiButton == show) return;
         if (show) {
