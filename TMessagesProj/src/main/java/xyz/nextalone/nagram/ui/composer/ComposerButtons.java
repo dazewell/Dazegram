@@ -27,6 +27,8 @@ public final class ComposerButtons {
     public static final int KIND_FORMAT = 1;
     /** Acts on the field without needing a selection. */
     public static final int KIND_TEXT = 2;
+    /** Cut/copy/paste: forwarded straight to EditTextCaption's own menu handling, not performMenuAction. */
+    public static final int KIND_CLIPBOARD = 3;
 
     /** The leading slot is a single frame, so only one button can sit there. */
     public static final int START_CAPACITY = 1;
@@ -38,6 +40,9 @@ public final class ComposerButtons {
     public static final String RICH = "rich";
     public static final String AI = "ai";
     public static final String SELECT_ALL = "selectall";
+    public static final String CUT = "cut";
+    public static final String COPY = "copy";
+    public static final String PASTE = "paste";
 
     public static final class Button {
         public final String key;
@@ -101,6 +106,10 @@ public final class ComposerButtons {
         register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true, 1.06f));
         register(new Button("regular", R.string.Regular, R.drawable.nax_formatting_eraser, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_regular, false, true));
 
+        register(new Button(CUT, R.string.Cut, R.drawable.nax_formatting_cut, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.cut, false, true));
+        register(new Button(COPY, R.string.Copy, R.drawable.msg_copy, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.copy, false, true));
+        register(new Button(PASTE, R.string.Paste, R.drawable.baseline_content_paste_24, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.paste, false, true));
+
         register(new Button("mono", R.string.Mono, R.drawable.formatting_code, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mono, false, true));
         register(new Button("bold", R.string.Bold, R.drawable.formatting_bold, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_bold, false, true));
         register(new Button("italic", R.string.Italic, R.drawable.formatting_italic, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_italic, false, true));
@@ -151,5 +160,10 @@ public final class ComposerButtons {
     public static boolean isTextAction(String key) {
         Button button = get(key);
         return button != null && button.kind == KIND_TEXT;
+    }
+
+    public static boolean isClipboardAction(String key) {
+        Button button = get(key);
+        return button != null && button.kind == KIND_CLIPBOARD;
     }
 }

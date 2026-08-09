@@ -53,6 +53,10 @@ Send and the mic used to sit outside the text pill, in their own column past its
 
 The button row under the compose box is yours to arrange. A new editor in the chat settings lists every button — emoji, attachments, expand, schedule, rich draft, AI, all of the formatting actions (bold, italic, underline, strikethrough, monospace, code block, spoiler, quote, link, and clear formatting) and a new Select All — and you drag them into the order you want. Three zones: one leading button pinned at the start, a scrolling middle that holds as many as you like, and a trailing group at the end where attachments and schedule live because they carry their own show/hide behaviour. Anything you don't want goes in the Hidden section and stops taking up space. Reset puts it back to the stock arrangement. Your existing toolbar carries over on upgrade, so nothing moves until you move it.
 
+### Cut, Copy, Paste buttons <!-- #composer-clipboard-actions -->
+
+Cut, Copy, and Paste are available as composer toolbar buttons, same as Select All and the formatting actions, added through the layout editor. Cut and Copy enable when text is selected and act on that selection; Paste works whenever the field is open, dropping the clipboard's contents at the cursor or over the selection. They reuse the same clipboard handling as the long-press selection menu. Hidden by default — turn them on in the layout editor if you want them in the row.
+
 ### Composer toolbar size <!-- #composer-scale -->
 
 The toolbar row can be scaled from 75% to 125% in 5% steps, from a slider at the top of the layout editor. It scales the whole thing together — the row height, the button cells and the glyphs inside them — so the capsule keeps its proportions and its rounded ends at every size, rather than just spacing the same buttons further apart. The preview above the slider shows the real toolbar and a small input area on your own chat wallpaper, so you can judge the scale in context as you drag. Defaults to 100%, and Reset puts it back.
