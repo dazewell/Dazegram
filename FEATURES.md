@@ -131,7 +131,7 @@ Select a few messages and the selection bar's ⋯ menu gets two new actions. *Pi
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
-When there is a draft and the keyboard or emoji panel leaves room, the toolbar shows an expand button. It sits with the pinned trailing actions next to attachments and schedule, so it stays put instead of scrolling away with the rest of the controls. Tap it to grow the input between the chat header and the input method; tap it again to return to the normal height. It turns off when the draft is cleared, focus leaves the field, or recording starts. Formatting and cursor position stay put because it is the same text box.
+The toolbar keeps its expand button, sitting with the pinned trailing actions next to attachments and schedule so it stays put instead of scrolling away with the rest of the controls. It's there whenever the normal composer toolbar is (the rich draft editor still takes its slot). Tap it to grow the input between the chat header and the input method; tap it again to return to the normal height. It works with the keyboard down too: the tap raises the keyboard and the field expands as soon as there's room. The expanded state itself ends when the draft is cleared, focus leaves the field, the keyboard and emoji panel are both gone, or recording starts, but the button stays where it is. Formatting and cursor position stay put because it is the same text box.
 
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 
