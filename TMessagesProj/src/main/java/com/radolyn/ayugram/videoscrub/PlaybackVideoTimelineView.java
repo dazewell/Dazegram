@@ -133,7 +133,9 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
     }
 
     private void startPlayDrag(float dx, int cursorX) {
-        getParent().requestDisallowInterceptTouchEvent(true);
+        if (getParent() != null) {
+            getParent().requestDisallowInterceptTouchEvent(true);
+        }
         pressedPlay = true;
         pressDx = dx;
         if (delegate != null) {
@@ -145,6 +147,9 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
 
     private void moveCursor(float cursorX) {
         int width = getMeasuredWidth() - AndroidUtilities.dp(24);
+        if (width <= 0) {
+            return;
+        }
         playProgress = clampToTrim((cursorX - AndroidUtilities.dp(12)) / width);
         if (onSeek != null) {
             onSeek.run(playProgress);

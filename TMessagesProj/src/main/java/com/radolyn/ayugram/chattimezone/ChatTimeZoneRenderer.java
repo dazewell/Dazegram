@@ -326,7 +326,11 @@ public final class ChatTimeZoneRenderer {
      * and draw the wrong colour.
      */
     private static CharSequence withPeerTime(@NonNull CharSequence base, @NonNull String peerTime) {
-        Drawable globe = ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.baseline_language_24).mutate();
+        Drawable globe = ContextCompat.getDrawable(ApplicationLoader.applicationContext, R.drawable.baseline_language_24);
+        if (globe == null) {
+            return base;
+        }
+        globe = globe.mutate();
         SpannableStringBuilder ssb = new SpannableStringBuilder(base);
         ssb.append(" \u2219 ");
         int start = ssb.length();
