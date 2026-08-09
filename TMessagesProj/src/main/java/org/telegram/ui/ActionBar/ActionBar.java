@@ -1528,11 +1528,12 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     int prevWidth;
+    private boolean avatarContainerWidthDeferred;
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         int additionalTop = occupyStatusBar ? AndroidUtilities.statusBarHeight : 0;
-        if (prevWidth != getMeasuredWidth()) {
+        if (prevWidth != getMeasuredWidth() || avatarContainerWidthDeferred) {
             prevWidth = getMeasuredWidth();
             checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
         }
@@ -2183,10 +2184,21 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         // Before the title is measured the group width collapses to zero, which would animate the
-        // bubble shut and then back open. The next layout pass calls this again with real metrics.
+        // bubble shut and then back open. Defer instead -- but onLayout only re-runs this when the
+        // bar's own width changes, which may never happen again, so post a retry rather than
+        // relying on another layout pass arriving on its own.
         if (!chatAvatarContainer.isCenteredContentMeasured()) {
+            if (!avatarContainerWidthDeferred) {
+                avatarContainerWidthDeferred = true;
+                postOnAnimation(() -> {
+                    if (avatarContainerWidthDeferred) {
+                        checkAvatarContainerWidth(false);
+                    }
+                });
+            }
             return;
         }
+        avatarContainerWidthDeferred = false;
 
         // Title/status text width only. The avatar has its own (menu) bubble.
         final int contentWidth = chatAvatarContainer.getCenteredContentWidth();
