@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.MotionEvent;
+import android.view.ViewParent;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Utilities;
@@ -133,7 +134,10 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
     }
 
     private void startPlayDrag(float dx, int cursorX) {
-        getParent().requestDisallowInterceptTouchEvent(true);
+        ViewParent parent = getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(true);
+        }
         pressedPlay = true;
         pressDx = dx;
         if (delegate != null) {
@@ -145,6 +149,9 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
 
     private void moveCursor(float cursorX) {
         int width = getMeasuredWidth() - AndroidUtilities.dp(24);
+        if (width <= 0) {
+            return;
+        }
         playProgress = clampToTrim((cursorX - AndroidUtilities.dp(12)) / width);
         if (onSeek != null) {
             onSeek.run(playProgress);
