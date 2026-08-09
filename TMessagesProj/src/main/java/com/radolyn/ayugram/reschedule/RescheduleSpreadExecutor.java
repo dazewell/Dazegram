@@ -73,7 +73,14 @@ public final class RescheduleSpreadExecutor {
         }
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             if (error == null) {
-                MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) response, false);
+                if (response instanceof TLRPC.Updates) {
+                    MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) response, false);
+                } else {
+                    // An unexpected type means the edit didn't demonstrably apply. Record it: if the
+                    // verify pass can't read the schedule back it falls back to counting failedIds,
+                    // and an unrecorded failure would report the whole run as applied.
+                    failedIds.add(target.id);
+                }
             } else if (error.text != null && error.text.startsWith("FLOOD_WAIT_")) {
                 int wait = Utilities.parseInt(error.text);
                 if (retriesLeft > 0 && wait <= 60) {

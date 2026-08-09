@@ -37917,6 +37917,12 @@ public class ChatActivity extends BaseFragment implements
             View child = mentionContainer.getListView().getLayoutManager() != null
                     ? mentionContainer.getListView().getLayoutManager().findViewByPosition(listPosition)
                     : null;
+            // The listener is otherwise only reached from a real tap, so it assumes a non-null view
+            // and uses it to anchor the slow mode hint. A row that isn't laid out yet has no view,
+            // so let the key fall through rather than handing that assumption a null.
+            if (child == null) {
+                return false;
+            }
             mentionsOnItemClickListener.onItemClick(child, listPosition);
             return true;
         }
