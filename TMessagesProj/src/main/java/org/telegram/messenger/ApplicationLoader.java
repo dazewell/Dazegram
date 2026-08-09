@@ -276,6 +276,16 @@ public class ApplicationLoader extends Application {
         NekoConfig.init();
         NaConfig.init();
         SharedPrefsHelper.init(applicationContext);
+        // NagramX: the time-zone map is read from the dialog list and message cell draw paths, which
+        // would otherwise pay for the first prefs load mid-frame. Warm it off the main thread so the
+        // first draw finds it already loaded.
+        Utilities.globalQueue.postRunnable(() -> {
+            for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+                try {
+                    com.radolyn.ayugram.chattimezone.ChatTimeZoneController.warmCache(a);
+                } catch (Throwable ignore) {}
+            }
+        });
         FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(AndroidUtil.shouldEnableCrashlytics());
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) { //TODO improve account
             UserConfig.getInstance(a).loadConfig();

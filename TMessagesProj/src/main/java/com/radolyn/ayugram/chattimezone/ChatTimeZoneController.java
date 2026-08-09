@@ -79,6 +79,10 @@ public final class ChatTimeZoneController {
         return m;
     }
 
+    public static synchronized void warmCache(int account) {
+        cache(account);
+    }
+
     private static synchronized void putCache(int account, long dialogId, @Nullable String payload) {
         HashMap<Long, String> m = cache(account);
         SharedPreferences.Editor ed;
