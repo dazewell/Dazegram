@@ -737,7 +737,7 @@ public class TranscribeButton {
 
     public static boolean isTranscribing(MessageObject messageObject) {
         return (
-            (transcribeOperationsByDialogPosition.containsValue(messageObject) || transcribeOperationsByDialogPosition.containsKey((Integer) reqInfoHash(messageObject))) ||
+            messageObject != null && (transcribeOperationsByDialogPosition.containsValue(messageObject) || transcribeOperationsByDialogPosition.containsKey((Integer) reqInfoHash(messageObject))) ||
             (messageObject != null && messageObject.messageOwner != null && transcribeOperationsById.containsKey(messageObject.messageOwner.voiceTranscriptionId))
         );
     }
@@ -793,7 +793,7 @@ public class TranscribeButton {
                             final long duration = SystemClock.elapsedRealtime() - start;
                             tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
                             if (!captions) { // NagramX
-                                TranscribeButton.openVideoTranscription(messageObject);
+                                AndroidUtilities.runOnUIThread(() -> TranscribeButton.openVideoTranscription(messageObject));
                             }
                             messageObject.messageOwner.voiceTranscriptionOpen = true;
                             messageObject.messageOwner.voiceTranscriptionFinal = true;
@@ -941,7 +941,7 @@ public class TranscribeButton {
 
                 final long duration = SystemClock.elapsedRealtime() - start;
                 tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
-                TranscribeButton.openVideoTranscription(messageObject);
+                AndroidUtilities.runOnUIThread(() -> TranscribeButton.openVideoTranscription(messageObject));
                 messageObject.messageOwner.voiceTranscriptionOpen = true;
                 messageObject.messageOwner.voiceTranscriptionFinal = true;
 
