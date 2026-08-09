@@ -113,6 +113,11 @@ public class ComposerLayoutActivity extends BaseFragment {
     private List<List<String>> lastSaved;
     private boolean rebuildPending;
     private boolean startZoneArmed;
+    // The view holder mid-drag, if any. getMovementFlags() must keep allowing this one to move even
+    // while it is transiently sitting at a Leading adapter position (right after the dwell swap) -
+    // Leading itself stays undraggable for every *other* row, which is how a fresh drag can never be
+    // started on the permanently-occupied slot.
+    private RecyclerView.ViewHolder draggedViewHolder;
 
     private static final class Item {
         final int type;
@@ -441,6 +446,12 @@ public class ComposerLayoutActivity extends BaseFragment {
     private int pendingStartSwapFrom = RecyclerView.NO_POSITION;
     private int pendingStartSwapTo = RecyclerView.NO_POSITION;
     private long pendingStartSwapSince;
+    // Set for exactly one onMove() right after a Leading swap, to block the immediate
+    // back-swap the very next call would otherwise see (the dragged row is still hovering
+    // over the same spot it just swapped into). Cleared right after that single check so the
+    // drag is free to continue out of Leading on every call after - without this reset it
+    // read as "from is in Leading" forever and the drag could never leave the slot again.
+    private boolean justSwappedIntoStart;
 
     /** Tap shortcut for Hidden <-> Scrolling: dragging across a long Hidden list is fiddly, so a plain
      * tap flips a row to the other side without needing to reach the row's spot at all. Start and End
@@ -492,8 +503,11 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return makeMovementFlags(0, 0);
             }
             // The leading button is not draggable - it is replaced by dropping another button on
-            // it, which keeps the slot permanently filled instead of leaving a hole behind.
-            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START) {
+            // it, which keeps the slot permanently filled instead of leaving a hole behind. The
+            // one exception is the row actively being dragged: the dwell swap in onMove() moves it
+            // into the Leading adapter position mid-gesture, and if this froze it too the drag would
+            // dead-end there with no way to keep moving it out into Middle.
+            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START && viewHolder != draggedViewHolder) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -555,14 +569,19 @@ public class ComposerLayoutActivity extends BaseFragment {
                 Collections.swap(items, from, to);
                 adapter.notifyItemMoved(from, to);
                 adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
+                justSwappedIntoStart = true;
                 updatePreview();
                 return true;
             }
+            // A button that was just swapped into Leading (previous onMove call) is still mid-gesture
+            // at that adapter position; on the very next call it can still appear as "from is in
+            // Leading" before ItemTouchHelper has re-settled, so skip just that one check rather than
+            // blocking every subsequent move away from Leading - a permanent block here is what used
+            // to pin the drag at Leading with no way back out into Middle.
             clearPendingStartSwap();
-            // A button that was just swapped into Leading is still mid-gesture and still carries the
-            // movement flags it started with, so without this it could be dragged straight back out
-            // and leave the slot empty until drop.
-            if (zoneAt(from) == ComposerButtons.ZONE_START) {
+            if (justSwappedIntoStart) {
+                justSwappedIntoStart = false;
+            } else if (zoneAt(from) == ComposerButtons.ZONE_START && source != draggedViewHolder) {
                 return false;
             }
             items.add(to, items.remove(from));
@@ -579,6 +598,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     viewHolder.itemView.setPressed(true);
                 }
             }
+            draggedViewHolder = actionState == ItemTouchHelper.ACTION_STATE_DRAG ? viewHolder : null;
             boolean arm = false;
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
                 int position = viewHolder.getAdapterPosition();
@@ -602,6 +622,8 @@ public class ComposerLayoutActivity extends BaseFragment {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
             setStartZoneArmed(false);
+            draggedViewHolder = null;
+            justSwappedIntoStart = false;
             clearPendingStartSwap();
             // A cross-section move can empty the source zone or drop a button next to a stale
             // placeholder. Persist takes the flat order as truth, then a rebuild restores one
