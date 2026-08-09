@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 // Closed captions for round video messages. Remembers which messages the user asked captions for,
 // holds the timed transcriptions they've already paid for this session, and hands the right line to
@@ -35,7 +36,7 @@ public class VideoCaptionsHelper {
     // rather than a set of messages. Cleared when that playback ends or another message takes over.
     private static volatile String armedKey;
 
-    private static final List<Runnable> listeners = new ArrayList<>();
+    private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
     // Set when CC is pressed on a message that still has to be transcribed, so playback can start
     // once the text lands instead of running the first half of the video with an empty strip.
@@ -54,9 +55,9 @@ public class VideoCaptionsHelper {
     }
 
     private static void notifyChanged() {
-        // Snapshot: a listener can detach while it's being told (a chat closing mid-toggle), and
-        // mutating the list underneath the loop would skip whoever came after it.
-        for (Runnable listener : new ArrayList<>(listeners)) {
+        // A listener can detach while it's being told (a chat closing mid-toggle); the copy-on-write
+        // list iterates a snapshot, so whoever came after it still gets told.
+        for (Runnable listener : listeners) {
             listener.run();
         }
     }
