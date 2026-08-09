@@ -328,7 +328,12 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return false;
+            // RecyclerListView disables the child view whenever this returns false (see
+            // onChildAttachedToWindow), and a disabled view silently swallows setOnClickListener -
+            // it never reaches performClick. Button rows need to stay enabled for the Hidden/Middle
+            // tap-toggle to fire; everything else (headers, footers, placeholders, the scale slider)
+            // has no click behaviour, so it can stay disabled as before.
+            return holder.getItemViewType() == TYPE_BUTTON;
         }
 
         @Override
