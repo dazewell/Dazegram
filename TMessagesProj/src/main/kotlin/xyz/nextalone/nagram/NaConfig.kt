@@ -1625,6 +1625,18 @@ object NaConfig {
         if (ApplicationLoader.applicationContext == null) {
             return
         }
+        try {
+            fixConfigInternal()
+        } catch (e: Exception) {
+            // NagramX: a cosmetic migration failing must never brick app startup
+            FileLog.e("fixConfig failed", e)
+        } catch (e: LinkageError) {
+            // e.g. ExceptionInInitializerError from a broken migrated static initializer
+            FileLog.e("fixConfig failed", e)
+        }
+    }
+
+    private fun fixConfigInternal() {
         if (!translatorModeWithOriginalMigrated.Bool()) {
             if (getPreferences().contains(translatorMode.key)) {
                 translatorMode.setConfigInt(
