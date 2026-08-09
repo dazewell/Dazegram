@@ -10,6 +10,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewConfiguration;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -48,6 +49,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int GLASS_INSET = 4;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
+    private static final int CONFIGURATION_LONG_PRESS_MS = 1000;
     // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
     private static final int RELAYOUT_SETTLE_DELAY = 300;
 
@@ -59,6 +61,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final CollapsingLinearLayout endSlot;
     private final Map<View, Integer> configuredOrder = new HashMap<>();
     private View pinnedTrailingView;
+    private Runnable configurationLongPress;
+    private boolean configurationLongPressTriggered;
+    private float configurationLongPressX;
+    private float configurationLongPressY;
+    private final Runnable configurationLongPressRunnable = () -> {
+        configurationLongPressTriggered = true;
+        if (configurationLongPress != null) {
+            configurationLongPress.run();
+        }
+    };
 
     public ComposerToolbarLayout(Context context) {
         super(context);
@@ -112,6 +124,41 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
         });
         middleScrollView.post(this::pinMiddleToStart);
+    }
+
+    public void setConfigurationLongPress(Runnable listener) {
+        configurationLongPress = listener;
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                configurationLongPressTriggered = false;
+                configurationLongPressX = event.getX();
+                configurationLongPressY = event.getY();
+                removeCallbacks(configurationLongPressRunnable);
+                postDelayed(configurationLongPressRunnable, CONFIGURATION_LONG_PRESS_MS);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (!configurationLongPressTriggered
+                        && (Math.abs(event.getX() - configurationLongPressX) > ViewConfiguration.get(getContext()).getScaledTouchSlop()
+                        || Math.abs(event.getY() - configurationLongPressY) > ViewConfiguration.get(getContext()).getScaledTouchSlop())) {
+                    removeCallbacks(configurationLongPressRunnable);
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                removeCallbacks(configurationLongPressRunnable);
+                break;
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        removeCallbacks(configurationLongPressRunnable);
+        super.onDetachedFromWindow();
     }
 
     public void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
