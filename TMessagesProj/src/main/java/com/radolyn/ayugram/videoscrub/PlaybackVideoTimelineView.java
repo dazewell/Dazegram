@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.view.MotionEvent;
+import android.view.ViewParent;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Utilities;
@@ -133,8 +134,9 @@ public class PlaybackVideoTimelineView extends VideoTimelineView {
     }
 
     private void startPlayDrag(float dx, int cursorX) {
-        if (getParent() != null) {
-            getParent().requestDisallowInterceptTouchEvent(true);
+        ViewParent parent = getParent();
+        if (parent != null) {
+            parent.requestDisallowInterceptTouchEvent(true);
         }
         pressedPlay = true;
         pressDx = dx;

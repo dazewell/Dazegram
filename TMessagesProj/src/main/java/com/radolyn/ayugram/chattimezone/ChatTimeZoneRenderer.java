@@ -317,8 +317,9 @@ public final class ChatTimeZoneRenderer {
     private static final int GLOBE_SIZE = dp(12);
 
     /**
-     * Appends {@code \u2219 <globe> HH:mm} to a base time/status string: the mid-dot separator, a
-     * small globe, then the peer's local time. The globe is a ColoredImageSpan with the default
+     * Appends {@code \u2219 <globe> HH:mm} to a base time/status string when the globe drawable
+     * resolves: the mid-dot separator, a small globe, then the peer's local time. If the drawable
+     * is unavailable, returns the base unchanged. The globe is a ColoredImageSpan with the default
      * usePaintColor, so it tints to whatever colour the surrounding text is drawn in (subtitle
      * grey, incoming-time grey, outgoing-time green, selected, ...). Each span gets its OWN
      * drawable: ColoredImageSpan only re-applies its colour filter when its own cached colour
