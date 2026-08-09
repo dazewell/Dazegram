@@ -41,6 +41,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
+import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
@@ -76,8 +77,8 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
-    private static final int PREVIEW_INPUT_GAP = 8;
-    private static final int PREVIEW_INPUT_HEIGHT = 52;
+    private static final int PREVIEW_INPUT_GAP = 2;
+    private static final int PREVIEW_INPUT_HEIGHT = 44;
     private static final int PREVIEW_PADDING = 12;
 
     private static final int[] PREVIEW_ZONES = {
@@ -844,8 +845,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                     toolbar.addConfigurable(key, icon, zone, order, trailingKey);
                 }
             }
-            stage.addView(toolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, ComposerToolbarLayout.height(), Gravity.TOP | Gravity.START));
             addMockInput();
+            stage.addView(toolbar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, ComposerToolbarLayout.height(),
+                    Gravity.TOP | Gravity.START, 0, PREVIEW_INPUT_HEIGHT + PREVIEW_INPUT_GAP, 0, 0));
         }
 
         private void addMockInput() {
@@ -862,20 +864,8 @@ public class ComposerLayoutActivity extends BaseFragment {
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
-            FrameLayout.LayoutParams bodyParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
-                    LayoutHelper.MATCH_PARENT, 44, Gravity.TOP | Gravity.START, 0, 4, 0, 4);
-            if (LocaleController.isRTL) {
-                bodyParams.leftMargin = dp(44);
-            } else {
-                bodyParams.rightMargin = dp(44);
-            }
-            input.addView(body, bodyParams);
-
-            ImageView attach = previewIcon(R.drawable.msg_sendfile_solar);
-            FrameLayout.LayoutParams attachParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
-                    40, 40, Gravity.TOP | Gravity.START, 0, 2, 0, 2);
-            attachParams.setMarginStart(dp(4));
-            body.addView(attach, attachParams);
+            input.addView(body, LayoutHelper.createFrame(
+                    LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.START));
 
             TextView hint = new TextView(getContext());
             hint.setText(LocaleController.getString(R.string.Message));
@@ -885,26 +875,23 @@ public class ComposerLayoutActivity extends BaseFragment {
             hint.setFocusable(false);
             hint.setClickable(false);
             FrameLayout.LayoutParams hintParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
-                    LayoutHelper.MATCH_PARENT, 40, Gravity.TOP | Gravity.START, 0, 2, 0, 2);
-            hintParams.setMarginStart(dp(44));
-            hintParams.setMarginEnd(dp(8));
+                    LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.START, 0, 0, 0, 0);
+            hintParams.setMarginStart(dp(8));
+            hintParams.setMarginEnd(dp(47));
             body.addView(hint, hintParams);
 
-            ImageView send = previewIcon(R.drawable.msg_send_solar);
-            send.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelSend), PorterDuff.Mode.SRC_IN));
-            input.addView(send, LayoutHelper.createFrame(44, 44, Gravity.TOP | Gravity.END, 0, 4, 0, 4));
+            ChatActivityEnterView.SendButton send = new ChatActivityEnterView.SendButton(
+                    getContext(), R.drawable.send_plane_24, null, true);
+            send.setBackgroundInset(dp(3));
+            send.setFocusable(false);
+            send.setClickable(false);
+            send.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            FrameLayout.LayoutParams sendParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
+                    PREVIEW_INPUT_HEIGHT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.END);
+            sendParams.setMarginEnd(dp(3));
+            body.addView(send, sendParams);
             stage.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT,
-                    Gravity.TOP | Gravity.START, 0, ComposerToolbarLayout.height() + PREVIEW_INPUT_GAP, 0, 0));
-        }
-
-        private ImageView previewIcon(int resource) {
-            ImageView icon = new ImageView(getContext());
-            icon.setImageResource(resource);
-            icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
-            icon.setFocusable(false);
-            icon.setClickable(false);
-            icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
-            return icon;
+                    Gravity.TOP | Gravity.START));
         }
 
         /** Points the capsule's glass at whatever the chat wallpaper currently is. A null wallpaper
