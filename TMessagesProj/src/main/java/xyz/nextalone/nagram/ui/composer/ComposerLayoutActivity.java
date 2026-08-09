@@ -79,6 +79,10 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int PREVIEW_INPUT_GAP = 2;
     private static final int PREVIEW_INPUT_HEIGHT = 44;
     private static final int PREVIEW_PADDING = 12;
+    /** Matches ChatActivityEnterView.COMPOSER_PRIMARY_INSET - the real send button's own background inset
+     * inside its DEFAULT_HEIGHT slot, kept in step so the preview's placeholder end-margin lines up with
+     * where the real field actually stops next to it. */
+    private static final int SEND_BUTTON_INSET_DP = 3;
 
     private static final int[] PREVIEW_ZONES = {
             ComposerButtons.ZONE_START,
@@ -912,26 +916,40 @@ public class ComposerLayoutActivity extends BaseFragment {
 
             TextView hint = new TextView(getContext());
             hint.setText(LocaleController.getString(R.string.Message));
-            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+            // Mirrors the real field's own text size (NaConfig-driven, defaults to 18dp) rather than a
+            // hardcoded preview constant, so a user who bumped their message text size sees that reflected
+            // here too instead of the preview silently drifting from what the real field will show.
+            hint.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP,
+                    Math.max(14, Math.min(20, NaConfig.INSTANCE.getInputTextSize().Int())));
             hint.setTextColor(Theme.getColor(Theme.key_chat_messagePanelHint));
             hint.setGravity(Gravity.CENTER_VERTICAL);
             hint.setFocusable(false);
             hint.setClickable(false);
             FrameLayout.LayoutParams hintParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
                     LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.START, 0, 0, 0, 0);
-            hintParams.setMarginStart(dp(8));
-            hintParams.setMarginEnd(dp(47));
+            // Real field: ChatActivityEnterView.COMPOSER_TEXT_HORIZONTAL_INSET (16dp) on the start side.
+            // The 8dp used before was an approximation that read visibly closer to the bubble's edge than
+            // the real field ever sits.
+            int textInsetDp = 16;
+            hintParams.setMarginStart(dp(textInsetDp));
+            // Real field's end inset is InputSatellites' published right offset (the send button's own
+            // drawn footprint, i.e. its slot minus its own background inset on both sides, plus that same
+            // inset again as InputSatellites' own content margin) plus the 16dp text inset on top of that -
+            // not just the slot height plus a flat 3dp, which read the placeholder noticeably closer to the
+            // button than the real field's text ever gets.
+            int sendDrawnWidthDp = PREVIEW_INPUT_HEIGHT - 2 * SEND_BUTTON_INSET_DP;
+            hintParams.setMarginEnd(dp(sendDrawnWidthDp + SEND_BUTTON_INSET_DP + textInsetDp));
             body.addView(hint, hintParams);
 
             ChatActivityEnterView.SendButton send = new ChatActivityEnterView.SendButton(
                     getContext(), R.drawable.send_plane_24, null, true);
-            send.setBackgroundInset(dp(3));
+            send.setBackgroundInset(dp(SEND_BUTTON_INSET_DP));
             send.setFocusable(false);
             send.setClickable(false);
             send.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             FrameLayout.LayoutParams sendParams = (FrameLayout.LayoutParams) LayoutHelper.createFrame(
                     PREVIEW_INPUT_HEIGHT, PREVIEW_INPUT_HEIGHT, Gravity.TOP | Gravity.END);
-            sendParams.setMarginEnd(dp(3));
+            sendParams.setMarginEnd(dp(SEND_BUTTON_INSET_DP));
             body.addView(send, sendParams);
             stage.addView(input, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, PREVIEW_INPUT_HEIGHT,
                     Gravity.TOP | Gravity.START));
