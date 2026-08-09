@@ -55,7 +55,7 @@ The button row under the compose box is yours to arrange. A new editor in the ch
 
 ### Composer toolbar size <!-- #composer-scale -->
 
-The toolbar row can be scaled from 75% to 125% in 5% steps, from a slider at the top of the layout editor. It scales the whole thing together — the row height, the button cells and the glyphs inside them — so the capsule keeps its proportions and its rounded ends at every size, rather than just spacing the same buttons further apart. The preview above the slider is the real toolbar on your own chat wallpaper, so you see the actual result as you drag. Defaults to 100%, and Reset puts it back.
+The toolbar row can be scaled from 75% to 125% in 5% steps, from a slider at the top of the layout editor. It scales the whole thing together — the row height, the button cells and the glyphs inside them — so the capsule keeps its proportions and its rounded ends at every size, rather than just spacing the same buttons further apart. The preview above the slider shows the real toolbar and a small input area on your own chat wallpaper, so you can judge the scale in context as you drag. Defaults to 100%, and Reset puts it back.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
