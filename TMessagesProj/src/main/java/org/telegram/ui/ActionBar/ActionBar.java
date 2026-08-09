@@ -2185,7 +2185,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             avatarContainerWidthDeferred = false;
             return;
         }
-        animatorAvatarContainerHasAvatar.setValue(chatAvatarContainer.hasVisibleAvatar(), animated);
+        final View avatarView = chatAvatarContainer.getAvatarImageView();
+        animatorAvatarContainerHasAvatar.setValue(avatarView != null && avatarView.getVisibility() == View.VISIBLE, animated);
         if (!chatAvatarContainer.isCenteredTitle()) {
             // Centered sizing no longer applies, so any pending deferral is moot -- leaving it set
             // would make onLayout re-enter this on every pass.
