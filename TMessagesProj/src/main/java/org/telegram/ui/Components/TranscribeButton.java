@@ -793,7 +793,11 @@ public class TranscribeButton {
                             final long duration = SystemClock.elapsedRealtime() - start;
                             tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
                             if (!captions) { // NagramX
-                                AndroidUtilities.runOnUIThread(() -> TranscribeButton.openVideoTranscription(messageObject));
+                                AndroidUtilities.runOnUIThread(() -> {
+                                    if (isActiveRequest(messageObject, id)) {
+                                        TranscribeButton.openVideoTranscription(messageObject);
+                                    }
+                                });
                             }
                             messageObject.messageOwner.voiceTranscriptionOpen = true;
                             messageObject.messageOwner.voiceTranscriptionFinal = true;
@@ -941,7 +945,11 @@ public class TranscribeButton {
 
                 final long duration = SystemClock.elapsedRealtime() - start;
                 tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.put(account, messageObject, result); // NagramX
-                AndroidUtilities.runOnUIThread(() -> TranscribeButton.openVideoTranscription(messageObject));
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (isActiveRequest(messageObject, id)) {
+                        TranscribeButton.openVideoTranscription(messageObject);
+                    }
+                });
                 messageObject.messageOwner.voiceTranscriptionOpen = true;
                 messageObject.messageOwner.voiceTranscriptionFinal = true;
 
