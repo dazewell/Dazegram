@@ -2137,7 +2137,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     // measured width, so it only means anything once the title has been measured. Callers check
     // isCenteredContentMeasured() first. No avatar: in centered mode it keeps its own bubble on the right.
     public int getCenteredContentWidth() {
-        int width = centeredGroupRight() - centeredContentLeft();        if (subtitleTextView != null) {
+        int width = centeredGroupRight() - centeredContentLeft();
+        if (subtitleTextView != null) {
             // Same gradient-fade caveat as the title: clamp to the displayed width.
             width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
         } else if (animatedSubtitleTextView != null) {
