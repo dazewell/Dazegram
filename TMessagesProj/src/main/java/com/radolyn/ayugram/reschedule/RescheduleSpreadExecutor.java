@@ -73,7 +73,9 @@ public final class RescheduleSpreadExecutor {
         }
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             if (error == null) {
-                MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) response, false);
+                if (response instanceof TLRPC.Updates) {
+                    MessagesController.getInstance(currentAccount).processUpdates((TLRPC.Updates) response, false);
+                }
             } else if (error.text != null && error.text.startsWith("FLOOD_WAIT_")) {
                 int wait = Utilities.parseInt(error.text);
                 if (retriesLeft > 0 && wait <= 60) {
