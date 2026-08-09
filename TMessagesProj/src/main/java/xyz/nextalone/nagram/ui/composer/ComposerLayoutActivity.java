@@ -648,7 +648,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static SlideIntChooseView.Options scaleOptions() {
         return SlideIntChooseView.Options.make(0, SCALE_STEPS, 1,
-                (type, value) -> type == 0 ? value + "%" : "");
+                (type, value) -> value + "%");
     }
 
     private static int currentScale() {
