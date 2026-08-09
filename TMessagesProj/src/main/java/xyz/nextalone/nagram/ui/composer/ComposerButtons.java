@@ -53,8 +53,12 @@ public final class ComposerButtons {
         /** Menu action forwarded to the edit field, or 0 when the button drives its own view. */
         public final int menuAction;
         /**
-         * Schedule and attach carry translation geometry that assumes they sit at the trailing edge,
-         * so they stay in the trailing zone.
+         * Attach carries translation geometry that only makes sense at the trailing edge (see
+         * {@code attachLayoutTranslationX} in ChatActivityEnterView), so it stays trailing-only.
+         * Schedule used to be lumped in here too, but that translation math is guarded behind
+         * {@code !composerToolbarEnabled} - with the composer toolbar on, Schedule's position comes
+         * entirely from {@code ComposerToolbarLayout.addConfigurable}'s ordered slot, same as any
+         * other button, so it carries no such constraint and can sit anywhere.
          */
         public final boolean trailingOnly;
         /** Present for the whole life of the toolbar, so it can safely anchor the trailing edge. */
@@ -122,7 +126,7 @@ public final class ComposerButtons {
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
-        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, true, false, 0.88f));
+        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 0.88f));
         register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.89f));
     }
 
