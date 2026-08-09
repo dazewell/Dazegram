@@ -932,7 +932,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public boolean onTouchEvent(MotionEvent event) {
-            return false;
+            return true;
         }
 
         @Override
