@@ -14,14 +14,12 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
-import android.text.TextPaint;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -41,12 +39,12 @@ import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Cells.HeaderCell;
+import org.telegram.ui.Cells.SlideIntChooseView;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Components.ChatActivityEnterView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
-import org.telegram.ui.Components.SeekBarView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
 import org.telegram.ui.Components.chat.WallpaperBitmapProvider;
@@ -56,7 +54,6 @@ import xyz.nextalone.nagram.ui.ComposerToolbarLayout;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Lets the user place each composer toolbar button into a zone and order it, by dragging rows
@@ -73,8 +70,9 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
-    private static final int SCALE_STEP = 5;
-    private static final int STEP_COUNT = (SCALE_MAX - SCALE_MIN) / SCALE_STEP + 1;
+    private static final int[] SCALE_STEPS = {
+            75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125
+    };
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
@@ -363,7 +361,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     view = new TextInfoPrivacyCell(context);
                     break;
                 case TYPE_SCALE:
-                    view = new ScaleCell(context);
+                    view = new SlideIntChooseView(context, null);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 default:
@@ -401,7 +399,15 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
                     break;
                 case TYPE_SCALE:
-                    ((ScaleCell) holder.itemView).update();
+                    SlideIntChooseView scaleView = (SlideIntChooseView) holder.itemView;
+                    scaleView.set(currentScale(), scaleOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerToolbarScale().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -640,81 +646,9 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
-    /**
-     * Scales the whole panel - row, cells and glyphs together - between 75% and 125%. Modelled on the
-     * sticker size row: an unlabelled track with the value in the corner, rather than a label under
-     * every stop, which at eleven stops collides at the crowded end of the track.
-     */
-    private class ScaleCell extends FrameLayout {
-
-        private final SeekBarView sizeBar;
-        private final TextPaint textPaint;
-
-        ScaleCell(Context context) {
-            super(context);
-            setWillNotDraw(false);
-
-            textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
-            textPaint.setTextSize(dp(16));
-
-            sizeBar = new SeekBarView(context);
-            sizeBar.setReportChanges(true);
-            sizeBar.setSeparatorsCount(STEP_COUNT);
-            sizeBar.setDelegate((stop, progress) -> {
-                int percent = SCALE_MIN + Math.round(progress * (STEP_COUNT - 1)) * SCALE_STEP;
-                if (percent == NaConfig.INSTANCE.getComposerToolbarScale().Int()) {
-                    return;
-                }
-                NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(percent);
-                // Deferred to leaving the screen like the layout itself: rebuilding every chat behind
-                // the editor on each step of the drag would stutter for no visible gain here.
-                rebuildPending = true;
-                invalidate();
-                // The preview is the whole point of the slider, so it does follow the drag. It
-                // rebuilds a single toolbar, which is cheap next to the eleven stops of a sweep.
-                updatePreview();
-            });
-            addView(sizeBar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.LEFT | Gravity.TOP, 9, 5, 43, 11));
-        }
-
-        @Override
-        public CharSequence getAccessibilityClassName() {
-            return SeekBar.class.getName();
-        }
-
-        @Override
-        public void onInitializeAccessibilityNodeInfo(android.view.accessibility.AccessibilityNodeInfo info) {
-            super.onInitializeAccessibilityNodeInfo(info);
-            // Announced as a percentage rather than the raw slider sweep, so the default is still a
-            // landmark to come back to without seeing the value in the corner.
-            info.setContentDescription(LocaleController.formatString(
-                    R.string.ComposerScaleAccDescr, currentScale()));
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            textPaint.setColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText));
-            String value = String.format(Locale.US, "%d%%", currentScale());
-            canvas.drawText(value, getMeasuredWidth() - dp(39), dp(28), textPaint);
-        }
-
-        @Override
-        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-            int width = MeasureSpec.getSize(widthMeasureSpec);
-            super.onMeasure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-                    MeasureSpec.makeMeasureSpec(dp(52), MeasureSpec.EXACTLY));
-            // Only seeded when the bar is idle. The preview now resizes as the slider moves, which
-            // re-measures this row mid gesture, and re-asserting the quantised value there would
-            // snap the thumb out from under the finger.
-            if (!sizeBar.isDragging()) {
-                sizeBar.setProgress((currentScale() - SCALE_MIN) / (float) (SCALE_MAX - SCALE_MIN));
-            }
-        }
-
-        void update() {
-            sizeBar.setProgress((currentScale() - SCALE_MIN) / (float) (SCALE_MAX - SCALE_MIN));
-            invalidate();
-        }
+    private static SlideIntChooseView.Options scaleOptions() {
+        return SlideIntChooseView.Options.make(0, SCALE_STEPS, 1,
+                (type, value) -> type == 0 ? value + "%" : "");
     }
 
     private static int currentScale() {
