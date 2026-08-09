@@ -545,7 +545,7 @@ public class CameraSession {
 
     private void kickSmoothZoom() {
         try {
-            Camera camera = cameraInfo != null ? cameraInfo.camera : null;
+            Camera camera = destroyed ? null : (cameraInfo != null ? cameraInfo.camera : null);
             if (camera == null) {
                 return;
             }
@@ -587,7 +587,7 @@ public class CameraSession {
     private void stepZoomLevel() {
         zoomStepping = false;
         try {
-            Camera camera = cameraInfo != null ? cameraInfo.camera : null;
+            Camera camera = destroyed ? null : (cameraInfo != null ? cameraInfo.camera : null);
             if (camera == null || zoomTargetLevel < 0) {
                 return;
             }
@@ -715,6 +715,7 @@ public class CameraSession {
     public void destroy() {
         initied = false;
         destroyed = true;
+        AndroidUtilities.cancelRunOnUIThread(zoomStepper);
         if (orientationEventListener != null) {
             orientationEventListener.disable();
             orientationEventListener = null;

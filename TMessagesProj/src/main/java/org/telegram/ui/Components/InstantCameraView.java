@@ -1326,6 +1326,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             entry.effectId = options.effectId;
         }
         delegate.sendMediaKeepRecording(entry, info, options == null || options.notify, options != null ? options.stars : 0);
+        AutoDeleteMediaTask.unlockFile(segmentFile);
         return info;
     }
 
@@ -3149,7 +3150,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // one on the same encoders. Nothing is stopped or released here, so the camera never blinks.
         private void handleRollover(long segmentDuration, SendOptions sendOptions) {
             final File nextFile = rolloverFile;
-            if (!running || pauseRecorder || cancelled || mediaMuxer == null || nextFile == null) {
+            if (!running || pauseRecorder || cancelled || mediaMuxer == null || nextFile == null || videoTrackFormat == null) {
                 if (nextFile != null) {
                     rolloverFile = null;
                     // the UI side already pointed cameraFile at the file we're not going to open, so put it
@@ -3158,6 +3159,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     AndroidUtilities.runOnUIThread(() -> {
                         if (cameraFile == nextFile) {
                             cameraFile = stillWriting;
+                            recordStartTime = System.currentTimeMillis() - segmentDuration;
+                            recordedTime = segmentDuration;
+                            progress = Math.min(1f, segmentDuration / 60000.0f);
+                            updateInfiniteButton();
                         }
                         AutoDeleteMediaTask.unlockFile(nextFile);
                     });
@@ -3839,6 +3844,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         public void drainEncoder(boolean endOfStream) throws Exception {
             // NagramX: a failed rollover leaves no muxer behind; there is nothing to drain into
             if (mediaMuxer == null) {
+                if (endOfStream && videoEncoder != null) {
+                    videoEncoder.signalEndOfInputStream();
+                }
                 return;
             }
             if (endOfStream) {
