@@ -100,7 +100,7 @@ public final class PersonalRepliesStorage {
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT thread_reply_id, data, mid FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id LIMIT %d",
+                    "SELECT thread_reply_id, data, mid FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id, mid LIMIT %d",
                     dialogId, TextUtils.join(",", parentIds), CANDIDATE_LIMIT));
             while (cursor.next()) {
                 int parentId = cursor.intValue(0);
@@ -114,7 +114,14 @@ public final class PersonalRepliesStorage {
                 TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                 data.reuse();
                 if (isReplyInDialog(message, dialogId)) {
-                    counts.put(parentId, Math.min(THREAD_LIMIT, counts.get(parentId) + 1));
+                    int updated = Math.min(THREAD_LIMIT, counts.get(parentId) + 1);
+                    counts.put(parentId, updated);
+                    if (updated >= THREAD_LIMIT) {
+                        // already clamped for display; no point recording any more ids scanned
+                        // for this parent, or a long-lived thread past THREAD_LIMIT would grow
+                        // childIdsOut without bound for the rest of the scan
+                        continue;
+                    }
                     ArrayList<Integer> childIds = childIdsOut.get(parentId);
                     if (childIds == null) {
                         childIds = new ArrayList<>();
