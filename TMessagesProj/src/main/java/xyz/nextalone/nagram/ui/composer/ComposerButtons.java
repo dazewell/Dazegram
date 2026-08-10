@@ -126,8 +126,10 @@ public final class ComposerButtons {
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
-        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 0.88f));
-        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.89f));
+        // Schedule/Attach are full-bleed raster glyphs (no baked-in padding, unlike the vector icons
+        // around them), so their scale has to land well under 1 to read at the same optical size.
+        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 0.78f));
+        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.76f));
     }
 
     private static final List<Button> ALL = Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
