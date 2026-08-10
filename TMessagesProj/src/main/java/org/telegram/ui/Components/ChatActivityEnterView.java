@@ -2980,7 +2980,10 @@ public class ChatActivityEnterView extends FrameLayout implements
             };
             attachButton.setScaleType(ImageView.ScaleType.CENTER);
             attachButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
-            attachButton.setImageResource(R.drawable.msg_input_attach2);
+            // NagramX: the composer toolbar treats every button as a fixed vector glyph regardless of
+            // icon theme, so attach gets the vector asset the opt-in Solar theme already ships instead
+            // of the full-bleed raster msg_input_attach2 (see SolarIcons.kt) - legacy layout keeps it.
+            attachButton.setImageResource(composerToolbarEnabled ? R.drawable.ayu_input_attach : R.drawable.msg_input_attach2);
             attachButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector)));
             if (composerToolbarEnabled) {
                 // NagramX: attach holds the trailing edge - it is the one always reached for, so it stays put
@@ -3959,8 +3962,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
 
-        final Drawable drawable1 = getContext().getResources().getDrawable(R.drawable.input_calendar1).mutate();
-        final Drawable drawable2 = getContext().getResources().getDrawable(R.drawable.input_calendar2).mutate();
+        // NagramX: composer toolbar uses the vector calendar pair the Solar theme already ships
+        // (see SolarIcons.kt) instead of the full-bleed raster input_calendar1/2 - legacy layout keeps
+        // the raster pair. Same two-tone tint either way, the red dot on drawable2 is unaffected.
+        final int calendar1Res = composerToolbarEnabled ? R.drawable.input_calendar1_solar : R.drawable.input_calendar1;
+        final int calendar2Res = composerToolbarEnabled ? R.drawable.input_calendar2_solar : R.drawable.input_calendar2;
+        final Drawable drawable1 = getContext().getResources().getDrawable(calendar1Res).mutate();
+        final Drawable drawable2 = getContext().getResources().getDrawable(calendar2Res).mutate();
         drawable1.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         drawable2.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_recordedVoiceDot), PorterDuff.Mode.MULTIPLY));
         CombinedDrawable combinedDrawable = new CombinedDrawable(drawable1, drawable2);
@@ -8539,7 +8547,9 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (use) {
             attachButton.setTag(1);
 
-            fromRes = R.drawable.input_attach;
+            // NagramX: composer toolbar's resting icon is the vector asset (see attachButton
+            // construction above), so the fade-from icon has to match or the animation flashes raster.
+            fromRes = composerToolbarEnabled ? R.drawable.ayu_input_attach : R.drawable.input_attach;
             targetRes = R.drawable.ic_ab_other;
 
             attachButton.setOnClickListener(this::onMenuClick);
@@ -8551,7 +8561,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             attachButton.setTag(2);
 
             fromRes = R.drawable.ic_ab_other;
-            targetRes = R.drawable.input_attach;
+            targetRes = composerToolbarEnabled ? R.drawable.ayu_input_attach : R.drawable.input_attach;
 
             attachButton.setOnClickListener(v -> {
                 if (adjustPanLayoutHelper != null && adjustPanLayoutHelper.animationInProgress()) {
