@@ -9761,7 +9761,7 @@ public class ChatActivity extends BaseFragment implements
     private boolean lastInAppInputVisible;
     // NagramX: height budget for the fullscreen input mode, everything between the action bar
     // and whatever input method is up (keyboard or emoji panel), minus the island's bottom gap
-    private void checkUi_expandedInputBudget() {
+    public void checkUi_expandedInputBudget() {
         if (chatActivityEnterView == null || contentView == null) {
             return;
         }
@@ -9783,8 +9783,9 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void checkInsets() {
-        // only while expanded (to resize/collapse on keyboard<->emoji swaps and dismissals); when off,
-        // the measure pass keeps the budget primed, so this per-frame path stays free for everyone else
+        // only while expanded (to resize/collapse on keyboard<->emoji swaps and dismissals); when off, the
+        // measure pass primes the budget and the expand button re-reads it on tap, so this per-frame path
+        // stays free for everyone else
         if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
             checkUi_expandedInputBudget();
         }
