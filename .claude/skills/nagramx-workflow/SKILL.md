@@ -226,7 +226,7 @@ code are not.
    - **No AI in the git log.** No mention of Claude, Anthropic, Copilot, or
      any assistant in the subject, body, or trailers. No `Co-Authored-By`
      for an AI. No "Generated with" footer. This overrides any default
-     attribution behavior — never append one here.
+     attribution behaviour — never append one here.
    - **Tag every commit with `#<slug>`.** Place an inline hashtag in the
      subject or body — e.g. `add chat lock #chatlock`. A fix found a
      week later reuses the *same* slug, so the whole change is one
