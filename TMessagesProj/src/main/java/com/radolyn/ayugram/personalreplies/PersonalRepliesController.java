@@ -170,6 +170,13 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         if (index < 0) {
             return;
         }
+        int current = counts.valueAt(index);
+        if (current >= PersonalRepliesStorage.THREAD_LIMIT) {
+            // already clamped for display; nothing left to apply, and once a parent's count can
+            // never rise again there is no point remembering any more ids against it - otherwise
+            // an active thread that outlives THREAD_LIMIT would grow appliedChildIds forever
+            return;
+        }
         ArrayList<Integer> applied = appliedChildIds.get(parentId);
         if (applied != null && applied.contains(childId)) {
             // this exact reply already bumped the cached value once; this is what keeps
@@ -183,12 +190,7 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             appliedChildIds.put(parentId, applied);
         }
         applied.add(childId);
-        int current = counts.valueAt(index);
-        int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, current + 1);
-        if (value == current) {
-            return;
-        }
-        counts.put(parentId, value);
+        counts.put(parentId, current + 1);
         NotificationCenter.getInstance(currentAccount)
                 .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
     }
