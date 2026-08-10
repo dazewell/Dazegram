@@ -9782,9 +9782,16 @@ public class ChatActivity extends BaseFragment implements
         chatActivityEnterView.updateExpandedInputBudget(budget, inputMethodVisible);
     }
 
+    // NagramX: the one entry point the enter view is allowed to reach - it re-primes the snapshot behind
+    // canExpandInput() when the expand button is tapped, so the per-frame check above stays internal
+    public void refreshExpandedInputBudgetSnapshot() {
+        checkUi_expandedInputBudget();
+    }
+
     private void checkInsets() {
-        // only while expanded (to resize/collapse on keyboard<->emoji swaps and dismissals); when off,
-        // the measure pass keeps the budget primed, so this per-frame path stays free for everyone else
+        // only while expanded (to resize/collapse on keyboard<->emoji swaps and dismissals); when off, the
+        // measure pass primes the budget and the expand button re-reads it on tap, so this per-frame path
+        // stays free for everyone else
         if (chatActivityEnterView != null && chatActivityEnterView.isMessageEditExpanded()) {
             checkUi_expandedInputBudget();
         }

@@ -3098,6 +3098,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             composerToolbar.addConfigurable(xyz.nextalone.nagram.ui.composer.ComposerButtons.EXPAND, expandInputButton);
             ScaleStateListAnimator.apply(expandInputButton);
             expandInputButton.setOnClickListener(v -> {
+                // NagramX: the budget snapshot is only rewritten from a measure pass, and a composer sitting
+                // at its collapsed max height stops requesting layout - so a snapshot taken while the input
+                // method momentarily read as gone (a keyboard<->emoji handoff) would stick, and every tap
+                // would fall through to a keyboard request that no-ops with the keyboard already up. Re-read
+                // it here: the tap is the one moment guaranteed to happen.
+                if (parentFragment != null) {
+                    parentFragment.refreshExpandedInputBudgetSnapshot();
+                }
                 if (messageEditExpanded) {
                     setMessageEditExpanded(false);
                 } else if (canExpandInput()) {
