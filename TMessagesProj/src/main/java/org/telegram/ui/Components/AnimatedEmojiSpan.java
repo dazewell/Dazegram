@@ -178,6 +178,15 @@ public class AnimatedEmojiSpan extends ReplacementSpan {
         return this;
     }
 
+    // NagramX: the default 1.2 scale draws the emoji taller than the line it is measured into, which
+    // relies on inter-line slack that an editor field with font padding disabled does not have. Clamp
+    // it where that slack is absent so the glyph stays within its own line.
+    public void clampScale(float max) {
+        if (scale > max) {
+            scale = max;
+        }
+    }
+
 
     public static void applyFontMetricsForString(CharSequence text, Paint textPaint) {
         if (text instanceof Spannable) {

@@ -388,9 +388,30 @@ public class EditTextEffects extends EditText {
         }
         int newTextLength = (getLayout() == null || getLayout().getText() == null) ? 0 : getLayout().getText().length();
         if (force || lastLayout != getLayout() || lastTextLength != newTextLength) {
+            clampAnimatedEmojiScale();
             animatedEmojiDrawables = AnimatedEmojiSpan.update(emojiCacheType(), this, animatedEmojiDrawables, getLayout());
             lastLayout = getLayout();
             lastTextLength = newTextLength;
+        }
+    }
+
+    // NagramX: fields that leave no vertical slack between lines override this so animated emoji, which
+    // are drawn 20% larger than the line they are measured into, don't bleed onto the neighbouring line.
+    protected float maxAnimatedEmojiScale() {
+        return Float.MAX_VALUE;
+    }
+
+    private void clampAnimatedEmojiScale() {
+        final float max = maxAnimatedEmojiScale();
+        if (max == Float.MAX_VALUE) {
+            return;
+        }
+        Editable text = getText();
+        if (text == null) {
+            return;
+        }
+        for (AnimatedEmojiSpan span : text.getSpans(0, text.length(), AnimatedEmojiSpan.class)) {
+            span.clampScale(max);
         }
     }
 
