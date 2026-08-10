@@ -147,11 +147,11 @@ public final class ComposerButtons {
     }
 
     public static float iconScaleForResource(int resource) {
-        if (resource == R.drawable.msg_input_attach2) {
+        // input_attach is the same physical button as ATTACH, just swapped in post-construction by
+        // checkAttachButton() for its resting (non-menu) state - it has to track the registry value,
+        // not carry its own copy, or a tuning pass on ATTACH silently stops applying here.
+        if (resource == R.drawable.msg_input_attach2 || resource == R.drawable.input_attach) {
             return get(ATTACH).iconScale;
-        }
-        if (resource == R.drawable.input_attach) {
-            return 0.76f;
         }
         if (resource == R.drawable.ic_ab_other) {
             return 1.10f;
