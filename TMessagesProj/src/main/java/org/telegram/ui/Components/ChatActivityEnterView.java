@@ -3104,7 +3104,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // would fall through to a keyboard request that no-ops with the keyboard already up. Re-read
                 // it here: the tap is the one moment guaranteed to happen.
                 if (parentFragment != null) {
-                    parentFragment.checkUi_expandedInputBudget();
+                    parentFragment.refreshExpandedInputBudgetSnapshot();
                 }
                 if (messageEditExpanded) {
                     setMessageEditExpanded(false);
