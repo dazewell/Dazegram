@@ -295,6 +295,12 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                             changed = true;
                         }
                         counts.put(id, value);
+                        // count() doesn't know an id is already in flight, so a rebind that
+                        // happened while this query was outstanding can have queued it right back
+                        // into pending even though it's the exact id this completion just settled;
+                        // drop it here or a redundant follow-up query for it would run next and
+                        // unconditionally overwrite the value just reconciled above with a stale one
+                        pending.delete(id);
                     }
                     if (changed) {
                         NotificationCenter.getInstance(currentAccount)
@@ -302,8 +308,10 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                     }
                 }
                 inFlightChildIds.clear();
-                // a bind that queued new ids while this query was outstanding couldn't start its
-                // own request (scheduleRequest bails while inFlightIds != null); pick it up now
+                // anything still pending here is a genuinely new id: one requested for the first
+                // time while this query was outstanding, since every id this query resolved was
+                // just removed above. scheduleRequest bailed on it earlier (inFlightIds != null),
+                // so start its request now
                 if (pending.size() > 0) {
                     scheduleRequest();
                 }
