@@ -33,6 +33,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.QuoteSpan;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -936,6 +937,24 @@ public class Emoji {
             }
             boolean needRestore = false;
             float ty = emojiDrawingYOffset - (size - scale * size) / 2;
+            // NagramX: ALIGN_BOTTOM pins the drawable to the line's bottom rather than to the baseline.
+            // A composer quote pads its block by inflating the line's descent (QuoteStyleSpan.chooseHeight),
+            // which runs after this span's getSize and therefore wins, so the line bottom drops below the
+            // text's own descent and the emoji sinks with it while the glyphs beside it stay put. Measure
+            // the excess against our own metrics and take it back. The arithmetic test is checked first so
+            // the span scan never runs on ordinary lines, where the excess is zero.
+            if (fontMetrics != null && text instanceof Spanned && getVerticalAlignment() == DynamicDrawableSpan.ALIGN_BOTTOM) {
+                final float excess = bottom - (y + fontMetrics.descent);
+                if (excess > 0) {
+                    QuoteSpan.QuoteStyleSpan[] quoteStyles = ((Spanned) text).getSpans(start, end, QuoteSpan.QuoteStyleSpan.class);
+                    for (int i = 0; i < quoteStyles.length; ++i) {
+                        if (quoteStyles[i].span.edit && quoteStyles[i].span.adaptLineHeight) {
+                            ty -= excess;
+                            break;
+                        }
+                    }
+                }
+            }
             if (ty != 0) {
                 needRestore = true;
                 canvas.save();
