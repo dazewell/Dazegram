@@ -9760,7 +9760,8 @@ public class ChatActivity extends BaseFragment implements
 
     private boolean lastInAppInputVisible;
     // NagramX: height budget for the fullscreen input mode, everything between the action bar
-    // and whatever input method is up (keyboard or emoji panel), minus the island's bottom gap
+    // and whatever input method is up (keyboard or emoji panel), minus the island's bottom gap.
+    // public so the enter view's expand button can re-prime the snapshot on tap
     public void checkUi_expandedInputBudget() {
         if (chatActivityEnterView == null || contentView == null) {
             return;

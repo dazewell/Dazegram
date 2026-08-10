@@ -7146,13 +7146,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         pendingExpandInput = true;
         AndroidUtilities.cancelRunOnUIThread(clearPendingExpandInput);
         AndroidUtilities.runOnUIThread(clearPendingExpandInput, PENDING_EXPAND_INPUT_TIMEOUT);
-        // with the keyboard already up openKeyboard() changes nothing, so no measure pass would arrive to
-        // wake the latch and the tap would die silently. Ask for one, so the anchor is re-read within the
-        // timeout even when the input method is up but sizes against something we can't see (split screen,
-        // a floating keyboard).
-        if (keyboardVisible && parentFragment != null && parentFragment.getFragmentView() != null) {
-            parentFragment.getFragmentView().requestLayout();
-        }
     }
 
     private void cancelPendingExpandInput() {
