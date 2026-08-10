@@ -263,7 +263,6 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                         ArrayList<Integer> queried = foundChildIds.get(id);
                         ArrayList<Integer> arrived = inFlightChildIds.get(id);
                         if (arrived != null) {
-                            ArrayList<Integer> applied = null;
                             for (int j = 0, size = arrived.size(); j < size; j++) {
                                 int childId = arrived.get(j);
                                 // an id the query's own result already scanned must not be added
@@ -273,24 +272,44 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                                 if (queried == null || !queried.contains(childId)) {
                                     value++;
                                 }
-                                // either way this id is now reflected in the value committed below,
-                                // so record it: a later duplicate for the exact same reply (e.g.
-                                // messageReceivedByServer's second post landing after this
-                                // completes) must be recognized as already-applied by the ordinary
-                                // cached-path check in increment(), not counted again
-                                if (applied == null) {
-                                    applied = appliedChildIds.get(id);
+                            }
+                        }
+                        value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, value);
+                        if (value < PersonalRepliesStorage.THREAD_LIMIT) {
+                            // seed appliedChildIds with every id this value is actually built
+                            // from - both what the query itself counted and whatever arrived
+                            // during its flight - so a later duplicate announcement for any of
+                            // them (not just the ones that happened to arrive while this query
+                            // was outstanding) lands on increment()'s ordinary cached-path check
+                            // instead of bumping the same reply twice; skipped once the value is
+                            // already capped, since increment() blocks on the cap before ever
+                            // consulting this set
+                            ArrayList<Integer> applied = appliedChildIds.get(id);
+                            if (queried != null) {
+                                for (int k = 0, size = queried.size(); k < size; k++) {
+                                    int childId = queried.get(k);
                                     if (applied == null) {
                                         applied = new ArrayList<>();
                                         appliedChildIds.put(id, applied);
                                     }
+                                    if (!applied.contains(childId)) {
+                                        applied.add(childId);
+                                    }
                                 }
-                                if (!applied.contains(childId)) {
-                                    applied.add(childId);
+                            }
+                            if (arrived != null) {
+                                for (int j = 0, size = arrived.size(); j < size; j++) {
+                                    int childId = arrived.get(j);
+                                    if (applied == null) {
+                                        applied = new ArrayList<>();
+                                        appliedChildIds.put(id, applied);
+                                    }
+                                    if (!applied.contains(childId)) {
+                                        applied.add(childId);
+                                    }
                                 }
                             }
                         }
-                        value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, value);
                         if (counts.get(id, -1) != value) {
                             changed = true;
                         }
