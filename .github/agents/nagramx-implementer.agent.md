@@ -176,11 +176,21 @@ step 9 **synchronously**, with its 20-minute deadline — do not background it a
 end your turn, because a session-attached process dies when the session goes
 idle. Login gotcha: the *reviews* endpoint lists the bot as
 `copilot-pull-request-reviewer[bot]` but the inline *comments* endpoint lists it
-as `Copilot`, so filtering reviews by `Copilot` silently returns zero.
+as `Copilot`, so an exact-match filter on either name silently returns zero on
+the other endpoint. Match case-insensitively on a wildcard instead.
 
 ```powershell
-gh api "repos/dazewell/NagramX/pulls/<n>/reviews"  --jq 'map(select(.user.login=="copilot-pull-request-reviewer[bot]"))|last|{state,submitted_at,body}'
-gh api "repos/dazewell/NagramX/pulls/<n>/comments" --jq '[.[]|select(.user.login=="Copilot")]|sort_by(.created_at)|.[-5:]|.[]|{path,line,body}'
+# filter in PowerShell, not in --jq: this shell strips the inner quotes out of a
+# jq string literal, so `--jq '...=="Copilot"'` fails with "function not defined"
+$pr = '<n>'
+$reviews = gh api "repos/dazewell/NagramX/pulls/$pr/reviews" | ConvertFrom-Json
+$reviews | Where-Object { $_.user.login -like '*copilot*' } |
+  Select-Object -Last 1 | ForEach-Object { $_.state; $_.submitted_at; $_.body }
+
+$comments = gh api "repos/dazewell/NagramX/pulls/$pr/comments" | ConvertFrom-Json
+$comments | Where-Object { $_.user.login -like '*opilot*' } |
+  Sort-Object created_at | Select-Object -Last 5 |
+  ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
 ```
 
 Triage it like any review: fix the real findings as new commits, note the false
@@ -189,7 +199,23 @@ produces diminishing nitpicks.
 
 **Close every review point before you hand back.** Each inline comment and
 review thread gets either a fix or an explicit reply explaining why it will not
-change, and then the thread is resolved. Verify none remain unresolved.
+change, and then the thread is resolved. Reply *in the thread* rather than as a
+loose pull request comment, and resolve it with the GraphQL mutation — there is
+no `gh` porcelain for either. Verify none remain unresolved.
+
+```powershell
+# reply in-thread; --body-file avoids this shell mangling backticks and $ in prose
+[System.IO.File]::WriteAllText("$env:TEMP\reply.md", $text, (New-Object System.Text.UTF8Encoding $false))
+gh api "repos/dazewell/NagramX/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
+
+# resolve. threadId is the PRRT_... node id, not the comment id
+$ids = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved}}}}}'
+$t = gh api graphql -f query=$ids -F o=dazewell -F n=NagramX -F p=$pr | ConvertFrom-Json
+$t.data.repository.pullRequest.reviewThreads.nodes | Where-Object { -not $_.isResolved }
+
+$m = 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'
+gh api graphql -f query=$m -F id=<PRRT_...>
+```
 
 ## Receiving review findings
 
