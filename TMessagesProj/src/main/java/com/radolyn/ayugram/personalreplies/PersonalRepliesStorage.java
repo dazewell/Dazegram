@@ -67,24 +67,15 @@ public final class PersonalRepliesStorage {
     }
 
     /**
-     * Counts stored replies for each of {@code parentIds} in one pass, and
-     * separately reports the highest child {@code mid} this pass actually
-     * scanned for each parent, reply or not.
+     * Counts stored replies for each of {@code parentIds} in one pass.
      *
      * <p>The blob has to be parsed rather than counted in SQL: a message can
      * quote something from a different chat, and the parent id it stores then
      * belongs to that other peer's id space, where it can collide with a real
      * id in this chat. {@code reply_to_peer_id} is the only thing that tells
      * the two apart and it lives inside the serialized message.
-     *
-     * <p>{@code maxChildIdOut} exists because this query runs on the storage
-     * queue and can be overtaken by a write for a reply that arrives while it
-     * is still outstanding (see {@link PersonalRepliesController#runRequest}):
-     * knowing the highest {@code mid} this particular pass already saw for a
-     * parent is what lets the caller tell "already reflected in the count
-     * above" apart from "genuinely missed it" without a second query.
      */
-    static void countReplies(int account, long dialogId, ArrayList<Integer> parentIds, SparseIntArray counts, SparseIntArray maxChildIdOut) {
+    static void countReplies(int account, long dialogId, ArrayList<Integer> parentIds, SparseIntArray counts) {
         if (parentIds == null || parentIds.isEmpty()) {
             return;
         }
@@ -95,16 +86,12 @@ public final class PersonalRepliesStorage {
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT thread_reply_id, data, mid FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id, mid LIMIT %d",
+                    "SELECT thread_reply_id, data FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id LIMIT %d",
                     dialogId, TextUtils.join(",", parentIds), CANDIDATE_LIMIT));
             while (cursor.next()) {
                 int parentId = cursor.intValue(0);
                 if (parentId == 0) {
                     continue;
-                }
-                int childId = (int) cursor.longValue(2);
-                if (childId > maxChildIdOut.get(parentId, 0)) {
-                    maxChildIdOut.put(parentId, childId);
                 }
                 NativeByteBuffer data = cursor.byteBufferValue(1);
                 if (data == null) {

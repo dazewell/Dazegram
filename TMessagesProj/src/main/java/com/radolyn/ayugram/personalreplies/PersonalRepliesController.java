@@ -2,6 +2,7 @@ package com.radolyn.ayugram.personalreplies;
 
 import android.text.TextUtils;
 import android.util.SparseArray;
+import android.util.SparseBooleanArray;
 import android.util.SparseIntArray;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -17,7 +18,6 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
-import java.util.Collections;
 
 import xyz.nextalone.nagram.NaConfig;
 
@@ -46,25 +46,30 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     private final SparseIntArray counts = new SparseIntArray();
     private final SparseIntArray pending = new SparseIntArray();
     /**
-     * Highest child {@code mid} already reflected in the matching entry of
-     * {@link #counts}, whether it got there via a query or a direct
-     * {@link #increment}. A reply this low or lower can't be a genuinely new
-     * one, which is what stops the same reply from being counted twice when
-     * {@code messageReceivedByServer} posts twice for one send (see
-     * {@link #didReceivedNotification}).
+     * Exact set of child ids already reflected in the matching entry of
+     * {@link #counts} through {@link #increment}, keyed by parent id. A
+     * query result is never recorded here: it is folded straight into
+     * {@link #counts}, so this only ever needs to remember what a direct
+     * increment added on top of that. Checking exact membership rather than
+     * a highest-seen id is what lets two distinct replies be told apart from
+     * one reply announced twice, regardless of which order their ids arrive
+     * in: {@code messageReceivedByServer} posts twice for the same send, but
+     * two different outgoing replies can also acknowledge out of id order,
+     * and neither case can be answered by comparing against a maximum.
      */
-    private final SparseIntArray countedThrough = new SparseIntArray();
+    private final SparseArray<ArrayList<Integer>> appliedChildIds = new SparseArray<>();
     /** Ids of the query currently on the storage queue, or null when nothing is outstanding. */
     private ArrayList<Integer> inFlightIds;
     /**
-     * Child ids of replies that landed for an in-flight parent while its
-     * query was still running, reconciled against that query's own
-     * high-water mark once it completes (see {@link #runRequest}) rather
-     * than folded on top of its result: the query can run on the storage
-     * queue after the very write one of these ids is announcing, in which
-     * case it is already reflected in the result and must not be added again.
+     * Parent ids from {@link #inFlightIds} that a reply landed for while
+     * their query was still running. The query can run on the storage queue
+     * after the very write one of these is announcing, so its result for a
+     * dirty parent can neither be trusted nor safely patched up in memory;
+     * see {@link #runRequest}, which discards that parent's result entirely
+     * and re-queues it for a fresh, serialized query instead of guessing at
+     * what the racy result did or didn't already include.
      */
-    private final SparseArray<ArrayList<Integer>> inFlightChildIds = new SparseArray<>();
+    private final SparseBooleanArray dirtyInFlightIds = new SparseBooleanArray();
     private long cachedDialogId;
     private boolean requestScheduled;
 
@@ -127,9 +132,9 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             cachedDialogId = dialogId;
             counts.clear();
             pending.clear();
-            countedThrough.clear();
+            appliedChildIds.clear();
             inFlightIds = null;
-            inFlightChildIds.clear();
+            dirtyInFlightIds.clear();
         }
         int index = counts.indexOfKey(messageId);
         if (index >= 0) {
@@ -153,32 +158,31 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             return;
         }
         if (inFlightIds != null && inFlightIds.contains(parentId)) {
-            // a query for this id is already on the storage queue; the child id is reconciled
-            // against that query's own high-water mark in runRequest instead of being folded in
-            // here, since the query can run on the storage queue after the very write this is
-            // announcing and already include it
-            ArrayList<Integer> seen = inFlightChildIds.get(parentId);
-            if (seen == null) {
-                seen = new ArrayList<>();
-                inFlightChildIds.put(parentId, seen);
-            }
-            if (!seen.contains(childId)) {
-                seen.add(childId);
-            }
+            // a query for this id is already on the storage queue and may already reflect this
+            // exact reply (see runRequest); rather than track which child ids arrived during the
+            // window and try to reconcile them against a result that might already include some
+            // of them, just mark the parent dirty so runRequest throws that result away and
+            // re-queues a fresh, serialized query for it once this one completes
+            dirtyInFlightIds.put(parentId, true);
             return;
         }
         int index = counts.indexOfKey(parentId);
         if (index < 0) {
             return;
         }
-        if (childId <= countedThrough.get(parentId, 0)) {
-            // this exact reply is already reflected in the cached value, whether the query that
-            // last populated it already scanned it or an earlier call already applied it; this is
-            // what keeps messageReceivedByServer's double post per send (see
-            // didReceivedNotification) from counting the same reply twice
+        ArrayList<Integer> applied = appliedChildIds.get(parentId);
+        if (applied != null && applied.contains(childId)) {
+            // this exact reply already bumped the cached value once; this is what keeps
+            // messageReceivedByServer's double post per send (see didReceivedNotification) from
+            // counting the same reply twice, and does so regardless of what other child ids have
+            // or haven't been applied since, unlike a highest-seen-id comparison
             return;
         }
-        countedThrough.put(parentId, childId);
+        if (applied == null) {
+            applied = new ArrayList<>();
+            appliedChildIds.put(parentId, applied);
+        }
+        applied.add(childId);
         int current = counts.valueAt(index);
         int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, current + 1);
         if (value == current) {
@@ -190,7 +194,7 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     private void scheduleRequest() {
-        // a query already on the storage queue owns inFlightIds/inFlightChildIds until its
+        // a query already on the storage queue owns inFlightIds/dirtyInFlightIds until its
         // continuation runs; starting a second one here would let it clobber both, dropping
         // whatever the first query's in-flight replies were tracking (see runRequest's retrigger
         // below)
@@ -215,17 +219,16 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         }
         pending.clear();
         inFlightIds = ids;
-        inFlightChildIds.clear();
+        dirtyInFlightIds.clear();
         MessagesStorage.getInstance(currentAccount).getStorageQueue().postRunnable(() -> {
             SparseIntArray found = new SparseIntArray();
-            SparseIntArray queriedThrough = new SparseIntArray();
-            PersonalRepliesStorage.countReplies(currentAccount, dialogId, ids, found, queriedThrough);
+            PersonalRepliesStorage.countReplies(currentAccount, dialogId, ids, found);
             AndroidUtilities.runOnUIThread(() -> {
                 // a dialog switch or an invalidate() supersedes an outstanding query by nulling
                 // inFlightIds without waiting for it (see count() and invalidate()), so a newer
                 // request, or nothing at all, can already own this state by the time this runs; a
                 // stale completion must not touch state that belongs to whatever superseded it -
-                // including inFlightChildIds, which a newer request may already be populating
+                // including dirtyInFlightIds, which a newer request may already be populating
                 if (inFlightIds != ids) {
                     return;
                 }
@@ -233,45 +236,36 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 if (dialogId == cachedDialogId) {
                     if (counts.size() > CACHE_LIMIT) {
                         counts.clear();
-                        countedThrough.clear();
+                        appliedChildIds.clear();
                     }
                     boolean changed = false;
                     for (int i = 0; i < ids.size(); i++) {
                         int id = ids.get(i);
-                        int queriedMax = queriedThrough.get(id, 0);
-                        int value = found.get(id, 0);
-                        int highWater = queriedMax;
-                        ArrayList<Integer> seen = inFlightChildIds.get(id);
-                        if (seen != null) {
-                            for (int j = 0, size = seen.size(); j < size; j++) {
-                                int childId = seen.get(j);
-                                // a reply that arrived while this query was already on the
-                                // storage queue may have been written before the query actually
-                                // ran there, in which case it is already inside `value` and must
-                                // not be added a second time
-                                if (childId > queriedMax) {
-                                    value++;
-                                }
-                                if (childId > highWater) {
-                                    highWater = childId;
-                                }
-                            }
+                        if (dirtyInFlightIds.get(id, false)) {
+                            // a reply for this parent arrived while this query was already on the
+                            // storage queue; its result can't be trusted (see increment), so throw
+                            // it away rather than guess and re-queue the id instead - the write
+                            // that dirtied it was already enqueued to the storage queue before this
+                            // continuation runs, so the follow-up query the retrigger below starts
+                            // is guaranteed to run after it
+                            pending.put(id, 1);
+                            continue;
                         }
-                        value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, value);
+                        int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, found.get(id, 0));
                         if (counts.get(id, -1) != value) {
                             changed = true;
                         }
                         counts.put(id, value);
-                        countedThrough.put(id, highWater);
                     }
                     if (changed) {
                         NotificationCenter.getInstance(currentAccount)
                                 .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
                     }
                 }
-                inFlightChildIds.clear();
+                dirtyInFlightIds.clear();
                 // a bind that queued new ids while this query was outstanding couldn't start its
-                // own request (scheduleRequest bails while inFlightIds != null); pick it up now
+                // own request (scheduleRequest bails while inFlightIds != null); pick it up now,
+                // along with any id this completion just re-queued above
                 if (pending.size() > 0) {
                     scheduleRequest();
                 }
@@ -324,13 +318,13 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         // here rather than allowed to complete on its own
         boolean hadOutstandingQuery = inFlightIds != null;
         inFlightIds = null;
-        inFlightChildIds.clear();
+        dirtyInFlightIds.clear();
         if (counts.size() == 0 && pending.size() == 0 && !hadOutstandingQuery) {
             return;
         }
         counts.clear();
         pending.clear();
-        countedThrough.clear();
+        appliedChildIds.clear();
         NotificationCenter.getInstance(currentAccount)
                 .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, cachedDialogId);
     }
@@ -377,7 +371,6 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         if (scheduled || mode != 0 || messages == null || dialogId != cachedDialogId) {
             return;
         }
-        ArrayList<MessageObject> eligible = null;
         for (int i = 0, size = messages.size(); i < size; i++) {
             MessageObject message = messages.get(i);
             TLRPC.Message owner = message != null ? message.messageOwner : null;
@@ -385,25 +378,10 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 continue;
             }
             if (PersonalRepliesStorage.isReplyInDialog(owner, dialogId)) {
-                if (eligible == null) {
-                    eligible = new ArrayList<>();
-                }
-                eligible.add(message);
+                // exact per-parent membership tracking in increment() doesn't care what order
+                // same-parent replies in this batch arrive in, unlike a highest-seen-id watermark
+                increment(dialogId, owner.reply_to.reply_to_msg_id, message.getId());
             }
-        }
-        if (eligible == null) {
-            return;
-        }
-        if (eligible.size() > 1) {
-            // a batch isn't guaranteed to list two replies to the same parent in ascending id
-            // order, and increment()'s countedThrough watermark only advances correctly if
-            // same-parent replies are applied in that order, so enforce it locally rather than
-            // trust the batch
-            Collections.sort(eligible, (a, b) -> Integer.compare(a.getId(), b.getId()));
-        }
-        for (int i = 0, size = eligible.size(); i < size; i++) {
-            MessageObject message = eligible.get(i);
-            increment(dialogId, message.messageOwner.reply_to.reply_to_msg_id, message.getId());
         }
     }
 
@@ -425,9 +403,11 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
      * {@code TL_updateMessageID} update, handled in {@code
      * MessagesController#processUpdates}) posts it with a {@code null}
      * message object since it only has raw ids there, not the full message.
-     * Neither needs special-casing here: {@link #increment}'s own
-     * de-duplication against {@link #countedThrough} absorbs the repeat post,
-     * and a {@code null} message is simply dropped.
+     * Neither needs special-casing here: {@link #increment}'s own exact
+     * per-parent membership check absorbs the repeat post - and, unlike a
+     * highest-seen-id comparison, also handles two distinct outgoing replies
+     * to the same parent acknowledging out of id order - and a {@code null}
+     * message is simply dropped.
      */
     private void onMessageAcked(long dialogId, TLRPC.Message message, boolean scheduled) {
         if (scheduled || message == null || message.ayuDeleted || message.id <= 0 || MessageObject.isEphemeral(message)) {
