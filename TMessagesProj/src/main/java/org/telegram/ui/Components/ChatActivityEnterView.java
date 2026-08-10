@@ -6219,6 +6219,15 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         CanvasButton canvasButton;
 
+        // NagramX (#composer-emoji-scale): the composer disables font padding, so there is no slack for
+        // an animated emoji drawn at the default 1.2 scale. It overflows onto the line above, which is
+        // most visible when that line is a quote block and the glyph lands inside its painted background.
+        // Clamp to the line box; plain emoji next to it are already sized this way.
+        @Override
+        protected float maxAnimatedEmojiScale() {
+            return 1f;
+        }
+
         @Override
         protected void onScrollChanged(int horiz, int vert, int oldHoriz, int oldVert) {
             super.onScrollChanged(horiz, vert, oldHoriz, oldVert);
