@@ -17,6 +17,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
+import java.util.Collections;
 
 import xyz.nextalone.nagram.NaConfig;
 
@@ -376,6 +377,7 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         if (scheduled || mode != 0 || messages == null || dialogId != cachedDialogId) {
             return;
         }
+        ArrayList<MessageObject> eligible = null;
         for (int i = 0, size = messages.size(); i < size; i++) {
             MessageObject message = messages.get(i);
             TLRPC.Message owner = message != null ? message.messageOwner : null;
@@ -383,8 +385,25 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 continue;
             }
             if (PersonalRepliesStorage.isReplyInDialog(owner, dialogId)) {
-                increment(dialogId, owner.reply_to.reply_to_msg_id, message.getId());
+                if (eligible == null) {
+                    eligible = new ArrayList<>();
+                }
+                eligible.add(message);
             }
+        }
+        if (eligible == null) {
+            return;
+        }
+        if (eligible.size() > 1) {
+            // a batch isn't guaranteed to list two replies to the same parent in ascending id
+            // order, and increment()'s countedThrough watermark only advances correctly if
+            // same-parent replies are applied in that order, so enforce it locally rather than
+            // trust the batch
+            Collections.sort(eligible, (a, b) -> Integer.compare(a.getId(), b.getId()));
+        }
+        for (int i = 0, size = eligible.size(); i < size; i++) {
+            MessageObject message = eligible.get(i);
+            increment(dialogId, message.messageOwner.reply_to.reply_to_msg_id, message.getId());
         }
     }
 
