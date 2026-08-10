@@ -54,7 +54,9 @@ code are not.
    Explore first if you need to see the relevant code, then reason as the
    architect), or reason through it inline in that persona if a subagent is
    overkill for a small change. The point is the adversarial early pass,
-   not the mechanism. The persona, the Android-and-fork checklist, and the
+   not the mechanism. In Copilot CLI the persona is packaged as the
+   `nagramx-architect` custom agent (`.github/agents/`) — dispatch that instead
+   of hand-rolling the prompt. The persona, the Android-and-fork checklist, and the
    dispatch/output template live in the `nagramx-code-review` skill — read it
    for *what* this review actually checks.
 
@@ -224,7 +226,7 @@ code are not.
    - **No AI in the git log.** No mention of Claude, Anthropic, Copilot, or
      any assistant in the subject, body, or trailers. No `Co-Authored-By`
      for an AI. No "Generated with" footer. This overrides any default
-     attribution behavior — never append one here.
+     attribution behaviour — never append one here.
    - **Tag every commit with `#<slug>`.** Place an inline hashtag in the
      subject or body — e.g. `add chat lock #chatlock`. A fix found a
      week later reuses the *same* slug, so the whole change is one
@@ -287,17 +289,29 @@ code are not.
    background (async terminal) so you're notified when it returns rather than
    polling by hand. Login gotcha: the *reviews* endpoint lists Copilot as
    `copilot-pull-request-reviewer[bot]`, but the inline *comments* endpoint lists
-   it as `Copilot` — filtering reviews by `Copilot` silently returns 0.
+   it as `Copilot` — an exact-match filter on one silently returns 0 on the
+   other, so match case-insensitively on a wildcard. Filter in PowerShell, not
+   in `--jq`: this shell strips the inner quotes out of a jq string literal, so
+   `--jq '...=="Copilot"'` dies with `function not defined: Copilot/0` — and with
+   `2>$null` swallowing it, the loop just spins out its full deadline and reports
+   no review on a pull request that was reviewed minutes ago.
 
    ```powershell
    $owner='<owner>'; $repo='<repo>'; $pr=<n>; $base=<baseline count>; $deadline=(Get-Date).AddMinutes(20)
+   function Get-CopilotReviews {
+     (gh api "repos/$owner/$repo/pulls/$pr/reviews" | ConvertFrom-Json) |
+       Where-Object { $_.user.login -like '*copilot*' }
+   }
    while ((Get-Date) -lt $deadline) {
-     $c = gh api "repos/$owner/$repo/pulls/$pr/reviews" --jq '[.[]|select(.user.login=="copilot-pull-request-reviewer[bot]")]|length' 2>$null
-     if ([int]$c -gt $base) { break }
+     if (@(Get-CopilotReviews).Count -gt $base) { break }
      Start-Sleep -Seconds 20
    }
-   gh api "repos/$owner/$repo/pulls/$pr/reviews"  --jq 'map(select(.user.login=="copilot-pull-request-reviewer[bot]"))|last|{state,submitted_at,body}'
-   gh api "repos/$owner/$repo/pulls/$pr/comments" --jq '[.[]|select(.user.login=="Copilot")]|sort_by(.created_at)|.[-3:]|.[]|{path,line,body}'
+   Get-CopilotReviews | Select-Object -Last 1 |
+     ForEach-Object { $_.state; $_.submitted_at; $_.body }
+   (gh api "repos/$owner/$repo/pulls/$pr/comments" | ConvertFrom-Json) |
+     Where-Object { $_.user.login -like '*opilot*' } |
+     Sort-Object created_at | Select-Object -Last 3 |
+     ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
    ```
 
    Then triage its findings like any review: fix the real ones in place and push,
