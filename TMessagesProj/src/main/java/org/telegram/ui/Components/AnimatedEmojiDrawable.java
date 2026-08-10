@@ -585,6 +585,8 @@ public class AnimatedEmojiDrawable extends Drawable {
         if (document == null || (imageReceiver != null && !imageReceiverEmojiThumb && !force) || (cacheType == CACHE_TYPE_STANDARD_EMOJI || cacheType == CACHE_TYPE_ALERT_STANDARD_EMOJI) && document instanceof TLRPC.TL_documentEmpty) {
             return;
         }
+        // NagramX: resolve LiteMode here because ID-only emoji can finish loading after its flags change.
+        updateLiteModeValues();
         imageReceiverEmojiThumb = false;
         createImageReceiver();
         if (colorFilterToSet != null && canOverrideColor()) {

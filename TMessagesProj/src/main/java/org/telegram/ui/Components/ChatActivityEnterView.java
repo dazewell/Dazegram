@@ -14209,13 +14209,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     try {
                         innerTextChange = 2;
-                        SpannableString emoji = new SpannableString(emoticon == null ? "\uD83D\uDE00" : emoticon);
+                        String emojiText = emoticon == null ? "\uD83D\uDE00" : emoticon;
+                        SpannableString emoji = new SpannableString(emojiText);
                         AnimatedEmojiSpan span;
                         if (document != null) {
                             span = new AnimatedEmojiSpan(document, messageEditText.getPaint().getFontMetricsInt());
                         } else {
                             span = new AnimatedEmojiSpan(documentId, messageEditText.getPaint().getFontMetricsInt());
                         }
+                        span.emoji = emojiText;
                         if (!isRecent) {
                             span.fromEmojiKeyboard = true;
                         }
