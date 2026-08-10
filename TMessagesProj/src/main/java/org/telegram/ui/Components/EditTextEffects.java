@@ -399,6 +399,9 @@ public class EditTextEffects extends EditText {
     }
 
     private int lastText2Length;
+    private Layout lastQuoteLayout;
+    private int lastQuoteLayoutWidth;
+    private int lastQuoteLineCount;
     private int quoteUpdatesTries;
     private boolean[] quoteUpdateLayout;
     private boolean quoteBlocksUpdating;
@@ -409,8 +412,13 @@ public class EditTextEffects extends EditText {
             editedWhileQuoteUpdating = true;
             return;
         }
-        int newTextLength = (getLayout() == null || getLayout().getText() == null) ? 0 : getLayout().getText().length();
-        if (force || lastText2Length != newTextLength) {
+        Layout layout = getLayout();
+        int newTextLength = (layout == null || layout.getText() == null) ? 0 : layout.getText().length();
+        int layoutWidth = layout == null ? 0 : layout.getWidth();
+        int lineCount = layout == null ? 0 : layout.getLineCount();
+        // NagramX: quote blocks cache line geometry, so reflow without a text edit must re-arm them too.
+        if (force || lastText2Length != newTextLength || lastQuoteLayout != layout
+                || lastQuoteLayoutWidth != layoutWidth || lastQuoteLineCount != lineCount) {
             quoteUpdatesTries = 2;
             lastText2Length = newTextLength;
         }
@@ -431,7 +439,11 @@ public class EditTextEffects extends EditText {
                 resetFontMetricsCache();
             }
             quoteUpdatesTries--;
-            lastText2Length = (getLayout() == null || getLayout().getText() == null) ? 0 : getLayout().getText().length();
+            layout = getLayout();
+            lastQuoteLayout = layout;
+            lastText2Length = (layout == null || layout.getText() == null) ? 0 : layout.getText().length();
+            lastQuoteLayoutWidth = layout == null ? 0 : layout.getWidth();
+            lastQuoteLineCount = layout == null ? 0 : layout.getLineCount();
         }
     }
 

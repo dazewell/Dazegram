@@ -688,6 +688,7 @@ public class SuggestEmojiView extends FrameLayout implements NotificationCenter.
                 } else {
                     span = new AnimatedEmojiSpan(document, fontMetricsInt);
                 }
+                span.emoji = emoji.toString();
                 ((SpannableString) emoji).setSpan(span, 0, emoji.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } catch (Exception ignore) {
                 return null;
