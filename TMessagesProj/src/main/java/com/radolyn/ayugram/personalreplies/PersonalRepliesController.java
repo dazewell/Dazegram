@@ -28,9 +28,10 @@ import xyz.nextalone.nagram.NaConfig;
  * coalesced query. That way the work follows what is actually on screen, with
  * no page-load hooks and nothing scanning a whole chat.
  *
- * <p>The cache only ever holds the last dialog asked about, so it stays small,
- * and it is wiped whenever the history underneath it moves (new message,
- * delete, clear, or a sent message getting its server id).
+ * <p>The cache only ever holds the last dialog asked about, so it stays small.
+ * A reply to an id already in the cache bumps that one count in place; the
+ * whole per-dialog cache is only ever dropped for a change no single bump can
+ * repair (a delete, a history clear, or switching to a different dialog).
  */
 public final class PersonalRepliesController implements NotificationCenter.NotificationCenterDelegate {
 
@@ -42,6 +43,10 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     private final int currentAccount;
     private final SparseIntArray counts = new SparseIntArray();
     private final SparseIntArray pending = new SparseIntArray();
+    /** Ids of the query currently on the storage queue, or null when nothing is outstanding. */
+    private ArrayList<Integer> inFlightIds;
+    /** Increments that landed for an in-flight id, applied on top of its query result. */
+    private final SparseIntArray inFlightDeltas = new SparseIntArray();
     private long cachedDialogId;
     private boolean requestScheduled;
 
@@ -54,7 +59,6 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             center.addObserver(this, NotificationCenter.didReceiveNewMessages);
             center.addObserver(this, NotificationCenter.messagesDeleted);
             center.addObserver(this, NotificationCenter.historyCleared);
-            center.addObserver(this, NotificationCenter.messageReceivedByServer);
         });
     }
 
@@ -104,6 +108,8 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             cachedDialogId = dialogId;
             counts.clear();
             pending.clear();
+            inFlightIds = null;
+            inFlightDeltas.clear();
         }
         int index = counts.indexOfKey(messageId);
         if (index >= 0) {
@@ -114,6 +120,35 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             scheduleRequest();
         }
         return 0;
+    }
+
+    /**
+     * Bumps one cached count in place instead of clearing the whole dialog's
+     * cache, so a new reply landing doesn't blank every visible glyph while it
+     * is re-derived. Only ever touches an id already answered for: an absent
+     * id is left for the ordinary lazy-load path in {@link #count} to pick up.
+     */
+    private void increment(long dialogId, int parentId) {
+        if (dialogId != cachedDialogId || parentId <= 0) {
+            return;
+        }
+        if (inFlightIds != null && inFlightIds.contains(parentId)) {
+            // a query for this id is already on the storage queue; folding the bump into its
+            // result (see runRequest) avoids counts.put racing the query and losing the +1
+            inFlightDeltas.put(parentId, inFlightDeltas.get(parentId, 0) + 1);
+            return;
+        }
+        int index = counts.indexOfKey(parentId);
+        if (index < 0) {
+            return;
+        }
+        int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, counts.valueAt(index) + 1);
+        if (value == counts.valueAt(index)) {
+            return;
+        }
+        counts.put(parentId, value);
+        NotificationCenter.getInstance(currentAccount)
+                .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
     }
 
     private void scheduleRequest() {
@@ -137,10 +172,16 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
             ids.add(pending.keyAt(i));
         }
         pending.clear();
+        inFlightIds = ids;
+        inFlightDeltas.clear();
         MessagesStorage.getInstance(currentAccount).getStorageQueue().postRunnable(() -> {
             SparseIntArray found = PersonalRepliesStorage.countReplies(currentAccount, dialogId, ids);
             AndroidUtilities.runOnUIThread(() -> {
+                if (inFlightIds == ids) {
+                    inFlightIds = null;
+                }
                 if (dialogId != cachedDialogId) {
+                    inFlightDeltas.clear();
                     return;
                 }
                 if (counts.size() > CACHE_LIMIT) {
@@ -149,12 +190,15 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 boolean changed = false;
                 for (int i = 0; i < ids.size(); i++) {
                     int id = ids.get(i);
-                    int value = found.get(id, 0);
+                    // a bump that landed while this query was outstanding isn't in `found` yet,
+                    // so fold it back in here rather than letting counts.put below discard it
+                    int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, found.get(id, 0) + inFlightDeltas.get(id, 0));
                     if (counts.get(id, -1) != value) {
                         changed = true;
                     }
                     counts.put(id, value);
                 }
+                inFlightDeltas.clear();
                 if (changed) {
                     NotificationCenter.getInstance(currentAccount)
                             .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
@@ -207,18 +251,64 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         }
         counts.clear();
         pending.clear();
+        // a query may still be outstanding; its result will repopulate counts from scratch, so
+        // any bump recorded against it here would double up once that continuation runs
+        inFlightDeltas.clear();
         NotificationCenter.getInstance(currentAccount)
                 .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, cachedDialogId);
     }
 
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
-        if (id == NotificationCenter.didReceiveNewMessages || id == NotificationCenter.historyCleared) {
+        if (id == NotificationCenter.didReceiveNewMessages) {
+            //noinspection unchecked
+            onNewMessages((Long) args[0], (ArrayList<MessageObject>) args[1], (Boolean) args[2], (Integer) args[3]);
+        } else if (id == NotificationCenter.historyCleared) {
             invalidate((Long) args[0]);
-        } else if (id == NotificationCenter.messagesDeleted || id == NotificationCenter.messageReceivedByServer) {
-            // neither payload names the private dialog it belongs to, and the
-            // cache only ever holds one, so drop it and let it refill
+        } else if (id == NotificationCenter.messagesDeleted) {
+            long channelId = (Long) args[1];
+            if (channelId > 0) {
+                // a delete in a channel/supergroup (positive channelId) can never change a
+                // private dialog's reply count; a zero or negative channelId (the latter is how
+                // ephemeral deletes in a user dialog are encoded) still falls through below
+                return;
+            }
+            // the payload names neither the message's dialog nor its parent, so there is nothing
+            // to increment against; drop the whole cache and let it refill
             invalidate(0);
+        }
+        // messageReceivedByServer is deliberately not observed: it does carry the dialog id
+        // (the fourth argument at every producer), but a message's own reply already increments
+        // through didReceiveNewMessages above, so there is nothing left here worth a full clear
+    }
+
+    /**
+     * Bumps the parent's cached count for each newly arrived message that is
+     * an eligible reply, instead of the old clear-then-requery: that is what
+     * produced a visible drop to zero before every real value returned.
+     *
+     * <p>{@code didReceiveNewMessages} is also re-used to re-announce messages
+     * that are not freshly received at all: {@code mode}/{@code scheduled}
+     * filter out scheduled and quick-reply batches, {@code getId() <= 0} skips
+     * a reply still using its local temp id, {@code ayuDeleted} skips Ghost
+     * Mode re-displaying a previously deleted message, and
+     * {@link MessageObject#isEphemeral} skips the ephemeral-message replay –
+     * none of those three ever land in {@code messages_v2}, so counting them
+     * here would produce a value the SQL-backed query can never reproduce.
+     */
+    private void onNewMessages(long dialogId, ArrayList<MessageObject> messages, boolean scheduled, int mode) {
+        if (scheduled || mode != 0 || messages == null || dialogId != cachedDialogId) {
+            return;
+        }
+        for (int i = 0, size = messages.size(); i < size; i++) {
+            MessageObject message = messages.get(i);
+            TLRPC.Message owner = message != null ? message.messageOwner : null;
+            if (owner == null || owner.ayuDeleted || message.getId() <= 0 || MessageObject.isEphemeral(owner)) {
+                continue;
+            }
+            if (PersonalRepliesStorage.isReplyInDialog(owner, dialogId)) {
+                increment(dialogId, owner.reply_to.reply_to_msg_id);
+            }
         }
     }
 }

@@ -217,8 +217,13 @@ public final class PersonalRepliesStorage {
      * True when the message replies to something in this same dialog. A quote
      * of a message from another chat names that chat in
      * {@code reply_to_peer_id}, and its parent id means nothing here.
+     *
+     * <p>Package-private so {@link PersonalRepliesController} can reuse the
+     * exact same eligibility check when deciding whether a freshly arrived
+     * message should increment a cached count instead of leaving that to a
+     * hand-rolled "has reply_to" test.
      */
-    private static boolean isReplyInDialog(TLRPC.Message message, long dialogId) {
+    static boolean isReplyInDialog(TLRPC.Message message, long dialogId) {
         if (message == null || message.reply_to == null || message.reply_to.reply_to_msg_id == 0) {
             return false;
         }
