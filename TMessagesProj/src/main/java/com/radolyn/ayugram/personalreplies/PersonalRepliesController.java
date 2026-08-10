@@ -224,9 +224,9 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
                 // a dialog switch or an invalidate() supersedes an outstanding query by nulling
                 // inFlightIds without waiting for it (see count() and invalidate()), so a newer
                 // request, or nothing at all, can already own this state by the time this runs; a
-                // stale completion must not touch state that belongs to whatever superseded it
+                // stale completion must not touch state that belongs to whatever superseded it -
+                // including inFlightChildIds, which a newer request may already be populating
                 if (inFlightIds != ids) {
-                    inFlightChildIds.clear();
                     return;
                 }
                 inFlightIds = null;
