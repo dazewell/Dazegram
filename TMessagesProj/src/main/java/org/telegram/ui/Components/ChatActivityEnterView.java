@@ -7214,9 +7214,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 span.replaceFontMetrics(fm);
             }
             for (AnimatedEmojiSpan span : text.getSpans(0, text.length(), AnimatedEmojiSpan.class)) {
-                // NagramX: use the overload that re-derives size too, or animated emoji keep their old
-                // pixel size after a text size change while plain emoji beside them rescale.
-                span.replaceFontMetrics(fm, Math.abs(fm.descent) + Math.abs(fm.ascent), AnimatedEmojiDrawable.getCacheTypeForEnterView());
+                // NagramX: re-derive size, not just the metrics, or animated emoji keep their old pixel
+                // size after a text size change while plain emoji beside them rescale.
+                span.replaceFontMetrics(fm);
             }
         }
         messageEditText.invalidateEffects();
