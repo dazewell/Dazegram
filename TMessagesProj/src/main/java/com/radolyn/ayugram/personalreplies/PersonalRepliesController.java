@@ -152,7 +152,10 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
     }
 
     private void scheduleRequest() {
-        if (requestScheduled) {
+        // a query already on the storage queue owns inFlightIds/inFlightDeltas until its
+        // continuation runs; starting a second one here would let it clobber both, dropping
+        // whatever the first query's deltas were tracking (see runRequest's retrigger below)
+        if (requestScheduled || inFlightIds != null) {
             return;
         }
         requestScheduled = true;
@@ -177,31 +180,38 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         MessagesStorage.getInstance(currentAccount).getStorageQueue().postRunnable(() -> {
             SparseIntArray found = PersonalRepliesStorage.countReplies(currentAccount, dialogId, ids);
             AndroidUtilities.runOnUIThread(() -> {
-                if (inFlightIds == ids) {
-                    inFlightIds = null;
-                }
-                if (dialogId != cachedDialogId) {
-                    inFlightDeltas.clear();
+                // a dialog switch nulls inFlightIds without waiting for this query (see count()),
+                // so a newer request can already own inFlightIds/inFlightDeltas by the time this
+                // runs; a stale completion must not touch state that belongs to that newer query
+                if (inFlightIds != ids) {
                     return;
                 }
-                if (counts.size() > CACHE_LIMIT) {
-                    counts.clear();
-                }
-                boolean changed = false;
-                for (int i = 0; i < ids.size(); i++) {
-                    int id = ids.get(i);
-                    // a bump that landed while this query was outstanding isn't in `found` yet,
-                    // so fold it back in here rather than letting counts.put below discard it
-                    int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, found.get(id, 0) + inFlightDeltas.get(id, 0));
-                    if (counts.get(id, -1) != value) {
-                        changed = true;
+                inFlightIds = null;
+                if (dialogId == cachedDialogId) {
+                    if (counts.size() > CACHE_LIMIT) {
+                        counts.clear();
                     }
-                    counts.put(id, value);
+                    boolean changed = false;
+                    for (int i = 0; i < ids.size(); i++) {
+                        int id = ids.get(i);
+                        // a bump that landed while this query was outstanding isn't in `found`
+                        // yet, so fold it back in here rather than letting counts.put discard it
+                        int value = Math.min(PersonalRepliesStorage.THREAD_LIMIT, found.get(id, 0) + inFlightDeltas.get(id, 0));
+                        if (counts.get(id, -1) != value) {
+                            changed = true;
+                        }
+                        counts.put(id, value);
+                    }
+                    if (changed) {
+                        NotificationCenter.getInstance(currentAccount)
+                                .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
+                    }
                 }
                 inFlightDeltas.clear();
-                if (changed) {
-                    NotificationCenter.getInstance(currentAccount)
-                            .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, dialogId);
+                // a bind that queued new ids while this query was outstanding couldn't start its
+                // own request (scheduleRequest bails while inFlightIds != null); pick it up now
+                if (pending.size() > 0) {
+                    scheduleRequest();
                 }
             });
         });
@@ -246,14 +256,15 @@ public final class PersonalRepliesController implements NotificationCenter.Notif
         if (cachedDialogId == 0 || dialogId != 0 && dialogId != cachedDialogId) {
             return;
         }
+        // a query may still be outstanding even when counts/pending are both empty (every id
+        // could be in flight); its result would otherwise fold a now-stale delta back in once
+        // this returns early below, so this has to run unconditionally rather than after the guard
+        inFlightDeltas.clear();
         if (counts.size() == 0 && pending.size() == 0) {
             return;
         }
         counts.clear();
         pending.clear();
-        // a query may still be outstanding; its result will repopulate counts from scratch, so
-        // any bump recorded against it here would double up once that continuation runs
-        inFlightDeltas.clear();
         NotificationCenter.getInstance(currentAccount)
                 .postNotificationName(NotificationCenter.personalRepliesCountsUpdated, cachedDialogId);
     }
