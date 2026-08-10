@@ -1,6 +1,6 @@
 ---
 name: nagramx-scout
-description: 'Read-only reconnaissance on the NagramX Telegram-for-Android fork, run before a change is scoped or a question is asked. Establishes whether the thing already ships, what prior art exists in the git log, which single chokepoint a change should hook, what existing component can be reused instead of writing new code, which config and string surfaces apply, and where the real risk sits. Use it at the start of any feature or bug request on this repo, and any time a decision needs facts about the codebase rather than an opinion. It never edits files, never commits, and never decides scope — it returns findings and the specific open questions that scope depends on.'
+description: "Read-only reconnaissance on the NagramX Telegram-for-Android fork, run before a change is scoped or a question is asked. Establishes whether the thing already ships, what prior art exists in the git log, which single chokepoint a change should hook, what existing component can be reused instead of writing new code, which config and string surfaces apply, and where the real risk sits. Use it at the start of any feature or bug request on this repo, and any time a decision needs facts about the codebase rather than an opinion. It never edits files, never commits, and never decides scope — it returns findings and the specific open questions that scope depends on."
 tools: ['read', 'search', 'execute']
 model: claude-sonnet-5
 ---

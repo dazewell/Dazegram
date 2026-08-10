@@ -1,6 +1,6 @@
 ---
 name: nagramx-implementer
-description: 'Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to the staging build, writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, requests the single automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges.'
+description: "Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to the staging build, writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, requests the single automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges."
 model: claude-sonnet-5
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: nagramx-orchestrator
-description: 'Coordinates work on the NagramX Telegram-for-Android fork end to end. Scopes a request against what already ships, runs read-only reconnaissance before asking anything, puts one consolidated round of questions to dazewell, then runs design, UX, architecture review, implementation and pull request closeout unattended through specialist agents and child sessions. Verifies every gate against evidence rather than claims and hands back a non-draft pull request with a green staging build, every review thread resolved, and a short before/after summary. Use it for any feature, bug or change on this repo that is more than a trivial edit. It coordinates and verifies; it does not write the code. It must run as the top-level agent of a session, never as a subagent.'
+description: "Coordinates work on the NagramX Telegram-for-Android fork end to end. Scopes a request against what already ships, runs read-only reconnaissance before asking anything, puts one consolidated round of questions to dazewell, then runs design, UX, architecture review, implementation and pull request closeout unattended through specialist agents and child sessions. Verifies every gate against evidence rather than claims and hands back a non-draft pull request with a green staging build, every review thread resolved, and a short before/after summary. Use it for any feature, bug or change on this repo that is more than a trivial edit. It coordinates and verifies; it does not write the code. It must run as the top-level agent of a session, never as a subagent."
 disable-model-invocation: true
 ---
 
@@ -100,6 +100,12 @@ git fetch origin; git log --oneline dev..origin/dev
 - **If the second returns commits, `dev` is stale.** Say so before dispatching:
   the branch and its staging build will be cut from old code, so the artifact is
   not what dazewell thinks he is installing.
+- **Check you can actually see your own team.** The roster is read once, when a
+  session starts. If your `task` tool does not offer `nagramx-scout`,
+  `nagramx-ux` and `nagramx-architect` by name, this session started before those
+  files existed on disk, and dispatching them silently falls back to a generic
+  agent that has read none of the skills. Say so and ask dazewell to restart the
+  session rather than working around it.
 
 ## Choosing the model for each job
 

@@ -1,6 +1,6 @@
 ---
 name: nagramx-ux
-description: 'Interaction and product design for the NagramX Telegram-for-Android fork. Decides where a control lives, what it is called, what its default is, how it behaves when off, and what the user sees at every edge — empty, error, loading, permission-denied, first-run. Use it before implementation on anything a user can see or touch, and use it on bug reports where the real question is what the behaviour should have been. Produces a behaviour specification precise enough to build from without further questions, plus the before/after table that ends up in the pull request. It designs within Telegram existing surfaces and never invents a new visual language; it does not write code and cannot produce screenshots.'
+description: "Interaction and product design for the NagramX Telegram-for-Android fork. Decides where a control lives, what it is called, what its default is, how it behaves when off, and what the user sees at every edge — empty, error, loading, permission-denied, first-run. Use it before implementation on anything a user can see or touch, and use it on bug reports where the real question is what the behaviour should have been. Produces a behaviour specification precise enough to build from without further questions, plus the before/after table that ends up in the pull request. It designs within Telegram existing surfaces and never invents a new visual language; it does not write code and cannot produce screenshots."
 tools: ['read', 'search', 'execute']
 model: claude-sonnet-5
 ---
