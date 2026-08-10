@@ -54,7 +54,9 @@ code are not.
    Explore first if you need to see the relevant code, then reason as the
    architect), or reason through it inline in that persona if a subagent is
    overkill for a small change. The point is the adversarial early pass,
-   not the mechanism. The persona, the Android-and-fork checklist, and the
+   not the mechanism. In Copilot CLI the persona is packaged as the
+   `nagramx-architect` custom agent (`.github/agents/`) — dispatch that instead
+   of hand-rolling the prompt. The persona, the Android-and-fork checklist, and the
    dispatch/output template live in the `nagramx-code-review` skill — read it
    for *what* this review actually checks.
 
