@@ -434,21 +434,23 @@ public class AnimatedEmojiSpan extends ReplacementSpan {
                 skipDraw = false;
             }
 
-            // NagramX: an ID-only custom emoji needs its plain emoji thumb until the receiver is built.
-            if (drawable == null || drawable.getImageReceiver() == null) {
-                if (thumbDrawable != null) {
-                    float scale = span.getExtraScale();
-                    thumbDrawable.setAlpha((int) (0xFF * alpha * this.alpha));
-                    thumbDrawable.setBounds(drawableBounds);
-                    if (scale != 1f || span.invert) {
-                        canvas.save();
-                        canvas.scale(scale * (span.invert ? -1 : 1), scale, drawableBounds.centerX(), drawableBounds.centerY());
-                        thumbDrawable.draw(canvas);
-                        canvas.restore();
-                    } else {
-                        thumbDrawable.draw(canvas);
-                    }
+            // NagramX: an ID-only custom emoji has no receiver yet; draw its plain-emoji thumb, but only
+            // skip the real draw when we actually had a thumb to put there.
+            if ((drawable == null || drawable.getImageReceiver() == null) && thumbDrawable != null) {
+                float scale = span.getExtraScale();
+                thumbDrawable.setAlpha((int) (0xFF * alpha * this.alpha));
+                thumbDrawable.setBounds(drawableBounds);
+                if (scale != 1f || span.invert) {
+                    canvas.save();
+                    canvas.scale(scale * (span.invert ? -1 : 1), scale, drawableBounds.centerX(), drawableBounds.centerY());
+                    thumbDrawable.draw(canvas);
+                    canvas.restore();
+                } else {
+                    thumbDrawable.draw(canvas);
                 }
+                return;
+            }
+            if (drawable == null) {
                 return;
             }
             if (drawable.getImageReceiver() != null) {
