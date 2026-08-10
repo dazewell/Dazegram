@@ -22,7 +22,9 @@ Android Telegram fork, and the persona/template used to run it.
 Adapt the depth to the change: a one-line hook doesn't need a subagent, reason
 through it inline in the persona. A new feature package does — dispatch a
 subagent so it reviews with fresh eyes and no memory of *why* you wrote it the
-way you did.
+way you did. In Copilot CLI that subagent is the `nagramx-architect` custom
+agent (`.github/agents/nagramx-architect.agent.md`), which is a thin wrapper
+that sends you back here; this file stays the definition of the role.
 
 ## The persona
 
@@ -57,6 +59,19 @@ git diff --stat dev...HEAD      # the diffstat IS the first signal (below)
 git diff dev...HEAD
 git log --grep '#<slug>'        # all commits for this change, incl. later fixes
 ```
+
+**When the code isn't in your checkout** — implementation ran in another session
+or worktree, which is the norm when the orchestrator dispatches the review —
+read the branch remotely instead. Never check it out:
+
+```powershell
+git fetch origin <branch> dev
+git diff --stat origin/dev...origin/<branch>
+git diff origin/dev...origin/<branch>
+```
+
+An empty diff there means you're on the wrong ref: stop and say so rather than
+reviewing nothing and approving it.
 
 ## The diffstat is the first signal
 

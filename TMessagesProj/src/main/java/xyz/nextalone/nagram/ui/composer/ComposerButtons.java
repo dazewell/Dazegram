@@ -126,8 +126,13 @@ public final class ComposerButtons {
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
-        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 0.88f));
-        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.msg_input_attach2, KIND_CORE, ZONE_END, 0, true, true, 0.89f));
+        // Schedule and Attach's live toolbar icons used to come from full-bleed raster assets with no
+        // baked-in padding, which no amount of iconScale could visually match against the padded vector
+        // icons around them - ChatActivityEnterView now renders the same vector assets the opt-in Solar
+        // icon theme already ships (ayu_input_attach, input_calendar1/2_solar) for the composer toolbar,
+        // so these scales are the ordinary vector default, same as their neighbors.
+        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 1f));
+        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.ayu_input_attach, KIND_CORE, ZONE_END, 0, true, true, 1f));
     }
 
     private static final List<Button> ALL = Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
@@ -144,11 +149,13 @@ public final class ComposerButtons {
     }
 
     public static float iconScaleForResource(int resource) {
-        if (resource == R.drawable.msg_input_attach2) {
+        // input_attach/ic_ab_other are the same physical button as ATTACH, just swapped in
+        // post-construction by checkAttachButton() for its resting/menu-open state - the resting one
+        // has to track the registry value, not carry its own copy, or a tuning pass on ATTACH silently
+        // stops applying here. ic_ab_other stays raster (menu-open state is out of scope for this fix)
+        // so it keeps its own authored scale.
+        if (resource == R.drawable.ayu_input_attach || resource == R.drawable.input_attach) {
             return get(ATTACH).iconScale;
-        }
-        if (resource == R.drawable.input_attach) {
-            return 0.76f;
         }
         if (resource == R.drawable.ic_ab_other) {
             return 1.10f;
