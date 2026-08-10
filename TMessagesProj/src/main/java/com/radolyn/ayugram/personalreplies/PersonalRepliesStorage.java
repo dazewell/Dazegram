@@ -1,6 +1,7 @@
 package com.radolyn.ayugram.personalreplies;
 
 import android.text.TextUtils;
+import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import org.telegram.SQLite.SQLiteCursor;
@@ -67,15 +68,28 @@ public final class PersonalRepliesStorage {
     }
 
     /**
-     * Counts stored replies for each of {@code parentIds} in one pass.
+     * Counts stored replies for each of {@code parentIds} in one pass, and
+     * separately reports the exact set of child {@code mid}s this pass
+     * counted for each parent.
      *
      * <p>The blob has to be parsed rather than counted in SQL: a message can
      * quote something from a different chat, and the parent id it stores then
      * belongs to that other peer's id space, where it can collide with a real
      * id in this chat. {@code reply_to_peer_id} is the only thing that tells
      * the two apart and it lives inside the serialized message.
+     *
+     * <p>{@code childIdsOut} exists because this query runs on the storage
+     * queue and can be overtaken by a write for a reply that arrives while it
+     * is still outstanding (see
+     * {@link PersonalRepliesController#runRequest}): the caller needs to know
+     * exactly which child ids this pass already counted, not just how many,
+     * to tell "already reflected in the count above" apart from "genuinely
+     * missed it" for one specific id without a second query. A count or a
+     * highest-seen id can't answer that - only membership in the actual set
+     * this pass scanned can.
      */
-    static void countReplies(int account, long dialogId, ArrayList<Integer> parentIds, SparseIntArray counts) {
+    static void countReplies(int account, long dialogId, ArrayList<Integer> parentIds, SparseIntArray counts,
+                              SparseArray<ArrayList<Integer>> childIdsOut) {
         if (parentIds == null || parentIds.isEmpty()) {
             return;
         }
@@ -86,7 +100,7 @@ public final class PersonalRepliesStorage {
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT thread_reply_id, data FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id LIMIT %d",
+                    "SELECT thread_reply_id, data, mid FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id LIMIT %d",
                     dialogId, TextUtils.join(",", parentIds), CANDIDATE_LIMIT));
             while (cursor.next()) {
                 int parentId = cursor.intValue(0);
@@ -101,6 +115,12 @@ public final class PersonalRepliesStorage {
                 data.reuse();
                 if (isReplyInDialog(message, dialogId)) {
                     counts.put(parentId, Math.min(THREAD_LIMIT, counts.get(parentId) + 1));
+                    ArrayList<Integer> childIds = childIdsOut.get(parentId);
+                    if (childIds == null) {
+                        childIds = new ArrayList<>();
+                        childIdsOut.put(parentId, childIds);
+                    }
+                    childIds.add((int) cursor.longValue(2));
                 }
             }
         } catch (Throwable t) {
