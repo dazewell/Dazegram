@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Rect;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -65,6 +66,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private boolean configurationLongPressTriggered;
     private float configurationLongPressX;
     private float configurationLongPressY;
+    private final Rect controlsHitRect = new Rect();
     private final Runnable configurationLongPressRunnable = () -> {
         configurationLongPressTriggered = true;
         if (configurationLongPress != null) {
@@ -139,15 +141,27 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return true;
         }
         switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_DOWN: {
                 configurationLongPressTriggered = false;
                 configurationLongPressX = event.getX();
                 configurationLongPressY = event.getY();
                 removeCallbacks(configurationLongPressRunnable);
-                if (configurationLongPress != null) {
-                    postDelayed(configurationLongPressRunnable, CONFIGURATION_LONG_PRESS_MS);
+                boolean consumed = super.dispatchTouchEvent(event);
+                // Only arm the timer once super confirms this DOWN actually became a
+                // touch target here - that's the framework's own guarantee that an UP
+                // or CANCEL will come back to cancel it. A DOWN nobody consumed never
+                // gets redelivered, so arming on bounds alone left the timer stuck
+                // armed whenever the tap missed every button (dead space, gaps between
+                // slots, the transparent margin around the capsule).
+                if (configurationLongPress != null && consumed) {
+                    controls.getHitRect(controlsHitRect);
+                    if (controls.getVisibility() == View.VISIBLE
+                            && controlsHitRect.contains((int) configurationLongPressX, (int) configurationLongPressY)) {
+                        postDelayed(configurationLongPressRunnable, CONFIGURATION_LONG_PRESS_MS);
+                    }
                 }
-                break;
+                return consumed;
+            }
             case MotionEvent.ACTION_MOVE:
                 if (!configurationLongPressTriggered
                         && (Math.abs(event.getX() - configurationLongPressX) > ViewConfiguration.get(getContext()).getScaledTouchSlop()
