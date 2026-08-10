@@ -69,9 +69,9 @@ The calendar icon stays with the trailing composer actions while you type. One t
 
 The floating send-column layout is gone. The glass-fill helper stays with the close button in reply, edit, forward, and link-preview panels, plus special primary-action states that need their own surface.
 
-### Message input text size <!-- #input-text-size -->
+### Message input text size <!-- #input-text-size --> <!-- #composer-emoji-scale -->
 
-The text you type in the compose box has its own size, separate from the chat bubbles. A slider in the chat settings (right under the quick schedule toggle) runs from 14 to 20 — the default 18 matches stock Telegram, and dropping it a couple of points fits more of a long draft on screen. It's one size in every state now: the box uses your chosen size whether it's the normal compose row, expanded fullscreen, or an edit, so the text doesn't change size as the box grows.
+The text you type in the compose box has its own size, separate from the chat bubbles. A slider in the chat settings (right under the quick schedule toggle) runs from 14 to 20 — the default 18 matches stock Telegram, and dropping it a couple of points fits more of a long draft on screen. It's one size in every state now: the box uses your chosen size whether it's the normal compose row, expanded fullscreen, or an edit, so the text doesn't change size as the box grows. Emoji follow the same size: custom animated emoji rescale with the slider instead of keeping the size they had when they were inserted, and they stay inside their own line rather than overlapping the line above.
 
 ### Physical keyboard hotkeys <!-- #keyboard-hotkeys -->
 
