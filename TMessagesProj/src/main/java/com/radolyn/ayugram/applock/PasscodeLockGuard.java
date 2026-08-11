@@ -15,11 +15,12 @@ import org.telegram.ui.Components.ForegroundDetector;
  *
  * <p>{@code ForegroundDetector.isBackground()} is a plain read of the current activity ref
  * count, not a one-shot flag -- checking it here can't itself be raced away by a competing
- * {@code needShowPasscode} caller. Combined with {@link SharedConfig#lastPauseTime} (stamped
- * by the pause site, cleared on resume) it tells us the process is genuinely backgrounded and
- * has stayed that way since the pause, which is what actually should trigger a lock -- unlike
- * {@code lastPauseTime} alone, which also gets set on an in-app activity swap that never leaves
- * the foreground.
+ * {@code needShowPasscode} caller. Combined with {@link SharedConfig#lastPauseTime} (stamped by
+ * the pause site, and reset once the pause is resolved -- normally by resuming, but also by a
+ * few other paths such as an intent handled with the passcode already entered) it tells us the
+ * process is genuinely backgrounded and has stayed that way since the pause, which is what
+ * should actually trigger a lock -- unlike {@code lastPauseTime} alone, which also gets set on
+ * an in-app activity swap that never leaves the foreground.
  */
 public final class PasscodeLockGuard {
 
