@@ -3467,6 +3467,9 @@ public class AndroidUtilities {
     }
 
     public static boolean needShowPasscode(boolean reset) {
+        // NagramX: settle privacy-profile activation/expiry before reading autoLockIn below, so
+        // every caller of needShowPasscode sees an up-to-date value with no separate timer/hook.
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.reconcile();
         boolean wasInBackground = ForegroundDetector.getInstance().isWasInBackground(reset);
         if (reset) {
             ForegroundDetector.getInstance().resetBackgroundVar();
