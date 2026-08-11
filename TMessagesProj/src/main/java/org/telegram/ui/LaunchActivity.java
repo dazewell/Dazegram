@@ -8277,7 +8277,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 @Override
                 public void run() {
                     if (lockRunnable == this) {
-                        if (AndroidUtilities.needShowPasscode(true)) {
+                        // NagramX: needShowPasscode(true) consumes the shared foreground flag even when
+                        // it returns false, so a single lost race here would skip the lock permanently
+                        // (this runnable only fires once); back it up with the pause-timestamp check.
+                        if (AndroidUtilities.needShowPasscode(true) || com.radolyn.ayugram.applock.PasscodeLockGuard.missedLock()) {
                             if (BuildVars.LOGS_ENABLED) {
                                 FileLog.d("lock app");
                             }
