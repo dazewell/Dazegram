@@ -1,6 +1,7 @@
 package com.radolyn.ayugram.personalreplies;
 
 import android.text.TextUtils;
+import android.util.SparseArray;
 import android.util.SparseIntArray;
 
 import org.telegram.SQLite.SQLiteCursor;
@@ -67,31 +68,49 @@ public final class PersonalRepliesStorage {
     }
 
     /**
-     * Counts stored replies for each of {@code parentIds} in one pass.
+     * Counts stored replies for each of {@code parentIds} in one pass, and
+     * separately reports the exact set of child {@code mid}s this pass
+     * counted for each parent.
      *
      * <p>The blob has to be parsed rather than counted in SQL: a message can
      * quote something from a different chat, and the parent id it stores then
      * belongs to that other peer's id space, where it can collide with a real
      * id in this chat. {@code reply_to_peer_id} is the only thing that tells
      * the two apart and it lives inside the serialized message.
+     *
+     * <p>{@code childIdsOut} exists because this query runs on the storage
+     * queue and can be overtaken by a write for a reply that arrives while it
+     * is still outstanding (see
+     * {@link PersonalRepliesController#runRequest}): the caller needs to know
+     * exactly which child ids this pass already counted, not just how many,
+     * to tell "already reflected in the count above" apart from "genuinely
+     * missed it" for one specific id without a second query. A count or a
+     * highest-seen id can't answer that - only membership in the actual set
+     * this pass scanned can.
      */
-    static SparseIntArray countReplies(int account, long dialogId, ArrayList<Integer> parentIds) {
-        SparseIntArray counts = new SparseIntArray();
+    static void countReplies(int account, long dialogId, ArrayList<Integer> parentIds, SparseIntArray counts,
+                              SparseArray<ArrayList<Integer>> childIdsOut) {
         if (parentIds == null || parentIds.isEmpty()) {
-            return counts;
+            return;
         }
         SQLiteDatabase database = MessagesStorage.getInstance(account).getDatabase();
         if (database == null) {
-            return counts;
+            return;
         }
         SQLiteCursor cursor = null;
         try {
             cursor = database.queryFinalized(String.format(Locale.US,
-                    "SELECT thread_reply_id, data FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id, mid LIMIT %d",
+                    "SELECT thread_reply_id, data, mid FROM messages_v2 WHERE uid = %d AND thread_reply_id IN (%s) ORDER BY thread_reply_id, mid LIMIT %d",
                     dialogId, TextUtils.join(",", parentIds), CANDIDATE_LIMIT));
             while (cursor.next()) {
                 int parentId = cursor.intValue(0);
                 if (parentId == 0) {
+                    continue;
+                }
+                if (counts.get(parentId, 0) >= THREAD_LIMIT) {
+                    // already capped for this parent - deserializing another row for it can't
+                    // change either the displayed count or the reported child-id set, so skip
+                    // the parse entirely instead of doing it for nothing
                     continue;
                 }
                 NativeByteBuffer data = cursor.byteBufferValue(1);
@@ -101,7 +120,20 @@ public final class PersonalRepliesStorage {
                 TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
                 data.reuse();
                 if (isReplyInDialog(message, dialogId)) {
-                    counts.put(parentId, Math.min(THREAD_LIMIT, counts.get(parentId) + 1));
+                    int updated = Math.min(THREAD_LIMIT, counts.get(parentId) + 1);
+                    counts.put(parentId, updated);
+                    if (updated >= THREAD_LIMIT) {
+                        // already clamped for display; no point recording any more ids scanned
+                        // for this parent, or a long-lived thread past THREAD_LIMIT would grow
+                        // childIdsOut without bound for the rest of the scan
+                        continue;
+                    }
+                    ArrayList<Integer> childIds = childIdsOut.get(parentId);
+                    if (childIds == null) {
+                        childIds = new ArrayList<>();
+                        childIdsOut.put(parentId, childIds);
+                    }
+                    childIds.add((int) cursor.longValue(2));
                 }
             }
         } catch (Throwable t) {
@@ -111,7 +143,6 @@ public final class PersonalRepliesStorage {
                 cursor.dispose();
             }
         }
-        return counts;
     }
 
     /**
@@ -217,8 +248,13 @@ public final class PersonalRepliesStorage {
      * True when the message replies to something in this same dialog. A quote
      * of a message from another chat names that chat in
      * {@code reply_to_peer_id}, and its parent id means nothing here.
+     *
+     * <p>Package-private so {@link PersonalRepliesController} can reuse the
+     * exact same eligibility check when deciding whether a freshly arrived
+     * message should increment a cached count instead of leaving that to a
+     * hand-rolled "has reply_to" test.
      */
-    private static boolean isReplyInDialog(TLRPC.Message message, long dialogId) {
+    static boolean isReplyInDialog(TLRPC.Message message, long dialogId) {
         if (message == null || message.reply_to == null || message.reply_to.reply_to_msg_id == 0) {
             return false;
         }
