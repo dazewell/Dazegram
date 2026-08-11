@@ -19,6 +19,12 @@ Flag a chat from its in-chat ⋯ menu to swap its last message in the chat list 
 
 When an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens — however you reach it: a tap, a notification, a shortcut, a search result, or a long-press peek. Turning it on also hides the chat's last message in the list. Once unlocked, the chat stays open until you background the app, then it asks again. The lock leans on the app passcode, so removing that passcode leaves the flagged chats open until you set one again.
 
+### Privacy profiles <!-- #privacy-profiles -->
+
+Save a set of auto-lock timeouts under Nagram Settings > Passcode and switch between them without digging back into the timeout picker each time. A profile is just a name and one of the stock auto-lock values — it never touches the passcode itself, biometrics, panic code, screen capture, or any per-chat lock. Device-wide, so it applies across every account.
+
+Activate a profile for now, for a preset span (15 minutes up to a week), or until a specific date and time — a timed activation quietly reverts to whatever timeout was active before once it expires, no need to remember to switch back. Long-press the Settings tab to jump straight to "Auto-lock profile" and flip between profiles without opening Passcode settings at all, as long as a passcode is set and at least one profile exists. Each profile can also be pinned to your home screen as its own launcher shortcut, so tapping it activates that profile and opens the app in one step. Changing the auto-lock timeout through the regular picker, restoring a settings backup, or clearing your passcode on last logout all drop whatever profile was active and adopt the new value as the baseline to return to.
+
 ### Reply threads in private chats <!-- #personal-replies -->
 
 Groups show a small reply glyph and a count on a message that's been replied to, and let you open those replies on their own. One-to-one chats never got that, because Telegram only keeps a reply counter for groups. This works it out from the history already on your phone: a message someone has replied to picks up the same glyph and count next to its timestamp, and its menu gains *View N Replies*.
