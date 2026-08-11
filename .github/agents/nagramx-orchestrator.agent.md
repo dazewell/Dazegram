@@ -209,6 +209,10 @@ Slug:           <slug>
 Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the date)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
+Trade-off budget: <what may be spent for correctness — an extra query, an extra
+                  round trip, memory, a slower rare path — stated explicitly so
+                  the implementer doesn't default to optimizing and then defend
+                  that optimization for three review rounds>
 Out of scope:   <explicit list>
 
 ## What dazewell asked for, and why
@@ -219,10 +223,30 @@ Out of scope:   <explicit list>
 ```
 
 Two things that make this work as a protocol. **You decide the branch name and
-the compile gate**, not the child: your Phase 4 commands all key off the branch
+the compile gate**, not the child: your Phase 4 checks all key off the branch
 name, and the skill's "ask which machine you're on" has no answer in an
 unattended session. And **never write the brief into a repo file** — it would
 land in the diff.
+
+**If recon shows the change touches a cache, asynchronous work, or
+invalidation** — any two of the three, or any one plus multi-threading —
+require the implementer's state-and-interleaving spec (what state exists, who
+writes it, on which thread, what clears it, the interleavings that matter)
+before it writes the implementation, and route that spec through round 1 or a
+quick round 1.5 rather than letting it ship unreviewed. A round-1 review that
+ran before this risky part existed has not reviewed it — say so if that's the
+situation, and re-dispatch the architect once the spec exists.
+
+**Give the architect a required property, not a mechanism, when the risky part
+is still speculative.** A reviewer's suggested mechanism belongs in the brief
+as a hard constraint only once it addresses a problem that has actually shown
+up — passing it through as binding before that turns a hypothesis into
+premature architecture. State what must be true ("membership must be tracked
+exactly, no ID lost or double-counted"); let the implementer pick the
+mechanism and the round-2 architect check it. This is the direct cause of one
+seed finding on `#personal-replies`: the round-1 brief itself specified "apply
+the increment as a delta to that query's result" for a problem that hadn't
+materialized yet, and that delta fold became the first Critical finding.
 
 ### Phase 4 — Verify, against evidence
 

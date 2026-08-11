@@ -60,6 +60,25 @@ code are not.
    dispatch/output template live in the `nagramx-code-review` skill — read it
    for *what* this review actually checks.
 
+   **A design gate for stateful or concurrent changes.** If recon shows the
+   change touches a cache, asynchronous work, or invalidation — any two of the
+   three, or any one plus multi-threading — write a short state-and-interleaving
+   spec *before* the implementation: what state exists, who writes it, on which
+   thread, what clears it, and the interleavings that matter. Get it reviewed as
+   part of round 1, or as a quick round 1.5 the moment the risky part surfaces
+   mid-implementation, since round 1 usually runs before that part exists. It
+   costs a paragraph, not a build — say plainly that a plan review conducted
+   before the hard part existed has not reviewed the hard part. (The `#personal-replies`
+   reply-counter fix took five implementation rounds and four review passes
+   converging on this exact mechanism; a spec up front would have caught it in
+   round 1 instead of round 3.)
+
+   **State the trade-off budget in the brief.** Every change brief should say,
+   in one line, what may be spent for correctness — an extra query, an extra
+   round trip, some memory, a slower rare path. Without an explicit budget an
+   implementer optimizes by default and then defends that optimization through
+   several review rounds arguing a false economy.
+
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
    `<YYYY-MM-DD>_<short-slug>` — **the date prefix is mandatory** (the date you
    start it, e.g. `2026-07-07_require-password`), `_` or `-` between date and
@@ -336,6 +355,18 @@ code are not.
    so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
    runs on `dev` after landing — there is no separate debug build and no
    skip-upload switch.
+
+   **Batch a review round's fixes into a single push.** Every push triggers a
+   dual-package staging build and a Telegram upload; `staging.yml` already
+   cancels a superseded run via its concurrency group, so the actual cost comes
+   from choosing to push separately rather than from the workflow itself. Work
+   through all of one review round's findings locally, then push once — don't
+   push a fix, wait for its build, then push the next. If you genuinely need a
+   build mid-round to check something, say so and take it as a deliberate
+   exception rather than a habit. The honest corollary: the automated PR review
+   only runs on a push, so batching trades some review granularity for build
+   cost within that round — worth it, but say so rather than pretending it's
+   free.
 
    **Close every GitHub review point.** Each inline comment or review thread
    must get either a code fix or an explicit reply explaining why it will not
