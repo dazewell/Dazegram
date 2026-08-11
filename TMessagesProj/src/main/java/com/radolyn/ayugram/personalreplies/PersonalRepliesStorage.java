@@ -107,6 +107,12 @@ public final class PersonalRepliesStorage {
                 if (parentId == 0) {
                     continue;
                 }
+                if (counts.get(parentId, 0) >= THREAD_LIMIT) {
+                    // already capped for this parent - deserializing another row for it can't
+                    // change either the displayed count or the reported child-id set, so skip
+                    // the parse entirely instead of doing it for nothing
+                    continue;
+                }
                 NativeByteBuffer data = cursor.byteBufferValue(1);
                 if (data == null) {
                     continue;
