@@ -84,9 +84,9 @@ architecture. Compare against a recent comparable feature with
   cleverer variant of the same broken idea and burn another round.
 - **Treat an uncited ordering claim as unverified, not as true.** "Immune by
   construction" or "guaranteed by FIFO" without a `file:line` citation of the
-  producer gets reviewed as if false. See the skill's *Known traps* entry on
-  `MessagesController.java:18213-18237` for a case where that exact assumption
-  was wrong.
+  producer gets reviewed as if false. See the skill's *Known traps on this
+  codebase* entry on `MessagesController.java:18213-18237` for a case where
+  that exact assumption was wrong.
 - **Escalate to "replace the mechanism" when a root cause repeats.** If a
   re-review finding traces to the same underlying cause as one already fixed,
   don't ask for another patch on the same primitive — say explicitly that the
