@@ -1339,6 +1339,32 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 });
                 o.addGap();
             }
+            if (SharedConfig.passcodeHash.length() > 0 && !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
+                final ItemOptions profilesMenu = o.makeSwipeback();
+                profilesMenu.add(R.drawable.msg_arrow_back, getString(R.string.Back), profilesMenu::closeSwipeback);
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                for (com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile : com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles()) {
+                    boolean isActive = active != null && active.id == profile.id;
+                    profilesMenu.add(R.drawable.msg_permissions, profile.name, () -> {
+                        o.dismiss();
+                        if (isActive) {
+                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
+                        } else {
+                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
+                        }
+                    });
+                    if (isActive) {
+                        profilesMenu.putCheck();
+                    }
+                }
+                profilesMenu.addGap();
+                profilesMenu.add(R.drawable.msg_settings, getString(R.string.PrivacyProfilesManage), () -> {
+                    o.dismiss();
+                    presentFragment(new tw.nekomimi.nekogram.settings.NekoPasscodeSettingsActivity());
+                });
+                o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileQuickSwitchTitle), () -> o.openSwipeback(profilesMenu));
+                o.addGap();
+            }
             o.add(R.drawable.msg_settings, getString(R.string.NekoSettings), () -> presentFragment(new NekoSettingsActivity()));
             o.add(R.drawable.web_browser, getString(R.string.InappBrowser), () -> presentFragment(new WebBrowserSettings(null)), () -> BrowserUtils.openBrowserHome(currentAccount, null, true));
             o.addGap();

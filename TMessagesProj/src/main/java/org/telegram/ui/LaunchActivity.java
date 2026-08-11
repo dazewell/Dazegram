@@ -1581,6 +1581,21 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 return false;
             }
         }
+        // NagramX: pinned "Add to home screen" privacy-profile shortcut. Activates the profile
+        // (token-checked so a forged intent from another app can't switch the auto-lock timeout)
+        // then falls through to open the app normally, same as any other launch.
+        if (com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.ACTION_ACTIVATE.equals(action)) {
+            long profileId = intent.getLongExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_PROFILE_ID, 0);
+            String token = intent.getStringExtra(com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.EXTRA_TOKEN);
+            if (!com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activateFromShortcut(profileId, token)) {
+                try {
+                    BulletinFactory.of(Bulletin.BulletinWindow.make(LaunchActivity.this), null)
+                            .createErrorBulletin(LocaleController.getString(R.string.PrivacyProfileNotFound)).show();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+        }
         boolean pushOpened = false;
         long push_user_id = 0;
         long push_chat_id = 0;
