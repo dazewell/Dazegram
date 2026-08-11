@@ -4,7 +4,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.os.Build;
 
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
@@ -39,48 +38,43 @@ public final class PrivacyProfileShortcuts {
         return "alp_" + profileId;
     }
 
-    /** Requests the pinned shortcut; no-op below API 26 (ShortcutManagerCompat requires it). */
+    /** Requests the pinned shortcut, reusing the existing token if this profile was pinned before. */
     public static void requestPin(PrivacyProfile profile) {
-        if (Build.VERSION.SDK_INT < 26) return;
         Context context = ApplicationLoader.applicationContext;
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(context)) return;
         String id = shortcutId(profile.id);
         // The token is the secret embedded in the shortcut's own intent -- without it, any app
         // that fires this action could switch the auto-lock timeout. Same pattern as
-        // SharedConfig.directShareHash for direct-share intents.
-        byte[] bytes = new byte[16];
-        Utilities.fastRandom.nextBytes(bytes);
-        String token = Utilities.bytesToHex(bytes);
-        PrivacyProfilesController.rememberShortcut(profile.id, id, token);
+        // SharedConfig.directShareHash for direct-share intents. Reuse the existing token on
+        // re-pin so a second "Add to home screen" tap doesn't invalidate the shortcut already
+        // sitting on the launcher.
+        String existingToken = PrivacyProfilesController.getShortcutToken(profile.id);
+        String token = existingToken != null ? existingToken : newToken();
 
-        Intent intent = new Intent(context, LaunchActivity.class);
-        intent.setAction(ACTION_ACTIVATE);
-        intent.putExtra(EXTRA_PROFILE_ID, profile.id);
-        intent.putExtra(EXTRA_TOKEN, token);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
-
-        ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(context, id)
-                .setShortLabel(profile.name)
-                .setLongLabel(profile.name)
-                .setIcon(IconCompat.createWithBitmap(letterAvatarBitmap(profile)))
-                .setIntent(intent);
+        ShortcutInfoCompat shortcut = buildShortcut(context, profile, id, token);
         try {
-            ShortcutManagerCompat.requestPinShortcut(context, builder.build(), null);
+            if (!ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)) return;
         } catch (Exception e) {
             FileLog.e(e);
+            return;
         }
+        // Only remember the shortcut once the OS accepted the pin request -- otherwise a
+        // dismissed pin dialog or an unsupported launcher would leave the controller pointing at
+        // a shortcut that was never actually created.
+        PrivacyProfilesController.rememberShortcut(profile.id, id, token);
     }
 
     /** Updates the pinned shortcut's label after a rename; a no-op if it was never pinned. */
     public static void updateLabel(PrivacyProfile profile) {
-        if (Build.VERSION.SDK_INT < 26) return;
-        String id = PrivacyProfilesController.getShortcutId(profile.id);
-        if (id == null) return;
         Context context = ApplicationLoader.applicationContext;
-        ShortcutInfoCompat.Builder builder = new ShortcutInfoCompat.Builder(context, id)
-                .setShortLabel(profile.name)
-                .setLongLabel(profile.name);
+        String id = PrivacyProfilesController.getShortcutId(profile.id);
+        String token = PrivacyProfilesController.getShortcutToken(profile.id);
+        if (id == null || token == null) return;
+        // ShortcutInfoCompat.Builder.build() requires an intent to be set (it throws otherwise),
+        // so this has to rebuild the full shortcut, not just the label, using the same intent and
+        // token the pin was created with -- a label-only builder can never pass build().
         try {
-            ShortcutManagerCompat.updateShortcuts(context, Collections.singletonList(builder.build()));
+            ShortcutManagerCompat.updateShortcuts(context, Collections.singletonList(buildShortcut(context, profile, id, token)));
         } catch (Exception e) {
             FileLog.e(e);
         }
@@ -88,7 +82,7 @@ public final class PrivacyProfileShortcuts {
 
     /** Disables a deleted profile's pinned shortcut; a pinned shortcut can only be disabled, not removed. */
     public static void disable(String shortcutId) {
-        if (Build.VERSION.SDK_INT < 26 || shortcutId == null) return;
+        if (shortcutId == null) return;
         try {
             ShortcutManagerCompat.disableShortcuts(ApplicationLoader.applicationContext,
                     Collections.singletonList(shortcutId),
@@ -96,6 +90,26 @@ public final class PrivacyProfileShortcuts {
         } catch (Exception e) {
             FileLog.e(e);
         }
+    }
+
+    private static String newToken() {
+        byte[] bytes = new byte[16];
+        Utilities.fastRandom.nextBytes(bytes);
+        return Utilities.bytesToHex(bytes);
+    }
+
+    private static ShortcutInfoCompat buildShortcut(Context context, PrivacyProfile profile, String id, String token) {
+        Intent intent = new Intent(context, LaunchActivity.class);
+        intent.setAction(ACTION_ACTIVATE);
+        intent.putExtra(EXTRA_PROFILE_ID, profile.id);
+        intent.putExtra(EXTRA_TOKEN, token);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
+        return new ShortcutInfoCompat.Builder(context, id)
+                .setShortLabel(profile.name)
+                .setLongLabel(profile.name)
+                .setIcon(IconCompat.createWithBitmap(letterAvatarBitmap(profile)))
+                .setIntent(intent)
+                .build();
     }
 
     private static Bitmap letterAvatarBitmap(PrivacyProfile profile) {

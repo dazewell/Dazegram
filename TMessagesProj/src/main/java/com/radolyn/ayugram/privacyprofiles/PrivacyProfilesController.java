@@ -240,11 +240,6 @@ public final class PrivacyProfilesController {
         ed.apply();
     }
 
-    /** True when a value is one of the six timeouts a profile (or the stock picker) can carry. */
-    public static boolean isValidTimeout(int value) {
-        return isSupportedTimeout(value);
-    }
-
     @Nullable
     private static PrivacyProfile findLocked(long id) {
         for (PrivacyProfile p : profiles) {
@@ -384,7 +379,12 @@ public final class PrivacyProfilesController {
                     needsSave = true;
                 }
             }
-            persistLocked();
+            // Only persist the controller's own prefs when the activation actually took, or when
+            // reconcileLocked() above already found something to correct -- a rejected activation
+            // (unknown id, past UNTIL deadline) is a no-op and shouldn't write to disk.
+            if (ok || needsSave) {
+                persistLocked();
+            }
         }
         if (needsSave) {
             SharedConfig.saveConfig();
@@ -467,6 +467,15 @@ public final class PrivacyProfilesController {
         synchronized (LOCK) {
             loadIfNeeded();
             return shortcutIds.get(profileId);
+        }
+    }
+
+    /** The token already embedded in a profile's pinned shortcut intent, or null if never pinned. */
+    @Nullable
+    public static String getShortcutToken(long profileId) {
+        synchronized (LOCK) {
+            loadIfNeeded();
+            return shortcutTokens.get(profileId);
         }
     }
 
