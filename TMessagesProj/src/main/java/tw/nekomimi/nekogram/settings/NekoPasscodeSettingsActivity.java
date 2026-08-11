@@ -11,12 +11,14 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AccountInstance;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
@@ -24,10 +26,15 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextDetailCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.Components.EditTextBoldCursor;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.NumberPicker;
+import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.URLSpanNoUnderline;
 import org.telegram.ui.PasscodeActivity;
 import org.telegram.ui.PrivacySettingsActivity;
@@ -43,6 +50,12 @@ import xyz.nextalone.nagram.NaConfig;
 public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
     private boolean passcodeSet;
+
+    private int profilesHeaderRow;
+    private int profilesStartRow;
+    private int profilesEndRow;
+    private int profilesAddRow;
+    private int profilesFooterRow;
 
     private int showInSettingsRow;
     private int showInSettings2Row;
@@ -61,6 +74,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
     private int showNotificationContentWhenLocked2Row;
 
     private final ArrayList<Integer> accounts = new ArrayList<>();
+    private java.util.List<com.radolyn.ayugram.privacyprofiles.PrivacyProfile> profiles = new ArrayList<>();
 
     @Override
     public boolean onFragmentCreate() {
@@ -77,6 +91,18 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
     protected void onItemClick(View view, int position, float x, float y) {
         if (!passcodeSet) {
             showBulletin();
+            return;
+        }
+        if (position == profilesAddRow) {
+            if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
+                BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
+                return;
+            }
+            showAddEditProfileDialog(null);
+            return;
+        }
+        if (position >= profilesStartRow && position < profilesEndRow) {
+            showProfileActions(profiles.get(position - profilesStartRow), view);
             return;
         }
         if (position > accountsStartRow && position < accountsEndRow) {
@@ -203,6 +229,14 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
     protected void updateRows() {
         super.updateRows();
 
+        profiles = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles();
+        profilesHeaderRow = rowCount++;
+        profilesStartRow = rowCount;
+        rowCount += profiles.size();
+        profilesEndRow = rowCount;
+        profilesAddRow = rowCount++;
+        profilesFooterRow = rowCount++;
+
         showInSettingsRow = rowCount++;
         showInSettings2Row = rowCount++;
 
@@ -259,6 +293,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     } else if (position == removePanicCodeRow) {
                         textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteRedText3));
                         textCell.setText(getString(R.string.PasscodePanicCodeRemove), false);
+                    } else if (position == profilesAddRow) {
+                        textCell.setText(getString(R.string.PrivacyProfilesAdd), false);
                     }
                     break;
                 }
@@ -277,6 +313,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     cell.setEnabled(passcodeSet, null);
                     if (position == accountsStartRow) {
                         cell.setText(getString(R.string.Account));
+                    } else if (position == profilesHeaderRow) {
+                        cell.setText(getString(R.string.PrivacyProfiles));
                     }
                     break;
                 }
@@ -305,6 +343,9 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     } else if (position == showNotificationContentWhenLocked2Row) {
                         cell.setText(getString(R.string.PasscodeShowMessagePreviewWhenLockedAbout));
                         cell.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+                    } else if (position == profilesFooterRow) {
+                        cell.setText(getString(R.string.PrivacyProfilesAbout));
+                        cell.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     }
                     break;
                 }
@@ -315,28 +356,64 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     cell.setAccount(account, PasscodeHelper.hasPasscodeForAccount(account), position + 1 != accountsEndRow);
                     break;
                 }
+                case 20: {
+                    TextDetailCell cell = (TextDetailCell) holder.itemView;
+                    cell.setAlpha(passcodeSet ? 1f : 0.5f);
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile = profiles.get(position - profilesStartRow);
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                    String status;
+                    if (active != null && active.id == profile.id) {
+                        Long deadline = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline();
+                        if (deadline != null) {
+                            status = LocaleController.formatString(R.string.PrivacyProfileActiveUntil, LocaleController.formatDateTime(deadline / 1000, true));
+                        } else {
+                            status = getString(R.string.PrivacyProfileActive);
+                        }
+                    } else {
+                        status = autoLockValueText(profile.timeout);
+                    }
+                    cell.setTextAndValue(profile.name, status, position + 1 != profilesEndRow);
+                    org.telegram.ui.Components.AvatarDrawable avatarDrawable = new org.telegram.ui.Components.AvatarDrawable();
+                    avatarDrawable.setInfo(profile.colorSeed, profile.name, null);
+                    cell.setImage(avatarDrawable);
+                    break;
+                }
             }
+        }
+
+        @NonNull
+        @Override
+        public RecyclerView.ViewHolder onCreateViewHolder(@NonNull android.view.ViewGroup parent, int viewType) {
+            if (viewType == 20) {
+                TextDetailCell cell = new TextDetailCell(mContext, resourcesProvider);
+                cell.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                cell.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
+                return new RecyclerListView.Holder(cell);
+            }
+            return super.onCreateViewHolder(parent, viewType);
         }
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return passcodeSet && super.isEnabled(holder);
+            return passcodeSet && (holder.getItemViewType() == 20 || super.isEnabled(holder));
         }
 
         @Override
         public int getItemViewType(int position) {
             if (position == clearPasscodes2Row) {
                 return 1;
-            } else if (position == clearPasscodesRow || position == setPanicCodeRow || position == removePanicCodeRow) {
+            } else if (position == clearPasscodesRow || position == setPanicCodeRow || position == removePanicCodeRow || position == profilesAddRow) {
                 return 2;
             } else if (position == showInSettingsRow || position == showNotificationContentWhenLockedRow) {
                 return 3;
-            } else if (position == accountsStartRow) {
+            } else if (position == accountsStartRow || position == profilesHeaderRow) {
                 return 4;
-            } else if (position == showInSettings2Row || position == accountsEndRow || position == panicCode2Row || position == showNotificationContentWhenLocked2Row) {
+            } else if (position == showInSettings2Row || position == accountsEndRow || position == panicCode2Row || position == showNotificationContentWhenLocked2Row || position == profilesFooterRow) {
                 return 7;
             } else if (position > accountsStartRow && position < accountsEndRow) {
                 return 11;
+            } else if (position >= profilesStartRow && position < profilesEndRow) {
+                return 20;
             }
             return 2;
         }
@@ -346,6 +423,161 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         BulletinFactory.of(this).createSimpleBulletin(R.raw.chats_infotip, getString(R.string.PasscodeNeeded), getString(R.string.Settings), () -> {
             presentFragment(new PrivacySettingsActivity());
             AndroidUtilities.scrollToFragmentRow(parentLayout, "passcodeRow");
+        }).show();
+    }
+
+    private static final int[] AUTO_LOCK_VALUES = {0, 1, 60, 60 * 5, 60 * 60, 60 * 60 * 5};
+
+    private String autoLockValueText(int value) {
+        if (value == 0) {
+            return getString(R.string.AutoLockDisabled);
+        } else if (value == 1) {
+            return LocaleController.getString("AutoLockImmediately", R.string.AutoLockImmediately);
+        } else if (value == 60) {
+            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 1));
+        } else if (value == 60 * 5) {
+            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Minutes", 5));
+        } else if (value == 60 * 60) {
+            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 1));
+        } else if (value == 60 * 60 * 5) {
+            return LocaleController.formatString("AutoLockInTime", R.string.AutoLockInTime, LocaleController.formatPluralString("Hours", 5));
+        }
+        return "";
+    }
+
+    private int autoLockValueIndex(int value) {
+        for (int i = 0; i < AUTO_LOCK_VALUES.length; i++) {
+            if (AUTO_LOCK_VALUES[i] == value) return i;
+        }
+        return 4;
+    }
+
+    /** Add/edit dialog: name field + the same stock auto-lock picker PasscodeActivity uses. */
+    private void showAddEditProfileDialog(@Nullable com.radolyn.ayugram.privacyprofiles.PrivacyProfile existing) {
+        if (getParentActivity() == null) return;
+        Context context = getParentActivity();
+        LinearLayout linearLayout = new LinearLayout(context);
+        linearLayout.setOrientation(LinearLayout.VERTICAL);
+        int pad = AndroidUtilities.dp(17);
+        linearLayout.setPadding(pad, AndroidUtilities.dp(6), pad, 0);
+
+        EditTextBoldCursor editText = new EditTextBoldCursor(context);
+        editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
+        editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+        editText.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint));
+        editText.setSingleLine(true);
+        editText.setMaxLines(1);
+        editText.setLines(1);
+        editText.setHint(getString(R.string.PrivacyProfileNamePlaceholder));
+        editText.setPadding(0, AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8));
+        editText.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        if (existing != null) {
+            editText.setText(existing.name);
+            editText.setSelection(editText.getText().length());
+        }
+        linearLayout.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36));
+
+        NumberPicker numberPicker = new NumberPicker(context);
+        numberPicker.setMinValue(0);
+        numberPicker.setMaxValue(AUTO_LOCK_VALUES.length - 1);
+        numberPicker.setValue(autoLockValueIndex(existing != null ? existing.timeout : SharedConfig.autoLockIn));
+        numberPicker.setFormatter(this::autoLockValueText2);
+        linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(getString(existing == null ? R.string.PrivacyProfileAdd : R.string.PrivacyProfileEdit));
+        builder.setView(linearLayout);
+        builder.setNegativeButton(getString(R.string.Cancel), null);
+        builder.setPositiveButton(getString(R.string.PrivacyProfileSave), (dialog, which) -> {
+            String name = editText.getText() != null ? editText.getText().toString() : "";
+            int timeout = AUTO_LOCK_VALUES[numberPicker.getValue()];
+            if (existing == null) {
+                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfileCount() >= com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.MAX_PROFILES) {
+                    BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
+                    return;
+                }
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout);
+            } else {
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout);
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout));
+            }
+            updateRows();
+            listAdapter.notifyDataSetChanged();
+        });
+        showDialog(builder.create());
+    }
+
+    // NumberPicker.Formatter is a functional interface with an (int) -> String signature; keep a
+    // second name so it doesn't collide with the (int) -> String helper used by the row/status text.
+    private String autoLockValueText2(int index) {
+        return autoLockValueText(AUTO_LOCK_VALUES[index]);
+    }
+
+    private void showProfileActions(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
+        if (getParentActivity() == null) return;
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+        boolean isActive = active != null && active.id == profile.id;
+        boolean isTimed = isActive && com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline() != null;
+
+        ItemOptions o = ItemOptions.makeOptions(this, anchor);
+        if (!isActive) {
+            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileActivateNow), () -> {
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
+            });
+            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileActivateFor), () -> showActivateForMenu(profile, anchor));
+            o.add(R.drawable.msg_calendar2, getString(R.string.PrivacyProfileActivateUntil), () -> showActivateUntilPicker(profile));
+        } else {
+            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController::deactivate);
+            if (isTimed) {
+                o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileCancelTimer), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController::cancelTimer);
+            }
+        }
+        o.addGap();
+        o.add(R.drawable.msg_edit, getString(R.string.Edit), () -> showAddEditProfileDialog(profile));
+        o.add(R.drawable.msg_home, getString(R.string.PrivacyProfileAddToHomeScreen), () ->
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.requestPin(profile));
+        o.add(R.drawable.msg_delete, getString(R.string.PrivacyProfileDelete), true, () -> {
+            AlertDialog alertDialog = new AlertDialog.Builder(getParentActivity())
+                    .setTitle(getString(R.string.PrivacyProfileDeleteConfirmTitle))
+                    .setMessage(getString(R.string.PrivacyProfileDeleteConfirmMessage))
+                    .setNegativeButton(getString(R.string.Cancel), null)
+                    .setPositiveButton(getString(R.string.PrivacyProfileDelete), (dialog, which) -> {
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deleteProfile(profile.id);
+                        updateRows();
+                        listAdapter.notifyDataSetChanged();
+                    }).create();
+            showDialog(alertDialog);
+            ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
+        });
+        o.show();
+    }
+
+    private void showActivateForMenu(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
+        if (getParentActivity() == null) return;
+        ItemOptions o = ItemOptions.makeOptions(this, anchor);
+        long[] durationsMs = {15 * 60 * 1000L, 60 * 60 * 1000L, 4 * 60 * 60 * 1000L, 24 * 60 * 60 * 1000L, 7 * 24 * 60 * 60 * 1000L};
+        int[] labels = {R.string.PrivacyProfileFor15Minutes, R.string.PrivacyProfileFor1Hour, R.string.PrivacyProfileFor4Hours, R.string.PrivacyProfileFor1Day, R.string.PrivacyProfileFor1Week};
+        for (int i = 0; i < durationsMs.length; i++) {
+            long duration = durationsMs[i];
+            o.add(getString(labels[i]), () -> {
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR, duration);
+                updateRows();
+                listAdapter.notifyDataSetChanged();
+            });
+        }
+        o.show();
+    }
+
+    private void showActivateUntilPicker(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
+        if (getParentActivity() == null) return;
+        org.telegram.ui.Components.AlertsCreator.createDatePickerDialog(getParentActivity(), getString(R.string.PrivacyProfileActivateUntil), getString(R.string.Done), 0, (notify, scheduleDate, scheduleRepeatPeriod) -> {
+            long deadlineMillis = scheduleDate * 1000L;
+            if (deadlineMillis <= System.currentTimeMillis()) {
+                return;
+            }
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.UNTIL, deadlineMillis);
+            updateRows();
+            listAdapter.notifyDataSetChanged();
         }).show();
     }
 }
