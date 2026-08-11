@@ -1,7 +1,6 @@
 package com.radolyn.ayugram.privacyprofiles;
 
 import android.content.SharedPreferences;
-import android.text.TextUtils;
 
 import androidx.annotation.Nullable;
 
@@ -163,6 +162,21 @@ public final class PrivacyProfilesController {
         }
         shortcutTokens.clear();
         shortcutTokens.putAll(loadedTokens);
+        // A profile entry can be dropped above (unsupported timeout) while the activation state
+        // still points at its id -- treat that the same as any other malformed-activation case,
+        // rather than leaving a phantom "active" profile nothing in the UI can find or turn off.
+        if (activationOk && loadedActive != NO_ID) {
+            boolean referencedProfileExists = false;
+            for (PrivacyProfile p : profiles) {
+                if (p.id == loadedActive) {
+                    referencedProfileExists = true;
+                    break;
+                }
+            }
+            if (!referencedProfileExists) {
+                activationOk = false;
+            }
+        }
         if (activationOk) {
             activeProfileId = loadedActive;
             deadlineEpochMillis = loadedDeadline;
@@ -402,7 +416,8 @@ public final class PrivacyProfilesController {
             if (activeProfileId != NO_ID && deadlineEpochMillis != NO_ID) {
                 deadlineEpochMillis = NO_ID;
                 persistLocked();
-                needsSave = true;
+                // Only the controller's own SharedPreferences change here -- SharedConfig.autoLockIn
+                // is untouched, so this alone never needs a SharedConfig.saveConfig() disk write.
             }
         }
         if (needsSave) {

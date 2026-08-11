@@ -498,8 +498,12 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 }
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout);
             } else {
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout);
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout));
+                // Only update the pinned shortcut's label if the edit actually took (editProfile
+                // rejects e.g. an empty trimmed name) -- otherwise the shortcut label would drift
+                // from the persisted profile name.
+                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout)) {
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout));
+                }
             }
             updateRows();
             listAdapter.notifyDataSetChanged();
@@ -513,6 +517,11 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         return autoLockValueText(AUTO_LOCK_VALUES[index]);
     }
 
+    private void refreshProfileRows() {
+        updateRows();
+        listAdapter.notifyDataSetChanged();
+    }
+
     private void showProfileActions(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
         if (getParentActivity() == null) return;
         com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
@@ -523,13 +532,20 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         if (!isActive) {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileActivateNow), () -> {
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
+                refreshProfileRows();
             });
             o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileActivateFor), () -> showActivateForMenu(profile, anchor));
             o.add(R.drawable.msg_calendar2, getString(R.string.PrivacyProfileActivateUntil), () -> showActivateUntilPicker(profile));
         } else {
-            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController::deactivate);
+            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), () -> {
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
+                refreshProfileRows();
+            });
             if (isTimed) {
-                o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileCancelTimer), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController::cancelTimer);
+                o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileCancelTimer), () -> {
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.cancelTimer();
+                    refreshProfileRows();
+                });
             }
         }
         o.addGap();
@@ -543,8 +559,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     .setNegativeButton(getString(R.string.Cancel), null)
                     .setPositiveButton(getString(R.string.PrivacyProfileDelete), (dialog, which) -> {
                         com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deleteProfile(profile.id);
-                        updateRows();
-                        listAdapter.notifyDataSetChanged();
+                        refreshProfileRows();
                     }).create();
             showDialog(alertDialog);
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
