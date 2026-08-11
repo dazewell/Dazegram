@@ -86,6 +86,28 @@ Four invariants where getting it wrong is silent and expensive:
   widen the diff and make the next upstream merge more expensive. Raise them as
   separate suggestions.
 
+**A design gate before writing a risky part.** If the change touches a cache,
+asynchronous work, or invalidation — any two of the three, or any one plus
+multi-threading — write a short state-and-interleaving spec before implementing
+it: what state exists, who writes it, on which thread, what clears it, and the
+interleavings that matter. Get that reviewed (round 1, or a quick round 1.5 if
+the risky part only became clear mid-implementation) before writing the code —
+a plan review that ran before the risky part existed hasn't reviewed it. Say so
+plainly rather than assuming round 1 already covered it.
+
+**A reviewer's prescribed fix is binding.** If the architect names a specific
+mechanism, implement that mechanism, or contest it with `file:line` evidence
+before shipping a different one. Don't silently ship a cleverer variant of a
+rejected approach — that's how one finding turns into three review rounds.
+
+**Ordering claims need a citation.** If your report or a comment asserts that
+one thing happens before another across threads, queues, or components, cite
+the producer `file:line` that actually establishes it. An unproven "immune by
+construction" gets treated as false — see `MessagesController.java:18213-18237`
+for the base-file trap that this exact wording missed before (the notification
+posts before the DB write is enqueued, so nothing downstream may assume the
+write already landed).
+
 Legacy Java matching what is around it: no Compose, Hilt, Room, or module
 restructuring. Comments only where something is non-obvious, in dazewell's plain
 voice — no em-dash pile-ups, no rule-of-three, no "ensures" or "seamlessly" —

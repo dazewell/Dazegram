@@ -77,6 +77,21 @@ architecture. Compare against a recent comparable feature with
   copy of them, work from the file. Inflating severity to look thorough makes
   the whole review easier to ignore. The one addition: any AI or assistant
   reference in the source or git log is automatically Critical.
+- **Prescribe concretely, not just a goal, on anything that already burned a
+  round.** When you name the fix, name the mechanism ("track exact child-ID
+  membership from the query and applied IDs", not "handle this more
+  carefully") — a vague prescription is exactly what lets an implementer ship a
+  cleverer variant of the same broken idea and burn another round.
+- **Treat an uncited ordering claim as unverified, not as true.** "Immune by
+  construction" or "guaranteed by FIFO" without a `file:line` citation of the
+  producer gets reviewed as if false. See the skill's *Known traps* entry on
+  `MessagesController.java:18213-18237` for a case where that exact assumption
+  was wrong.
+- **Escalate to "replace the mechanism" when a root cause repeats.** If a
+  re-review finding traces to the same underlying cause as one already fixed,
+  don't ask for another patch on the same primitive — say explicitly that the
+  primitive needs replacing, and name why the patched version will keep
+  producing this class of finding.
 - **Name the strengths first, specifically, with `file:line`.** Accurate praise
   is what makes the rest of the review land. Vague praise does the opposite.
 - **Always land a verdict**: Approved, Approved with fixes, or Not ready. Never

@@ -116,7 +116,37 @@ and still be wrong for this repo.
   hooks into. Is the hook resilient, or does it depend on a private detail that
   will silently break?
 
-### 2. Android correctness (the traps generic reviewers miss)
+### 2. Known traps on this codebase
+
+- **Never rely on ordering between an upstream producer's notification and its
+  own database write.** Producers post the UI notification before enqueueing
+  the write in at least one reachable path
+  (`MessagesController.java:18213-18237`), so any correctness argument resting
+  on "the write happens first" is invalid. This is base-file behaviour we don't
+  change here, and it would be re-broken by the next upstream merge anyway.
+- **Never summarise a set with a scalar when deduplication is the point.** A
+  maximum or a count can't represent membership with holes; if the real
+  question is "was this specific id already counted", the answer needs the
+  set, not a derived number.
+- **Ordering claims require a citation, not an assertion.** Any claim that one
+  thing happens before another across threads, queues, or components must cite
+  the producer `file:line` that actually establishes it. "Immune by
+  construction" or "guaranteed by FIFO ordering" without a citation is treated
+  as unverified and reviewed as if false — see the point above for a concrete
+  case where the assumption was wrong.
+- **A reviewer's prescribed fix is binding.** When you prescribe a specific
+  mechanism, the implementer either implements that mechanism or contests it
+  with `file:line` evidence before shipping an alternative — a silently
+  cleverer variant of a rejected approach is how one finding turns into three
+  rounds. Say so explicitly when you prescribe a mechanism rather than just a
+  goal, so a later silent substitution is unambiguously a violation.
+- **Two findings with the same root cause mean the mechanism is wrong, not
+  under-patched.** If round 2 (or a re-review) turns up a finding whose
+  underlying cause is the same as one already fixed, don't ask for another
+  patch on top of it — the primitive itself needs replacing. The tell: a
+  successive fix keeps the same clever primitive and adds a guard around it.
+
+### 3. Android correctness (the traps generic reviewers miss)
 
 - **Lifecycle & leaks.** Static/singleton references to an `Activity`,
   `Context`, `View`, or `Fragment` that outlive it? Listeners /
@@ -159,7 +189,7 @@ and still be wrong for this repo.
   respect `BuildConfig.APPLICATION_ID` / the dual-package split rather than
   hardcoding a package name?
 
-### 3. Code quality
+### 4. Code quality
 
 - **Lean.** Short, clean, meaningful. No unused code, constants, variables. No
   needless indirection or abstraction for a one-time operation.
@@ -170,7 +200,7 @@ and still be wrong for this repo.
 - **Error handling** at real boundaries only — not defensive checks for states
   that can't occur.
 
-### 4. The hard line (blocking, non-negotiable)
+### 5. The hard line (blocking, non-negotiable)
 
 - **No AI references anywhere in the source or git log** — comments included. No
   `Co-Authored-By`, no "Generated with," no assistant-flavored comment. Any such
@@ -188,7 +218,7 @@ and still be wrong for this repo.
   type/signature errors), stop and say so, and be that much stricter when CI is
   the only gate.
 
-### 5. Documentation (round 2, if user-visible)
+### 6. Documentation (round 2, if user-visible)
 
 - Is there a `FEATURES.md` entry under the right section, in plain prose (no
   marketing), matching neighboring entries' format (shortcut table / screenshot
@@ -249,6 +279,9 @@ legacy-API constraint, or violate YAGNI). Push back with technical reasoning and
 evidence (working code/tests, the upstream constraint) rather than
 performative agreement; involve dazewell if it's an architectural call. When the
 finding is right, just fix it — the diff shows you heard it; skip the "thanks."
+When a review prescribes a specific mechanism rather than just a goal, implement
+that mechanism or contest it with `file:line` evidence before shipping a
+different one — see *Known traps on this codebase* above.
 Fix one item at a time and re-run the compile gate — locally, or by pushing to
 the PR and reading the staging build when there's no local toolchain. On a no-go, fix it and
 push a **new commit** describing that fix (`#<slug>`-tagged) — don't amend and
