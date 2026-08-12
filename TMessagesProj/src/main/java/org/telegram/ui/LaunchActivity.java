@@ -8283,6 +8283,10 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onPasscodePause() {
+        // NagramX: settle privacy-profile activation/expiry before stamping lastPauseTime and
+        // reading autoLockIn below -- an expired profile's timeout would otherwise schedule the
+        // background lock on a value that's already dead.
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.reconcile();
         // NagramX: a "require password" chat re-locks once the app leaves the foreground
         com.radolyn.ayugram.chatlock.ChatLockController.clearUnlocked();
         if (lockRunnable != null) {

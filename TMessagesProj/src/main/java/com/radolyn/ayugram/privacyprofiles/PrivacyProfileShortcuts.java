@@ -97,7 +97,9 @@ public final class PrivacyProfileShortcuts {
 
     private static String newToken() {
         byte[] bytes = new byte[16];
-        Utilities.fastRandom.nextBytes(bytes);
+        // Utilities.random is the app's SecureRandom; fastRandom is a plain Random and this value
+        // is what stops another app firing the activation intent.
+        Utilities.random.nextBytes(bytes);
         return Utilities.bytesToHex(bytes);
     }
 

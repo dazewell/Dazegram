@@ -276,6 +276,9 @@ public class BubbleActivity extends BasePermissionsActivity implements INavigati
     }
 
     private void onPasscodePause() {
+        // NagramX: same reason as LaunchActivity -- settle profile activation/expiry before
+        // lastPauseTime and autoLockIn are read to schedule the background lock.
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.reconcile();
         if (lockRunnable != null) {
             AndroidUtilities.cancelRunOnUIThread(lockRunnable);
             lockRunnable = null;

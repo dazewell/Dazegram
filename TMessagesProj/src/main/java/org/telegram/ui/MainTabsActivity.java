@@ -1075,6 +1075,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
             clearAllHiddenFragments();
+            // NagramX: the profile badge is a drawable built from theme colours, so it has to be
+            // rebuilt rather than just invalidated.
+            checkPrivacyProfileBadge();
         } else if (id == NotificationCenter.callTabsVisibleToggled) {
             final boolean callTabsVisible = getUserConfig().showCallsTab;
             checkUi_callTabVisible(callTabsVisible, true);
@@ -1361,67 +1364,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 });
                 o.addGap();
             }
-            // NagramX: flat profiles block -- no submenu. ItemOptions.makeSwipeback() builds its
-            // submenu through a constructor that never assigns lastLayout (ItemOptions:257), so
-            // putCheck() on a submenu NPEs; addChecked() takes the state as an argument and never
-            // touches lastLayout, so the whole class of bug is unreachable here by construction.
-            // One getActiveProfile() snapshot for the entire block: it reconciles and can write
-            // config, so calling it per row would both jank and risk two rows disagreeing.
+            // NagramX: privacy-profile quick switch, built by its own feature class
             if (SharedConfig.passcodeHash.length() > 0 && !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
-                final com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
-                final Long activeDeadline = active != null ? com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline() : null;
-                final CharSequence header;
-                if (active == null) {
-                    header = getString(R.string.PrivacyProfileQuickSwitchTitle);
-                } else if (activeDeadline != null) {
-                    header = LocaleController.formatString(R.string.PrivacyProfileIsOnUntil, active.name, LocaleController.formatDateTime(activeDeadline / 1000, true));
-                } else {
-                    header = LocaleController.formatString(R.string.PrivacyProfileIsOn, active.name);
-                }
-                o.addText(header, 13);
-                o.addChecked(active == null, getString(R.string.PrivacyProfileNone), () -> {
-                    if (active != null) {
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
-                    }
-                });
-                for (com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile : com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles()) {
-                    final boolean isActive = active != null && active.id == profile.id;
-                    // Two tap zones per row. The active one is marked with a ring around its icon
-                    // rather than a trailing checkmark, because the trailing edge now belongs to
-                    // the duration zone -- ActionBarMenuSubItem puts both at Gravity.RIGHT, so a
-                    // checkmark and a right icon would draw on top of each other.
-                    o.add(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(this.getContext(), profile, 24, isActive), profile.name, () -> {
-                        if (isActive) {
-                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
-                        } else {
-                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
-                        }
-                    });
-                    final org.telegram.ui.ActionBar.ActionBarMenuSubItem row = o.getLast();
-                    if (row != null) {
-                        if (isActive) {
-                            // Only the active row needs this: an unchecked row already announces
-                            // nothing extra, and a redundant description would suppress its text.
-                            row.setContentDescription(LocaleController.formatString(R.string.PrivacyProfileIsOn, profile.name));
-                        }
-                        row.setRightIcon(R.drawable.msg_mute_period, v -> {
-                            // The right icon's own listener bypasses ItemOptions' auto-dismissing
-                            // click wrapper, so the popup has to be closed by hand.
-                            o.dismiss();
-                            com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, null);
-                        });
-                        final android.widget.ImageView clock = row.getRightIcon();
-                        if (clock != null) {
-                            // Title form, not the menu-row label: the ellipsis belongs on a row
-                            // that opens something, not in a spoken description.
-                            clock.setContentDescription(getString(R.string.PrivacyProfileSetTimerTitle));
-                        }
-                    }
-                }
-                o.addGap();
-                o.add(R.drawable.msg_settings, getString(R.string.PrivacyProfilesManage), () ->
-                    presentFragment(new tw.nekomimi.nekogram.settings.NekoPasscodeSettingsActivity()));
-                o.addGap();
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileQuickSwitch.addTo(o, this);
             }
             o.add(R.drawable.msg_settings, getString(R.string.NekoSettings), () -> presentFragment(new NekoSettingsActivity()));
             o.add(R.drawable.web_browser, getString(R.string.InappBrowser), () -> presentFragment(new WebBrowserSettings(null)), () -> BrowserUtils.openBrowserHome(currentAccount, null, true));

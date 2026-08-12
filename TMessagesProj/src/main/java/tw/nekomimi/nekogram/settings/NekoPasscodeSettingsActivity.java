@@ -24,7 +24,6 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
-import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
@@ -49,7 +48,7 @@ import tw.nekomimi.nekogram.ui.cells.AccountCell;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
 import xyz.nextalone.nagram.NaConfig;
 
-public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
+public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private boolean passcodeSet;
 
@@ -88,7 +87,24 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 accounts.add(a);
             }
         }
+        // NagramX: a profile can also be switched from a home-screen shortcut or by its timer
+        // expiring while this screen is open, so the rows follow the same notification the tab
+        // badge does rather than only refreshing on our own taps.
+        NotificationCenter.getGlobalInstance().addObserver(this, NotificationCenter.privacyProfileActiveStateChanged);
         return super.onFragmentCreate();
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.privacyProfileActiveStateChanged);
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.privacyProfileActiveStateChanged) {
+            refreshProfileRows();
+        }
     }
 
     @Override
@@ -682,7 +698,9 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
     private void refreshProfileRows() {
         updateRows();
-        listAdapter.notifyDataSetChanged();
+        if (listAdapter != null) {
+            listAdapter.notifyDataSetChanged();
+        }
     }
 
     private void showProfileActions(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
