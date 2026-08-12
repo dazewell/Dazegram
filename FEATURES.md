@@ -161,7 +161,7 @@ A mute button next to the playback-mode toggle silences round video messages whi
 
 Transcribing a round video message normally swaps the circle out for a text bubble, so you either watch the person or read what they said. A CC button sits above the transcribe button on video messages and changes that: tap it and the message transcribes, starts playing, and the text shows up as a caption strip floating just above the message box, line by line as the video runs. Nothing covers the face and the strip stays put while the chat scrolls. It spins while it's waiting on the transcription, the same as the transcribe button does.
 
-The play CC starts is muted and doesn't touch audio focus, so whatever else is playing (music, another chat's audio) keeps going untouched, and it runs through once even if the chat is set to repeat. That's scoped to just that one play: watching the message again afterwards, with a normal tap, plays with sound as usual.
+The playback that CC starts is muted and doesn't touch audio focus, so whatever else is playing (music, another chat's audio) keeps going untouched, and it runs through once even if the chat is set to repeat. That's scoped to just that one play: watching the message again afterwards, with a normal tap, plays with sound as usual.
 
 There's nothing to switch off: CC captions the play it starts and then lets go, so watching the message again is a normal tap and tapping CC is how you ask for captions again. The transcribe button is untouched: it still opens the text bubble the way it always has. Captions only ever come from a transcription you asked for, so nothing quietly costs you API credit for playing a video.
 
