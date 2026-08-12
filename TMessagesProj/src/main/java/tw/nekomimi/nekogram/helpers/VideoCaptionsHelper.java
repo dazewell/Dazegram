@@ -139,26 +139,32 @@ public class VideoCaptionsHelper {
         notifyChanged();
     }
 
-    // That play is over, so the next one only gets captions if CC is pressed again.
-    public static void disarm() {
-        if (armedKey == null && quietKey == null && pendingPlayback == null) {
-            return;
-        }
-        armedKey = null;
-        quietKey = null;
-        pendingPlayback = null;
-        notifyChanged();
-    }
-
-    // Playback ended. Only give up the slot when it's the message that was armed or quiet: a video
-    // that wasn't downloaded yet gets torn down and restarted, and that isn't the play ending.
+    // Playback of this exact message ended, so the next one only gets captions/quiet if CC is
+    // pressed again on it. Clears field-by-field rather than a blanket reset: while message A was
+    // playing quiet, CC can have been pressed on a different message B (armedKey/pendingPlayback
+    // now B, still waiting on B's transcription) - A ending must not wipe B's request out from
+    // under it. A video that wasn't downloaded yet gets torn down and restarted, and that isn't the
+    // play ending, so callers only reach here once a play has genuinely finished.
     public static void disarmMessage(MessageObject messageObject) {
         if (messageObject == null) {
             return;
         }
         String k = key(messageObject.currentAccount, messageObject);
-        if (k.equals(armedKey) || k.equals(quietKey)) {
-            disarm();
+        boolean changed = false;
+        if (k.equals(armedKey)) {
+            armedKey = null;
+            changed = true;
+        }
+        if (k.equals(quietKey)) {
+            quietKey = null;
+            changed = true;
+        }
+        if (k.equals(pendingPlayback)) {
+            pendingPlayback = null;
+            changed = true;
+        }
+        if (changed) {
+            notifyChanged();
         }
     }
 
