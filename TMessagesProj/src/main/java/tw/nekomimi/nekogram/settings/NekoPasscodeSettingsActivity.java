@@ -6,6 +6,7 @@ import android.app.Dialog;
 import android.content.Context;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -23,6 +24,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.Utilities;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
@@ -361,21 +363,22 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     cell.setAlpha(passcodeSet ? 1f : 0.5f);
                     com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile = profiles.get(position - profilesStartRow);
                     com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
-                    String status;
+                    // Configured auto-lock value is always shown, on its own line -- the active/timed
+                    // status (when this profile happens to be the active one) is a second line below
+                    // it rather than replacing it, so the two never blend into one ambiguous string.
+                    String configured = autoLockValueVerbose(profile.timeout);
+                    CharSequence value;
                     if (active != null && active.id == profile.id) {
                         Long deadline = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline();
-                        if (deadline != null) {
-                            status = LocaleController.formatString(R.string.PrivacyProfileActiveUntil, LocaleController.formatDateTime(deadline / 1000, true));
-                        } else {
-                            status = getString(R.string.PrivacyProfileActive);
-                        }
+                        String status = deadline != null
+                                ? LocaleController.formatString(R.string.PrivacyProfileActiveUntil, LocaleController.formatDateTime(deadline / 1000, true))
+                                : getString(R.string.PrivacyProfileActive);
+                        value = configured + "\n" + status;
                     } else {
-                        status = autoLockValueText(profile.timeout);
+                        value = configured;
                     }
-                    cell.setTextAndValue(profile.name, status, position + 1 != profilesEndRow);
-                    org.telegram.ui.Components.AvatarDrawable avatarDrawable = new org.telegram.ui.Components.AvatarDrawable();
-                    avatarDrawable.setInfo(profile.colorSeed, profile.name, null);
-                    cell.setImage(avatarDrawable);
+                    cell.setTextAndValue(profile.name, value, position + 1 != profilesEndRow);
+                    cell.setImage(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(mContext, profile, 36));
                     break;
                 }
             }
@@ -385,7 +388,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull android.view.ViewGroup parent, int viewType) {
             if (viewType == 20) {
-                TextDetailCell cell = new TextDetailCell(mContext, resourcesProvider);
+                TextDetailCell cell = new TextDetailCell(mContext, resourcesProvider, false, true);
                 cell.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
                 cell.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
                 return new RecyclerListView.Holder(cell);
@@ -428,6 +431,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
     private static final int[] AUTO_LOCK_VALUES = {0, 1, 60, 60 * 5, 60 * 60, 60 * 60 * 5};
 
+    /** Short form, used only by the add/edit dialog's NumberPicker wheel -- it doesn't ellipsize,
+     * so the verbose row strings below would clip there. */
     private String autoLockValueText(int value) {
         if (value == 0) {
             return getString(R.string.AutoLockDisabled);
@@ -445,6 +450,25 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         return "";
     }
 
+    /** Verbose form, used only by the profile row (item 6) -- exact fixed strings, one per
+     * supported timeout, never fragment-style ("5 min") the way the dialog wheel shows it. */
+    private String autoLockValueVerbose(int value) {
+        if (value == 0) {
+            return getString(R.string.PrivacyProfileLockNever);
+        } else if (value == 1) {
+            return getString(R.string.PrivacyProfileLockImmediately);
+        } else if (value == 60) {
+            return getString(R.string.PrivacyProfileLockAfter1Minute);
+        } else if (value == 60 * 5) {
+            return getString(R.string.PrivacyProfileLockAfter5Minutes);
+        } else if (value == 60 * 60) {
+            return getString(R.string.PrivacyProfileLockAfter1Hour);
+        } else if (value == 60 * 60 * 5) {
+            return getString(R.string.PrivacyProfileLockAfter5Hours);
+        }
+        return "";
+    }
+
     private int autoLockValueIndex(int value) {
         for (int i = 0; i < AUTO_LOCK_VALUES.length; i++) {
             if (AUTO_LOCK_VALUES[i] == value) return i;
@@ -452,7 +476,10 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         return 4;
     }
 
-    /** Add/edit dialog: name field + the same stock auto-lock picker PasscodeActivity uses. */
+    /**
+     * Add/edit dialog: a leading round icon button (tap opens the existing folder-icon-grid
+     * picker), the name field, then an "Auto-lock" label over the stock short-form picker.
+     */
     private void showAddEditProfileDialog(@Nullable com.radolyn.ayugram.privacyprofiles.PrivacyProfile existing) {
         if (getParentActivity() == null) return;
         Context context = getParentActivity();
@@ -460,6 +487,23 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         linearLayout.setOrientation(LinearLayout.VERTICAL);
         int pad = AndroidUtilities.dp(17);
         linearLayout.setPadding(pad, AndroidUtilities.dp(6), pad, 0);
+
+        final String[] selectedIcon = {existing != null ? existing.icon : com.radolyn.ayugram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
+        // Only used to render the live icon-preview button; the profile itself (existing or new)
+        // is never mutated directly here -- addProfile/editProfile take the final icon explicitly.
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
+                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, Utilities.random.nextLong(), 0, selectedIcon[0]);
+
+        LinearLayout nameRow = new LinearLayout(context);
+        nameRow.setOrientation(LinearLayout.HORIZONTAL);
+        nameRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        android.widget.ImageView iconButton = new android.widget.ImageView(context);
+        iconButton.setContentDescription(getString(R.string.PrivacyProfileIconContentDescription));
+        iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
+                previewSeed.withIcon(selectedIcon[0]), 40));
+        iconButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
+        nameRow.addView(iconButton, LayoutHelper.createLinear(40, 40, 0, 0, 0, 12, 0));
 
         EditTextBoldCursor editText = new EditTextBoldCursor(context);
         editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -475,14 +519,34 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             editText.setText(existing.name);
             editText.setSelection(editText.getText().length());
         }
-        linearLayout.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36));
+        nameRow.addView(editText, LayoutHelper.createLinear(0, 36, 1f));
+        linearLayout.addView(nameRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        iconButton.setOnClickListener(v -> tw.nekomimi.nekogram.folder.IconSelectorAlert.show(this, emoticon -> {
+            selectedIcon[0] = emoticon;
+            iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
+                    previewSeed.withIcon(emoticon), 40));
+        }));
+
+        TextView autoLockLabel = new TextView(context);
+        autoLockLabel.setText(getString(R.string.PrivacyProfileAutoLockLabel));
+        autoLockLabel.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
+        autoLockLabel.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 14);
+        linearLayout.addView(autoLockLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 18, 0, 0));
 
         NumberPicker numberPicker = new NumberPicker(context);
         numberPicker.setMinValue(0);
         numberPicker.setMaxValue(AUTO_LOCK_VALUES.length - 1);
         numberPicker.setValue(autoLockValueIndex(existing != null ? existing.timeout : SharedConfig.autoLockIn));
         numberPicker.setFormatter(this::autoLockValueText2);
-        linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+        linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
+
+        TextView caption = new TextView(context);
+        caption.setText(getString(R.string.PrivacyProfileAutoLockCaption));
+        caption.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
+        caption.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 13);
+        caption.setGravity(Gravity.CENTER);
+        linearLayout.addView(caption, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(getString(existing == null ? R.string.PrivacyProfileAdd : R.string.PrivacyProfileEdit));
@@ -496,19 +560,36 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileMaxCount)).show();
                     return;
                 }
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout);
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfile created =
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0]);
+                if (created != null) {
+                    showProfileSavedBulletin(created);
+                }
             } else {
-                // Only update the pinned shortcut's label if the edit actually took (editProfile
-                // rejects e.g. an empty trimmed name) -- otherwise the shortcut label would drift
-                // from the persisted profile name.
-                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout)) {
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout));
+                // Only update the pinned shortcut's label/icon if the edit actually took (editProfile
+                // rejects e.g. an empty trimmed name) -- otherwise the shortcut would drift from the
+                // persisted profile.
+                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout, selectedIcon[0])) {
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout).withIcon(selectedIcon[0]));
                 }
             }
             updateRows();
             listAdapter.notifyDataSetChanged();
         });
         showDialog(builder.create());
+    }
+
+    /** First successful profile CREATE: an inline shortcut nudge, not shown on edits. */
+    private void showProfileSavedBulletin(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
+        BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, getString(R.string.PrivacyProfileSavedBulletin), getString(R.string.PrivacyProfileAddToHomeScreen), () -> requestPinWithFallback(profile)).show();
+    }
+
+    /** Shared by both "Add to home screen" entry points (the saved-bulletin action and the
+     * per-profile action menu) so an unsupported launcher is never a silent no-op in either place. */
+    private void requestPinWithFallback(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
+        if (!com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.requestPin(profile)) {
+            BulletinFactory.of(this).createErrorBulletin(getString(R.string.PrivacyProfileShortcutsUnsupported)).show();
+        }
     }
 
     // NumberPicker.Formatter is a functional interface with an (int) -> String signature; keep a
@@ -534,7 +615,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                 refreshProfileRows();
             });
-            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileActivateFor), () -> showActivateForMenu(profile, anchor));
+            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileActivateFor), () ->
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileActivateForSheet.show(this, profile, this::refreshProfileRows));
             o.add(R.drawable.msg_calendar2, getString(R.string.PrivacyProfileActivateUntil), () -> showActivateUntilPicker(profile));
         } else {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), () -> {
@@ -550,8 +632,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         }
         o.addGap();
         o.add(R.drawable.msg_edit, getString(R.string.Edit), () -> showAddEditProfileDialog(profile));
-        o.add(R.drawable.msg_home, getString(R.string.PrivacyProfileAddToHomeScreen), () ->
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.requestPin(profile));
+        o.add(R.drawable.msg_home, getString(R.string.PrivacyProfileAddToHomeScreen), () -> requestPinWithFallback(profile));
         o.add(R.drawable.msg_delete, getString(R.string.PrivacyProfileDelete), true, () -> {
             AlertDialog alertDialog = new AlertDialog.Builder(getParentActivity())
                     .setTitle(getString(R.string.PrivacyProfileDeleteConfirmTitle))
@@ -564,22 +645,6 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             showDialog(alertDialog);
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
         });
-        o.show();
-    }
-
-    private void showActivateForMenu(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, View anchor) {
-        if (getParentActivity() == null) return;
-        ItemOptions o = ItemOptions.makeOptions(this, anchor);
-        long[] durationsMs = {15 * 60 * 1000L, 60 * 60 * 1000L, 4 * 60 * 60 * 1000L, 24 * 60 * 60 * 1000L, 7 * 24 * 60 * 60 * 1000L};
-        int[] labels = {R.string.PrivacyProfileFor15Minutes, R.string.PrivacyProfileFor1Hour, R.string.PrivacyProfileFor4Hours, R.string.PrivacyProfileFor1Day, R.string.PrivacyProfileFor1Week};
-        for (int i = 0; i < durationsMs.length; i++) {
-            long duration = durationsMs[i];
-            o.add(getString(labels[i]), () -> {
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR, duration);
-                updateRows();
-                listAdapter.notifyDataSetChanged();
-            });
-        }
         o.show();
     }
 
