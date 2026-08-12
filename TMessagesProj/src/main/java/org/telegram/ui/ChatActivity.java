@@ -24978,7 +24978,12 @@ public class ChatActivity extends BaseFragment implements
                     if (!TranscribeButton.isTranscribing(messageObject)
                             && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.consumePlayback(currentAccount, messageObject)) {
                         if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.hasFinalText(messageObject)) {
-                            MediaController.getInstance().playMessage(messageObject);
+                            // NagramX: consumePlayback already marked this message quiet - if the play
+                            // never actually starts, that mark has to come back off or it sits there
+                            // matching the next, ordinary attempt on this same message.
+                            if (!MediaController.getInstance().playMessage(messageObject)) {
+                                tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);
+                            }
                         } else {
                             // Nothing came back, so don't leave it armed to caption some later play.
                             tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.disarmMessage(messageObject);

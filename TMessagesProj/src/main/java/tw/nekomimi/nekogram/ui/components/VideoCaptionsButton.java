@@ -61,9 +61,13 @@ public class VideoCaptionsButton {
         TranscribeButton.closeVideoTranscriptionForCaptions(messageObject);
         if (VideoCaptionsHelper.hasFinalText(messageObject)) {
             // NagramX: this play is the quiet one - mark it before MediaController ever sees the
-            // message, so its first look at this message already answers isQuiet correctly.
+            // message, so its first look at this message already answers isQuiet correctly. If
+            // playMessage never actually gets a play going, the mark has to come back off - otherwise
+            // it sits there matching the next, ordinary attempt on this same message.
             VideoCaptionsHelper.markQuiet(account, messageObject);
-            MediaController.getInstance().playMessage(messageObject);
+            if (!MediaController.getInstance().playMessage(messageObject)) {
+                VideoCaptionsHelper.disarmMessage(messageObject);
+            }
         } else {
             // Starting the video now would run the first half of it against an empty strip, so it
             // waits for the text and ChatActivity presses play when it lands.
