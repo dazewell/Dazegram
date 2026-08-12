@@ -712,10 +712,16 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
      * itself carries no text beyond the glyph.
      */
     public void setActiveIndicator(boolean active, CharSequence contentDescriptionSuffix, boolean animated) {
-        if (hasActiveIndicator == active) return;
+        // Only setCounter (the visual dot + its own animation) is skipped when the on/off state
+        // hasn't changed -- the description itself must still refresh every call, e.g. a locale
+        // change firing this again with the same `active` but a re-fetched (differently worded)
+        // suffix string while the indicator stays on.
+        boolean stateChanged = hasActiveIndicator != active;
         hasActiveIndicator = active;
         activeIndicatorDescription = contentDescriptionSuffix;
-        setCounter(active ? "\u2022" : null, false, animated);
+        if (stateChanged) {
+            setCounter(active ? "\u2022" : null, false, animated);
+        }
         refreshContentDescription(isCompact);
     }
 
