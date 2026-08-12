@@ -316,13 +316,21 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         }
     }
 
-    // NagramX: Settings-tab presence dot for "some privacy profile is active, device-wide" --
-    // content-description only, never names the profile. getActiveProfile() runs reconcile()
-    // internally so this is never stale even right after a timer expiry.
+    // NagramX: Settings-tab badge showing the active profile's own icon, gated on the
+    // "show on Settings tab" preference. getActiveProfile() runs reconcile() internally (and may
+    // write config), so it's called exactly once here -- never per row or per frame. The drawable
+    // is built from the tab's own context and handed over, so nothing static pins an Activity.
     private void checkPrivacyProfileBadge() {
         if (tabsView != null && tabs[INDEX_SETTINGS] != null) {
-            boolean active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile() != null;
-            tabs[INDEX_SETTINGS].setActiveIndicator(active, getString(R.string.PrivacyProfileActiveIndicatorDescription), true);
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfile active =
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab()
+                    ? com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile()
+                    : null;
+            android.graphics.drawable.Drawable icon = active != null
+                ? com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(tabs[INDEX_SETTINGS].getContext(), active, 16)
+                : null;
+            tabs[INDEX_SETTINGS].setActiveProfileBadge(icon,
+                active != null ? LocaleController.formatString(R.string.PrivacyProfileIsOn, active.name) : null, true);
         }
     }
 
@@ -1338,9 +1346,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             return openCallsSelector(button);
         }
         if (index == INDEX_SETTINGS) {
-            // NagramX: swipeback=true is required here -- the profiles submenu below calls
-            // o.makeSwipeback(), which needs the swipeBackLayout only the 3-arg overload allocates.
-            ItemOptions o = ItemOptions.makeOptions(this, button, true);
+            ItemOptions o = ItemOptions.makeOptions(this, button);
             if (NekoConfig.showGhostInDrawer.Bool()) {
                 final String msg = NekoConfig.isGhostModeActive()
                     ? getString(R.string.DisableGhostMode)
@@ -1355,30 +1361,42 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 });
                 o.addGap();
             }
+            // NagramX: flat profiles block -- no submenu. ItemOptions.makeSwipeback() builds its
+            // submenu through a constructor that never assigns lastLayout (ItemOptions:257), so
+            // putCheck() on a submenu NPEs; addChecked() takes the state as an argument and never
+            // touches lastLayout, so the whole class of bug is unreachable here by construction.
+            // One getActiveProfile() snapshot for the entire block: it reconciles and can write
+            // config, so calling it per row would both jank and risk two rows disagreeing.
             if (SharedConfig.passcodeHash.length() > 0 && !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
-                final ItemOptions profilesMenu = o.makeSwipeback();
-                profilesMenu.add(R.drawable.msg_arrow_back, getString(R.string.Back), profilesMenu::closeSwipeback);
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                final com.radolyn.ayugram.privacyprofiles.PrivacyProfile active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                final Long activeDeadline = active != null ? com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveDeadline() : null;
+                final CharSequence header;
+                if (active == null) {
+                    header = getString(R.string.PrivacyProfileQuickSwitchTitle);
+                } else if (activeDeadline != null) {
+                    header = LocaleController.formatString(R.string.PrivacyProfileIsOnUntil, active.name, LocaleController.formatDateTime(activeDeadline / 1000, true));
+                } else {
+                    header = LocaleController.formatString(R.string.PrivacyProfileIsOn, active.name);
+                }
+                o.addText(header, 13);
+                o.addChecked(active == null, getString(R.string.PrivacyProfileNone), () -> {
+                    if (active != null) {
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
+                    }
+                });
                 for (com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile : com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles()) {
-                    boolean isActive = active != null && active.id == profile.id;
-                    profilesMenu.add(R.drawable.msg_permissions, profile.name, () -> {
-                        o.dismiss();
-                        if (isActive) {
-                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
-                        } else {
+                    final boolean isActive = active != null && active.id == profile.id;
+                    o.addChecked(isActive, com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(this.getContext(), profile, 24), profile.name, () -> {
+                        // Tapping the already-active profile just dismisses -- re-activating would
+                        // silently drop a running "until" timer.
+                        if (!isActive) {
                             com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                         }
                     });
-                    if (isActive) {
-                        profilesMenu.putCheck();
-                    }
                 }
-                profilesMenu.addGap();
-                profilesMenu.add(R.drawable.msg_settings, getString(R.string.PrivacyProfilesManage), () -> {
-                    o.dismiss();
-                    presentFragment(new tw.nekomimi.nekogram.settings.NekoPasscodeSettingsActivity());
-                });
-                o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileQuickSwitchTitle), () -> o.openSwipeback(profilesMenu));
+                o.addGap();
+                o.add(R.drawable.msg_settings, getString(R.string.PrivacyProfilesManage), () ->
+                    presentFragment(new tw.nekomimi.nekogram.settings.NekoPasscodeSettingsActivity()));
                 o.addGap();
             }
             o.add(R.drawable.msg_settings, getString(R.string.NekoSettings), () -> presentFragment(new NekoSettingsActivity()));

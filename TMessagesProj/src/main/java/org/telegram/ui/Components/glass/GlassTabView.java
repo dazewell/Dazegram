@@ -204,6 +204,13 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
                 int y = (int)(cy - dpf2(7f));
                 premiumStarDrawable.setBounds(x, y, x + dp(14), y + dp(14));
                 premiumStarDrawable.draw(canvas);
+            } else if (counterDrawable != null) {
+                // NagramX: reuse the slot the premium star already draws into -- the outer
+                // PAINT_CLEAR round-rect and the inset above are done, so the drawable just
+                // fills the inner rect. Ordered after usePremiumCounter so precedence is
+                // explicit rather than incidental: a premium badge always wins the slot.
+                counterDrawable.setBounds((int) tmpRectF.left, (int) tmpRectF.top, (int) tmpRectF.right, (int) tmpRectF.bottom);
+                counterDrawable.draw(canvas);
             } else {
                 paintCounterBackground.setColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_telegram_color), Theme.getColor(Theme.key_fill_RedNormal), isHasCounterErrorAnimator.getFloatValue()));
                 canvas.drawRoundRect(tmpRectF, rInner, rInner, paintCounterBackground);
@@ -703,26 +710,28 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     private boolean isCompact;
     private boolean hasActiveIndicator;
     private CharSequence activeIndicatorDescription;
+    private Drawable counterDrawable;
 
     /**
-     * Reuses {@link #setCounter} for a small neutral (non-error) presence dot -- a single bullet
-     * glyph, no number -- rather than a new badge view. Also composes an accessibility suffix onto
-     * the tab's contentDescription so a screen reader hears e.g. "Settings, profile active"
-     * without this ever naming which profile. Never shows a profile name/icon visually; the dot
-     * itself carries no text beyond the glyph.
+     * Shows the active privacy profile's own circular icon in the existing counter/badge slot,
+     * or clears it when {@code icon} is null. The caller builds the drawable once per state
+     * change and hands it in -- never per frame. {@code contentDescriptionSuffix} is composed
+     * onto the tab label, so a screen reader hears "Settings, Work is on".
      */
-    public void setActiveIndicator(boolean active, CharSequence contentDescriptionSuffix, boolean animated) {
-        // Only setCounter (the visual dot + its own animation) is skipped when the on/off state
-        // hasn't changed -- the description itself must still refresh every call, e.g. a locale
-        // change firing this again with the same `active` but a re-fetched (differently worded)
-        // suffix string while the indicator stays on.
-        boolean stateChanged = hasActiveIndicator != active;
-        hasActiveIndicator = active;
+    public void setActiveProfileBadge(Drawable icon, CharSequence contentDescriptionSuffix, boolean animated) {
+        // Drive the shared visibility animator directly: setCounter() derives it from text, and
+        // this badge deliberately has no text at all.
+        boolean stateChanged = (counterDrawable != null) != (icon != null);
+        counterDrawable = icon;
+        hasActiveIndicator = icon != null;
         activeIndicatorDescription = contentDescriptionSuffix;
         if (stateChanged) {
-            setCounter(active ? "\u2022" : null, false, animated);
+            counter.setText(null, false);
+            isHasCounterAnimator.setValue(icon != null, animated);
+            isHasCounterErrorAnimator.setValue(false, animated);
         }
         refreshContentDescription(isCompact);
+        invalidate();
     }
 
     // NagramX: setMainTabsCompact's own contentDescription rule (label only in compact mode, null

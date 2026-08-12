@@ -57,6 +57,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
     private int profilesStartRow;
     private int profilesEndRow;
     private int profilesAddRow;
+    private int profilesShowOnTabRow;
     private int profilesFooterRow;
 
     private int showInSettingsRow;
@@ -189,6 +190,12 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     }).create();
             showDialog(alertDialog);
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
+        } else if (position == profilesShowOnTabRow) {
+            boolean value = !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab();
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.setShowActiveOnSettingsTab(value);
+            if (view instanceof TextCheckCell) {
+                ((TextCheckCell) view).setChecked(value);
+            }
         } else if (position == showInSettingsRow) {
             PasscodeHelper.setHideSettings(!PasscodeHelper.isSettingsHidden());
             if (view instanceof TextCheckCell) {
@@ -237,6 +244,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         rowCount += profiles.size();
         profilesEndRow = rowCount;
         profilesAddRow = rowCount++;
+        // Only meaningful once at least one profile exists.
+        profilesShowOnTabRow = profiles.isEmpty() ? -1 : rowCount++;
         profilesFooterRow = rowCount++;
 
         showInSettingsRow = rowCount++;
@@ -306,6 +315,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     textCell.setEnabled(passcodeSet, null);
                     if (position == showInSettingsRow) {
                         textCell.setTextAndCheck(getString(R.string.PasscodeShowInSettings), !PasscodeHelper.isSettingsHidden(), false);
+                    } else if (position == profilesShowOnTabRow) {
+                        textCell.setTextAndCheck(getString(R.string.PrivacyProfileShowOnSettingsTab), com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab(), false);
                     } else if (position == showNotificationContentWhenLockedRow) {
                         textCell.setTextAndCheck(getString(R.string.PasscodeShowMessagePreviewWhenLocked), NaConfig.INSTANCE.getShowNotificationPreviewWhenLocked().Bool(), false);
                     }
@@ -408,7 +419,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 return 1;
             } else if (position == clearPasscodesRow || position == setPanicCodeRow || position == removePanicCodeRow || position == profilesAddRow) {
                 return 2;
-            } else if (position == showInSettingsRow || position == showNotificationContentWhenLockedRow) {
+            } else if (position == showInSettingsRow || position == showNotificationContentWhenLockedRow || position == profilesShowOnTabRow) {
                 return 3;
             } else if (position == accountsStartRow || position == profilesHeaderRow) {
                 return 4;
@@ -487,7 +498,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         LinearLayout linearLayout = new LinearLayout(context);
         linearLayout.setOrientation(LinearLayout.VERTICAL);
         int pad = AndroidUtilities.dp(17);
-        linearLayout.setPadding(pad, AndroidUtilities.dp(6), pad, 0);
+        linearLayout.setPadding(pad, AndroidUtilities.dp(20), pad, 0);
 
         final String[] selectedIcon = {existing != null ? existing.icon : com.radolyn.ayugram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
         // Same seed feeds both the live preview below and (for a new profile) the profile actually
@@ -509,7 +520,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
                 previewSeed.withIcon(selectedIcon[0]), 40));
         iconButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
-        nameRow.addView(iconButton, LayoutHelper.createLinear(40, 40, 0, 0, 0, 12, 0));
+        nameRow.addView(iconButton, LayoutHelper.createLinear(48, 48, 0, 0, 0, 12, 0));
 
         EditTextBoldCursor editText = new EditTextBoldCursor(context);
         editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -521,11 +532,12 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         editText.setHint(getString(R.string.PrivacyProfileNamePlaceholder));
         editText.setPadding(0, AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8));
         editText.setBackgroundDrawable(Theme.createEditTextDrawable(context, true));
+        editText.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(24)});
         if (existing != null) {
             editText.setText(existing.name);
             editText.setSelection(editText.getText().length());
         }
-        nameRow.addView(editText, LayoutHelper.createLinear(0, 36, 1f));
+        nameRow.addView(editText, LayoutHelper.createLinear(0, 48, 1f));
         linearLayout.addView(nameRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         // Kept as a Dialog[] holder (not a local var) so the form's own dismiss listener below can
@@ -541,25 +553,38 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         autoLockLabel.setText(getString(R.string.PrivacyProfileAutoLockLabel));
         autoLockLabel.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         autoLockLabel.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 14);
-        linearLayout.addView(autoLockLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 18, 0, 0));
+        linearLayout.addView(autoLockLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 28, 0, 0));
 
         NumberPicker numberPicker = new NumberPicker(context);
         numberPicker.setMinValue(0);
         numberPicker.setMaxValue(AUTO_LOCK_VALUES.length - 1);
         numberPicker.setValue(autoLockValueIndex(existing != null ? existing.timeout : SharedConfig.autoLockIn));
-        numberPicker.setFormatter(this::autoLockValueText2);
-        linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
+        numberPicker.setFormatter(v -> autoLockValueText(AUTO_LOCK_VALUES[v]));
+        // Explicit 3 visible rows: the default item count leaves the wheel taller than this
+        // dialog needs and pushes the caption below the fold on short screens.
+        numberPicker.setItemCount(3);
+        linearLayout.addView(numberPicker, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, NumberPicker.DEFAULT_SIZE_PER_COUNT * 3, 0, 4, 0, 0));
 
         TextView caption = new TextView(context);
-        caption.setText(getString(R.string.PrivacyProfileAutoLockCaption));
+        caption.setText(autoLockValueVerbose(AUTO_LOCK_VALUES[numberPicker.getValue()]));
         caption.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
         caption.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 13);
         caption.setGravity(Gravity.CENTER);
         linearLayout.addView(caption, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 8));
+        // The caption states what the *currently selected* value actually does, so it has to
+        // track the wheel rather than describing the control in the abstract.
+        numberPicker.setOnValueChangedListener((picker, oldVal, newVal) ->
+                caption.setText(autoLockValueVerbose(AUTO_LOCK_VALUES[newVal])));
+
+        android.widget.ScrollView scrollView = new android.widget.ScrollView(context);
+        scrollView.setFillViewport(true);
+        scrollView.addView(linearLayout, new android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT));
 
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle(getString(existing == null ? R.string.PrivacyProfileAdd : R.string.PrivacyProfileEdit));
-        builder.setView(linearLayout);
+        builder.setView(scrollView);
         builder.setNegativeButton(getString(R.string.Cancel), null);
         builder.setPositiveButton(getString(R.string.PrivacyProfileSave), (dialog, which) -> {
             String name = editText.getText() != null ? editText.getText().toString() : "";
@@ -585,11 +610,35 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             updateRows();
             listAdapter.notifyDataSetChanged();
         });
-        showDialog(builder.create(), dialog -> {
+        AlertDialog dialog = builder.create();
+        showDialog(dialog, d -> {
             if (iconPickerDialog[0] != null && iconPickerDialog[0].isShowing()) {
                 iconPickerDialog[0].dismiss();
             }
         });
+        // Save stays dimmed until there's a real name to save. Wired after create() because the
+        // button view only exists once the dialog is built.
+        View saveButton = dialog.getButton(Dialog.BUTTON_POSITIVE);
+        if (saveButton != null) {
+            Runnable updateSaveEnabled = () -> {
+                boolean enabled = editText.getText() != null && editText.getText().toString().trim().length() > 0;
+                saveButton.setEnabled(enabled);
+                saveButton.setAlpha(enabled ? 1f : 0.5f);
+            };
+            updateSaveEnabled.run();
+            editText.addTextChangedListener(new android.text.TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+                @Override
+                public void afterTextChanged(android.text.Editable s) {
+                    updateSaveEnabled.run();
+                }
+            });
+        }
     }
 
     /** First successful profile CREATE: an inline shortcut nudge, not shown on edits. Uses
@@ -607,12 +656,6 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         }
     }
 
-    // NumberPicker.Formatter is a functional interface with an (int) -> String signature; keep a
-    // second name so it doesn't collide with the (int) -> String helper used by the row/status text.
-    private String autoLockValueText2(int index) {
-        return autoLockValueText(AUTO_LOCK_VALUES[index]);
-    }
-
     private void refreshProfileRows() {
         updateRows();
         listAdapter.notifyDataSetChanged();
@@ -626,12 +669,27 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
         ItemOptions o = ItemOptions.makeOptions(this, anchor);
         if (!isActive) {
-            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileActivateNow), () -> {
+            o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOn), () -> {
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                 refreshProfileRows();
             });
-            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileActivateFor), () ->
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileActivateForSheet.show(this, profile, this::refreshProfileRows));
+            // Stock presets activate straight away -- no intermediate sheet. They use FOR, which
+            // deliberately doesn't overwrite the remembered custom duration below.
+            addDurationPreset(o, profile, 1, 0);
+            addDurationPreset(o, profile, 8, 0);
+            addDurationPreset(o, profile, 24, 0);
+            long remembered = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getLastCustomDurationMillis(profile.id);
+            if (remembered > 0 && !isStockPreset(remembered)) {
+                int rh = (int) (remembered / 3600000L);
+                int rm = (int) ((remembered % 3600000L) / 60000L);
+                o.add(R.drawable.msg_mute_period, LocaleController.formatString(R.string.PrivacyProfileForDuration,
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.formatDuration(rh, rm)), () -> {
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR_CUSTOM, remembered);
+                    refreshProfileRows();
+                });
+            }
+            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileForCustomTime), () ->
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, this::refreshProfileRows));
             o.add(R.drawable.msg_calendar2, getString(R.string.PrivacyProfileActivateUntil), () -> showActivateUntilPicker(profile));
         } else {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), () -> {
@@ -661,6 +719,24 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
         });
         o.show();
+    }
+
+    private static final long[] STOCK_PRESET_MS = {3600000L, 8 * 3600000L, 24 * 3600000L};
+
+    private static boolean isStockPreset(long durationMs) {
+        for (long p : STOCK_PRESET_MS) {
+            if (p == durationMs) return true;
+        }
+        return false;
+    }
+
+    private void addDurationPreset(ItemOptions o, com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, int hours, int minutes) {
+        final long durationMs = hours * 3600000L + minutes * 60000L;
+        o.add(R.drawable.msg_mute_period, LocaleController.formatString(R.string.PrivacyProfileForDuration,
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.formatDuration(hours, minutes)), () -> {
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR, durationMs);
+            refreshProfileRows();
+        });
     }
 
     private void showActivateUntilPicker(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {

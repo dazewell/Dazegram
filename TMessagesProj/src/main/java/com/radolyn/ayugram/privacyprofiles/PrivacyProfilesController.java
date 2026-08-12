@@ -75,8 +75,18 @@ public final class PrivacyProfilesController {
     // feature is device-wide like the rest of the controller. A profile with no entry here has
     // never had a custom "Activate for" duration applied; the picker prefills 1 hour in that case.
     private static final Map<Long, Long> lastCustomDurationMillis = new LinkedHashMap<>();
+    // Whether the active profile's icon is shown on the Settings bottom tab. Device-wide like the
+    // rest of the controller, and default on.
+    private static boolean showActiveOnSettingsTab = true;
+    // One-time "7 days is the longest you can set" bulletin, shown at most once ever.
+    private static boolean sevenDayCapHintShown;
 
-    public enum ActivationMode { NOW, FOR, UNTIL }
+    /**
+     * FOR is a stock preset (1 hour / 8 hours / 1 day) and deliberately does NOT overwrite the
+     * remembered custom duration; FOR_CUSTOM is the wheel picker's own result and is what gets
+     * remembered per profile.
+     */
+    public enum ActivationMode { NOW, FOR, FOR_CUSTOM, UNTIL }
 
     private PrivacyProfilesController() {}
 
@@ -190,6 +200,8 @@ public final class PrivacyProfilesController {
         }
         lastCustomDurationMillis.clear();
         lastCustomDurationMillis.putAll(loadedDurations);
+        showActiveOnSettingsTab = sp.getBoolean("showActiveOnSettingsTab", true);
+        sevenDayCapHintShown = sp.getBoolean("sevenDayCapHintShown", false);
         // A profile entry can be dropped above (unsupported timeout) while the activation state
         // still points at its id -- treat that the same as any other malformed-activation case,
         // rather than leaving a phantom "active" profile nothing in the UI can find or turn off.
@@ -275,7 +287,40 @@ public final class PrivacyProfilesController {
             FileLog.e(e);
         }
         ed.putString("lastCustomDurationMillis", cd.toString());
+        ed.putBoolean("showActiveOnSettingsTab", showActiveOnSettingsTab);
+        ed.putBoolean("sevenDayCapHintShown", sevenDayCapHintShown);
         ed.apply();
+    }
+
+    /** Whether the active profile's icon is shown on the Settings bottom tab. Default on. */
+    public static boolean showActiveOnSettingsTab() {
+        synchronized (LOCK) {
+            loadIfNeeded();
+            return showActiveOnSettingsTab;
+        }
+    }
+
+    public static void setShowActiveOnSettingsTab(boolean show) {
+        synchronized (LOCK) {
+            loadIfNeeded();
+            if (showActiveOnSettingsTab == show) return;
+            showActiveOnSettingsTab = show;
+            persistLocked();
+        }
+        // The badge listens on the same notification as a real activation change, so flipping
+        // this has to post too -- otherwise the badge survives until the next onResume.
+        postActiveStateChanged();
+    }
+
+    /** True exactly once, the first time the 7-day cap is hit. */
+    public static boolean shouldShowSevenDayCapHint() {
+        synchronized (LOCK) {
+            loadIfNeeded();
+            if (sevenDayCapHintShown) return false;
+            sevenDayCapHintShown = true;
+            persistLocked();
+            return true;
+        }
     }
 
     @Nullable
@@ -418,8 +463,11 @@ public final class PrivacyProfilesController {
                             break;
                         case FOR:
                             deadlineEpochMillis = now + durationOrDeadlineMillis;
-                            // Persist this profile's own last-used custom duration for the
-                            // Activate-for picker's prefill next time (round 2, item 2).
+                            break;
+                        case FOR_CUSTOM:
+                            deadlineEpochMillis = now + durationOrDeadlineMillis;
+                            // Only a custom (wheel-picked) duration is remembered for the
+                            // picker's prefill -- stock presets must not overwrite it.
                             lastCustomDurationMillis.put(id, durationOrDeadlineMillis);
                             break;
                         case UNTIL:
