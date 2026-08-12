@@ -225,8 +225,11 @@ Out of scope:   <explicit list>
 Two things that make this work as a protocol. **You decide the branch name and
 the compile gate**, not the child: your Phase 4 checks all key off the branch
 name, and the skill's "ask which machine you're on" has no answer in an
-unattended session. And **never write the brief into a repo file** — it would
-land in the diff.
+unattended session. Resolve the machine yourself with `$env:COMPUTERNAME` —
+it reports `ZENBOO`, where the toolchain is installed and the gate is `local`
+(~9 min cold, ~15 s per later edit); elsewhere apply the skill's toolchain
+check and fall back to `CI-only`. And **never write the brief into a repo
+file** — it would land in the diff.
 
 **If recon shows the change touches a cache, asynchronous work, or
 invalidation** — any two of the three, or any one plus multi-threading —

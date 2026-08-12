@@ -32,13 +32,25 @@ code are not.
   `TMessagesProj/src/main/kotlin`).
 - dazewell works on **Windows** — give all shell commands in **PowerShell**
   syntax by default.
-- **Machine matters: don't assume you can build.** Some of dazewell's machines
-  (the Surface Book 2) are too slow to build on — even the compile gate drags,
-  and a full `assemble` runs for an hour-plus. Never kick off a Gradle build
-  there, including "just the compile gate". Ask which machine you're on if it
-  isn't obvious, and when it's a slow one, treat the toolchain as unavailable
-  and fall back to CI exactly as step 4 describes. dazewell builds manually on
-  a faster machine when he wants an artifact.
+- **Machine matters: don't assume you can build.** Machines differ, so check
+  which one you're on before deciding — `$env:COMPUTERNAME` answers it (it
+  reports `ZENBOO`; compare case-insensitively, PowerShell's `-eq` already is).
+  - **`ZenBoo` — run the gate.** JDK 21 (`JAVA_HOME` →
+    `C:\Program Files\Microsoft\jdk-21.0.12.8-hotspot`) and the Android SDK
+    (`ANDROID_HOME` → `C:\Users\dazewell\AppData\Local\Android\Sdk`) are both
+    installed and on the environment, so no `local.properties` is needed.
+    Measured on the privacy-profiles worktree: **~9 min cold** (fresh daemon,
+    no configuration cache), **~15 s after a normal source edit**, ~8 s when
+    nothing changed. Run the gate here rather than waiting on CI — after the
+    first run of a session it's effectively free. Give a cold run a 10-minute
+    budget and don't kill it early. A full `assemble` is still heavy; leave
+    artifacts to CI or to dazewell.
+  - **Surface Book 2 — don't build at all.** Too slow: even the compile gate
+    drags and a full `assemble` runs for an hour-plus. Treat the toolchain as
+    unavailable and fall back to CI exactly as step 4 describes.
+  - **Anywhere else, or if you can't tell** — ask, or apply step 4's quick
+    toolchain check and fall back to CI when it fails. dazewell builds manually
+    on a fast machine when he wants an artifact.
 
 ## The pipeline, in order
 
@@ -171,7 +183,16 @@ code are not.
    If the shell isn't at the repo root, pass `-p` explicitly:
    `.\gradlew.bat -p "D:\Documents\Projects\NagramX" :TMessagesProj:compileDebugJavaWithJavac`.
    A full APK build is heavy; this compile task is the standard gate and is
-   enough to validate most feature work. Don't move on until it's clean.
+   enough to validate most feature work. Don't move on until it's clean. Run it
+   in the worktree the change lives in, so it compiles the actual branch.
+
+   **On `ZenBoo`, run it — the toolchain is installed and fast enough.** JDK 21
+   and the Android SDK are both on the environment there (`JAVA_HOME` /
+   `ANDROID_HOME`), so no `local.properties` is needed. Budget ~9 minutes for
+   the first run of a session (cold daemon, no configuration cache) and ~15
+   seconds for every run after a source edit — cheap enough that there's no
+   excuse for shipping a change to CI unverified. Don't kill a cold run early
+   because it looks stuck; the Kotlin and resource tasks dominate it.
 
    **If the toolchain isn't available — or the machine is too slow — skip the
    gate, don't fight it.** In a sandboxed agent environment the toolchain often
@@ -185,10 +206,10 @@ code are not.
    satisfy the gate.
 
    Same answer on a slow machine even though everything's installed: on the
-   Surface Book 2 the compile gate takes ~5 minutes and a full `assemble` runs
-   over an hour, so **don't start either one there**. Use CI as the gate and
-   leave building an artifact to dazewell on a faster machine (see the machine
-   note above).
+   Surface Book 2 the compile gate drags and a full `assemble` runs over an
+   hour, so **don't start either one there**. Use CI as the gate and leave
+   building an artifact to dazewell on a faster machine (see the machine note
+   above).
 
    The fallback is the **staging build**: push the branch and open the PR into
    `dev` (step 9), and `staging.yml` compiles it on every push to the PR. That
