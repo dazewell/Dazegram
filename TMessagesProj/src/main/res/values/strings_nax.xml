@@ -422,7 +422,7 @@
     <string name="PrivacyProfileIconContentDescription">Profile icon</string>
     <string name="PrivacyProfileSavedBulletin">Profile saved</string>
     <string name="PrivacyProfileShortcutsUnsupported">This launcher doesn\'t support home screen shortcuts.</string>
-    <string name="PrivacyProfileActiveIndicatorDescription">profile active</string>
+    <string name="PrivacyProfileActiveIndicatorDescription">Auto-lock profile active</string>
     <string name="StickerSavedHint">Sticker saved to gallery.</string>
     <string name="StickerCopied">Sticker copied to clipboard.</string>
     <string name="StrokeOnViews">Glare effects</string>
