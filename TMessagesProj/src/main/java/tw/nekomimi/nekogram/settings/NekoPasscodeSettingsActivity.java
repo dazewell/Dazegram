@@ -378,7 +378,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                         value = configured;
                     }
                     cell.setTextAndValue(profile.name, value, position + 1 != profilesEndRow);
-                    cell.setImage(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(mContext, profile, 36));
+                    cell.setImage(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(mContext, profile, 36), getString(R.string.PrivacyProfileIconContentDescription));
                     break;
                 }
             }
@@ -489,10 +489,15 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         linearLayout.setPadding(pad, AndroidUtilities.dp(6), pad, 0);
 
         final String[] selectedIcon = {existing != null ? existing.icon : com.radolyn.ayugram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
+        // Same seed feeds both the live preview below and (for a new profile) the profile actually
+        // persisted on Save -- otherwise the preview would show a color the saved profile never gets,
+        // since addProfile can't reuse this value as the profile id (id uniqueness is checked inside
+        // the controller's lock, not here).
+        final long newColorSeed = Utilities.random.nextLong();
         // Only used to render the live icon-preview button; the profile itself (existing or new)
         // is never mutated directly here -- addProfile/editProfile take the final icon explicitly.
         com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
-                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, Utilities.random.nextLong(), 0, selectedIcon[0]);
+                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, newColorSeed, 0, selectedIcon[0]);
 
         LinearLayout nameRow = new LinearLayout(context);
         nameRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -522,7 +527,10 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         nameRow.addView(editText, LayoutHelper.createLinear(0, 36, 1f));
         linearLayout.addView(nameRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        iconButton.setOnClickListener(v -> tw.nekomimi.nekogram.folder.IconSelectorAlert.show(this, emoticon -> {
+        // Kept as a Dialog[] holder (not a local var) so the form's own dismiss listener below can
+        // close it too, if the form goes away for some other reason while the grid is still open.
+        final Dialog[] iconPickerDialog = {null};
+        iconButton.setOnClickListener(v -> iconPickerDialog[0] = tw.nekomimi.nekogram.folder.IconSelectorAlert.show(context, emoticon -> {
             selectedIcon[0] = emoticon;
             iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
                     previewSeed.withIcon(emoticon), 40));
@@ -561,7 +569,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     return;
                 }
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfile created =
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0]);
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0], newColorSeed);
                 if (created != null) {
                     showProfileSavedBulletin(created);
                 }
@@ -576,12 +584,18 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             updateRows();
             listAdapter.notifyDataSetChanged();
         });
-        showDialog(builder.create());
+        showDialog(builder.create(), dialog -> {
+            if (iconPickerDialog[0] != null && iconPickerDialog[0].isShowing()) {
+                iconPickerDialog[0].dismiss();
+            }
+        });
     }
 
-    /** First successful profile CREATE: an inline shortcut nudge, not shown on edits. */
+    /** First successful profile CREATE: an inline shortcut nudge, not shown on edits. Uses
+     * DURATION_LONG explicitly (not the 4-arg overload's text-length heuristic, which would pick
+     * DURATION_SHORT for a string this short) since this bulletin's only purpose is its action button. */
     private void showProfileSavedBulletin(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
-        BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, getString(R.string.PrivacyProfileSavedBulletin), getString(R.string.PrivacyProfileAddToHomeScreen), () -> requestPinWithFallback(profile)).show();
+        BulletinFactory.of(this).createSimpleBulletin(R.raw.contact_check, getString(R.string.PrivacyProfileSavedBulletin), getString(R.string.PrivacyProfileAddToHomeScreen), org.telegram.ui.Components.Bulletin.DURATION_LONG, () -> requestPinWithFallback(profile)).show();
     }
 
     /** Shared by both "Add to home screen" entry points (the saved-bulletin action and the

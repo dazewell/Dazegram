@@ -1,12 +1,9 @@
 package com.radolyn.ayugram.privacyprofiles;
 
 import android.content.Context;
-import android.graphics.Color;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.View;
 import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -35,6 +32,14 @@ import static org.telegram.messenger.LocaleController.getString;
 public final class PrivacyProfileActivateForSheet {
 
     private PrivacyProfileActivateForSheet() {}
+
+    // NumberPicker.setEnabled() only gates touch handling (see NumberPicker.onTouchEvent /
+    // onInterceptTouchEvent) -- it doesn't change how the wheel draws, so a disabled wheel looks
+    // identical to an enabled one. Dim it too so the 168h cap is visible, not just enforced.
+    private static void setMinutesEnabled(NumberPicker minutes, boolean enabled) {
+        minutes.setEnabled(enabled);
+        minutes.setAlpha(enabled ? 1f : 0.5f);
+    }
 
     private static final long[] PRESET_DURATIONS_MS = {
             15 * 60 * 1000L,
@@ -97,7 +102,7 @@ public final class PrivacyProfileActivateForSheet {
                 long ms = PRESET_DURATIONS_MS[index];
                 hours.setValue((int) Math.min(MAX_HOURS, ms / 3600000L));
                 minutes.setValue((int) ((ms % 3600000L) / 60000L));
-                minutes.setEnabled(hours.getValue() != MAX_HOURS);
+                setMinutesEnabled(minutes, hours.getValue() != MAX_HOURS);
                 refreshRef[0].run();
             });
             pills[i] = pill;
@@ -199,9 +204,9 @@ public final class PrivacyProfileActivateForSheet {
         hours.setOnValueChangedListener((picker, oldVal, newVal) -> {
             if (newVal == MAX_HOURS) {
                 minutes.setValue(0);
-                minutes.setEnabled(false);
+                setMinutesEnabled(minutes, false);
             } else {
-                minutes.setEnabled(true);
+                setMinutesEnabled(minutes, true);
             }
             refresh.run();
         });
@@ -213,7 +218,7 @@ public final class PrivacyProfileActivateForSheet {
         int initialMinutes = initialHours == MAX_HOURS ? 0 : (int) ((prefillMs % 3600000L) / 60000L);
         hours.setValue(initialHours);
         minutes.setValue(initialMinutes);
-        minutes.setEnabled(initialHours != MAX_HOURS);
+        setMinutesEnabled(minutes, initialHours != MAX_HOURS);
         refresh.run();
 
         buttonTextView.setOnClickListener(v -> {

@@ -20,7 +20,25 @@ public class IconSelectorAlert {
 
     public static void show(BaseFragment fragment, OnIconSelectedListener onIconSelectedListener) {
         Context context = fragment.getParentActivity();
+        AlertDialog.Builder builder = build(context, onIconSelectedListener);
+        fragment.showDialog(builder.create());
+    }
 
+    /**
+     * Context-only variant for a caller that is itself showing a dialog (e.g. an inline icon
+     * button inside an add/edit AlertDialog) -- BaseFragment.showDialog() unconditionally dismisses
+     * whatever dialog is currently visible before installing the new one, which would tear down the
+     * caller's own dialog out from under it. This shows the grid as a plain AlertDialog instead, so
+     * the caller's dialog is untouched and still on screen underneath.
+     */
+    public static AlertDialog show(Context context, OnIconSelectedListener onIconSelectedListener) {
+        AlertDialog.Builder builder = build(context, onIconSelectedListener);
+        AlertDialog dialog = builder.create();
+        dialog.show();
+        return dialog;
+    }
+
+    private static AlertDialog.Builder build(Context context, OnIconSelectedListener onIconSelectedListener) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
 
         GridAdapter gridAdapter = new GridAdapter();
@@ -36,7 +54,7 @@ public class IconSelectorAlert {
         });
 
         builder.setView(recyclerListView);
-        fragment.showDialog(builder.create());
+        return builder;
     }
 
     private static class GridAdapter extends RecyclerListView.SelectionAdapter {

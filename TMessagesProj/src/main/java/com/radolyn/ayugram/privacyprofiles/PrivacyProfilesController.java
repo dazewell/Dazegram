@@ -297,7 +297,7 @@ public final class PrivacyProfilesController {
     }
 
     @Nullable
-    public static PrivacyProfile addProfile(String name, int timeout, String icon) {
+    public static PrivacyProfile addProfile(String name, int timeout, String icon, long colorSeed) {
         if (!isSupportedTimeout(timeout)) return null;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return null;
@@ -310,7 +310,7 @@ public final class PrivacyProfilesController {
             do {
                 id = Utilities.fastRandom.nextLong() & Long.MAX_VALUE;
             } while (id == NO_ID || findLocked(id) != null);
-            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, id, System.currentTimeMillis(), safeIcon);
+            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, colorSeed, System.currentTimeMillis(), safeIcon);
             profiles.add(profile);
             persistLocked();
             return profile;
