@@ -296,6 +296,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         super.onResume();
         blur3_updateColors();
         checkContactsTabBadge();
+        checkPrivacyProfileBadge();
         checkUnreadCount(true);
 
         showAccountChangeHint();
@@ -312,6 +313,24 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             } else {
                 tabs[INDEX_CONTACTS].setCounter(null, true, true);
             }
+        }
+    }
+
+    // NagramX: Settings-tab badge showing the active profile's own icon, gated on the
+    // "show on Settings tab" preference. getActiveProfile() runs reconcile() internally (and may
+    // write config), so it's called exactly once here -- never per row or per frame. The drawable
+    // is built from the tab's own context and handed over, so nothing static pins an Activity.
+    private void checkPrivacyProfileBadge() {
+        if (tabsView != null && tabs[INDEX_SETTINGS] != null) {
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfile active =
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.showActiveOnSettingsTab()
+                    ? com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile()
+                    : null;
+            android.graphics.drawable.Drawable icon = active != null
+                ? com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(tabs[INDEX_SETTINGS].getContext(), active, 16)
+                : null;
+            tabs[INDEX_SETTINGS].setActiveProfileBadge(icon,
+                active != null ? LocaleController.formatString(R.string.PrivacyProfileIsOn, active.name) : null, true);
         }
     }
 
@@ -1056,6 +1075,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.needSetDayNightTheme) {
             clearAllHiddenFragments();
+            // NagramX: the profile badge is a drawable built from theme colours, so it has to be
+            // rebuilt rather than just invalidated.
+            checkPrivacyProfileBadge();
         } else if (id == NotificationCenter.callTabsVisibleToggled) {
             final boolean callTabsVisible = getUserConfig().showCallsTab;
             checkUi_callTabVisible(callTabsVisible, true);
@@ -1072,6 +1094,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.contactsPermissionBadgeCheck) {
             checkContactsTabBadge();
+        } else if (id == NotificationCenter.privacyProfileActiveStateChanged) {
+            checkPrivacyProfileBadge();
         }
     }
 
@@ -1094,7 +1118,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         globalObserversGroup = NotificationCenter.getGlobalInstance().createObserversGroup(this)
             .add(NotificationCenter.appUpdateAvailable)
             .add(NotificationCenter.appUpdateLoading)
-            .add(NotificationCenter.needSetDayNightTheme);
+            .add(NotificationCenter.needSetDayNightTheme)
+            .add(NotificationCenter.privacyProfileActiveStateChanged);
 
         return super.onFragmentCreate();
     }
@@ -1338,6 +1363,10 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                     NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
                 });
                 o.addGap();
+            }
+            // NagramX: privacy-profile quick switch, built by its own feature class
+            if (SharedConfig.passcodeHash.length() > 0 && !com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles().isEmpty()) {
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileQuickSwitch.addTo(o, this);
             }
             o.add(R.drawable.msg_settings, getString(R.string.NekoSettings), () -> presentFragment(new NekoSettingsActivity()));
             o.add(R.drawable.web_browser, getString(R.string.InappBrowser), () -> presentFragment(new WebBrowserSettings(null)), () -> BrowserUtils.openBrowserHome(currentAccount, null, true));

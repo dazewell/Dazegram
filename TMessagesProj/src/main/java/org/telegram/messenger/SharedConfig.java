@@ -245,7 +245,9 @@ public class SharedConfig {
     public static int badPasscodeTries;
     public static byte[] passcodeSalt = new byte[0];
     public static boolean appLocked;
-    public static int autoLockIn = 60 * 60;
+    // NagramX: volatile so PrivacyProfilesController.reconcile() can detect an external write to
+    // this field from the media-session/notification threads without racing a stale cached value.
+    public static volatile int autoLockIn = 60 * 60;
 
     public static boolean saveIncomingPhotos;
     public static boolean allowScreenCapture;

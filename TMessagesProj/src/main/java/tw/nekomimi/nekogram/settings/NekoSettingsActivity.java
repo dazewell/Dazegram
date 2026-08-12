@@ -399,7 +399,15 @@ public class NekoSettingsActivity extends BaseNekoSettingsActivity {
                     } else if (position == translatorRow) {
                         textCell.setTextAndIcon(getString(R.string.TranslatorSettings), R.drawable.ic_translate, true);
                     } else if (position == passcodeRow) {
-                        textCell.setTextAndIcon(getString(R.string.PasscodeNeko), R.drawable.msg_permissions, true);
+                        // NagramX: surface the active privacy profile as this row's value, the
+                        // same way the language row shows the current language -- this is the
+                        // only indication when the bottom tab bar isn't present. Always pass a
+                        // value (null when nothing is active) so a recycled cell can't keep a
+                        // stale name.
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfile activeProfile =
+                                com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile();
+                        textCell.setTextAndValueAndIcon(getString(R.string.PasscodeNeko),
+                                activeProfile != null ? activeProfile.name : null, R.drawable.msg_permissions, true);
                     } else if (position == experimentRow) {
                         textCell.setTextAndIcon(getString(R.string.Experimental), R.drawable.msg_fave, true);
                     } else if (position == importSettingsRow) {

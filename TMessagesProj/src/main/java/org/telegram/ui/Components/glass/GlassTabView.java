@@ -204,6 +204,13 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
                 int y = (int)(cy - dpf2(7f));
                 premiumStarDrawable.setBounds(x, y, x + dp(14), y + dp(14));
                 premiumStarDrawable.draw(canvas);
+            } else if (counterDrawable != null) {
+                // NagramX: reuse the slot the premium star already draws into -- the outer
+                // PAINT_CLEAR round-rect and the inset above are done, so the drawable just
+                // fills the inner rect. Ordered after usePremiumCounter so precedence is
+                // explicit rather than incidental: a premium badge always wins the slot.
+                counterDrawable.setBounds((int) tmpRectF.left, (int) tmpRectF.top, (int) tmpRectF.right, (int) tmpRectF.bottom);
+                counterDrawable.draw(canvas);
             } else {
                 paintCounterBackground.setColor(ColorUtils.blendARGB(Theme.getColor(Theme.key_telegram_color), Theme.getColor(Theme.key_fill_RedNormal), isHasCounterErrorAnimator.getFloatValue()));
                 canvas.drawRoundRect(tmpRectF, rInner, rInner, paintCounterBackground);
@@ -684,11 +691,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
         textView.setVisibility(compact ? GONE : VISIBLE);
 
-        if (compact) {
-            setContentDescription(textView.getText());
-        } else {
-            setContentDescription(null);
-        }
+        refreshContentDescription(compact);
 
         if (backupImageView != null) {
             backupImageView.setLayoutParams(compact ?
@@ -702,5 +705,48 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
         requestLayout();
         invalidate();
+    }
+
+    private boolean isCompact;
+    private CharSequence activeIndicatorDescription;
+    private Drawable counterDrawable;
+
+    /**
+     * Shows the active privacy profile's own circular icon in the existing counter/badge slot,
+     * or clears it when {@code icon} is null. The caller builds the drawable once per state
+     * change and hands it in -- never per frame. {@code contentDescriptionSuffix} is composed
+     * onto the tab label, so a screen reader hears "Settings, Work is on".
+     */
+    public void setActiveProfileBadge(Drawable icon, CharSequence contentDescriptionSuffix, boolean animated) {
+        // Drive the shared visibility animator directly: setCounter() derives it from text, and
+        // this badge deliberately has no text at all.
+        boolean stateChanged = (counterDrawable != null) != (icon != null);
+        counterDrawable = icon;
+        activeIndicatorDescription = contentDescriptionSuffix;
+        if (stateChanged) {
+            counter.setText(null, false);
+            isHasCounterAnimator.setValue(icon != null, animated);
+            isHasCounterErrorAnimator.setValue(false, animated);
+        }
+        refreshContentDescription(isCompact);
+        invalidate();
+    }
+
+    // NagramX: setMainTabsCompact's own contentDescription rule (label only in compact mode, null
+    // otherwise so TalkBack reads the child TextView directly) would otherwise get clobbered by, or
+    // clobber, the active-indicator suffix -- whichever set it last wins with two independent
+    // setContentDescription() calls. Routing both through one place keeps them composed instead of
+    // one eating the other. When there's an indicator, the label is always included (regardless of
+    // compact/non-compact) so the indicator never replaces the label a screen reader would
+    // otherwise get for free from the child TextView.
+    private void refreshContentDescription(boolean compact) {
+        isCompact = compact;
+        boolean hasBadge = counterDrawable != null;
+        CharSequence label = hasBadge || compact ? textView.getText() : null;
+        if (hasBadge) {
+            setContentDescription(label != null ? TextUtils.concat(label, ", ", activeIndicatorDescription) : activeIndicatorDescription);
+        } else {
+            setContentDescription(label);
+        }
     }
 }

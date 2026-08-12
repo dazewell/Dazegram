@@ -196,6 +196,9 @@ public class TelegramMediaSession {
     }
 
     public boolean isPasscodeLocked() {
+        // NagramX: this is the one lock-state reader that bypasses AndroidUtilities.needShowPasscode,
+        // so it needs its own reconcile() call to settle profile activation/expiry first.
+        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.reconcile();
         final int uptime = (int) (SystemClock.elapsedRealtime() / 1000);
         return SharedConfig.passcodeHash.length() > 0 && (
                 SharedConfig.appLocked
