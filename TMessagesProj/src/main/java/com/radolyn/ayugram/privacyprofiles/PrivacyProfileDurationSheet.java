@@ -139,9 +139,7 @@ public final class PrivacyProfileDurationSheet {
                 NumberPicker[] all = {hours, minutes, dayPicker, untilHour, untilMinute};
                 for (NumberPicker p : all) {
                     p.setItemCount(count);
-                    if (p.getLayoutParams() != null) {
-                        p.getLayoutParams().height = h;
-                    }
+                    p.getLayoutParams().height = h;
                 }
                 ignoreLayout = false;
                 super.onMeasure(widthMeasureSpec, heightMeasureSpec);
@@ -203,7 +201,9 @@ public final class PrivacyProfileDurationSheet {
         untilWheels.addView(untilMinute, LayoutHelper.createLinear(0, 0, 0.3f));
 
         tabContent.addView(forTab, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-        tabContent.addView(untilWheels, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        // Centred vertically: the For body is taller by the pills row, and pinning both to the top
+        // would make the wheels visibly jump up when the Until tab is selected.
+        tabContent.addView(untilWheels, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL));
         container.addView(tabContent, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 1f, 0, 0, 0, 0, 0));
 
         TextView buttonTextView = new TextView(context) {
@@ -268,7 +268,10 @@ public final class PrivacyProfileDurationSheet {
                 refresh.run();
             });
             pills[i] = pill;
-            pillsRow.addView(pill, LayoutHelper.createLinearRelatively(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.START, i == 0 ? 22 : 8, 0, 0, 0));
+            // Absolute margins here, unlike the title/button: this row's children are never
+            // reversed, so a start-relative margin would flip to the right of a left-drawn pill
+            // in RTL and knock the row out of line with the title.
+            pillsRow.addView(pill, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, i == 0 ? 22 : 8, 0, 0, 0));
         }
 
         hours.setOnValueChangedListener((picker, oldVal, newVal) -> {
@@ -348,8 +351,15 @@ public final class PrivacyProfileDurationSheet {
         buttonTextView.setOnClickListener(v -> {
             boolean ok;
             if (currentTab[0] == 1) {
+                // The minimum was enforced against the `now` captured when the sheet opened. Sitting
+                // on it past the chosen minute would otherwise leave a fully-enabled button that
+                // does nothing, so re-clamp against the real clock and use the snapped-forward value.
+                clampUntil(System.currentTimeMillis(), dayPicker, untilHour, untilMinute);
                 long deadlineMillis = untilDeadline(now, dayPicker, untilHour, untilMinute);
-                if (deadlineMillis <= System.currentTimeMillis()) return;
+                if (deadlineMillis <= System.currentTimeMillis()) {
+                    refresh.run();
+                    return;
+                }
                 ok = PrivacyProfilesController.activate(profile.id, PrivacyProfilesController.ActivationMode.UNTIL, deadlineMillis);
             } else {
                 long durationMs = hours.getValue() * 3600000L + minutes.getValue() * 60000L;
@@ -367,7 +377,16 @@ public final class PrivacyProfileDurationSheet {
                         preset ? PrivacyProfilesController.ActivationMode.FOR : PrivacyProfilesController.ActivationMode.FOR_CUSTOM,
                         durationMs);
             }
-            if (ok && onActivated != null) onActivated.run();
+            if (!ok) {
+                // The profile was deleted from another surface while this sheet was open. Say so
+                // and stay put rather than closing on a change that didn't happen.
+                if (sheet[0] != null) {
+                    BulletinFactory.of(sheet[0].container, fragment.getResourceProvider())
+                            .createErrorBulletin(getString(R.string.PrivacyProfileNotFound)).show();
+                }
+                return;
+            }
+            if (onActivated != null) onActivated.run();
             builder.getDismissRunnable().run();
         });
 
@@ -386,7 +405,9 @@ public final class PrivacyProfileDurationSheet {
         if (hours.getValue() == MAX_HOURS) {
             minutes.setMaxValue(0);
             minutes.setValue(0);
-            if (userInitiated && PrivacyProfilesController.shouldShowSevenDayCapHint() && sheet[0] != null) {
+            // sheet[0] is tested before the hint is claimed: shouldShowSevenDayCapHint() consumes
+            // the one-shot as it reads it, so it must not be called unless it can be shown.
+            if (userInitiated && sheet[0] != null && PrivacyProfilesController.shouldShowSevenDayCapHint()) {
                 // The sheet's own container: a fragment-scoped bulletin lands in the Activity
                 // window, underneath this sheet's Dialog window, where nobody would see it.
                 BulletinFactory.of(sheet[0].container, fragment.getResourceProvider())

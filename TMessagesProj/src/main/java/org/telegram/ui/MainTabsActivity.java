@@ -1412,7 +1412,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                         });
                         final android.widget.ImageView clock = row.getRightIcon();
                         if (clock != null) {
-                            clock.setContentDescription(getString(R.string.PrivacyProfileSetTimer));
+                            // Title form, not the menu-row label: the ellipsis belongs on a row
+                            // that opens something, not in a spoken description.
+                            clock.setContentDescription(getString(R.string.PrivacyProfileSetTimerTitle));
                         }
                     }
                 }
