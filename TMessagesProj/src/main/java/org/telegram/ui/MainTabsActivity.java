@@ -1386,13 +1386,34 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                 });
                 for (com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile : com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles()) {
                     final boolean isActive = active != null && active.id == profile.id;
-                    o.addChecked(isActive, com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(this.getContext(), profile, 24), profile.name, () -> {
-                        // Tapping the already-active profile just dismisses -- re-activating would
-                        // silently drop a running "until" timer.
-                        if (!isActive) {
+                    // Two tap zones per row. The active one is marked with a ring around its icon
+                    // rather than a trailing checkmark, because the trailing edge now belongs to
+                    // the duration zone -- ActionBarMenuSubItem puts both at Gravity.RIGHT, so a
+                    // checkmark and a right icon would draw on top of each other.
+                    o.add(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(this.getContext(), profile, 24, isActive), profile.name, () -> {
+                        if (isActive) {
+                            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
+                        } else {
                             com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                         }
                     });
+                    final org.telegram.ui.ActionBar.ActionBarMenuSubItem row = o.getLast();
+                    if (row != null) {
+                        if (isActive) {
+                            // Only the active row needs this: an unchecked row already announces
+                            // nothing extra, and a redundant description would suppress its text.
+                            row.setContentDescription(LocaleController.formatString(R.string.PrivacyProfileIsOn, profile.name));
+                        }
+                        row.setRightIcon(R.drawable.msg_mute_period, v -> {
+                            // The right icon's own listener bypasses ItemOptions' auto-dismissing
+                            // click wrapper, so the popup has to be closed by hand.
+                            o.dismiss();
+                            com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, null);
+                        });
+                        if (row.rightIcon != null) {
+                            row.rightIcon.setContentDescription(getString(R.string.PrivacyProfileForCustomTime));
+                        }
+                    }
                 }
                 o.addGap();
                 o.add(R.drawable.msg_settings, getString(R.string.PrivacyProfilesManage), () ->

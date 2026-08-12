@@ -17,6 +17,15 @@ public final class PrivacyProfile {
     public final long id;
     public final String name;
     public final int timeout;
+    /**
+     * Picks the circle colour behind the glyph. Dual-meaning by design: a random long on profiles
+     * created before the colour was user-choosable, and a plain 0..6 palette index once the user
+     * picks a swatch. Both are legal because {@code AvatarDrawable.getColorIndex} reduces with
+     * {@code Math.abs(id % length)}, for which 0..6 are fixed points -- so no migration is needed
+     * and an unedited profile keeps the exact colour it has always had. Read it ONLY through
+     * {@code AvatarDrawable.getColorIndex}: a hand-rolled {@code % 7} returns a negative index for
+     * the random seeds and blows up on array access.
+     */
     public final long colorSeed;
     public final long createdAt;
     public final String icon;
@@ -40,5 +49,9 @@ public final class PrivacyProfile {
 
     public PrivacyProfile withIcon(String newIcon) {
         return new PrivacyProfile(id, name, timeout, colorSeed, createdAt, newIcon);
+    }
+
+    public PrivacyProfile withColorSeed(long newColorSeed) {
+        return new PrivacyProfile(id, name, timeout, newColorSeed, createdAt, icon);
     }
 }

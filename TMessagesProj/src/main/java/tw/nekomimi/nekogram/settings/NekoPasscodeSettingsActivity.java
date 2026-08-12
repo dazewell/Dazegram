@@ -506,9 +506,13 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         // since addProfile can't reuse this value as the profile id (id uniqueness is checked inside
         // the controller's lock, not here).
         final long newColorSeed = Utilities.random.nextLong();
+        // Palette index, not the raw seed: an existing profile's seed is a random long, so it has
+        // to be reduced the same way AvatarDrawable does rather than with a bare modulo.
+        final int[] selectedColor = {com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.indexOf(
+                existing != null ? existing.colorSeed : newColorSeed)};
         // Only used to render the live icon-preview button; the profile itself (existing or new)
-        // is never mutated directly here -- addProfile/editProfile take the final icon explicitly.
-        com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
+        // is never mutated directly here -- addProfile/editProfile take the final values explicitly.
+        final com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
                 : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, newColorSeed, 0, selectedIcon[0]);
 
         LinearLayout nameRow = new LinearLayout(context);
@@ -517,10 +521,14 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
         android.widget.ImageView iconButton = new android.widget.ImageView(context);
         iconButton.setContentDescription(getString(R.string.PrivacyProfileIconContentDescription));
-        iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
-                previewSeed.withIcon(selectedIcon[0]), 40));
         iconButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP));
         nameRow.addView(iconButton, LayoutHelper.createLinear(48, 48, 0, 0, 0, 12, 0));
+        // One render path for both selections: rendering icon and colour from separate callbacks
+        // would let picking a colour and then an icon silently revert the colour.
+        final Runnable updatePreview = () -> iconButton.setImageDrawable(
+                com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
+                        previewSeed.withIcon(selectedIcon[0]).withColorSeed(selectedColor[0]), 40));
+        updatePreview.run();
 
         EditTextBoldCursor editText = new EditTextBoldCursor(context);
         editText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 16);
@@ -545,9 +553,16 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         final Dialog[] iconPickerDialog = {null};
         iconButton.setOnClickListener(v -> iconPickerDialog[0] = tw.nekomimi.nekogram.folder.IconSelectorAlert.show(context, emoticon -> {
             selectedIcon[0] = emoticon;
-            iconButton.setImageDrawable(com.radolyn.ayugram.privacyprofiles.PrivacyProfileIcons.circleDrawable(context,
-                    previewSeed.withIcon(emoticon), 40));
+            updatePreview.run();
         }));
+
+        TextView colorLabel = new TextView(context);
+        colorLabel.setText(getString(R.string.PrivacyProfileColorLabel));
+        colorLabel.setTextColor(Theme.getColor(Theme.key_dialogTextGray2));
+        colorLabel.setTextSize(android.util.TypedValue.COMPLEX_UNIT_DIP, 14);
+        linearLayout.addView(colorLabel, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 28, 0, 0));
+        linearLayout.addView(com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.create(context, selectedColor, updatePreview),
+                LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
 
         TextView autoLockLabel = new TextView(context);
         autoLockLabel.setText(getString(R.string.PrivacyProfileAutoLockLabel));
@@ -595,16 +610,18 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                     return;
                 }
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfile created =
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0], newColorSeed);
+                        com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.addProfile(name, timeout, selectedIcon[0], selectedColor[0]);
                 if (created != null) {
                     showProfileSavedBulletin(created);
                 }
             } else {
                 // Only update the pinned shortcut's label/icon if the edit actually took (editProfile
                 // rejects e.g. an empty trimmed name) -- otherwise the shortcut would drift from the
-                // persisted profile.
-                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout, selectedIcon[0])) {
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(existing.withName(name.trim()).withTimeout(timeout).withIcon(selectedIcon[0]));
+                // persisted profile. withColorSeed matters here: the shortcut bitmap is re-rendered
+                // from this object, so dropping it would leave a pinned shortcut on the old colour.
+                if (com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.editProfile(existing.id, name, timeout, selectedIcon[0], selectedColor[0])) {
+                    com.radolyn.ayugram.privacyprofiles.PrivacyProfileShortcuts.updateLabel(
+                            existing.withName(name.trim()).withTimeout(timeout).withIcon(selectedIcon[0]).withColorSeed(selectedColor[0]));
                 }
             }
             updateRows();

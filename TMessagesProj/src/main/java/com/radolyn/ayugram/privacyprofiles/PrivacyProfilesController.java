@@ -368,7 +368,7 @@ public final class PrivacyProfilesController {
     }
 
     /** Renames, changes the timeout, and/or changes the icon of an existing profile; applies immediately if active. */
-    public static boolean editProfile(long id, String name, int timeout, String icon) {
+    public static boolean editProfile(long id, String name, int timeout, String icon, long colorSeed) {
         if (!isSupportedTimeout(timeout)) return false;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return false;
@@ -382,7 +382,7 @@ public final class PrivacyProfilesController {
             PrivacyProfile existing = findLocked(id);
             found = existing != null;
             if (found) {
-                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout).withIcon(safeIcon);
+                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout).withIcon(safeIcon).withColorSeed(colorSeed);
                 int idx = profiles.indexOf(existing);
                 profiles.set(idx, updated);
                 if (activeProfileId == id) {
