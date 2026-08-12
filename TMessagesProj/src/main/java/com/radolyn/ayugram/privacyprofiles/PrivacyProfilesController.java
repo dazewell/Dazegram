@@ -67,6 +67,7 @@ public final class PrivacyProfilesController {
     private static long activeProfileId = NO_ID;
     private static long deadlineEpochMillis = NO_ID;
     private static long activationEpochMillis;
+    private static boolean activeUntilMode;
     private static long restoreTimeout = NO_ID;
     private static final Map<Long, String> shortcutIds = new LinkedHashMap<>();
     private static final Map<Long, String> shortcutTokens = new LinkedHashMap<>();
@@ -221,6 +222,7 @@ public final class PrivacyProfilesController {
             activeProfileId = loadedActive;
             deadlineEpochMillis = loadedDeadline;
             activationEpochMillis = loadedActivation;
+            activeUntilMode = sp.getBoolean("activeUntilMode", false);
             restoreTimeout = loadedRestore;
             lastAppliedValue = loadedLastApplied;
             baselineTimeout = loadedBaseline;
@@ -228,6 +230,7 @@ public final class PrivacyProfilesController {
             activeProfileId = NO_ID;
             deadlineEpochMillis = NO_ID;
             activationEpochMillis = 0;
+            activeUntilMode = false;
             restoreTimeout = NO_ID;
             lastAppliedValue = SharedConfig.autoLockIn;
             baselineTimeout = SharedConfig.autoLockIn;
@@ -259,6 +262,7 @@ public final class PrivacyProfilesController {
         ed.putLong("activeProfileId", activeProfileId);
         ed.putLong("deadlineEpochMillis", deadlineEpochMillis);
         ed.putLong("activationEpochMillis", activationEpochMillis);
+        ed.putBoolean("activeUntilMode", activeUntilMode);
         ed.putLong("restoreTimeout", restoreTimeout);
         JSONObject sc = new JSONObject();
         try {
@@ -457,6 +461,10 @@ public final class PrivacyProfilesController {
                     }
                     activeProfileId = id;
                     activationEpochMillis = now;
+                    // Which flavour of timer is running. Only used to decide which tab the timer
+                    // sheet opens on; absent on installs that predate it, which read as false and
+                    // so open on the duration tab.
+                    activeUntilMode = mode == ActivationMode.UNTIL;
                     switch (mode) {
                         case NOW:
                             deadlineEpochMillis = NO_ID;
@@ -557,6 +565,23 @@ public final class PrivacyProfilesController {
             loadIfNeeded();
             needsSave = reconcileLocked();
             result = deadlineEpochMillis == NO_ID ? null : deadlineEpochMillis;
+        }
+        if (needsSave) SharedConfig.saveConfig();
+        return result;
+    }
+
+    /**
+     * Whether the running timer was set as a point in time rather than a duration. Only decides
+     * which tab the timer sheet opens on; false on installs predating the flag, which therefore
+     * open on the duration tab.
+     */
+    public static boolean isActiveUntilMode() {
+        boolean needsSave;
+        boolean result;
+        synchronized (LOCK) {
+            loadIfNeeded();
+            needsSave = reconcileLocked();
+            result = activeProfileId != NO_ID && deadlineEpochMillis != NO_ID && activeUntilMode;
         }
         if (needsSave) SharedConfig.saveConfig();
         return result;
@@ -693,6 +718,7 @@ public final class PrivacyProfilesController {
         activeProfileId = NO_ID;
         deadlineEpochMillis = NO_ID;
         activationEpochMillis = 0;
+        activeUntilMode = false;
         restoreTimeout = NO_ID;
     }
 

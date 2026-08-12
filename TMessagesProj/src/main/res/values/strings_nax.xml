@@ -389,7 +389,6 @@
     <string name="PrivacyProfileSave">Save</string>
     <string name="PrivacyProfileActive">Active now</string>
     <string name="PrivacyProfileActiveUntil">Active until %1$s</string>
-    <string name="PrivacyProfileActivateUntil">Until a set time…</string>
     <string name="PrivacyProfileTurnOff">Turn off</string>
     <string name="PrivacyProfileCancelTimer">Cancel timer</string>
     <string name="PrivacyProfileAddToHomeScreen">Add to home screen</string>
@@ -405,13 +404,16 @@
     <string name="PrivacyProfileNone">No profile</string>
     <string name="PrivacyProfileIsOn">%1$s is on</string>
     <string name="PrivacyProfileIsOnUntil">%1$s is on until %2$s</string>
-    <string name="PrivacyProfileForDuration">For %1$s</string>
-    <string name="PrivacyProfileForCustomTime">For a custom time…</string>
-    <string name="PrivacyProfileActivateForTitle">Activate for</string>
     <string name="PrivacyProfileActivateForButton">Activate for %1$s</string>
+    <string name="PrivacyProfileActivateUntilButton">Activate until %1$s</string>
+    <string name="PrivacyProfileSetTimer">Set a timer…</string>
+    <string name="PrivacyProfileSetTimerTitle">Set a timer</string>
+    <string name="PrivacyProfileTabFor">For</string>
+    <string name="PrivacyProfileTabUntil">Until</string>
     <string name="PrivacyProfileChooseATime">Choose a time</string>
     <string name="PrivacyProfileSevenDayCap">7 days is the longest you can set</string>
     <string name="PrivacyProfileShowOnSettingsTab">Show the active profile on the Settings tab</string>
+    <string name="PrivacyProfileShowOnSettingsTabAbout">Puts the active profile\'s icon on the Settings tab. Turn this off if you\'d rather it stayed private.</string>
     <string name="PrivacyProfileLockNever">Never locks on its own</string>
     <string name="PrivacyProfileLockImmediately">Locks the moment you leave</string>
     <string name="PrivacyProfileLockAfter1Minute">Locks after 1 minute away</string>

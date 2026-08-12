@@ -58,6 +58,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
     private int profilesEndRow;
     private int profilesAddRow;
     private int profilesShowOnTabRow;
+    private int profilesShowOnTabFooterRow;
     private int profilesFooterRow;
 
     private int showInSettingsRow;
@@ -240,13 +241,17 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
 
         profiles = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getProfiles();
         profilesHeaderRow = rowCount++;
+        // Add sits above the list it fills, matching how "Add Chats"/"Add Member" behave
+        // elsewhere; the hairline under it is the same one drawn between profile rows.
+        profilesAddRow = rowCount++;
         profilesStartRow = rowCount;
         rowCount += profiles.size();
         profilesEndRow = rowCount;
-        profilesAddRow = rowCount++;
-        // Only meaningful once at least one profile exists.
-        profilesShowOnTabRow = profiles.isEmpty() ? -1 : rowCount++;
         profilesFooterRow = rowCount++;
+        // The tab toggle is about the Settings tab, not about any one profile, so it gets its own
+        // group with its own caption instead of borrowing the list's.
+        profilesShowOnTabRow = profiles.isEmpty() ? -1 : rowCount++;
+        profilesShowOnTabFooterRow = profiles.isEmpty() ? -1 : rowCount++;
 
         showInSettingsRow = rowCount++;
         showInSettings2Row = rowCount++;
@@ -306,7 +311,8 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                         textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteRedText3));
                         textCell.setText(getString(R.string.PasscodePanicCodeRemove), false);
                     } else if (position == profilesAddRow) {
-                        textCell.setText(getString(R.string.PrivacyProfilesAdd), false);
+                        // Hairline only when the list it sits above is non-empty.
+                        textCell.setText(getString(R.string.PrivacyProfilesAdd), !profiles.isEmpty());
                     }
                     break;
                 }
@@ -358,8 +364,11 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                         cell.setText(getString(R.string.PasscodeShowMessagePreviewWhenLockedAbout));
                         cell.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     } else if (position == profilesFooterRow) {
+                        // No background override: case 7 already applied plain greydivider above,
+                        // which is correct here -- more sections follow this one.
                         cell.setText(getString(R.string.PrivacyProfilesAbout));
-                        cell.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+                    } else if (position == profilesShowOnTabFooterRow) {
+                        cell.setText(getString(R.string.PrivacyProfileShowOnSettingsTabAbout));
                     }
                     break;
                 }
@@ -423,7 +432,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 return 3;
             } else if (position == accountsStartRow || position == profilesHeaderRow) {
                 return 4;
-            } else if (position == showInSettings2Row || position == accountsEndRow || position == panicCode2Row || position == showNotificationContentWhenLocked2Row || position == profilesFooterRow) {
+            } else if (position == showInSettings2Row || position == accountsEndRow || position == panicCode2Row || position == showNotificationContentWhenLocked2Row || position == profilesFooterRow || position == profilesShowOnTabFooterRow) {
                 return 7;
             } else if (position > accountsStartRow && position < accountsEndRow) {
                 return 11;
@@ -688,24 +697,6 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.NOW, 0);
                 refreshProfileRows();
             });
-            // Stock presets activate straight away -- no intermediate sheet. They use FOR, which
-            // deliberately doesn't overwrite the remembered custom duration below.
-            addDurationPreset(o, profile, 1, 0);
-            addDurationPreset(o, profile, 8, 0);
-            addDurationPreset(o, profile, 24, 0);
-            long remembered = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getLastCustomDurationMillis(profile.id);
-            if (remembered > 0 && !isStockPreset(remembered)) {
-                int rh = (int) (remembered / 3600000L);
-                int rm = (int) ((remembered % 3600000L) / 60000L);
-                o.add(R.drawable.msg_mute_period, LocaleController.formatString(R.string.PrivacyProfileForDuration,
-                        com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.formatDuration(rh, rm)), () -> {
-                    com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR_CUSTOM, remembered);
-                    refreshProfileRows();
-                });
-            }
-            o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileForCustomTime), () ->
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, this::refreshProfileRows));
-            o.add(R.drawable.msg_calendar2, getString(R.string.PrivacyProfileActivateUntil), () -> showActivateUntilPicker(profile));
         } else {
             o.add(R.drawable.msg_permissions, getString(R.string.PrivacyProfileTurnOff), () -> {
                 com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.deactivate();
@@ -718,6 +709,11 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 });
             }
         }
+        // Every timed activation -- duration or deadline -- now lives behind one sheet, so this
+        // single row replaces the preset/custom/until rows that used to sit here. Reachable on an
+        // active profile too, matching what the quick-switch row's clock already allowed.
+        o.add(R.drawable.msg_mute_period, getString(R.string.PrivacyProfileSetTimer), () ->
+            com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, this::refreshProfileRows));
         o.addGap();
         o.add(R.drawable.msg_edit, getString(R.string.Edit), () -> showAddEditProfileDialog(profile));
         o.add(R.drawable.msg_home, getString(R.string.PrivacyProfileAddToHomeScreen), () -> requestPinWithFallback(profile));
@@ -734,36 +730,5 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
         });
         o.show();
-    }
-
-    private static final long[] STOCK_PRESET_MS = {3600000L, 8 * 3600000L, 24 * 3600000L};
-
-    private static boolean isStockPreset(long durationMs) {
-        for (long p : STOCK_PRESET_MS) {
-            if (p == durationMs) return true;
-        }
-        return false;
-    }
-
-    private void addDurationPreset(ItemOptions o, com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile, int hours, int minutes) {
-        final long durationMs = hours * 3600000L + minutes * 60000L;
-        o.add(R.drawable.msg_mute_period, LocaleController.formatString(R.string.PrivacyProfileForDuration,
-                com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.formatDuration(hours, minutes)), () -> {
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.FOR, durationMs);
-            refreshProfileRows();
-        });
-    }
-
-    private void showActivateUntilPicker(com.radolyn.ayugram.privacyprofiles.PrivacyProfile profile) {
-        if (getParentActivity() == null) return;
-        org.telegram.ui.Components.AlertsCreator.createDatePickerDialog(getParentActivity(), getString(R.string.PrivacyProfileActivateUntil), getString(R.string.Done), 0, (notify, scheduleDate, scheduleRepeatPeriod) -> {
-            long deadlineMillis = scheduleDate * 1000L;
-            if (deadlineMillis <= System.currentTimeMillis()) {
-                return;
-            }
-            com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.activate(profile.id, com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.ActivationMode.UNTIL, deadlineMillis);
-            updateRows();
-            listAdapter.notifyDataSetChanged();
-        }).show();
     }
 }
