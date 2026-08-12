@@ -501,19 +501,17 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
         linearLayout.setPadding(pad, AndroidUtilities.dp(20), pad, 0);
 
         final String[] selectedIcon = {existing != null ? existing.icon : com.radolyn.ayugram.privacyprofiles.PrivacyProfile.DEFAULT_ICON};
-        // Same seed feeds both the live preview below and (for a new profile) the profile actually
-        // persisted on Save -- otherwise the preview would show a color the saved profile never gets,
-        // since addProfile can't reuse this value as the profile id (id uniqueness is checked inside
-        // the controller's lock, not here).
-        final long newColorSeed = Utilities.random.nextLong();
-        // Palette index, not the raw seed: an existing profile's seed is a random long, so it has
-        // to be reduced the same way AvatarDrawable does rather than with a bare modulo.
-        final int[] selectedColor = {com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.indexOf(
-                existing != null ? existing.colorSeed : newColorSeed)};
+        // A new profile opens on a random swatch rather than always defaulting to the first one.
+        // Palette index, not a raw seed: an existing profile's seed is a random long, so it has to
+        // be reduced the way AvatarDrawable does rather than with a bare modulo, which would hand
+        // back a negative index for roughly half of them.
+        final int[] selectedColor = {existing != null
+                ? com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.indexOf(existing.colorSeed)
+                : com.radolyn.ayugram.privacyprofiles.PrivacyProfileColorRow.randomIndex()};
         // Only used to render the live icon-preview button; the profile itself (existing or new)
         // is never mutated directly here -- addProfile/editProfile take the final values explicitly.
         final com.radolyn.ayugram.privacyprofiles.PrivacyProfile previewSeed = existing != null ? existing
-                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, newColorSeed, 0, selectedIcon[0]);
+                : new com.radolyn.ayugram.privacyprofiles.PrivacyProfile(0, "", 0, selectedColor[0], 0, selectedIcon[0]);
 
         LinearLayout nameRow = new LinearLayout(context);
         nameRow.setOrientation(LinearLayout.HORIZONTAL);

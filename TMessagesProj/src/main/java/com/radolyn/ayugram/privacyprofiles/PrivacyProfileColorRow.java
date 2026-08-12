@@ -1,7 +1,6 @@
 package com.radolyn.ayugram.privacyprofiles;
 
 import android.content.Context;
-import android.view.Gravity;
 import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.ImageView;
@@ -15,8 +14,7 @@ import org.telegram.ui.Components.LayoutHelper;
 /**
  * The row of colour swatches in the add/edit profile dialog. Assembled from primitives already
  * used by this feature rather than a new cell class: a circle drawable per swatch, the same ripple
- * mask the icon button uses, and an outline ring to mark the selection (the idiom
- * {@code ItemOptions.addAccount} uses for the current account) instead of a checkmark.
+ * mask the icon button uses, and an outline ring to mark the selection instead of a checkmark.
  * <p>Colours come from {@code Theme.keys_avatar_background}, so the row follows the active theme
  * exactly as the profile glyphs themselves already do -- never a literal hex.
  */
@@ -62,7 +60,10 @@ public final class PrivacyProfileColorRow {
                 if (onChanged != null) onChanged.run();
             });
             swatches[i] = swatch;
-            row.addView(swatch, LayoutHelper.createLinear(40, 48, Gravity.CENTER_VERTICAL));
+            // Weighted columns, not a fixed 40dp: seven fixed swatches need 280dp, but an
+            // AlertDialog's content is only ~270dp wide on a 360dp phone, so the last colour
+            // would be clipped off. Equal columns divide whatever width the dialog actually has.
+            row.addView(swatch, LayoutHelper.createLinear(0, 48, 1f));
         }
         for (int i = 0; i < count; i++) {
             swatches[i].setImageDrawable(swatchDrawable(i, selected[0] == i));
@@ -73,6 +74,11 @@ public final class PrivacyProfileColorRow {
     /** The palette index a profile's stored seed resolves to. */
     public static int indexOf(long colorSeed) {
         return AvatarDrawable.getColorIndex(colorSeed);
+    }
+
+    /** Starting swatch for a brand-new profile, so they don't all open on the same colour. */
+    public static int randomIndex() {
+        return AvatarDrawable.getColorIndex(org.telegram.messenger.Utilities.random.nextLong());
     }
 
     private static android.graphics.drawable.Drawable swatchDrawable(int index, boolean selected) {

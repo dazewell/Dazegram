@@ -1410,8 +1410,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
                             o.dismiss();
                             com.radolyn.ayugram.privacyprofiles.PrivacyProfileDurationSheet.show(this, profile, null);
                         });
-                        if (row.rightIcon != null) {
-                            row.rightIcon.setContentDescription(getString(R.string.PrivacyProfileForCustomTime));
+                        final android.widget.ImageView clock = row.getRightIcon();
+                        if (clock != null) {
+                            clock.setContentDescription(getString(R.string.PrivacyProfileForCustomTime));
                         }
                     }
                 }

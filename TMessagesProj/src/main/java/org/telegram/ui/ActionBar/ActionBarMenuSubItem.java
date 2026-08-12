@@ -36,9 +36,7 @@ public class ActionBarMenuSubItem extends FrameLayout {
     public RLottieImageView imageView;
     public boolean checkViewLeft;
     public CheckBox2 checkView;
-    // NagramX: public so a caller can label it -- setRightIcon(icon, listener) makes an
-    // independent tap target, and TalkBack would otherwise focus an unnamed button.
-    public ImageView rightIcon;
+    private ImageView rightIcon;
     private BackupImageView backupImageView;
 
     private int textColor;
