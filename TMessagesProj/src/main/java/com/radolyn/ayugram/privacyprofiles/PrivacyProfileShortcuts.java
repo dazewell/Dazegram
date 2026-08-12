@@ -2,8 +2,6 @@ package com.radolyn.ayugram.privacyprofiles;
 
 import android.content.Context;
 import android.content.Intent;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 
 import androidx.core.content.pm.ShortcutInfoCompat;
 import androidx.core.content.pm.ShortcutManagerCompat;
@@ -14,7 +12,6 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
-import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.LaunchActivity;
 
 import java.util.Collections;
@@ -38,10 +35,15 @@ public final class PrivacyProfileShortcuts {
         return "alp_" + profileId;
     }
 
-    /** Requests the pinned shortcut, reusing the existing token if this profile was pinned before. */
-    public static void requestPin(PrivacyProfile profile) {
+    /**
+     * Requests the pinned shortcut, reusing the existing token if this profile was pinned before.
+     * Returns false only when this launcher doesn't support pinned shortcuts at all -- a dismissed
+     * system pin dialog, or any other post-check failure, still returns true (the request was
+     * legitimately made; there's nothing further this method can or should report about it).
+     */
+    public static boolean requestPin(PrivacyProfile profile) {
         Context context = ApplicationLoader.applicationContext;
-        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(context)) return;
+        if (!ShortcutManagerCompat.isRequestPinShortcutSupported(context)) return false;
         String id = shortcutId(profile.id);
         // The token is the secret embedded in the shortcut's own intent -- without it, any app
         // that fires this action could switch the auto-lock timeout. Same pattern as
@@ -53,15 +55,16 @@ public final class PrivacyProfileShortcuts {
 
         ShortcutInfoCompat shortcut = buildShortcut(context, profile, id, token);
         try {
-            if (!ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)) return;
+            if (!ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)) return true;
         } catch (Exception e) {
             FileLog.e(e);
-            return;
+            return true;
         }
         // Only remember the shortcut once the OS accepted the pin request -- otherwise a
         // dismissed pin dialog or an unsupported launcher would leave the controller pointing at
         // a shortcut that was never actually created.
         PrivacyProfilesController.rememberShortcut(profile.id, id, token);
+        return true;
     }
 
     /** Updates the pinned shortcut's label after a rename; a no-op if it was never pinned. */
@@ -107,19 +110,8 @@ public final class PrivacyProfileShortcuts {
         return new ShortcutInfoCompat.Builder(context, id)
                 .setShortLabel(profile.name)
                 .setLongLabel(profile.name)
-                .setIcon(IconCompat.createWithBitmap(letterAvatarBitmap(profile)))
+                .setIcon(IconCompat.createWithBitmap(PrivacyProfileIcons.circleBitmap(context, profile, 72)))
                 .setIntent(intent)
                 .build();
-    }
-
-    private static Bitmap letterAvatarBitmap(PrivacyProfile profile) {
-        int size = org.telegram.messenger.AndroidUtilities.dp(72);
-        Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        AvatarDrawable drawable = new AvatarDrawable();
-        drawable.setInfo(profile.colorSeed, profile.name, null);
-        drawable.setBounds(0, 0, size, size);
-        drawable.draw(canvas);
-        return bitmap;
     }
 }
