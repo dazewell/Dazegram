@@ -148,7 +148,10 @@ public final class PrivacyProfileDurationSheet {
                 minutes.setMaxValue(0);
                 minutes.setValue(0);
                 if (PrivacyProfilesController.shouldShowSevenDayCapHint()) {
-                    BulletinFactory.of(fragment)
+                    // global() attaches to the visible BottomSheet's own container; the fragment
+                    // factory would put this underneath the sheet, and the flag is already
+                    // persisted by then, so the one and only showing would be lost.
+                    BulletinFactory.global()
                             .createSimpleBulletin(R.raw.info, getString(R.string.PrivacyProfileSevenDayCap)).show();
                 }
             } else {

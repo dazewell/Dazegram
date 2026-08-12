@@ -708,7 +708,6 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     }
 
     private boolean isCompact;
-    private boolean hasActiveIndicator;
     private CharSequence activeIndicatorDescription;
     private Drawable counterDrawable;
 
@@ -723,7 +722,6 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
         // this badge deliberately has no text at all.
         boolean stateChanged = (counterDrawable != null) != (icon != null);
         counterDrawable = icon;
-        hasActiveIndicator = icon != null;
         activeIndicatorDescription = contentDescriptionSuffix;
         if (stateChanged) {
             counter.setText(null, false);
@@ -743,8 +741,9 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
     // otherwise get for free from the child TextView.
     private void refreshContentDescription(boolean compact) {
         isCompact = compact;
-        CharSequence label = hasActiveIndicator || compact ? textView.getText() : null;
-        if (hasActiveIndicator) {
+        boolean hasBadge = counterDrawable != null;
+        CharSequence label = hasBadge || compact ? textView.getText() : null;
+        if (hasBadge) {
             setContentDescription(label != null ? TextUtils.concat(label, ", ", activeIndicatorDescription) : activeIndicatorDescription);
         } else {
             setContentDescription(label);
