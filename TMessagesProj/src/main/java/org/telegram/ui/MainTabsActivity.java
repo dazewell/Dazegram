@@ -296,6 +296,7 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         super.onResume();
         blur3_updateColors();
         checkContactsTabBadge();
+        checkPrivacyProfileBadge();
         checkUnreadCount(true);
 
         showAccountChangeHint();
@@ -312,6 +313,16 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             } else {
                 tabs[INDEX_CONTACTS].setCounter(null, true, true);
             }
+        }
+    }
+
+    // NagramX: Settings-tab presence dot for "some privacy profile is active, device-wide" --
+    // content-description only, never names the profile. getActiveProfile() runs reconcile()
+    // internally so this is never stale even right after a timer expiry.
+    private void checkPrivacyProfileBadge() {
+        if (tabsView != null && tabs[INDEX_SETTINGS] != null) {
+            boolean active = com.radolyn.ayugram.privacyprofiles.PrivacyProfilesController.getActiveProfile() != null;
+            tabs[INDEX_SETTINGS].setActiveIndicator(active, getString(R.string.PrivacyProfileActiveIndicatorDescription), true);
         }
     }
 
@@ -1072,6 +1083,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             }
         } else if (id == NotificationCenter.contactsPermissionBadgeCheck) {
             checkContactsTabBadge();
+        } else if (id == NotificationCenter.privacyProfileActiveStateChanged) {
+            checkPrivacyProfileBadge();
         }
     }
 
@@ -1094,7 +1107,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         globalObserversGroup = NotificationCenter.getGlobalInstance().createObserversGroup(this)
             .add(NotificationCenter.appUpdateAvailable)
             .add(NotificationCenter.appUpdateLoading)
-            .add(NotificationCenter.needSetDayNightTheme);
+            .add(NotificationCenter.needSetDayNightTheme)
+            .add(NotificationCenter.privacyProfileActiveStateChanged);
 
         return super.onFragmentCreate();
     }
@@ -1324,7 +1338,9 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
             return openCallsSelector(button);
         }
         if (index == INDEX_SETTINGS) {
-            ItemOptions o = ItemOptions.makeOptions(this, button);
+            // NagramX: swipeback=true is required here -- the profiles submenu below calls
+            // o.makeSwipeback(), which needs the swipeBackLayout only the 3-arg overload allocates.
+            ItemOptions o = ItemOptions.makeOptions(this, button, true);
             if (NekoConfig.showGhostInDrawer.Bool()) {
                 final String msg = NekoConfig.isGhostModeActive()
                     ? getString(R.string.DisableGhostMode)

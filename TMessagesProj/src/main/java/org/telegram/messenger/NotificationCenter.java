@@ -377,6 +377,10 @@ public class NotificationCenter {
     public static final int webBrowserSettingsUpdate = totalEvents++;
     public static final int communityPendingRequestsUpdate = totalEvents++;
     public static final int communitySwitchedCollapsed = totalEvents++;
+    // NagramX: fired (via getGlobalInstance()) whenever PrivacyProfilesController's active state
+    // changes -- activation, deactivation, timer expiry, or an external-override reconcile. Only
+    // consumer today is the Settings tab's active-profile indicator (GlassTabView.setCounter).
+    public static final int privacyProfileActiveStateChanged = totalEvents++;
 
     public static boolean alreadyLogged;
 

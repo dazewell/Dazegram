@@ -70,6 +70,11 @@ public final class PrivacyProfilesController {
     private static long restoreTimeout = NO_ID;
     private static final Map<Long, String> shortcutIds = new LinkedHashMap<>();
     private static final Map<Long, String> shortcutTokens = new LinkedHashMap<>();
+    // Per-profile "last successfully-activated custom duration" for the Activate-for picker's
+    // prefill (item 2, round 2). Keyed by profile id, never by anything account-scoped -- this
+    // feature is device-wide like the rest of the controller. A profile with no entry here has
+    // never had a custom "Activate for" duration applied; the picker prefills 1 hour in that case.
+    private static final Map<Long, Long> lastCustomDurationMillis = new LinkedHashMap<>();
 
     public enum ActivationMode { NOW, FOR, UNTIL }
 
@@ -100,7 +105,11 @@ public final class PrivacyProfilesController {
                 // A profile whose stored timeout isn't one of the six stock values is corrupt --
                 // drop just that entry rather than let it silently apply an unsupported timeout.
                 if (!isSupportedTimeout(timeout)) continue;
-                profiles.add(new PrivacyProfile(o.getLong("id"), o.getString("name"), timeout, o.getLong("colorSeed"), o.getLong("createdAt")));
+                // Round-1 profiles have no "icon" key; backfill the default rather than persist
+                // an empty icon that FolderIconHelper.folderIcons can't resolve later.
+                String icon = o.has("icon") ? o.getString("icon") : PrivacyProfile.DEFAULT_ICON;
+                if (icon == null || icon.isEmpty()) icon = PrivacyProfile.DEFAULT_ICON;
+                profiles.add(new PrivacyProfile(o.getLong("id"), o.getString("name"), timeout, o.getLong("colorSeed"), o.getLong("createdAt"), icon));
             }
         } catch (JSONException e) {
             FileLog.e(e);
@@ -162,6 +171,20 @@ public final class PrivacyProfilesController {
         }
         shortcutTokens.clear();
         shortcutTokens.putAll(loadedTokens);
+        Map<Long, Long> loadedDurations = new LinkedHashMap<>();
+        try {
+            JSONObject cd = new JSONObject(sp.getString("lastCustomDurationMillis", "{}"));
+            java.util.Iterator<String> keys = cd.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                loadedDurations.put(Long.parseLong(key), cd.getLong(key));
+            }
+        } catch (JSONException | NumberFormatException e) {
+            FileLog.e(e);
+            loadedDurations.clear();
+        }
+        lastCustomDurationMillis.clear();
+        lastCustomDurationMillis.putAll(loadedDurations);
         // A profile entry can be dropped above (unsupported timeout) while the activation state
         // still points at its id -- treat that the same as any other malformed-activation case,
         // rather than leaving a phantom "active" profile nothing in the UI can find or turn off.
@@ -207,6 +230,7 @@ public final class PrivacyProfilesController {
                 o.put("timeout", p.timeout);
                 o.put("colorSeed", p.colorSeed);
                 o.put("createdAt", p.createdAt);
+                o.put("icon", p.icon);
                 arr.put(o);
             }
         } catch (JSONException e) {
@@ -237,6 +261,15 @@ public final class PrivacyProfilesController {
             FileLog.e(e);
         }
         ed.putString("shortcutTokens", tk.toString());
+        JSONObject cd = new JSONObject();
+        try {
+            for (Map.Entry<Long, Long> e : lastCustomDurationMillis.entrySet()) {
+                cd.put(Long.toString(e.getKey()), e.getValue());
+            }
+        } catch (JSONException e) {
+            FileLog.e(e);
+        }
+        ed.putString("lastCustomDurationMillis", cd.toString());
         ed.apply();
     }
 
@@ -264,11 +297,12 @@ public final class PrivacyProfilesController {
     }
 
     @Nullable
-    public static PrivacyProfile addProfile(String name, int timeout) {
+    public static PrivacyProfile addProfile(String name, int timeout, String icon) {
         if (!isSupportedTimeout(timeout)) return null;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return null;
         if (trimmed.length() > 24) trimmed = trimmed.substring(0, 24);
+        String safeIcon = icon == null || icon.isEmpty() ? PrivacyProfile.DEFAULT_ICON : icon;
         synchronized (LOCK) {
             loadIfNeeded();
             if (profiles.size() >= MAX_PROFILES) return null;
@@ -276,19 +310,20 @@ public final class PrivacyProfilesController {
             do {
                 id = Utilities.fastRandom.nextLong() & Long.MAX_VALUE;
             } while (id == NO_ID || findLocked(id) != null);
-            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, id, System.currentTimeMillis());
+            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, id, System.currentTimeMillis(), safeIcon);
             profiles.add(profile);
             persistLocked();
             return profile;
         }
     }
 
-    /** Renames and/or changes the timeout of an existing profile; applies immediately if active. */
-    public static boolean editProfile(long id, String name, int timeout) {
+    /** Renames, changes the timeout, and/or changes the icon of an existing profile; applies immediately if active. */
+    public static boolean editProfile(long id, String name, int timeout, String icon) {
         if (!isSupportedTimeout(timeout)) return false;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return false;
         if (trimmed.length() > 24) trimmed = trimmed.substring(0, 24);
+        String safeIcon = icon == null || icon.isEmpty() ? PrivacyProfile.DEFAULT_ICON : icon;
         boolean needsSave;
         boolean found;
         synchronized (LOCK) {
@@ -297,7 +332,7 @@ public final class PrivacyProfilesController {
             PrivacyProfile existing = findLocked(id);
             found = existing != null;
             if (found) {
-                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout);
+                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout).withIcon(safeIcon);
                 int idx = profiles.indexOf(existing);
                 profiles.set(idx, updated);
                 if (activeProfileId == id) {
@@ -328,6 +363,7 @@ public final class PrivacyProfilesController {
             if (existing != null) profiles.remove(existing);
             shortcutId = shortcutIds.remove(id);
             shortcutTokens.remove(id);
+            lastCustomDurationMillis.remove(id);
             persistLocked();
         }
         if (needsSave) {
@@ -353,6 +389,14 @@ public final class PrivacyProfilesController {
                 if (mode == ActivationMode.UNTIL && durationOrDeadlineMillis <= now) {
                     ok = false;
                 } else {
+                    // Captured after reconcileLocked() above (which may itself have just cleared a
+                    // stale activation and already posted for that transition via
+                    // clearActiveLocked()) and before this activation overwrites them -- so the
+                    // comparison below only fires for what THIS call actually changes: a genuinely
+                    // new activation, a switch between two profiles, or a changed deadline. A
+                    // re-activation of the same profile with the same deadline is a no-op here.
+                    long beforeId = activeProfileId;
+                    long beforeDeadline = deadlineEpochMillis;
                     if (activeProfileId == NO_ID) {
                         // Only the first activation out of an inactive state captures the restore
                         // target. A later switch between profiles (or a re-activation) never
@@ -369,6 +413,9 @@ public final class PrivacyProfilesController {
                             break;
                         case FOR:
                             deadlineEpochMillis = now + durationOrDeadlineMillis;
+                            // Persist this profile's own last-used custom duration for the
+                            // Activate-for picker's prefill next time (round 2, item 2).
+                            lastCustomDurationMillis.put(id, durationOrDeadlineMillis);
                             break;
                         case UNTIL:
                             deadlineEpochMillis = durationOrDeadlineMillis;
@@ -377,6 +424,9 @@ public final class PrivacyProfilesController {
                     SharedConfig.autoLockIn = profile.timeout;
                     lastAppliedValue = profile.timeout;
                     needsSave = true;
+                    if (activeProfileId != beforeId || deadlineEpochMillis != beforeDeadline) {
+                        postActiveStateChanged();
+                    }
                 }
             }
             // Only persist the controller's own prefs when the activation actually took, or when
@@ -398,6 +448,10 @@ public final class PrivacyProfilesController {
         synchronized (LOCK) {
             loadIfNeeded();
             needsSave = reconcileLocked();
+            // endActiveAndRestoreLocked() -> clearActiveLocked() is the single hook that posts
+            // privacyProfileActiveStateChanged (see clearActiveLocked()) -- nothing further needed
+            // here, including for the case where reconcileLocked() above already ended a stale
+            // activation itself (that already posted for its own transition).
             if (activeProfileId != NO_ID) {
                 needsSave = endActiveAndRestoreLocked() || needsSave;
             }
@@ -418,6 +472,9 @@ public final class PrivacyProfilesController {
                 persistLocked();
                 // Only the controller's own SharedPreferences change here -- SharedConfig.autoLockIn
                 // is untouched, so this alone never needs a SharedConfig.saveConfig() disk write.
+                // Still an active-state-relevant change (indefinite now, not timed) so the
+                // quick-switch submenu / badge consumers should refresh.
+                postActiveStateChanged();
             }
         }
         if (needsSave) {
@@ -450,6 +507,19 @@ public final class PrivacyProfilesController {
         }
         if (needsSave) SharedConfig.saveConfig();
         return result;
+    }
+
+    /**
+     * The duration (in ms) this profile last used with "Activate for", for the picker's prefill
+     * (round 2, item 2). Returns -1 if this profile has never had a custom duration activated --
+     * the caller prefills 1 hour / 0 minutes in that case, not any value read from here.
+     */
+    public static long getLastCustomDurationMillis(long profileId) {
+        synchronized (LOCK) {
+            loadIfNeeded();
+            Long v = lastCustomDurationMillis.get(profileId);
+            return v != null ? v : -1;
+        }
     }
 
     /** Per-profile secret embedded in its pinned shortcut's intent, keyed by profile id. */
@@ -555,8 +625,18 @@ public final class PrivacyProfilesController {
         return false;
     }
 
-    // Call only while holding LOCK.
+    // Call only while holding LOCK. The single chokepoint every active->inactive transition
+    // funnels through -- reconcileLocked()'s passcode-gone/external-override branches, and
+    // endActiveAndRestoreLocked() (itself called from reconcileLocked()'s expiry/clock-rollback
+    // branches, deactivate(), and deleteProfile()). Posting here, guarded on there having actually
+    // been an active profile, is what makes the badge/quick-switch refresh correct by construction
+    // instead of relying on every call site remembering to check. Safe to call under LOCK:
+    // postNotificationNameOnUIThread only enqueues onto the main-thread handler and returns (see
+    // postActiveStateChanged()), it never runs the observers inline.
     private static void clearActiveLocked() {
+        if (activeProfileId != NO_ID) {
+            postActiveStateChanged();
+        }
         activeProfileId = NO_ID;
         deadlineEpochMillis = NO_ID;
         activationEpochMillis = 0;
@@ -573,5 +653,17 @@ public final class PrivacyProfilesController {
         clearActiveLocked();
         persistLocked();
         return changed;
+    }
+
+    // Fires NotificationCenter.privacyProfileActiveStateChanged on the global instance (this
+    // controller is device-wide, not per-account). Must use postNotificationNameOnUIThread, never
+    // the plain postNotificationName -- reconcile() (and therefore this) can run off the UI thread
+    // (e.g. from the media session thread per this class's own javadoc), and plain
+    // postNotificationName hard-asserts the UI thread in debug builds. Safe to call while holding
+    // LOCK: this only enqueues a Runnable on the main-thread handler and returns immediately, it
+    // never executes observers inline, so there is no lock-ordering risk.
+    private static void postActiveStateChanged() {
+        org.telegram.messenger.NotificationCenter.getGlobalInstance()
+                .postNotificationNameOnUIThread(org.telegram.messenger.NotificationCenter.privacyProfileActiveStateChanged);
     }
 }

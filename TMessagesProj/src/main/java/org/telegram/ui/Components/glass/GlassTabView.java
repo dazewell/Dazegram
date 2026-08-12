@@ -684,11 +684,7 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
         textView.setVisibility(compact ? GONE : VISIBLE);
 
-        if (compact) {
-            setContentDescription(textView.getText());
-        } else {
-            setContentDescription(null);
-        }
+        refreshContentDescription(compact);
 
         if (backupImageView != null) {
             backupImageView.setLayoutParams(compact ?
@@ -702,5 +698,41 @@ public class GlassTabView extends FrameLayout implements MainTabsLayout.Tab, Fac
 
         requestLayout();
         invalidate();
+    }
+
+    private boolean isCompact;
+    private boolean hasActiveIndicator;
+    private CharSequence activeIndicatorDescription;
+
+    /**
+     * Reuses {@link #setCounter} for a small neutral (non-error) presence dot -- a single bullet
+     * glyph, no number -- rather than a new badge view. Also composes an accessibility suffix onto
+     * the tab's contentDescription so a screen reader hears e.g. "Settings, profile active"
+     * without this ever naming which profile. Never shows a profile name/icon visually; the dot
+     * itself carries no text beyond the glyph.
+     */
+    public void setActiveIndicator(boolean active, CharSequence contentDescriptionSuffix, boolean animated) {
+        if (hasActiveIndicator == active) return;
+        hasActiveIndicator = active;
+        activeIndicatorDescription = contentDescriptionSuffix;
+        setCounter(active ? "\u2022" : null, false, animated);
+        refreshContentDescription(isCompact);
+    }
+
+    // NagramX: setMainTabsCompact's own contentDescription rule (label only in compact mode, null
+    // otherwise so TalkBack reads the child TextView directly) would otherwise get clobbered by, or
+    // clobber, the active-indicator suffix -- whichever set it last wins with two independent
+    // setContentDescription() calls. Routing both through one place keeps them composed instead of
+    // one eating the other. When there's an indicator, the label is always included (regardless of
+    // compact/non-compact) so the indicator never replaces the label a screen reader would
+    // otherwise get for free from the child TextView.
+    private void refreshContentDescription(boolean compact) {
+        isCompact = compact;
+        CharSequence label = hasActiveIndicator || compact ? textView.getText() : null;
+        if (hasActiveIndicator) {
+            setContentDescription(label != null ? TextUtils.concat(label, ", ", activeIndicatorDescription) : activeIndicatorDescription);
+        } else {
+            setContentDescription(label);
+        }
     }
 }
