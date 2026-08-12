@@ -101,6 +101,15 @@ public class VideoCaptionsHelper {
         return key(account, messageObject).equals(armedKey);
     }
 
+    // Whether the play MediaController currently has on this message is the one CC started: muted,
+    // no audio focus, no loop. Same slot as isArmed on purpose — captions and the quiet pass are the
+    // same play by design, so anything that ends one ends the other, through the one clearing choke
+    // above (disarm / disarmMessage / onPlaybackStarting). Named separately from isArmed so a call
+    // site asking "is this play silent" reads for what it's checking, not for what it reuses.
+    public static boolean isQuiet(int account, MessageObject messageObject) {
+        return isArmed(account, messageObject);
+    }
+
     public static void arm(int account, MessageObject messageObject) {
         if (messageObject == null) {
             return;
