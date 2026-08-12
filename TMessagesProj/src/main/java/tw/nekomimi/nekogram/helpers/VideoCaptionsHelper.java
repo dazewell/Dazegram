@@ -36,6 +36,14 @@ public class VideoCaptionsHelper {
     // rather than a set of messages. Cleared when that playback ends or another message takes over.
     private static volatile String armedKey;
 
+    // The play MediaController actually has running (or about to have running) muted, no-focus,
+    // once-through. Deliberately a separate slot from armedKey: armedKey is set the moment CC is
+    // pressed, which can be well before real playback starts (transcription still running) or can
+    // outlive a cancelled request (cancelPlayback only clears pendingPlayback). If isQuiet aliased
+    // armedKey, an ordinary tap on a message CC still had armed - after leaving and reopening the
+    // chat mid-transcription, say - would inherit a mute it never asked for.
+    private static volatile String quietKey;
+
     private static final List<Runnable> listeners = new CopyOnWriteArrayList<>();
 
     // Set when CC is pressed on a message that still has to be transcribed, so playback can start
@@ -102,12 +110,25 @@ public class VideoCaptionsHelper {
     }
 
     // Whether the play MediaController currently has on this message is the one CC started: muted,
-    // no audio focus, no loop. Same slot as isArmed on purpose — captions and the quiet pass are the
-    // same play by design, so anything that ends one ends the other, through the one clearing choke
-    // above (disarm / disarmMessage / onPlaybackStarting). Named separately from isArmed so a call
-    // site asking "is this play silent" reads for what it's checking, not for what it reuses.
+    // no audio focus, no loop. Checked against quietKey, not armedKey - see the field comment for
+    // why those two have to be able to disagree.
     public static boolean isQuiet(int account, MessageObject messageObject) {
-        return isArmed(account, messageObject);
+        if (messageObject == null || !messageObject.isRoundVideo()) {
+            return false;
+        }
+        return key(account, messageObject).equals(quietKey);
+    }
+
+    // Marks this exact message as the one whose upcoming/current play is the CC-quiet pass. Called
+    // right before the immediate-path playMessage call, and from consumePlayback for the deferred
+    // one, so quietKey is always set before MediaController's playMessage/onPlaybackStarting sees
+    // this message - checkVolumeBarUI and the audio-focus guard both need the answer on that first
+    // call, not one call later.
+    public static void markQuiet(int account, MessageObject messageObject) {
+        if (messageObject == null) {
+            return;
+        }
+        quietKey = key(account, messageObject);
     }
 
     public static void arm(int account, MessageObject messageObject) {
@@ -120,18 +141,23 @@ public class VideoCaptionsHelper {
 
     // That play is over, so the next one only gets captions if CC is pressed again.
     public static void disarm() {
-        if (armedKey == null) {
+        if (armedKey == null && quietKey == null && pendingPlayback == null) {
             return;
         }
         armedKey = null;
+        quietKey = null;
         pendingPlayback = null;
         notifyChanged();
     }
 
-    // Playback ended. Only give up the slot when it's the message that was armed: a video that
-    // wasn't downloaded yet gets torn down and restarted, and that isn't the play ending.
+    // Playback ended. Only give up the slot when it's the message that was armed or quiet: a video
+    // that wasn't downloaded yet gets torn down and restarted, and that isn't the play ending.
     public static void disarmMessage(MessageObject messageObject) {
-        if (messageObject != null && armedKey != null && armedKey.equals(key(messageObject.currentAccount, messageObject))) {
+        if (messageObject == null) {
+            return;
+        }
+        String k = key(messageObject.currentAccount, messageObject);
+        if (k.equals(armedKey) || k.equals(quietKey)) {
             disarm();
         }
     }
@@ -147,7 +173,21 @@ public class VideoCaptionsHelper {
         if (pendingPlayback != null && !pendingPlayback.equals(incomingKey)) {
             pendingPlayback = null;
         }
-        if (armedKey != null && !armedKey.equals(incomingKey)) {
+        if (quietKey != null && !quietKey.equals(incomingKey)) {
+            quietKey = null;
+        }
+        // A foreign, non-CC play (an ordinary tap) is taking the player for a message CC still has
+        // armed - e.g. the transcription is still running, or cancelPlayback already dropped
+        // pendingPlayback when the chat was left but armedKey outlived it. markQuiet always runs
+        // immediately before the CC flow's own playMessage call, so if this is genuinely that call
+        // quietKey already equals incomingKey by now and this leaves armedKey alone. Otherwise this
+        // play was never CC's to caption or mute, so the stale request is dropped rather than
+        // reattaching itself to whatever the user just played normally.
+        if (armedKey != null && armedKey.equals(incomingKey) && !incomingKey.equals(quietKey)) {
+            armedKey = null;
+            pendingPlayback = null;
+            notifyChanged();
+        } else if (armedKey != null && !armedKey.equals(incomingKey)) {
             armedKey = null;
             notifyChanged();
         }
@@ -183,6 +223,9 @@ public class VideoCaptionsHelper {
             return false;
         }
         pendingPlayback = null;
+        // NagramX: this is the deferred path's equivalent of markQuiet - the caller plays the
+        // message right after this returns true, so quietKey has to be set before that happens.
+        markQuiet(account, messageObject);
         return true;
     }
 

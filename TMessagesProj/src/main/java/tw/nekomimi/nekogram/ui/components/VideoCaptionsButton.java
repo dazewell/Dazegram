@@ -60,6 +60,9 @@ public class VideoCaptionsButton {
         VideoCaptionsHelper.arm(account, messageObject);
         TranscribeButton.closeVideoTranscriptionForCaptions(messageObject);
         if (VideoCaptionsHelper.hasFinalText(messageObject)) {
+            // NagramX: this play is the quiet one - mark it before MediaController ever sees the
+            // message, so its first look at this message already answers isQuiet correctly.
+            VideoCaptionsHelper.markQuiet(account, messageObject);
             MediaController.getInstance().playMessage(messageObject);
         } else {
             // Starting the video now would run the first half of it against an empty strip, so it
