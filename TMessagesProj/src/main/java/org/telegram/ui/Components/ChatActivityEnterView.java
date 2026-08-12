@@ -18358,9 +18358,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         text.setText(label);
         row.addView(text, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f, Gravity.CENTER_VERTICAL));
 
-        View divider = new View(getContext());
-        divider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator, resourcesProvider));
-        row.addView(divider, LayoutHelper.createLinear(1, 22, Gravity.CENTER_VERTICAL, isRtl ? 12 : 10, 0, isRtl ? 10 : 12, 0));
+        tw.nekomimi.nekogram.ui.components.PopupRowDivider.addTo(row, resourcesProvider, 10, 12);
 
         row.addView(sw, LayoutHelper.createLinear(38, 22, Gravity.CENTER_VERTICAL));
         return row;

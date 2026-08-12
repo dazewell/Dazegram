@@ -2,8 +2,6 @@ package com.radolyn.ayugram.privacyprofiles;
 
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.view.Gravity;
-import android.view.View;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
@@ -12,9 +10,9 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.ActionBarMenuSubItem;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.ItemOptions;
-import org.telegram.ui.Components.LayoutHelper;
+
+import tw.nekomimi.nekogram.ui.components.PopupRowDivider;
 
 /**
  * The privacy-profile block of the Settings tab's long-press menu. Lives here rather than in
@@ -83,7 +81,10 @@ public final class PrivacyProfileQuickSwitch {
                     // Title form, not the menu-row label: the ellipsis belongs on a row that opens
                     // something, not in a spoken description.
                     clock.setContentDescription(getString(R.string.PrivacyProfileSetTimerTitle));
-                    addTapZoneDivider(row);
+                    // Sits just outside the dp(40) right-icon zone, which is the width
+                    // ActionBarMenuSubItem gives a right icon once it has a click listener.
+                    PopupRowDivider.addTo(row, fragment.getResourceProvider(), 40f);
+                    pushLabelClearOfDivider(row);
                 }
             }
         }
@@ -94,20 +95,12 @@ public final class PrivacyProfileQuickSwitch {
     }
 
     /**
-     * The hairline that tells you the clock is its own button, matching the switch rows in the
-     * video-message camera popup. Sits just outside the dp(40) right-icon zone, which is the width
-     * ActionBarMenuSubItem gives a right icon once it has a click listener.
+     * setRightIcon() stops the label 32dp short of the edge, which is inside the divider now: push
+     * it clear so a long profile name ellipsizes before the line instead of under it.
      */
-    private static void addTapZoneDivider(ActionBarMenuSubItem row) {
-        final boolean isRtl = LocaleController.isRTL;
-        View divider = new View(row.getContext());
-        divider.setBackgroundColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuSeparator));
-        row.addView(divider, LayoutHelper.createFrame(1, 22f, Gravity.CENTER_VERTICAL | (isRtl ? Gravity.LEFT : Gravity.RIGHT),
-            isRtl ? 40f : 0f, 0f, isRtl ? 0f : 40f, 0f));
-        // setRightIcon() stops the label 32dp short of the edge, which is inside the divider now:
-        // push it clear so a long profile name ellipsizes before the line instead of under it.
+    private static void pushLabelClearOfDivider(ActionBarMenuSubItem row) {
         FrameLayout.LayoutParams lp = (FrameLayout.LayoutParams) row.textView.getLayoutParams();
-        if (isRtl) {
+        if (LocaleController.isRTL) {
             lp.leftMargin = AndroidUtilities.dp(52);
         } else {
             lp.rightMargin = AndroidUtilities.dp(52);

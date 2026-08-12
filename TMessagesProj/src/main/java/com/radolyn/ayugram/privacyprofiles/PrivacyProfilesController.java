@@ -120,7 +120,8 @@ public final class PrivacyProfilesController {
                 // an empty icon that FolderIconHelper.folderIcons can't resolve later.
                 String icon = o.has("icon") ? o.getString("icon") : PrivacyProfile.DEFAULT_ICON;
                 if (icon == null || icon.isEmpty()) icon = PrivacyProfile.DEFAULT_ICON;
-                profiles.add(new PrivacyProfile(o.getLong("id"), o.getString("name"), timeout, o.getLong("colorSeed"), o.getLong("createdAt"), icon));
+                profiles.add(new PrivacyProfile(o.getLong("id"), o.getString("name"), timeout, o.getLong("colorSeed"),
+                        o.optInt("tone", PrivacyProfileColorRow.TONE_LIGHT), o.getLong("createdAt"), icon));
             }
         } catch (JSONException e) {
             FileLog.e(e);
@@ -249,6 +250,11 @@ public final class PrivacyProfilesController {
                 o.put("name", p.name);
                 o.put("timeout", p.timeout);
                 o.put("colorSeed", p.colorSeed);
+                // Written only when set, so a profile that never touched the deep row keeps the
+                // exact JSON shape it had before tones existed.
+                if (p.tone != PrivacyProfileColorRow.TONE_LIGHT) {
+                    o.put("tone", p.tone);
+                }
                 o.put("createdAt", p.createdAt);
                 o.put("icon", p.icon);
                 arr.put(o);
@@ -351,7 +357,7 @@ public final class PrivacyProfilesController {
     }
 
     @Nullable
-    public static PrivacyProfile addProfile(String name, int timeout, String icon, long colorSeed) {
+    public static PrivacyProfile addProfile(String name, int timeout, String icon, long colorSeed, int tone) {
         if (!isSupportedTimeout(timeout)) return null;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return null;
@@ -364,15 +370,15 @@ public final class PrivacyProfilesController {
             do {
                 id = Utilities.fastRandom.nextLong() & Long.MAX_VALUE;
             } while (id == NO_ID || findLocked(id) != null);
-            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, colorSeed, System.currentTimeMillis(), safeIcon);
+            PrivacyProfile profile = new PrivacyProfile(id, trimmed, timeout, colorSeed, tone, System.currentTimeMillis(), safeIcon);
             profiles.add(profile);
             persistLocked();
             return profile;
         }
     }
 
-    /** Renames, changes the timeout, and/or changes the icon of an existing profile; applies immediately if active. */
-    public static boolean editProfile(long id, String name, int timeout, String icon, long colorSeed) {
+    /** Renames, changes the timeout, and/or changes the icon or colour of an existing profile; applies immediately if active. */
+    public static boolean editProfile(long id, String name, int timeout, String icon, long colorSeed, int tone) {
         if (!isSupportedTimeout(timeout)) return false;
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty()) return false;
@@ -386,7 +392,7 @@ public final class PrivacyProfilesController {
             PrivacyProfile existing = findLocked(id);
             found = existing != null;
             if (found) {
-                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout).withIcon(safeIcon).withColorSeed(colorSeed);
+                PrivacyProfile updated = existing.withName(trimmed).withTimeout(timeout).withIcon(safeIcon).withColorSeed(colorSeed).withTone(tone);
                 int idx = profiles.indexOf(existing);
                 profiles.set(idx, updated);
                 if (activeProfileId == id) {

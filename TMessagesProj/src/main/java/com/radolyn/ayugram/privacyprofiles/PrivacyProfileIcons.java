@@ -16,9 +16,13 @@ import androidx.annotation.Nullable;
 import androidx.core.content.ContextCompat;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.CombinedDrawable;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 
 import tw.nekomimi.nekogram.folder.FolderIconHelper;
 
@@ -34,6 +38,57 @@ public final class PrivacyProfileIcons {
 
     private PrivacyProfileIcons() {}
 
+    /**
+     * Privacy-flavoured glyphs offered ahead of the folder icons in this feature's picker. Keys are
+     * feature-prefixed plain ASCII, so they can never collide with the emoji keys in
+     * {@code FolderIconHelper.folderIcons} -- a profile stores one namespace or the other and
+     * {@link #drawableFor} tries this map first, then falls back to the folder set (which itself
+     * ends at {@code filter_custom} for anything it doesn't know). Every drawable here already
+     * ships in the app; no new asset is added for this list.
+     */
+    private static final LinkedHashMap<String, Integer> privacyIcons = new LinkedHashMap<>();
+    private static final LinkedHashMap<String, Integer> privacyIconNames = new LinkedHashMap<>();
+
+    static {
+        put("pp_lock", R.drawable.outline_header_lock_24, R.string.PrivacyProfileIconLock);
+        put("pp_shield", R.drawable.outline_shield_plain_24, R.string.PrivacyProfileIconShield);
+        put("pp_key", R.drawable.baseline_vpn_key_24, R.string.PrivacyProfileIconKey);
+        put("pp_fingerprint", R.drawable.fingerprint_solar, R.string.PrivacyProfileIconFingerprint);
+        put("pp_passcode", R.drawable.msg_pin_code_solar, R.string.PrivacyProfileIconPasscode);
+        put("pp_phone", R.drawable.profile_phone_solar, R.string.PrivacyProfileIconPhone);
+        put("pp_devices", R.drawable.msg_devices_solar, R.string.PrivacyProfileIconDevices);
+        put("pp_proxy", R.drawable.proxy_on_solar, R.string.PrivacyProfileIconProxy);
+        put("pp_wifi", R.drawable.baseline_wifi_24, R.string.PrivacyProfileIconWifi);
+        put("pp_eye", R.drawable.msg_views_solar, R.string.PrivacyProfileIconEye);
+        put("pp_blocked", R.drawable.msg_block_solar, R.string.PrivacyProfileIconBlocked);
+        put("pp_night", R.drawable.msg_night_auto_solar, R.string.PrivacyProfileIconNight);
+    }
+
+    private static void put(String key, int drawableRes, int nameRes) {
+        privacyIcons.put(key, drawableRes);
+        privacyIconNames.put(key, nameRes);
+    }
+
+    /** Resolves a stored icon key: this feature's own glyphs first, then the shared folder set. */
+    public static int drawableFor(String key) {
+        Integer own = key != null ? privacyIcons.get(key) : null;
+        return own != null ? own : FolderIconHelper.getTabIcon(key);
+    }
+
+    /** Spoken name for a picker cell; the folder glyphs have never had one and still don't. */
+    @Nullable
+    public static CharSequence nameFor(String key) {
+        Integer nameRes = key != null ? privacyIconNames.get(key) : null;
+        return nameRes != null ? LocaleController.getString(nameRes) : null;
+    }
+
+    /** The picker's order: this feature's glyphs, then the whole folder set behind them. */
+    public static ArrayList<String> pickerKeys() {
+        ArrayList<String> keys = new ArrayList<>(privacyIcons.keySet());
+        keys.addAll(FolderIconHelper.folderIcons.keySet());
+        return keys;
+    }
+
     public static Drawable circleDrawable(Context context, PrivacyProfile profile, int sizeDp) {
         return circleDrawable(context, profile, sizeDp, false);
     }
@@ -46,16 +101,17 @@ public final class PrivacyProfileIcons {
      * would be permanent and meaningless.
      */
     public static Drawable circleDrawable(Context context, PrivacyProfile profile, int sizeDp, boolean ringed) {
-        Drawable icon = ContextCompat.getDrawable(context, FolderIconHelper.getTabIcon(profile.icon));
+        Drawable icon = ContextCompat.getDrawable(context, drawableFor(profile.icon));
         icon = icon != null ? icon.mutate() : null;
         if (icon != null) {
             icon.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
         }
         int size = AndroidUtilities.dp(sizeDp);
+        int circleColor = PrivacyProfileColorRow.colorFor(profile.colorSeed, profile.tone);
         if (ringed) {
-            return new RingedProfileDrawable(size, AvatarDrawable.getColorForId(profile.colorSeed), icon);
+            return new RingedProfileDrawable(size, circleColor, icon);
         }
-        CombinedDrawable combined = new CombinedDrawable(Theme.createCircleDrawable(size, AvatarDrawable.getColorForId(profile.colorSeed)), icon);
+        CombinedDrawable combined = new CombinedDrawable(Theme.createCircleDrawable(size, circleColor), icon);
         int iconSize = AndroidUtilities.dp(Math.round(sizeDp * 0.52f));
         combined.setIconSize(iconSize, iconSize);
         combined.setCustomSize(size, size);

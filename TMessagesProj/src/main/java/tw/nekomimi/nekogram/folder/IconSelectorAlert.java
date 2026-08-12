@@ -7,7 +7,11 @@ import android.view.ViewGroup;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.recyclerview.widget.RecyclerView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -18,9 +22,24 @@ import org.telegram.ui.Components.RecyclerListView;
 
 public class IconSelectorAlert {
 
+    /**
+     * How a grid cell turns a stored icon key into what it draws and announces. Lets a caller with
+     * its own icon namespace reuse this grid without the folder set having to know about it.
+     */
+    public interface IconResolver {
+        int drawableFor(String key);
+
+        @Nullable
+        default CharSequence nameFor(String key) {
+            return null;
+        }
+    }
+
+    private static final IconResolver FOLDER_ICONS = FolderIconHelper::getTabIcon;
+
     public static void show(BaseFragment fragment, OnIconSelectedListener onIconSelectedListener) {
         Context context = fragment.getParentActivity();
-        AlertDialog.Builder builder = build(context, onIconSelectedListener);
+        AlertDialog.Builder builder = build(context, folderKeys(), FOLDER_ICONS, onIconSelectedListener);
         fragment.showDialog(builder.create());
     }
 
@@ -32,16 +51,28 @@ public class IconSelectorAlert {
      * the caller's dialog is untouched and still on screen underneath.
      */
     public static AlertDialog show(Context context, OnIconSelectedListener onIconSelectedListener) {
-        AlertDialog.Builder builder = build(context, onIconSelectedListener);
+        return show(context, folderKeys(), FOLDER_ICONS, onIconSelectedListener);
+    }
+
+    /**
+     * Same grid over a caller-supplied ordered key list and resolver, so a feature can lead with
+     * its own glyphs and still offer the folder set behind them.
+     */
+    public static AlertDialog show(Context context, List<String> keys, IconResolver resolver, OnIconSelectedListener onIconSelectedListener) {
+        AlertDialog.Builder builder = build(context, keys, resolver, onIconSelectedListener);
         AlertDialog dialog = builder.create();
         dialog.show();
         return dialog;
     }
 
-    private static AlertDialog.Builder build(Context context, OnIconSelectedListener onIconSelectedListener) {
+    private static List<String> folderKeys() {
+        return new ArrayList<>(FolderIconHelper.folderIcons.keySet());
+    }
+
+    private static AlertDialog.Builder build(Context context, List<String> keys, IconResolver resolver, OnIconSelectedListener onIconSelectedListener) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
 
-        GridAdapter gridAdapter = new GridAdapter();
+        GridAdapter gridAdapter = new GridAdapter(keys, resolver);
         RecyclerListView recyclerListView = new RecyclerListView(context);
         recyclerListView.setClipToPadding(false);
         recyclerListView.setPadding(AndroidUtilities.dp(8), 0, AndroidUtilities.dp(8), 0);
@@ -58,7 +89,13 @@ public class IconSelectorAlert {
     }
 
     private static class GridAdapter extends RecyclerListView.SelectionAdapter {
-        private final String[] icons = FolderIconHelper.folderIcons.keySet().toArray(new String[0]);
+        private final String[] icons;
+        private final IconResolver resolver;
+
+        GridAdapter(List<String> keys, IconResolver resolver) {
+            this.icons = keys.toArray(new String[0]);
+            this.resolver = resolver;
+        }
 
         @NonNull
         @Override
@@ -80,7 +117,8 @@ public class IconSelectorAlert {
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
             var imageView = (ImageView) holder.itemView;
             imageView.setTag(icons[position]);
-            imageView.setImageResource(FolderIconHelper.getTabIcon(icons[position]));
+            imageView.setImageResource(resolver.drawableFor(icons[position]));
+            imageView.setContentDescription(resolver.nameFor(icons[position]));
         }
 
         @Override
