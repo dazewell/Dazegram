@@ -2591,9 +2591,12 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 FileLoader.getInstance(playingMessageObject.currentAccount).cancelLoadFile(playingMessageObject.getDocument());
             }
             MessageObject lastFile = playingMessageObject;
-            // NagramX: captured before the reset two lines down, since the field it mirrors is
-            // about to go back to false regardless of which teardown this is.
-            boolean wasDownloadingCurrentMessage = downloadingCurrentMessage;
+            // NagramX: captured before the reset two lines down. downloadingCurrentMessage alone
+            // isn't proof this is the file-loaded restart - cancelling an in-progress download
+            // (ChatMessageCell's cancel button, cleanupPlayer(true, true)) has it true too, with no
+            // restart coming. playMusicAgain is the flag the restart itself sets right before this
+            // call (MediaController.java fileLoaded handling), so require both.
+            boolean wasDownloadingCurrentMessage = downloadingCurrentMessage && playMusicAgain;
             if (notify) {
                 playingMessageObject.resetPlayingProgress();
                 NotificationCenter.getInstance(lastFile.currentAccount).postNotificationName(NotificationCenter.messagePlayingProgressDidChanged, playingMessageObject.getId(), 0);
@@ -3253,14 +3256,23 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     // the dedupe in checkAudioFocus above never skips a request the next ordinary play actually needs.
     private void checkAudioFocusRespectingQuiet(MessageObject messageObject) {
         if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject)) {
-            if (hasAudioFocus != 0) {
-                NotificationsController.audioManager.abandonAudioFocus(this);
-            }
-            hasAudioFocus = 0;
-            audioFocus = AUDIO_NO_FOCUS_NO_DUCK;
+            releaseAudioFocusForQuiet();
         } else {
             checkAudioFocus(messageObject);
         }
+    }
+
+    // NagramX: gives back whatever focus the app is currently holding, for a CC-quiet message, and
+    // marks the app as holding none. Pulled out of checkAudioFocusRespectingQuiet so playMessage's
+    // download branch can call it too - that branch returns before checkAudioFocusRespectingQuiet
+    // ever runs, so without this a quiet play behind an uncached file would sit on whatever focus
+    // the message it replaced left behind for the whole download.
+    private void releaseAudioFocusForQuiet() {
+        if (hasAudioFocus != 0) {
+            NotificationsController.audioManager.abandonAudioFocus(this);
+        }
+        hasAudioFocus = 0;
+        audioFocus = AUDIO_NO_FOCUS_NO_DUCK;
     }
 
     public boolean isPiPShown() {
@@ -3814,6 +3826,14 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             lastProgress = 0;
             audioInfo = null;
             playingMessageObject = messageObject;
+            // NagramX: this branch returns before checkAudioFocusRespectingQuiet ever runs, and
+            // cleanupPlayer above ran with notify=false when replacing another play (see :3800), so
+            // whatever focus that other play held is otherwise kept for the whole download. Only
+            // release it for a quiet message - an ordinary download still has to wait for actual
+            // playback to request focus, same as before this fix.
+            if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject)) {
+                releaseAudioFocusForQuiet();
+            }
             if (canStartMusicPlayerService()) {
                 Intent intent = new Intent(ApplicationLoader.applicationContext, MusicPlayerService.class);
                 try {
