@@ -286,6 +286,7 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity {
                 case 2: {
                     TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
                     textCell.setCanDisable(true);
+                    textCell.setEnabled(passcodeSet, null);
                     textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                     if (position == setPanicCodeRow) {
                         textCell.setText(PasscodeHelper.hasPanicCode() ? getString(R.string.PasscodePanicCodeEdit) : getString(R.string.PasscodePanicCodeSet), removePanicCodeRow != -1);
