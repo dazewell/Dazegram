@@ -133,8 +133,13 @@ public final class PrivacyProfilesController {
             loadedRestore = sp.getLong("restoreTimeout", NO_ID);
             loadedLastApplied = sp.getInt("lastAppliedValue", SharedConfig.autoLockIn);
             loadedBaseline = sp.getLong("baselineTimeout", SharedConfig.autoLockIn);
+            // Unlike restoreTimeout, baselineTimeout is never legitimately the NO_ID sentinel --
+            // it's always "the timeout to restore to" -- so NO_ID here means corrupt/foreign data,
+            // not "nothing pending". Check the raw long against NO_ID first: (int) NO_ID truncates
+            // to 0, which is itself a supported timeout ("never locks"), so casting before checking
+            // would let the sentinel slip through as if it meant "never locks".
             if (!isSupportedTimeout(loadedLastApplied) || (loadedRestore != NO_ID && !isSupportedTimeout((int) loadedRestore))
-                    || (loadedBaseline != NO_ID && !isSupportedTimeout((int) loadedBaseline))) {
+                    || loadedBaseline == NO_ID || !isSupportedTimeout((int) loadedBaseline)) {
                 activationOk = false;
             }
         } catch (ClassCastException e) {
