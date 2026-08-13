@@ -454,10 +454,32 @@ public abstract class AyuMessageUtils {
     }
 
     public static void mapMedia(AyuSavePreferences prefs, AyuMessageBase out, boolean copyFileToAttachments) {
+        mapMedia(prefs, out, copyFileToAttachments, false);
+    }
+
+    public static long getMediaIdentity(TLRPC.Message message) {
+        if (message == null || message.media == null) {
+            return 0;
+        }
+        TLRPC.MessageMedia media = message.media;
+        if (media instanceof TLRPC.TL_messageMediaStory story && story.storyItem != null && story.storyItem.media != null) {
+            media = story.storyItem.media;
+        }
+        if (media.document != null) {
+            return media.document.id;
+        }
+        if (media.photo != null) {
+            return media.photo.id;
+        }
+        return 0;
+    }
+
+    public static void mapMedia(AyuSavePreferences prefs, AyuMessageBase out, boolean copyFileToAttachments, boolean deleteSource) {
         File processedAttachment;
         TLRPC.Message message = prefs.getMessage();
         if (shouldSaveMedia(prefs)) {
             TLRPC.MessageMedia media = message.media;
+            out.mediaId = getMediaIdentity(message);
             if (media == null) {
                 out.documentType = AyuConstants.DOCUMENT_TYPE_NONE;
             } else if ((media instanceof TLRPC.TL_messageMediaPhoto) && media.photo != null) {
@@ -511,18 +533,26 @@ public abstract class AyuMessageUtils {
                 File finalFile = new File("/");
                 try {
                     if (copyFileToAttachments) {
-                        finalFile = processAttachment(prefs);
-                        TLRPC.MessageMedia m = MessageObject.getMedia(prefs.getMessage());
-                        if (m != null && MessageObject.isVideoDocument(m.document)) {
-                            Iterator<TLRPC.PhotoSize> it = m.document.thumbs.iterator();
-                            while (true) {
-                                if (!it.hasNext()) {
-                                    break;
-                                }
-                                TLRPC.PhotoSize next = it.next();
-                                if ((next instanceof TLRPC.TL_photoSize) && (processedAttachment = processAttachment(prefs.getAccountId(), next)) != null && !processedAttachment.getAbsolutePath().equals("/")) {
-                                    out.hqThumbPath = processedAttachment.getAbsolutePath();
-                                    break;
+                        String existing = out.mediaId != 0
+                                ? AyuMessagesController.getInstance().findExistingAttachmentPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId)
+                                : null;
+                        if (existing != null) {
+                            // we already hold this exact media from an earlier revision or the delete path, reuse it instead of copying again
+                            finalFile = new File(existing);
+                        } else {
+                            finalFile = processAttachment(prefs, deleteSource);
+                            TLRPC.MessageMedia m = MessageObject.getMedia(prefs.getMessage());
+                            if (m != null && MessageObject.isVideoDocument(m.document)) {
+                                Iterator<TLRPC.PhotoSize> it = m.document.thumbs.iterator();
+                                while (true) {
+                                    if (!it.hasNext()) {
+                                        break;
+                                    }
+                                    TLRPC.PhotoSize next = it.next();
+                                    if ((next instanceof TLRPC.TL_photoSize) && (processedAttachment = processAttachment(prefs.getAccountId(), next, deleteSource)) != null && !processedAttachment.getAbsolutePath().equals("/")) {
+                                        out.hqThumbPath = processedAttachment.getAbsolutePath();
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -573,7 +603,7 @@ public abstract class AyuMessageUtils {
         }
     }
 
-    private static File processAttachment(int accountId, TLObject object) {
+    private static File processAttachment(int accountId, TLObject object, boolean deleteSource) {
         File pathToAttach = FileLoader.getInstance(accountId).getPathToAttach(object);
         if (!pathToAttach.exists()) {
             File pathToAttach2 = FileLoader.getInstance(accountId).getPathToAttach(object, true);
@@ -581,18 +611,18 @@ public abstract class AyuMessageUtils {
                 pathToAttach = pathToAttach2;
             }
         }
-        return processAttachment(pathToAttach, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(object, pathToAttach)));
+        return processAttachment(pathToAttach, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(object, pathToAttach)), deleteSource);
     }
 
-    private static File processAttachment(AyuSavePreferences prefs) {
+    private static File processAttachment(AyuSavePreferences prefs, boolean deleteSource) {
         TLRPC.Message message = prefs.getMessage();
         if (message == null) return new File("/");
         if (message.media instanceof TLRPC.TL_messageMediaStory story && story.storyItem != null && story.storyItem.media != null) {
             TLRPC.MessageMedia storyMedia = story.storyItem.media;
             if (storyMedia.document != null) {
-                return processAttachment(prefs.getAccountId(), storyMedia.document);
+                return processAttachment(prefs.getAccountId(), storyMedia.document, deleteSource);
             } else if (storyMedia.photo != null) {
-                return processAttachment(prefs.getAccountId(), storyMedia.photo);
+                return processAttachment(prefs.getAccountId(), storyMedia.photo, deleteSource);
             }
         }
         File pathToMessage = FileLoader.getInstance(prefs.getAccountId()).getPathToMessage(message);
@@ -601,16 +631,20 @@ public abstract class AyuMessageUtils {
         }
         if (pathToMessage.exists() || message.media.document == null) {
             if (pathToMessage.exists() || message.media.photo == null) {
-                return processAttachment(pathToMessage, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(message, pathToMessage)));
+                return processAttachment(pathToMessage, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(message, pathToMessage)), deleteSource);
             }
-            return processAttachment(prefs.getAccountId(), message.media.photo);
+            return processAttachment(prefs.getAccountId(), message.media.photo, deleteSource);
         }
-        return processAttachment(prefs.getAccountId(), message.media.document);
+        return processAttachment(prefs.getAccountId(), message.media.document, deleteSource);
     }
 
     private static File processAttachment(File source, File target) {
+        return processAttachment(source, target, false);
+    }
+
+    private static File processAttachment(File source, File target, boolean deleteSource) {
         if (source.exists()) {
-            boolean success = AyuUtils.moveOrCopyFile(source, target);
+            boolean success = AyuUtils.moveOrCopyFile(source, target, deleteSource);
             if (!success && BuildVars.LOGS_ENABLED) {
                 Log.e(TAG, "Failed to move/copy media file from " + source.getAbsolutePath() + " to " + target.getAbsolutePath());
             }

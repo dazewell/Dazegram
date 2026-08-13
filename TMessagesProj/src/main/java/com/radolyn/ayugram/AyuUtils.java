@@ -34,7 +34,7 @@ public class AyuUtils {
 
     private static final char[] chars = "abcdefghijklmnopqrstuvwxyz1234567890".toCharArray();
 
-    public static boolean moveOrCopyFile(File from, File to) {
+    public static boolean moveOrCopyFile(File from, File to, boolean deleteSource) {
         if (from == null || !from.exists()) {
             if (BuildVars.LOGS_ENABLED) {
                 Log.e(NAX, "Source file does not exist: " + (from != null ? from.getAbsolutePath() : "null"));
@@ -44,13 +44,19 @@ public class AyuUtils {
 
         boolean success = false;
 
-        try {
-            success = from.renameTo(to);
-            if (success && BuildVars.LOGS_ENABLED) {
-                Log.d(NAX, "Successfully moved file: " + from.getName());
+        // Only a move may take the file out of Telegram's cache. On the ordinary
+        // edit/delete path we copy and leave the source, otherwise the app re-downloads
+        // it the next time the chat is opened. renameTo is a move, so it is off the
+        // table unless deleteSource is set.
+        if (deleteSource) {
+            try {
+                success = from.renameTo(to);
+                if (success && BuildVars.LOGS_ENABLED) {
+                    Log.d(NAX, "Successfully moved file: " + from.getName());
+                }
+            } catch (Exception e) {
+                if (BuildVars.LOGS_ENABLED) Log.e(NAX, "Move failed, trying copy: " + e);
             }
-        } catch (Exception e) {
-            if (BuildVars.LOGS_ENABLED) Log.e(NAX, "Move failed, trying copy: " + e);
         }
 
         if (!success) {
@@ -60,19 +66,21 @@ public class AyuUtils {
                     if (BuildVars.LOGS_ENABLED) {
                         Log.d(NAX, "Successfully copied file: " + from.getName());
                     }
-                    try {
-                        if (from.delete()) {
-                            if (BuildVars.LOGS_ENABLED) {
-                                Log.d(NAX, "Deleted original file after copy: " + from.getName());
+                    if (deleteSource) {
+                        try {
+                            if (from.delete()) {
+                                if (BuildVars.LOGS_ENABLED) {
+                                    Log.d(NAX, "Deleted original file after copy: " + from.getName());
+                                }
+                            } else {
+                                if (BuildVars.LOGS_ENABLED) {
+                                    Log.w(NAX, "Failed to delete original file after copy: " + from.getAbsolutePath());
+                                }
                             }
-                        } else {
+                        } catch (Exception e) {
                             if (BuildVars.LOGS_ENABLED) {
-                                Log.w(NAX, "Failed to delete original file after copy: " + from.getAbsolutePath());
+                                Log.e(NAX, "Error deleting original file: " + e);
                             }
-                        }
-                    } catch (Exception e) {
-                        if (BuildVars.LOGS_ENABLED) {
-                            Log.e(NAX, "Error deleting original file: " + e);
                         }
                     }
                 }
