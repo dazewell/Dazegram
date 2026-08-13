@@ -10,6 +10,8 @@
 package com.radolyn.ayugram;
 
 import android.os.Environment;
+import android.system.ErrnoException;
+import android.system.Os;
 import android.text.TextUtils;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -30,12 +32,20 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 // long I/O (byte copies, decrypt loops, directory deletes) and holds nothing.
 public abstract class AyuAttachments {
     private static final String SUBFOLDER = "Saved Attachments";
-    private static final String TEMP_PREFIX = ".ayutmp_";
-    // A temp lives only for the single save that writes it (seconds), so anything older than this
-    // is a leftover from a process that died mid-stage. The margin keeps the startup sweep from
-    // racing a temp another thread is still writing - it is not an age cap on saved data.
-    private static final long TEMP_STALE_MS = 60 * 60 * 1000L;
+    // A wiped tree is renamed aside to this before the long delete runs; the sweep reclaims any
+    // that a crash stranded between the rename and the delete.
+    private static final String ASIDE_INFIX = ".old_";
+    // Temps stage in a package-specific sibling of the live folder, OUTSIDE it, on the same
+    // filesystem. Outside so a reset (which renames the live folder) can't turn an in-flight temp
+    // into "absent", and so neither the history scanner nor the sweep can ever reach one; the
+    // package suffix keeps the two installs, which share the public folder, off each other's temps.
+    private static final String STAGING_PREFIX = ".attach_staging_";
     private static final File DIR = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), AyuConstants.APP_NAME), SUBFOLDER);
+    private static final File STAGING_DIR = new File(DIR.getParentFile(), STAGING_PREFIX + AyuUtils.getPackageName());
+    // Unique to this process. Every temp we stage this run is named with it, so the sweep can drop a
+    // dead process's leftovers (a different token) without ever being able to unlink a stage this
+    // process still has in flight. Replaces an age cap, which a stalled stage could outlive.
+    private static final String INSTANCE_TOKEN = AyuUtils.generateRandomString(8);
 
     // The one process-wide attachment monitor. The controller synchronises its row-consistency
     // sequences on this same object so a file op and the row that records it can't be split by a
@@ -44,11 +54,11 @@ public abstract class AyuAttachments {
     public static final Object LOCK = new Object();
 
     // One-shot reclaim of our own leftovers the first time the owner is touched. Two kinds outlive
-    // a process that dies at the wrong moment: staged temps, and an aside tree stranded between
-    // renameAsideAndRecreate and its deleteTree (potentially gigabytes nothing will ever look at
-    // again). Neither is retention or pruning of saved data - it only ever removes our own
-    // .ayutmp_/.old_ artifacts, once, on no schedule. Posted to globalQueue so the I/O is off the
-    // main thread and holds no monitor (Band L).
+    // a process that dies at the wrong moment: staged temps in the staging sibling, and an aside
+    // tree stranded between renameAsideAndRecreate and its deleteTree (potentially gigabytes nothing
+    // will ever look at again). Neither is retention or pruning of saved data - it only ever removes
+    // our own staging/aside artifacts, once, on no schedule. Posted to globalQueue so the I/O is off
+    // the main thread and holds no monitor (Band L).
     static {
         Utilities.globalQueue.postRunnable(AyuAttachments::sweepLeftovers);
     }
@@ -110,16 +120,16 @@ public abstract class AyuAttachments {
         return path != null && path.contains(SUBFOLDER);
     }
 
-    // Establish the folder (and its .nomedia marker so the gallery skips it). An owner-internal
+    // Establish a folder (and its .nomedia marker so the gallery skips it). An owner-internal
     // precondition of a write, established inside each write op, never by a caller.
-    private static void ensureDir() {
+    private static void ensureFolder(File dir) {
         try {
-            File nomediaFile = new File(DIR, ".nomedia");
-            if (DIR.exists() || DIR.mkdirs()) {
+            File nomediaFile = new File(dir, ".nomedia");
+            if (dir.exists() || dir.mkdirs()) {
                 AndroidUtilities.createEmptyFile(nomediaFile);
             }
             if (!nomediaFile.exists()) {
-                File randomFile = new File(DIR, AyuUtils.generateRandomString(4));
+                File randomFile = new File(dir, AyuUtils.generateRandomString(4));
                 AndroidUtilities.createEmptyFile(randomFile);
                 if (!randomFile.renameTo(nomediaFile)) {
                     if (!randomFile.delete()) {
@@ -129,20 +139,33 @@ public abstract class AyuAttachments {
                 }
             }
         } catch (Exception e) {
-            FileLog.e("AyuAttachments.ensureDir", e);
+            FileLog.e("AyuAttachments.ensureFolder", e);
         }
     }
 
-    // Band L: copy (or, on the force/TTL path, move) `source` into a uniquely-named temp file in
-    // the folder, holding no lock. The temp is handed to promote(...) which places it under the
-    // monitor. Copy-not-move is preserved: deleteSource stays the only route to renameTo, so an
-    // ordinary save leaves the source in Telegram's cache.
+    private static void ensureDir() {
+        ensureFolder(DIR);
+    }
+
+    private static void ensureStagingDir() {
+        ensureFolder(STAGING_DIR);
+    }
+
+    // A staging temp's name, unique to one stage call and tagged with this process's token.
+    private static File newStagingTemp() {
+        return new File(STAGING_DIR, INSTANCE_TOKEN + "_" + AyuUtils.generateRandomString(16));
+    }
+
+    // Band L: copy (or, on the force/TTL path, move) `source` into a uniquely-named temp in the
+    // staging sibling, holding no lock. The temp is handed to promote(...) which places it into the
+    // live folder under the monitor. Copy-not-move is preserved: deleteSource stays the only route
+    // to renameTo, so an ordinary save leaves the source in Telegram's cache.
     public static File stage(File source, boolean deleteSource) {
         if (source == null || !source.exists()) {
             return null;
         }
-        ensureDir();
-        File temp = new File(DIR, TEMP_PREFIX + AyuUtils.generateRandomString(16));
+        ensureStagingDir();
+        File temp = newStagingTemp();
         if (AyuUtils.moveOrCopyFile(source, temp, deleteSource)) {
             return temp;
         }
@@ -150,16 +173,18 @@ public abstract class AyuAttachments {
         return null;
     }
 
-    // Band L: a fresh unique temp File in the folder for a caller to write into (a decrypt loop),
-    // holding no lock. The written temp is handed to promote(...).
+    // Band L: a fresh unique temp File in the staging sibling for a caller to write into (a decrypt
+    // loop), holding no lock. The written temp is handed to promote(...).
     public static File newTemp() {
-        ensureDir();
-        return new File(DIR, TEMP_PREFIX + AyuUtils.generateRandomString(16));
+        ensureStagingDir();
+        return newStagingTemp();
     }
 
-    // Band W: place a staged temp at finalName under the monitor. If a complete file already sits
-    // there (a concurrent save won the race, or the caller resolved a reuse), keep it and drop the
-    // temp. Same-directory rename only, so this stays sub-millisecond even for a large file.
+    // Band W: place a staged temp at finalName in the live folder under the monitor. If a complete
+    // file already sits there (a concurrent save won the race, or the caller resolved a reuse), keep
+    // it and drop the temp. The staging sibling shares the live folder's filesystem, so Os.rename is
+    // an atomic same-filesystem move: it stays sub-millisecond even for a large file and replaces a
+    // zero-length leftover in one step.
     public static File promote(File temp, String finalName) {
         synchronized (LOCK) {
             ensureDir();
@@ -171,16 +196,19 @@ public abstract class AyuAttachments {
             if (temp == null || !temp.exists()) {
                 return null;
             }
-            if (finalFile.exists() && !finalFile.delete()) {
-                // a zero-length leftover; renameTo below would fail, so give up cleanly
+            try {
+                Os.rename(temp.getAbsolutePath(), finalFile.getAbsolutePath());
+                return finalFile;
+            } catch (ErrnoException e) {
+                // same-filesystem by construction, so this is exceptional; fall back to a plain
+                // rename and, failing that, give up cleanly rather than leaving a half-placed file
+                if (temp.renameTo(finalFile)) {
+                    return finalFile;
+                }
+                FileLog.e("AyuAttachments.promote", e);
                 discard(temp);
                 return null;
             }
-            if (temp.renameTo(finalFile)) {
-                return finalFile;
-            }
-            discard(temp);
-            return null;
         }
     }
 
@@ -201,7 +229,7 @@ public abstract class AyuAttachments {
         synchronized (LOCK) {
             File aside = null;
             if (DIR.exists()) {
-                File candidate = new File(DIR.getParentFile(), SUBFOLDER + ".old_" + AyuUtils.generateRandomString(16));
+                File candidate = new File(DIR.getParentFile(), SUBFOLDER + ASIDE_INFIX + AyuUtils.generateRandomString(16));
                 if (DIR.renameTo(candidate)) {
                     aside = candidate;
                 } else {
@@ -224,10 +252,10 @@ public abstract class AyuAttachments {
         tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(aside);
     }
 
-    // Band L: the startup reclaim posted from the static initializer. Holds no monitor. Aside
-    // trees go unconditionally - deleting one is exactly what its own deleteTree would have done,
-    // so racing a concurrent reset is harmless. Temps go only when stale, so this can't unlink one
-    // an in-flight stage is still writing.
+    // Band L: the startup reclaim posted from the static initializer. Holds no monitor. Aside trees
+    // go unconditionally - deleting one is exactly what its own deleteTree would have done, so racing
+    // a concurrent reset is harmless. Staging temps go only when they carry another (dead) process's
+    // token, so this can never unlink one this process still has in flight.
     private static void sweepLeftovers() {
         try {
             File parent = DIR.getParentFile();
@@ -235,17 +263,17 @@ public abstract class AyuAttachments {
                 File[] siblings = parent.listFiles();
                 if (siblings != null) {
                     for (File f : siblings) {
-                        if (f.isDirectory() && f.getName().startsWith(SUBFOLDER + ".old_")) {
+                        if (f.isDirectory() && f.getName().startsWith(SUBFOLDER + ASIDE_INFIX)) {
                             tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(f);
                         }
                     }
                 }
             }
-            File[] entries = DIR.listFiles();
+            File[] entries = STAGING_DIR.listFiles();
             if (entries != null) {
-                long now = System.currentTimeMillis();
+                String ours = INSTANCE_TOKEN + "_";
                 for (File f : entries) {
-                    if (f.isFile() && f.getName().startsWith(TEMP_PREFIX) && now - f.lastModified() > TEMP_STALE_MS) {
+                    if (f.isFile() && !f.getName().startsWith(ours) && !f.getName().equals(".nomedia")) {
                         if (!f.delete()) {
                             f.deleteOnExit();
                         }
