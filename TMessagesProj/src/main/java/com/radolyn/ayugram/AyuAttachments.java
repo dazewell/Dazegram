@@ -107,6 +107,10 @@ public abstract class AyuAttachments {
 
         // Drop a staged temp we decided not to keep (a reuse won).
         public void discard(StagedToken token) {
+            if (!Thread.holdsLock(LOCK)) {
+                FileLog.e("AyuAttachments.Tx.discard called off-lock");
+                return;
+            }
             if (token != null) {
                 discardTemp(token.temp);
             }
