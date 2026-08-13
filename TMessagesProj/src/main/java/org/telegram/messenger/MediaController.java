@@ -3271,6 +3271,11 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
     // granted, and the dedupe in checkAudioFocus above never skips a request the next ordinary play
     // actually needs.
     private void checkAudioFocusRespectingSilence(MessageObject messageObject) {
+        // NagramX: isSilentPlayback null-guards, but checkAudioFocus below doesn't - keep this
+        // helper actually null-tolerant rather than just looking like it is.
+        if (messageObject == null) {
+            return;
+        }
         if (isSilentPlayback(messageObject)) {
             releaseAudioFocusForSilentPlayback();
         } else {
