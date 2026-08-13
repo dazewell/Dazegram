@@ -220,6 +220,16 @@ public abstract class AyuAttachments {
         return p.equals(prefix) || p.startsWith(prefix + File.separator);
     }
 
+    // Band R: fail-closed canonical containment for a stored path a caller is about to reuse
+    // directly. Unlike the guarded unlink (which pre-filters with the lexical isUnder and then
+    // re-checks canonically inside Tx.deleteContained), a reuse read returns the path with no later
+    // canonical gate, so the check has to be canonical here. True only when the file resolves to a
+    // direct child of our folder, so a poisoned "Saved Attachments/../victim" the lexical isUnder
+    // would pass is rejected before the path is reused and read.
+    public static boolean isContained(File f) {
+        return isContainedChild(f);
+    }
+
     // Band R: fail-closed canonical containment. True only when f canonically resolves to a direct
     // child of the canonical folder, so a "Saved Attachments/../victim" traversal or a symlink that
     // escapes the folder resolves away and is rejected. getAbsolutePath() does not collapse "..",
