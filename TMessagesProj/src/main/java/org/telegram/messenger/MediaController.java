@@ -3525,6 +3525,17 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                     } else {
                         cleanupPlayer(true, hasNoNextVoiceOrRoundVideoMessage(), true, false);
                     }
+                    // NagramX: Play once / Repeat one CC-quiet end via cleanupPlayer(byVoiceEnd=false),
+                    // so upstream's raise-to-listen teardown at cleanupPlayer's tail never fires and the
+                    // sensors leak. byVoiceEnd can't be flipped true here - it drives the voice-playlist
+                    // advance in cleanupPlayer, which would turn Play once into Play all. A null
+                    // playingMessageObject means cleanupPlayer actually tore the player down (Play once /
+                    // CC-quiet one-pass), not the Repeat one loop or a Play-all advance that re-set it.
+                    if (playingMessageObject == null && !SharedConfig.enabledRaiseTo(true)) {
+                        ChatActivity chat = raiseChat;
+                        stopRaiseToEarSensors(raiseChat, false, false);
+                        raiseChat = chat;
+                    }
                 }
             }
         }
