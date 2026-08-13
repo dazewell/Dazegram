@@ -51,6 +51,12 @@ public interface EditedMessageDao {
     @Query("SELECT EXISTS(SELECT 1 FROM editedmessage WHERE mediaPath = :path OR hqThumbPath = :path)")
     boolean isPathReferenced(String path);
 
+    @Query("SELECT DISTINCT mediaPath FROM editedmessage WHERE mediaPath IS NOT NULL AND mediaPath != ''")
+    List<String> getAllMediaPaths();
+
+    @Query("SELECT DISTINCT hqThumbPath FROM editedmessage WHERE hqThumbPath IS NOT NULL AND hqThumbPath != ''")
+    List<String> getAllHqThumbPaths();
+
     @Insert
     void insert(EditedMessage revision);
 }

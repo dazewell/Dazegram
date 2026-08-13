@@ -148,9 +148,9 @@ public class NekoExperimentalSettingsActivity extends BaseNekoXSettingsActivity 
     private final AbstractConfigCell translucentDeletedMessagesRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getTranslucentDeletedMessages()));
     private final AbstractConfigCell useDeletedIconRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getUseDeletedIcon()));
     private final AbstractConfigCell customDeletedMarkRow = cellGroup.appendCell(new ConfigCellTextInput(null, NaConfig.INSTANCE.getCustomDeletedMark(), "", null));
-    private final AbstractConfigCell clearMessageDatabaseRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "ClearMessageDatabase", null, AyuData.totalSize > 0 ? AndroidUtilities.formatFileSize(AyuData.totalSize) : "...", R.drawable.msg_clear, false, () -> new AlertDialog.Builder(getContext(), getResourceProvider())
+    private final AbstractConfigCell clearMessageDatabaseRow = cellGroup.appendCell(new ConfigCellTextCheckIcon(null, "ClearMessageDatabase", null, clearMessageDatabaseValue(), R.drawable.msg_clear, false, () -> new AlertDialog.Builder(getContext(), getResourceProvider())
             .setTitle(getString(R.string.ClearMessageDatabase))
-            .setMessage(getString(R.string.AreYouSure))
+            .setMessage(LocaleController.formatString(R.string.ClearMessageDatabaseConfirm, AndroidUtilities.formatFileSize(AyuData.ownedSize)))
             .setPositiveButton(getString(R.string.Clear), (dialog, which) -> {
                 AlertDialog progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
                 progressDialog.setCanCancel(false);
@@ -553,9 +553,24 @@ public class NekoExperimentalSettingsActivity extends BaseNekoXSettingsActivity 
 
     public void refreshAyuDataSize() {
         if (listAdapter != null) {
-            ((ConfigCellTextCheckIcon) clearMessageDatabaseRow).setValue(AyuData.totalSize > 0 ? AndroidUtilities.formatFileSize(AyuData.totalSize) : "...");
+            ((ConfigCellTextCheckIcon) clearMessageDatabaseRow).setValue(clearMessageDatabaseValue());
             listAdapter.notifyItemChanged(cellGroup.rows.indexOf(clearMessageDatabaseRow));
         }
+    }
+
+    // "..." while sizes are still loading; a single figure when Clear frees the whole folder (identical
+    // to before for the single-install case); "owned of total" once some bytes belong to another install
+    // sharing the folder, so the row stays honest about what Clear will leave behind.
+    private static String clearMessageDatabaseValue() {
+        if (AyuData.totalSize <= 0) {
+            return "...";
+        }
+        if (AyuData.ownedSize >= AyuData.totalSize) {
+            return AndroidUtilities.formatFileSize(AyuData.totalSize);
+        }
+        return LocaleController.formatString(R.string.ClearMessageDatabaseSizeOwnedOfTotal,
+                AndroidUtilities.formatFileSize(AyuData.ownedSize),
+                AndroidUtilities.formatFileSize(AyuData.totalSize));
     }
 
     private void exportAyuDB() {

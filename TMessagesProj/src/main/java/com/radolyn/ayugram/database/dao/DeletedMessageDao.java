@@ -100,4 +100,10 @@ public interface DeletedMessageDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM deletedmessage WHERE mediaPath = :path OR hqThumbPath = :path)")
     boolean isPathReferenced(String path);
+
+    @Query("SELECT DISTINCT mediaPath FROM deletedmessage WHERE mediaPath IS NOT NULL AND mediaPath != ''")
+    List<String> getAllMediaPaths();
+
+    @Query("SELECT DISTINCT hqThumbPath FROM deletedmessage WHERE hqThumbPath IS NOT NULL AND hqThumbPath != ''")
+    List<String> getAllHqThumbPaths();
 }
