@@ -149,12 +149,13 @@ public abstract class AyuAttachments {
         }
     }
 
-    // One-shot reclaim of our own leftovers the first time the owner is touched. Two kinds outlive
-    // a process that dies at the wrong moment: staged temps in the staging sibling, and an aside
-    // tree stranded between renameAsideAndRecreate and its deleteTree (potentially gigabytes nothing
-    // will ever look at again). Neither is retention or pruning of saved data - it only ever removes
-    // our own staging/aside artifacts, once, on no schedule. Posted to globalQueue so the I/O is off
-    // the main thread and holds no monitor (Band L).
+    // One-shot reclaim of our own leftovers the first time the owner is touched. Three kinds outlive
+    // a process that dies at the wrong moment: staged temps in the staging sibling, an aside tree
+    // stranded between Tx.swapIn and its deleteTree (potentially gigabytes nothing will ever look at
+    // again), and a prepared replacement stranded between prepareReplacement and the swap. None is
+    // retention or pruning of saved data - it only ever removes our own staging/aside/replacement
+    // artifacts, once, on no schedule. Posted to globalQueue so the I/O is off the main thread and
+    // holds no monitor (Band L).
     static {
         Utilities.globalQueue.postRunnable(AyuAttachments::sweepLeftovers);
     }
