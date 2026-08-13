@@ -31,6 +31,7 @@ import org.telegram.tgnet.TLRPC;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -40,6 +41,12 @@ public class AyuMessagesController {
     public static final String attachmentsSubfolder = "Saved Attachments";
     public static final File attachmentsPath = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), AyuConstants.APP_NAME), attachmentsSubfolder);
     private static AyuMessagesController instance;
+    // One process-wide gate over each select/copy/reuse -> insert and each collect/delete ->
+    // reference-check/unlink sequence. Room serialises single statements, not these multi-step
+    // sequences, so without it a writer can reuse a file that a concurrent delete unlinks before
+    // the writer's row lands, leaving a row pointing at a gone file. Held across every entry path
+    // (globalQueue, the storage queue via the force hook, the main thread, and inline saves).
+    static final Object attachmentLock = new Object();
     private EditedMessageDao editedMessageDao;
     private DeletedMessageDao deletedMessageDao;
 
@@ -115,13 +122,15 @@ public class AyuMessagesController {
     }
 
     public void onMessageEditedForce(AyuSavePreferences prefs) {
-        Utilities.globalQueue.postRunnable(() -> {
-            try {
-                onMessageEditedInner(prefs, prefs.getMessage(), true);
-            } catch (Exception e) {
-                FileLog.e("onMessageEditedForce", e);
-            }
-        });
+        // TTL / view-once path. The caller (MessagesStorage.emptyMessagesMedia, on the storage
+        // queue) blanks this row's media and deletes its file the moment we return, so the save
+        // has to finish before then. Run it inline on the caller's hop instead of handing off to
+        // globalQueue, or the copy loses the race and we save metadata with no file.
+        try {
+            onMessageEditedInner(prefs, prefs.getMessage(), true);
+        } catch (Exception e) {
+            FileLog.e("onMessageEditedForce", e);
+        }
     }
 
     private void onMessageEditedInner(AyuSavePreferences prefs, TLRPC.Message newMessage, boolean force) {
@@ -135,34 +144,37 @@ public class AyuMessagesController {
 
         var revision = new EditedMessage();
         AyuMessageUtils.map(prefs, revision);
-        AyuMessageUtils.mapMedia(prefs, revision, !sameMedia, force);
 
-        if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
-            var lastRevision = withDaoRetry(
-                    "onMessageEditedInner#getLastRevision",
-                    () -> editedMessageDao.getLastRevision(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId())
-            );
+        synchronized (attachmentLock) {
+            AyuMessageUtils.mapMedia(prefs, revision, !sameMedia, force);
 
-            if (lastRevision != null && !TextUtils.equals(revision.mediaPath, lastRevision.mediaPath) && lastRevision.mediaPath != null && !lastRevision.mediaPath.contains(attachmentsSubfolder)) {
-                // update previous revisions to reflect media change
-                // like, there's no previous file, so replace it with one we copied before...
-                withDaoRetry(
-                        "onMessageEditedInner#updateAttachmentForRevisionsBetweenDates",
-                        () -> {
-                            editedMessageDao.updateAttachmentForRevisionsBetweenDates(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), lastRevision.mediaPath, revision.mediaPath);
-                            return null;
-                        }
+            if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
+                var lastRevision = withDaoRetry(
+                        "onMessageEditedInner#getLastRevision",
+                        () -> editedMessageDao.getLastRevision(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId())
                 );
-            }
-        }
 
-        withDaoRetry(
-                "onMessageEditedInner#insert",
-                () -> {
-                    editedMessageDao.insert(revision);
-                    return null;
+                if (lastRevision != null && !TextUtils.equals(revision.mediaPath, lastRevision.mediaPath) && lastRevision.mediaPath != null && !lastRevision.mediaPath.contains(attachmentsSubfolder)) {
+                    // update previous revisions to reflect media change
+                    // like, there's no previous file, so replace it with one we copied before...
+                    withDaoRetry(
+                            "onMessageEditedInner#updateAttachmentForRevisionsBetweenDates",
+                            () -> {
+                                editedMessageDao.updateAttachmentForRevisionsBetweenDates(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), lastRevision.mediaPath, revision.mediaPath);
+                                return null;
+                            }
+                    );
                 }
-        );
+            }
+
+            withDaoRetry(
+                    "onMessageEditedInner#insert",
+                    () -> {
+                        editedMessageDao.insert(revision);
+                        return null;
+                    }
+            );
+        }
 
         AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(prefs.getAccountId()).postNotificationName(AyuConstants.MESSAGE_EDITED_NOTIFICATION, prefs.getDialogId(), prefs.getMessageId()));
     }
@@ -226,12 +238,20 @@ public class AyuMessagesController {
         FileLog.d("saving message " + prefs.getMessageId() + " for " + prefs.getDialogId() + " with topic " + prefs.getTopicId());
 
         AyuMessageUtils.map(prefs, deletedMessage);
-        AyuMessageUtils.mapMedia(prefs, deletedMessage, true);
 
-        Long fakeMsgId = withDaoRetry(
-                "onMessageDeletedInner#insert",
-                () -> deletedMessageDao.insert(deletedMessage)
-        );
+        // Hold the gate across mapMedia's dedup lookup/copy and the insert so a concurrent delete
+        // can't unlink the reused file between them. saveDeletedMessageFor above stays outside it:
+        // it awaits a latch on the storage queue, and holding this lock across that wait is how a
+        // deleter and the storage-queue force save could deadlock.
+        Long fakeMsgId;
+        synchronized (attachmentLock) {
+            AyuMessageUtils.mapMedia(prefs, deletedMessage, true);
+
+            fakeMsgId = withDaoRetry(
+                    "onMessageDeletedInner#insert",
+                    () -> deletedMessageDao.insert(deletedMessage)
+            );
+        }
 
         if (fakeMsgId == null) {
             return;
@@ -425,18 +445,25 @@ public class AyuMessagesController {
                 "isPathReferenced#edited",
                 () -> editedMessageDao.isPathReferenced(path)
         );
-        return Boolean.TRUE.equals(inDeleted) || Boolean.TRUE.equals(inEdited);
+        // Fail closed: a failed lookup reads as "still referenced", never as "safe to unlink".
+        // Treating a null (query error) as unreferenced would delete a file another row needs.
+        if (inDeleted == null || inEdited == null) {
+            return true;
+        }
+        return inDeleted || inEdited;
     }
 
     public void delete(long userId, long dialogId, int messageId) {
-        var msg = getMessage(userId, dialogId, messageId);
-        if (msg == null) {
-            return;
+        synchronized (attachmentLock) {
+            var msg = getMessage(userId, dialogId, messageId);
+            if (msg == null) {
+                return;
+            }
+
+            deletedMessageDao.delete(userId, dialogId, messageId);
+
+            safeUnlinkAttachment(msg.message.mediaPath);
         }
-
-        deletedMessageDao.delete(userId, dialogId, messageId);
-
-        safeUnlinkAttachment(msg.message.mediaPath);
     }
 
     public void deleteMessages(long userId, long dialogId, List<Integer> messageIds) {
@@ -444,55 +471,76 @@ public class AyuMessagesController {
             return;
         }
 
-        List<String> mediaPaths = new ArrayList<>();
-        for (int messageId : messageIds) {
-            var msg = getMessage(userId, dialogId, messageId);
-            if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
-                mediaPaths.add(msg.message.mediaPath);
+        synchronized (attachmentLock) {
+            LinkedHashSet<String> mediaPaths = new LinkedHashSet<>();
+            for (int messageId : messageIds) {
+                var msg = getMessage(userId, dialogId, messageId);
+                if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
+                    mediaPaths.add(msg.message.mediaPath);
+                }
             }
-        }
 
-        deletedMessageDao.deleteMessages(userId, dialogId, messageIds);
-        editedMessageDao.deleteByDialogIdAndMessageIds(dialogId, messageIds);
+            deletedMessageDao.deleteMessages(userId, dialogId, messageIds);
+            editedMessageDao.deleteByDialogIdAndMessageIds(dialogId, messageIds);
 
-        for (String mediaPath : mediaPaths) {
-            safeUnlinkAttachment(mediaPath);
+            for (String mediaPath : mediaPaths) {
+                safeUnlinkAttachment(mediaPath);
+            }
         }
     }
 
     public void deleteRevision(long fakeId) {
-        String mediaPath = editedMessageDao.getMediaPathByFakeId(fakeId);
-        int deleted = editedMessageDao.deleteByFakeId(fakeId);
-        if (deleted == 0) {
-            return;
+        synchronized (attachmentLock) {
+            String mediaPath = editedMessageDao.getMediaPathByFakeId(fakeId);
+            int deleted = editedMessageDao.deleteByFakeId(fakeId);
+            if (deleted == 0) {
+                return;
+            }
+            safeUnlinkAttachment(mediaPath);
         }
-        safeUnlinkAttachment(mediaPath);
     }
 
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
-        List<DeletedMessageFull> messages = deletedMessageDao.getMessagesByDialog(dialogId);
+        // Clearing a whole chat's history walks two growing tables and unlinks their files. That
+        // is off-main-thread work; the button that calls this runs it on the UI thread, so move
+        // it here rather than touching the caller. The callback still runs on the UI thread so it
+        // can finish the fragment and buzz.
+        Utilities.globalQueue.postRunnable(() -> {
+            deleteCurrentInner(dialogId, mergeDialogId);
+            if (callback != null) {
+                AndroidUtilities.runOnUIThread(callback);
+            }
+        });
+    }
 
-        if (mergeDialogId != 0) {
-            List<DeletedMessageFull> mergeMessages = deletedMessageDao.getMessagesByDialog(mergeDialogId);
-            messages.addAll(mergeMessages);
-        }
+    private void deleteCurrentInner(long dialogId, long mergeDialogId) {
+        synchronized (attachmentLock) {
+            List<DeletedMessageFull> messages = deletedMessageDao.getMessagesByDialog(dialogId);
 
-        // Delete messages and their edit history from database
-        deletedMessageDao.delete(dialogId);
-        editedMessageDao.delete(dialogId);
+            if (mergeDialogId != 0) {
+                List<DeletedMessageFull> mergeMessages = deletedMessageDao.getMessagesByDialog(mergeDialogId);
+                messages.addAll(mergeMessages);
+            }
 
-        if (mergeDialogId != 0) {
-            deletedMessageDao.delete(mergeDialogId);
-            editedMessageDao.delete(mergeDialogId);
-        }
+            // Delete messages and their edit history from database
+            deletedMessageDao.delete(dialogId);
+            editedMessageDao.delete(dialogId);
 
-        // Clean up media files
-        for (DeletedMessageFull msg : messages) {
-            safeUnlinkAttachment(msg.message.mediaPath);
-        }
+            if (mergeDialogId != 0) {
+                deletedMessageDao.delete(mergeDialogId);
+                editedMessageDao.delete(mergeDialogId);
+            }
 
-        if (callback != null) {
-            callback.run();
+            // Clean up media files, one reference check per distinct path rather than per row
+            LinkedHashSet<String> paths = new LinkedHashSet<>();
+            for (DeletedMessageFull msg : messages) {
+                if (msg.message != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
+                    paths.add(msg.message.mediaPath);
+                }
+            }
+            for (String path : paths) {
+                safeUnlinkAttachment(path);
+            }
         }
     }
 

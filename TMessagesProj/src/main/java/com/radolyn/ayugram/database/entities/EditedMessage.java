@@ -17,7 +17,9 @@ import androidx.room.PrimaryKey;
         indices = {
                 @Index(value = {"userId", "dialogId", "messageId", "entityCreateDate"}),
                 @Index(value = {"userId", "entityCreateDate"}),
-                @Index(value = {"dialogId", "messageId"})
+                @Index(value = {"dialogId", "messageId"}),
+                @Index(value = {"mediaPath"}),
+                @Index(value = {"hqThumbPath"})
         }
 )
 public class EditedMessage extends AyuMessageBase {

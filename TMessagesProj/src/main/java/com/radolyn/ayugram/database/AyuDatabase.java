@@ -28,7 +28,7 @@ import com.radolyn.ayugram.database.entities.LastSeenEntity;
 }, version = AyuDatabase.VERSION)
 public abstract class AyuDatabase extends RoomDatabase {
     public static final int MIN_SUPPORTED_VERSION = 21;
-    public static final int VERSION = 27;
+    public static final int VERSION = 28;
 
     public abstract EditedMessageDao editedMessageDao();
 

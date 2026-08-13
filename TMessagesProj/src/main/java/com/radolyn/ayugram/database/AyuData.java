@@ -116,6 +116,16 @@ public class AyuData {
         }
     };
 
+    private static final Migration MIGRATION_27_28 = new Migration(27, 28) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_DeletedMessage_mediaPath ON DeletedMessage (mediaPath)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_DeletedMessage_hqThumbPath ON DeletedMessage (hqThumbPath)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_EditedMessage_mediaPath ON EditedMessage (mediaPath)");
+            database.execSQL("CREATE INDEX IF NOT EXISTS index_EditedMessage_hqThumbPath ON EditedMessage (hqThumbPath)");
+        }
+    };
+
     static {
         create();
     }
@@ -132,7 +142,7 @@ public class AyuData {
         return Room.databaseBuilder(ApplicationLoader.applicationContext, AyuDatabase.class, name)
                 .allowMainThreadQueries()
                 .fallbackToDestructiveMigrationOnDowngrade()
-                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
+                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28)
                 .build();
     }
 

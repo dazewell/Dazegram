@@ -19,7 +19,9 @@ import androidx.room.PrimaryKey;
                 @Index(value = {"userId", "dialogId", "topicId", "messageId"}),
                 @Index(value = {"userId", "dialogId", "replyMessageId", "messageId"}),
                 @Index(value = {"userId", "dialogId", "groupedId", "messageId"}),
-                @Index(value = {"dialogId"})
+                @Index(value = {"dialogId"}),
+                @Index(value = {"mediaPath"}),
+                @Index(value = {"hqThumbPath"})
         }
 )
 public class DeletedMessage extends AyuMessageBase {
