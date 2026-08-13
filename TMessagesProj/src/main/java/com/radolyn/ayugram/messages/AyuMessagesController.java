@@ -425,7 +425,12 @@ public class AyuMessagesController {
                 "isPathReferenced#edited",
                 () -> editedMessageDao.isPathReferenced(path)
         );
-        return Boolean.TRUE.equals(inDeleted) || Boolean.TRUE.equals(inEdited);
+        // Fail closed: a failed lookup reads as "still referenced", never as "safe to unlink".
+        // Treating a null (query error) as unreferenced would delete a file another row needs.
+        if (inDeleted == null || inEdited == null) {
+            return true;
+        }
+        return inDeleted || inEdited;
     }
 
     public void delete(long userId, long dialogId, int messageId) {
