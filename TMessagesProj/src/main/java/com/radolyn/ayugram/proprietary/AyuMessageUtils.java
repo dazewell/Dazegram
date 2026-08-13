@@ -533,12 +533,21 @@ public abstract class AyuMessageUtils {
                 File finalFile = new File("/");
                 try {
                     if (copyFileToAttachments) {
-                        String existing = out.mediaId != 0
-                                ? AyuMessagesController.getInstance().findExistingAttachmentPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId)
-                                : null;
-                        if (existing != null) {
+                        File reuse = null;
+                        if (out.mediaId != 0) {
+                            String existing = AyuMessagesController.getInstance().findExistingAttachmentPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
+                            if (existing != null) {
+                                File ef = new File(existing);
+                                // re-check at point of use: a concurrent delete may have unlinked it since the lookup
+                                if (ef.exists() && ef.length() > 0) {
+                                    reuse = ef;
+                                }
+                            }
+                        }
+                        if (reuse != null) {
                             // we already hold this exact media from an earlier revision or the delete path, reuse it instead of copying again
-                            finalFile = new File(existing);
+                            finalFile = reuse;
+                            out.hqThumbPath = AyuMessagesController.getInstance().findExistingThumbPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
                         } else {
                             finalFile = processAttachment(prefs, deleteSource);
                             TLRPC.MessageMedia m = MessageObject.getMedia(prefs.getMessage());

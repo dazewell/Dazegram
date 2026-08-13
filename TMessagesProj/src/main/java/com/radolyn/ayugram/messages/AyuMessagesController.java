@@ -325,7 +325,6 @@ public class AyuMessagesController {
         if (mediaId == 0) {
             return null;
         }
-        String attachmentsPrefix = attachmentsPath.getAbsolutePath();
         List<String> candidates = new ArrayList<>();
         List<String> deleted = withDaoRetry(
                 "findExistingAttachmentPath#deleted",
@@ -346,11 +345,50 @@ public class AyuMessagesController {
                 continue;
             }
             File f = new File(path);
-            if (f.getAbsolutePath().startsWith(attachmentsPrefix) && f.exists() && f.length() > 0) {
+            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
                 return path;
             }
         }
         return null;
+    }
+
+    public String findExistingThumbPath(long userId, long dialogId, int messageId, long mediaId) {
+        if (mediaId == 0) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        List<String> deleted = withDaoRetry(
+                "findExistingThumbPath#deleted",
+                () -> deletedMessageDao.getAttachmentThumbPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (deleted != null) {
+            candidates.addAll(deleted);
+        }
+        List<String> edited = withDaoRetry(
+                "findExistingThumbPath#edited",
+                () -> editedMessageDao.getAttachmentThumbPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (edited != null) {
+            candidates.addAll(edited);
+        }
+        for (String path : candidates) {
+            if (TextUtils.isEmpty(path)) {
+                continue;
+            }
+            File f = new File(path);
+            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    // startsWith on the bare path would also match a sibling like "Saved Attachments_old",
+    // so anchor on an exact match or the folder plus a separator.
+    private boolean isUnderAttachments(File f) {
+        String prefix = attachmentsPath.getAbsolutePath();
+        String p = f.getAbsolutePath();
+        return p.equals(prefix) || p.startsWith(prefix + File.separator);
     }
 
     // Unlink a saved-media file only if it is one we own (under attachmentsPath) and no
@@ -363,7 +401,7 @@ public class AyuMessagesController {
             return;
         }
         File f = new File(path);
-        if (!f.getAbsolutePath().startsWith(attachmentsPath.getAbsolutePath())) {
+        if (!isUnderAttachments(f)) {
             return;
         }
         if (isPathReferenced(path)) {

@@ -45,6 +45,9 @@ public interface EditedMessageDao {
     @Query("SELECT mediaPath FROM editedmessage WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND mediaId = :mediaId AND mediaPath IS NOT NULL AND mediaPath != ''")
     List<String> getAttachmentMediaPaths(long userId, long dialogId, int messageId, long mediaId);
 
+    @Query("SELECT hqThumbPath FROM editedmessage WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND mediaId = :mediaId AND hqThumbPath IS NOT NULL AND hqThumbPath != ''")
+    List<String> getAttachmentThumbPaths(long userId, long dialogId, int messageId, long mediaId);
+
     @Query("SELECT EXISTS(SELECT 1 FROM editedmessage WHERE mediaPath = :path OR hqThumbPath = :path)")
     boolean isPathReferenced(String path);
 
