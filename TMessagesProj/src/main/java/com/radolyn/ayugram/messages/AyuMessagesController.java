@@ -382,25 +382,19 @@ public class AyuMessagesController {
     // remaining row still points at it. mediaPath can be a path straight into Telegram's
     // own cache (copyFileToAttachments off), and dedup / revision backfill deliberately
     // share one file across rows, so blindly deleting would take out the user's own media
-    // or a file another row still needs.
-    private void safeUnlinkAttachment(String path) {
+    // or a file another row still needs. The unlink itself lives in the owner, which re-checks
+    // canonical containment before touching the file. Called only inside a commit body.
+    private void safeUnlinkAttachment(AyuAttachments.Tx tx, String path) {
         if (TextUtils.isEmpty(path)) {
             return;
         }
-        File f = new File(path);
-        if (!AyuAttachments.isUnder(f)) {
+        if (!AyuAttachments.isUnder(new File(path))) {
             return;
         }
         if (isPathReferenced(path)) {
             return;
         }
-        try {
-            if (f.exists() && !f.delete()) {
-                f.deleteOnExit();
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
+        tx.deleteContained(path);
     }
 
     private boolean isPathReferenced(String path) {
@@ -429,8 +423,8 @@ public class AyuMessagesController {
 
             deletedMessageDao.delete(userId, dialogId, messageId);
 
-            safeUnlinkAttachment(msg.message.mediaPath);
-            safeUnlinkAttachment(msg.message.hqThumbPath);
+            safeUnlinkAttachment(tx, msg.message.mediaPath);
+            safeUnlinkAttachment(tx, msg.message.hqThumbPath);
         });
     }
 
@@ -457,7 +451,7 @@ public class AyuMessagesController {
             editedMessageDao.deleteByDialogIdAndMessageIds(dialogId, messageIds);
 
             for (String mediaPath : mediaPaths) {
-                safeUnlinkAttachment(mediaPath);
+                safeUnlinkAttachment(tx, mediaPath);
             }
         });
     }
@@ -470,8 +464,8 @@ public class AyuMessagesController {
             if (deleted == 0) {
                 return;
             }
-            safeUnlinkAttachment(mediaPath);
-            safeUnlinkAttachment(thumbPath);
+            safeUnlinkAttachment(tx, mediaPath);
+            safeUnlinkAttachment(tx, thumbPath);
         });
     }
 
@@ -533,7 +527,7 @@ public class AyuMessagesController {
                 }
             }
             for (String path : paths) {
-                safeUnlinkAttachment(path);
+                safeUnlinkAttachment(tx, path);
             }
         });
     }

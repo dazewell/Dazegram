@@ -20,6 +20,7 @@ import org.telegram.messenger.Utilities;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 
 import tw.nekomimi.nekogram.utils.AndroidUtil;
@@ -107,6 +108,17 @@ public abstract class AyuAttachments {
                 discardTemp(token.temp);
             }
         }
+
+        // Unlink a stored attachment path, but only when it canonically resolves to a direct child of
+        // our folder. A raw Telegram cache path, or a poisoned "../" traversal, is rejected and left
+        // alone. The unlink lives here so no caller ever deletes a stored path itself.
+        public void deleteContained(String path) {
+            if (!Thread.holdsLock(LOCK)) {
+                FileLog.e("AyuAttachments.Tx.deleteContained called off-lock");
+                return;
+            }
+            deleteContainedLocked(path);
+        }
     }
 
     private static final Tx TX = new Tx();
@@ -170,7 +182,8 @@ public abstract class AyuAttachments {
     }
 
     // Band R: is this file one of ours. Anchored on an exact match or the folder plus a
-    // separator, so a sibling like "Saved Attachments_old" doesn't match.
+    // separator, so a sibling like "Saved Attachments_old" doesn't match. Cheap, lexical, and only
+    // a filter: the destructive unlink re-checks canonically through Tx.deleteContained.
     public static boolean isUnder(File f) {
         if (f == null) {
             return false;
@@ -178,6 +191,25 @@ public abstract class AyuAttachments {
         String prefix = DIR.getAbsolutePath();
         String p = f.getAbsolutePath();
         return p.equals(prefix) || p.startsWith(prefix + File.separator);
+    }
+
+    // Band R: fail-closed canonical containment. True only when f canonically resolves to a direct
+    // child of the canonical folder, so a "Saved Attachments/../victim" traversal or a symlink that
+    // escapes the folder resolves away and is rejected. getAbsolutePath() does not collapse "..",
+    // which is why the startsWith test in isUnder can't gate a delete. On any canonicalisation error
+    // we return false rather than risk deleting outside the folder.
+    private static boolean isContainedChild(File f) {
+        if (f == null) {
+            return false;
+        }
+        try {
+            File canonicalDir = DIR.getCanonicalFile();
+            File parent = f.getCanonicalFile().getParentFile();
+            return parent != null && parent.equals(canonicalDir);
+        } catch (IOException e) {
+            FileLog.e("AyuAttachments.isContainedChild", e);
+            return false;
+        }
     }
 
     // Band R: does this stored path already point at one of our saved files rather than a raw
@@ -302,6 +334,25 @@ public abstract class AyuAttachments {
     private static void discardTemp(File temp) {
         if (temp != null && temp.exists() && !temp.delete()) {
             temp.deleteOnExit();
+        }
+    }
+
+    // Band W: the canonical-containment-checked unlink behind Tx.deleteContained, monitor already
+    // held. Fails closed on anything that doesn't resolve to a direct child of our folder.
+    private static void deleteContainedLocked(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return;
+        }
+        File f = new File(path);
+        if (!isContainedChild(f)) {
+            return;
+        }
+        try {
+            if (f.exists() && !f.delete()) {
+                f.deleteOnExit();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
         }
     }
 
