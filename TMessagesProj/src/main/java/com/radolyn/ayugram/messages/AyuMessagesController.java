@@ -31,6 +31,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -483,18 +484,25 @@ public class AyuMessagesController {
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
         // Clearing a whole chat's history walks two growing tables and unlinks their files. That
         // is off-main-thread work; the button that calls this runs it on the UI thread, so move
-        // it here rather than touching the caller. By the time the scan finishes the chat may be
-        // gone, and the completion callback finishes the current fragment and buzzes it, so only
-        // run it while a fragment with a live view is still on screen.
+        // it here rather than touching the caller. Capture the originating fragment now, on the UI
+        // thread, as a weak identity token: the completion callback finishes the current fragment
+        // and buzzes it, so only run it if the very same fragment is still the one on screen with
+        // a live, attached view. The reference is weak so holding the token can't keep a closed
+        // screen alive; the Runnable stays strongly referenced because the lambda is its only
+        // owner and it would otherwise be collectable before it runs.
+        WeakReference<BaseFragment> origin = new WeakReference<>(LaunchActivity.getLastFragment());
         Utilities.globalQueue.postRunnable(() -> {
             deleteCurrentInner(dialogId, mergeDialogId);
             if (callback != null) {
                 AndroidUtilities.runOnUIThread(() -> {
-                    BaseFragment last = LaunchActivity.getLastFragment();
-                    if (last == null || last.getFragmentView() == null) {
-                        return;
+                    BaseFragment f = origin.get();
+                    if (f != null
+                            && f == LaunchActivity.getLastFragment()
+                            && !f.isRemovingFromStack()
+                            && f.getFragmentView() != null
+                            && f.getFragmentView().isAttachedToWindow()) {
+                        callback.run();
                     }
-                    callback.run();
                 });
             }
         });
