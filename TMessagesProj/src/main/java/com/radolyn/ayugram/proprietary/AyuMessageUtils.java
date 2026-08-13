@@ -454,10 +454,6 @@ public abstract class AyuMessageUtils {
         }
     }
 
-    public static void mapMedia(AyuSavePreferences prefs, AyuMessageBase out, boolean copyFileToAttachments) {
-        mapMedia(prefs, out, copyFileToAttachments, false);
-    }
-
     public static long getMediaIdentity(TLRPC.Message message) {
         if (message == null || message.media == null) {
             return 0;
@@ -475,145 +471,220 @@ public abstract class AyuMessageUtils {
         return 0;
     }
 
-    public static void mapMedia(AyuSavePreferences prefs, AyuMessageBase out, boolean copyFileToAttachments, boolean deleteSource) {
-        File processedAttachment;
+    // Carrier from stageMedia (Band L, no lock) to finalizeMedia (Band W, under the monitor). Holds
+    // the temp files already written into the attachments dir and the names they should take once
+    // the row is recorded. Nothing here is placed at its final name yet.
+    public static class StagedFile {
+        final File temp;
+        final String finalName;
+
+        StagedFile(File temp, String finalName) {
+            this.temp = temp;
+            this.finalName = finalName;
+        }
+    }
+
+    public static class StagedMedia {
+        final boolean processFiles;
+        final boolean copyToAttachments;
+        final StagedFile main;
+        final String directPath;
+        final StagedFile thumb;
+
+        StagedMedia(boolean processFiles, boolean copyToAttachments, StagedFile main, String directPath, StagedFile thumb) {
+            this.processFiles = processFiles;
+            this.copyToAttachments = copyToAttachments;
+            this.main = main;
+            this.directPath = directPath;
+            this.thumb = thumb;
+        }
+    }
+
+    // Band L: classify the media, fill the row's metadata, and — for file media we're copying —
+    // stage the bytes into temp files in the attachments dir holding NO lock. The temps aren't at
+    // their final names yet; finalizeMedia places them under the monitor. Safe from any thread.
+    public static StagedMedia stageMedia(AyuSavePreferences prefs, AyuMessageBase out, boolean copyFileToAttachments, boolean deleteSource) {
         TLRPC.Message message = prefs.getMessage();
-        if (shouldSaveMedia(prefs)) {
-            TLRPC.MessageMedia media = message.media;
-            out.mediaId = getMediaIdentity(message);
-            if (media == null) {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_NONE;
-            } else if ((media instanceof TLRPC.TL_messageMediaPhoto) && media.photo != null) {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_PHOTO;
-            } else if (media instanceof TLRPC.TL_messageMediaStory) {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_STORY;
-            } else if ((media instanceof TLRPC.TL_messageMediaDocument) && media.document != null && (MessageObject.isStickerMessage(message) || (media.document.mime_type != null && media.document.mime_type.equals("application/x-tgsticker")))) {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_STICKER;
-                out.mimeType = message.media.document.mime_type;
-                NativeByteBuffer data = null;
-                try {
-                    data = new NativeByteBuffer(message.media.getObjectSize());
-                    message.media.serializeToStream(data);
-                    data.buffer.rewind();
-                    byte[] serialized = new byte[data.buffer.remaining()];
-                    data.buffer.get(serialized);
-                    out.documentSerialized = serialized;
-                } catch (Exception e) {
-                    FileLog.e("fake news sticker", e);
-                } finally {
-                    if (data != null) {
-                        data.reuse();
+        if (!shouldSaveMedia(prefs)) {
+            return new StagedMedia(false, copyFileToAttachments, null, null, null);
+        }
+        TLRPC.MessageMedia media = message.media;
+        out.mediaId = getMediaIdentity(message);
+        if (media == null) {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_NONE;
+        } else if ((media instanceof TLRPC.TL_messageMediaPhoto) && media.photo != null) {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_PHOTO;
+        } else if (media instanceof TLRPC.TL_messageMediaStory) {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_STORY;
+        } else if ((media instanceof TLRPC.TL_messageMediaDocument) && media.document != null && (MessageObject.isStickerMessage(message) || (media.document.mime_type != null && media.document.mime_type.equals("application/x-tgsticker")))) {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_STICKER;
+            out.mimeType = message.media.document.mime_type;
+            NativeByteBuffer data = null;
+            try {
+                data = new NativeByteBuffer(message.media.getObjectSize());
+                message.media.serializeToStream(data);
+                data.buffer.rewind();
+                byte[] serialized = new byte[data.buffer.remaining()];
+                data.buffer.get(serialized);
+                out.documentSerialized = serialized;
+            } catch (Exception e) {
+                FileLog.e("fake news sticker", e);
+            } finally {
+                if (data != null) {
+                    data.reuse();
+                }
+            }
+        } else if (media instanceof TLRPC.TL_messageMediaWebPage && media.webpage != null) {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_WEBPAGE;
+            NativeByteBuffer data = null;
+            try {
+                data = new NativeByteBuffer(message.media.getObjectSize());
+                message.media.serializeToStream(data);
+                data.buffer.rewind();
+                byte[] serialized = new byte[data.buffer.remaining()];
+                data.buffer.get(serialized);
+                out.documentSerialized = serialized;
+                if (BuildVars.LOGS_ENABLED) {
+                    Log.d(TAG, "Saved webpage media for message " + message.id);
+                }
+            } catch (Exception e) {
+                FileLog.e("Failed to serialize webpage media", e);
+            } finally {
+                if (data != null) {
+                    data.reuse();
+                }
+            }
+            return new StagedMedia(false, copyFileToAttachments, null, null, null); // webPage doesn't need file processing
+        } else {
+            out.documentType = AyuConstants.DOCUMENT_TYPE_FILE;
+        }
+        int docType = out.documentType;
+        if (docType == AyuConstants.DOCUMENT_TYPE_PHOTO || docType == AyuConstants.DOCUMENT_TYPE_FILE || docType == AyuConstants.DOCUMENT_TYPE_STORY) {
+            StagedFile main = null;
+            String directPath = null;
+            StagedFile thumb = null;
+            try {
+                if (copyFileToAttachments) {
+                    main = stageAttachment(prefs, deleteSource);
+                    TLRPC.MessageMedia m = MessageObject.getMedia(prefs.getMessage());
+                    if (m != null && MessageObject.isVideoDocument(m.document)) {
+                        Iterator<TLRPC.PhotoSize> it = m.document.thumbs.iterator();
+                        while (it.hasNext()) {
+                            TLRPC.PhotoSize next = it.next();
+                            if (next instanceof TLRPC.TL_photoSize) {
+                                StagedFile st = stageAttachment(prefs.getAccountId(), next, deleteSource);
+                                if (st != null) {
+                                    thumb = st;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    directPath = FileLoader.getInstance(prefs.getAccountId()).getPathToMessage(prefs.getMessage()).getAbsolutePath();
+                }
+                TLRPC.Document doc = message.media.document;
+                if (doc != null) {
+                    out.documentAttributesSerialized = serializeMultiple(doc.attributes);
+                    out.thumbsSerialized = serializeMultiple(doc.thumbs);
+                    out.mimeType = doc.mime_type;
+                }
+            } catch (Exception e) {
+                FileLog.e("failed to stage media", e);
+            }
+            return new StagedMedia(true, copyFileToAttachments, main, directPath, thumb);
+        }
+        return new StagedMedia(false, copyFileToAttachments, null, null, null);
+    }
+
+    // Band W: called by the controller while holding AyuAttachments.LOCK, immediately before the
+    // row insert, so the reuse lookup and the insert are one critical section a concurrent delete
+    // can't split. NOT a standalone API — its correctness depends on the caller's monitor and on
+    // the insert that follows it; that is why the controller owns this sequence. Only cheap file
+    // predicates, same-directory renames and Room statements happen here; the bytes were already
+    // copied in stageMedia.
+    public static void finalizeMedia(AyuSavePreferences prefs, AyuMessageBase out, StagedMedia staged) {
+        if (staged == null || !staged.processFiles) {
+            return;
+        }
+        TLRPC.Message message = prefs.getMessage();
+        File finalFile = new File("/");
+        if (staged.copyToAttachments) {
+            File reuse = null;
+            if (out.mediaId != 0) {
+                String existing = AyuMessagesController.getInstance().findExistingAttachmentPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
+                if (existing != null) {
+                    File ef = new File(existing);
+                    // re-check at point of use: a concurrent delete may have unlinked it since the lookup
+                    if (ef.exists() && ef.length() > 0) {
+                        reuse = ef;
                     }
                 }
-            } else if (media instanceof TLRPC.TL_messageMediaWebPage && media.webpage != null) {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_WEBPAGE;
-                NativeByteBuffer data = null;
-                try {
-                    data = new NativeByteBuffer(message.media.getObjectSize());
+            }
+            if (reuse != null) {
+                // we already hold this exact media from an earlier revision or the delete path; reuse
+                // it and drop the temps we speculatively staged rather than copying again
+                if (staged.main != null) {
+                    AyuAttachments.discard(staged.main.temp);
+                }
+                if (staged.thumb != null) {
+                    AyuAttachments.discard(staged.thumb.temp);
+                }
+                finalFile = reuse;
+                out.hqThumbPath = AyuMessagesController.getInstance().findExistingThumbPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
+            } else {
+                if (staged.main != null) {
+                    File placed = AyuAttachments.promote(staged.main.temp, staged.main.finalName);
+                    if (placed != null) {
+                        finalFile = placed;
+                    }
+                }
+                if (staged.thumb != null) {
+                    File placedThumb = AyuAttachments.promote(staged.thumb.temp, staged.thumb.finalName);
+                    if (placedThumb != null && placedThumb.exists()) {
+                        out.hqThumbPath = placedThumb.getAbsolutePath();
+                    }
+                }
+            }
+        } else if (staged.directPath != null) {
+            finalFile = new File(staged.directPath);
+        }
+        String absolutePath = finalFile.getAbsolutePath();
+        if (absolutePath.equals("/")) {
+            absolutePath = null;
+        }
+        out.mediaPath = absolutePath;
+
+        // Serialize media object to preserve metadata even if file doesn't exist
+        // This allows showing file info, thumbnails, and attributes even without the actual file
+        if ((out.mediaPath == null || out.documentType == AyuConstants.DOCUMENT_TYPE_STORY) && message.media != null) {
+            NativeByteBuffer data = null;
+            try {
+                int size = message.media.getObjectSize();
+                if (size > 0) {
+                    data = new NativeByteBuffer(size);
                     message.media.serializeToStream(data);
-                    data.buffer.rewind();
+                    data.rewind();
                     byte[] serialized = new byte[data.buffer.remaining()];
                     data.buffer.get(serialized);
                     out.documentSerialized = serialized;
                     if (BuildVars.LOGS_ENABLED) {
-                        Log.d(TAG, "Saved webpage media for message " + message.id);
-                    }
-                } catch (Exception e) {
-                    FileLog.e("Failed to serialize webpage media", e);
-                } finally {
-                    if (data != null) {
-                        data.reuse();
+                        Log.d(TAG, "Media file not found, saved metadata for message " + message.id);
                     }
                 }
-                return; // webPage doesn't need file processing
-            } else {
-                out.documentType = AyuConstants.DOCUMENT_TYPE_FILE;
-            }
-            int docType = out.documentType;
-            if (docType == AyuConstants.DOCUMENT_TYPE_PHOTO || docType == AyuConstants.DOCUMENT_TYPE_FILE || docType == AyuConstants.DOCUMENT_TYPE_STORY) {
-                File finalFile = new File("/");
-                try {
-                    if (copyFileToAttachments) {
-                        File reuse = null;
-                        if (out.mediaId != 0) {
-                            String existing = AyuMessagesController.getInstance().findExistingAttachmentPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
-                            if (existing != null) {
-                                File ef = new File(existing);
-                                // re-check at point of use: a concurrent delete may have unlinked it since the lookup
-                                if (ef.exists() && ef.length() > 0) {
-                                    reuse = ef;
-                                }
-                            }
-                        }
-                        if (reuse != null) {
-                            // we already hold this exact media from an earlier revision or the delete path, reuse it instead of copying again
-                            finalFile = reuse;
-                            out.hqThumbPath = AyuMessagesController.getInstance().findExistingThumbPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
-                        } else {
-                            finalFile = processAttachment(prefs, deleteSource);
-                            TLRPC.MessageMedia m = MessageObject.getMedia(prefs.getMessage());
-                            if (m != null && MessageObject.isVideoDocument(m.document)) {
-                                Iterator<TLRPC.PhotoSize> it = m.document.thumbs.iterator();
-                                while (true) {
-                                    if (!it.hasNext()) {
-                                        break;
-                                    }
-                                    TLRPC.PhotoSize next = it.next();
-                                    if ((next instanceof TLRPC.TL_photoSize) && (processedAttachment = processAttachment(prefs.getAccountId(), next, deleteSource)) != null && !processedAttachment.getAbsolutePath().equals("/")) {
-                                        out.hqThumbPath = processedAttachment.getAbsolutePath();
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        finalFile = FileLoader.getInstance(prefs.getAccountId()).getPathToMessage(prefs.getMessage());
-                    }
-                    TLRPC.Document doc = message.media.document;
-                    if (doc != null) {
-                        out.documentAttributesSerialized = serializeMultiple(doc.attributes);
-                        out.thumbsSerialized = serializeMultiple(doc.thumbs);
-                        out.mimeType = doc.mime_type;
-                    }
-                } catch (Exception e) {
-                    FileLog.e("failed to save media", e);
-                }
-                String absolutePath = finalFile.getAbsolutePath();
-                if (absolutePath.equals("/")) {
-                    absolutePath = null;
-                }
-                out.mediaPath = absolutePath;
-
-                // Serialize media object to preserve metadata even if file doesn't exist
-                // This allows showing file info, thumbnails, and attributes even without the actual file
-                if ((out.mediaPath == null || docType == AyuConstants.DOCUMENT_TYPE_STORY) && message.media != null) {
-                    NativeByteBuffer data = null;
-                    try {
-                        int size = message.media.getObjectSize();
-                        if (size > 0) {
-                            data = new NativeByteBuffer(size);
-                            message.media.serializeToStream(data);
-                            data.rewind();
-                            byte[] serialized = new byte[data.buffer.remaining()];
-                            data.buffer.get(serialized);
-                            out.documentSerialized = serialized;
-                            if (BuildVars.LOGS_ENABLED) {
-                                Log.d(TAG, "Media file not found, saved metadata for message " + message.id);
-                            }
-                        }
-                    } catch (Exception e) {
-                        FileLog.e("Failed to serialize media metadata", e);
-                    } finally {
-                        if (data != null) {
-                            data.reuse();
-                        }
-                    }
+            } catch (Exception e) {
+                FileLog.e("Failed to serialize media metadata", e);
+            } finally {
+                if (data != null) {
+                    data.reuse();
                 }
             }
         }
     }
 
-    private static File processAttachment(int accountId, TLObject object, boolean deleteSource) {
+    // Band L: resolve a TL object to its cache path and stage a temp copy holding no lock. Returns
+    // the temp plus the name it should take, or null if the source couldn't be staged.
+    private static StagedFile stageAttachment(int accountId, TLObject object, boolean deleteSource) {
         File pathToAttach = FileLoader.getInstance(accountId).getPathToAttach(object);
         if (!pathToAttach.exists()) {
             File pathToAttach2 = FileLoader.getInstance(accountId).getPathToAttach(object, true);
@@ -621,18 +692,18 @@ public abstract class AyuMessageUtils {
                 pathToAttach = pathToAttach2;
             }
         }
-        return processAttachment(pathToAttach, AyuAttachments.resolve(AyuUtils.getFilename(object, pathToAttach)), deleteSource);
+        return stageAttachment(pathToAttach, AyuUtils.getFilename(object, pathToAttach), deleteSource);
     }
 
-    private static File processAttachment(AyuSavePreferences prefs, boolean deleteSource) {
+    private static StagedFile stageAttachment(AyuSavePreferences prefs, boolean deleteSource) {
         TLRPC.Message message = prefs.getMessage();
-        if (message == null) return new File("/");
+        if (message == null) return null;
         if (message.media instanceof TLRPC.TL_messageMediaStory story && story.storyItem != null && story.storyItem.media != null) {
             TLRPC.MessageMedia storyMedia = story.storyItem.media;
             if (storyMedia.document != null) {
-                return processAttachment(prefs.getAccountId(), storyMedia.document, deleteSource);
+                return stageAttachment(prefs.getAccountId(), storyMedia.document, deleteSource);
             } else if (storyMedia.photo != null) {
-                return processAttachment(prefs.getAccountId(), storyMedia.photo, deleteSource);
+                return stageAttachment(prefs.getAccountId(), storyMedia.photo, deleteSource);
             }
         }
         File pathToMessage = FileLoader.getInstance(prefs.getAccountId()).getPathToMessage(message);
@@ -641,20 +712,26 @@ public abstract class AyuMessageUtils {
         }
         if (pathToMessage.exists() || message.media.document == null) {
             if (pathToMessage.exists() || message.media.photo == null) {
-                return processAttachment(pathToMessage, AyuAttachments.resolve(AyuUtils.getFilename(message, pathToMessage)), deleteSource);
+                return stageAttachment(pathToMessage, AyuUtils.getFilename(message, pathToMessage), deleteSource);
             }
-            return processAttachment(prefs.getAccountId(), message.media.photo, deleteSource);
+            return stageAttachment(prefs.getAccountId(), message.media.photo, deleteSource);
         }
-        return processAttachment(prefs.getAccountId(), message.media.document, deleteSource);
+        return stageAttachment(prefs.getAccountId(), message.media.document, deleteSource);
     }
 
-    private static File processAttachment(File source, File target, boolean deleteSource) {
+    // Band L core: copy (or, on the force/TTL path, move) an existing source into a temp, or decrypt
+    // an encrypted cache file into a temp. Holds no lock. The temp is placed at finalName later by
+    // finalizeMedia via AyuAttachments.promote.
+    private static StagedFile stageAttachment(File source, String finalName, boolean deleteSource) {
         if (source.exists()) {
-            boolean success = AyuUtils.moveOrCopyFile(source, target, deleteSource);
-            if (!success && BuildVars.LOGS_ENABLED) {
-                Log.e(TAG, "Failed to move/copy media file from " + source.getAbsolutePath() + " to " + target.getAbsolutePath());
+            File temp = AyuAttachments.stage(source, deleteSource);
+            if (temp == null) {
+                if (BuildVars.LOGS_ENABLED) {
+                    Log.e(TAG, "Failed to stage media file from " + source.getAbsolutePath());
+                }
+                return null;
             }
-            return success ? new File(target.getAbsolutePath()) : new File("/");
+            return new StagedFile(temp, finalName);
         }
 
         File directory = FileLoader.getDirectory(4);
@@ -666,19 +743,21 @@ public abstract class AyuMessageUtils {
                 Log.d(TAG, "Found encrypted file, checking for key: " + keyFile.getAbsolutePath() + " exists=" + keyFile.exists());
             }
             if (keyFile.exists()) {
-                try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(target)) {
+                File temp = AyuAttachments.newTemp();
+                try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(temp)) {
                     byte[] buffer = new byte[4 * 1024];
                     int read;
                     while ((read = inputStream.read(buffer)) != -1) {
                         outputStream.write(buffer, 0, read);
                     }
                     if (BuildVars.LOGS_ENABLED) {
-                        Log.d(TAG, "Successfully decrypted and saved media to " + target.getAbsolutePath());
+                        Log.d(TAG, "Successfully decrypted and staged media for " + finalName);
                     }
-                    return target;
+                    return new StagedFile(temp, finalName);
                 } catch (Exception e) {
                     FileLog.e("encrypted media copy failed", e);
-                    return new File("/");
+                    AyuAttachments.discard(temp);
+                    return null;
                 }
             }
         }
@@ -686,7 +765,7 @@ public abstract class AyuMessageUtils {
         if (BuildVars.LOGS_ENABLED) {
             Log.d(TAG, "Media file not found at " + source.getAbsolutePath() + ", will save metadata only");
         }
-        return new File("/");
+        return null;
     }
 
     public static byte[] serializeMultiple(ArrayList<? extends TLObject> arrayList) {
@@ -777,7 +856,6 @@ public abstract class AyuMessageUtils {
         if (!NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) {
             return null;
         }
-        AyuAttachments.ensureDir();
         if (TextUtils.isEmpty(fileName)) {
             if (encryptedFile == null || !encryptedFile.exists()) {
                 return null;
@@ -790,13 +868,13 @@ public abstract class AyuMessageUtils {
         long dialogId = messageObject != null ? messageObject.getDialogId() : 0;
         int messageId = messageObject != null ? messageObject.getId() : 0;
         String outputFileName = "ttl_" + dialogId + "_" + messageId + "_" + fileName;
-        File outputFile = AyuAttachments.resolve(outputFileName);
-        // check if already exists
-        if (outputFile.exists() && outputFile.length() > 0) {
+        // Band R: if we already decrypted this file, hand it back without the lock or the disk
+        File existing = AyuAttachments.resolveExisting(outputFileName);
+        if (existing != null) {
             if (BuildVars.LOGS_ENABLED) {
-                Log.d(TAG, "Decrypted file already exists: " + outputFile.getAbsolutePath());
+                Log.d(TAG, "Decrypted file already exists: " + existing.getAbsolutePath());
             }
-            return outputFile;
+            return existing;
         }
         if (messageObject != null) {
             long userId = UserConfig.getInstance(messageObject.currentAccount).getClientUserId();
@@ -811,7 +889,6 @@ public abstract class AyuMessageUtils {
                 }
             }
         }
-        // decrypt and save
         File keyFile = new File(FileLoader.getInternalCacheDir(), encryptedFile.getName() + ".key");
         if (!keyFile.exists()) {
             if (BuildVars.LOGS_ENABLED) {
@@ -819,23 +896,25 @@ public abstract class AyuMessageUtils {
             }
             return null;
         }
-        try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+        // Band L: decrypt into a temp in the attachments dir holding no lock
+        File temp = AyuAttachments.newTemp();
+        try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(temp)) {
             byte[] readBuffer = new byte[8 * 1024];
             int bytesRead;
             while ((bytesRead = inputStream.read(readBuffer)) != -1) {
                 outputStream.write(readBuffer, 0, bytesRead);
             }
-            if (BuildVars.LOGS_ENABLED) {
-                Log.d(TAG, "Successfully decrypted and saved media to: " + outputFile.getAbsolutePath());
-            }
-            return outputFile;
         } catch (Exception e) {
             FileLog.e("Failed to decrypt and save media", e);
-            if (outputFile.exists() && !outputFile.delete()) {
-                outputFile.deleteOnExit();
-            }
+            AyuAttachments.discard(temp);
             return null;
         }
+        // Band W: place it. If another caller decrypted the same file first, keep theirs and drop ours
+        File placed = AyuAttachments.promote(temp, outputFileName);
+        if (placed != null && BuildVars.LOGS_ENABLED) {
+            Log.d(TAG, "Successfully decrypted and saved media to: " + placed.getAbsolutePath());
+        }
+        return placed;
     }
 
     public static File findExistingFileByBaseNameFast(String baseName) {
@@ -866,17 +945,20 @@ public abstract class AyuMessageUtils {
             return null;
         }
         String filename = downloadedFile.getName();
-        File outputFile = AyuAttachments.resolve(filename);
-        if (outputFile.exists()) {
-            return outputFile;
+        // Band R: already saved?
+        File existing = AyuAttachments.resolveExisting(filename);
+        if (existing != null) {
+            return existing;
         }
         if (!downloadedFile.exists()) {
-            if (outputFile.exists()) {
-                return outputFile;
-            }
             return null;
         }
-        return AyuMessagesController.getInstance().copyDownloadedIntoAttachments(downloadedFile, outputFile);
+        // Band L: copy into a temp holding no lock; Band W places it (copy-not-move, source stays)
+        File staged = AyuAttachments.stage(downloadedFile, false);
+        if (staged == null) {
+            return null;
+        }
+        return AyuAttachments.promote(staged, filename);
     }
 
     private static String ensureAttachmentAndUpdateMediaPath(AyuMessageBase base, TLRPC.Message message, int accountId) {

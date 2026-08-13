@@ -49,7 +49,6 @@ public class AyuMessagesController {
     private DeletedMessageDao deletedMessageDao;
 
     private AyuMessagesController() {
-        AyuAttachments.ensureDir();
         AyuSavePreferences.loadAllExclusions();
 
         refreshDaos();
@@ -118,8 +117,13 @@ public class AyuMessagesController {
         var revision = new EditedMessage();
         AyuMessageUtils.map(prefs, revision);
 
+        // Band L: stage the media copy holding no lock. finalizeMedia below places it and records
+        // the row under the monitor, so the long copy never blocks another account's globalQueue
+        // work or a main-thread op waiting on the same lock.
+        AyuMessageUtils.StagedMedia staged = AyuMessageUtils.stageMedia(prefs, revision, !sameMedia, force);
+
         synchronized (attachmentLock) {
-            AyuMessageUtils.mapMedia(prefs, revision, !sameMedia, force);
+            AyuMessageUtils.finalizeMedia(prefs, revision, staged);
 
             if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
                 var lastRevision = withDaoRetry(
@@ -212,13 +216,16 @@ public class AyuMessagesController {
 
         AyuMessageUtils.map(prefs, deletedMessage);
 
-        // Hold the gate across mapMedia's dedup lookup/copy and the insert so a concurrent delete
-        // can't unlink the reused file between them. saveDeletedMessageFor above stays outside it:
-        // it awaits a latch on the storage queue, and holding this lock across that wait is how a
-        // deleter and the storage-queue force save could deadlock.
+        // Band L: stage the media copy holding no lock, then hold the gate only across the dedup
+        // lookup, the promote-into-place and the insert, so a concurrent delete can't unlink the
+        // resolved file between them. saveDeletedMessageFor above stays outside it: it awaits a
+        // latch on the storage queue, and holding this lock across that wait is how a deleter and
+        // the storage-queue force save could deadlock.
+        AyuMessageUtils.StagedMedia staged = AyuMessageUtils.stageMedia(prefs, deletedMessage, true, false);
+
         Long fakeMsgId;
         synchronized (attachmentLock) {
-            AyuMessageUtils.mapMedia(prefs, deletedMessage, true);
+            AyuMessageUtils.finalizeMedia(prefs, deletedMessage, staged);
 
             fakeMsgId = withDaoRetry(
                     "onMessageDeletedInner#insert",
@@ -537,16 +544,19 @@ public class AyuMessagesController {
 
     // Delayed adoption: a deleted-message row's media finished downloading into Telegram's cache
     // after the fact, or an attachments copy already exists. Copy it in (when a source is given)
-    // and point the row at the resulting file, all under the one lock, so a concurrent delete
-    // can't unlink the file between resolving it and recording its path. Mirrors the reader's
-    // resolution order: prefer the just-copied file, then the exact base name, then the fallback.
+    // and point the row at the resulting file. The copy stages to a temp holding no lock; only the
+    // promote-into-place and the row update run under the monitor, so a concurrent delete can't
+    // unlink the file between resolving it and recording its path. Mirrors the reader's resolution
+    // order: prefer the just-copied file, then the exact base name, then the fallback.
     public void adoptAttachment(long userId, long dialogId, int messageId, File from, File to, String baseName, String fallbackName) {
+        // Band L: the byte copy holds no lock. Only the promote-and-record below runs under it.
+        File staged = (from != null && to != null && from.exists()) ? AyuAttachments.stage(from, false) : null;
         synchronized (attachmentLock) {
             File resolved = null;
-            if (from != null && to != null && from.exists()) {
-                File result = AyuAttachments.copyInto(from, to);
-                if (result != null && result.exists() && result.length() > 0) {
-                    resolved = result;
+            if (staged != null) {
+                File placed = AyuAttachments.promote(staged, to.getName());
+                if (placed != null && placed.exists() && placed.length() > 0) {
+                    resolved = placed;
                 }
             }
             if (resolved == null && !TextUtils.isEmpty(baseName)) {
@@ -563,13 +573,6 @@ public class AyuMessagesController {
                 });
             }
         }
-    }
-
-    // A deleted media file that Telegram re-downloaded on demand. Materialise it in the
-    // attachments folder under the lock so it can't be written into a tree that clean() is
-    // deleting; no row is touched here, adoption happens later via adoptAttachment.
-    public File copyDownloadedIntoAttachments(File from, File to) {
-        return AyuAttachments.copyInto(from, to);
     }
 
     public void clean() {

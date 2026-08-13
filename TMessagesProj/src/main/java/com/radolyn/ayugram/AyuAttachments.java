@@ -29,6 +29,7 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 // long I/O (byte copies, decrypt loops, directory deletes) and holds nothing.
 public abstract class AyuAttachments {
     private static final String SUBFOLDER = "Saved Attachments";
+    private static final String TEMP_PREFIX = ".ayutmp_";
     private static final File DIR = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), AyuConstants.APP_NAME), SUBFOLDER);
 
     // The one process-wide attachment monitor. The controller synchronises its row-consistency
@@ -94,11 +95,9 @@ public abstract class AyuAttachments {
         return path != null && path.contains(SUBFOLDER);
     }
 
-    // Establish the folder (and its .nomedia marker so the gallery skips it). A precondition of
-    // any write. Commit 2 moves the only callers inside owner write ops; until then the
-    // controller calls it once at construction so the ordinary save path (not yet owner-routed)
-    // has its directory.
-    public static void ensureDir() {
+    // Establish the folder (and its .nomedia marker so the gallery skips it). An owner-internal
+    // precondition of a write, established inside each write op, never by a caller.
+    private static void ensureDir() {
         try {
             File nomediaFile = new File(DIR, ".nomedia");
             if (DIR.exists() || DIR.mkdirs()) {
@@ -119,23 +118,62 @@ public abstract class AyuAttachments {
         }
     }
 
-    // Band W (transitional): copy a source file into the folder under the monitor, leaving the
-    // source alone. Callers pre-check that {@code from} exists. Commit 2 replaces this with
-    // stage-and-rename so the byte copy holds no lock.
-    public static File copyInto(File from, File to) {
+    // Band L: copy (or, on the force/TTL path, move) `source` into a uniquely-named temp file in
+    // the folder, holding no lock. The temp is handed to promote(...) which places it under the
+    // monitor. Copy-not-move is preserved: deleteSource stays the only route to renameTo, so an
+    // ordinary save leaves the source in Telegram's cache.
+    public static File stage(File source, boolean deleteSource) {
+        if (source == null || !source.exists()) {
+            return null;
+        }
+        ensureDir();
+        File temp = new File(DIR, TEMP_PREFIX + AyuUtils.generateRandomString(16));
+        if (AyuUtils.moveOrCopyFile(source, temp, deleteSource)) {
+            return temp;
+        }
+        discard(temp);
+        return null;
+    }
+
+    // Band L: a fresh unique temp File in the folder for a caller to write into (a decrypt loop),
+    // holding no lock. The written temp is handed to promote(...).
+    public static File newTemp() {
+        ensureDir();
+        return new File(DIR, TEMP_PREFIX + AyuUtils.generateRandomString(16));
+    }
+
+    // Band W: place a staged temp at finalName under the monitor. If a complete file already sits
+    // there (a concurrent save won the race, or the caller resolved a reuse), keep it and drop the
+    // temp. Same-directory rename only, so this stays sub-millisecond even for a large file.
+    public static File promote(File temp, String finalName) {
         synchronized (LOCK) {
             ensureDir();
-            if (from == null || !from.exists()) {
+            File finalFile = new File(DIR, finalName);
+            if (finalFile.exists() && finalFile.length() > 0) {
+                discard(temp);
+                return finalFile;
+            }
+            if (temp == null || !temp.exists()) {
                 return null;
             }
-            try {
-                if (AndroidUtilities.copyFile(from, to)) {
-                    return to;
-                }
-            } catch (Exception e) {
-                FileLog.e("AyuAttachments.copyInto", e);
+            if (finalFile.exists() && !finalFile.delete()) {
+                // a zero-length leftover; renameTo below would fail, so give up cleanly
+                discard(temp);
+                return null;
             }
+            if (temp.renameTo(finalFile)) {
+                return finalFile;
+            }
+            discard(temp);
             return null;
+        }
+    }
+
+    // Drop a staged temp we are not going to keep (reuse won, or a write failed). The temp name is
+    // unique to one stage call, so no other thread can name it - no coordination needed.
+    public static void discard(File temp) {
+        if (temp != null && temp.exists() && !temp.delete()) {
+            temp.deleteOnExit();
         }
     }
 
