@@ -15404,7 +15404,11 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
 
     // NagramX
     private boolean canCaptionCurrentMessage() {
+        // getVideoTranscriptionProgress(), not wasTranscriptionOpen: that flag latches true forever
+        // once a transcript has ever been opened on this cell, which would hide CC for good instead
+        // of just while the transcript row is open.
         return documentAttachType == DOCUMENT_ATTACH_TYPE_ROUND
+                && getVideoTranscriptionProgress() <= 0
                 && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.canCaption(currentAccount, currentMessageObject);
     }
 
