@@ -32,7 +32,9 @@ import org.telegram.tgnet.TLRPC;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 import tw.nekomimi.nekogram.utils.FileUtil;
@@ -467,7 +469,10 @@ public class AyuMessagesController {
             return;
         }
 
-        List<String> mediaPaths = new ArrayList<>();
+        // Dedup and revision backfill deliberately share one file across rows, so the same
+        // mediaPath can show up more than once here. A LinkedHashSet collapses the duplicates
+        // before the unlink loop, so each path only pays for one isPathReferenced query and delete.
+        Set<String> mediaPaths = new LinkedHashSet<>();
         for (int messageId : messageIds) {
             var msg = getMessage(userId, dialogId, messageId);
             if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
