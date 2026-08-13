@@ -781,7 +781,19 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
         videoMuteButton.setOnClickListener(v -> {
             boolean muted = !NaConfig.INSTANCE.getVideoMessagesMuted().Bool();
             NaConfig.INSTANCE.getVideoMessagesMuted().setConfigBool(muted);
-            MediaController.getInstance().setPlayerVolume();
+            // NagramX: this button is the only UI for the toggle, so it always fires mid-playback -
+            // the audio focus decision taken at play start needs redoing right here, not just the
+            // volume. Order matters: muting silences first so the drop is instant, but unmuting
+            // requests focus first - setPlayerVolume alone would jump straight to full volume while
+            // audioFocus is still the "no focus" state left over from muting, playing over whatever
+            // background audio hasn't ducked yet because we haven't asked for focus.
+            if (muted) {
+                MediaController.getInstance().setPlayerVolume();
+                MediaController.getInstance().updateAudioFocusForVideoMute();
+            } else {
+                MediaController.getInstance().updateAudioFocusForVideoMute();
+                MediaController.getInstance().setPlayerVolume();
+            }
             updateVideoMuteButton();
         });
         updateVideoMuteButton();

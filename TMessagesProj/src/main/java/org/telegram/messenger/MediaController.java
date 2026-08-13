@@ -1619,14 +1619,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             if (audioPlayer != null) {
                 audioPlayer.setVolume(CastSync.isActive() ? 0.0f : volume * audioVolume);
             } else if (videoPlayer != null) {
-                // NagramX: mute video messages (round videos) when enabled
-                if (playingMessageObject != null && playingMessageObject.isRoundVideo() && NaConfig.INSTANCE.getVideoMessagesMuted().Bool()) {
-                    volume = 0;
-                }
-                // NagramX: the CC-triggered pass on this message is muted for its whole run, distinct
-                // from the config toggle above and from isSilent (stock "silent round video" also
-                // loops, which this must not).
-                if (playingMessageObject != null && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(playingMessageObject.currentAccount, playingMessageObject)) {
+                // NagramX: mute video messages (round videos) for Mute mode or a CC-quiet pass,
+                // distinct from isSilent above (stock "silent round video" also loops, which this
+                // must not - see isSilentPlayback).
+                if (isSilentPlayback(playingMessageObject)) {
                     volume = 0;
                 }
                 videoPlayer.setVolume(CastSync.isActive() ? 0.0f : volume);
@@ -3247,32 +3243,74 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         }
     }
 
-    // NagramX: the two ordinary entry points into a fresh/resumed play (playMessage's tail, and
+    // NagramX: whether messageObject's playback should be silent - Mute mode (a global, persistent
+    // toggle) or a CC-quiet pass (a per-message, one-time state). Takes the message rather than
+    // reading playingMessageObject, because the two focus-decision call sites (playMessage's tail,
+    // injectVideoPlayer) run before that field is reassigned to the incoming message. Volume-only:
+    // the repeat-one loop decision is CC-quiet's alone and must keep calling VideoCaptionsHelper.isQuiet
+    // directly, not this - see the comment where that loop check lives.
+    private boolean isSilentPlayback(MessageObject messageObject) {
+        if (messageObject == null || !messageObject.isRoundVideo()) {
+            return false;
+        }
+        if (NaConfig.INSTANCE.getVideoMessagesMuted().Bool()) {
+            return true;
+        }
+        return tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject);
+    }
+
+    // NagramX: the ordinary entry points into a fresh/resumed play (playMessage's tail, and
     // resumeAudio's pause->resume tap) route through here instead of calling checkAudioFocus
-    // directly, so a CC-quiet pass never requests focus and gives back whatever it already held.
-    // injectVideoPlayer's own checkAudioFocus call (PhotoViewer/PiP handoff) is untouched - CC never
-    // reaches it. Invariant this keeps: hasAudioFocus != 0 iff the app actually holds focus, so the
-    // unconditional abandonAudioFocus at cleanupPlayer's notify branch stays a harmless no-op and
-    // the dedupe in checkAudioFocus above never skips a request the next ordinary play actually needs.
-    private void checkAudioFocusRespectingQuiet(MessageObject messageObject) {
-        if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject)) {
-            releaseAudioFocusForQuiet();
+    // directly, so a silent pass (Mute mode or CC-quiet) never requests focus and gives back
+    // whatever it already held. injectVideoPlayer also routes through here (PhotoViewer/PiP
+    // handoff), so a round video muted by either mechanism doesn't grab focus on that path either.
+    // Note checkAudioFocus sets hasAudioFocus to the requested level before learning whether the
+    // request was actually granted, so hasAudioFocus != 0 means a matching request was issued, not
+    // that it necessarily succeeded. That's still enough for what this depends on: the unconditional
+    // abandonAudioFocus at cleanupPlayer's notify branch stays a harmless no-op when nothing was
+    // granted, and the dedupe in checkAudioFocus above never skips a request the next ordinary play
+    // actually needs.
+    private void checkAudioFocusRespectingSilence(MessageObject messageObject) {
+        // NagramX: isSilentPlayback null-guards, but checkAudioFocus below doesn't - keep this
+        // helper actually null-tolerant rather than just looking like it is.
+        if (messageObject == null) {
+            return;
+        }
+        if (isSilentPlayback(messageObject)) {
+            releaseAudioFocusForSilentPlayback();
         } else {
             checkAudioFocus(messageObject);
         }
     }
 
-    // NagramX: gives back whatever focus the app is currently holding, for a CC-quiet message, and
-    // marks the app as holding none. Pulled out of checkAudioFocusRespectingQuiet so playMessage's
-    // download branch can call it too - that branch returns before checkAudioFocusRespectingQuiet
-    // ever runs, so without this a quiet play behind an uncached file would sit on whatever focus
+    // NagramX: gives back whatever focus the app is currently holding, for a silent message, and
+    // marks the app as holding none. Pulled out of checkAudioFocusRespectingSilence so playMessage's
+    // download branch can call it too - that branch returns before checkAudioFocusRespectingSilence
+    // ever runs, so without this a silent play behind an uncached file would sit on whatever focus
     // the message it replaced left behind for the whole download.
-    private void releaseAudioFocusForQuiet() {
+    private void releaseAudioFocusForSilentPlayback() {
         if (hasAudioFocus != 0) {
             NotificationsController.audioManager.abandonAudioFocus(this);
         }
         hasAudioFocus = 0;
         audioFocus = AUDIO_NO_FOCUS_NO_DUCK;
+    }
+
+    // NagramX: Mute mode's player-bar button is a live toggle mid-playback (there's no Settings
+    // entry - the button is the only UI), so the focus decision taken at play start goes stale the
+    // moment it's flipped. Release is unconditional (correct while paused, and correct during the
+    // uncached-download window where playingMessageObject is set but videoPlayer is still null);
+    // request only when audio is actually running, since a paused or still-downloading message
+    // picks focus back up through resumeAudio/playMessage's own checkAudioFocusRespectingSilence call.
+    public void updateAudioFocusForVideoMute() {
+        if (playingMessageObject == null || !playingMessageObject.isRoundVideo()) {
+            return;
+        }
+        if (isSilentPlayback(playingMessageObject)) {
+            releaseAudioFocusForSilentPlayback();
+        } else if (!isPaused && videoPlayer != null) {
+            checkAudioFocus(playingMessageObject);
+        }
     }
 
     public boolean isPiPShown() {
@@ -3471,6 +3509,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         // looping silently forever defeats the point of a single silent watch-through.
                         // cleanupPlayer(notify=true) clears the quiet/armed slot through the same
                         // choke as any other play ending, so nothing extra needs clearing here.
+                        // This is CC-quiet's rule alone, not Mute mode's - FEATURES.md promises Mute
+                        // mode keeps looping with the sound off, so this stays isQuiet, never
+                        // isSilentPlayback (which would also catch Mute mode and stop its loop too).
                         if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(playingMessageObject.currentAccount, playingMessageObject)) {
                             cleanupPlayer(true, true, false, false);
                         } else {
@@ -3595,7 +3636,10 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             videoPlayer.setTextureView(currentTextureView);
         }
 
-        checkAudioFocus(messageObject);
+        // NagramX: was a bare checkAudioFocus - a round video handed off here (PhotoViewer
+        // fullscreen/PiP) is reachable with Mute mode or CC-quiet set, and this call used to grab
+        // focus for it regardless.
+        checkAudioFocusRespectingSilence(messageObject);
         setPlayerVolume();
 
         isPaused = false;
@@ -3722,9 +3766,9 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
         if (isSilent) {
             return;
         }
-        // NagramX: a CC-quiet pass is silent by design too; raising the system volume UI for it
-        // would be a visible nag on the exact playback we intentionally muted.
-        if (messageObject != null && tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject)) {
+        // NagramX: a silent pass (CC-quiet or Mute mode) is silent by design; raising the system
+        // volume UI for it would be a visible nag on a playback where raising volume changes nothing.
+        if (isSilentPlayback(messageObject)) {
             return;
         }
         try {
@@ -3826,13 +3870,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             lastProgress = 0;
             audioInfo = null;
             playingMessageObject = messageObject;
-            // NagramX: this branch returns before checkAudioFocusRespectingQuiet ever runs, and
+            // NagramX: this branch returns before checkAudioFocusRespectingSilence ever runs, and
             // cleanupPlayer above ran with notify=false when replacing another play (see :3800), so
             // whatever focus that other play held is otherwise kept for the whole download. Only
-            // release it for a quiet message - an ordinary download still has to wait for actual
-            // playback to request focus, same as before this fix.
-            if (tw.nekomimi.nekogram.helpers.VideoCaptionsHelper.isQuiet(messageObject.currentAccount, messageObject)) {
-                releaseAudioFocusForQuiet();
+            // release it for a silent message (Mute mode or CC-quiet) - an ordinary download still
+            // has to wait for actual playback to request focus, same as before this fix.
+            if (isSilentPlayback(messageObject)) {
+                releaseAudioFocusForSilentPlayback();
             }
             if (canStartMusicPlayerService()) {
                 Intent intent = new Intent(ApplicationLoader.applicationContext, MusicPlayerService.class);
@@ -4221,7 +4265,7 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 return false;
             }
         }
-        checkAudioFocusRespectingQuiet(messageObject);
+        checkAudioFocusRespectingSilence(messageObject);
 
         isPaused = false;
         lastProgress = 0;
@@ -4546,6 +4590,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
 
         try {
             startProgressTimer(playingMessageObject);
+            // NagramX: resuming from paused is the other route into a stale "no focus" state - a
+            // round video muted while paused skips the click-time focus request entirely
+            // (updateAudioFocusForVideoMute only acts while actually playing), so this has to catch
+            // up before the volume/play calls below make anything audible, not after. Otherwise a
+            // paused-then-unmuted-then-resumed video computes full volume off whatever "no focus"
+            // state muting left behind and plays over background audio that hasn't ducked yet.
+            checkAudioFocusRespectingSilence(messageObject);
             if (audioVolumeAnimator != null) {
                 audioVolumeAnimator.removeAllListeners();
                 audioVolumeAnimator.cancel();
@@ -4564,7 +4615,6 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
             } else if (videoPlayer != null) {
                 videoPlayer.play();
             }
-            checkAudioFocusRespectingQuiet(messageObject);
             isPaused = false;
             NotificationCenter.getInstance(playingMessageObject.currentAccount).postNotificationName(NotificationCenter.messagePlayingPlayStateChanged, playingMessageObject.getId());
 
