@@ -435,6 +435,7 @@ public class AyuMessagesController {
             deletedMessageDao.delete(userId, dialogId, messageId);
 
             safeUnlinkAttachment(msg.message.mediaPath);
+            safeUnlinkAttachment(msg.message.hqThumbPath);
         }
     }
 
@@ -447,8 +448,13 @@ public class AyuMessagesController {
             LinkedHashSet<String> mediaPaths = new LinkedHashSet<>();
             for (int messageId : messageIds) {
                 var msg = getMessage(userId, dialogId, messageId);
-                if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
-                    mediaPaths.add(msg.message.mediaPath);
+                if (msg != null && msg.message != null) {
+                    if (!TextUtils.isEmpty(msg.message.mediaPath)) {
+                        mediaPaths.add(msg.message.mediaPath);
+                    }
+                    if (!TextUtils.isEmpty(msg.message.hqThumbPath)) {
+                        mediaPaths.add(msg.message.hqThumbPath);
+                    }
                 }
             }
 
@@ -464,11 +470,13 @@ public class AyuMessagesController {
     public void deleteRevision(long fakeId) {
         synchronized (attachmentLock) {
             String mediaPath = editedMessageDao.getMediaPathByFakeId(fakeId);
+            String thumbPath = editedMessageDao.getThumbPathByFakeId(fakeId);
             int deleted = editedMessageDao.deleteByFakeId(fakeId);
             if (deleted == 0) {
                 return;
             }
             safeUnlinkAttachment(mediaPath);
+            safeUnlinkAttachment(thumbPath);
         }
     }
 
@@ -513,8 +521,13 @@ public class AyuMessagesController {
             // Clean up media files, one reference check per distinct path rather than per row
             LinkedHashSet<String> paths = new LinkedHashSet<>();
             for (DeletedMessageFull msg : messages) {
-                if (msg.message != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
-                    paths.add(msg.message.mediaPath);
+                if (msg.message != null) {
+                    if (!TextUtils.isEmpty(msg.message.mediaPath)) {
+                        paths.add(msg.message.mediaPath);
+                    }
+                    if (!TextUtils.isEmpty(msg.message.hqThumbPath)) {
+                        paths.add(msg.message.hqThumbPath);
+                    }
                 }
             }
             for (String path : paths) {
@@ -576,16 +589,24 @@ public class AyuMessagesController {
     }
 
     public void clean() {
+        File aside;
         synchronized (attachmentLock) {
             AyuData.clean();
             AyuData.create();
 
             refreshDaos();
 
-            AyuAttachments.wipe();
+            // Band W: swap the folder for a fresh empty one under the monitor. The old tree's
+            // deletion is the long part and is handed off below rather than held here.
+            aside = AyuAttachments.renameAsideAndRecreate();
 
             // force to recreate a database to avoid crash
             instance = null;
+        }
+
+        // Band L: delete the old tree unlocked, off the monitor a media bind could be waiting on.
+        if (aside != null) {
+            Utilities.globalQueue.postRunnable(() -> AyuAttachments.deleteTree(aside));
         }
     }
 }

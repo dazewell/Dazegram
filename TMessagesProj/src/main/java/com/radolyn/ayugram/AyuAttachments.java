@@ -177,12 +177,35 @@ public abstract class AyuAttachments {
         }
     }
 
-    // Band W: wipe the folder and recreate it empty. Commit 3 replaces this with rename-aside so
-    // the long delete runs unlocked.
-    public static void wipe() {
+    // Band W: move the live folder aside to a unique name and put a fresh empty one in its place -
+    // both cheap same-parent operations under the monitor. The caller deletes the returned aside
+    // tree in Band L, unlocked, so a multi-gigabyte delete never blocks a thread waiting on the
+    // monitor (a ChatMessageCell bind, another account's save). Returns the aside directory, or
+    // null when there was nothing to move or the rename fell back to an in-place delete.
+    public static File renameAsideAndRecreate() {
         synchronized (LOCK) {
-            tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(DIR);
+            File aside = null;
+            if (DIR.exists()) {
+                File candidate = new File(DIR.getParentFile(), SUBFOLDER + ".old_" + AyuUtils.generateRandomString(16));
+                if (DIR.renameTo(candidate)) {
+                    aside = candidate;
+                } else {
+                    // same-parent rename shouldn't fail, but if it does don't strand the tree:
+                    // delete in place, still under the lock (the rare, unavoidable long hold)
+                    tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(DIR);
+                }
+            }
             ensureDir();
+            return aside;
         }
+    }
+
+    // Band L: delete an aside tree returned by renameAsideAndRecreate, holding no lock. The aside
+    // name is unique to one reset, so nothing else can name it - no coordination needed.
+    public static void deleteTree(File aside) {
+        if (aside == null) {
+            return;
+        }
+        tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(aside);
     }
 }

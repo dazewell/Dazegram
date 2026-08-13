@@ -42,6 +42,9 @@ public interface EditedMessageDao {
     @Query("SELECT mediaPath FROM editedmessage WHERE fakeId = :fakeId LIMIT 1")
     String getMediaPathByFakeId(long fakeId);
 
+    @Query("SELECT hqThumbPath FROM editedmessage WHERE fakeId = :fakeId LIMIT 1")
+    String getThumbPathByFakeId(long fakeId);
+
     @Query("SELECT mediaPath FROM editedmessage WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND mediaId = :mediaId AND mediaPath IS NOT NULL AND mediaPath != ''")
     List<String> getAttachmentMediaPaths(long userId, long dialogId, int messageId, long mediaId);
 
