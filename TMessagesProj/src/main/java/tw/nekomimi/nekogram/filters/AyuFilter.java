@@ -21,6 +21,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -31,7 +32,38 @@ import xyz.nextalone.nagram.NaConfig;
 public class AyuFilter {
     private static final Object cacheLock = new Object();
     private static final int PER_DIALOG_CACHE_LIMIT = 1000;
-    private static final ConcurrentHashMap<Long, LruCache<Integer, Boolean>> filteredCache = new ConcurrentHashMap<>();
+
+    // NagramX: local message ids are per-account, so the cache must be keyed by
+    // account as well as dialogId, otherwise two accounts chatting with the same
+    // peer can collide and one account's filter verdict leaks into the other's.
+    private static final class DialogCacheKey {
+        final int account;
+        final long dialogId;
+
+        DialogCacheKey(int account, long dialogId) {
+            this.account = account;
+            this.dialogId = dialogId;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof DialogCacheKey)) {
+                return false;
+            }
+            DialogCacheKey other = (DialogCacheKey) o;
+            return account == other.account && dialogId == other.dialogId;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(account, dialogId);
+        }
+    }
+
+    private static final ConcurrentHashMap<DialogCacheKey, LruCache<Integer, Boolean>> filteredCache = new ConcurrentHashMap<>();
     private static volatile ArrayList<FilterModel> filterModels;
     private static volatile ArrayList<ChatFilterEntry> chatFilterEntries;
     private static volatile HashSet<Long> excludedDialogs;
@@ -205,17 +237,16 @@ public class AyuFilter {
         return false;
     }
 
+    public static boolean isEnabled() {
+        return NaConfig.INSTANCE.getRegexFiltersEnabled().Bool();
+    }
+
     public static boolean isFiltered(MessageObject msg, MessageObject.GroupedMessages group) {
-        if (!NaConfig.INSTANCE.getRegexFiltersEnabled().Bool()) {
+        if (!isEnabled()) {
             return false;
         }
 
         if (msg == null || msg.isOutOwner()) {
-            return false;
-        }
-
-        var text = getMessageText(msg, group);
-        if (TextUtils.isEmpty(text)) {
             return false;
         }
 
@@ -231,7 +262,8 @@ public class AyuFilter {
             return false;
         }
 
-        LruCache<Integer, Boolean> dialogCache = filteredCache.computeIfAbsent(dialogId, k -> new LruCache<>(PER_DIALOG_CACHE_LIMIT));
+        DialogCacheKey cacheKey = new DialogCacheKey(msg.currentAccount, dialogId);
+        LruCache<Integer, Boolean> dialogCache = filteredCache.computeIfAbsent(cacheKey, k -> new LruCache<>(PER_DIALOG_CACHE_LIMIT));
         Boolean result;
 
         synchronized (dialogCache) {
@@ -240,6 +272,11 @@ public class AyuFilter {
 
         if (result != null) {
             return result;
+        }
+
+        var text = getMessageText(msg, group);
+        if (TextUtils.isEmpty(text)) {
+            return false;
         }
 
         result = isFilteredInternal(text, dialogId);
@@ -405,7 +442,7 @@ public class AyuFilter {
             synchronized (cacheLock) {
                 excludedDialogs = set;
             }
-            filteredCache.remove(dialogId);
+            filteredCache.keySet().removeIf(key -> key.dialogId == dialogId);
         }
     }
 
@@ -535,8 +572,8 @@ public class AyuFilter {
         return filtered;
     }
 
-    public static void onMessageEdited(int msgId, long dialogId) {
-        var dialogCache = filteredCache.get(dialogId);
+    public static void onMessageEdited(int account, int msgId, long dialogId) {
+        var dialogCache = filteredCache.get(new DialogCacheKey(account, dialogId));
         if (dialogCache != null) {
             synchronized (dialogCache) {
                 dialogCache.remove(msgId);

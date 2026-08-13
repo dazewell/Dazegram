@@ -878,7 +878,7 @@ public class DownloadController extends BaseController implements NotificationCe
             return canPreloadStories() ? 2 : 0;
         }
 
-        if (AyuFilter.isFiltered(new MessageObject(currentAccount, message, false, false), null)) {
+        if (AyuFilter.isEnabled() && AyuFilter.isFiltered(new MessageObject(currentAccount, message, false, false), null)) {
             return 0;
         }
 
