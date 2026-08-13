@@ -108,6 +108,14 @@ public class AyuData {
         }
     };
 
+    private static final Migration MIGRATION_26_27 = new Migration(26, 27) {
+        @Override
+        public void migrate(SupportSQLiteDatabase database) {
+            database.execSQL("ALTER TABLE DeletedMessage ADD COLUMN mediaId INTEGER NOT NULL DEFAULT 0");
+            database.execSQL("ALTER TABLE EditedMessage ADD COLUMN mediaId INTEGER NOT NULL DEFAULT 0");
+        }
+    };
+
     static {
         create();
     }
@@ -124,7 +132,7 @@ public class AyuData {
         return Room.databaseBuilder(ApplicationLoader.applicationContext, AyuDatabase.class, name)
                 .allowMainThreadQueries()
                 .fallbackToDestructiveMigrationOnDowngrade()
-                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
+                .addMigrations(MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                 .build();
     }
 

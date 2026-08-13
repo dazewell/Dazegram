@@ -30,8 +30,11 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 
 import tw.nekomimi.nekogram.utils.FileUtil;
@@ -135,7 +138,7 @@ public class AyuMessagesController {
 
         var revision = new EditedMessage();
         AyuMessageUtils.map(prefs, revision);
-        AyuMessageUtils.mapMedia(prefs, revision, !sameMedia);
+        AyuMessageUtils.mapMedia(prefs, revision, !sameMedia, force);
 
         if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
             var lastRevision = withDaoRetry(
@@ -321,6 +324,135 @@ public class AyuMessagesController {
         return deletedMessageDao.getMessagesByIds(userId, dialogId, messageIds);
     }
 
+    public String findExistingAttachmentPath(long userId, long dialogId, int messageId, long mediaId) {
+        if (mediaId == 0) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        List<String> deleted = withDaoRetry(
+                "findExistingAttachmentPath#deleted",
+                () -> deletedMessageDao.getAttachmentMediaPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (deleted != null) {
+            candidates.addAll(deleted);
+        }
+        List<String> edited = withDaoRetry(
+                "findExistingAttachmentPath#edited",
+                () -> editedMessageDao.getAttachmentMediaPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (edited != null) {
+            candidates.addAll(edited);
+        }
+        for (String path : candidates) {
+            if (TextUtils.isEmpty(path)) {
+                continue;
+            }
+            File f = new File(path);
+            if (isUnderAttachments(f) && isContainedChild(f) && f.exists() && f.length() > 0) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    public String findExistingThumbPath(long userId, long dialogId, int messageId, long mediaId) {
+        if (mediaId == 0) {
+            return null;
+        }
+        List<String> candidates = new ArrayList<>();
+        List<String> deleted = withDaoRetry(
+                "findExistingThumbPath#deleted",
+                () -> deletedMessageDao.getAttachmentThumbPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (deleted != null) {
+            candidates.addAll(deleted);
+        }
+        List<String> edited = withDaoRetry(
+                "findExistingThumbPath#edited",
+                () -> editedMessageDao.getAttachmentThumbPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (edited != null) {
+            candidates.addAll(edited);
+        }
+        for (String path : candidates) {
+            if (TextUtils.isEmpty(path)) {
+                continue;
+            }
+            File f = new File(path);
+            if (isUnderAttachments(f) && isContainedChild(f) && f.exists() && f.length() > 0) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    // startsWith on the bare path would also match a sibling like "Saved Attachments_old",
+    // so anchor on an exact match or the folder plus a separator. Cheap and lexical, and only
+    // a pre-filter: the actual unlink re-checks canonical containment below, since getAbsolutePath()
+    // never collapses a ".." component.
+    private boolean isUnderAttachments(File f) {
+        String prefix = attachmentsPath.getAbsolutePath();
+        String p = f.getAbsolutePath();
+        return p.equals(prefix) || p.startsWith(prefix + File.separator);
+    }
+
+    // Fail-closed canonical containment: true only when f canonically resolves to a direct child
+    // of the canonical attachments folder. A "Saved Attachments/../victim" traversal, or a symlink
+    // escaping the folder, resolves away and is rejected. Any canonicalisation error also rejects,
+    // since we'd rather keep a file than risk deleting outside the folder.
+    private boolean isContainedChild(File f) {
+        try {
+            File canonicalDir = attachmentsPath.getCanonicalFile();
+            File parent = f.getCanonicalFile().getParentFile();
+            return parent != null && parent.equals(canonicalDir);
+        } catch (IOException e) {
+            FileLog.e("isContainedChild", e);
+            return false;
+        }
+    }
+
+    // Unlink a saved-media file only if it is one we own (canonically under attachmentsPath) and no
+    // remaining row still points at it. mediaPath can be a path straight into Telegram's
+    // own cache (copyFileToAttachments off), and dedup / revision backfill deliberately
+    // share one file across rows, so blindly deleting would take out the user's own media
+    // or a file another row still needs.
+    private void safeUnlinkAttachment(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return;
+        }
+        File f = new File(path);
+        if (!isUnderAttachments(f) || !isContainedChild(f)) {
+            return;
+        }
+        if (isPathReferenced(path)) {
+            return;
+        }
+        try {
+            if (f.exists() && !f.delete()) {
+                f.deleteOnExit();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private boolean isPathReferenced(String path) {
+        Boolean inDeleted = withDaoRetry(
+                "isPathReferenced#deleted",
+                () -> deletedMessageDao.isPathReferenced(path)
+        );
+        Boolean inEdited = withDaoRetry(
+                "isPathReferenced#edited",
+                () -> editedMessageDao.isPathReferenced(path)
+        );
+        // Fail closed: a failed lookup reads as "still referenced", never as "safe to unlink".
+        // Treating a null (query error) as unreferenced would delete a file another row needs.
+        if (inDeleted == null || inEdited == null) {
+            return true;
+        }
+        return inDeleted || inEdited;
+    }
+
     public void delete(long userId, long dialogId, int messageId) {
         var msg = getMessage(userId, dialogId, messageId);
         if (msg == null) {
@@ -329,16 +461,7 @@ public class AyuMessagesController {
 
         deletedMessageDao.delete(userId, dialogId, messageId);
 
-        if (!TextUtils.isEmpty(msg.message.mediaPath)) {
-            var p = new File(msg.message.mediaPath);
-            try {
-                if (p.exists() && !p.delete()) {
-                    p.deleteOnExit();
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-        }
+        safeUnlinkAttachment(msg.message.mediaPath);
     }
 
     public void deleteMessages(long userId, long dialogId, List<Integer> messageIds) {
@@ -346,25 +469,22 @@ public class AyuMessagesController {
             return;
         }
 
+        // Dedup and revision backfill deliberately share one file across rows, so the same
+        // mediaPath can show up more than once here. A LinkedHashSet collapses the duplicates
+        // before the unlink loop, so each path only pays for one isPathReferenced query and delete.
+        Set<String> mediaPaths = new LinkedHashSet<>();
+        for (int messageId : messageIds) {
+            var msg = getMessage(userId, dialogId, messageId);
+            if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
+                mediaPaths.add(msg.message.mediaPath);
+            }
+        }
+
         deletedMessageDao.deleteMessages(userId, dialogId, messageIds);
         editedMessageDao.deleteByDialogIdAndMessageIds(dialogId, messageIds);
 
-        for (int messageId : messageIds) {
-            var msg = getMessage(userId, dialogId, messageId);
-            if (msg == null) {
-                continue;
-            }
-
-            if (!TextUtils.isEmpty(msg.message.mediaPath)) {
-                var p = new File(msg.message.mediaPath);
-                try {
-                    if (p.exists() && !p.delete()) {
-                        p.deleteOnExit();
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+        for (String mediaPath : mediaPaths) {
+            safeUnlinkAttachment(mediaPath);
         }
     }
 
@@ -374,16 +494,7 @@ public class AyuMessagesController {
         if (deleted == 0) {
             return;
         }
-        if (!TextUtils.isEmpty(mediaPath)) {
-            File p = new File(mediaPath);
-            try {
-                if (p.exists() && !p.delete()) {
-                    p.deleteOnExit();
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-        }
+        safeUnlinkAttachment(mediaPath);
     }
 
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
@@ -405,16 +516,7 @@ public class AyuMessagesController {
 
         // Clean up media files
         for (DeletedMessageFull msg : messages) {
-            if (msg.message.mediaPath != null && !msg.message.mediaPath.isEmpty()) {
-                File mediaFile = new File(msg.message.mediaPath);
-                try {
-                    if (mediaFile.exists() && !mediaFile.delete()) {
-                        mediaFile.deleteOnExit();
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+            safeUnlinkAttachment(msg.message.mediaPath);
         }
 
         if (callback != null) {
