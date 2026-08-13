@@ -28,6 +28,8 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.LaunchActivity;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -503,12 +505,19 @@ public class AyuMessagesController {
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
         // Clearing a whole chat's history walks two growing tables and unlinks their files. That
         // is off-main-thread work; the button that calls this runs it on the UI thread, so move
-        // it here rather than touching the caller. The callback still runs on the UI thread so it
-        // can finish the fragment and buzz.
+        // it here rather than touching the caller. By the time the scan finishes the chat may be
+        // gone, and the completion callback finishes the current fragment and buzzes it, so only
+        // run it while a fragment with a live view is still on screen.
         Utilities.globalQueue.postRunnable(() -> {
             deleteCurrentInner(dialogId, mergeDialogId);
             if (callback != null) {
-                AndroidUtilities.runOnUIThread(callback);
+                AndroidUtilities.runOnUIThread(() -> {
+                    BaseFragment last = LaunchActivity.getLastFragment();
+                    if (last == null || last.getFragmentView() == null) {
+                        return;
+                    }
+                    callback.run();
+                });
             }
         });
     }
@@ -563,20 +572,57 @@ public class AyuMessagesController {
         return deletedMessageDao.getOlderMessagesBefore(userId, dialogId, before, limit);
     }
 
-    public void updateMediaPath(long userId, long dialogId, int messageId, String newPath) {
-        deletedMessageDao.updateMediaPathIfEmpty(userId, dialogId, messageId, newPath);
+    // Delayed adoption: a deleted-message row's media finished downloading into Telegram's cache
+    // after the fact, or an attachments copy already exists. Copy it in (when a source is given)
+    // and point the row at the resulting file, all under the one lock, so a concurrent delete
+    // can't unlink the file between resolving it and recording its path. Mirrors the reader's
+    // resolution order: prefer the just-copied file, then the exact base name, then the fallback.
+    public void adoptAttachment(long userId, long dialogId, int messageId, File from, File to, String baseName, String fallbackName) {
+        synchronized (attachmentLock) {
+            File resolved = null;
+            if (from != null && to != null && from.exists()) {
+                File result = AyuMessageUtils.copyIntoAttachments(from, to);
+                if (result != null && !"/".equals(result.getAbsolutePath()) && result.exists() && result.length() > 0) {
+                    resolved = result;
+                }
+            }
+            if (resolved == null && !TextUtils.isEmpty(baseName)) {
+                resolved = AyuMessageUtils.findExistingFileByBaseNameFast(baseName);
+            }
+            if (resolved == null && !TextUtils.isEmpty(fallbackName)) {
+                resolved = AyuMessageUtils.findExistingFileByBaseNameFast(fallbackName);
+            }
+            if (resolved != null && resolved.exists() && resolved.length() > 0) {
+                final String newPath = resolved.getAbsolutePath();
+                withDaoRetry("adoptAttachment", () -> {
+                    deletedMessageDao.updateMediaPathIfEmpty(userId, dialogId, messageId, newPath);
+                    return null;
+                });
+            }
+        }
+    }
+
+    // A deleted media file that Telegram re-downloaded on demand. Materialise it in the
+    // attachments folder under the lock so it can't be written into a tree that clean() is
+    // deleting; no row is touched here, adoption happens later via adoptAttachment.
+    public File copyDownloadedIntoAttachments(File from, File to) {
+        synchronized (attachmentLock) {
+            return AyuMessageUtils.copyIntoAttachments(from, to);
+        }
     }
 
     public void clean() {
-        AyuData.clean();
-        AyuData.create();
+        synchronized (attachmentLock) {
+            AyuData.clean();
+            AyuData.create();
 
-        refreshDaos();
+            refreshDaos();
 
-        cleanAttachmentsFolder();
+            cleanAttachmentsFolder();
 
-        // force to recreate a database to avoid crash
-        instance = null;
+            // force to recreate a database to avoid crash
+            instance = null;
+        }
     }
 
     private void cleanAttachmentsFolder() {

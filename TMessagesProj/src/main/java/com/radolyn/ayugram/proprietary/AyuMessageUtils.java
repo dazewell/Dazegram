@@ -647,7 +647,10 @@ public abstract class AyuMessageUtils {
         return processAttachment(prefs.getAccountId(), message.media.document, deleteSource);
     }
 
-    private static File processAttachment(File source, File target) {
+    // Copy a file into the attachments folder, leaving the source alone. Only ever called from
+    // inside the attachment coordinator's lock (AyuMessagesController), so the copy and the row
+    // update that records its path can't be split by a concurrent delete.
+    public static File copyIntoAttachments(File source, File target) {
         return processAttachment(source, target, false);
     }
 
@@ -890,7 +893,7 @@ public abstract class AyuMessageUtils {
             }
             return null;
         }
-        File result = processAttachment(downloadedFile, outputFile);
+        File result = AyuMessagesController.getInstance().copyDownloadedIntoAttachments(downloadedFile, outputFile);
         if (result != null && "/".equals(result.getAbsolutePath())) {
             return null;
         }
@@ -913,31 +916,26 @@ public abstract class AyuMessageUtils {
                 String attachmentsPath = AyuMessagesController.attachmentsPath.getAbsolutePath();
                 if (from.exists() && !from.getAbsolutePath().startsWith(attachmentsPath)) {
                     File to = new File(attachmentsPath, baseName);
-                    Utilities.globalQueue.postRunnable(() -> {
-                        File result = processAttachment(from, to);
-                        File resolved;
-                        if (result != null && !"/".equals(result.getAbsolutePath()) && result.exists()) {
-                            resolved = result;
-                        } else {
-                            resolved = findExistingFileByBaseNameFast(baseName);
-                        }
-                        if (resolved != null && resolved.exists() && resolved.length() > 0) {
-                            String newPath = resolved.getAbsolutePath();
-                            AyuMessagesController.getInstance().updateMediaPath(userId, dialogId, messageId, newPath);
-                        }
-                    });
+                    // Copy into attachments and point the row at the result in one locked step, so a
+                    // concurrent delete can't unlink the file between resolving it and recording it.
+                    Utilities.globalQueue.postRunnable(() ->
+                            AyuMessagesController.getInstance().adoptAttachment(userId, dialogId, messageId, from, to, baseName, null));
                     File found = findExistingFileByBaseNameFast(baseName);
                     return found != null ? found.getAbsolutePath() : null;
                 }
             }
             File found = findExistingFileByBaseNameFast(baseName);
+            String fallbackName = null;
             if (found == null && !TextUtils.isEmpty(filePath)) {
-                found = findExistingFileByBaseNameFast(new File(filePath).getName());
+                fallbackName = new File(filePath).getName();
+                found = findExistingFileByBaseNameFast(fallbackName);
             }
             if (found != null) {
                 // update mediaPath in db when we discover an attachments copy
                 final String newPath = found.getAbsolutePath();
-                Utilities.globalQueue.postRunnable(() -> AyuMessagesController.getInstance().updateMediaPath(userId, dialogId, messageId, newPath));
+                final String fb = fallbackName;
+                Utilities.globalQueue.postRunnable(() ->
+                        AyuMessagesController.getInstance().adoptAttachment(userId, dialogId, messageId, null, null, baseName, fb));
                 return newPath;
             }
         } catch (Exception e) {
