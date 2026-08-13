@@ -47,6 +47,7 @@ public abstract class AyuMessageBase {
     public byte[] textEntities; // TL serialized
     public String mediaPath; // full path
     public String hqThumbPath; // full path
+    public long mediaId; // photo/document id of the saved media, 0 when none; used to dedup copies
     public int documentType; // see DOCUMENT_TYPE_*
     public byte[] documentSerialized; // for sticker; TL serialized
     public byte[] thumbsSerialized; // for video/etc.; TL serialized

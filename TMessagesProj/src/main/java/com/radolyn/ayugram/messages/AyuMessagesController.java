@@ -135,7 +135,7 @@ public class AyuMessagesController {
 
         var revision = new EditedMessage();
         AyuMessageUtils.map(prefs, revision);
-        AyuMessageUtils.mapMedia(prefs, revision, !sameMedia);
+        AyuMessageUtils.mapMedia(prefs, revision, !sameMedia, force);
 
         if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
             var lastRevision = withDaoRetry(
@@ -321,6 +321,75 @@ public class AyuMessagesController {
         return deletedMessageDao.getMessagesByIds(userId, dialogId, messageIds);
     }
 
+    public String findExistingAttachmentPath(long userId, long dialogId, int messageId, long mediaId) {
+        if (mediaId == 0) {
+            return null;
+        }
+        String attachmentsPrefix = attachmentsPath.getAbsolutePath();
+        List<String> candidates = new ArrayList<>();
+        List<String> deleted = withDaoRetry(
+                "findExistingAttachmentPath#deleted",
+                () -> deletedMessageDao.getAttachmentMediaPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (deleted != null) {
+            candidates.addAll(deleted);
+        }
+        List<String> edited = withDaoRetry(
+                "findExistingAttachmentPath#edited",
+                () -> editedMessageDao.getAttachmentMediaPaths(userId, dialogId, messageId, mediaId)
+        );
+        if (edited != null) {
+            candidates.addAll(edited);
+        }
+        for (String path : candidates) {
+            if (TextUtils.isEmpty(path)) {
+                continue;
+            }
+            File f = new File(path);
+            if (f.getAbsolutePath().startsWith(attachmentsPrefix) && f.exists() && f.length() > 0) {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    // Unlink a saved-media file only if it is one we own (under attachmentsPath) and no
+    // remaining row still points at it. mediaPath can be a path straight into Telegram's
+    // own cache (copyFileToAttachments off), and dedup / revision backfill deliberately
+    // share one file across rows, so blindly deleting would take out the user's own media
+    // or a file another row still needs.
+    private void safeUnlinkAttachment(String path) {
+        if (TextUtils.isEmpty(path)) {
+            return;
+        }
+        File f = new File(path);
+        if (!f.getAbsolutePath().startsWith(attachmentsPath.getAbsolutePath())) {
+            return;
+        }
+        if (isPathReferenced(path)) {
+            return;
+        }
+        try {
+            if (f.exists() && !f.delete()) {
+                f.deleteOnExit();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    private boolean isPathReferenced(String path) {
+        Boolean inDeleted = withDaoRetry(
+                "isPathReferenced#deleted",
+                () -> deletedMessageDao.isPathReferenced(path)
+        );
+        Boolean inEdited = withDaoRetry(
+                "isPathReferenced#edited",
+                () -> editedMessageDao.isPathReferenced(path)
+        );
+        return Boolean.TRUE.equals(inDeleted) || Boolean.TRUE.equals(inEdited);
+    }
+
     public void delete(long userId, long dialogId, int messageId) {
         var msg = getMessage(userId, dialogId, messageId);
         if (msg == null) {
@@ -329,16 +398,7 @@ public class AyuMessagesController {
 
         deletedMessageDao.delete(userId, dialogId, messageId);
 
-        if (!TextUtils.isEmpty(msg.message.mediaPath)) {
-            var p = new File(msg.message.mediaPath);
-            try {
-                if (p.exists() && !p.delete()) {
-                    p.deleteOnExit();
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-        }
+        safeUnlinkAttachment(msg.message.mediaPath);
     }
 
     public void deleteMessages(long userId, long dialogId, List<Integer> messageIds) {
@@ -346,25 +406,19 @@ public class AyuMessagesController {
             return;
         }
 
+        List<String> mediaPaths = new ArrayList<>();
+        for (int messageId : messageIds) {
+            var msg = getMessage(userId, dialogId, messageId);
+            if (msg != null && !TextUtils.isEmpty(msg.message.mediaPath)) {
+                mediaPaths.add(msg.message.mediaPath);
+            }
+        }
+
         deletedMessageDao.deleteMessages(userId, dialogId, messageIds);
         editedMessageDao.deleteByDialogIdAndMessageIds(dialogId, messageIds);
 
-        for (int messageId : messageIds) {
-            var msg = getMessage(userId, dialogId, messageId);
-            if (msg == null) {
-                continue;
-            }
-
-            if (!TextUtils.isEmpty(msg.message.mediaPath)) {
-                var p = new File(msg.message.mediaPath);
-                try {
-                    if (p.exists() && !p.delete()) {
-                        p.deleteOnExit();
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+        for (String mediaPath : mediaPaths) {
+            safeUnlinkAttachment(mediaPath);
         }
     }
 
@@ -374,16 +428,7 @@ public class AyuMessagesController {
         if (deleted == 0) {
             return;
         }
-        if (!TextUtils.isEmpty(mediaPath)) {
-            File p = new File(mediaPath);
-            try {
-                if (p.exists() && !p.delete()) {
-                    p.deleteOnExit();
-                }
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-        }
+        safeUnlinkAttachment(mediaPath);
     }
 
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
@@ -405,16 +450,7 @@ public class AyuMessagesController {
 
         // Clean up media files
         for (DeletedMessageFull msg : messages) {
-            if (msg.message.mediaPath != null && !msg.message.mediaPath.isEmpty()) {
-                File mediaFile = new File(msg.message.mediaPath);
-                try {
-                    if (mediaFile.exists() && !mediaFile.delete()) {
-                        mediaFile.deleteOnExit();
-                    }
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+            safeUnlinkAttachment(msg.message.mediaPath);
         }
 
         if (callback != null) {
