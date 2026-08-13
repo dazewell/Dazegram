@@ -21,6 +21,7 @@ import androidx.room.Room;
 import androidx.room.migration.Migration;
 import androidx.sqlite.db.SupportSQLiteDatabase;
 
+import com.radolyn.ayugram.AyuAttachments;
 import com.radolyn.ayugram.AyuConstants;
 import com.radolyn.ayugram.database.dao.DeletedMessageDao;
 import com.radolyn.ayugram.database.dao.EditedMessageDao;
@@ -42,7 +43,6 @@ import java.io.IOException;
 
 import tw.nekomimi.nekogram.helpers.AppRestartHelper;
 import tw.nekomimi.nekogram.settings.NekoExperimentalSettingsActivity;
-import tw.nekomimi.nekogram.utils.AndroidUtil;
 
 public class AyuData {
     private static final String IMPORT_DATABASE = AyuConstants.AYU_DATABASE + "-import";
@@ -312,15 +312,7 @@ public class AyuData {
     }
 
     public static long getAttachmentsDirSize() {
-        long size = 0;
-        try {
-            if (AyuMessagesController.attachmentsPath.exists()) {
-                size = AndroidUtil.getDirectorySize(AyuMessagesController.attachmentsPath);
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-        return size;
+        return AyuAttachments.dirSize();
     }
 
     public static void loadSizes(NekoExperimentalSettingsActivity bf) {

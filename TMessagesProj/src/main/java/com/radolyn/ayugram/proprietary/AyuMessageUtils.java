@@ -5,6 +5,7 @@ import android.util.Log;
 
 import androidx.core.util.Pair;
 
+import com.radolyn.ayugram.AyuAttachments;
 import com.radolyn.ayugram.AyuConstants;
 import com.radolyn.ayugram.AyuUtils;
 import com.radolyn.ayugram.database.entities.AyuMessageBase;
@@ -620,7 +621,7 @@ public abstract class AyuMessageUtils {
                 pathToAttach = pathToAttach2;
             }
         }
-        return processAttachment(pathToAttach, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(object, pathToAttach)), deleteSource);
+        return processAttachment(pathToAttach, AyuAttachments.resolve(AyuUtils.getFilename(object, pathToAttach)), deleteSource);
     }
 
     private static File processAttachment(AyuSavePreferences prefs, boolean deleteSource) {
@@ -640,18 +641,11 @@ public abstract class AyuMessageUtils {
         }
         if (pathToMessage.exists() || message.media.document == null) {
             if (pathToMessage.exists() || message.media.photo == null) {
-                return processAttachment(pathToMessage, new File(AyuMessagesController.attachmentsPath, AyuUtils.getFilename(message, pathToMessage)), deleteSource);
+                return processAttachment(pathToMessage, AyuAttachments.resolve(AyuUtils.getFilename(message, pathToMessage)), deleteSource);
             }
             return processAttachment(prefs.getAccountId(), message.media.photo, deleteSource);
         }
         return processAttachment(prefs.getAccountId(), message.media.document, deleteSource);
-    }
-
-    // Copy a file into the attachments folder, leaving the source alone. Only ever called from
-    // inside the attachment coordinator's lock (AyuMessagesController), so the copy and the row
-    // update that records its path can't be split by a concurrent delete.
-    public static File copyIntoAttachments(File source, File target) {
-        return processAttachment(source, target, false);
     }
 
     private static File processAttachment(File source, File target, boolean deleteSource) {
@@ -783,10 +777,7 @@ public abstract class AyuMessageUtils {
         if (!NaConfig.INSTANCE.getEnableSaveDeletedMessages().Bool()) {
             return null;
         }
-        File AttachmentsDir = AyuMessagesController.attachmentsPath;
-        if (!AttachmentsDir.exists() && !AttachmentsDir.mkdirs()) {
-            return null;
-        }
+        AyuAttachments.ensureDir();
         if (TextUtils.isEmpty(fileName)) {
             if (encryptedFile == null || !encryptedFile.exists()) {
                 return null;
@@ -799,7 +790,7 @@ public abstract class AyuMessageUtils {
         long dialogId = messageObject != null ? messageObject.getDialogId() : 0;
         int messageId = messageObject != null ? messageObject.getId() : 0;
         String outputFileName = "ttl_" + dialogId + "_" + messageId + "_" + fileName;
-        File outputFile = new File(AyuMessagesController.attachmentsPath, outputFileName);
+        File outputFile = AyuAttachments.resolve(outputFileName);
         // check if already exists
         if (outputFile.exists() && outputFile.length() > 0) {
             if (BuildVars.LOGS_ENABLED) {
@@ -848,15 +839,7 @@ public abstract class AyuMessageUtils {
     }
 
     public static File findExistingFileByBaseNameFast(String baseName) {
-        File attachmentsDir = AyuMessagesController.attachmentsPath;
-        if (!attachmentsDir.exists() && !attachmentsDir.mkdirs()) {
-            return null;
-        }
-        File exactMatch = new File(attachmentsDir, baseName);
-        if (exactMatch.exists() && exactMatch.length() > 0) {
-            return exactMatch;
-        }
-        return null;
+        return AyuAttachments.resolveExisting(baseName);
     }
 
     public static File getLargestNonEmpty(File[] files) {
@@ -883,7 +866,7 @@ public abstract class AyuMessageUtils {
             return null;
         }
         String filename = downloadedFile.getName();
-        File outputFile = new File(AyuMessagesController.attachmentsPath, filename);
+        File outputFile = AyuAttachments.resolve(filename);
         if (outputFile.exists()) {
             return outputFile;
         }
@@ -893,11 +876,7 @@ public abstract class AyuMessageUtils {
             }
             return null;
         }
-        File result = AyuMessagesController.getInstance().copyDownloadedIntoAttachments(downloadedFile, outputFile);
-        if (result != null && "/".equals(result.getAbsolutePath())) {
-            return null;
-        }
-        return result;
+        return AyuMessagesController.getInstance().copyDownloadedIntoAttachments(downloadedFile, outputFile);
     }
 
     private static String ensureAttachmentAndUpdateMediaPath(AyuMessageBase base, TLRPC.Message message, int accountId) {
@@ -913,9 +892,8 @@ public abstract class AyuMessageUtils {
             // check if the file exists in the telegram cache folder (successfully downloaded after deserialization and saved by DELETED_MEDIA_LOADED_NOTIFICATION)
             if (!TextUtils.isEmpty(filePath)) {
                 File from = new File(filePath);
-                String attachmentsPath = AyuMessagesController.attachmentsPath.getAbsolutePath();
-                if (from.exists() && !from.getAbsolutePath().startsWith(attachmentsPath)) {
-                    File to = new File(attachmentsPath, baseName);
+                if (from.exists() && !AyuAttachments.isUnder(from)) {
+                    File to = AyuAttachments.resolve(baseName);
                     // Copy into attachments and point the row at the result in one locked step, so a
                     // concurrent delete can't unlink the file between resolving it and recording it.
                     Utilities.globalQueue.postRunnable(() ->

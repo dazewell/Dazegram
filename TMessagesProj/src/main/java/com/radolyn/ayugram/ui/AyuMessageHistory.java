@@ -27,6 +27,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.radolyn.ayugram.AyuAttachments;
 import com.radolyn.ayugram.AyuConstants;
 import com.radolyn.ayugram.AyuUtils;
 import com.radolyn.ayugram.database.entities.EditedMessage;
@@ -121,12 +122,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
     }
 
     private void cacheAttachmentFileNames() {
-        File attachmentsDir = AyuMessagesController.attachmentsPath;
-        if (attachmentsDir.exists()) {
-            cachedAttachmentFileNames = attachmentsDir.list();
-        } else {
-            cachedAttachmentFileNames = null;
-        }
+        cachedAttachmentFileNames = AyuAttachments.listNames();
     }
 
     @Override
@@ -755,10 +751,6 @@ public class AyuMessageHistory extends NekoDelegateFragment {
     }
 
     private File findSavedMedia(EditedMessage editedMessage) {
-        File attachmentsDir = AyuMessagesController.attachmentsPath;
-        if (!attachmentsDir.exists() && !attachmentsDir.mkdirs()) {
-            return null;
-        }
         String[] fileNames = cachedAttachmentFileNames;
         if (fileNames == null) {
             return null;
@@ -767,7 +759,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         ArrayList<File> ttlMatches = new ArrayList<>();
         for (String name : fileNames) {
             if (name.startsWith(ttlPrefix)) {
-                ttlMatches.add(new File(attachmentsDir, name));
+                ttlMatches.add(AyuAttachments.resolve(name));
             }
         }
         if (!ttlMatches.isEmpty()) {
@@ -778,14 +770,14 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         }
         if (editedMessage.mediaPath != null && !editedMessage.mediaPath.isEmpty()) {
             String baseName = new File(editedMessage.mediaPath).getName();
-            return findExistingFileByBaseNameCached(attachmentsDir, fileNames, baseName);
+            return findExistingFileByBaseNameCached(fileNames, baseName);
         }
         return null;
     }
 
-    private File findExistingFileByBaseNameCached(File attachmentsDir, String[] fileNames, String baseName) {
+    private File findExistingFileByBaseNameCached(String[] fileNames, String baseName) {
         // exact match
-        File exactMatch = new File(attachmentsDir, baseName);
+        File exactMatch = AyuAttachments.resolve(baseName);
         if (exactMatch.exists()) {
             return exactMatch;
         }
@@ -798,7 +790,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
                 continue;
             }
             if (name.equals(baseName)) {
-                matchingFiles.add(new File(attachmentsDir, name));
+                matchingFiles.add(AyuAttachments.resolve(name));
                 continue;
             }
             if (!name.startsWith(nameWithoutExtension)) {
@@ -810,7 +802,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             }
             char ch = name.charAt(length);
             if (ch == '@' || ch == '#') {
-                matchingFiles.add(new File(attachmentsDir, name));
+                matchingFiles.add(AyuAttachments.resolve(name));
             }
         }
         if (matchingFiles.isEmpty()) {

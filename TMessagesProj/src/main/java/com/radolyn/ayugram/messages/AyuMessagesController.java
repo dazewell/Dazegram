@@ -9,11 +9,10 @@
 
 package com.radolyn.ayugram.messages;
 
-import android.os.Environment;
 import android.text.TextUtils;
 
+import com.radolyn.ayugram.AyuAttachments;
 import com.radolyn.ayugram.AyuConstants;
-import com.radolyn.ayugram.AyuUtils;
 import com.radolyn.ayugram.database.AyuData;
 import com.radolyn.ayugram.database.dao.DeletedMessageDao;
 import com.radolyn.ayugram.database.dao.EditedMessageDao;
@@ -37,23 +36,20 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-import tw.nekomimi.nekogram.utils.FileUtil;
-
 public class AyuMessagesController {
-    public static final String attachmentsSubfolder = "Saved Attachments";
-    public static final File attachmentsPath = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), AyuConstants.APP_NAME), attachmentsSubfolder);
     private static AyuMessagesController instance;
-    // One process-wide gate over each select/copy/reuse -> insert and each collect/delete ->
+    // The one process-wide gate over each select/copy/reuse -> insert and each collect/delete ->
     // reference-check/unlink sequence. Room serialises single statements, not these multi-step
     // sequences, so without it a writer can reuse a file that a concurrent delete unlinks before
     // the writer's row lands, leaving a row pointing at a gone file. Held across every entry path
-    // (globalQueue, the storage queue via the force hook, the main thread, and inline saves).
-    static final Object attachmentLock = new Object();
+    // (globalQueue, the storage queue via the force hook, the main thread, and inline saves). The
+    // monitor lives on AyuAttachments so its file ops and these row sequences share one lock.
+    static final Object attachmentLock = AyuAttachments.LOCK;
     private EditedMessageDao editedMessageDao;
     private DeletedMessageDao deletedMessageDao;
 
     private AyuMessagesController() {
-        initializeAttachmentsFolder();
+        AyuAttachments.ensureDir();
         AyuSavePreferences.loadAllExclusions();
 
         refreshDaos();
@@ -79,31 +75,6 @@ public class AyuMessagesController {
         }
 
         return null;
-    }
-
-    private static void initializeAttachmentsFolder() {
-        try {
-            File nomediaFile = new File(attachmentsPath, ".nomedia");
-            if (attachmentsPath.exists() || attachmentsPath.mkdirs()) {
-                AndroidUtilities.createEmptyFile(nomediaFile);
-            }
-            if (!nomediaFile.exists()) {
-                File randomFile = new File(attachmentsPath, AyuUtils.generateRandomString(4));
-                AndroidUtilities.createEmptyFile(randomFile);
-                if (!randomFile.renameTo(nomediaFile)) {
-                    if (!randomFile.delete()) {
-                        randomFile.deleteOnExit();
-                    }
-                    FileLog.e("Failed to rename random .nomedia file to the correct name");
-                } else {
-                    FileLog.d("Created .nomedia file in attachments folder by renaming a random file");
-                }
-            } else {
-                FileLog.d(".nomedia file already exists in attachments folder");
-            }
-        } catch (Exception e) {
-            FileLog.e("initializeAttachmentsFolder", e);
-        }
     }
 
     public static AyuMessagesController getInstance() {
@@ -156,7 +127,7 @@ public class AyuMessagesController {
                         () -> editedMessageDao.getLastRevision(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId())
                 );
 
-                if (lastRevision != null && !TextUtils.equals(revision.mediaPath, lastRevision.mediaPath) && lastRevision.mediaPath != null && !lastRevision.mediaPath.contains(attachmentsSubfolder)) {
+                if (lastRevision != null && !TextUtils.equals(revision.mediaPath, lastRevision.mediaPath) && lastRevision.mediaPath != null && !AyuAttachments.isStoredAttachmentPath(lastRevision.mediaPath)) {
                     // update previous revisions to reflect media change
                     // like, there's no previous file, so replace it with one we copied before...
                     withDaoRetry(
@@ -367,7 +338,7 @@ public class AyuMessagesController {
                 continue;
             }
             File f = new File(path);
-            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
+            if (AyuAttachments.isUnder(f) && f.exists() && f.length() > 0) {
                 return path;
             }
         }
@@ -398,22 +369,14 @@ public class AyuMessagesController {
                 continue;
             }
             File f = new File(path);
-            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
+            if (AyuAttachments.isUnder(f) && f.exists() && f.length() > 0) {
                 return path;
             }
         }
         return null;
     }
 
-    // startsWith on the bare path would also match a sibling like "Saved Attachments_old",
-    // so anchor on an exact match or the folder plus a separator.
-    private boolean isUnderAttachments(File f) {
-        String prefix = attachmentsPath.getAbsolutePath();
-        String p = f.getAbsolutePath();
-        return p.equals(prefix) || p.startsWith(prefix + File.separator);
-    }
-
-    // Unlink a saved-media file only if it is one we own (under attachmentsPath) and no
+    // Unlink a saved-media file only if it is one we own (under the attachments folder) and no
     // remaining row still points at it. mediaPath can be a path straight into Telegram's
     // own cache (copyFileToAttachments off), and dedup / revision backfill deliberately
     // share one file across rows, so blindly deleting would take out the user's own media
@@ -423,7 +386,7 @@ public class AyuMessagesController {
             return;
         }
         File f = new File(path);
-        if (!isUnderAttachments(f)) {
+        if (!AyuAttachments.isUnder(f)) {
             return;
         }
         if (isPathReferenced(path)) {
@@ -581,8 +544,8 @@ public class AyuMessagesController {
         synchronized (attachmentLock) {
             File resolved = null;
             if (from != null && to != null && from.exists()) {
-                File result = AyuMessageUtils.copyIntoAttachments(from, to);
-                if (result != null && !"/".equals(result.getAbsolutePath()) && result.exists() && result.length() > 0) {
+                File result = AyuAttachments.copyInto(from, to);
+                if (result != null && result.exists() && result.length() > 0) {
                     resolved = result;
                 }
             }
@@ -606,9 +569,7 @@ public class AyuMessagesController {
     // attachments folder under the lock so it can't be written into a tree that clean() is
     // deleting; no row is touched here, adoption happens later via adoptAttachment.
     public File copyDownloadedIntoAttachments(File from, File to) {
-        synchronized (attachmentLock) {
-            return AyuMessageUtils.copyIntoAttachments(from, to);
-        }
+        return AyuAttachments.copyInto(from, to);
     }
 
     public void clean() {
@@ -618,15 +579,10 @@ public class AyuMessagesController {
 
             refreshDaos();
 
-            cleanAttachmentsFolder();
+            AyuAttachments.wipe();
 
             // force to recreate a database to avoid crash
             instance = null;
         }
-    }
-
-    private void cleanAttachmentsFolder() {
-        FileUtil.deleteDirectory(attachmentsPath);
-        initializeAttachmentsFolder();
     }
 }
