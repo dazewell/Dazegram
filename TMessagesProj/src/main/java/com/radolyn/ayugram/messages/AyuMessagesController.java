@@ -39,13 +39,6 @@ import java.util.concurrent.Callable;
 
 public class AyuMessagesController {
     private static AyuMessagesController instance;
-    // The one process-wide gate over each select/copy/reuse -> insert and each collect/delete ->
-    // reference-check/unlink sequence. Room serialises single statements, not these multi-step
-    // sequences, so without it a writer can reuse a file that a concurrent delete unlinks before
-    // the writer's row lands, leaving a row pointing at a gone file. Held across every entry path
-    // (globalQueue, the storage queue via the force hook, the main thread, and inline saves). The
-    // monitor lives on AyuAttachments so its file ops and these row sequences share one lock.
-    static final Object attachmentLock = AyuAttachments.LOCK;
     private EditedMessageDao editedMessageDao;
     private DeletedMessageDao deletedMessageDao;
 
@@ -118,13 +111,13 @@ public class AyuMessagesController {
         var revision = new EditedMessage();
         AyuMessageUtils.map(prefs, revision);
 
-        // Band L: stage the media copy holding no lock. finalizeMedia below places it and records
-        // the row under the monitor, so the long copy never blocks another account's globalQueue
-        // work or a main-thread op waiting on the same lock.
+        // Band L: stage the media copy holding no lock. The commit below places it and records the
+        // row under the monitor as one critical section, so the long copy never blocks another
+        // account's globalQueue work or a main-thread op waiting on the same lock.
         AyuMessageUtils.StagedMedia staged = AyuMessageUtils.stageMedia(prefs, revision, !sameMedia, force);
 
-        synchronized (attachmentLock) {
-            AyuMessageUtils.finalizeMedia(prefs, revision, staged);
+        AyuAttachments.commit(tx -> {
+            AyuMessageUtils.finalizeMediaLocked(prefs, revision, staged, tx);
 
             if (!sameMedia && !TextUtils.isEmpty(revision.mediaPath)) {
                 var lastRevision = withDaoRetry(
@@ -152,7 +145,7 @@ public class AyuMessagesController {
                         return null;
                     }
             );
-        }
+        });
 
         AndroidUtilities.runOnUIThread(() -> NotificationCenter.getInstance(prefs.getAccountId()).postNotificationName(AyuConstants.MESSAGE_EDITED_NOTIFICATION, prefs.getDialogId(), prefs.getMessageId()));
     }
@@ -224,15 +217,16 @@ public class AyuMessagesController {
         // the storage-queue force save could deadlock.
         AyuMessageUtils.StagedMedia staged = AyuMessageUtils.stageMedia(prefs, deletedMessage, true, false);
 
-        Long fakeMsgId;
-        synchronized (attachmentLock) {
-            AyuMessageUtils.finalizeMedia(prefs, deletedMessage, staged);
+        Long[] fakeMsgIdHolder = new Long[1];
+        AyuAttachments.commit(tx -> {
+            AyuMessageUtils.finalizeMediaLocked(prefs, deletedMessage, staged, tx);
 
-            fakeMsgId = withDaoRetry(
+            fakeMsgIdHolder[0] = withDaoRetry(
                     "onMessageDeletedInner#insert",
                     () -> deletedMessageDao.insert(deletedMessage)
             );
-        }
+        });
+        Long fakeMsgId = fakeMsgIdHolder[0];
 
         if (fakeMsgId == null) {
             return;
@@ -427,7 +421,7 @@ public class AyuMessagesController {
     }
 
     public void delete(long userId, long dialogId, int messageId) {
-        synchronized (attachmentLock) {
+        AyuAttachments.commit(tx -> {
             var msg = getMessage(userId, dialogId, messageId);
             if (msg == null) {
                 return;
@@ -437,7 +431,7 @@ public class AyuMessagesController {
 
             safeUnlinkAttachment(msg.message.mediaPath);
             safeUnlinkAttachment(msg.message.hqThumbPath);
-        }
+        });
     }
 
     public void deleteMessages(long userId, long dialogId, List<Integer> messageIds) {
@@ -445,7 +439,7 @@ public class AyuMessagesController {
             return;
         }
 
-        synchronized (attachmentLock) {
+        AyuAttachments.commit(tx -> {
             LinkedHashSet<String> mediaPaths = new LinkedHashSet<>();
             for (int messageId : messageIds) {
                 var msg = getMessage(userId, dialogId, messageId);
@@ -465,11 +459,11 @@ public class AyuMessagesController {
             for (String mediaPath : mediaPaths) {
                 safeUnlinkAttachment(mediaPath);
             }
-        }
+        });
     }
 
     public void deleteRevision(long fakeId) {
-        synchronized (attachmentLock) {
+        AyuAttachments.commit(tx -> {
             String mediaPath = editedMessageDao.getMediaPathByFakeId(fakeId);
             String thumbPath = editedMessageDao.getThumbPathByFakeId(fakeId);
             int deleted = editedMessageDao.deleteByFakeId(fakeId);
@@ -478,7 +472,7 @@ public class AyuMessagesController {
             }
             safeUnlinkAttachment(mediaPath);
             safeUnlinkAttachment(thumbPath);
-        }
+        });
     }
 
     public void deleteCurrent(long dialogId, long mergeDialogId, Runnable callback) {
@@ -509,7 +503,7 @@ public class AyuMessagesController {
     }
 
     private void deleteCurrentInner(long dialogId, long mergeDialogId) {
-        synchronized (attachmentLock) {
+        AyuAttachments.commit(tx -> {
             List<DeletedMessageFull> messages = deletedMessageDao.getMessagesByDialog(dialogId);
 
             if (mergeDialogId != 0) {
@@ -541,7 +535,7 @@ public class AyuMessagesController {
             for (String path : paths) {
                 safeUnlinkAttachment(path);
             }
-        }
+        });
     }
 
     public boolean isAyuDeletedMessageId(long userId, long dialogId, int messageId) {
@@ -570,12 +564,12 @@ public class AyuMessagesController {
     // unlink the file between resolving it and recording its path. Mirrors the reader's resolution
     // order: prefer the just-copied file, then the exact base name, then the fallback.
     public void adoptAttachment(long userId, long dialogId, int messageId, File from, File to, String baseName, String fallbackName) {
-        // Band L: the byte copy holds no lock. Only the promote-and-record below runs under it.
-        File staged = (from != null && to != null && from.exists()) ? AyuAttachments.stage(from, false) : null;
-        synchronized (attachmentLock) {
+        // Band L: the byte copy holds no lock. Only the place-and-record below runs under it.
+        AyuAttachments.StagedToken staged = (from != null && to != null && from.exists()) ? AyuAttachments.stage(from, false) : null;
+        AyuAttachments.commit(tx -> {
             File resolved = null;
             if (staged != null) {
-                File placed = AyuAttachments.promote(staged, to.getName());
+                File placed = tx.place(staged, to.getName());
                 if (placed != null && placed.exists() && placed.length() > 0) {
                     resolved = placed;
                 }
@@ -593,12 +587,12 @@ public class AyuMessagesController {
                     return null;
                 });
             }
-        }
+        });
     }
 
     public void clean() {
-        File aside;
-        synchronized (attachmentLock) {
+        File[] asideHolder = new File[1];
+        AyuAttachments.commit(tx -> {
             AyuData.clean();
             AyuData.create();
 
@@ -606,13 +600,14 @@ public class AyuMessagesController {
 
             // Band W: swap the folder for a fresh empty one under the monitor. The old tree's
             // deletion is the long part and is handed off below rather than held here.
-            aside = AyuAttachments.renameAsideAndRecreate();
+            asideHolder[0] = AyuAttachments.renameAsideAndRecreate();
 
             // force to recreate a database to avoid crash
             instance = null;
-        }
+        });
 
         // Band L: delete the old tree unlocked, off the monitor a media bind could be waiting on.
+        File aside = asideHolder[0];
         if (aside != null) {
             Utilities.globalQueue.postRunnable(() -> AyuAttachments.deleteTree(aside));
         }

@@ -19,17 +19,24 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.Utilities;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
 
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 
-// Single owner of the saved-attachments directory. Nobody else names the folder: every read,
-// write, unlink and reset of it goes through one of the operations here. Operations fall into
-// three bands. Band R (resolve/resolveExisting/listNames/dirSize/isUnder) is lock-free and
-// never creates, deletes or writes — a lookup has no invariant to protect and every caller
-// re-checks with exists()/length() at point of use. Band W holds the one monitor for the
-// short, cheap steps that must be atomic against each other (file predicates, same-directory
-// renames, and — in the controller, which shares this monitor — Room statements). Band L is
-// long I/O (byte copies, decrypt loops, directory deletes) and holds nothing.
+// Single owner of the saved-attachments directory. Nobody else names the folder, holds the monitor,
+// or touches a staged temp: every read, write, unlink and reset of it goes through one operation
+// here, and the directory File, the staging File and the monitor are all private. Operations fall
+// into three bands. Band R (resolve/resolveExisting/listNames/dirSize/isUnder/isStoredAttachmentPath)
+// is lock-free and never creates, deletes or writes — a lookup has no invariant to protect and every
+// caller re-checks with exists()/length() at point of use. Band W runs under the one monitor for the
+// short, cheap steps that must be atomic against each other (file predicates, same-filesystem
+// renames, and the Room statements a caller supplies through commit(...)); the monitor is never
+// acquired by a caller directly, only entered by handing a body to commit(...). Band L is long I/O
+// (byte copies, decrypt loops, directory deletes) and holds nothing. Every public method here is
+// correct called from any thread with no lock held: the ones that need the monitor take it
+// themselves, and a staged temp is only ever handed back as an opaque token, never as a writable
+// File.
 public abstract class AyuAttachments {
     private static final String SUBFOLDER = "Saved Attachments";
     // A wiped tree is renamed aside to this before the long delete runs; the sweep reclaims any
@@ -47,11 +54,71 @@ public abstract class AyuAttachments {
     // process still has in flight. Replaces an age cap, which a stalled stage could outlive.
     private static final String INSTANCE_TOKEN = AyuUtils.generateRandomString(8);
 
-    // The one process-wide attachment monitor. The controller synchronises its row-consistency
-    // sequences on this same object so a file op and the row that records it can't be split by a
-    // concurrent delete. A leaf in the lock order (attachmentMonitor -> AyuData.class), never
-    // held across a wait on another queue.
-    public static final Object LOCK = new Object();
+    // The one process-wide attachment monitor, private so no caller can hold it directly. The only
+    // way under it is to hand a body to commit(...); that body runs a file-op + row-write sequence
+    // atomically, so a placed file and the row that records it can't be split by a concurrent delete.
+    // A leaf in the lock order (monitor -> AyuData.class), never held across a wait on another queue.
+    private static final Object LOCK = new Object();
+
+    // An opaque handle to a temp already written into the staging sibling, holding no lock. The temp
+    // File never escapes the owner: a caller receives one of these, then hands it to place(...) or a
+    // commit transaction to have it moved into the live folder. It cannot write, read, or name the
+    // staged file itself.
+    public static final class StagedToken {
+        private final File temp;
+
+        private StagedToken(File temp) {
+            this.temp = temp;
+        }
+    }
+
+    // Writes the bytes of a staged temp into an owner-owned stream (a decrypt loop). The owner opens
+    // and closes the stream and discards the temp on failure, so a caller never holds the temp File.
+    public interface TempWriter {
+        void write(OutputStream out) throws Exception;
+    }
+
+    // A body run under the monitor by commit(...). The Tx it is handed is the only way to move a
+    // staged temp into place or drop it while the lock is held, next to the caller's Room statements.
+    public interface Committer {
+        void commit(Tx tx);
+    }
+
+    // The file primitives available to a commit body, valid only while the monitor is held. Each
+    // guards against being called off-lock so a stashed reference can't move a file without the
+    // monitor.
+    public static final class Tx {
+        private Tx() {
+        }
+
+        // Place a staged temp at finalName in the live folder, reusing an existing complete file if
+        // one is already there. Returns the placed (or reused) file, or null.
+        public File place(StagedToken token, String finalName) {
+            if (!Thread.holdsLock(LOCK)) {
+                FileLog.e("AyuAttachments.Tx.place called off-lock");
+                return null;
+            }
+            return promoteLocked(token == null ? null : token.temp, finalName);
+        }
+
+        // Drop a staged temp we decided not to keep (a reuse won).
+        public void discard(StagedToken token) {
+            if (token != null) {
+                discardTemp(token.temp);
+            }
+        }
+    }
+
+    private static final Tx TX = new Tx();
+
+    // Enter the monitor and run body once. The only entry to Band W: body does the caller's reuse
+    // lookup, place/discard through the Tx, and Room statements as one critical section a concurrent
+    // delete can't split. Correct called from any thread with no lock held.
+    public static void commit(Committer body) {
+        synchronized (LOCK) {
+            body.commit(TX);
+        }
+    }
 
     // One-shot reclaim of our own leftovers the first time the owner is touched. Two kinds outlive
     // a process that dies at the wrong moment: staged temps in the staging sibling, and an aside
@@ -157,64 +224,82 @@ public abstract class AyuAttachments {
     }
 
     // Band L: copy (or, on the force/TTL path, move) `source` into a uniquely-named temp in the
-    // staging sibling, holding no lock. The temp is handed to promote(...) which places it into the
-    // live folder under the monitor. Copy-not-move is preserved: deleteSource stays the only route
-    // to renameTo, so an ordinary save leaves the source in Telegram's cache.
-    public static File stage(File source, boolean deleteSource) {
+    // staging sibling, holding no lock. Returns an opaque token handed to place(...) or a commit
+    // transaction, which moves it into the live folder under the monitor. Copy-not-move is preserved:
+    // deleteSource stays the only route to renameTo, so an ordinary save leaves the source in
+    // Telegram's cache.
+    public static StagedToken stage(File source, boolean deleteSource) {
         if (source == null || !source.exists()) {
             return null;
         }
         ensureStagingDir();
         File temp = newStagingTemp();
         if (AyuUtils.moveOrCopyFile(source, temp, deleteSource)) {
-            return temp;
+            return new StagedToken(temp);
         }
-        discard(temp);
+        discardTemp(temp);
         return null;
     }
 
-    // Band L: a fresh unique temp File in the staging sibling for a caller to write into (a decrypt
-    // loop), holding no lock. The written temp is handed to promote(...).
-    public static File newTemp() {
+    // Band L: write bytes into a fresh staging temp through an owner-owned stream, holding no lock.
+    // The owner opens and closes the stream and drops the temp if the writer throws, so the temp File
+    // never reaches the caller. Returns an opaque token, or null on failure.
+    public static StagedToken stageViaWriter(TempWriter writer) {
         ensureStagingDir();
-        return newStagingTemp();
+        File temp = newStagingTemp();
+        try (OutputStream out = new FileOutputStream(temp)) {
+            writer.write(out);
+            return new StagedToken(temp);
+        } catch (Exception e) {
+            FileLog.e("AyuAttachments.stageViaWriter", e);
+            discardTemp(temp);
+            return null;
+        }
     }
 
-    // Band W: place a staged temp at finalName in the live folder under the monitor. If a complete
-    // file already sits there (a concurrent save won the race, or the caller resolved a reuse), keep
-    // it and drop the temp. The staging sibling shares the live folder's filesystem, so Os.rename is
-    // an atomic same-filesystem move: it stays sub-millisecond even for a large file and replaces a
-    // zero-length leftover in one step.
-    public static File promote(File temp, String finalName) {
+    // Take the monitor and place a staged temp at finalName in the live folder. For callers with no
+    // row to write (decrypt/download reuse); a caller with a row uses commit(...) instead so the
+    // place and the insert share one critical section. Correct called from any thread with no lock
+    // held.
+    public static File place(StagedToken token, String finalName) {
         synchronized (LOCK) {
-            ensureDir();
-            File finalFile = new File(DIR, finalName);
-            if (finalFile.exists() && finalFile.length() > 0) {
-                discard(temp);
+            return promoteLocked(token == null ? null : token.temp, finalName);
+        }
+    }
+
+    // Band W: place a staged temp at finalName in the live folder, monitor already held. If a
+    // complete file already sits there (a concurrent save won the race, or the caller resolved a
+    // reuse), keep it and drop the temp. The staging sibling shares the live folder's filesystem, so
+    // Os.rename is an atomic same-filesystem move: it stays sub-millisecond even for a large file and
+    // replaces a zero-length leftover in one step.
+    private static File promoteLocked(File temp, String finalName) {
+        ensureDir();
+        File finalFile = new File(DIR, finalName);
+        if (finalFile.exists() && finalFile.length() > 0) {
+            discardTemp(temp);
+            return finalFile;
+        }
+        if (temp == null || !temp.exists()) {
+            return null;
+        }
+        try {
+            Os.rename(temp.getAbsolutePath(), finalFile.getAbsolutePath());
+            return finalFile;
+        } catch (ErrnoException e) {
+            // same-filesystem by construction, so this is exceptional; fall back to a plain
+            // rename and, failing that, give up cleanly rather than leaving a half-placed file
+            if (temp.renameTo(finalFile)) {
                 return finalFile;
             }
-            if (temp == null || !temp.exists()) {
-                return null;
-            }
-            try {
-                Os.rename(temp.getAbsolutePath(), finalFile.getAbsolutePath());
-                return finalFile;
-            } catch (ErrnoException e) {
-                // same-filesystem by construction, so this is exceptional; fall back to a plain
-                // rename and, failing that, give up cleanly rather than leaving a half-placed file
-                if (temp.renameTo(finalFile)) {
-                    return finalFile;
-                }
-                FileLog.e("AyuAttachments.promote", e);
-                discard(temp);
-                return null;
-            }
+            FileLog.e("AyuAttachments.promoteLocked", e);
+            discardTemp(temp);
+            return null;
         }
     }
 
     // Drop a staged temp we are not going to keep (reuse won, or a write failed). The temp name is
     // unique to one stage call, so no other thread can name it - no coordination needed.
-    public static void discard(File temp) {
+    private static void discardTemp(File temp) {
         if (temp != null && temp.exists() && !temp.delete()) {
             temp.deleteOnExit();
         }

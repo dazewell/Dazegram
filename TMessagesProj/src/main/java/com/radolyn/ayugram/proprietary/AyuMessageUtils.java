@@ -29,7 +29,6 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -471,15 +470,15 @@ public abstract class AyuMessageUtils {
         return 0;
     }
 
-    // Carrier from stageMedia (Band L, no lock) to finalizeMedia (Band W, under the monitor). Holds
-    // the temp files already written into the attachments dir and the names they should take once
-    // the row is recorded. Nothing here is placed at its final name yet.
+    // Carrier from stageMedia (Band L, no lock) to finalizeMediaLocked (Band W, monitor held). Holds
+    // the opaque tokens for temps already written into the staging sibling and the names they should
+    // take once the row is recorded. Nothing here is placed in the live folder yet.
     public static class StagedFile {
-        final File temp;
+        final AyuAttachments.StagedToken token;
         final String finalName;
 
-        StagedFile(File temp, String finalName) {
-            this.temp = temp;
+        StagedFile(AyuAttachments.StagedToken token, String finalName) {
+            this.token = token;
             this.finalName = finalName;
         }
     }
@@ -597,13 +596,12 @@ public abstract class AyuMessageUtils {
         return new StagedMedia(false, copyFileToAttachments, null, null, null);
     }
 
-    // Band W: called by the controller while holding AyuAttachments.LOCK, immediately before the
+    // Band W: called through AyuAttachments.commit(...) with the monitor held, immediately before the
     // row insert, so the reuse lookup and the insert are one critical section a concurrent delete
-    // can't split. NOT a standalone API — its correctness depends on the caller's monitor and on
-    // the insert that follows it; that is why the controller owns this sequence. Only cheap file
-    // predicates, same-directory renames and Room statements happen here; the bytes were already
-    // copied in stageMedia.
-    public static void finalizeMedia(AyuSavePreferences prefs, AyuMessageBase out, StagedMedia staged) {
+    // can't split. Not callable off-lock: it needs the Tx, which only exists inside a commit body.
+    // Only cheap file predicates, token places/discards and Room reads happen here; the bytes were
+    // already copied in stageMedia.
+    public static void finalizeMediaLocked(AyuSavePreferences prefs, AyuMessageBase out, StagedMedia staged, AyuAttachments.Tx tx) {
         if (staged == null || !staged.processFiles) {
             return;
         }
@@ -625,22 +623,22 @@ public abstract class AyuMessageUtils {
                 // we already hold this exact media from an earlier revision or the delete path; reuse
                 // it and drop the temps we speculatively staged rather than copying again
                 if (staged.main != null) {
-                    AyuAttachments.discard(staged.main.temp);
+                    tx.discard(staged.main.token);
                 }
                 if (staged.thumb != null) {
-                    AyuAttachments.discard(staged.thumb.temp);
+                    tx.discard(staged.thumb.token);
                 }
                 finalFile = reuse;
                 out.hqThumbPath = AyuMessagesController.getInstance().findExistingThumbPath(prefs.getUserId(), prefs.getDialogId(), prefs.getMessageId(), out.mediaId);
             } else {
                 if (staged.main != null) {
-                    File placed = AyuAttachments.promote(staged.main.temp, staged.main.finalName);
+                    File placed = tx.place(staged.main.token, staged.main.finalName);
                     if (placed != null) {
                         finalFile = placed;
                     }
                 }
                 if (staged.thumb != null) {
-                    File placedThumb = AyuAttachments.promote(staged.thumb.temp, staged.thumb.finalName);
+                    File placedThumb = tx.place(staged.thumb.token, staged.thumb.finalName);
                     if (placedThumb != null && placedThumb.exists()) {
                         out.hqThumbPath = placedThumb.getAbsolutePath();
                     }
@@ -719,19 +717,19 @@ public abstract class AyuMessageUtils {
         return stageAttachment(prefs.getAccountId(), message.media.document, deleteSource);
     }
 
-    // Band L core: copy (or, on the force/TTL path, move) an existing source into a temp, or decrypt
-    // an encrypted cache file into a temp. Holds no lock. The temp is placed at finalName later by
-    // finalizeMedia via AyuAttachments.promote.
+    // Band L core: copy (or, on the force/TTL path, move) an existing source into a staged temp, or
+    // decrypt an encrypted cache file into one through an owner-owned stream. Holds no lock. The
+    // token is placed at finalName later, under the monitor, by finalizeMediaLocked.
     private static StagedFile stageAttachment(File source, String finalName, boolean deleteSource) {
         if (source.exists()) {
-            File temp = AyuAttachments.stage(source, deleteSource);
-            if (temp == null) {
+            AyuAttachments.StagedToken token = AyuAttachments.stage(source, deleteSource);
+            if (token == null) {
                 if (BuildVars.LOGS_ENABLED) {
                     Log.e(TAG, "Failed to stage media file from " + source.getAbsolutePath());
                 }
                 return null;
             }
-            return new StagedFile(temp, finalName);
+            return new StagedFile(token, finalName);
         }
 
         File directory = FileLoader.getDirectory(4);
@@ -743,22 +741,22 @@ public abstract class AyuMessageUtils {
                 Log.d(TAG, "Found encrypted file, checking for key: " + keyFile.getAbsolutePath() + " exists=" + keyFile.exists());
             }
             if (keyFile.exists()) {
-                File temp = AyuAttachments.newTemp();
-                try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(temp)) {
-                    byte[] buffer = new byte[4 * 1024];
-                    int read;
-                    while ((read = inputStream.read(buffer)) != -1) {
-                        outputStream.write(buffer, 0, read);
+                AyuAttachments.StagedToken token = AyuAttachments.stageViaWriter(out -> {
+                    try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile)) {
+                        byte[] buffer = new byte[4 * 1024];
+                        int read;
+                        while ((read = inputStream.read(buffer)) != -1) {
+                            out.write(buffer, 0, read);
+                        }
                     }
-                    if (BuildVars.LOGS_ENABLED) {
-                        Log.d(TAG, "Successfully decrypted and staged media for " + finalName);
-                    }
-                    return new StagedFile(temp, finalName);
-                } catch (Exception e) {
-                    FileLog.e("encrypted media copy failed", e);
-                    AyuAttachments.discard(temp);
+                });
+                if (token == null) {
                     return null;
                 }
+                if (BuildVars.LOGS_ENABLED) {
+                    Log.d(TAG, "Successfully decrypted and staged media for " + finalName);
+                }
+                return new StagedFile(token, finalName);
             }
         }
 
@@ -896,21 +894,22 @@ public abstract class AyuMessageUtils {
             }
             return null;
         }
-        // Band L: decrypt into a temp in the attachments dir holding no lock
-        File temp = AyuAttachments.newTemp();
-        try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile); FileOutputStream outputStream = new FileOutputStream(temp)) {
-            byte[] readBuffer = new byte[8 * 1024];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(readBuffer)) != -1) {
-                outputStream.write(readBuffer, 0, bytesRead);
+        // Band L: decrypt into a staged temp through an owner-owned stream, holding no lock
+        AyuAttachments.StagedToken token = AyuAttachments.stageViaWriter(out -> {
+            try (EncryptedFileInputStream inputStream = new EncryptedFileInputStream(encryptedFile, keyFile)) {
+                byte[] readBuffer = new byte[8 * 1024];
+                int bytesRead;
+                while ((bytesRead = inputStream.read(readBuffer)) != -1) {
+                    out.write(readBuffer, 0, bytesRead);
+                }
             }
-        } catch (Exception e) {
-            FileLog.e("Failed to decrypt and save media", e);
-            AyuAttachments.discard(temp);
+        });
+        if (token == null) {
+            FileLog.e("Failed to decrypt and save media");
             return null;
         }
         // Band W: place it. If another caller decrypted the same file first, keep theirs and drop ours
-        File placed = AyuAttachments.promote(temp, outputFileName);
+        File placed = AyuAttachments.place(token, outputFileName);
         if (placed != null && BuildVars.LOGS_ENABLED) {
             Log.d(TAG, "Successfully decrypted and saved media to: " + placed.getAbsolutePath());
         }
@@ -953,12 +952,12 @@ public abstract class AyuMessageUtils {
         if (!downloadedFile.exists()) {
             return null;
         }
-        // Band L: copy into a temp holding no lock; Band W places it (copy-not-move, source stays)
-        File staged = AyuAttachments.stage(downloadedFile, false);
+        // Band L: copy into a staged temp holding no lock; place it (copy-not-move, source stays)
+        AyuAttachments.StagedToken staged = AyuAttachments.stage(downloadedFile, false);
         if (staged == null) {
             return null;
         }
-        return AyuAttachments.promote(staged, filename);
+        return AyuAttachments.place(staged, filename);
     }
 
     private static String ensureAttachmentAndUpdateMediaPath(AyuMessageBase base, TLRPC.Message message, int accountId) {
