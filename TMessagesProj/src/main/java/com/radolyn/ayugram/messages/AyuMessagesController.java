@@ -30,6 +30,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -384,14 +385,31 @@ public class AyuMessagesController {
     }
 
     // startsWith on the bare path would also match a sibling like "Saved Attachments_old",
-    // so anchor on an exact match or the folder plus a separator.
+    // so anchor on an exact match or the folder plus a separator. Cheap and lexical, and only
+    // a pre-filter: the actual unlink re-checks canonical containment below, since getAbsolutePath()
+    // never collapses a ".." component.
     private boolean isUnderAttachments(File f) {
         String prefix = attachmentsPath.getAbsolutePath();
         String p = f.getAbsolutePath();
         return p.equals(prefix) || p.startsWith(prefix + File.separator);
     }
 
-    // Unlink a saved-media file only if it is one we own (under attachmentsPath) and no
+    // Fail-closed canonical containment: true only when f canonically resolves to a direct child
+    // of the canonical attachments folder. A "Saved Attachments/../victim" traversal, or a symlink
+    // escaping the folder, resolves away and is rejected. Any canonicalisation error also rejects,
+    // since we'd rather keep a file than risk deleting outside the folder.
+    private boolean isContainedChild(File f) {
+        try {
+            File canonicalDir = attachmentsPath.getCanonicalFile();
+            File parent = f.getCanonicalFile().getParentFile();
+            return parent != null && parent.equals(canonicalDir);
+        } catch (IOException e) {
+            FileLog.e("isContainedChild", e);
+            return false;
+        }
+    }
+
+    // Unlink a saved-media file only if it is one we own (canonically under attachmentsPath) and no
     // remaining row still points at it. mediaPath can be a path straight into Telegram's
     // own cache (copyFileToAttachments off), and dedup / revision backfill deliberately
     // share one file across rows, so blindly deleting would take out the user's own media
@@ -401,7 +419,7 @@ public class AyuMessagesController {
             return;
         }
         File f = new File(path);
-        if (!isUnderAttachments(f)) {
+        if (!isUnderAttachments(f) || !isContainedChild(f)) {
             return;
         }
         if (isPathReferenced(path)) {
