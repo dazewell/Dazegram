@@ -561,6 +561,20 @@ public class AyuMessagesController {
         // Band L: the byte copy holds no lock. Only the place-and-record below runs under it.
         AyuAttachments.StagedToken staged = (from != null && to != null && from.exists()) ? AyuAttachments.stage(from, false) : null;
         AyuAttachments.commit(tx -> {
+            // Confirm the row still wants media before placing anything. clean()'s reset body runs
+            // under this same monitor, so if it cleared the DB and swapped the folder between the
+            // stage above and here, this read sees zero and we place nothing - otherwise tx.place
+            // would drop the temp into the fresh folder as an orphan that updateMediaPathIfEmpty
+            // can't reference (zero rows) and neither row deletion nor the startup sweep reclaims.
+            // Fail closed: a null (read failed) is treated as not adoptable, and the temp is dropped.
+            Boolean adoptable = withDaoRetry("adoptAttachment.adoptable",
+                    () -> deletedMessageDao.hasEmptyMediaPath(userId, dialogId, messageId));
+            if (!Boolean.TRUE.equals(adoptable)) {
+                if (staged != null) {
+                    tx.discard(staged);
+                }
+                return;
+            }
             File resolved = null;
             if (staged != null) {
                 File placed = tx.place(staged, to.getName());

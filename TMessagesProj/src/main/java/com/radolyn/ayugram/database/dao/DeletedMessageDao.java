@@ -92,6 +92,9 @@ public interface DeletedMessageDao {
     @Query("UPDATE deletedmessage SET mediaPath = :newPath WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND (mediaPath IS NULL OR mediaPath = '')")
     void updateMediaPathIfEmpty(long userId, long dialogId, int messageId, String newPath);
 
+    @Query("SELECT EXISTS(SELECT 1 FROM deletedmessage WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND (mediaPath IS NULL OR mediaPath = ''))")
+    boolean hasEmptyMediaPath(long userId, long dialogId, int messageId);
+
     @Query("SELECT mediaPath FROM deletedmessage WHERE userId = :userId AND dialogId = :dialogId AND messageId = :messageId AND mediaId = :mediaId AND mediaPath IS NOT NULL AND mediaPath != ''")
     List<String> getAttachmentMediaPaths(long userId, long dialogId, int messageId, long mediaId);
 
