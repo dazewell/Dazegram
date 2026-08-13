@@ -43,6 +43,9 @@ public abstract class AyuAttachments {
     // A wiped tree is renamed aside to this before the long delete runs; the sweep reclaims any
     // that a crash stranded between the rename and the delete.
     private static final String ASIDE_INFIX = ".old_";
+    // A fresh empty replacement folder is prepared under this name in Band L, then renamed into place
+    // during a reset; the sweep reclaims one a crash strands between prepare and swap.
+    private static final String NEW_INFIX = ".new_";
     // Temps stage in a package-specific sibling of the live folder, OUTSIDE it, on the same
     // filesystem. Outside so a reset (which renames the live folder) can't turn an in-flight temp
     // into "absent", and so neither the history scanner nor the sweep can ever reach one; the
@@ -118,6 +121,20 @@ public abstract class AyuAttachments {
                 return;
             }
             deleteContainedLocked(path);
+        }
+
+        // Swap a Band-L-prepared empty replacement folder in for the live one using renames only. The
+        // live folder is renamed aside to a unique name and the replacement is moved into its place;
+        // the returned aside handle is deleted by the caller in Band L, so the long delete never runs
+        // under the monitor. Returns null when there was no live folder to move. If the live->aside
+        // rename fails we abort - drop the (empty) replacement and leave the live folder untouched -
+        // rather than recursively deleting the live tree while locked.
+        public File swapIn(File replacement) {
+            if (!Thread.holdsLock(LOCK)) {
+                FileLog.e("AyuAttachments.Tx.swapIn called off-lock");
+                return null;
+            }
+            return swapInLocked(replacement);
         }
     }
 
@@ -265,6 +282,9 @@ public abstract class AyuAttachments {
             return null;
         }
         ensureStagingDir();
+        // Ensure the live folder here, in Band L, so the later place under the monitor is renames
+        // only and never creates a directory while a main-thread reader waits on the lock.
+        ensureDir();
         File temp = newStagingTemp();
         if (AyuUtils.moveOrCopyFile(source, temp, deleteSource)) {
             return new StagedToken(temp);
@@ -278,6 +298,9 @@ public abstract class AyuAttachments {
     // never reaches the caller. Returns an opaque token, or null on failure.
     public static StagedToken stageViaWriter(TempWriter writer) {
         ensureStagingDir();
+        // Ensure the live folder in Band L for the same reason as stage(): the place stays renames
+        // only under the monitor.
+        ensureDir();
         File temp = newStagingTemp();
         try (OutputStream out = new FileOutputStream(temp)) {
             writer.write(out);
@@ -299,13 +322,13 @@ public abstract class AyuAttachments {
         }
     }
 
-    // Band W: place a staged temp at finalName in the live folder, monitor already held. If a
-    // complete file already sits there (a concurrent save won the race, or the caller resolved a
-    // reuse), keep it and drop the temp. The staging sibling shares the live folder's filesystem, so
-    // Os.rename is an atomic same-filesystem move: it stays sub-millisecond even for a large file and
-    // replaces a zero-length leftover in one step.
+    // Band W: place a staged temp at finalName in the live folder, monitor already held. The live
+    // folder was ensured in Band L at stage time, so this does no directory creation. If a complete
+    // file already sits there (a concurrent save won the race, or the caller resolved a reuse), keep
+    // it and drop the temp. The staging sibling shares the live folder's filesystem, so Os.rename is
+    // an atomic same-filesystem move: it stays sub-millisecond even for a large file and replaces a
+    // zero-length leftover in one step.
     private static File promoteLocked(File temp, String finalName) {
-        ensureDir();
         File finalFile = new File(DIR, finalName);
         if (finalFile.exists() && finalFile.length() > 0) {
             discardTemp(temp);
@@ -356,31 +379,54 @@ public abstract class AyuAttachments {
         }
     }
 
-    // Band W: move the live folder aside to a unique name and put a fresh empty one in its place -
-    // both cheap same-parent operations under the monitor. The caller deletes the returned aside
-    // tree in Band L, unlocked, so a multi-gigabyte delete never blocks a thread waiting on the
-    // monitor (a ChatMessageCell bind, another account's save). Returns the aside directory, or
-    // null when there was nothing to move or the rename fell back to an in-place delete.
-    public static File renameAsideAndRecreate() {
-        synchronized (LOCK) {
-            File aside = null;
-            if (DIR.exists()) {
-                File candidate = new File(DIR.getParentFile(), SUBFOLDER + ASIDE_INFIX + AyuUtils.generateRandomString(16));
-                if (DIR.renameTo(candidate)) {
-                    aside = candidate;
-                } else {
-                    // same-parent rename shouldn't fail, but if it does don't strand the tree:
-                    // delete in place, still under the lock (the rare, unavoidable long hold)
-                    tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(DIR);
-                }
+    // Band L: build a fresh empty replacement folder (with its .nomedia) alongside the live one, so
+    // the reset's Band W step is renames only and creates no directory under the monitor. The name
+    // carries NEW_INFIX so the sweep reclaims one a crash strands between here and the swap.
+    public static File prepareReplacement() {
+        File replacement = new File(DIR.getParentFile(), SUBFOLDER + NEW_INFIX + AyuUtils.generateRandomString(16));
+        ensureFolder(replacement);
+        return replacement;
+    }
+
+    // Band W: the swap behind Tx.swapIn, monitor already held. Renames only.
+    private static File swapInLocked(File replacement) {
+        File aside = null;
+        if (DIR.exists()) {
+            File candidate = new File(DIR.getParentFile(), SUBFOLDER + ASIDE_INFIX + AyuUtils.generateRandomString(16));
+            if (DIR.renameTo(candidate)) {
+                aside = candidate;
+            } else {
+                // same-parent rename shouldn't fail; if it does, abort rather than deleting the live
+                // tree under the monitor. Drop the unused empty replacement, leave the live folder.
+                discardEmptyDir(replacement);
+                return null;
             }
-            ensureDir();
-            return aside;
+        }
+        if (replacement != null && !replacement.renameTo(DIR)) {
+            // live folder is now absent; the next stage's ensureDir recreates it and the sweep
+            // reclaims the stranded replacement by its NEW_INFIX name
+            FileLog.e("AyuAttachments.swapIn: failed to move replacement into place");
+        }
+        return aside;
+    }
+
+    // Drop a freshly-prepared empty replacement (only its .nomedia inside), monitor held. Cheap: two
+    // file deletes, never a recursive tree walk.
+    private static void discardEmptyDir(File dir) {
+        if (dir == null) {
+            return;
+        }
+        File nomedia = new File(dir, ".nomedia");
+        if (nomedia.exists() && !nomedia.delete()) {
+            nomedia.deleteOnExit();
+        }
+        if (dir.exists() && !dir.delete()) {
+            dir.deleteOnExit();
         }
     }
 
-    // Band L: delete an aside tree returned by renameAsideAndRecreate, holding no lock. The aside
-    // name is unique to one reset, so nothing else can name it - no coordination needed.
+    // Band L: delete an aside tree returned by Tx.swapIn, holding no lock. The aside name is unique
+    // to one reset, so nothing else can name it - no coordination needed.
     public static void deleteTree(File aside) {
         if (aside == null) {
             return;
@@ -388,10 +434,11 @@ public abstract class AyuAttachments {
         tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(aside);
     }
 
-    // Band L: the startup reclaim posted from the static initializer. Holds no monitor. Aside trees
-    // go unconditionally - deleting one is exactly what its own deleteTree would have done, so racing
-    // a concurrent reset is harmless. Staging temps go only when they carry another (dead) process's
-    // token, so this can never unlink one this process still has in flight.
+    // Band L: the startup reclaim posted from the static initializer. Holds no monitor. Aside and
+    // replacement trees go unconditionally - deleting an aside is exactly what its own deleteTree
+    // would have done, and a stranded replacement is a fresh empty folder, so racing a concurrent
+    // reset is harmless. Staging temps go only when they carry another (dead) process's token, so
+    // this can never unlink one this process still has in flight.
     private static void sweepLeftovers() {
         try {
             File parent = DIR.getParentFile();
@@ -399,7 +446,7 @@ public abstract class AyuAttachments {
                 File[] siblings = parent.listFiles();
                 if (siblings != null) {
                     for (File f : siblings) {
-                        if (f.isDirectory() && f.getName().startsWith(SUBFOLDER + ASIDE_INFIX)) {
+                        if (f.isDirectory() && (f.getName().startsWith(SUBFOLDER + ASIDE_INFIX) || f.getName().startsWith(SUBFOLDER + NEW_INFIX))) {
                             tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(f);
                         }
                     }
