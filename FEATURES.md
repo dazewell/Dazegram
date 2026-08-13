@@ -155,7 +155,7 @@ A button in the player bar cycles how round video messages play — *play once* 
 
 ### Mute video messages <!-- #video-mute -->
 
-A mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back.
+A mute button next to the playback-mode toggle silences round video messages while you keep watching. It works with the playback modes, so you can loop or play through a chat's video messages with the sound off. The setting sticks until you switch it back. Muted video messages don't take audio focus either, so music or a podcast keeps playing while you watch, and flipping the button mid-play picks that back up or lets go of it immediately instead of waiting for the next one.
 
 ### Closed captions on video messages <!-- #video-cc -->
 

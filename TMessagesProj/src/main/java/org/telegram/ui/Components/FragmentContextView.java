@@ -782,6 +782,9 @@ public class FragmentContextView extends FrameLayout implements NotificationCent
             boolean muted = !NaConfig.INSTANCE.getVideoMessagesMuted().Bool();
             NaConfig.INSTANCE.getVideoMessagesMuted().setConfigBool(muted);
             MediaController.getInstance().setPlayerVolume();
+            // NagramX: this button is the only UI for the toggle, so it always fires mid-playback -
+            // the audio focus decision taken at play start needs redoing right here, not just the volume.
+            MediaController.getInstance().updateAudioFocusForVideoMute();
             updateVideoMuteButton();
         });
         updateVideoMuteButton();
