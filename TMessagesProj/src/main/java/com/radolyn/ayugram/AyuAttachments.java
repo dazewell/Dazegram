@@ -249,6 +249,14 @@ public abstract class AyuAttachments {
         if (TextUtils.isEmpty(name)) {
             return null;
         }
+        // Reject, don't sanitise: the name must be a bare leaf, not a path. A leaf equals its own
+        // File.getName() and is neither "." nor ".."; this rejects absolute names, embedded
+        // separators, and "../Saved Attachments/x" or "sub/../x" aliases that canonicalise back to a
+        // direct child. The canonical direct-child test below then stands as defence in depth (a
+        // symlinked entry that escapes the folder).
+        if (name.equals(".") || name.equals("..") || !name.equals(new File(name).getName())) {
+            return null;
+        }
         File f = new File(DIR, name);
         return isContainedChild(f) ? f : null;
     }
