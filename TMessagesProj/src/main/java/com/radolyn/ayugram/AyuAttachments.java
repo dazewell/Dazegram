@@ -14,6 +14,7 @@ import android.text.TextUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
+import org.telegram.messenger.Utilities;
 
 import java.io.File;
 
@@ -30,6 +31,10 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 public abstract class AyuAttachments {
     private static final String SUBFOLDER = "Saved Attachments";
     private static final String TEMP_PREFIX = ".ayutmp_";
+    // A temp lives only for the single save that writes it (seconds), so anything older than this
+    // is a leftover from a process that died mid-stage. The margin keeps the startup sweep from
+    // racing a temp another thread is still writing - it is not an age cap on saved data.
+    private static final long TEMP_STALE_MS = 60 * 60 * 1000L;
     private static final File DIR = new File(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), AyuConstants.APP_NAME), SUBFOLDER);
 
     // The one process-wide attachment monitor. The controller synchronises its row-consistency
@@ -37,6 +42,16 @@ public abstract class AyuAttachments {
     // concurrent delete. A leaf in the lock order (attachmentMonitor -> AyuData.class), never
     // held across a wait on another queue.
     public static final Object LOCK = new Object();
+
+    // One-shot reclaim of our own leftovers the first time the owner is touched. Two kinds outlive
+    // a process that dies at the wrong moment: staged temps, and an aside tree stranded between
+    // renameAsideAndRecreate and its deleteTree (potentially gigabytes nothing will ever look at
+    // again). Neither is retention or pruning of saved data - it only ever removes our own
+    // .ayutmp_/.old_ artifacts, once, on no schedule. Posted to globalQueue so the I/O is off the
+    // main thread and holds no monitor (Band L).
+    static {
+        Utilities.globalQueue.postRunnable(AyuAttachments::sweepLeftovers);
+    }
 
     // Band R: resolve a name to a File in the folder. Pure, no I/O — the caller decides what to
     // do with it and re-checks existence itself.
@@ -207,5 +222,38 @@ public abstract class AyuAttachments {
             return;
         }
         tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(aside);
+    }
+
+    // Band L: the startup reclaim posted from the static initializer. Holds no monitor. Aside
+    // trees go unconditionally - deleting one is exactly what its own deleteTree would have done,
+    // so racing a concurrent reset is harmless. Temps go only when stale, so this can't unlink one
+    // an in-flight stage is still writing.
+    private static void sweepLeftovers() {
+        try {
+            File parent = DIR.getParentFile();
+            if (parent != null) {
+                File[] siblings = parent.listFiles();
+                if (siblings != null) {
+                    for (File f : siblings) {
+                        if (f.isDirectory() && f.getName().startsWith(SUBFOLDER + ".old_")) {
+                            tw.nekomimi.nekogram.utils.FileUtil.deleteDirectory(f);
+                        }
+                    }
+                }
+            }
+            File[] entries = DIR.listFiles();
+            if (entries != null) {
+                long now = System.currentTimeMillis();
+                for (File f : entries) {
+                    if (f.isFile() && f.getName().startsWith(TEMP_PREFIX) && now - f.lastModified() > TEMP_STALE_MS) {
+                        if (!f.delete()) {
+                            f.deleteOnExit();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e("AyuAttachments.sweepLeftovers", e);
+        }
     }
 }
