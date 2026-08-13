@@ -15928,7 +15928,7 @@ public class MessagesStorage extends BaseController {
                                                 }
                                             }
                                             if (NaConfig.INSTANCE.getRegexFiltersEnabled().Bool()) {
-                                                AyuFilter.onMessageEdited(message.id, dialogId);
+                                                AyuFilter.onMessageEdited(currentAccount, message.id, dialogId);
                                             }
                                         }
                                         // --- AyuGram hook
