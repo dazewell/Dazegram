@@ -759,7 +759,10 @@ public class AyuMessageHistory extends NekoDelegateFragment {
         ArrayList<File> ttlMatches = new ArrayList<>();
         for (String name : fileNames) {
             if (name.startsWith(ttlPrefix)) {
-                ttlMatches.add(AyuAttachments.resolve(name));
+                File resolved = AyuAttachments.resolve(name);
+                if (resolved != null) {
+                    ttlMatches.add(resolved);
+                }
             }
         }
         if (!ttlMatches.isEmpty()) {
@@ -778,7 +781,7 @@ public class AyuMessageHistory extends NekoDelegateFragment {
     private File findExistingFileByBaseNameCached(String[] fileNames, String baseName) {
         // exact match
         File exactMatch = AyuAttachments.resolve(baseName);
-        if (exactMatch.exists()) {
+        if (exactMatch != null && exactMatch.exists()) {
             return exactMatch;
         }
         String nameWithoutExtension = AyuUtils.removeExtension(baseName);
@@ -790,7 +793,10 @@ public class AyuMessageHistory extends NekoDelegateFragment {
                 continue;
             }
             if (name.equals(baseName)) {
-                matchingFiles.add(AyuAttachments.resolve(name));
+                File resolved = AyuAttachments.resolve(name);
+                if (resolved != null) {
+                    matchingFiles.add(resolved);
+                }
                 continue;
             }
             if (!name.startsWith(nameWithoutExtension)) {
@@ -802,7 +808,10 @@ public class AyuMessageHistory extends NekoDelegateFragment {
             }
             char ch = name.charAt(length);
             if (ch == '@' || ch == '#') {
-                matchingFiles.add(AyuAttachments.resolve(name));
+                File resolved = AyuAttachments.resolve(name);
+                if (resolved != null) {
+                    matchingFiles.add(resolved);
+                }
             }
         }
         if (matchingFiles.isEmpty()) {

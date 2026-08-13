@@ -975,10 +975,12 @@ public abstract class AyuMessageUtils {
                 File from = new File(filePath);
                 if (from.exists() && !AyuAttachments.isUnder(from)) {
                     File to = AyuAttachments.resolve(baseName);
-                    // Copy into attachments and point the row at the result in one locked step, so a
-                    // concurrent delete can't unlink the file between resolving it and recording it.
-                    Utilities.globalQueue.postRunnable(() ->
-                            AyuMessagesController.getInstance().adoptAttachment(userId, dialogId, messageId, from, to, baseName, null));
+                    if (to != null) {
+                        // Copy into attachments and point the row at the result in one locked step, so a
+                        // concurrent delete can't unlink the file between resolving it and recording it.
+                        Utilities.globalQueue.postRunnable(() ->
+                                AyuMessagesController.getInstance().adoptAttachment(userId, dialogId, messageId, from, to, baseName, null));
+                    }
                     File found = findExistingFileByBaseNameFast(baseName);
                     return found != null ? found.getAbsolutePath() : null;
                 }

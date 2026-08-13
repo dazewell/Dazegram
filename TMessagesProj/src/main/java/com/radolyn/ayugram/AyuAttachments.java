@@ -164,20 +164,18 @@ public abstract class AyuAttachments {
         Utilities.globalQueue.postRunnable(AyuAttachments::sweepLeftovers);
     }
 
-    // Band R: resolve a name to a File in the folder. Pure, no I/O — the caller decides what to
-    // do with it and re-checks existence itself.
+    // Band R: resolve a name to a File in the folder, or null when the name is empty or would escape
+    // the folder. The caller re-checks existence itself and must handle null. Fail-closed containment
+    // (see containedChild) so a name carrying a separator or ".." can't point a reader outside.
     public static File resolve(String name) {
-        return new File(DIR, name);
+        return containedChild(name);
     }
 
     // Band R: the exact-name file if it is present and non-empty, else null. No mkdir — a lookup
     // that creates the directory is a mutation wearing a lookup's name.
     public static File resolveExisting(String name) {
-        if (TextUtils.isEmpty(name)) {
-            return null;
-        }
-        File f = new File(DIR, name);
-        if (f.exists() && f.length() > 0) {
+        File f = containedChild(name);
+        if (f != null && f.exists() && f.length() > 0) {
             return f;
         }
         return null;
@@ -232,6 +230,20 @@ public abstract class AyuAttachments {
             FileLog.e("AyuAttachments.isContainedChild", e);
             return false;
         }
+    }
+
+    // Band R: the File for a caller-supplied name inside the folder, or null when the name is empty or
+    // would escape it. Every caller name that becomes a real path — a read lookup or the promote
+    // rename target — goes through this, so a name carrying a separator or ".." can neither read nor
+    // write outside the folder. Same fail-closed canonical direct-child rule the destructive unlink
+    // uses: a rejected name is null, and a rejected save is a bounded loss where a file placed outside
+    // the folder is not.
+    private static File containedChild(String name) {
+        if (TextUtils.isEmpty(name)) {
+            return null;
+        }
+        File f = new File(DIR, name);
+        return isContainedChild(f) ? f : null;
     }
 
     // Band R: does this stored path already point at one of our saved files rather than a raw
@@ -334,7 +346,14 @@ public abstract class AyuAttachments {
     // an atomic same-filesystem move: it stays sub-millisecond even for a large file and replaces a
     // zero-length leftover in one step.
     private static File promoteLocked(File temp, String finalName) {
-        File finalFile = new File(DIR, finalName);
+        File finalFile = containedChild(finalName);
+        if (finalFile == null) {
+            // finalName escapes the folder (a separator or "..") - refuse rather than rename the temp
+            // outside it. A rejected save loses one file; a file written outside the folder does not.
+            FileLog.e("AyuAttachments.promoteLocked: rejected out-of-folder name " + finalName);
+            discardTemp(temp);
+            return null;
+        }
         if (finalFile.exists() && finalFile.length() > 0) {
             discardTemp(temp);
             return finalFile;
