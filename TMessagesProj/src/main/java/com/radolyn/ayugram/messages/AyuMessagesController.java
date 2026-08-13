@@ -348,7 +348,7 @@ public class AyuMessagesController {
                 continue;
             }
             File f = new File(path);
-            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
+            if (isUnderAttachments(f) && isContainedChild(f) && f.exists() && f.length() > 0) {
                 return path;
             }
         }
@@ -379,7 +379,7 @@ public class AyuMessagesController {
                 continue;
             }
             File f = new File(path);
-            if (isUnderAttachments(f) && f.exists() && f.length() > 0) {
+            if (isUnderAttachments(f) && isContainedChild(f) && f.exists() && f.length() > 0) {
                 return path;
             }
         }
