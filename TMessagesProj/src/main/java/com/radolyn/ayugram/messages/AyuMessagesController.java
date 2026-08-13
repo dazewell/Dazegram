@@ -562,7 +562,7 @@ public class AyuMessagesController {
             if (isUnderAttachments(f) && isContainedChild(f) && f.exists()) {
                 try {
                     if (!f.delete()) {
-                        f.deleteOnExit();
+                        FileLog.e("clean#unlink: failed to delete " + f.getAbsolutePath());
                     }
                 } catch (Exception e) {
                     FileLog.e("clean#unlink", e);
