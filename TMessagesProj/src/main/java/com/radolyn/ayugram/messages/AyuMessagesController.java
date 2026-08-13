@@ -585,28 +585,18 @@ public class AyuMessagesController {
     }
 
     public void clean() {
-        // Band L: prepare the fresh replacement folder before taking the monitor, so the swap under
-        // it is renames only.
-        File replacement = AyuAttachments.prepareReplacement();
-        File[] asideHolder = new File[1];
-        AyuAttachments.commit(tx -> {
+        // The owner prepares the fresh folder in Band L, then under its monitor runs this DB-reset
+        // body and swaps the folder in with renames only, then deletes the old tree off the monitor.
+        // No replacement or aside File crosses back here, so this can't hand the owner an arbitrary
+        // directory to swap in or delete.
+        AyuAttachments.reset(() -> {
             AyuData.clean();
             AyuData.create();
 
             refreshDaos();
 
-            // Band W: swap the prepared folder in for the live one, renames only under the monitor.
-            // The old tree's deletion is the long part and is handed off below rather than held here.
-            asideHolder[0] = tx.swapIn(replacement);
-
             // force to recreate a database to avoid crash
             instance = null;
         });
-
-        // Band L: delete the old tree unlocked, off the monitor a media bind could be waiting on.
-        File aside = asideHolder[0];
-        if (aside != null) {
-            Utilities.globalQueue.postRunnable(() -> AyuAttachments.deleteTree(aside));
-        }
     }
 }

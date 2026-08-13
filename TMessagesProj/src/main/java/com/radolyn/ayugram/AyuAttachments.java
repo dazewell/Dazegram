@@ -127,19 +127,6 @@ public abstract class AyuAttachments {
             deleteContainedLocked(path);
         }
 
-        // Swap a Band-L-prepared empty replacement folder in for the live one using renames only. The
-        // live folder is renamed aside to a unique name and the replacement is moved into its place;
-        // the returned aside handle is deleted by the caller in Band L, so the long delete never runs
-        // under the monitor. Returns null when there was no live folder to move. If the live->aside
-        // rename fails we abort - drop the (empty) replacement and leave the live folder untouched -
-        // rather than recursively deleting the live tree while locked.
-        public File swapIn(File replacement) {
-            if (!Thread.holdsLock(LOCK)) {
-                FileLog.e("AyuAttachments.Tx.swapIn called off-lock");
-                return null;
-            }
-            return swapInLocked(replacement);
-        }
     }
 
     private static final Tx TX = new Tx();
@@ -153,10 +140,30 @@ public abstract class AyuAttachments {
         }
     }
 
+    // The one reset operation. Prepares a fresh empty replacement folder in Band L, then under the
+    // monitor runs the caller's DB-reset body and swaps the folder in with renames only, then hands
+    // the old tree off to Band L for deletion. No replacement or aside File ever crosses the owner
+    // boundary, so a caller can neither point the swap at an arbitrary directory nor recursively
+    // delete one. dbReset runs under the monitor so it is exclusive with every commit body (a save
+    // racing the reset either lands before it or sees the cleared DB after it). Correct called from
+    // any thread with no lock held.
+    public static void reset(Runnable dbReset) {
+        File replacement = prepareReplacement();
+        File aside;
+        synchronized (LOCK) {
+            dbReset.run();
+            aside = swapInLocked(replacement);
+        }
+        if (aside != null) {
+            final File tree = aside;
+            Utilities.globalQueue.postRunnable(() -> deleteTree(tree));
+        }
+    }
+
     // One-shot reclaim of our own leftovers the first time the owner is touched. Three kinds outlive
     // a process that dies at the wrong moment: staged temps in the staging sibling, an aside tree
-    // stranded between Tx.swapIn and its deleteTree (potentially gigabytes nothing will ever look at
-    // again), and a prepared replacement stranded between prepareReplacement and the swap. None is
+    // stranded between reset()'s swap and its deleteTree (potentially gigabytes nothing will ever
+    // look at again), and a prepared replacement stranded between prepareReplacement and the swap. None is
     // retention or pruning of saved data - it only ever removes our own staging/aside/replacement
     // artifacts, once, on no schedule. Posted to globalQueue so the I/O is off the main thread and
     // holds no monitor (Band L).
@@ -405,14 +412,15 @@ public abstract class AyuAttachments {
 
     // Band L: build a fresh empty replacement folder (with its .nomedia) alongside the live one, so
     // the reset's Band W step is renames only and creates no directory under the monitor. The name
-    // carries NEW_INFIX so the sweep reclaims one a crash strands between here and the swap.
-    public static File prepareReplacement() {
+    // carries NEW_INFIX so the sweep reclaims one a crash strands between here and the swap. Only
+    // reset() calls this; the prepared File never leaves the owner.
+    private static File prepareReplacement() {
         File replacement = new File(DIR.getParentFile(), SUBFOLDER + NEW_INFIX + AyuUtils.generateRandomString(16));
         ensureFolder(replacement);
         return replacement;
     }
 
-    // Band W: the swap behind Tx.swapIn, monitor already held. Renames only.
+    // Band W: the swap for reset(), monitor already held. Renames only.
     private static File swapInLocked(File replacement) {
         File aside = null;
         if (DIR.exists()) {
@@ -449,9 +457,10 @@ public abstract class AyuAttachments {
         }
     }
 
-    // Band L: delete an aside tree returned by Tx.swapIn, holding no lock. The aside name is unique
-    // to one reset, so nothing else can name it - no coordination needed.
-    public static void deleteTree(File aside) {
+    // Band L: delete an aside tree produced by reset(), holding no lock. The aside name is unique
+    // to one reset, so nothing else can name it - no coordination needed. Only reset() and the
+    // startup sweep call this; the aside File never leaves the owner.
+    private static void deleteTree(File aside) {
         if (aside == null) {
             return;
         }
