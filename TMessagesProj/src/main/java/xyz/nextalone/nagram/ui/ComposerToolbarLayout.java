@@ -87,7 +87,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         startSlot = createFrameSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 
-        middleScrollView = new HorizontalScrollView(context);
+        middleScrollView = new ComposerMiddleScrollView(context);
         middleScrollView.setHorizontalScrollBarEnabled(false);
         middleScrollView.setHorizontalFadingEdgeEnabled(true);
         middleScrollView.setFadingEdgeLength(AndroidUtilities.dp(12));
@@ -984,6 +984,59 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 }
             }
             return occupiedChildCount != occupied || releasedChildVisible;
+        }
+    }
+
+    // ActionBarLayout's back-swipe arms from a right-drag on ACTION_MOVE and only backs off for a
+    // horizontal child that already owns the touch. A plain HorizontalScrollView only claims that
+    // ownership once its own onInterceptTouchEvent sees enough horizontal drag, which can be a frame
+    // or two behind ActionBarLayout on a fast flick - so the swipe that was meant to scroll the middle
+    // strip closes the chat instead. Claiming the touch on ACTION_DOWN, whenever the strip has content
+    // to scroll to, closes that gap.
+    private static final class ComposerMiddleScrollView extends HorizontalScrollView {
+        private float downX;
+        private float downY;
+        private boolean guardArmed;
+
+        ComposerMiddleScrollView(Context context) {
+            super(context);
+        }
+
+        @Override
+        public boolean onInterceptTouchEvent(MotionEvent ev) {
+            switch (ev.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    downX = ev.getX();
+                    downY = ev.getY();
+                    guardArmed = canScrollHorizontally(-1) || canScrollHorizontally(1);
+                    if (guardArmed && getParent() != null) {
+                        getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    if (guardArmed) {
+                        float dx = Math.abs(ev.getX() - downX);
+                        float dy = Math.abs(ev.getY() - downY);
+                        int slop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+                        if (dy > dx && dy > slop) {
+                            // The drag turned vertical (e.g. dragging the ComposerLayoutActivity preview
+                            // row) - hand the gesture back instead of pinning ourselves as its owner for
+                            // the rest of the touch stream.
+                            guardArmed = false;
+                            if (getParent() != null) {
+                                getParent().requestDisallowInterceptTouchEvent(false);
+                            }
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    guardArmed = false;
+                    break;
+                default:
+                    break;
+            }
+            return super.onInterceptTouchEvent(ev);
         }
     }
 }
