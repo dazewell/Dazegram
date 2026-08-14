@@ -190,8 +190,8 @@ public final class ComposerLayout {
 
     /**
      * Drops keys the build no longer knows, gives unmentioned buttons their default zone, pulls the
-     * trailing only buttons back to the trailing zone, empties the overflow out of the single slot
-     * leading zone, and makes sure a stable button ends up holding the trailing edge.
+     * trailing only buttons back to the trailing zone, trims the leading zone down to its capacity,
+     * and makes sure a stable button ends up holding the trailing edge.
      */
     public static List<List<String>> normalize(List<List<String>> input) {
         List<List<String>> result = emptyZones();
@@ -214,21 +214,6 @@ public final class ComposerLayout {
         List<String> start = result.get(ComposerButtons.ZONE_START);
         while (start.size() > ComposerButtons.START_CAPACITY) {
             result.get(ComposerButtons.ZONE_MIDDLE).add(0, start.remove(start.size() - 1));
-        }
-        // The editor can only ever swap the leading button, never empty the slot, so this repairs a
-        // layout saved by an older build rather than anything the user can do now. Without it an
-        // empty leading zone would have no row to drop onto and no way back.
-        if (start.isEmpty()) {
-            for (ComposerButtons.Button button : ComposerButtons.all()) {
-                if (button.defaultZone != ComposerButtons.ZONE_START) {
-                    continue;
-                }
-                for (int i = 0; i < ComposerButtons.ZONE_COUNT; i++) {
-                    result.get(i).remove(button.key);
-                }
-                start.add(button.key);
-                break;
-            }
         }
         List<String> end = result.get(ComposerButtons.ZONE_END);
         for (int i = end.size() - 1; i >= 0; i--) {

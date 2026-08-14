@@ -55,13 +55,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int RELAYOUT_SETTLE_DELAY = 300;
 
     private final ControlsLayout controls;
-    private final FrameLayout startSlot;
+    private final CollapsingLinearLayout startSlot;
     private final HorizontalScrollView middleScrollView;
     private final CollapsingLinearLayout middleLeadingSlot;
     private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
     private final Map<View, Integer> configuredOrder = new HashMap<>();
     private View pinnedTrailingView;
+    /**
+     * deleteRichDraftButton (see addStart) is not a registered, orderable button - it is a plain
+     * child appended once and left there. Its own visibility is toggled elsewhere (see
+     * updateRichDraftPreview in ChatActivityEnterView, left untouched by this change) so that at
+     * most it or the emoji button is showing at a time; this class does not enforce that. What it
+     * does need from this class is a fixed anchor position so a later configurable button never
+     * inserts on the wrong side of it - the same role pinnedTrailingView plays for the trailing zone.
+     */
+    private View pinnedLeadingView;
     private Runnable configurationLongPress;
     private boolean configurationLongPressTriggered;
     private float configurationLongPressX;
@@ -84,7 +93,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         addView(controls, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
 
-        startSlot = createFrameSlot(context);
+        startSlot = createCollapsingSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
 
         middleScrollView = new ComposerMiddleScrollView(context);
@@ -192,7 +201,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     public void addStart(View view) {
-        addToFrame(startSlot, view, buttonSize(), buttonSize(), Gravity.CENTER);
+        AndroidUtilities.removeFromParent(view);
+        // Always appended, never re-sorted against the configurable buttons: it stands in for
+        // whichever of them the user is not currently looking at (see updateRichDraftPreview in
+        // ChatActivityEnterView), so it needs a fixed slot of its own rather than a config order.
+        pinnedLeadingView = view;
+        startSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
         applyIconBox(null, view);
     }
 
@@ -226,7 +240,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return;
         }
         if (zone == ComposerButtons.ZONE_START) {
-            addToFrame(startSlot, view, buttonSize(), buttonSize(), Gravity.CENTER);
+            startSlot.addView(view, insertIndex(startSlot, order, startContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
             return;
         }
         if (zone == ComposerButtons.ZONE_END) {
@@ -273,6 +287,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
         return index < 0 ? endSlot.getChildCount() : index;
     }
 
+    // Mirrors endContextIndex(): caps where a configurable leading button can land so it never
+    // inserts past the delete-draft button's reserved slot (see addStart).
+    private int startContextIndex() {
+        int index = pinnedLeadingView != null ? startSlot.indexOfChild(pinnedLeadingView) : -1;
+        return index < 0 ? startSlot.getChildCount() : index;
+    }
+
     public void addReplacement(View view) {
         AndroidUtilities.removeFromParent(view);
         addView(view, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.BOTTOM));
@@ -295,13 +316,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
     }
 
-    private static FrameLayout createFrameSlot(Context context) {
-        FrameLayout slot = new FrameLayout(context);
-        slot.setClipChildren(false);
-        slot.setClipToPadding(false);
-        return slot;
-    }
-
     private static SlidingLinearLayout createLinearSlot(Context context) {
         SlidingLinearLayout slot = new SlidingLinearLayout(context);
         slot.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
@@ -312,11 +326,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         CollapsingLinearLayout slot = new CollapsingLinearLayout(context);
         slot.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
         return slot;
-    }
-
-    private static void addToFrame(FrameLayout parent, View view, int width, int height, int gravity) {
-        AndroidUtilities.removeFromParent(view);
-        parent.addView(view, LayoutHelper.createFrame(width, height, gravity));
     }
 
     /**
@@ -394,7 +403,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static final class ControlsLayout extends FrameLayout {
-        private FrameLayout startSlot;
+        private CollapsingLinearLayout startSlot;
         private HorizontalScrollView middleScrollView;
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
@@ -425,7 +434,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
         }
 
-        void setSlots(FrameLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
+        void setSlots(CollapsingLinearLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
             this.startSlot = startSlot;
             this.middleScrollView = middleScrollView;
             this.middleContent = middleContent;
