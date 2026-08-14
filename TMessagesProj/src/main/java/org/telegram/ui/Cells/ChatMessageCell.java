@@ -24659,6 +24659,27 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         if (shouldDrawTimeOnMedia() && documentAttachType != DOCUMENT_ATTACH_TYPE_ROUND) {
             return getPhotoBottom() + additionalTimeOffsetY - dp(7.3f) - timeLayout.getHeight();
         }
+        if (shouldDrawTimeOnMedia() && documentAttachType == DOCUMENT_ATTACH_TYPE_ROUND && (currentMessageObject == null || !currentMessageObject.isRoundOnce())) {
+            // NagramX: the reply-count icon on a round-video pill must ride the exact same
+            // time-row baseline as that pill's time digits, so the two never drift apart the
+            // way they did when each re-derived the row from its own constants. Mirror the
+            // digits' derivation in drawTimeInternal: this.layoutHeight with the same
+            // background-bounds / pinned-bottom adjustments it applies before drawing, the same
+            // reaction + transcription compensation, and the shared dp(7.3f) + text-height text
+            // offset. The icon then reads this baseline instead of computing its own.
+            float rowLayoutHeight = layoutHeight;
+            if (transitionParams.animateBackgroundBoundsInner) {
+                rowLayoutHeight += transitionParams.deltaBottom;
+            }
+            if (currentMessagesGroup != null && currentMessagesGroup.transitionParams.backgroundChangeBounds) {
+                rowLayoutHeight -= getTranslationY();
+            }
+            if (drawPinnedBottom) {
+                rowLayoutHeight += dp(1);
+            }
+            rowLayoutHeight -= (dp(drawPinnedBottom ? 4 : 5) + reactionsLayoutInBubble.getCurrentTotalHeight(transitionParams.animateChangeProgress)) * (1f - getVideoTranscriptionProgress());
+            return rowLayoutHeight - dp(7.3f) - timeLayout.getHeight();
+        }
         float timeY = layoutHeight - dp(pinnedBottom || pinnedTop ? 7.5f : 6.5f) - timeLayout.getHeight() + timeYOffset;
         if (isRoundVideo) {
             timeY -= (dp(drawPinnedBottom ? 4 : 5) + reactionsLayoutInBubble.getCurrentTotalHeight(transitionParams.animateChangeProgress)) * (1f - getVideoTranscriptionProgress());
@@ -24719,7 +24740,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     repliesDrawable = getThemedDrawable(drawSelectionBackground ? Theme.key_drawable_msgOutRepliesSelected : Theme.key_drawable_msgOutReplies);
                 }
             }
-            w = setDrawableBounds(repliesDrawable, repliesX, timeY, Theme.chat_timePaint.getTextSize());
+            // NagramX: draw height must match the height the measure pass assumes when reserving pill width,
+            // getTextSize() - dp(2); drawing at full getTextSize() made this 2dp taller/wider than measured,
+            // shifting the icon up relative to its neighboring pills
+            w = setDrawableBounds(repliesDrawable, repliesX, timeY + dp(1.5f), Theme.chat_timePaint.getTextSize() - dp(2));
             float repliesAlpha = alpha;
             if (inAnimation) {
                 repliesAlpha *= transitionParams.animateChangeProgress;
