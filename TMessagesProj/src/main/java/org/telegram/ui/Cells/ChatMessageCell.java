@@ -24719,7 +24719,10 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                     repliesDrawable = getThemedDrawable(drawSelectionBackground ? Theme.key_drawable_msgOutRepliesSelected : Theme.key_drawable_msgOutReplies);
                 }
             }
-            w = setDrawableBounds(repliesDrawable, repliesX, timeY, Theme.chat_timePaint.getTextSize());
+            // NagramX: draw height must match what the measure pass (line ~18784) already reserves width for,
+            // i.e. getTextSize() - dp(2); drawing at full getTextSize() made this 2dp taller/wider than measured,
+            // shifting the icon up relative to its neighboring pills
+            w = setDrawableBounds(repliesDrawable, repliesX, timeY + dp(1.5f), Theme.chat_timePaint.getTextSize() - dp(2));
             float repliesAlpha = alpha;
             if (inAnimation) {
                 repliesAlpha *= transitionParams.animateChangeProgress;
