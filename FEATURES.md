@@ -45,6 +45,10 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 With Ghost Mode on, the ghost indicator next to the chat list title used to vanish the moment contacts' stories collapsed the header. Now it stays visible in the collapsed header too, following the same Ghost mode status toggle.
 
+### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
+
+Clear Message Database now removes only the media this install has database rows for. A second install of the fork sharing the same public Downloads folder no longer has its saved attachments wiped by the other install's Clear. The row's size and the confirm prompt both say when bytes will be left behind.
+
 ## Composer and input
 
 ### Composer toolbar <!-- #composer-toolbar -->

@@ -30,6 +30,8 @@
     <string name="DeleteKeepLocally">Keep locally</string>
     <string name="ClearMessageDatabase">Clear Message Database</string>
     <string name="ClearMessageDatabaseNotification">Message database cleared.</string>
+    <string name="ClearMessageDatabaseSizeOwnedOfTotal">%1$s of %2$s</string>
+    <string name="ClearMessageDatabaseConfirm">Clears %1$s that this install\'s database has entries for. Files saved by another install sharing this folder, or never recorded here, are left alone.</string>
     <string name="CustomDeletedMark">Custom Deleted Mark</string>
     <string name="HidePremiumSection">Hide Premium in Settings</string>
     <string name="HideHelpSection">Hide Help in Settings</string>

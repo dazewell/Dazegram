@@ -32,12 +32,11 @@ import org.telegram.tgnet.TLRPC;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
-
-import tw.nekomimi.nekogram.utils.FileUtil;
 
 public class AyuMessagesController {
     public static final String attachmentsSubfolder = "Saved Attachments";
@@ -548,19 +547,75 @@ public class AyuMessagesController {
     }
 
     public void clean() {
+        // Enumerate what this install owns BEFORE wiping the DB: AyuData.clean() + create() leaves an
+        // empty database, so a later enumeration would see zero rows and delete nothing. The folder is
+        // shared between package variants, so we must never blanket-delete it (that wipes the other
+        // install's saved media) — only the files our own rows point at.
+        Set<File> owned = collectOwnedAttachmentFiles();
+
         AyuData.clean();
         AyuData.create();
 
         refreshDaos();
 
-        cleanAttachmentsFolder();
+        for (File f : owned) {
+            if (isUnderAttachments(f) && isContainedChild(f) && f.exists()) {
+                try {
+                    if (!f.delete()) {
+                        FileLog.e("clean#unlink: failed to delete " + f.getAbsolutePath());
+                    }
+                } catch (Exception e) {
+                    FileLog.e("clean#unlink", e);
+                }
+            }
+        }
+
+        initializeAttachmentsFolder();
 
         // force to recreate a database to avoid crash
         instance = null;
     }
 
-    private void cleanAttachmentsFolder() {
-        FileUtil.deleteDirectory(attachmentsPath);
-        initializeAttachmentsFolder();
+    // The saved-media files this install's database still has rows for. Unioned across every account
+    // because the folder is per-install, not per-account. Kept only when canonically a direct child of
+    // attachmentsPath (the same isUnderAttachments + isContainedChild pair the deleters use), which is
+    // what filters out copied-off media whose row points back into Telegram's own FileLoader cache.
+    // A failed query narrows the result rather than widening it to a directory sweep — under-reaping
+    // leaves a stray file, over-reaping would delete another install's media. Public so the size row
+    // can reuse the exact same walk instead of duplicating it.
+    public Set<File> collectOwnedAttachmentFiles() {
+        List<String> paths = new ArrayList<>();
+        addPaths(paths, withDaoRetry("collectOwned#deletedMedia", () -> deletedMessageDao.getAllMediaPaths()));
+        addPaths(paths, withDaoRetry("collectOwned#deletedThumb", () -> deletedMessageDao.getAllHqThumbPaths()));
+        addPaths(paths, withDaoRetry("collectOwned#editedMedia", () -> editedMessageDao.getAllMediaPaths()));
+        addPaths(paths, withDaoRetry("collectOwned#editedThumb", () -> editedMessageDao.getAllHqThumbPaths()));
+
+        Set<File> owned = new LinkedHashSet<>();
+        Set<String> seenCanonical = new HashSet<>();
+        for (String path : paths) {
+            if (TextUtils.isEmpty(path)) {
+                continue;
+            }
+            File f = new File(path);
+            if (!isUnderAttachments(f) || !isContainedChild(f)) {
+                continue;
+            }
+            String canonical;
+            try {
+                canonical = f.getCanonicalPath();
+            } catch (IOException e) {
+                canonical = f.getAbsolutePath();
+            }
+            if (seenCanonical.add(canonical)) {
+                owned.add(f);
+            }
+        }
+        return owned;
+    }
+
+    private static void addPaths(List<String> target, List<String> source) {
+        if (source != null) {
+            target.addAll(source);
+        }
     }
 }

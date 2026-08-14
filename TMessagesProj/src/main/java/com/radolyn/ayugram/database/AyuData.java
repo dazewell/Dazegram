@@ -47,7 +47,7 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 public class AyuData {
     private static final String IMPORT_DATABASE = AyuConstants.AYU_DATABASE + "-import";
 
-    public static long dbSize, attachmentsSize, totalSize;
+    public static long dbSize, attachmentsSize, totalSize, ownedSize;
     private static AyuDatabase database;
     private static EditedMessageDao editedMessageDao;
     private static DeletedMessageDao deletedMessageDao;
@@ -318,6 +318,20 @@ public class AyuData {
             dbSize = getDatabaseSize();
             attachmentsSize = getAttachmentsDirSize();
             totalSize = dbSize + attachmentsSize;
+            // What Clear will actually free: the DB plus only the attachments our own rows point at.
+            // The DB is intact here (unlike inside clean()), so the walk sees real rows. Clamp against
+            // a measurement race where the owned walk and the whole-dir sum disagree at the edges.
+            long ownedAttachments = 0;
+            for (File f : AyuMessagesController.getInstance().collectOwnedAttachmentFiles()) {
+                try {
+                    if (f.exists()) {
+                        ownedAttachments += f.length();
+                    }
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
+            ownedSize = Math.min(dbSize + ownedAttachments, totalSize);
             AndroidUtilities.runOnUIThread(bf::refreshAyuDataSize, 500);
         });
     }
