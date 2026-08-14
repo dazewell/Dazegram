@@ -95,7 +95,12 @@ public class ComposerLayoutActivity extends BaseFragment {
      * there is no live chat here to decide whether they would actually be visible right now. */
     private static final java.util.Set<String> CONDITIONAL_PREVIEW_KEYS = new java.util.HashSet<>(java.util.Arrays.asList(
             ComposerButtons.AI, ComposerButtons.RICH, ComposerButtons.EXPAND, ComposerButtons.SCHEDULE));
-    private static final float CONDITIONAL_PREVIEW_ALPHA = 0.45f;
+    /** Alpha component (0-255) baked into the icon's own color filter for a conditional preview
+     * button, rather than applied via View.setAlpha() - the real toolbar's CollapsingLinearLayout
+     * treats a child below 0.5 View alpha as unoccupied and gives it zero width (see
+     * ComposerToolbarLayout.CollapsingLinearLayout.isOccupied()), so setAlpha() here made these
+     * buttons vanish instead of just dimming. ~115/255 matches the old 0.45f visual strength. */
+    private static final int CONDITIONAL_PREVIEW_COLOR_ALPHA = 115;
 
     /** One height for the pinned preview and the list's matching top margin, so the two cannot
      * drift apart as the scale changes the capsule's size. */
@@ -230,13 +235,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             for (String key : keys) {
                 items.add(new Item(TYPE_BUTTON, zone, key));
             }
-            // Leading gets a placeholder row whenever it has spare capacity, same as any other
-            // zone being empty - it just compares against its capacity instead of zero, since
-            // defaults() always seeds at least one button into it.
-            boolean underCapacity = zone == ComposerButtons.ZONE_START
-                    ? keys.size() < ComposerButtons.START_CAPACITY
-                    : keys.isEmpty();
-            if (underCapacity) {
+            // Leading never gets a placeholder row, even under capacity: its header already says
+            // how many buttons it holds, and its header row itself is a valid drop target, so a
+            // dedicated empty-slot row would just be a second way to say the same thing.
+            if (zone != ComposerButtons.ZONE_START && keys.isEmpty()) {
                 items.add(new Item(TYPE_PLACEHOLDER, zone, null));
             }
             // Every zone is closed by its own footer, which both explains the zone and draws the
@@ -273,19 +275,53 @@ public class ComposerLayoutActivity extends BaseFragment {
         return -1;
     }
 
+    /** Leading's header never moves - it isn't draggable - so its position only changes when the
+     * whole list is rebuilt, but looked up fresh rather than cached against that rebuild. */
+    private int startHeaderPosition() {
+        for (int i = 0; i < items.size(); i++) {
+            Item item = items.get(i);
+            if (item.type == TYPE_HEADER && item.zone == ComposerButtons.ZONE_START) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /** Counts the button rows directly under a zone's header - relies on Leading (and every zone)
+     * laying out as header, then zero or more button rows, then its footer, with no placeholder
+     * row breaking up that run any more. */
+    private int startZoneButtonCount(int headerPos) {
+        int count = 0;
+        for (int i = headerPos + 1; i < items.size() && items.get(i).type == TYPE_BUTTON; i++) {
+            count++;
+        }
+        return count;
+    }
+
+    private int startZoneOccupancy() {
+        int headerPos = startHeaderPosition();
+        return headerPos < 0 ? 0 : startZoneButtonCount(headerPos);
+    }
+
     private void setStartZoneArmed(boolean armed) {
         if (startZoneArmed == armed) {
             return;
         }
         startZoneArmed = armed;
+        // The header only arms alongside the button rows when Leading still has room - at 2/2 it
+        // is not a valid drop target (see canDropOver), so it shows no highlight even while the
+        // occupied rows themselves light up for a compatible drag.
+        boolean headerArmed = armed && startZoneOccupancy() < ComposerButtons.START_CAPACITY;
         for (int i = 0; i < listView.getChildCount(); i++) {
             View child = listView.getChildAt(i);
-            if (!(child instanceof ButtonRowCell)) {
+            int position = listView.getChildAdapterPosition(child);
+            if (position == RecyclerView.NO_POSITION || zoneAt(position) != ComposerButtons.ZONE_START) {
                 continue;
             }
-            int position = listView.getChildAdapterPosition(child);
-            if (position != RecyclerView.NO_POSITION && zoneAt(position) == ComposerButtons.ZONE_START) {
+            if (child instanceof ButtonRowCell) {
                 ((ButtonRowCell) child).setArmed(armed, true);
+            } else if (child instanceof ArmableHeaderCell) {
+                ((ArmableHeaderCell) child).setArmed(headerArmed, true);
             }
         }
     }
@@ -357,7 +393,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             View view;
             switch (viewType) {
                 case TYPE_HEADER:
-                    view = new HeaderCell(context);
+                    view = new ArmableHeaderCell(context);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case TYPE_PLACEHOLDER:
@@ -397,13 +433,17 @@ public class ComposerLayoutActivity extends BaseFragment {
             Item item = items.get(position);
             switch (item.type) {
                 case TYPE_HEADER:
-                    ((HeaderCell) holder.itemView).setText(headerTitle(item.zone));
+                    ArmableHeaderCell headerCell = (ArmableHeaderCell) holder.itemView;
+                    headerCell.setText(headerTitle(item.zone));
+                    // Only Leading's header is ever a drop target, and only while it has room -
+                    // every other header's arm state stays permanently false.
+                    headerCell.setArmed(item.zone == ComposerButtons.ZONE_START && startZoneArmed
+                            && startZoneOccupancy() < ComposerButtons.START_CAPACITY, false);
                     break;
                 case TYPE_PLACEHOLDER:
-                    int placeholderText = item.zone == ComposerButtons.ZONE_START
-                            ? R.string.ComposerZoneLeadingEmptySlot
-                            : R.string.ComposerZoneEmpty;
-                    ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(placeholderText));
+                    // Only Middle/Trailing/Hidden ever produce this row now - Leading never does,
+                    // regardless of how many of its two slots are filled (see buildItems()).
+                    ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(R.string.ComposerZoneEmpty));
                     break;
                 case TYPE_INFO:
                     ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
@@ -518,7 +558,31 @@ public class ComposerLayoutActivity extends BaseFragment {
         @Override
         public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
             int type = target.getItemViewType();
-            return type == TYPE_BUTTON || type == TYPE_PLACEHOLDER;
+            if (type == TYPE_BUTTON || type == TYPE_PLACEHOLDER) {
+                return true;
+            }
+            if (type != TYPE_HEADER) {
+                return false;
+            }
+            int targetPosition = target.getAdapterPosition();
+            int currentPosition = current.getAdapterPosition();
+            if (targetPosition == RecyclerView.NO_POSITION || currentPosition == RecyclerView.NO_POSITION) {
+                return false;
+            }
+            // The only header that is ever a valid target is Leading's own, and only while it has
+            // spare capacity - inserting AT a header's own index, rather than below it, is what
+            // stranded a row above every header and made collect() silently drop it (see onMove),
+            // so a full Leading or any other header just isn't a target at all.
+            if (zoneAt(targetPosition) != ComposerButtons.ZONE_START) {
+                return false;
+            }
+            if (zoneAt(currentPosition) == ComposerButtons.ZONE_START) {
+                // Reordering Leading's own two rows against each other stays a row-to-row
+                // operation - the header is only ever a landing spot for a button arriving
+                // from outside Leading.
+                return false;
+            }
+            return startZoneOccupancy() < ComposerButtons.START_CAPACITY;
         }
 
         @Override
@@ -533,11 +597,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return false;
             }
             int targetType = items.get(to).type;
-            if (targetType != TYPE_BUTTON && targetType != TYPE_PLACEHOLDER) {
-                return false;
-            }
             int targetZone = zoneAt(to);
             if (targetZone < 0) {
+                return false;
+            }
+            boolean headerTarget = targetType == TYPE_HEADER && targetZone == ComposerButtons.ZONE_START;
+            if (targetType != TYPE_BUTTON && targetType != TYPE_PLACEHOLDER && !headerTarget) {
                 return false;
             }
             ComposerButtons.Button button = ComposerButtons.get(dragged.key);
@@ -545,13 +610,23 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return false;
             }
             int sourceZone = zoneAt(from);
-            // A button arriving in Leading from anywhere else either swaps with the occupied row
-            // it lands on or fills an empty-slot placeholder - both go through the same dwell
-            // gate below. Reordering the Leading rows against each other (source already in
-            // Leading) skips it and falls through to the plain move: autoscroll only ever carries
-            // a row INTO Leading from outside, never between rows already there.
+            // A button arriving in Leading from anywhere else either swaps with one of its two
+            // occupied rows or fills a free slot - landing on the header, on an occupied row while
+            // under capacity, and on an occupied row at capacity are all just different ways to hit
+            // the same fill-or-swap decision below, gated by the same dwell. Reordering the Leading
+            // rows against each other (source already in Leading) skips it and falls through to the
+            // plain move: autoscroll only ever carries a row INTO Leading from outside, never
+            // between rows already there.
             if (targetZone == ComposerButtons.ZONE_START && sourceZone != ComposerButtons.ZONE_START) {
-                if (targetType == TYPE_BUTTON) {
+                int headerPos = startHeaderPosition();
+                int occupancy = headerPos < 0 ? 0 : startZoneButtonCount(headerPos);
+                boolean willSwap = occupancy >= ComposerButtons.START_CAPACITY;
+                if (willSwap) {
+                    if (targetType != TYPE_BUTTON) {
+                        // canDropOver keeps a full Leading's header from arming, so this should be
+                        // unreachable - bail rather than fall through to an insert if it happens.
+                        return false;
+                    }
                     ComposerButtons.Button incumbent = ComposerButtons.get(items.get(to).key);
                     if (incumbent == null || !incumbent.canSitIn(sourceZone)) {
                         return false;
@@ -560,9 +635,9 @@ public class ComposerLayoutActivity extends BaseFragment {
                 // Autoscroll carries the dragged row over Leading just passing through on the way to
                 // a zone further up the list, and onMove fires on every one of those scroll ticks, so
                 // committing on the first hit turned "scrolling past the top" into an accidental drop.
-                // An empty slot is the bigger magnet here, not the smaller one - it sits right at the
-                // top of the list, exactly where autoscroll is carrying the row toward - so the same
-                // dwell applies whether the target row is occupied or an empty-slot placeholder.
+                // The header is the topmost Leading row and the strongest autoscroll magnet of all -
+                // it needs this dwell at least as much as an occupied row does, so every drop into
+                // Leading from outside goes through the same gate regardless of which row it lands on.
                 long now = SystemClock.uptimeMillis();
                 if (pendingStartSwapFrom != from || pendingStartSwapTo != to) {
                     pendingStartSwapFrom = from;
@@ -574,13 +649,20 @@ public class ComposerLayoutActivity extends BaseFragment {
                     return false;
                 }
                 clearPendingStartSwap();
-                if (targetType == TYPE_BUTTON) {
+                if (willSwap) {
                     Collections.swap(items, from, to);
                     adapter.notifyItemMoved(from, to);
                     adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
                 } else {
-                    items.add(to, items.remove(from));
-                    adapter.notifyItemMoved(from, to);
+                    // Fill: whichever Leading row (or the header) was actually hit, the incoming
+                    // button always lands after whatever is already there and nothing already
+                    // there moves. Computed as a real index below the header, never the header's
+                    // own index - inserting there would land the row ABOVE the header, where
+                    // zoneAt() finds no header above it, returns -1, and collect() silently drops
+                    // the button from the saved layout instead of placing it.
+                    int insertIndex = headerPos + 1 + occupancy;
+                    items.add(insertIndex, items.remove(from));
+                    adapter.notifyItemMoved(from, insertIndex);
                 }
                 updatePreview();
                 return true;
@@ -624,9 +706,10 @@ public class ComposerLayoutActivity extends BaseFragment {
             viewHolder.itemView.setPressed(false);
             setStartZoneArmed(false);
             clearPendingStartSwap();
-            // A cross-section move can empty the source zone or drop a button next to a stale
-            // placeholder. Persist takes the flat order as truth, then a rebuild restores one
-            // placeholder per empty zone and drops the redundant ones.
+            // A cross-section move can empty the source zone (Middle/Trailing/Hidden need a fresh
+            // placeholder row for that) or leave Leading under its two-slot capacity, which needs
+            // no row at all. Persist takes the flat order as truth, then a rebuild regenerates
+            // every zone's rows from that order rather than patching the raw item list in place.
             persist();
             buildItems(lastSaved);
             adapter.notifyDataSetChanged();
@@ -642,6 +725,62 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static int currentScale() {
         int percent = NaConfig.INSTANCE.getComposerToolbarScale().Int();
         return Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent));
+    }
+
+    /**
+     * A {@link HeaderCell} that can also show the same drag-armed wash {@link ButtonRowCell} rows
+     * use. Only Leading's header is ever actually armed (see setStartZoneArmed) - every other
+     * header just never calls setArmed(true), so it draws exactly like a plain HeaderCell.
+     */
+    private static class ArmableHeaderCell extends HeaderCell {
+
+        private float armProgress;
+        private ValueAnimator armAnimator;
+        private final Paint armPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        ArmableHeaderCell(Context context) {
+            super(context);
+            setWillNotDraw(false);
+        }
+
+        void setArmed(boolean armed, boolean animated) {
+            float target = armed ? 1f : 0f;
+            if (armAnimator != null) {
+                armAnimator.cancel();
+                armAnimator = null;
+            }
+            if (!animated) {
+                armProgress = target;
+                invalidate();
+                return;
+            }
+            armAnimator = ValueAnimator.ofFloat(armProgress, target);
+            armAnimator.setDuration(150);
+            armAnimator.addUpdateListener(a -> {
+                armProgress = (float) a.getAnimatedValue();
+                invalidate();
+            });
+            armAnimator.start();
+        }
+
+        @Override
+        protected void onDetachedFromWindow() {
+            if (armAnimator != null) {
+                armAnimator.cancel();
+                armAnimator = null;
+            }
+            super.onDetachedFromWindow();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            if (armProgress > 0) {
+                int wash = Theme.getColor(Theme.key_windowBackgroundWhiteBlueText);
+                armPaint.setColor(ColorUtils.setAlphaComponent(wash, (int) (26 * armProgress)));
+                canvas.drawRect(0, 0, getWidth(), getHeight(), armPaint);
+            }
+            super.onDraw(canvas);
+        }
     }
 
     private static class PlaceholderCell extends FrameLayout {
@@ -841,15 +980,19 @@ public class ComposerLayoutActivity extends BaseFragment {
                     }
                     ImageView icon = new ImageView(getContext());
                     icon.setImageResource(button.iconRes);
-                    icon.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
+                    int iconColor = Theme.getColor(Theme.key_chat_messagePanelIcons);
                     // AI, Rich draft, Expand and Schedule's own pin only actually show in a real chat
                     // once its live state allows them (draft length/content, a measured expand budget,
                     // pending scheduled messages) - there is no live chat here to evaluate that against,
                     // so dim them the same way a disabled format button dims, rather than implying they
-                    // are always on the row like Emoji or Attach are.
+                    // are always on the row like Emoji or Attach are. Dimmed via the color filter's own
+                    // alpha, not View.setAlpha() - the toolbar's CollapsingLinearLayout drops any child
+                    // under 0.5 View alpha from measurement entirely (isOccupied()), so setAlpha() here
+                    // made the button disappear rather than merely dim.
                     if (CONDITIONAL_PREVIEW_KEYS.contains(key)) {
-                        icon.setAlpha(CONDITIONAL_PREVIEW_ALPHA);
+                        iconColor = ColorUtils.setAlphaComponent(iconColor, CONDITIONAL_PREVIEW_COLOR_ALPHA);
                     }
+                    icon.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.SRC_IN));
                     toolbar.addConfigurable(key, icon, zone, order, trailingKey);
                 }
             }
