@@ -63,9 +63,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final Map<View, Integer> configuredOrder = new HashMap<>();
     private View pinnedTrailingView;
     /**
-     * deleteRichDraftButton (see addStart) is not a registered, orderable button - it always takes
-     * over the same end of the leading zone, mutually exclusive with whatever occupies it, so it
-     * needs the same kind of anchor pinnedTrailingView gives the trailing zone.
+     * deleteRichDraftButton (see addStart) is not a registered, orderable button - it is a plain
+     * child appended once and left there. Its own visibility is toggled elsewhere (see
+     * updateRichDraftPreview in ChatActivityEnterView, left untouched by this change) so that at
+     * most it or the emoji button is showing at a time; this class does not enforce that. What it
+     * does need from this class is a fixed anchor position so a later configurable button never
+     * inserts on the wrong side of it - the same role pinnedTrailingView plays for the trailing zone.
      */
     private View pinnedLeadingView;
     private Runnable configurationLongPress;
