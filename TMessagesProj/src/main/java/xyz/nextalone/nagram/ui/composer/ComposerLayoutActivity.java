@@ -122,11 +122,6 @@ public class ComposerLayoutActivity extends BaseFragment {
     private List<List<String>> lastSaved;
     private boolean rebuildPending;
     private boolean startZoneArmed;
-    // The view holder mid-drag, if any. getMovementFlags() must keep allowing this one to move even
-    // while it is transiently sitting at a Leading adapter position (right after the dwell swap) -
-    // Leading itself stays undraggable for every *other* row, which is how a fresh drag can never be
-    // started on the permanently-occupied slot.
-    private RecyclerView.ViewHolder draggedViewHolder;
 
     private static final class Item {
         final int type;
@@ -232,16 +227,17 @@ public class ComposerLayoutActivity extends BaseFragment {
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
-            if (keys.isEmpty()) {
-                // Leading is guaranteed to hold exactly one button, so it never needs the empty
-                // state; the other zones can legitimately be emptied.
-                if (zone != ComposerButtons.ZONE_START) {
-                    items.add(new Item(TYPE_PLACEHOLDER, zone, null));
-                }
-            } else {
-                for (String key : keys) {
-                    items.add(new Item(TYPE_BUTTON, zone, key));
-                }
+            for (String key : keys) {
+                items.add(new Item(TYPE_BUTTON, zone, key));
+            }
+            // Leading gets a placeholder row whenever it has spare capacity, same as any other
+            // zone being empty - it just compares against its capacity instead of zero, since
+            // defaults() always seeds at least one button into it.
+            boolean underCapacity = zone == ComposerButtons.ZONE_START
+                    ? keys.size() < ComposerButtons.START_CAPACITY
+                    : keys.isEmpty();
+            if (underCapacity) {
+                items.add(new Item(TYPE_PLACEHOLDER, zone, null));
             }
             // Every zone is closed by its own footer, which both explains the zone and draws the
             // shadow that separates it from the next one.
@@ -404,7 +400,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ((HeaderCell) holder.itemView).setText(headerTitle(item.zone));
                     break;
                 case TYPE_PLACEHOLDER:
-                    ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(R.string.ComposerZoneEmpty));
+                    int placeholderText = item.zone == ComposerButtons.ZONE_START
+                            ? R.string.ComposerZoneLeadingEmptySlot
+                            : R.string.ComposerZoneEmpty;
+                    ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(placeholderText));
                     break;
                 case TYPE_INFO:
                     ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
@@ -424,11 +423,6 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
                     ButtonRowCell cell = (ButtonRowCell) holder.itemView;
                     cell.setButton(button, position + 1 < items.size() && items.get(position + 1).type == TYPE_BUTTON);
-                    // The leading slot holds exactly one button and cannot be emptied, so there is
-                    // nothing to drag: showing a handle there would promise a gesture that does not
-                    // exist. It stays a drop target - replacing it is a swap driven by the incoming
-                    // button, not by this row.
-                    cell.setFixed(item.zone == ComposerButtons.ZONE_START);
                     cell.setArmed(item.zone == ComposerButtons.ZONE_START && startZoneArmed, false);
                     break;
             }
@@ -468,17 +462,11 @@ public class ComposerLayoutActivity extends BaseFragment {
     private int pendingStartSwapFrom = RecyclerView.NO_POSITION;
     private int pendingStartSwapTo = RecyclerView.NO_POSITION;
     private long pendingStartSwapSince;
-    // Set for exactly one onMove() right after a Leading swap, to block the immediate
-    // back-swap the very next call would otherwise see (the dragged row is still hovering
-    // over the same spot it just swapped into). Cleared right after that single check so the
-    // drag is free to continue out of Leading on every call after - without this reset it
-    // read as "from is in Leading" forever and the drag could never leave the slot again.
-    private boolean justSwappedIntoStart;
 
     /** Tap shortcut for Hidden <-> Scrolling: dragging across a long Hidden list is fiddly, so a plain
      * tap flips a row to the other side without needing to reach the row's spot at all. Start and End
-     * stay drag-only - they are capacity/anchor constrained (single slot, trailing-pinned) in ways a
-     * blind tap-to-the-end can't express. */
+     * stay drag-only - Start is capacity constrained and gates an incoming drop behind a dwell, End is
+     * trailing-pinned, in ways a blind tap-to-the-end can't express. */
     private void toggleHiddenMiddle(int position) {
         if (position < 0 || position >= items.size()) {
             return;
@@ -524,14 +512,6 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (viewHolder.getItemViewType() != TYPE_BUTTON) {
                 return makeMovementFlags(0, 0);
             }
-            // The leading button is not draggable - it is replaced by dropping another button on
-            // it, which keeps the slot permanently filled instead of leaving a hole behind. The
-            // one exception is the row actively being dragged: the dwell swap in onMove() moves it
-            // into the Leading adapter position mid-gesture, and if this froze it too the drag would
-            // dead-end there with no way to keep moving it out into Middle.
-            if (zoneAt(viewHolder.getAdapterPosition()) == ComposerButtons.ZONE_START && viewHolder != draggedViewHolder) {
-                return makeMovementFlags(0, 0);
-            }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
         }
 
@@ -564,19 +544,25 @@ public class ComposerLayoutActivity extends BaseFragment {
             if (button == null || !button.canSitIn(targetZone)) {
                 return false;
             }
-            if (targetZone == ComposerButtons.ZONE_START) {
-                // Leading is a single occupied slot: the drop exchanges the two buttons in one
-                // gesture, so the count never changes and the slot never empties. Repeating the
-                // gesture puts things back.
-                ComposerButtons.Button incumbent = ComposerButtons.get(items.get(to).key);
-                int sourceZone = zoneAt(from);
-                if (targetType != TYPE_BUTTON || incumbent == null || sourceZone < 0 || !incumbent.canSitIn(sourceZone)) {
-                    return false;
+            int sourceZone = zoneAt(from);
+            // A button arriving in Leading from anywhere else either swaps with the occupied row
+            // it lands on or fills an empty-slot placeholder - both go through the same dwell
+            // gate below. Reordering the Leading rows against each other (source already in
+            // Leading) skips it and falls through to the plain move: autoscroll only ever carries
+            // a row INTO Leading from outside, never between rows already there.
+            if (targetZone == ComposerButtons.ZONE_START && sourceZone != ComposerButtons.ZONE_START) {
+                if (targetType == TYPE_BUTTON) {
+                    ComposerButtons.Button incumbent = ComposerButtons.get(items.get(to).key);
+                    if (incumbent == null || !incumbent.canSitIn(sourceZone)) {
+                        return false;
+                    }
                 }
                 // Autoscroll carries the dragged row over Leading just passing through on the way to
                 // a zone further up the list, and onMove fires on every one of those scroll ticks, so
-                // committing on the first hit turned "scrolling past the top" into an accidental swap.
-                // Require the same pair to keep showing up for a short dwell before it actually commits.
+                // committing on the first hit turned "scrolling past the top" into an accidental drop.
+                // An empty slot is the bigger magnet here, not the smaller one - it sits right at the
+                // top of the list, exactly where autoscroll is carrying the row toward - so the same
+                // dwell applies whether the target row is occupied or an empty-slot placeholder.
                 long now = SystemClock.uptimeMillis();
                 if (pendingStartSwapFrom != from || pendingStartSwapTo != to) {
                     pendingStartSwapFrom = from;
@@ -588,24 +574,18 @@ public class ComposerLayoutActivity extends BaseFragment {
                     return false;
                 }
                 clearPendingStartSwap();
-                Collections.swap(items, from, to);
-                adapter.notifyItemMoved(from, to);
-                adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
-                justSwappedIntoStart = true;
+                if (targetType == TYPE_BUTTON) {
+                    Collections.swap(items, from, to);
+                    adapter.notifyItemMoved(from, to);
+                    adapter.notifyItemMoved(to > from ? to - 1 : to + 1, from);
+                } else {
+                    items.add(to, items.remove(from));
+                    adapter.notifyItemMoved(from, to);
+                }
                 updatePreview();
                 return true;
             }
-            // A button that was just swapped into Leading (previous onMove call) is still mid-gesture
-            // at that adapter position; on the very next call it can still appear as "from is in
-            // Leading" before ItemTouchHelper has re-settled, so skip just that one check rather than
-            // blocking every subsequent move away from Leading - a permanent block here is what used
-            // to pin the drag at Leading with no way back out into Middle.
             clearPendingStartSwap();
-            if (justSwappedIntoStart) {
-                justSwappedIntoStart = false;
-            } else if (zoneAt(from) == ComposerButtons.ZONE_START && source != draggedViewHolder) {
-                return false;
-            }
             items.add(to, items.remove(from));
             adapter.notifyItemMoved(from, to);
             updatePreview();
@@ -620,7 +600,6 @@ public class ComposerLayoutActivity extends BaseFragment {
                     viewHolder.itemView.setPressed(true);
                 }
             }
-            draggedViewHolder = actionState == ItemTouchHelper.ACTION_STATE_DRAG ? viewHolder : null;
             boolean arm = false;
             if (actionState == ItemTouchHelper.ACTION_STATE_DRAG && viewHolder != null) {
                 int position = viewHolder.getAdapterPosition();
@@ -644,8 +623,6 @@ public class ComposerLayoutActivity extends BaseFragment {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
             setStartZoneArmed(false);
-            draggedViewHolder = null;
-            justSwappedIntoStart = false;
             clearPendingStartSwap();
             // A cross-section move can empty the source zone or drop a button next to a stale
             // placeholder. Persist takes the flat order as truth, then a rebuild restores one
@@ -695,22 +672,6 @@ public class ComposerLayoutActivity extends BaseFragment {
         private float armProgress;
         private ValueAnimator armAnimator;
         private final Paint armPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        void setFixed(boolean fixed) {
-            reorderView.setVisibility(fixed ? GONE : VISIBLE);
-            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) titleView.getLayoutParams();
-            // Reclaim the handle gutter so the label is not left sitting against empty space.
-            int trailing = dp(fixed ? 22 : 56);
-            boolean rtl = LocaleController.isRTL;
-            if ((rtl ? params.leftMargin : params.rightMargin) != trailing) {
-                if (rtl) {
-                    params.leftMargin = trailing;
-                } else {
-                    params.rightMargin = trailing;
-                }
-                titleView.setLayoutParams(params);
-            }
-        }
 
         /** Marks the row as the live drop target while a compatible button is being dragged. */
         void setArmed(boolean armed, boolean animated) {

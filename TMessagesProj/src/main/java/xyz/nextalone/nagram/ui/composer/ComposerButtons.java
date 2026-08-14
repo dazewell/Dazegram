@@ -30,8 +30,8 @@ public final class ComposerButtons {
     /** Cut/copy/paste: forwarded straight to EditTextCaption's own menu handling, not performMenuAction. */
     public static final int KIND_CLIPBOARD = 3;
 
-    /** The leading slot is a single frame, so only one button can sit there. */
-    public static final int START_CAPACITY = 1;
+    /** The leading zone holds at most this many buttons, ordered start to end. */
+    public static final int START_CAPACITY = 2;
 
     public static final String EMOJI = "emoji";
     public static final String ATTACH = "attach";
