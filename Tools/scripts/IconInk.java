@@ -88,8 +88,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import javax.imageio.ImageIO;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -217,9 +219,7 @@ public final class IconInk {
                     (int) Math.round(layer.w() * size), (int) Math.round(layer.h() * size), null);
             return;
         }
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
+        DocumentBuilder builder = documentBuilder();
         Element root = builder.parse(layer.file()).getDocumentElement();
         if (!"vector".equals(root.getTagName())) {
             throw new IllegalArgumentException("not a <vector>: " + root.getTagName());
@@ -230,6 +230,36 @@ public final class IconInk {
         g.scale(layer.w() * size / viewportWidth, layer.h() * size / viewportHeight);
         paint(root, g, warnings, asDrawn);
         g.setTransform(saved);
+    }
+
+    /**
+     * A parser that reads geometry and nothing else. These files are drawables from this repository,
+     * but the paths come from argv and the tool is committed for other people to run, so the parser is
+     * closed to doctypes and external entities rather than trusting whatever it is pointed at -
+     * otherwise a crafted vector file could make a measuring tool reach the network.
+     *
+     * <p>Each feature is set independently and a JDK that does not know one is allowed to skip it: the
+     * hardening is worth having, but not at the cost of the tool refusing to start somewhere.
+     */
+    private static DocumentBuilder documentBuilder() throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        harden(factory, XMLConstants.FEATURE_SECURE_PROCESSING, true);
+        harden(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
+        harden(factory, "http://xml.org/sax/features/external-general-entities", false);
+        harden(factory, "http://xml.org/sax/features/external-parameter-entities", false);
+        harden(factory, "http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        factory.setXIncludeAware(false);
+        factory.setExpandEntityReferences(false);
+        return factory.newDocumentBuilder();
+    }
+
+    private static void harden(DocumentBuilderFactory factory, String feature, boolean value) {
+        try {
+            factory.setFeature(feature, value);
+        } catch (ParserConfigurationException e) {
+            System.err.println("note: this JDK's XML parser does not support " + feature);
+        }
     }
 
     /** Folds a decoded raster to grayscale coverage, preferring alpha when the file still has it. */
