@@ -1,14 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NagramX: fork-owned scissors glyph for the composer toolbar. Its ink sits 0.25dp right of the
-     canvas centre (the blades run out to x=20 while the pivots sit near x=7), so the group shifts it
-     left by that amount to sit dead centre in its cell. Extent already matches the toolbar keyline,
-     so there is no scale here. -->
+<!-- NagramX: fork-owned scissors glyph for the composer toolbar. Two corrections are baked in via
+     the group. Centring: the ink sits 0.25dp right of the canvas centre (the blades run out to x=20
+     while the pivots sit near x=7), so it is shifted left by that amount to sit dead centre. Extent:
+     the raw ink filled 70.83% of the cell, below the 74% keyline the rest of the corrected row sits
+     at, so it is scaled 1.0447 about its own centre to match. Pivot is the ink centre, not the canvas
+     centre, so the scale doesn't reintroduce an offset. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <group android:translateX="-0.25">
+    <group
+        android:pivotX="12.25"
+        android:pivotY="12"
+        android:scaleX="1.0447"
+        android:scaleY="1.0447"
+        android:translateX="-0.25">
         <path
             android:strokeColor="#ffffff"
             android:strokeWidth="1.5"
