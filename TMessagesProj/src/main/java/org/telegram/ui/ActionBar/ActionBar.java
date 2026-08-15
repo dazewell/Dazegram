@@ -2187,7 +2187,14 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         final View avatarView = chatAvatarContainer.getAvatarImageView();
-        animatorAvatarContainerHasAvatar.setValue(avatarView != null && avatarView.getVisibility() == View.VISIBLE, animated);
+        final boolean hasAvatar = avatarView != null && avatarView.getVisibility() == View.VISIBLE;
+        // BoolAnimator.setValue's animated=false path unconditionally forceFactors (it only skips the
+        // *animated* branch on an unchanged value), so calling this every layout pass with an
+        // unchanged value would cancel and snap a legitimate in-flight avatar-bubble transition. Guard
+        // it the same way as the width animator above.
+        if (animatorAvatarContainerHasAvatar.getValue() != hasAvatar) {
+            animatorAvatarContainerHasAvatar.setValue(hasAvatar, animated);
+        }
         if (!chatAvatarContainer.isCenteredTitle()) {
             // Centered sizing no longer applies, so any pending deferral is moot -- leaving it set
             // would make onLayout re-enter this on every pass.
@@ -2195,9 +2202,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         // Before the title is measured the group width collapses to zero, which would animate the
-        // bubble shut and then back open. Defer instead -- but onLayout only re-runs this when the
-        // bar's own width changes, which may never happen again, so post a retry rather than
-        // relying on another layout pass arriving on its own.
+        // bubble shut and then back open. Defer instead: this runs on every layout pass now, but
+        // that's no help before the first measure, so post a one-shot retry as a fallback for the
+        // case where nothing schedules another pass on its own.
         if (!chatAvatarContainer.isCenteredContentMeasured()) {
             if (!avatarContainerWidthDeferred) {
                 avatarContainerWidthDeferred = true;
