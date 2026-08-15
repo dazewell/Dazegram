@@ -1513,7 +1513,8 @@ public class ChatActivity extends BaseFragment implements
 
     public void showHeaderItem(boolean show) {
         if (show) {
-            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
+            // NagramX (#composer-attach-pinned): closing a bot web-view menu recomputes the header from hasText() independent of the other producers, so keep overflow when toolbar attach is pinned.
+            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned()) {
                 if (attachItem != null) {
                     attachItem.setVisibility(View.VISIBLE);
                 }
@@ -2428,7 +2429,8 @@ public class ChatActivity extends BaseFragment implements
                         if (isTitleCentered() || chatMode == MODE_SAVED && getSavedDialogId() == getUserConfig().getClientUserId() || chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport()) {
                             editTextItem.setVisibility(View.GONE);
 
-                            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
+                            // NagramX (#composer-attach-pinned): an ending text selection recomputes the header from hasText() independent of the other producers, so keep overflow when toolbar attach is pinned.
+                            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned()) {
                                 boolean showAttachItem = !isTitleCentered();
                                 if (headerItem != null) {
                                     headerItem.setVisibility(showAttachItem ? View.GONE : View.VISIBLE);
@@ -4706,7 +4708,8 @@ public class ChatActivity extends BaseFragment implements
                         return true;
                     }
                     if (headerItem != null) {
-                        if (attachItem != null && chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
+                        // NagramX (#composer-attach-pinned): an avatar tap in title-centered mode would otherwise click a hidden attach item, so route it to overflow when toolbar attach is pinned.
+                        if (attachItem != null && chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned() && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
                             attachItem.createView().performClick();
                             return true;
                         }
@@ -41220,7 +41223,8 @@ public class ChatActivity extends BaseFragment implements
                 if (topicCreateItem != null) {
                     topicCreateItem.setVisibility(View.GONE);
                 }
-            } else if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
+            // NagramX (#composer-attach-pinned): closing search recomputes the header from hasText(), so keep overflow when toolbar attach is pinned.
+            } else if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned() && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
                 boolean showAttachItem = !isTitleCentered();
                 if (headerItem != null) {
                     headerItem.setVisibility(showAttachItem ? View.GONE : View.VISIBLE);

@@ -8530,6 +8530,26 @@ public class ChatActivityEnterView extends FrameLayout implements
         imageView.post(() -> transitionDrawable.startTransition(duration));
     }
 
+    // NagramX (#composer-attach-pinned): repairs a pinned button left morphed or faded by slow
+    // mode or a stale "..." state, since nothing else in checkSendButton touches it once pinned.
+    private void pinAttachButton(int duration) {
+        if (attachButtonAnimator != null) { attachButtonAnimator.cancel(); attachButtonAnimator = null; }
+        Object tag = attachButton == null ? null : attachButton.getTag();
+        if (tag instanceof Integer && (Integer) tag == 1) {
+            // checkAttachButton(false, ...) already sets isInInput = false to match the restored
+            // plain-attach state; forcing it true here would mis-position/mis-content the shared
+            // "..." popup the next time it's opened from the mic button's long-press.
+            checkAttachButton(false, duration == 0 ? 150 : duration);
+        }
+        if (suggestButton != null) suggestButton.setVisibility(GONE);
+        if (duration == 0 && botButton != null) botButton.setVisibility(GONE);
+        if (attachButton != null) {
+            attachButton.setAlpha(attachButtonAlpha = 1.0f);
+            attachButton.setScaleX(1.0f);
+            attachButton.setScaleY(1.0f);
+        }
+    }
+
     private void checkAttachButton(boolean use, int duration) {
         int fromRes;
         int targetRes;
@@ -9630,6 +9650,17 @@ public class ChatActivityEnterView extends FrameLayout implements
         return isInScheduleMode() || animatorEphemeralMessageVisibility.getValue();
     }
 
+    // NagramX (#composer-attach-pinned): dazewell wants the composer paperclip to stay put and
+    // keep opening the attach sheet directly instead of upstream's hide + header stand-in swap.
+    private boolean attachPinned() {
+        return composerToolbarEnabled && !isStories && !isEditingBusinessLink()
+                && xyz.nextalone.nagram.ui.composer.ComposerLayout.isVisible(xyz.nextalone.nagram.ui.composer.ComposerButtons.ATTACH);
+    }
+
+    public boolean isAttachPinned() {
+        return attachPinned();
+    }
+
     public void checkSendButton(boolean animated) {
         if (editingMessageObject != null || recordingAudioVideo || inputPrimarySuppressed) {
             // NagramX (#composer-padding): everything below is send-column work these two states skip, but
@@ -9859,6 +9890,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 color = getThemedColor(Theme.key_chat_messagePanelSend);
             }
             boolean captionNearAttach = !composerToolbarEnabled && (messageEditText != null && (!TextUtils.isEmpty(messageEditText.getCaption()) || messageEditText.isNearRightCaption(dp(DEFAULT_HEIGHT))) || LocaleController.isRTL);
+            final boolean attachPinned = attachPinned(); // NagramX (#composer-attach-pinned)
 
             if (color != sendButtonBackgroundColor) {
                 sendButtonBackgroundColor = color;
@@ -9880,6 +9912,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
 
                     if (attachLayout != null) {
+                        if (attachPinned) pinAttachButton(150); // NagramX (#composer-attach-pinned)
 
                         if (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories) {
                             runningAnimation2 = new AnimatorSet();
@@ -9890,14 +9923,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                                 attachButtonAnimator.cancel();
                                 attachButtonAnimator = null;
                             }
-                            if (sideButtons != null && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)) {
+                            if (!attachPinned && sideButtons != null && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)) {
                                 sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, captionNearAttach, true);
                                 if (attachButton != null) {
                                     animators.add(ObjectAnimator.ofFloat(attachButton, View.ALPHA, attachButtonAlpha = captionNearAttach ? 0.0f : 1.0f));
                                     animators.add(ObjectAnimator.ofFloat(attachButton, View.SCALE_X, captionNearAttach ? 0.5f : 1.0f));
                                     animators.add(ObjectAnimator.ofFloat(attachButton, View.SCALE_Y, captionNearAttach ? 0.5f : 1.0f));
                                 }
-                            } else if (attachButton != null && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)) {
+                            } else if (!attachPinned && attachButton != null && (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories)) {
                                 animators.add(ObjectAnimator.ofFloat(attachButton, View.ALPHA, attachButtonAlpha = 0.0f));
                                 animators.add(ObjectAnimator.ofFloat(attachButton, View.SCALE_X, 0.5f));
                                 animators.add(ObjectAnimator.ofFloat(attachButton, View.SCALE_Y, 0.5f));
@@ -9953,10 +9986,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                             });
                             runningAnimation2.start();
                             updateFieldRight(0);
-                            if (delegate != null && getVisibility() == VISIBLE) {
+                            if (delegate != null && getVisibility() == VISIBLE && !attachPinned) {
                                 delegate.onAttachButtonHidden();
                             }
-                        } else {
+                        } else if (!attachPinned) {
                             checkAttachButton(true, 150);
                         }
                     }
@@ -10076,26 +10109,27 @@ public class ChatActivityEnterView extends FrameLayout implements
                         expandStickersButton.setVisibility(GONE);
                     }
                     if (attachLayout != null) {
+                        if (attachPinned) pinAttachButton(0); // NagramX (#composer-attach-pinned)
                         if (!NekoConfig.useChatAttachMediaMenu.Bool() || isStories) {
                             attachLayout.setVisibility(GONE);
-                            if (delegate != null && getVisibility() == VISIBLE) {
+                            if (delegate != null && getVisibility() == VISIBLE && !attachPinned) {
                                 delegate.onAttachButtonHidden();
                             }
                             updateFieldRight(0);
 
-                            if (sideButtons != null) {
+                            if (!attachPinned && sideButtons != null) {
                                 sideButtons.showButton(ChatActivitySideControlsButtonsLayout.BUTTON_ATTACH, captionNearAttach, true);
                                 if (attachButton != null) {
                                     attachButton.setAlpha(attachButtonAlpha = captionNearAttach ? 0.0f : 1.0f);
                                     attachButton.setScaleX(captionNearAttach ? 0.5f : 1.0f);
                                     attachButton.setScaleY(captionNearAttach ? 0.5f : 1.0f);
                                 }
-                            } else if (attachButton != null) {
+                            } else if (!attachPinned && attachButton != null) {
                                 attachButton.setAlpha(attachButtonAlpha = 0.0f);
                                 attachButton.setScaleX(0.5f);
                                 attachButton.setScaleY(0.5f);
                             }
-                        } else {
+                        } else if (!attachPinned) {
                             checkAttachButton(true, 0);
                             updateFieldRight(1);
                         }

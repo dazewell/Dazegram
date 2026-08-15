@@ -2178,11 +2178,18 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     // isCenteredContentMeasured() first. No avatar: in centered mode it keeps its own bubble on the right.
     public int getCenteredContentWidth() {
         int width = centeredGroupRight() - centeredContentLeft();
-        if (subtitleTextView != null) {
-            // Same gradient-fade caveat as the title: clamp to the displayed width.
-            width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
-        } else if (animatedSubtitleTextView != null) {
-            width = Math.max(width, (int) Math.ceil(animatedSubtitleTextView.getDrawable().getCurrentWidth()));
+        // A hidden subtitle (GONE for self/replies/verify/aux modes, INVISIBLE mid-transition in a
+        // thread chat) contributes no width -- otherwise the pill stays inflated for text nobody sees.
+        View subtitleView = getSubtitleTextView();
+        if (subtitleView != null && subtitleView.getVisibility() == VISIBLE) {
+            if (subtitleTextView != null) {
+                // Same gradient-fade caveat as the title: clamp to the displayed width.
+                width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
+            } else if (animatedSubtitleTextView != null) {
+                // getAnimateToWidth(), not getCurrentWidth(): the latter lerps old->new mid-transition,
+                // so sizing from it targets whatever subtitle was showing when the animation started.
+                width = Math.max(width, (int) Math.ceil(animatedSubtitleTextView.getDrawable().getAnimateToWidth()));
+            }
         }
         return width;
     }
