@@ -1709,7 +1709,10 @@ public class LoginActivity extends BaseFragment implements NotificationCenter.No
 
     private void onAuthSuccess(TLRPC.TL_auth_authorization res, boolean afterSignup) {
         BackButtonMenuRecent.clearRecentDialogs(currentAccount);
-        PasscodeHelper.removePasscodeForAccount(currentAccount);
+        // NagramX: this slot may be a fresh login into a reused slot, so clear the full state
+        // (including allowPanic) rather than removePasscodeForAccount's active-account subset --
+        // otherwise a departed account's stale allowPanic/hide could carry over to this one.
+        PasscodeHelper.clearAccountState(currentAccount);
         MessagesController.getInstance(currentAccount).cleanup();
         ConnectionsManager.getInstance(currentAccount).setUserId(res.user.id);
         UserConfig.getInstance(currentAccount).clearConfig();

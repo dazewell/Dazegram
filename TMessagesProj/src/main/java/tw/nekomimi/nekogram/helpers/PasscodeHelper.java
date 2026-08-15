@@ -67,12 +67,57 @@ public class PasscodeHelper {
         return false;
     }
 
+    // NagramX: for an account that's still active (re-logging in to the same slot, or the user
+    // just clearing their own code) -- keeps allowPanic, since the UI lets it be set independently
+    // of having a passcode at all.
     public static void removePasscodeForAccount(int account) {
         preferences.edit()
                 .remove("passcodeHash" + account)
                 .remove("passcodeSalt" + account)
                 .remove("hide" + account)
                 .apply();
+    }
+
+    // NagramX: for an account slot that's actually going away -- logout, remote/forced logout,
+    // ToS decline, or the slot about to be reused by a fresh login. Also drops allowPanic, since a
+    // stale "true" would let a departed account's slot keep counting toward Panic coverage, and a
+    // stale "false" would carry over to whoever logs into that slot next.
+    public static void clearAccountState(int account) {
+        preferences.edit()
+                .remove("passcodeHash" + account)
+                .remove("passcodeSalt" + account)
+                .remove("hide" + account)
+                .remove("allowPanic" + account)
+                .apply();
+    }
+
+    // NagramX: sweeps every slot with no current user and clears its passcode state in one editor.
+    // Repairs installs where an account logged out before this existed and left its slot's
+    // passcodeHash/passcodeSalt/hide/allowPanic behind -- those stale keys could reject a Panic
+    // Code as "already used by an account" that no longer exists. Bounded to MAX_ACCOUNT_COUNT
+    // slots, and only ever removes these four exact keys -- never settingsHash, hideSettings, or
+    // the Integer.MAX_VALUE Panic record.
+    public static void clearInactiveAccountState() {
+        SharedPreferences.Editor editor = null;
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (UserConfig.getInstance(a).getCurrentUser() != null) {
+                continue;
+            }
+            if (!preferences.contains("passcodeHash" + a) && !preferences.contains("passcodeSalt" + a)
+                    && !preferences.contains("hide" + a) && !preferences.contains("allowPanic" + a)) {
+                continue;
+            }
+            if (editor == null) {
+                editor = preferences.edit();
+            }
+            editor.remove("passcodeHash" + a)
+                    .remove("passcodeSalt" + a)
+                    .remove("hide" + a)
+                    .remove("allowPanic" + a);
+        }
+        if (editor != null) {
+            editor.apply();
+        }
     }
 
     public static boolean isAccountAllowPanic(int account) {

@@ -81,6 +81,10 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
 
     @Override
     public boolean onFragmentCreate() {
+        // NagramX: repairs installs that logged an account out before deactivation cleared its
+        // passcode state, so a stale record from a departed account can't reject a Panic Code as
+        // "already used" once this screen -- the only place that check runs -- becomes reachable.
+        PasscodeHelper.clearInactiveAccountState();
         for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
             var u = AccountInstance.getInstance(a).getUserConfig().getCurrentUser();
             if (u != null) {

@@ -16324,6 +16324,9 @@ public class MessagesController extends BaseController implements NotificationCe
         }
         getUserConfig().clearConfig();
         SharedPrefsHelper.cleanupAccount(currentAccount);
+        // NagramX: the account's passcode/hide/Panic state must die with the account, or a stale
+        // record blocks Panic Code uniqueness or transfers to whoever reuses this slot next.
+        tw.nekomimi.nekogram.helpers.PasscodeHelper.clearAccountState(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);
