@@ -3074,7 +3074,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         aiButton.setScaleY(0.6f);
 
         richButton = new ImageView(context);
-        richButton.setImageResource(R.drawable.nax_iv_fullscreen);
+        richButton.setImageResource(R.drawable.iv_fullscreen);
         richButton.setScaleType(ImageView.ScaleType.CENTER);
         richButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_glass_defaultIcon), PorterDuff.Mode.MULTIPLY));
         richButton.setBackground(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), Theme.RIPPLE_MASK_CIRCLE_20DP, dp(16)));

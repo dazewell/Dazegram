@@ -889,12 +889,13 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 iconView.setVisibility(INVISIBLE);
             }
-            // Reset on every bind because these rows are recycled. The preview draws the registry
-            // vector at natural size; the toolbar's optical shrink for emoji/schedule/attach is a
-            // runtime-glyph correction (Lottie/CombinedDrawable/raster) that doesn't apply to the
-            // single vector shown here, so the preview stays at 1f and never reads a live-toolbar scale.
-            iconView.setScaleX(1f);
-            iconView.setScaleY(1f);
+            // Reset on every bind because these rows are recycled. The preview draws the registry's
+            // named asset, so it takes the same optical scale the live toolbar uses - except for the
+            // two buttons that compose their glyph at runtime, where the toolbar's number was measured
+            // against geometry this row never shows. previewIconScale owns that one divergence.
+            float previewScale = ComposerButtons.previewIconScale(button.key);
+            iconView.setScaleX(previewScale);
+            iconView.setScaleY(previewScale);
             titleView.setText(LocaleController.getString(button.titleRes));
         }
 

@@ -4,8 +4,10 @@ import org.telegram.messenger.R;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The set of composer toolbar buttons a user is allowed to place, and where each one starts.
@@ -95,16 +97,16 @@ public final class ComposerButtons {
 
     static {
         register(new Button(EMOJI, R.string.AccDescrEmojiButton, R.drawable.input_smile_solar, KIND_CORE, ZONE_START, 0, false, true));
-        register(new Button(RICH, R.string.ArticleEditor, R.drawable.nax_iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false));
+        register(new Button(RICH, R.string.ArticleEditor, R.drawable.iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false));
         register(new Button(AI, R.string.AIEditor, R.drawable.input_ai_star, KIND_CORE, ZONE_MIDDLE, 0, false, false));
 
-        register(new Button("quote", R.string.Quote, R.drawable.nax_formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
-        register(new Button("spoiler", R.string.Spoiler, R.drawable.nax_formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true));
+        register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
+        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true));
         register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true));
         register(new Button("regular", R.string.Regular, R.drawable.nax_formatting_eraser, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_regular, false, true));
 
         register(new Button(CUT, R.string.Cut, R.drawable.nax_formatting_cut, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.cut, false, true));
-        register(new Button(COPY, R.string.Copy, R.drawable.msg_copy, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.copy, false, true));
+        register(new Button(COPY, R.string.Copy, R.drawable.msg_copy_solar, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.copy, false, true));
         register(new Button(PASTE, R.string.Paste, R.drawable.baseline_content_paste_24, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.paste, false, true));
 
         register(new Button("mono", R.string.Mono, R.drawable.formatting_code, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_mono, false, true));
@@ -120,11 +122,7 @@ public final class ComposerButtons {
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
         // Schedule and Attach used to draw full-bleed raster assets; they now render the vector icons
-        // the opt-in Solar theme already ships (input_calendar1/2_solar, ayu_input_attach). Those glyphs
-        // aren't the fork-owned re-croppable vectors the format buttons use - schedule is a
-        // CombinedDrawable and attach swaps to a raster when its menu opens - so their optical width is
-        // brought to the row's baked 74% keyline by a measured constant in iconScaleForKey/ForResource,
-        // not by a per-button field. See the exclusion note above those resolvers.
+        // the opt-in Solar theme already ships (input_calendar1/2_solar, ayu_input_attach).
         register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false));
         register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.ayu_input_attach, KIND_CORE, ZONE_END, 0, true, true));
     }
@@ -142,60 +140,119 @@ public final class ComposerButtons {
         return key == null ? null : REGISTRY.get(key);
     }
 
-    // The format and text buttons draw fork-owned vectors whose optical width is baked to 74% of the
-    // cell, so they need no runtime scale. Three core buttons can't be re-cropped that way and would
-    // otherwise sit visibly wider than that keyline, because each draws something other than a plain
-    // vector: emoji is an RLottieImageView (a Lottie composition), schedule a CombinedDrawable of two
-    // solar layers, attach a raster in its menu-open state. Each is shrunk by a measured constant to
-    // the same 74% keyline. The numbers are the ink extent of the actual thing drawn (not the
-    // registry's named single asset), so they are named here rather than derived at runtime - runtime
-    // ink measurement is what made the reverted ComposerIconMetrics blow sparse glyphs past their
-    // keylines. Emoji uses its default SMILE resting frame (80.95% -> 74%); a single fixed box can only
-    // reference one of its resting frames, and SMILE is the default and the only one shown while the
-    // field has text, so the transient keyboard/sticker/gif frames ride along uncorrected by design.
-    private static final float EMOJI_ICON_SCALE = 0.9141f;    // Lottie SMILE frame 80.95% -> 74%
-    private static final float SCHEDULE_ICON_SCALE = 0.8196f; // calendar CombinedDrawable 90.29% -> 74%
-    private static final float ATTACH_ICON_SCALE = 0.9514f;   // resting ayu_input_attach 77.78% -> 74%
     /**
-     * CrossOutDrawable wraps input_notify_on with its own internal bitmap padding and a diagonal
-     * slash that overhangs the glyph, so the composer's shared 24dp box would draw it slightly large.
-     * Held down to sit with its neighbours. There is no vector to re-crop here, so the constant stays.
+     * Optical scale per button - the row's whole size correction, in one table.
+     *
+     * <p>Model E. Each glyph is scaled so its ink bounding box reaches a preferred width of 83.3% of
+     * the 24dp canvas (20/24, the band the icons nobody complained about already sit in), then held
+     * inside an ink-area band of 14-23% so a dense glyph cannot read as a blob or a sparse one as a
+     * smudge, then capped at 92% width and 94% height so nothing runs to the canvas edge. Width leads
+     * because in a horizontal row the gap the eye reads is horizontal, and the complaint that started
+     * this ("excessive padding") was about that gap. Where the constraints fight, the cap wins and the
+     * glyph is left off target rather than given a private exception.
+     *
+     * <p>Every number here is output from {@code Tools/scripts/IconInk.java} measuring the drawable the
+     * button actually draws - not the registry asset, where the two differ - and may only ever be
+     * re-measured, never nudged. The trailing comment on each line is the measurement it came from:
+     * ink area, then ink bounding box, both as a percentage of the canvas.
+     *
+     * <p>Nothing is baked into an asset any more. Under the toolbar's FIT_CENTER icon box a runtime
+     * scale and a {@code <group>} scale are the same transform, so keeping it here makes the row
+     * reviewable in one place instead of spread across twenty files, and stops the fork carrying
+     * copies of upstream drawables that quietly stop tracking it. Fork an asset only to *move* ink,
+     * which a scale cannot do.
      */
-    private static final float NOTIFY_ICON_SCALE = 0.85f;
-    /**
-     * ic_ab_other is the raster menu-open state of the attach button, out of scope for the vector
-     * re-crop, so it keeps its own authored scale rather than a baked asset geometry.
-     */
-    private static final float MENU_ICON_SCALE = 1.10f;
+    private static final Map<String, Float> ICON_SCALE = new HashMap<>();
 
-    /**
-     * Optical scale for a configurable button placed by its key. Only the three core buttons whose
-     * runtime glyph isn't the re-croppable fork vector need one; every other button draws a vector
-     * baked to the 74% keyline and stays at 1f.
-     */
-    public static float iconScaleForKey(String key) {
-        if (EMOJI.equals(key)) {
-            return EMOJI_ICON_SCALE;
+    private static void iconScale(String key, float scale) {
+        if (ICON_SCALE.put(key, scale) != null) {
+            throw new IllegalStateException("duplicate icon scale: " + key);
         }
-        if (SCHEDULE.equals(key)) {
-            return SCHEDULE_ICON_SCALE;
-        }
-        if (ATTACH.equals(key)) {
-            return ATTACH_ICON_SCALE;
-        }
-        return 1f;
+    }
+
+    static {
+        iconScale(SCHEDULE, 0.8769f);   // 29.91% ink, 90.43 x 88.28 - CombinedDrawable, densest in the row
+        iconScale(PASTE, 0.8892f);      // 29.09% ink, 75.00 x 91.70
+        iconScale("date", 0.9292f);     // 25.72% ink, 89.65 x 87.60
+        iconScale(COPY, 0.9660f);       // 24.51% ink, 86.23 x 94.53
+        iconScale("translate", 0.9212f);// 22.13% ink, 90.43 x 90.43
+        iconScale(ATTACH, 1.0395f);     // 21.05% ink, 77.93 x 90.43 - held by the height cap
+        iconScale("quote", 1.0475f);    // 20.96% ink, 70.90 x 50.00
+        iconScale("regular", 1.0533f);  // 20.73% ink, 75.00 x 78.42
+        iconScale("bold", 1.0976f);     // 19.09% ink, 43.36 x 58.40
+        iconScale("underline", 1.1211f);// 18.30% ink, 58.40 x 75.00
+        iconScale("link", 1.0012f);     // 18.16% ink, 83.20 x 83.20 - measured as drawn, its group is artwork
+        iconScale("strike", 0.9988f);   // 16.73% ink, 83.40 x 67.38
+        iconScale(CUT, 1.1749f);        // 16.05% ink, 70.90 x 73.05
+        iconScale(SELECT_ALL, 1.1403f); // 14.31% ink, 73.05 x 73.05
+        iconScale(AI, 1.1782f);         // 12.92% ink, 70.70 x 68.07 - AiButtonDrawable, not input_ai_star
+        iconScale("italic", 1.3521f);   // 12.58% ink, 54.20 x 58.40
+        iconScale("spoiler", 1.3554f);  // 12.52% ink, 60.64 x 58.40
+        iconScale(EXPAND, 1.1343f);     // 12.41% ink, 73.44 x 73.44
+        iconScale("code", 1.1482f);     // 10.62% ink, 77.73 x 62.50 - held by the area floor
+        iconScale("mono", 1.1031f);     // 10.39% ink, 83.40 x 50.00 - held by the width cap
+        iconScale(RICH, 1.2731f);       // 10.18% ink, 65.43 x 65.43
+        iconScale("mention", 1.5519f);  // 9.55% ink, 45.90 x 45.90 - sparsest in the row
+        // EMOJI is deliberately absent, so it renders at 1f. Its resting glyph is a Lottie composition
+        // (frame 0 of R.raw.smile_to_keyboard, reached via setProgress(0)), whose ink bounding box is
+        // 80.95% of the canvas wide - 2.4pp inside the 83.3% preferred width, closer to it than several
+        // glyphs this table does correct. Its ink *area* is unmeasured: extracting frame-0 bezier
+        // geometry from the composition statically is a parser in its own right, and a subtle error in
+        // one would be unreviewable. A proxy area from the static input_smile_solar asset was
+        // considered and rejected - if the composition is sparser than the static glyph, the proxy
+        // shrinks a default-visible button and nobody finds out until it is on a phone. So it stays at
+        // 1f, satisfying the invariant that is measured and claiming nothing about the one that isn't.
+        // If it reads heavy beside its corrected neighbours, it earns a constant from a real render.
     }
 
     /**
-     * Optical scale for a core button sized from the drawable it currently shows rather than its
-     * registry key - used when a button swaps drawables after construction (attach's resting vector
-     * versus its menu-open raster) or is drawn by a wrapper the key can't see (the notify
-     * CrossOutDrawable). Keeps the resting attach in step with {@link #iconScaleForKey} via the shared
-     * constant, so both entry points land the same button at the same 74% keyline.
+     * Optical scale for a button placed by its key. Unlisted keys render at natural size.
+     */
+    public static float iconScaleForKey(String key) {
+        Float scale = key == null ? null : ICON_SCALE.get(key);
+        return scale == null ? 1f : scale;
+    }
+
+    /**
+     * Optical scale for the settings preview, which draws the registry's named asset rather than the
+     * drawable the live button builds. For most buttons those are the same file and the preview shares
+     * the toolbar's number. For the two that compose their glyph at runtime they are not, and the
+     * toolbar's scale would be measured against geometry the preview never shows - ai is the sharp
+     * case, since it draws AiButtonDrawable at 12.92% ink while its registry asset input_ai_star is
+     * 33.75%, so the toolbar's enlargement applied to the preview asset would inflate it badly.
+     */
+    public static float previewIconScale(String key) {
+        if (AI.equals(key) || SCHEDULE.equals(key)) {
+            return 1f;
+        }
+        return iconScaleForKey(key);
+    }
+
+    /**
+     * ic_ab_other is the attach button's menu-open state. It sits outside the keyline on purpose: at
+     * 17.97% ink width the model would scale it 1.383x into a three-dot column running 94% of the
+     * canvas height, and it has nothing to be uneven against - it replaces the attach glyph in place
+     * while the menu is open, so its neighbours never change. This is its authored scale.
+     */
+    private static final float MENU_ICON_SCALE = 1.10f;
+    /**
+     * The notify toggle is not a composer toolbar button - it is the mute control in the enter view,
+     * and it only reaches this resolver because it shares the same icon box. Deliberately left off the
+     * row's keyline: correcting it would resize a user-visible icon on a surface this change never
+     * looked at. CrossOutDrawable wraps input_notify_on with its own bitmap padding and a slash that
+     * overhangs the glyph, so the shared 24dp box would otherwise draw it slightly large.
+     */
+    private static final float NOTIFY_ICON_SCALE = 0.85f;
+
+    /**
+     * Optical scale for a button sized from the drawable it currently shows rather than its registry
+     * key - used when a button swaps drawables after construction (attach's resting vector versus its
+     * menu-open raster) or is drawn by a wrapper the key can't see (the notify CrossOutDrawable).
+     * Resting attach reads the shared table, so both entry points land it in the same place.
      */
     public static float iconScaleForResource(int resource) {
         if (resource == R.drawable.ayu_input_attach || resource == R.drawable.input_attach) {
-            return ATTACH_ICON_SCALE;
+            return iconScaleForKey(ATTACH);
         }
         if (resource == R.drawable.ic_ab_other) {
             return MENU_ICON_SCALE;

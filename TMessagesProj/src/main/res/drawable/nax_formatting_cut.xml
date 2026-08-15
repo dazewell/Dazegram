@@ -1,44 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- NagramX: fork-owned scissors glyph for the composer toolbar. Two corrections are baked in via
-     the group. Centring: the ink sits 0.25dp right of the canvas centre (the blades run out to x=20
-     while the pivots sit near x=7), so it is shifted left by that amount to sit dead centre. Extent:
-     the raw ink filled 70.83% of the cell, below the 74% keyline the rest of the corrected row sits
-     at, so it is scaled 1.0447 about its own centre to match. Pivot is the ink centre, not the canvas
-     centre, so the scale doesn't reintroduce an offset. -->
+<!-- NagramX: fork-owned scissors glyph for the composer toolbar. There is no upstream twin to track,
+     so this file is the raw artwork. It carries no group transform on purpose: the row's optical
+     correction is a uniform scale, which under the toolbar's FIT_CENTER icon box is mathematically
+     the same whether it is baked here or applied at runtime, so it lives in one reviewable table in
+     ComposerButtons instead of being spread across the assets. Bake a group here only to *move* ink,
+     which a scale cannot do. Measured raw: 16.05% ink, bounding box 70.90 x 73.05% of the canvas. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <group
-        android:pivotX="12.25"
-        android:pivotY="12"
-        android:scaleX="1.0447"
-        android:scaleY="1.0447"
-        android:translateX="-0.25">
-        <path
-            android:strokeColor="#ffffff"
-            android:strokeWidth="1.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M9.5 6.5A2.5 2.5 0 1 1 4.5 6.5A2.5 2.5 0 0 1 9.5 6.5Z" />
-        <path
-            android:strokeColor="#ffffff"
-            android:strokeWidth="1.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M9.5 17.5A2.5 2.5 0 1 1 4.5 17.5A2.5 2.5 0 0 1 9.5 17.5Z" />
-        <path
-            android:strokeColor="#ffffff"
-            android:strokeWidth="1.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M8.5 8.2L20 19.5" />
-        <path
-            android:strokeColor="#ffffff"
-            android:strokeWidth="1.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:pathData="M8.5 15.8L20 4.5" />
-    </group>
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9.5 6.5A2.5 2.5 0 1 1 4.5 6.5A2.5 2.5 0 0 1 9.5 6.5Z" />
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M9.5 17.5A2.5 2.5 0 1 1 4.5 17.5A2.5 2.5 0 0 1 9.5 17.5Z" />
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8.5 8.2L20 19.5" />
+    <path
+        android:strokeColor="#ffffff"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8.5 15.8L20 4.5" />
 </vector>
