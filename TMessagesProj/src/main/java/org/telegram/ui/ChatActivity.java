@@ -2428,7 +2428,8 @@ public class ChatActivity extends BaseFragment implements
                         if (isTitleCentered() || chatMode == MODE_SAVED && getSavedDialogId() == getUserConfig().getClientUserId() || chatMode == 0 && (threadMessageId == 0 || isTopic) && !UserObject.isReplyUser(currentUser) && !isReport()) {
                             editTextItem.setVisibility(View.GONE);
 
-                            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
+                            // NagramX (#composer-attach-pinned): pinned attach keeps this overflow icon put.
+                            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned()) {
                                 boolean showAttachItem = !isTitleCentered();
                                 if (headerItem != null) {
                                     headerItem.setVisibility(showAttachItem ? View.GONE : View.VISIBLE);
@@ -41220,7 +41221,8 @@ public class ChatActivity extends BaseFragment implements
                 if (topicCreateItem != null) {
                     topicCreateItem.setVisibility(View.GONE);
                 }
-            } else if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
+            // NagramX (#composer-attach-pinned): mirrors the pinned-attach check above.
+            } else if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned() && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
                 boolean showAttachItem = !isTitleCentered();
                 if (headerItem != null) {
                     headerItem.setVisibility(showAttachItem ? View.GONE : View.VISIBLE);
