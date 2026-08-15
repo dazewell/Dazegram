@@ -4,6 +4,7 @@ package tw.nekomimi.nekogram.location;
 import android.location.Location;
 import android.util.Pair;
 
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLog;
 
 import java.util.Collections;
@@ -26,7 +27,9 @@ public class NekoLocation {
 
         recent.add(trans.hashCode());
 
-        FileLog.d(String.format(Locale.US, "%.4f,%.4f => %.4f,%.4f", latitude, longitude, trans.first, trans.second));
+        if (BuildVars.LOGS_ENABLED) {
+            FileLog.d(String.format(Locale.US, "%.4f,%.4f => %.4f,%.4f", latitude, longitude, trans.first, trans.second));
+        }
     }
 
     static class Cache<K, V> extends LinkedHashMap<K, V> {

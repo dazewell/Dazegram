@@ -1206,7 +1206,7 @@ public class NekoTranslatorSettingsActivity extends BaseNekoXSettingsActivity {
         builder.setTitle(getString(R.string.LlmModelName));
 
         final int screenHeightDp = (int) (AndroidUtilities.displaySize.y / AndroidUtilities.density);
-        final int viewHeightDp = Math.clamp((int) (screenHeightDp * 0.6f), 320, 600);
+        final int viewHeightDp = Math.max(320, Math.min((int) (screenHeightDp * 0.6f), 600));
 
         builder.setView(container, viewHeightDp);
         builder.setNegativeButton(getString(R.string.Cancel), null);
