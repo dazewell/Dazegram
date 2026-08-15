@@ -1033,6 +1033,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         if (isPreviewMode() && isCentered()) {
             l += dp(AndroidUtilities.isTablet() ? 80 : 72) / 2;
+        } else if (isCentered()) {
+            l += dp(6);
         }
         SimpleTextView titleTextLargerCopyView = this.titleTextLargerCopyView.get();
         if (getSubtitleTextView().getVisibility() != GONE) {

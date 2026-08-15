@@ -38,7 +38,6 @@ import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.animation.OvershootInterpolator;
 import android.widget.FrameLayout;
-import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -103,6 +102,7 @@ import me.vkryl.android.animator.FactorAnimator;
 import me.vkryl.android.animator.ReplaceAnimator;
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.helpers.TypefaceHelper;
+import tw.nekomimi.nekogram.ui.components.AnimatedTitleView;
 
 @SuppressLint("ViewConstructor")
 public class DialogStoriesCell extends FrameLayout implements NotificationCenter.NotificationCenterDelegate, FactorAnimator.Target {
@@ -160,8 +160,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     LinearLayoutManager layoutManager;
     AnimatedTextView titleView;
     ActionBarAnimatedSubtitleOverlayContainer subtitleOverlayContainer;
-    AnimatedTextView telegramLogoView;
-    ImageView emojiStatusView;
+    AnimatedTitleView telegramLogoView;
     AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable statusDrawable;
     boolean drawCircleForce;
     ArrayList<Runnable> afterNextLayout = new ArrayList<>();
@@ -334,29 +333,13 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         titleView.setFocusableInTouchMode(true);
         addView(titleView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        telegramLogoView = new AnimatedTextView(getContext(), true, true, false);
-        telegramLogoView.setGravity(Gravity.LEFT);
-        telegramLogoView.setTextColor(getTextColor());
-        telegramLogoView.setEllipsizeByGradient(true);
-        telegramLogoView.setContentDescription(getString(R.string.AppName));
-        telegramLogoView.setTypeface(AndroidUtilities.bold());
-        telegramLogoView.setPadding(0, dp(8), 0, dp(8));
-        telegramLogoView.setTextSize(dp(!AndroidUtilities.isTablet() && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE ? 18 : 20));
-        telegramLogoView.setText(TypefaceHelper.getTitleText(currentAccount));
-        telegramLogoView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-        telegramLogoView.setFocusableInTouchMode(true);
+        logoTitle = TypefaceHelper.getTitleText(currentAccount);
+        telegramLogoView = new AnimatedTitleView(context, logoTitle, getTextLogoColor());
         addView(telegramLogoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         statusDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(null, dp(26));
         statusDrawable.center = true;
         statusDrawable.setCallback(this);
-
-        emojiStatusView = new ImageView(context);
-        emojiStatusView.setScaleType(ImageView.ScaleType.CENTER);
-        emojiStatusView.setImageDrawable(statusDrawable);
-        addView(emojiStatusView, LayoutHelper.createFrame(40, 40));
-        // NagramX: give the swap drawable a parent view so its change animation can self-invalidate; without this the status crossfade freezes on a static (non-scrolling) header
-        statusDrawable.setParentView(emojiStatusView);
 
         subtitleOverlayContainer = new ActionBarAnimatedSubtitleOverlayContainer(context, null, ellipsizeSpanAnimator) {
             @Override
@@ -583,6 +566,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     private float collapsedSpringCoef = 0.95f;
     private float expandedSpringCoef = 0.9f;
     private float rightSlidingProgress;
+    private boolean showLogoStatus = true;
+    private CharSequence logoTitle;
 
     public float getOverScrollCoef() {
         return overScrollCoef;
@@ -657,6 +642,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         }
 
         animatorHasTitleText.setValue(!TextUtils.isEmpty(currentTitle) || hasOverlayText, animated);
+        applyLogoTitle(false, false);
 
         miniItems.clear();
         for (int i = 0; i < items.size(); i++) {
@@ -962,11 +948,6 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             offset = (telegramLogoView.getMeasuredHeight() - telegramLogoView.getTextHeight()) / 2f;
             telegramLogoView.setTranslationX(titleView.getTranslationX() + dp(1));
             telegramLogoView.setTranslationY(bottomY + dp(14) - offset + AndroidUtilities.dp(FAKE_TOP_PADDING) + translationOffset /*titleView.getTranslationY() + dpf2(37.33f)*/);
-
-            // NagramX: anchor the status icon to whichever collapsed text is showing (logo or the "N stories" title) so the ghost stays beside it in the stories-count state too. width() is the rendered text width; getMeasuredWidth() here is the full container width.
-            emojiStatusView.setTranslationX(titleView.getTranslationX() - dpf2(3.33f) + lerp(telegramLogoView.width(), titleView.width(), animatorHasTitleText.getFloatValue()));
-            // NagramX: vertically center the icon on the title text instead of the untuned constant (the icon used to sit off-screen, so this Y was never validated)
-            emojiStatusView.setTranslationY(titleView.getTranslationY() + (titleView.getMeasuredHeight() - emojiStatusView.getMeasuredHeight()) / 2f);
 
             subtitleOverlayContainer.setTranslationX(titleView.getTranslationX());
             subtitleOverlayContainer.setTranslationY(bottomY + dp(15 + FAKE_TOP_PADDING + 4.333f + 8));
@@ -1379,6 +1360,34 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
 
     public void setActionBar(ActionBar actionBar) {
         this.actionBar = actionBar;
+    }
+
+    public void setLogoTitle(CharSequence title, boolean showStatus, boolean animated, boolean forward) {
+        logoTitle = title;
+        showLogoStatus = showStatus;
+        applyLogoTitle(animated, forward);
+    }
+
+    private boolean shouldShowCollapsedGhostStatus() {
+        return NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool() && !TextUtils.isEmpty(currentTitle);
+    }
+
+    private void applyLogoTitle(boolean animated, boolean forward) {
+        if (telegramLogoView == null || statusDrawable == null) {
+            return;
+        }
+        CharSequence title = logoTitle;
+        Drawable rightDrawable = showLogoStatus ? statusDrawable : null;
+        if (shouldShowCollapsedGhostStatus()) {
+            title = currentTitle;
+            rightDrawable = statusDrawable;
+        }
+        if (animated && isAttachedToWindow() && telegramLogoView.getAlpha() > 0) {
+            telegramLogoView.setTitleAnimatedX(title, rightDrawable, forward, 250);
+        } else {
+            telegramLogoView.setTitle(title, rightDrawable);
+        }
+        statusDrawable.setParentView(rightDrawable == statusDrawable ? telegramLogoView : null);
     }
 
     public float overscrollProgress() {
@@ -2194,7 +2203,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             statusDrawable.set(ghostDrawable, animated);
             statusDrawable.setParticles(false, animated);
             statusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
-            emojiStatusView.invalidate();
+            applyLogoTitle(false, false);
             checkUi_titleVisibility();
             invalidate();
             return;
@@ -2225,7 +2234,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             statusDrawable.setParticles(false, animated);
         }
         statusDrawable.setColor(getThemedColor(Theme.key_profile_verifiedBackground));
-        emojiStatusView.invalidate();
+        applyLogoTitle(false, false);
+        telegramLogoView.invalidate();
         checkUi_titleVisibility();
         invalidate();
     }
@@ -2252,20 +2262,17 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         final float logoVisibility = 1f - titleVisibility;
         final float titleAlpha = titleVisibility * progress * rightSlidingFactor;
         final float logoAlpha = logoVisibility * progress * rightSlidingFactor;
+        final boolean showCollapsedGhostStatus = shouldShowCollapsedGhostStatus();
 
         if (titleView != null) {
-            titleView.setAlpha(titleAlpha);
-            titleView.setVisibility(titleAlpha > 0 ? VISIBLE : GONE);
+            final float visibleTitleAlpha = showCollapsedGhostStatus ? 0f : titleAlpha;
+            titleView.setAlpha(visibleTitleAlpha);
+            titleView.setVisibility(visibleTitleAlpha > 0 ? VISIBLE : GONE);
         }
         if (telegramLogoView != null) {
-            telegramLogoView.setAlpha(logoAlpha);
-            telegramLogoView.setVisibility(logoAlpha > 0 ? VISIBLE : GONE);
-        }
-        if (emojiStatusView != null) {
-            // NagramX: with ghost mode on, keep the indicator visible even when a stories-count title replaces the logo
-            final float statusAlpha = (NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool()) ? progress : logoAlpha;
-            emojiStatusView.setAlpha(statusAlpha);
-            emojiStatusView.setVisibility(statusAlpha > 0 ? VISIBLE : GONE);
+            final float visibleLogoAlpha = showCollapsedGhostStatus ? titleAlpha : logoAlpha;
+            telegramLogoView.setAlpha(visibleLogoAlpha);
+            telegramLogoView.setVisibility(visibleLogoAlpha > 0 ? VISIBLE : GONE);
         }
         if (subtitleOverlayContainer != null) {
             final float subtitleAlpha = progress * rightSlidingFactor;
