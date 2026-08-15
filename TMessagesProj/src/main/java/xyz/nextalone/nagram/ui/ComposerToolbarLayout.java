@@ -46,6 +46,26 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int BASE_BUTTON_SIZE = 48;
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
+    /**
+     * The spacing slider is tighter-only on purpose, and that is geometry rather than taste:
+     * ControlsLayout measures its slots at dp(height()) minus its own padding, which comes out at
+     * exactly the unpacked cell - BASE_BUTTON_SIZE at the current scale, before any packing factor -
+     * at every scale step (100%: 56-4-4=48; 125%: 70-5-5=60; 75%: 42-3-3=36). Packing tighter leaves
+     * the cell inside that box, which is why it is safe; a factor above 100% would push it outside,
+     * and the row clips its children, so every button's background and ripple would come out sliced
+     * flat top and bottom.
+     */
+    private static final int SPACING_MIN = 85;
+    private static final int SPACING_MAX = 100;
+    /**
+     * Smallest cell the row will draw, before the glyph is even considered. Telegram's own send/mic
+     * circle is 44dp and Material's minimum target is 48dp; below 40dp the press ripple starts
+     * painting over the neighbouring glyph, because every one of these buttons uses
+     * Theme.createSelectorDrawable, which on API 23+ is an unbounded RippleDrawable with a fixed
+     * dp(20) radius that does not shrink with the view, and the slots do not clip their children.
+     */
+    private static final int MIN_CELL_BASE = 40;
+    private static final int MIN_CELL_FLOOR = 36;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
     private static final int GLASS_DRAW_INSET = 2;
@@ -335,8 +355,29 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * value cannot produce a panel that no longer fits the composer.
      */
     public static float scale() {
+        return scalePercent() / 100f;
+    }
+
+    /** The user's panel scale as a whole percent, clamped to the slider's own range. */
+    public static int scalePercent() {
         int percent = NaConfig.INSTANCE.getComposerToolbarScale().Int();
-        return Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent)) / 100f;
+        return Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent));
+    }
+
+    /**
+     * How densely the cells are packed, as a whole percent. Independent of {@link #scale()}: the
+     * scale grows the row, the cells and the glyphs together and so can never change how much slack
+     * a cell has around its glyph, which is the only thing that sets the gap between two icons.
+     *
+     * <p>Snapped up to the lowest step that is not swallowed by the cell floor. The settings slider
+     * blocks the same steps through SlideIntChooseView.setMinValueAllowed, and that clamp never fires
+     * the change callback, so a stored value below what is reachable legitimately survives in config -
+     * the row and the slider both read it through this one method so they cannot disagree.
+     */
+    public static int spacingPercent() {
+        int percent = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();
+        percent = Math.max(SPACING_MIN, Math.min(SPACING_MAX, percent));
+        return Math.max(lowestUsableSpacing(scalePercent()), percent);
     }
 
     /**
@@ -348,9 +389,67 @@ public final class ComposerToolbarLayout extends FrameLayout {
         return Math.round(BASE_HEIGHT * scale());
     }
 
-    /** Button cell size in dp, scaled with the row so the cells stay centered in it. */
+    /**
+     * Button cell size in dp - the row's scale times the packing factor, held above a floor. The
+     * floor is what keeps the two independent: applyIconBox sizes the glyph from scale() alone but
+     * the cell from both, then absorbs any shortfall with a max(0, ...) on the leftover padding, so
+     * without it a tight enough cell would quietly render the widest glyph under its own keyline -
+     * no crash, nothing logged.
+     */
     public static int buttonSize() {
-        return Math.round(BASE_BUTTON_SIZE * scale());
+        float scale = scale();
+        return Math.max(minCellDp(scale), packedCellDp(scale, spacingPercent()));
+    }
+
+    private static int packedCellDp(float scale, int spacingPercent) {
+        return Math.round(BASE_BUTTON_SIZE * scale * (spacingPercent / 100f));
+    }
+
+    /**
+     * Smallest cell allowed at a given row scale. Two terms: a proportional one that keeps the touch
+     * target and its fixed-radius ripple sane as the row shrinks, and an absolute one that stops the
+     * proportional term following a small row all the way down.
+     */
+    private static int minCellDp(float scale) {
+        int floor = Math.max(MIN_CELL_FLOOR, Math.round(MIN_CELL_BASE * scale));
+        // The glyph the cell has to hold is the real constraint, and it is read from the icon table
+        // rather than typed here so that measuring a sparser glyph than today's widest moves this
+        // floor with it instead of starving that glyph.
+        int widestGlyph = (int) Math.ceil(ICON_GLYPH * ComposerButtons.maxIconScale() * scale);
+        return Math.max(floor, widestGlyph);
+    }
+
+    /**
+     * Whether a packing step actually reaches the row at this scale, or is swallowed at one end or
+     * the other. A step that cannot move anything must not be offered: the slider would still slide
+     * and still buzz while changing nothing on screen.
+     *
+     * <p>Two ways to be swallowed, and both have to be tested here rather than left to whatever
+     * grid the caller happens to walk. Under the cell floor is the obvious one. The other is a step
+     * that rounds straight back to the unpacked cell - at 75% scale the floor and the unpacked cell
+     * are the same 36dp, so 99% packing rounds to 36 and passes the floor test while drawing exactly
+     * what 100% draws.
+     */
+    private static boolean spacingIsUsable(int scalePercent, int spacingPercent) {
+        float scale = scalePercent / 100f;
+        int cell = packedCellDp(scale, spacingPercent);
+        return cell >= minCellDp(scale) && cell < packedCellDp(scale, SPACING_MAX);
+    }
+
+    /**
+     * The tightest packing that still reaches the row at this scale.
+     *
+     * <p>Walked a percent at a time, matching what the slider delivers. The cell is a rounded dp, so
+     * the first packing that clears the floor is usually not a multiple of five - at 85% scale it is
+     * 88 - and a coarser walk would grey out steps the row can actually draw.
+     */
+    public static int lowestUsableSpacing(int scalePercent) {
+        for (int percent = SPACING_MIN; percent < SPACING_MAX; percent++) {
+            if (spacingIsUsable(scalePercent, percent)) {
+                return percent;
+            }
+        }
+        return SPACING_MAX;
     }
 
     /**

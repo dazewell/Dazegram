@@ -574,8 +574,12 @@
     <string name="ComposerZoneHidden">Hidden</string>
     <string name="ComposerZoneEmpty">No buttons — drag one here</string>
     <string name="ComposerLayoutReset">Reset to default</string>
+    <string name="ComposerScale">Toolbar size</string>
     <string name="ComposerScaleInfo">Scales the toolbar and its buttons. Takes effect when you leave this screen.</string>
-    <string name="ComposerScaleAccDescr">Toolbar scale, %1$d percent</string>
+    <string name="ComposerScaleAccDescr">Toolbar size</string>
+    <string name="ComposerSpacing">Icon spacing</string>
+    <string name="ComposerSpacingAccDescr">Icon spacing</string>
+    <string name="ComposerSpacingInfo">Sets how close together the icons sit, without changing their size. Takes effect when you leave this screen. Tighter steps need room to work, so at a small toolbar size some of them are greyed out until you make the toolbar bigger.</string>
     <!-- Passcode setup safety #passcode-setup-safety -->
     <string name="PasscodePanicCodeConfirm">Re-enter your Panic Code</string>
     <string name="PasscodeSetForAccount">Set passcode for %1$s</string>
