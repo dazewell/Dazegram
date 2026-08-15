@@ -88,6 +88,10 @@ public class AnimatedTitleView extends FrameLayout {
         return titleView.getTextHeight();
     }
 
+    public SimpleTextView getDrawingTitleView() {
+        return titleView;
+    }
+
     private SimpleTextView createTitleView(CharSequence title, Drawable rightDrawable) {
         SimpleTextView textView = new SimpleTextView(getContext());
         textView.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);

@@ -642,7 +642,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         }
 
         animatorHasTitleText.setValue(!TextUtils.isEmpty(currentTitle) || hasOverlayText, animated);
-        applyLogoTitle(false, false);
+        applyLogoTitle(animated, false);
 
         miniItems.clear();
         for (int i = 0; i < items.size(); i++) {
@@ -1312,6 +1312,8 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         } else {
             ellipsizeSpanAnimator.removeView(titleView);
         }
+        applyLogoTitle(false, false);
+        checkUi_titleVisibility();
     }
 
     public void setClipTop(int clipTop) {
@@ -1369,7 +1371,11 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
     }
 
     private boolean shouldShowCollapsedGhostStatus() {
-        return NekoConfig.isGhostModeActive() && NekoConfig.showGhostModeStatus.Bool() && !TextUtils.isEmpty(currentTitle);
+        return NekoConfig.isGhostModeActive()
+                && NekoConfig.showGhostModeStatus.Bool()
+                && !hasOverlayText
+                && currentTitle != uploadingString
+                && !TextUtils.isEmpty(currentTitle);
     }
 
     private void applyLogoTitle(boolean animated, boolean forward) {
@@ -1387,7 +1393,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
         } else {
             telegramLogoView.setTitle(title, rightDrawable);
         }
-        statusDrawable.setParentView(rightDrawable == statusDrawable ? telegramLogoView : null);
+        statusDrawable.setParentView(rightDrawable == statusDrawable ? telegramLogoView.getDrawingTitleView() : null);
     }
 
     public float overscrollProgress() {
@@ -2270,7 +2276,7 @@ public class DialogStoriesCell extends FrameLayout implements NotificationCenter
             titleView.setVisibility(visibleTitleAlpha > 0 ? VISIBLE : GONE);
         }
         if (telegramLogoView != null) {
-            final float visibleLogoAlpha = showCollapsedGhostStatus ? titleAlpha : logoAlpha;
+            final float visibleLogoAlpha = showCollapsedGhostStatus ? progress * rightSlidingFactor : logoAlpha;
             telegramLogoView.setAlpha(visibleLogoAlpha);
             telegramLogoView.setVisibility(visibleLogoAlpha > 0 ? VISIBLE : GONE);
         }
