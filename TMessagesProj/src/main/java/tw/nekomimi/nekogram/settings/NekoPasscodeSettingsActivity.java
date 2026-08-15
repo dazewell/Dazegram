@@ -201,9 +201,13 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                     .setNegativeButton(getString(R.string.Cancel), null)
                     .setPositiveButton(getString(R.string.DisablePasscodeTurnOff), (dialog, which) -> {
                         PasscodeHelper.removePasscodeForAccount(Integer.MAX_VALUE);
-                        listAdapter.notifyItemChanged(setPanicCodeRow);
-                        listAdapter.notifyItemRemoved(removePanicCodeRow);
+                        // NagramX: recompute the row map before notifying, so the adapter's
+                        // notifications describe the rows updateRows() actually produced rather than
+                        // the stale indices captured when this dialog was built.
+                        int removedRow = removePanicCodeRow;
                         updateRows();
+                        listAdapter.notifyItemChanged(setPanicCodeRow);
+                        listAdapter.notifyItemRemoved(removedRow);
                     }).create();
             showDialog(alertDialog);
             ((TextView) alertDialog.getButton(Dialog.BUTTON_POSITIVE)).setTextColor(Theme.getColor(Theme.key_dialogTextRed));
@@ -361,7 +365,15 @@ public class NekoPasscodeSettingsActivity extends BaseNekoSettingsActivity imple
                     if (position == accountsEndRow) {
                         cell.setText(getString(R.string.PasscodeAbout));
                     } else if (position == panicCode2Row) {
-                        cell.setText(getString(R.string.PasscodePanicCodeAbout));
+                        // NagramX: once a Panic Code exists, remind that it must differ from the app
+                        // and every account code. Old installs can't be checked for an existing clash
+                        // (independently salted hashes aren't comparable without the plaintext), so
+                        // this is a static nudge to re-set if unsure -- no stored flag or state.
+                        if (PasscodeHelper.hasPanicCode()) {
+                            cell.setText(getString(R.string.PasscodePanicCodeAbout) + "\n\n" + getString(R.string.PasscodePanicCodeUniqueHint));
+                        } else {
+                            cell.setText(getString(R.string.PasscodePanicCodeAbout));
+                        }
                     } else if (position == showInSettings2Row) {
                         var link = String.format(Locale.ENGLISH, "https://t.me/nasettings/%s", PasscodeHelper.getSettingsKey());
                         var stringBuilder = new SpannableStringBuilder(AndroidUtilities.replaceTags(getString(R.string.PasscodeShowInSettingsAbout)));
