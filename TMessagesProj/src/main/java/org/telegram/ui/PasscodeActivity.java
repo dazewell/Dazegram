@@ -1020,6 +1020,19 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         });
     }
 
+    // NagramX: drop back to the first entry step and clear the captured code, for when the confirm-step
+    // invariant guard rejects the code itself (so re-entering the same code can't get past confirm).
+    private void restartPasscodeSetup(CharSequence caption) {
+        passcodeSetStep = 0;
+        firstPassword = null;
+        if (otherItem != null) {
+            otherItem.setVisibility(View.VISIBLE);
+        }
+        titleTextView.setText(setupTitle());
+        updateFields();
+        showPasscodeSetupError(caption);
+    }
+
     private boolean isPinCode() {
         return type == TYPE_SETUP_CODE && currentPasswordType == SharedConfig.PASSCODE_TYPE_PIN ||
                 type == TYPE_ENTER_CODE_TO_MANAGE_SETTINGS && SharedConfig.passcodeType == SharedConfig.PASSCODE_TYPE_PIN;
@@ -1044,7 +1057,11 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
 
             CharSequence collision = passcodeCollisionMessage(password);
             if (collision != null) {
-                showPasscodeSetupError(collision);
+                // NagramX: this normally can't fire -- the same code cleared the check at first entry.
+                // If a code was configured elsewhere in between, the clash is with firstPassword itself,
+                // so restart at the first step rather than trapping the user re-entering a code the
+                // confirm step will keep rejecting.
+                restartPasscodeSetup(collision);
                 return;
             }
 
