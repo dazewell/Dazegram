@@ -450,11 +450,7 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 titleTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                 titleTextView.setTypeface(AndroidUtilities.bold());
                 if (type == TYPE_SETUP_CODE) {
-                    if (!SharedConfig.passcodeHash.isEmpty()) {
-                        titleTextView.setText(LocaleController.getString(R.string.EnterNewPasscode));
-                    } else {
-                        titleTextView.setText(LocaleController.getString(R.string.CreatePasscode));
-                    }
+                    titleTextView.setText(setupTitle());
                 } else {
                     titleTextView.setText(LocaleController.getString(R.string.EnterYourPasscode));
                 }
@@ -914,18 +910,114 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
             return;
         }
 
+        String candidate = isPinCode() ? codeFieldContainer.getCode() : passwordEditText.getText().toString();
+        CharSequence collision = passcodeCollisionMessage(candidate);
+        if (collision != null) {
+            showPasscodeSetupError(collision);
+            return;
+        }
+
         if (otherItem != null) {
             otherItem.setVisibility(View.GONE);
         }
 
-        titleTextView.setText(LocaleController.getString(R.string.ConfirmCreatePasscode));
-        descriptionTextSwitcher.setText(AndroidUtilities.replaceTags(LocaleController.getString(R.string.PasscodeReinstallNotice)));
-        firstPassword = isPinCode() ? codeFieldContainer.getCode() : passwordEditText.getText().toString();
+        titleTextView.setText(confirmTitle());
+        descriptionTextSwitcher.setText(confirmDescription());
+        firstPassword = candidate;
         passwordEditText.setText("");
         passwordEditText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
         for (CodeNumberField f : codeFieldContainer.codeField) f.setText("");
         showKeyboard();
         passcodeSetStep = 1;
+    }
+
+    // NagramX: the setup screen is reused for the app passcode, the Panic Code and each per-account
+    // passcode, so its title has to name which one is being set rather than reading the app's own state.
+    private CharSequence setupTitle() {
+        if (account == Integer.MAX_VALUE) {
+            return LocaleController.getString(PasscodeHelper.hasPanicCode() ? R.string.PasscodePanicCodeEdit : R.string.PasscodePanicCodeSet);
+        } else if (account != -1) {
+            return LocaleController.formatString(PasscodeHelper.hasPasscodeForAccount(account) ? R.string.PasscodeEditForAccount : R.string.PasscodeSetForAccount, accountDisplayName(account));
+        } else if (!SharedConfig.passcodeHash.isEmpty()) {
+            return LocaleController.getString(R.string.EnterNewPasscode);
+        }
+        return LocaleController.getString(R.string.CreatePasscode);
+    }
+
+    private CharSequence confirmTitle() {
+        if (account == Integer.MAX_VALUE) {
+            return LocaleController.getString(R.string.PasscodePanicCodeConfirm);
+        } else if (account != -1) {
+            return LocaleController.formatString(R.string.PasscodeConfirmForAccount, accountDisplayName(account));
+        }
+        return LocaleController.getString(R.string.ConfirmCreatePasscode);
+    }
+
+    private CharSequence confirmDescription() {
+        // NagramX: the reinstall warning is about the app passcode's app-lock; it's misleading for the
+        // Panic Code or a per-account passcode, so those confirm steps carry no description.
+        if (account != -1) {
+            return "";
+        }
+        return AndroidUtilities.replaceTags(LocaleController.getString(R.string.PasscodeReinstallNotice));
+    }
+
+    // NagramX: name the target account for setup titles and captions, defensively -- this screen sits
+    // behind the app lock already, so a hidden or not-yet-loaded user just falls back to the generic
+    // label rather than leaking or crashing.
+    private CharSequence accountDisplayName(int account) {
+        try {
+            org.telegram.tgnet.TLRPC.User user = UserConfig.getInstance(account).getCurrentUser();
+            if (user != null) {
+                String name = org.telegram.messenger.ContactsController.formatName(user.first_name, user.last_name);
+                if (!TextUtils.isEmpty(name)) {
+                    return name;
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return LocaleController.getString(R.string.Account);
+    }
+
+    // NagramX: the Panic Code must stay distinct from every normal unlock code, so a duress entry can
+    // never be a code the user types to get in, and no normal code can be swapped to the Panic value.
+    // App and account codes may still equal each other -- only Panic is globally unique. Returns the
+    // caption to show, or null when the candidate is allowed for this target. Uses PasscodeHelper's
+    // side-effect-free matchers, never the runtime checks that log out or migrate.
+    private CharSequence passcodeCollisionMessage(String candidate) {
+        if (account == Integer.MAX_VALUE) {
+            if (PasscodeHelper.matchesHash(candidate, SharedConfig.passcodeHash, SharedConfig.passcodeSalt)) {
+                return LocaleController.getString(R.string.PasscodeMatchesApp);
+            }
+            int match = PasscodeHelper.findMatchingAccount(candidate);
+            if (match != -1) {
+                return LocaleController.formatString(R.string.PasscodeMatchesAccount, accountDisplayName(match));
+            }
+        } else if (PasscodeHelper.matchesPanic(candidate)) {
+            return LocaleController.getString(R.string.PasscodeMatchesPanic);
+        }
+        return null;
+    }
+
+    // NagramX: shared shake + caption + clear for a rejected setup entry, reusing the existing
+    // "codes do not match" caption view and its 3s auto-hide rather than adding a second one.
+    private void showPasscodeSetupError(CharSequence caption) {
+        passcodesDoNotMatchTextView.setText(caption);
+        AndroidUtilities.updateViewVisibilityAnimated(passcodesDoNotMatchTextView, true);
+        for (CodeNumberField f : codeFieldContainer.codeField) {
+            f.setText("");
+        }
+        if (isPinCode()) {
+            codeFieldContainer.codeField[0].requestFocus();
+        }
+        passwordEditText.setText("");
+        onPasscodeError();
+        codeFieldContainer.removeCallbacks(hidePasscodesDoNotMatch);
+        codeFieldContainer.post(() -> {
+            codeFieldContainer.postDelayed(hidePasscodesDoNotMatch, 3000);
+            postedHidePasscodesDoNotMatch = true;
+        });
     }
 
     private boolean isPinCode() {
@@ -946,30 +1038,31 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
         String password = isPinCode() ? codeFieldContainer.getCode() : passwordEditText.getText().toString();
         if (type == TYPE_SETUP_CODE) {
             if (!firstPassword.equals(password)) {
-                AndroidUtilities.updateViewVisibilityAnimated(passcodesDoNotMatchTextView, true);
-                for (CodeNumberField f : codeFieldContainer.codeField) {
-                    f.setText("");
-                }
-                if (isPinCode()) {
-                    codeFieldContainer.codeField[0].requestFocus();
-                }
-                passwordEditText.setText("");
-                onPasscodeError();
+                showPasscodeSetupError(LocaleController.getString(R.string.PasscodesDoNotMatchTryAgain));
+                return;
+            }
 
-                codeFieldContainer.removeCallbacks(hidePasscodesDoNotMatch);
-                codeFieldContainer.post(()->{
-                    codeFieldContainer.postDelayed(hidePasscodesDoNotMatch, 3000);
-                    postedHidePasscodesDoNotMatch = true;
-                });
+            CharSequence collision = passcodeCollisionMessage(password);
+            if (collision != null) {
+                showPasscodeSetupError(collision);
                 return;
             }
 
             boolean isFirst;
             if (account != -1) {
                 isFirst = false;
-                PasscodeHelper.setPasscodeForAccount(firstPassword, account);
+                if (!PasscodeHelper.setPasscodeForAccount(firstPassword, account)) {
+                    showPasscodeSetupError(LocaleController.getString(R.string.PasscodeSaveFailed));
+                    return;
+                }
             } else {
                 isFirst = SharedConfig.passcodeHash.isEmpty();
+                // NagramX: keep the prior code so a failed read-back can restore a consistent state
+                // instead of leaving memory and disk disagreeing.
+                String priorHash = SharedConfig.passcodeHash;
+                byte[] priorSalt = SharedConfig.passcodeSalt;
+                int priorType = SharedConfig.passcodeType;
+                boolean priorAllowScreenCapture = SharedConfig.allowScreenCapture;
                 try {
                     SharedConfig.passcodeSalt = new byte[16];
                     Utilities.random.nextBytes(SharedConfig.passcodeSalt);
@@ -982,11 +1075,29 @@ public class PasscodeActivity extends BaseFragment implements NotificationCenter
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
+                // NagramX: only the app passcode owns these global toggles; a per-account or Panic
+                // write must never flip the app's passcode type or screenshot setting.
+                SharedConfig.allowScreenCapture = true;
+                SharedConfig.passcodeType = currentPasswordType;
+                SharedConfig.saveConfig();
+                // NagramX: reread from the userconfing keys saveConfig writes and confirm the code
+                // verifies. saveConfig uses apply(), so this reads the in-memory prefs it just
+                // committed -- it catches a serialization/targeting fault, not a disk-durability one.
+                // On failure restore the prior code in memory and re-save so both agree again.
+                android.content.SharedPreferences prefs = ApplicationLoader.applicationContext.getSharedPreferences("userconfing", Context.MODE_PRIVATE);
+                String savedHash = prefs.getString("passcodeHash1", "");
+                String savedSaltString = prefs.getString("passcodeSalt", "");
+                byte[] savedSalt = savedSaltString.length() > 0 ? android.util.Base64.decode(savedSaltString, android.util.Base64.DEFAULT) : new byte[0];
+                if (!PasscodeHelper.matchesHash(firstPassword, savedHash, savedSalt)) {
+                    SharedConfig.passcodeHash = priorHash;
+                    SharedConfig.passcodeSalt = priorSalt;
+                    SharedConfig.passcodeType = priorType;
+                    SharedConfig.allowScreenCapture = priorAllowScreenCapture;
+                    SharedConfig.saveConfig();
+                    showPasscodeSetupError(LocaleController.getString(R.string.PasscodeSaveFailed));
+                    return;
+                }
             }
-            SharedConfig.allowScreenCapture = true;
-            SharedConfig.passcodeType = currentPasswordType;
-            SharedConfig.saveConfig();
-
             passwordEditText.clearFocus();
             AndroidUtilities.hideKeyboard(passwordEditText);
             for (CodeNumberField f : codeFieldContainer.codeField) {
