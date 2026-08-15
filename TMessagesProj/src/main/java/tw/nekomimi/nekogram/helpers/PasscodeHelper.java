@@ -173,7 +173,13 @@ public class PasscodeHelper {
 
     private static byte[] decodeSalt(String saltString) {
         if (!TextUtils.isEmpty(saltString)) {
-            return Base64.decode(saltString, Base64.DEFAULT);
+            try {
+                return Base64.decode(saltString, Base64.DEFAULT);
+            } catch (Exception e) {
+                // NagramX: a corrupt stored salt should make the slot simply not match a setup
+                // candidate, not crash the setup screen -- an empty salt fails the SHA comparison.
+                FileLog.e(e);
+            }
         }
         return new byte[0];
     }
