@@ -63,7 +63,11 @@ public final class ComposerButtons {
         public final boolean trailingOnly;
         /** Present for the whole life of the toolbar, so it can safely anchor the trailing edge. */
         public final boolean stable;
-        /** Authored optical size inside the shared icon box. */
+        /**
+         * View scale applied to the settings-screen preview row (see ComposerLayoutActivity). The
+         * toolbar itself no longer scales the box per button - each glyph's optical size is baked
+         * into its fork-owned vector asset instead - so every registered button now carries 1f here.
+         */
         public final float iconScale;
 
         Button(String key, int titleRes, int iconRes, int kind, int defaultZone, int menuAction, boolean trailingOnly, boolean stable) {
@@ -102,12 +106,12 @@ public final class ComposerButtons {
 
     static {
         register(new Button(EMOJI, R.string.AccDescrEmojiButton, R.drawable.input_smile_solar, KIND_CORE, ZONE_START, 0, false, true));
-        register(new Button(RICH, R.string.ArticleEditor, R.drawable.iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false, 1.19f));
+        register(new Button(RICH, R.string.ArticleEditor, R.drawable.nax_iv_fullscreen, KIND_CORE, ZONE_MIDDLE, 0, false, false));
         register(new Button(AI, R.string.AIEditor, R.drawable.input_ai_star, KIND_CORE, ZONE_MIDDLE, 0, false, false));
 
-        register(new Button("quote", R.string.Quote, R.drawable.formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true, 1.16f));
-        register(new Button("spoiler", R.string.Spoiler, R.drawable.formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true, 1.29f));
-        register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true, 1.06f));
+        register(new Button("quote", R.string.Quote, R.drawable.nax_formatting_quote, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_quote, false, true));
+        register(new Button("spoiler", R.string.Spoiler, R.drawable.nax_formatting_spoiler, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_spoiler, false, true));
+        register(new Button(SELECT_ALL, R.string.SelectAll, R.drawable.nax_formatting_select_all, KIND_TEXT, ZONE_MIDDLE, 0, false, true));
         register(new Button("regular", R.string.Regular, R.drawable.nax_formatting_eraser, KIND_FORMAT, ZONE_MIDDLE, R.id.menu_regular, false, true));
 
         register(new Button(CUT, R.string.Cut, R.drawable.nax_formatting_cut, KIND_CLIPBOARD, ZONE_HIDDEN, android.R.id.cut, false, true));
@@ -148,17 +152,30 @@ public final class ComposerButtons {
         return key == null ? null : REGISTRY.get(key);
     }
 
+    /**
+     * CrossOutDrawable wraps input_notify_on with its own internal bitmap padding and a diagonal
+     * slash that overhangs the glyph, so the composer's shared 24dp box would draw it slightly large.
+     * Held down to sit with its neighbours. There is no vector to re-crop here, so the constant stays.
+     */
+    private static final float NOTIFY_ICON_SCALE = 0.85f;
+    /**
+     * ic_ab_other is the raster menu-open state of the attach button, out of scope for the vector
+     * re-crop, so it keeps its own authored scale rather than a baked asset geometry.
+     */
+    private static final float MENU_ICON_SCALE = 1.10f;
+
     public static float iconScaleForResource(int resource) {
         // input_attach/ic_ab_other are the same physical button as ATTACH, just swapped in
         // post-construction by checkAttachButton() for its resting/menu-open state - the resting one
-        // has to track the registry value, not carry its own copy, or a tuning pass on ATTACH silently
-        // stops applying here. ic_ab_other stays raster (menu-open state is out of scope for this fix)
-        // so it keeps its own authored scale.
+        // tracks the registry value (now the vector default 1f), the menu-open raster keeps its own.
         if (resource == R.drawable.ayu_input_attach || resource == R.drawable.input_attach) {
             return get(ATTACH).iconScale;
         }
         if (resource == R.drawable.ic_ab_other) {
-            return 1.10f;
+            return MENU_ICON_SCALE;
+        }
+        if (resource == R.drawable.input_notify_on) {
+            return NOTIFY_ICON_SCALE;
         }
         return 1f;
     }

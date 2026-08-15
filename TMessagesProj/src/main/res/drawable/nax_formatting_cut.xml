@@ -1,31 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- NagramX: fork-owned scissors glyph for the composer toolbar. Its ink sits 0.25dp right of the
+     canvas centre (the blades run out to x=20 while the pivots sit near x=7), so the group shifts it
+     left by that amount to sit dead centre in its cell. Extent already matches the toolbar keyline,
+     so there is no scale here. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:strokeColor="#ffffff"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M9.5 6.5A2.5 2.5 0 1 1 4.5 6.5A2.5 2.5 0 0 1 9.5 6.5Z" />
-    <path
-        android:strokeColor="#ffffff"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M9.5 17.5A2.5 2.5 0 1 1 4.5 17.5A2.5 2.5 0 0 1 9.5 17.5Z" />
-    <path
-        android:strokeColor="#ffffff"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M8.5 8.2L20 19.5" />
-    <path
-        android:strokeColor="#ffffff"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M8.5 15.8L20 4.5" />
+    <group android:translateX="-0.25">
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M9.5 6.5A2.5 2.5 0 1 1 4.5 6.5A2.5 2.5 0 0 1 9.5 6.5Z" />
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M9.5 17.5A2.5 2.5 0 1 1 4.5 17.5A2.5 2.5 0 0 1 9.5 17.5Z" />
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M8.5 8.2L20 19.5" />
+        <path
+            android:strokeColor="#ffffff"
+            android:strokeWidth="1.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M8.5 15.8L20 4.5" />
+    </group>
 </vector>

@@ -230,9 +230,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
     public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
         AndroidUtilities.removeFromParent(view);
         configuredOrder.put(view, order);
-        // One sizing gate for every configurable button, whatever zone it lands in: the source assets
-        // range from 16dp to 32dp and the stock scale type draws each at its own intrinsic size, so
-        // without this the row is a jumble of glyph sizes.
+        // One sizing gate for every configurable button, whatever zone it lands in. The assets are all
+        // 24dp vectors, but their ink fills the canvas by different amounts and sits off-centre by a
+        // fraction of a dp, so the box centers each glyph in its cell; the per-glyph optical
+        // correction is baked into the fork-owned vector, not applied here.
         applyIconBox(key, view);
         if (zone == ComposerButtons.ZONE_HIDDEN) {
             // Left without a parent rather than set GONE: the enter view reads these buttons' visibility
@@ -352,12 +353,27 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Sizes a glyph for a panel cell, folding in the user's panel scale. Every glyph gets the same
-     * 24dp visual box; the registry scales are authored optical corrections for assets whose keyline
-     * is intentionally smaller or larger than that shared box.
+     * Places a panel button in the shared cell box at natural size. For the configurable format and
+     * text buttons whose glyph needs an optical correction, that correction is baked into the
+     * fork-owned vector asset (a group transform), not applied here - so the box is the same for
+     * every button and this is all the enter view has to call.
      */
-    public static void applyPanelIconBox(View view, float iconScale) {
-        applyIconBox(view, buttonSize(), iconScale * scale());
+    public static void applyPanelIconBox(View view) {
+        applyPanelIconBox(view, scale());
+    }
+
+    /**
+     * As {@link #applyPanelIconBox(View)}, but for the core buttons whose drawable is a raster or a
+     * CrossOutDrawable that cannot be re-cropped as a vector. The correction is keyed on the drawable
+     * resource in {@link ComposerButtons#iconScaleForResource(int)}, so no bare float is typed at the
+     * call site.
+     */
+    public static void applyPanelIconBox(View view, int resourceId) {
+        applyPanelIconBox(view, ComposerButtons.iconScaleForResource(resourceId) * scale());
+    }
+
+    private static void applyPanelIconBox(View view, float iconScale) {
+        applyIconBox(view, buttonSize(), iconScale);
     }
 
     private static int glassInset() {
@@ -374,6 +390,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         int startInset = remainingPx / 2;
         int endInset = remainingPx - startInset;
         if (view instanceof RLottieImageView) {
+            // RLottieImageView never sets its own scale type, so it inherits ImageView's FIT_CENTER
+            // and the padding alone centers the composition - no setScaleType needed or wanted.
             view.setPadding(startInset, startInset, endInset, endInset);
             return;
         }
@@ -391,7 +409,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
         // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
         // first tap.
-        applyPanelIconBox(view, scale);
+        applyPanelIconBox(view, scale * scale());
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
