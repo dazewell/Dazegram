@@ -12,6 +12,29 @@
 //     java Tools/scripts/IconInk.java --csv <files...>       machine-readable output
 //     java Tools/scripts/IconInk.java --size 2048 <files...> override the render resolution
 //     java Tools/scripts/IconInk.java --as-drawn <files...>  honour <group> transforms instead
+//     java Tools/scripts/IconInk.java --union NAME <specs>   measure several layers as ONE glyph
+//
+// A spec is a path, optionally followed by a placement rectangle in fractions of the canvas:
+//
+//     input_ai_star.xml@0.247,0.143,0.21,0.21
+//
+// That exists because three composer buttons do not draw a single asset. `schedule` draws a
+// CombinedDrawable of two calendar layers, and `ai` draws AiButtonDrawable - a base vector plus two
+// sparkles placed at fractions of the bounds. Measuring the registry's named asset for either would
+// describe a glyph the user never sees. With --union the layers are rendered into the same raster and
+// reported as one row, which is what the button actually puts on screen.
+//
+// Raster inputs (.png) are read too, for the two buttons whose glyph is a webp with no vector to
+// measure. Java cannot decode webp, so transcode first with the Windows imaging codec, which needs
+// nothing installed - note that it drops the alpha channel onto RGB, which is exactly the coverage
+// this wants:
+//
+//     Add-Type -AssemblyName PresentationCore
+//     $s=[IO.File]::OpenRead("in.webp")
+//     $d=[Windows.Media.Imaging.BitmapDecoder]::Create($s,'None','OnLoad')
+//     $e=New-Object Windows.Media.Imaging.PngBitmapEncoder
+//     $e.Frames.Add([Windows.Media.Imaging.BitmapFrame]::Create($d.Frames[0]))
+//     $o=[IO.File]::OpenWrite("out.png"); $e.Save($o); $o.Close(); $s.Close()
 //
 // How it works: every <path> is rendered into ONE grayscale raster - filled if it has a fillColor,
 // and its stroke outline filled too if it has a strokeColor. That union is what makes the result
@@ -64,6 +87,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import javax.imageio.ImageIO;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Element;
@@ -79,25 +103,32 @@ public final class IconInk {
         int size = DEFAULT_SIZE;
         boolean csv = false;
         boolean asDrawn = false;
+        String union = null;
         List<String> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--csv" -> csv = true;
                 case "--as-drawn" -> asDrawn = true;
                 case "--size" -> size = Integer.parseInt(args[++i]);
+                case "--union" -> union = args[++i];
                 default -> files.add(args[i]);
             }
         }
         if (files.isEmpty()) {
-            System.err.println("usage: java Tools/scripts/IconInk.java [--csv] [--as-drawn] [--size N] <vector.xml...>");
+            System.err.println("usage: java Tools/scripts/IconInk.java [--csv] [--as-drawn] [--size N]"
+                    + " [--union NAME] <spec...>    where a spec is path[@x,y,w,h]");
             System.exit(2);
         }
         if (csv) {
             System.out.println("asset,inkAreaPct,bboxWPct,bboxHPct,aspect,centreXPct,centreYPct,centroidXPct,centroidYPct");
         }
+        if (union != null) {
+            report(measure(union, files, size, asDrawn), csv);
+            return;
+        }
         for (String file : files) {
             try {
-                report(measure(new File(file), size, asDrawn), csv);
+                report(measure(null, List.of(file), size, asDrawn), csv);
             } catch (Exception e) {
                 System.err.println("FAILED " + file + ": " + e);
             }
@@ -127,31 +158,101 @@ public final class IconInk {
         }
     }
 
-    private static Result measure(File file, int size, boolean asDrawn) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Element root = builder.parse(file).getDocumentElement();
-        if (!"vector".equals(root.getTagName())) {
-            throw new IllegalArgumentException("not a <vector>: " + root.getTagName());
-        }
-        double viewportWidth = attrFloat(root, "viewportWidth", 24);
-        double viewportHeight = attrFloat(root, "viewportHeight", 24);
+    /** One layer of a glyph: an asset, and where in the canvas it is drawn (fractions, default full). */
+    private record Layer(File file, double x, double y, double w, double h) {
 
+        static Layer parse(String spec) {
+            int at = spec.lastIndexOf('@');
+            if (at < 0) {
+                return new Layer(new File(spec), 0, 0, 1, 1);
+            }
+            String[] box = spec.substring(at + 1).split(",");
+            if (box.length != 4) {
+                throw new IllegalArgumentException("placement must be @x,y,w,h in canvas fractions: " + spec);
+            }
+            return new Layer(new File(spec.substring(0, at)),
+                    Double.parseDouble(box[0]), Double.parseDouble(box[1]),
+                    Double.parseDouble(box[2]), Double.parseDouble(box[3]));
+        }
+    }
+
+    private static Result measure(String name, List<String> specs, int size, boolean asDrawn) throws Exception {
         List<String> warnings = new ArrayList<>();
         BufferedImage image = new BufferedImage(size, size, BufferedImage.TYPE_BYTE_GRAY);
         Graphics2D g = image.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.setColor(Color.BLACK);
         g.fillRect(0, 0, size, size);
-        g.scale(size / viewportWidth, size / viewportHeight);
         g.setColor(Color.WHITE);
-        paint(root, g, warnings, asDrawn);
-        g.dispose();
 
-        return summarise(file.getName().replaceFirst("\\.xml$", ""), image, size, warnings);
+        String label = name;
+        for (String spec : specs) {
+            Layer layer = Layer.parse(spec);
+            if (label == null) {
+                label = layer.file().getName().replaceFirst("\\.[a-zA-Z]+$", "");
+            }
+            AffineTransform saved = g.getTransform();
+            g.translate(layer.x() * size, layer.y() * size);
+            paintLayer(layer, g, size, warnings, asDrawn);
+            g.setTransform(saved);
+        }
+        g.dispose();
+        return summarise(label, image, size, warnings);
+    }
+
+    private static void paintLayer(Layer layer, Graphics2D g, int size, List<String> warnings, boolean asDrawn)
+            throws Exception {
+        if (!layer.file().getName().toLowerCase(Locale.ROOT).endsWith(".xml")) {
+            // A raster layer is already coverage: alpha where the file carries it, luminance where the
+            // decoder folded alpha onto RGB. Placed through the same box as a vector layer.
+            BufferedImage raster = ImageIO.read(layer.file());
+            if (raster == null) {
+                throw new IllegalArgumentException("no decoder for " + layer.file()
+                        + " (webp must be transcoded to png first - see the header comment)");
+            }
+            g.drawImage(toCoverage(raster), 0, 0,
+                    (int) Math.round(layer.w() * size), (int) Math.round(layer.h() * size), null);
+            return;
+        }
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        DocumentBuilder builder = factory.newDocumentBuilder();
+        Element root = builder.parse(layer.file()).getDocumentElement();
+        if (!"vector".equals(root.getTagName())) {
+            throw new IllegalArgumentException("not a <vector>: " + root.getTagName());
+        }
+        double viewportWidth = attrFloat(root, "viewportWidth", 24);
+        double viewportHeight = attrFloat(root, "viewportHeight", 24);
+        AffineTransform saved = g.getTransform();
+        g.scale(layer.w() * size / viewportWidth, layer.h() * size / viewportHeight);
+        paint(root, g, warnings, asDrawn);
+        g.setTransform(saved);
+    }
+
+    /** Folds a decoded raster to grayscale coverage, preferring alpha when the file still has it. */
+    private static BufferedImage toCoverage(BufferedImage source) {
+        int w = source.getWidth();
+        int h = source.getHeight();
+        boolean hasAlpha = source.getColorModel().hasAlpha();
+        BufferedImage out = new BufferedImage(w, h, BufferedImage.TYPE_BYTE_GRAY);
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int argb = source.getRGB(x, y);
+                int alpha = (argb >>> 24) & 0xFF;
+                int value;
+                if (hasAlpha && alpha != 255) {
+                    value = alpha;
+                } else {
+                    int r = (argb >> 16) & 0xFF, green = (argb >> 8) & 0xFF, b = argb & 0xFF;
+                    value = Math.max(r, Math.max(green, b));
+                }
+                out.getRaster().setSample(x, y, 0, value);
+            }
+        }
+        return out;
     }
 
     private static void paint(Element parent, Graphics2D g, List<String> warnings, boolean asDrawn) {
