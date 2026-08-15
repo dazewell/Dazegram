@@ -889,9 +889,13 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 iconView.setVisibility(INVISIBLE);
             }
-            // Reassigned on every bind because these rows are recycled.
-            iconView.setScaleX(button.iconScale);
-            iconView.setScaleY(button.iconScale);
+            // Reset on every bind because these rows are recycled. The preview draws the registry's
+            // named asset, so it takes the same optical scale the live toolbar uses - except for the
+            // two buttons that compose their glyph at runtime, where the toolbar's number was measured
+            // against geometry this row never shows. previewIconScale owns that one divergence.
+            float previewScale = ComposerButtons.previewIconScale(button.key);
+            iconView.setScaleX(previewScale);
+            iconView.setScaleY(previewScale);
             titleView.setText(LocaleController.getString(button.titleRes));
         }
 
