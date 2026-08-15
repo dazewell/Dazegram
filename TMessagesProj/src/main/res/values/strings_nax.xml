@@ -580,4 +580,14 @@
     <string name="ComposerSpacing">Icon spacing</string>
     <string name="ComposerSpacingAccDescr">Icon spacing</string>
     <string name="ComposerSpacingInfo">Sets how close together the icons sit, without changing their size. Takes effect when you leave this screen. Tighter steps need room to work, so at a small toolbar size some of them are greyed out until you make the toolbar bigger.</string>
+    <!-- Passcode setup safety #passcode-setup-safety -->
+    <string name="PasscodePanicCodeConfirm">Re-enter your Panic Code</string>
+    <string name="PasscodeSetForAccount">Set passcode for %1$s</string>
+    <string name="PasscodeEditForAccount">Change passcode for %1$s</string>
+    <string name="PasscodeConfirmForAccount">Re-enter the passcode for %1$s</string>
+    <string name="PasscodeMatchesApp">This matches your app passcode. Choose a different code.</string>
+    <string name="PasscodeMatchesPanic">This matches your Panic Code. Choose a different code.</string>
+    <string name="PasscodeMatchesAccount">This matches the passcode for %1$s. Choose a different code.</string>
+    <string name="PasscodeSaveFailed">Couldn\'t save. Try again.</string>
+    <string name="PasscodePanicCodeUniqueHint">Your Panic Code must be different from your app passcode and every account passcode. If you\'re not sure it is, set it again.</string>
 </resources>

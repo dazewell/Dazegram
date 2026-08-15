@@ -67,12 +67,57 @@ public class PasscodeHelper {
         return false;
     }
 
+    // NagramX: for an account that's still active (re-logging in to the same slot, or the user
+    // just clearing their own code) -- keeps allowPanic, since the UI lets it be set independently
+    // of having a passcode at all.
     public static void removePasscodeForAccount(int account) {
         preferences.edit()
                 .remove("passcodeHash" + account)
                 .remove("passcodeSalt" + account)
                 .remove("hide" + account)
                 .apply();
+    }
+
+    // NagramX: for an account slot that's actually going away -- logout, remote/forced logout,
+    // ToS decline, or the slot about to be reused by a fresh login. Also drops allowPanic, since a
+    // stale "true" would let a departed account's slot keep counting toward Panic coverage, and a
+    // stale "false" would carry over to whoever logs into that slot next.
+    public static void clearAccountState(int account) {
+        preferences.edit()
+                .remove("passcodeHash" + account)
+                .remove("passcodeSalt" + account)
+                .remove("hide" + account)
+                .remove("allowPanic" + account)
+                .apply();
+    }
+
+    // NagramX: sweeps every slot with no current user and clears its passcode state in one editor.
+    // Repairs installs where an account logged out before this existed and left its slot's
+    // passcodeHash/passcodeSalt/hide/allowPanic behind -- those stale keys could reject a Panic
+    // Code as "already used by an account" that no longer exists. Bounded to MAX_ACCOUNT_COUNT
+    // slots, and only ever removes these four exact keys -- never settingsHash, hideSettings, or
+    // the Integer.MAX_VALUE Panic record.
+    public static void clearInactiveAccountState() {
+        SharedPreferences.Editor editor = null;
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (UserConfig.getInstance(a).getCurrentUser() != null) {
+                continue;
+            }
+            if (!preferences.contains("passcodeHash" + a) && !preferences.contains("passcodeSalt" + a)
+                    && !preferences.contains("hide" + a) && !preferences.contains("allowPanic" + a)) {
+                continue;
+            }
+            if (editor == null) {
+                editor = preferences.edit();
+            }
+            editor.remove("passcodeHash" + a)
+                    .remove("passcodeSalt" + a)
+                    .remove("hide" + a)
+                    .remove("allowPanic" + a);
+        }
+        if (editor != null) {
+            editor.apply();
+        }
     }
 
     public static boolean isAccountAllowPanic(int account) {
@@ -95,7 +140,7 @@ public class PasscodeHelper {
                 .apply();
     }
 
-    public static void setPasscodeForAccount(String firstPassword, int account) {
+    public static boolean setPasscodeForAccount(String firstPassword, int account) {
         try {
             byte[] passcodeSalt = new byte[16];
             Utilities.random.nextBytes(passcodeSalt);
@@ -108,9 +153,80 @@ public class PasscodeHelper {
                     .putString("passcodeHash" + account, Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length)))
                     .putString("passcodeSalt" + account, Base64.encodeToString(passcodeSalt, Base64.DEFAULT))
                     .apply();
+            // NagramX: reread the exact slot we just wrote and confirm the code verifies against it, so a
+            // mis-targeted or dropped write surfaces as a save failure instead of a silent lockout. This
+            // checks that we wrote where we meant to, not that the write reached disk.
+            String hash = preferences.getString("passcodeHash" + account, "");
+            byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + account, ""));
+            return matchesHash(firstPassword, hash, salt);
         } catch (Exception e) {
             FileLog.e(e);
         }
+        return false;
+    }
+
+    // NagramX: pure hash matcher for setup-time collision checks. Unlike SharedConfig.checkPasscode
+    // (which migrates a legacy hash and saves) and checkPasscode above (which triggers the Panic
+    // logout), this has no side effects, so it is safe to call while a code is being chosen. A
+    // zero-length salt means the old MD5 layout, matching SharedConfig's own fallback.
+    public static boolean matchesHash(String candidate, String hashHex, byte[] salt) {
+        if (candidate == null || TextUtils.isEmpty(hashHex)) {
+            return false;
+        }
+        try {
+            if (salt == null || salt.length == 0) {
+                return Utilities.MD5(candidate).equals(hashHex);
+            }
+            byte[] passcodeBytes = candidate.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = new byte[32 + passcodeBytes.length];
+            System.arraycopy(salt, 0, bytes, 0, 16);
+            System.arraycopy(passcodeBytes, 0, bytes, 16, passcodeBytes.length);
+            System.arraycopy(salt, 0, bytes, passcodeBytes.length + 16, 16);
+            return hashHex.equals(Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length)));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return false;
+    }
+
+    // NagramX: does the candidate equal the configured Panic Code? Read-only.
+    public static boolean matchesPanic(String candidate) {
+        if (!hasPasscodeForAccount(Integer.MAX_VALUE)) {
+            return false;
+        }
+        String hash = preferences.getString("passcodeHash" + Integer.MAX_VALUE, "");
+        byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + Integer.MAX_VALUE, ""));
+        return matchesHash(candidate, hash, salt);
+    }
+
+    // NagramX: first account slot whose stored passcode equals the candidate, or -1. Scans every slot
+    // that has a record, activation aside, because an inactive-but-configured account still owns a
+    // code the Panic Code must stay distinct from.
+    public static int findMatchingAccount(String candidate) {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (!hasPasscodeForAccount(a)) {
+                continue;
+            }
+            String hash = preferences.getString("passcodeHash" + a, "");
+            byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + a, ""));
+            if (matchesHash(candidate, hash, salt)) {
+                return a;
+            }
+        }
+        return -1;
+    }
+
+    private static byte[] decodeSalt(String saltString) {
+        if (!TextUtils.isEmpty(saltString)) {
+            try {
+                return Base64.decode(saltString, Base64.DEFAULT);
+            } catch (Exception e) {
+                // NagramX: a corrupt stored salt should make the slot simply not match a setup
+                // candidate, not crash the setup screen -- an empty salt fails the SHA comparison.
+                FileLog.e(e);
+            }
+        }
+        return new byte[0];
     }
 
     public static boolean hasPasscodeForAccount(int account) {
