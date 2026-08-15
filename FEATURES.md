@@ -65,8 +65,7 @@ The button row under the compose box is yours to arrange. A new editor in the ch
 
 ### Pinned attach button <!-- #composer-attach-pinned -->
 
-The attach paperclip used to disappear the moment you started typing, handing the job off to a stand-in paperclip that swapped into the chat header's overflow icon — so opening the attach sheet mid-draft meant reaching for the top right corner instead of the row you were already looking at. It now stays right where it is, empty field or full, and still opens the attach sheet in one tap. The header goes back to just being the overflow menu the whole time you're typing. Nothing else about the row changes: mic still turns into Send the same way, and moving attach to Hidden in the layout editor still leaves the header as your way to reach it.
-
+The attach paperclip used to disappear the moment you started typing, handing the job off to a stand-in paperclip that swapped into the chat header's overflow icon — so opening the attach sheet mid-draft meant reaching for the top right corner instead of the row you were already looking at. In a normal chat it now stays right where it is, empty field or full, and still opens the attach sheet in one tap. The header goes back to just being the overflow menu the whole time you're typing. States that already hide the whole send column - a slow-mode countdown, editing an existing message, recording - are unchanged. Nothing else about the row changes: mic still turns into Send the same way, and moving attach to Hidden in the layout editor still leaves the header as your way to reach it.
 
 ### Cut, Copy, Paste buttons <!-- #composer-clipboard-actions -->
 
