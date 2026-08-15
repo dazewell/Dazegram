@@ -1527,16 +1527,17 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         isMenuOffsetSuppressed = menuOffsetSuppressed;
     }
 
-    int prevWidth;
     private boolean avatarContainerWidthDeferred;
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         int additionalTop = occupyStatusBar ? AndroidUtilities.statusBarHeight : 0;
-        if (prevWidth != getMeasuredWidth() || avatarContainerWidthDeferred) {
-            prevWidth = getMeasuredWidth();
-            checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
-        }
+        // Title/subtitle/pill widths are only all simultaneously fresh right after a measure+layout
+        // pass (SimpleTextView.setText schedules no layout of its own -- see checkAvatarContainerWidth),
+        // so revalidate every pass instead of only when the bar's own width changes. Cheap: the method
+        // is idempotent when nothing changed, and this is what makes returning from a pushed fragment
+        // (which re-adds the view and forces a fresh pass) self-heal without touching ChatActivity.
+        checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
 
         int textLeft;
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
@@ -2186,7 +2187,14 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         final View avatarView = chatAvatarContainer.getAvatarImageView();
-        animatorAvatarContainerHasAvatar.setValue(avatarView != null && avatarView.getVisibility() == View.VISIBLE, animated);
+        final boolean hasAvatar = avatarView != null && avatarView.getVisibility() == View.VISIBLE;
+        // BoolAnimator.setValue's animated=false path unconditionally forceFactors (it only skips the
+        // *animated* branch on an unchanged value), so calling this every layout pass with an
+        // unchanged value would cancel and snap a legitimate in-flight avatar-bubble transition. Guard
+        // it the same way as the width animator above.
+        if (animatorAvatarContainerHasAvatar.getValue() != hasAvatar) {
+            animatorAvatarContainerHasAvatar.setValue(hasAvatar, animated);
+        }
         if (!chatAvatarContainer.isCenteredTitle()) {
             // Centered sizing no longer applies, so any pending deferral is moot -- leaving it set
             // would make onLayout re-enter this on every pass.
@@ -2194,9 +2202,9 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
             return;
         }
         // Before the title is measured the group width collapses to zero, which would animate the
-        // bubble shut and then back open. Defer instead -- but onLayout only re-runs this when the
-        // bar's own width changes, which may never happen again, so post a retry rather than
-        // relying on another layout pass arriving on its own.
+        // bubble shut and then back open. Defer instead: this runs on every layout pass now, but
+        // that's no help before the first measure, so post a one-shot retry as a fallback for the
+        // case where nothing schedules another pass on its own.
         if (!chatAvatarContainer.isCenteredContentMeasured()) {
             if (!avatarContainerWidthDeferred) {
                 avatarContainerWidthDeferred = true;
@@ -2216,10 +2224,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         // Each side bubble is p + s + p wide (dp(6) + dp(46) + dp(6)): one for the back
         // button on the left, one for the menu on the right.
         final int width = Math.min(getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6), contentWidth);
+        // Idempotence: this now runs on every layout pass (see onLayout), so a resync that lands on
+        // the width already targeted must not touch the animator at all -- forceFactor cancels
+        // whatever is running, so an unconditional call here would kill a legitimate in-flight
+        // animation once per layout pass instead of just skipping the no-op.
+        if (animatorAvatarContainerWidth.getToFactor() == width) {
+            return;
+        }
         if (animated) {
-            if (animatorAvatarContainerWidth.getToFactor() != width) {
-                animatorAvatarContainerWidth.animateTo(width);
-            }
+            animatorAvatarContainerWidth.animateTo(width);
         } else {
             animatorAvatarContainerWidth.forceFactor(width);
         }
