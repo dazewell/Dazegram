@@ -49,9 +49,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
     /**
      * The spacing slider is tighter-only on purpose, and that is geometry rather than taste:
      * ControlsLayout measures its slots at dp(height()) minus its own padding, which comes out at
-     * exactly buttonSize() at every scale step (100%: 56-4-4=48; 125%: 70-5-5=60; 75%: 42-3-3=36).
-     * A cell above 100% would be taller than that content box, and the row clips its children, so
-     * every button's background and ripple would be sliced flat top and bottom.
+     * exactly the unpacked cell - BASE_BUTTON_SIZE at the current scale, before any packing factor -
+     * at every scale step (100%: 56-4-4=48; 125%: 70-5-5=60; 75%: 42-3-3=36). Packing tighter leaves
+     * the cell inside that box, which is why it is safe; a factor above 100% would push it outside,
+     * and the row clips its children, so every button's background and ripple would come out sliced
+     * flat top and bottom.
      */
     private static final int SPACING_MIN = 85;
     private static final int SPACING_MAX = 100;
