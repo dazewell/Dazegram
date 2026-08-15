@@ -36,9 +36,20 @@
 // geometry and prints a warning naming any transform it dropped, so the omission is never silent.
 //
 // That default is only right for a group that IS a correction. Some upstream artwork uses a group as
-// part of the drawing - menu_link_create2 rotates its chain by -45 degrees - and stripping that does
-// not recover an earlier geometry, it draws a different glyph. Pass --as-drawn for those, and read
-// the warning on every file that has a group rather than assuming which kind it is.
+// part of the drawing - menu_link_create2 rotates one of its bars by -45 degrees - and stripping that
+// does not recover an earlier geometry, it draws a different glyph. Pass --as-drawn for those, and
+// read the warning on every file that has a group rather than assuming which kind it is.
+//
+// The test is provenance, not what the transform does. Ask who added the file:
+//
+//     git log --diff-filter=A -- TMessagesProj/src/main/res/drawable/<asset>.xml
+//
+// A file this fork authored (the nax_* set) carries transforms this fork baked in as corrections, so
+// measure it RAW and replace the transform outright - never multiply a new scale onto the old one. A
+// file that arrived from upstream carries transforms its illustrator drew, so measure it --as-drawn:
+// those numbers are the glyph the user actually sees. A rotation is the usual upstream case, but do
+// not shortcut to "rotation means artwork" - an upstream asset could be scaled too, and this fork
+// could rotate one. Check who added it.
 
 import java.awt.BasicStroke;
 import java.awt.Color;
