@@ -100,6 +100,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private TimerDrawable timerDrawable;
     // Per-peer time-zone clock pill (next to the title).
     private android.widget.TextView tzClockPill;
+    // NagramX: last background color applied to tzClockPill, so updateTimeZonePill() can skip
+    // recreating the round-rect Drawable when nothing actually changed (see updateTimeZonePill).
+    private Integer tzPillBgColor;
     // NagramX: keeps the pill's displayed minute fresh when nothing else re-invokes
     // updateTimeZonePill() (e.g. a channel whose subtitle never changes). Stored as a
     // field, not a per-schedule lambda, so cancelRunOnUIThread() in onDetachedFromWindow()
@@ -648,7 +651,14 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
                     tzClockPill.requestLayout();
                 }
                 int bg = getThemedColor(Theme.key_actionBarDefaultSubtitle);
-                tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
+                // NagramX: this now runs every minute via the tick (not just on rare events),
+                // so skip recreating the background Drawable when the themed color hasn't
+                // actually changed -- avoids per-minute allocation/GC churn while still
+                // picking up a real theme change immediately.
+                if (tzClockPill.getBackground() == null || !java.util.Objects.equals(tzPillBgColor, bg)) {
+                    tzPillBgColor = bg;
+                    tzClockPill.setBackground(Theme.createRoundRectDrawable(dp(8), (bg & 0x00FFFFFF) | 0x33000000));
+                }
                 tzClockPill.setTextColor(getThemedColor(Theme.key_actionBarDefaultTitle));
             }
         }
@@ -666,10 +676,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     }
 
     private void tickTimeZonePill() {
-        // NagramX: safe to call unconditionally every minute, including its requestLayout()
-        // at updateTimeZonePill():643, only because tzClockPill's measured width is fixed by
-        // setMinWidth() above at construction and never changes as the clock advances -- so
-        // this tick cannot repeatedly trigger PR #146's width-based re-centering.
+        // NagramX: safe to call unconditionally every minute, including updateTimeZonePill()'s
+        // requestLayout(), only because tzClockPill's measured width is fixed by setMinWidth()
+        // above at construction and never changes as the clock advances -- so this tick cannot
+        // repeatedly trigger PR #146's width-based re-centering.
         updateTimeZonePill();
         scheduleTimeZonePillTick();
     }
