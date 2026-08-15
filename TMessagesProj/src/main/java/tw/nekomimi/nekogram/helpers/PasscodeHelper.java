@@ -95,7 +95,7 @@ public class PasscodeHelper {
                 .apply();
     }
 
-    public static void setPasscodeForAccount(String firstPassword, int account) {
+    public static boolean setPasscodeForAccount(String firstPassword, int account) {
         try {
             byte[] passcodeSalt = new byte[16];
             Utilities.random.nextBytes(passcodeSalt);
@@ -108,9 +108,74 @@ public class PasscodeHelper {
                     .putString("passcodeHash" + account, Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length)))
                     .putString("passcodeSalt" + account, Base64.encodeToString(passcodeSalt, Base64.DEFAULT))
                     .apply();
+            // NagramX: reread the exact slot we just wrote and confirm the code verifies against it, so a
+            // mis-targeted or dropped write surfaces as a save failure instead of a silent lockout. This
+            // checks that we wrote where we meant to, not that the write reached disk.
+            String hash = preferences.getString("passcodeHash" + account, "");
+            byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + account, ""));
+            return matchesHash(firstPassword, hash, salt);
         } catch (Exception e) {
             FileLog.e(e);
         }
+        return false;
+    }
+
+    // NagramX: pure hash matcher for setup-time collision checks. Unlike SharedConfig.checkPasscode
+    // (which migrates a legacy hash and saves) and checkPasscode above (which triggers the Panic
+    // logout), this has no side effects, so it is safe to call while a code is being chosen. A
+    // zero-length salt means the old MD5 layout, matching SharedConfig's own fallback.
+    public static boolean matchesHash(String candidate, String hashHex, byte[] salt) {
+        if (candidate == null || TextUtils.isEmpty(hashHex)) {
+            return false;
+        }
+        try {
+            if (salt == null || salt.length == 0) {
+                return Utilities.MD5(candidate).equals(hashHex);
+            }
+            byte[] passcodeBytes = candidate.getBytes(StandardCharsets.UTF_8);
+            byte[] bytes = new byte[32 + passcodeBytes.length];
+            System.arraycopy(salt, 0, bytes, 0, 16);
+            System.arraycopy(passcodeBytes, 0, bytes, 16, passcodeBytes.length);
+            System.arraycopy(salt, 0, bytes, passcodeBytes.length + 16, 16);
+            return hashHex.equals(Utilities.bytesToHex(Utilities.computeSHA256(bytes, 0, bytes.length)));
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return false;
+    }
+
+    // NagramX: does the candidate equal the configured Panic Code? Read-only.
+    public static boolean matchesPanic(String candidate) {
+        if (!hasPasscodeForAccount(Integer.MAX_VALUE)) {
+            return false;
+        }
+        String hash = preferences.getString("passcodeHash" + Integer.MAX_VALUE, "");
+        byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + Integer.MAX_VALUE, ""));
+        return matchesHash(candidate, hash, salt);
+    }
+
+    // NagramX: first account slot whose stored passcode equals the candidate, or -1. Scans every slot
+    // that has a record, activation aside, because an inactive-but-configured account still owns a
+    // code the Panic Code must stay distinct from.
+    public static int findMatchingAccount(String candidate) {
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (!hasPasscodeForAccount(a)) {
+                continue;
+            }
+            String hash = preferences.getString("passcodeHash" + a, "");
+            byte[] salt = decodeSalt(preferences.getString("passcodeSalt" + a, ""));
+            if (matchesHash(candidate, hash, salt)) {
+                return a;
+            }
+        }
+        return -1;
+    }
+
+    private static byte[] decodeSalt(String saltString) {
+        if (!TextUtils.isEmpty(saltString)) {
+            return Base64.decode(saltString, Base64.DEFAULT);
+        }
+        return new byte[0];
     }
 
     public static boolean hasPasscodeForAccount(int account) {
