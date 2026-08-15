@@ -48,6 +48,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int SCALE_MAX = 125;
     private static final int ICON_GLYPH = 24;
     private static final int GLASS_INSET = 4;
+    private static final int GLASS_DRAW_INSET = 2;
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     private static final int CONFIGURATION_LONG_PRESS_MS = 1000;
@@ -380,6 +381,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
         return Math.max(1, Math.round(GLASS_INSET * scale()));
     }
 
+    /**
+     * Inset of the drawn capsule inside the row, the other half of the pair with glassInset(): the
+     * painted edge lands at glassDrawInset() + glassInset() from the row edge, so both terms have to
+     * follow the scale or the row's edge drifts against its own interior.
+     */
+    private static int glassDrawInset() {
+        return Math.max(1, Math.round(GLASS_DRAW_INSET * scale()));
+    }
+
     private static void applyIconBox(View view, int cellDp, float scale) {
         int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
         // Kept in pixel space rather than rounded to whole dp: at the odd steps the scaled glyph
@@ -454,7 +464,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setClipChildren(true);
             setClipToPadding(true);
             // 2dp of glass inset plus 2dp of breathing room: the press animation only overshoots by a
-            // fraction of a dp, so anything wider is just dead space at both ends of the capsule.
+            // fraction of a dp, so anything wider is just dead space at both ends of the capsule. Those
+            // are the 100% figures - both halves are proportional (glassInset, glassDrawInset), so the
+            // ratio holds across the scale range instead of one end of the row outgrowing the other.
             int inset = glassInset();
             setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
         }
@@ -591,7 +603,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             if (glass == null || getWidth() <= 0 || getHeight() <= 0) {
                 return;
             }
-            int inset = AndroidUtilities.dp(2);
+            int inset = AndroidUtilities.dp(glassDrawInset());
             int width = Math.round(animatedGlassWidth < 0 ? getWidth() : animatedGlassWidth);
             if (width <= inset * 2 || getHeight() <= inset * 2) {
                 return;
