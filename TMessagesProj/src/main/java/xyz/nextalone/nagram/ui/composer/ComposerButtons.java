@@ -63,18 +63,8 @@ public final class ComposerButtons {
         public final boolean trailingOnly;
         /** Present for the whole life of the toolbar, so it can safely anchor the trailing edge. */
         public final boolean stable;
-        /**
-         * View scale applied to the settings-screen preview row (see ComposerLayoutActivity). The
-         * toolbar itself no longer scales the box per button - each glyph's optical size is baked
-         * into its fork-owned vector asset instead - so every registered button now carries 1f here.
-         */
-        public final float iconScale;
 
         Button(String key, int titleRes, int iconRes, int kind, int defaultZone, int menuAction, boolean trailingOnly, boolean stable) {
-            this(key, titleRes, iconRes, kind, defaultZone, menuAction, trailingOnly, stable, 1f);
-        }
-
-        Button(String key, int titleRes, int iconRes, int kind, int defaultZone, int menuAction, boolean trailingOnly, boolean stable, float iconScale) {
             this.key = key;
             this.titleRes = titleRes;
             this.iconRes = iconRes;
@@ -83,7 +73,6 @@ public final class ComposerButtons {
             this.menuAction = menuAction;
             this.trailingOnly = trailingOnly;
             this.stable = stable;
-            this.iconScale = iconScale;
         }
 
         public boolean canSitIn(int zone) {
@@ -130,13 +119,14 @@ public final class ComposerButtons {
         register(new Button("translate", R.string.TranslateMessage, R.drawable.msg_translate_solar, KIND_FORMAT, ZONE_HIDDEN, R.id.menu_translate, false, true));
 
         register(new Button(EXPAND, R.string.ExpandMessageField, R.drawable.nax_composer_expand, KIND_CORE, ZONE_END, 0, false, true));
-        // Schedule and Attach's live toolbar icons used to come from full-bleed raster assets with no
-        // baked-in padding, which no amount of iconScale could visually match against the padded vector
-        // icons around them - ChatActivityEnterView now renders the same vector assets the opt-in Solar
-        // icon theme already ships (ayu_input_attach, input_calendar1/2_solar) for the composer toolbar,
-        // so these scales are the ordinary vector default, same as their neighbors.
-        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false, 1f));
-        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.ayu_input_attach, KIND_CORE, ZONE_END, 0, true, true, 1f));
+        // Schedule and Attach used to draw full-bleed raster assets; they now render the vector icons
+        // the opt-in Solar theme already ships (input_calendar1/2_solar, ayu_input_attach). Those glyphs
+        // aren't the fork-owned re-croppable vectors the format buttons use - schedule is a
+        // CombinedDrawable and attach swaps to a raster when its menu opens - so their optical width is
+        // brought to the row's baked 74% keyline by a measured constant in iconScaleForKey/ForResource,
+        // not by a per-button field. See the exclusion note above those resolvers.
+        register(new Button(SCHEDULE, R.string.ScheduledMessages, R.drawable.input_calendar_add_solar, KIND_CORE, ZONE_END, 0, false, false));
+        register(new Button(ATTACH, R.string.AccDescrAttachButton, R.drawable.ayu_input_attach, KIND_CORE, ZONE_END, 0, true, true));
     }
 
     private static final List<Button> ALL = Collections.unmodifiableList(new ArrayList<>(REGISTRY.values()));
@@ -152,6 +142,20 @@ public final class ComposerButtons {
         return key == null ? null : REGISTRY.get(key);
     }
 
+    // The format and text buttons draw fork-owned vectors whose optical width is baked to 74% of the
+    // cell, so they need no runtime scale. Three core buttons can't be re-cropped that way and would
+    // otherwise sit visibly wider than that keyline, because each draws something other than a plain
+    // vector: emoji is an RLottieImageView (a Lottie composition), schedule a CombinedDrawable of two
+    // solar layers, attach a raster in its menu-open state. Each is shrunk by a measured constant to
+    // the same 74% keyline. The numbers are the ink extent of the actual thing drawn (not the
+    // registry's named single asset), so they are named here rather than derived at runtime - runtime
+    // ink measurement is what made the reverted ComposerIconMetrics blow sparse glyphs past their
+    // keylines. Emoji uses its default SMILE resting frame (80.95% -> 74%); a single fixed box can only
+    // reference one of its resting frames, and SMILE is the default and the only one shown while the
+    // field has text, so the transient keyboard/sticker/gif frames ride along uncorrected by design.
+    private static final float EMOJI_ICON_SCALE = 0.9141f;    // Lottie SMILE frame 80.95% -> 74%
+    private static final float SCHEDULE_ICON_SCALE = 0.8196f; // calendar CombinedDrawable 90.29% -> 74%
+    private static final float ATTACH_ICON_SCALE = 0.9514f;   // resting ayu_input_attach 77.78% -> 74%
     /**
      * CrossOutDrawable wraps input_notify_on with its own internal bitmap padding and a diagonal
      * slash that overhangs the glyph, so the composer's shared 24dp box would draw it slightly large.
@@ -164,12 +168,35 @@ public final class ComposerButtons {
      */
     private static final float MENU_ICON_SCALE = 1.10f;
 
+    /**
+     * Optical scale for a configurable button placed by its key. Only the three core buttons whose
+     * runtime glyph isn't the re-croppable fork vector need one; every other button draws a vector
+     * baked to the 74% keyline and stays at 1f.
+     */
+    public static float iconScaleForKey(String key) {
+        if (EMOJI.equals(key)) {
+            return EMOJI_ICON_SCALE;
+        }
+        if (SCHEDULE.equals(key)) {
+            return SCHEDULE_ICON_SCALE;
+        }
+        if (ATTACH.equals(key)) {
+            return ATTACH_ICON_SCALE;
+        }
+        return 1f;
+    }
+
+    /**
+     * Optical scale for a core button sized from the drawable it currently shows rather than its
+     * registry key - used when a button swaps drawables after construction (attach's resting vector
+     * versus its menu-open raster) or is drawn by a wrapper the key can't see (the notify
+     * CrossOutDrawable). Keeps the resting attach in step with {@link #iconScaleForKey} via the shared
+     * constant, so both entry points land the same button at the same 74% keyline.
+     */
     public static float iconScaleForResource(int resource) {
-        // ATTACH's resting vector (ayu_input_attach/input_attach) needs no runtime scale - its optical
-        // size is the ordinary vector default - so it falls through to 1f below. Only the menu-open
-        // raster (ic_ab_other, swapped in by checkAttachButton) and the CrossOutDrawable notify state
-        // need a hand-authored scale, since neither is a vector this branch could re-crop. Deliberately
-        // not read from Button.iconScale: that field drives the settings preview row only.
+        if (resource == R.drawable.ayu_input_attach || resource == R.drawable.input_attach) {
+            return ATTACH_ICON_SCALE;
+        }
         if (resource == R.drawable.ic_ab_other) {
             return MENU_ICON_SCALE;
         }

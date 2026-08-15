@@ -404,12 +404,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static void applyIconBox(String key, View view) {
-        ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
-        float iconScale = button != null ? button.iconScale : 1f;
-        // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
-        // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
-        // first tap.
-        applyPanelIconBox(view, iconScale * scale());
+        // Two deliberate choices live here. First, the optical correction is expressed as a wider or
+        // narrower inset rather than a view scale: these buttons carry a press animator that drives
+        // scaleX/scaleY, so a scale set here would be animated away on the first tap. Second, the
+        // resulting padding is absolute (setPadding, not setPaddingRelative) even though the slots are
+        // laid out RTL. That is correct and must stay: none of these drawables is autoMirrored, so the
+        // ink renders the same pixels in RTL, and the per-glyph offset baked into the fork vectors is
+        // physical canvas geometry, not reading order. Switching to setPaddingRelative would mirror the
+        // inset in RTL and reintroduce exactly the decentring this change removes.
+        applyPanelIconBox(view, ComposerButtons.iconScaleForKey(key) * scale());
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start
