@@ -405,11 +405,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     private static void applyIconBox(String key, View view) {
         ComposerButtons.Button button = key != null ? ComposerButtons.get(key) : null;
-        float scale = button != null ? button.iconScale : 1f;
+        float iconScale = button != null ? button.iconScale : 1f;
         // Expressed as a wider or narrower inset rather than a view scale: these buttons carry a press
         // animator that drives scaleX/scaleY, so a scale set here would be animated away on the
         // first tap.
-        applyPanelIconBox(view, scale * scale());
+        applyPanelIconBox(view, iconScale * scale());
     }
 
     // The panel and its slots react to the same layout passes, so they share one settle schedule and start

@@ -165,12 +165,11 @@ public final class ComposerButtons {
     private static final float MENU_ICON_SCALE = 1.10f;
 
     public static float iconScaleForResource(int resource) {
-        // input_attach/ic_ab_other are the same physical button as ATTACH, just swapped in
-        // post-construction by checkAttachButton() for its resting/menu-open state - the resting one
-        // tracks the registry value (now the vector default 1f), the menu-open raster keeps its own.
-        if (resource == R.drawable.ayu_input_attach || resource == R.drawable.input_attach) {
-            return get(ATTACH).iconScale;
-        }
+        // ATTACH's resting vector (ayu_input_attach/input_attach) needs no runtime scale - its optical
+        // size is the ordinary vector default - so it falls through to 1f below. Only the menu-open
+        // raster (ic_ab_other, swapped in by checkAttachButton) and the CrossOutDrawable notify state
+        // need a hand-authored scale, since neither is a vector this branch could re-crop. Deliberately
+        // not read from Button.iconScale: that field drives the settings preview row only.
         if (resource == R.drawable.ic_ab_other) {
             return MENU_ICON_SCALE;
         }
