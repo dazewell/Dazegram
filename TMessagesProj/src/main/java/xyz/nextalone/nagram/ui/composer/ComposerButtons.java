@@ -219,6 +219,11 @@ public final class ComposerButtons {
         for (Float scale : ICON_SCALE.values()) {
             max = Math.max(max, scale);
         }
+        // Reads two constants declared below it, which is safe only because both are constant
+        // variables (JLS 4.12.4) and so are inlined at their use site rather than read from a field
+        // the static initializer has not reached yet - the bytecode here is ldc 1.1f, not getstatic.
+        // Give either one a non-constant initializer and it silently becomes 0f at this point, so
+        // they stay literals.
         return Math.max(max, Math.max(MENU_ICON_SCALE, NOTIFY_ICON_SCALE));
     }
 

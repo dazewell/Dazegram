@@ -57,7 +57,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
      */
     private static final int SPACING_MIN = 85;
     private static final int SPACING_MAX = 100;
-    private static final int SPACING_STEP = 5;
     /**
      * Smallest cell the row will draw, before the glyph is even considered. Telegram's own send/mic
      * circle is 44dp and Material's minimum target is 48dp; below 40dp the press ripple starts
@@ -421,18 +420,31 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Whether a packing step actually reaches the row at this scale, or is swallowed whole by the
-     * cell floor. A step that cannot move anything must not be offered: the slider would still slide
+     * Whether a packing step actually reaches the row at this scale, or is swallowed at one end or
+     * the other. A step that cannot move anything must not be offered: the slider would still slide
      * and still buzz while changing nothing on screen.
+     *
+     * <p>Two ways to be swallowed, and both have to be tested here rather than left to whatever
+     * grid the caller happens to walk. Under the cell floor is the obvious one. The other is a step
+     * that rounds straight back to the unpacked cell - at 75% scale the floor and the unpacked cell
+     * are the same 36dp, so 99% packing rounds to 36 and passes the floor test while drawing exactly
+     * what 100% draws.
      */
     private static boolean spacingIsUsable(int scalePercent, int spacingPercent) {
         float scale = scalePercent / 100f;
-        return packedCellDp(scale, spacingPercent) >= minCellDp(scale);
+        int cell = packedCellDp(scale, spacingPercent);
+        return cell >= minCellDp(scale) && cell < packedCellDp(scale, SPACING_MAX);
     }
 
-    /** The tightest packing that still reaches the row at this scale. */
+    /**
+     * The tightest packing that still reaches the row at this scale.
+     *
+     * <p>Walked a percent at a time, matching what the slider delivers. The cell is a rounded dp, so
+     * the first packing that clears the floor is usually not a multiple of five - at 85% scale it is
+     * 88 - and a coarser walk would grey out steps the row can actually draw.
+     */
     public static int lowestUsableSpacing(int scalePercent) {
-        for (int percent = SPACING_MIN; percent < SPACING_MAX; percent += SPACING_STEP) {
+        for (int percent = SPACING_MIN; percent < SPACING_MAX; percent++) {
             if (spacingIsUsable(scalePercent, percent)) {
                 return percent;
             }
