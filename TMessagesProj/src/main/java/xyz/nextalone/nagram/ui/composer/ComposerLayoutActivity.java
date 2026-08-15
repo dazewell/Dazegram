@@ -94,10 +94,28 @@ public class ComposerLayoutActivity extends BaseFragment {
     /**
      * Tighter-only, and that is forced rather than chosen - see ComposerToolbarLayout for why
      * anything above 100% is clipped by the row that has to contain it.
+     *
+     * <p>Anchors, not the reachable values: {@link #SPACING_BETWEEN_STEPS} subdivides them.
      */
     private static final int[] SPACING_STEPS = {
             85, 90, 95, 100
     };
+
+    /**
+     * Five sub-steps between anchors five apart, so the packing slider delivers whole percents.
+     *
+     * <p>This is what the bar can express. The seek bar's thumb follows the finger continuously
+     * and is never written back to the value it produced, so with one sub-step - the value landing
+     * only on the four anchors - the thumb, the number and the preview each told the user a
+     * different story about the same setting. A whole percent is also a real step rather than a
+     * finer number over the same four sizes: the cell is round(48 x size x packing), so the
+     * rounding boundary falls every couple of percent, and the range covers eight distinct cell
+     * sizes at 100% size and ten at 125%, against four either way at five-percent values.
+     *
+     * <p>Haptics stay on the anchors: SlideIntChooseView buzzes on a change of step, and a step is
+     * still one anchor, which leaves a detent every five percent along a one-percent track.
+     */
+    private static final int SPACING_BETWEEN_STEPS = 5;
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
@@ -801,7 +819,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     }
 
     private static SlideIntChooseView.Options spacingOptions() {
-        return SlideIntChooseView.Options.make(0, SPACING_STEPS, 1,
+        return SlideIntChooseView.Options.make(0, SPACING_STEPS, SPACING_BETWEEN_STEPS,
                 (type, value) -> value + "%");
     }
 
