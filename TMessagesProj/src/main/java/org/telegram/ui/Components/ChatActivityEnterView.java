@@ -8536,9 +8536,11 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (attachButtonAnimator != null) { attachButtonAnimator.cancel(); attachButtonAnimator = null; }
         Object tag = attachButton == null ? null : attachButton.getTag();
         if (tag instanceof Integer && (Integer) tag == 1) {
+            // checkAttachButton(false, ...) already sets isInInput = false to match the restored
+            // plain-attach state; forcing it true here would mis-position/mis-content the shared
+            // "..." popup the next time it's opened from the mic button's long-press.
             checkAttachButton(false, duration == 0 ? 150 : duration);
         }
-        isInInput = true;
         if (suggestButton != null) suggestButton.setVisibility(GONE);
         if (duration == 0 && botButton != null) botButton.setVisibility(GONE);
         if (attachButton != null) {
