@@ -1527,16 +1527,17 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         isMenuOffsetSuppressed = menuOffsetSuppressed;
     }
 
-    int prevWidth;
     private boolean avatarContainerWidthDeferred;
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         int additionalTop = occupyStatusBar ? AndroidUtilities.statusBarHeight : 0;
-        if (prevWidth != getMeasuredWidth() || avatarContainerWidthDeferred) {
-            prevWidth = getMeasuredWidth();
-            checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
-        }
+        // Title/subtitle/pill widths are only all simultaneously fresh right after a measure+layout
+        // pass (SimpleTextView.setText schedules no layout of its own -- see checkAvatarContainerWidth),
+        // so revalidate every pass instead of only when the bar's own width changes. Cheap: the method
+        // is idempotent when nothing changed, and this is what makes returning from a pushed fragment
+        // (which re-adds the view and forces a fresh pass) self-heal without touching ChatActivity.
+        checkAvatarContainerWidth(animatorAvatarContainerWidth.isAnimating());
 
         int textLeft;
         if (backButtonImageView != null && backButtonImageView.getVisibility() != GONE) {
@@ -2216,10 +2217,15 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         // Each side bubble is p + s + p wide (dp(6) + dp(46) + dp(6)): one for the back
         // button on the left, one for the menu on the right.
         final int width = Math.min(getMeasuredWidth() - dp(6 + 46 + 6 + 6 + 46 + 6), contentWidth);
+        // Idempotence: this now runs on every layout pass (see onLayout), so a resync that lands on
+        // the width already targeted must not touch the animator at all -- forceFactor cancels
+        // whatever is running, so an unconditional call here would kill a legitimate in-flight
+        // animation once per layout pass instead of just skipping the no-op.
+        if (animatorAvatarContainerWidth.getToFactor() == width) {
+            return;
+        }
         if (animated) {
-            if (animatorAvatarContainerWidth.getToFactor() != width) {
-                animatorAvatarContainerWidth.animateTo(width);
-            }
+            animatorAvatarContainerWidth.animateTo(width);
         } else {
             animatorAvatarContainerWidth.forceFactor(width);
         }
