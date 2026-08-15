@@ -100,6 +100,11 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     private TimerDrawable timerDrawable;
     // Per-peer time-zone clock pill (next to the title).
     private android.widget.TextView tzClockPill;
+    // NagramX: keeps the pill's displayed minute fresh when nothing else re-invokes
+    // updateTimeZonePill() (e.g. a channel whose subtitle never changes). Stored as a
+    // field, not a per-schedule lambda, so cancelRunOnUIThread() in onDetachedFromWindow()
+    // actually finds and removes the pending callback instead of leaking it.
+    private final Runnable tzClockTickRunnable = this::tickTimeZonePill;
     private ChatActivity parentFragment;
     private StatusDrawable[] statusDrawables = new StatusDrawable[6];
     private AvatarDrawable avatarDrawable = new AvatarDrawable();
@@ -658,6 +663,24 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             tzClockPill.setVisibility(VISIBLE);
             requestLayout();
         }
+    }
+
+    private void tickTimeZonePill() {
+        // NagramX: safe to call unconditionally every minute, including its requestLayout()
+        // at updateTimeZonePill():643, only because tzClockPill's measured width is fixed by
+        // setMinWidth() above at construction and never changes as the clock advances -- so
+        // this tick cannot repeatedly trigger PR #146's width-based re-centering.
+        updateTimeZonePill();
+        scheduleTimeZonePillTick();
+    }
+
+    private void scheduleTimeZonePillTick() {
+        AndroidUtilities.cancelRunOnUIThread(tzClockTickRunnable);
+        // Recomputed every call (not a fixed repeating period) so the tick lands just after
+        // the UTC minute boundary that ChatTimeZoneRenderer.formatNow() caches on, and so a
+        // clock/NTP jump self-corrects within one cycle instead of drifting permanently.
+        long delay = 60_000L - (System.currentTimeMillis() % 60_000L) + 100L;
+        AndroidUtilities.runOnUIThread(tzClockTickRunnable, delay);
     }
 
     public boolean openSetTimer() {
@@ -1839,6 +1862,10 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
             currentConnectionState = ConnectionsManager.getInstance(currentAccount).getConnectionState();
             updateCurrentConnectionState();
+            // NagramX: gated on parentFragment (only set for ChatActivity) rather than pill
+            // visibility -- unconditional so a device time-zone change (which posts no
+            // NotificationCenter event anywhere in this codebase) self-heals within a minute.
+            scheduleTimeZonePillTick();
         }
         if (emojiStatusDrawable != null) {
             emojiStatusDrawable.attach();
@@ -1851,6 +1878,9 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        // NagramX: unconditional -- cancelling a callback that was never scheduled (e.g. this
+        // container's parentFragment was null, so the tick was never armed) is a safe no-op.
+        AndroidUtilities.cancelRunOnUIThread(tzClockTickRunnable);
         if (parentFragment != null) {
             NotificationCenter.getInstance(currentAccount).removeObserver(this, NotificationCenter.didUpdateConnectionState);
             NotificationCenter.getGlobalInstance().removeObserver(this, NotificationCenter.emojiLoaded);
