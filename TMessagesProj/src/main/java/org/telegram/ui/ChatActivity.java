@@ -1513,7 +1513,8 @@ public class ChatActivity extends BaseFragment implements
 
     public void showHeaderItem(boolean show) {
         if (show) {
-            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer())) {
+            // NagramX (#composer-attach-pinned): pinned attach keeps this overflow icon put.
+            if (chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned()) {
                 if (attachItem != null) {
                     attachItem.setVisibility(View.VISIBLE);
                 }
@@ -4707,7 +4708,8 @@ public class ChatActivity extends BaseFragment implements
                         return true;
                     }
                     if (headerItem != null) {
-                        if (attachItem != null && chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
+                        // NagramX (#composer-attach-pinned): route the tap to the overflow, not a hidden attach item.
+                        if (attachItem != null && chatActivityEnterView.hasText() && TextUtils.isEmpty(chatActivityEnterView.getSlowModeTimer()) && !chatActivityEnterView.isAttachPinned() && (currentChat == null || ChatObject.canSendPlain(currentChat))) {
                             attachItem.createView().performClick();
                             return true;
                         }
