@@ -142,7 +142,6 @@ public final class ComposerFormattingActions {
     private ImageView createView(Context context, ComposerButtons.Button button) {
         ImageView view = new ImageView(context);
         view.setImageResource(button.iconRes);
-        view.setScaleType(ImageView.ScaleType.CENTER);
         view.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector, resourcesProvider), Theme.RIPPLE_MASK_CIRCLE_20DP, AndroidUtilities.dp(16)));
         view.setContentDescription(LocaleController.getString(button.titleRes));
         applyIconColor(view, true);

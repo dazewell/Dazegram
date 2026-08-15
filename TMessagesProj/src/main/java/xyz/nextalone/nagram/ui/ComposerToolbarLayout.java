@@ -399,6 +399,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return;
         }
         ImageView icon = (ImageView) view;
+        // FIT_CENTER is what gives the padding below its meaning: it makes the drawable fill the box
+        // the insets leave, so the box is the glyph's size. Under CENTER the drawable would draw at its
+        // intrinsic size and every scale here would silently become a no-op - no crash, nothing logged.
+        // Set it here, last, rather than trusting each call site to have chosen the right scale type.
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         icon.setPadding(startInset, startInset, endInset, endInset);
     }
