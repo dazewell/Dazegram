@@ -502,10 +502,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                         AndroidUtilities.updateVisibleRow(listView, spacingRowPosition());
                         updatePreview();
                     });
-                    // Cleared explicitly rather than left to the view's initial state: this row and the
-                    // packing row are built by the same branch above, so a future edit that lets them
-                    // share a recycler pool would otherwise inherit that row's floor.
-                    scaleView.setMinValueAllowed(Integer.MIN_VALUE);
+                    // Cleared to the options' own minimum rather than Integer.MIN_VALUE: getProgress
+                    // subtracts the minimum before dividing, and MIN_VALUE - 75 overflows to a large
+                    // positive int, so clamp01 returns 1.0 and setMinProgress pins this slider at its
+                    // maximum. SCALE_MIN maps to progress 0, which is the no-op floor that was meant.
+                    // Needed at all only as insurance: this row and the packing row are built by the
+                    // same branch above, so a future edit that let them share a recycler pool would
+                    // otherwise inherit that row's floor.
+                    scaleView.setMinValueAllowed(SCALE_MIN);
                     break;
                 case TYPE_SPACING:
                     SlideIntChooseView spacingView = (SlideIntChooseView) holder.itemView;
