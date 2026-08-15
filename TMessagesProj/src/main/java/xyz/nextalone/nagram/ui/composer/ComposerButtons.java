@@ -206,6 +206,32 @@ public final class ComposerButtons {
     }
 
     /**
+     * The largest correction any button asks for, over every entry point into the icon box - the
+     * keyed table above plus the two resource-keyed constants below it. Derived rather than typed so
+     * that measuring a sparser glyph than the current holder (mention, 1.5519) moves the cell floor
+     * that depends on it instead of silently starving that glyph of its keyline. Computed once: the
+     * table is fully populated by the static initializer above and never written again.
+     */
+    private static final float MAX_ICON_SCALE = computeMaxIconScale();
+
+    private static float computeMaxIconScale() {
+        float max = 1f;
+        for (Float scale : ICON_SCALE.values()) {
+            max = Math.max(max, scale);
+        }
+        return Math.max(max, Math.max(MENU_ICON_SCALE, NOTIFY_ICON_SCALE));
+    }
+
+    /**
+     * The widest a glyph is ever drawn inside the shared cell, as a factor of the 24dp box. The cell
+     * floor in {@link xyz.nextalone.nagram.ui.ComposerToolbarLayout} is checked against this, so no
+     * reachable size can shrink a cell below the glyph it has to hold.
+     */
+    public static float maxIconScale() {
+        return MAX_ICON_SCALE;
+    }
+
+    /**
      * Optical scale for a button placed by its key. Unlisted keys render at natural size.
      */
     public static float iconScaleForKey(String key) {

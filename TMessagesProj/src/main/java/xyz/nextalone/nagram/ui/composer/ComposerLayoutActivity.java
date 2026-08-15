@@ -67,11 +67,36 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static final int TYPE_PLACEHOLDER = 3;
     private static final int TYPE_INFO = 4;
     private static final int TYPE_SCALE = 5;
+    /**
+     * The packing slider gets its own type rather than sharing TYPE_SCALE: one type means the
+     * recycler can hand this row a view still carrying the other slider's minValueAllowed and seek
+     * bar min progress, which does not look like a stale bind - it silently locks or unlocks the
+     * wrong control.
+     */
+    private static final int TYPE_SPACING = 6;
+    /**
+     * Title above a slider. Must NOT be TYPE_HEADER: zoneAt() walks back to the nearest TYPE_HEADER
+     * to decide which zone a row belongs to, so reusing that type here would make every lookup above
+     * the Leading header answer with a slider's sentinel zone.
+     */
+    private static final int TYPE_SLIDER_HEADER = 7;
+
+    /** Sentinel "zones" for the two slider groups, so one header/footer lookup serves both. */
+    private static final int GROUP_SCALE = -1;
+    private static final int GROUP_SPACING = -2;
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
     private static final int[] SCALE_STEPS = {
             75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125
+    };
+
+    /**
+     * Tighter-only, and that is forced rather than chosen - see ComposerToolbarLayout for why
+     * anything above 100% is clipped by the row that has to contain it.
+     */
+    private static final int[] SPACING_STEPS = {
+            85, 90, 95, 100
     };
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
@@ -225,10 +250,16 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private void buildItems(List<List<String>> zones) {
         items.clear();
-        // Sits above the zone list so the size control is the first thing under the preview, rather
-        // than something the user only finds after scrolling past twenty draggable rows.
-        items.add(new Item(TYPE_SCALE, -1, null));
-        items.add(new Item(TYPE_INFO, -1, null));
+        // Sits above the zone list so the size controls are the first thing under the preview, rather
+        // than something the user only finds after scrolling past twenty draggable rows. Each slider
+        // is titled: two unlabelled percentage bars stacked together are indistinguishable, and
+        // SlideIntChooseView.setLabel() only feeds the accessibility description, never the screen.
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_SCALE, null));
+        items.add(new Item(TYPE_SCALE, GROUP_SCALE, null));
+        items.add(new Item(TYPE_INFO, GROUP_SCALE, null));
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_SPACING, null));
+        items.add(new Item(TYPE_SPACING, GROUP_SPACING, null));
+        items.add(new Item(TYPE_INFO, GROUP_SPACING, null));
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
@@ -350,6 +381,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     private void resetLayout() {
         ComposerLayout.reset();
         NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(100);
+        NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(100);
         lastSaved = ComposerLayout.snapshot();
         buildItems(lastSaved);
         if (adapter != null) {
@@ -404,7 +436,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                     view = new TextInfoPrivacyCell(context);
                     break;
                 case TYPE_SCALE:
+                case TYPE_SPACING:
                     view = new SlideIntChooseView(context, null);
+                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
+                case TYPE_SLIDER_HEADER:
+                    view = new HeaderCell(context);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 default:
@@ -450,14 +487,44 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_SCALE:
                     SlideIntChooseView scaleView = (SlideIntChooseView) holder.itemView;
+                    scaleView.setLabel(LocaleController.getString(R.string.ComposerScaleAccDescr));
                     scaleView.set(currentScale(), scaleOptions(), value -> {
                         if (value == NaConfig.INSTANCE.getComposerToolbarScale().Int()) {
                             return;
                         }
                         NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(value);
                         rebuildPending = true;
+                        // How tight the icons can be packed depends on the scale - a smaller row
+                        // reaches the cell floor sooner - so the other slider's allowed range has to
+                        // follow this one live. Rebinding just that row rather than notifying the
+                        // adapter keeps the change animation, and any isComputingLayout() exposure,
+                        // out of the middle of this drag.
+                        AndroidUtilities.updateVisibleRow(listView, spacingRowPosition());
                         updatePreview();
                     });
+                    // Cleared explicitly rather than left to the view's initial state: this row and the
+                    // packing row are built by the same branch above, so a future edit that lets them
+                    // share a recycler pool would otherwise inherit that row's floor.
+                    scaleView.setMinValueAllowed(Integer.MIN_VALUE);
+                    break;
+                case TYPE_SPACING:
+                    SlideIntChooseView spacingView = (SlideIntChooseView) holder.itemView;
+                    spacingView.setLabel(LocaleController.getString(R.string.ComposerSpacingAccDescr));
+                    spacingView.set(currentSpacing(), spacingOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerToolbarSpacing().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
+                    // After set(), not before: setMinValueAllowed returns early while options is
+                    // still null, so the order is what makes the floor stick.
+                    spacingView.setMinValueAllowed(ComposerToolbarLayout.lowestUsableSpacing(currentScale()));
+                    break;
+                case TYPE_SLIDER_HEADER:
+                    ((HeaderCell) holder.itemView).setText(LocaleController.getString(
+                            item.zone == GROUP_SPACING ? R.string.ComposerSpacing : R.string.ComposerScale));
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -484,8 +551,10 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static int footerText(int zone) {
         switch (zone) {
-            case -1:
+            case GROUP_SCALE:
                 return R.string.ComposerScaleInfo;
+            case GROUP_SPACING:
+                return R.string.ComposerSpacingInfo;
             case ComposerButtons.ZONE_START:
                 return R.string.ComposerZoneLeadingInfo;
             case ComposerButtons.ZONE_MIDDLE:
@@ -725,6 +794,28 @@ public class ComposerLayoutActivity extends BaseFragment {
     private static int currentScale() {
         int percent = NaConfig.INSTANCE.getComposerToolbarScale().Int();
         return Math.max(SCALE_MIN, Math.min(SCALE_MAX, percent));
+    }
+
+    private static SlideIntChooseView.Options spacingOptions() {
+        return SlideIntChooseView.Options.make(0, SPACING_STEPS, 1,
+                (type, value) -> value + "%");
+    }
+
+    /**
+     * Read through the toolbar rather than re-derived here, so the number on the slider and the row
+     * it draws come from one rule instead of two that have to be kept in step.
+     */
+    private static int currentSpacing() {
+        return ComposerToolbarLayout.spacingPercent();
+    }
+
+    private int spacingRowPosition() {
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i).type == TYPE_SPACING) {
+                return i;
+            }
+        }
+        return RecyclerView.NO_POSITION;
     }
 
     /**

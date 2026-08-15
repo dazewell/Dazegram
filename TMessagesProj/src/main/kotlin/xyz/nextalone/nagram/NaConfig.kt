@@ -1397,6 +1397,12 @@ object NaConfig {
             ConfigItem.configTypeInt,
             100 // percent; slider range 75..125 in 5% steps (see ComposerLayoutActivity)
         )
+    val composerToolbarSpacing =
+        addConfig(
+            "ComposerToolbarSpacing",
+            ConfigItem.configTypeInt,
+            100 // percent; slider range 85..100 in 5% steps, tighter-only (see ComposerToolbarLayout)
+        )
     val inputTextSize =
         addConfig(
             "InputTextSize",
