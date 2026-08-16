@@ -2238,6 +2238,7 @@ public class Theme {
         public ThemeInfo(ThemeInfo other) {
             this.name = other.name;
             this.monetKind = other.monetKind; // NagramX: isMonet*() reads this, not name, so a copy must carry it over
+            this.isDark = other.isDark; // NagramX: Extera Light/Dark only get isDark from this preset, not the name-based fallback in isDark()
             this.pathToFile = other.pathToFile;
             this.pathToWallpaper = other.pathToWallpaper;
             this.assetName = other.assetName;
