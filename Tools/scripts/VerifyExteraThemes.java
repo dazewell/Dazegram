@@ -223,6 +223,15 @@ public class VerifyExteraThemes {
         String[] wallpaperParts = decomposeToken(wallpaper, vocabulary);
         String[] panelParts = decomposeToken(panel, vocabulary);
         if (wallpaperParts == null || panelParts == null) {
+            // Can't decompose a raw hex/int literal into ramp step + darken, so a structural
+            // compare is out - but if the two raw values are byte-for-byte identical, they still
+            // resolve to the same color regardless of shape, and that's exactly the regression
+            // this check exists to catch. Anything else genuinely can't be compared statically.
+            if (wallpaper.equals(panel)) {
+                System.out.println(assetName + ": chat_wallpaper and " + panelKey + " are both literally \"" + wallpaper
+                        + "\" - the panel would be indistinguishable from the chat canvas on every wallpaper");
+                return false;
+            }
             System.out.println(assetName + ": chat_wallpaper/" + panelKey + " isn't a plain ramp token, skipping contrast check");
             return true;
         }
@@ -241,8 +250,9 @@ public class VerifyExteraThemes {
             panelDarken = Integer.parseInt(panelParts[1]);
         } catch (NumberFormatException e) {
             // A digit run long enough to overflow int - same silent-failure class checkValues()
-            // already tolerates for MonetHelper.getColor() itself. Report it here explicitly
-            // instead of letting the exception propagate past this deterministic check.
+            // already fails on for MonetHelper.getColor() itself (isResolvable's own darken parse
+            // catches this and marks the value unresolvable, it doesn't let it through). Report it
+            // here explicitly instead of letting the exception propagate past this check.
             System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " or " + panelKey + "=" + panel
                     + " has a darken suffix that overflows int, can't compare - treat as unresolvable");
             return false;
