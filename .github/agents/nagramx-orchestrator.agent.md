@@ -385,15 +385,21 @@ emulator. Say where one is needed and let dazewell grab it from the build. Never
 imply you have seen the app running.
 
 Then clean up: archive a child session once its pull request is verified and
-reported **and** the pre-archive process-lifecycle checklist in
-`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes — read the
-implementer's process ledger from its report, stop and identity-verify
-anything not already marked stopped, and do a scoped residual sweep of that
-session's worktree path before removing it. If a process or handle cannot be
-released, do not archive; report the exact PID/name and leave the session
-intact. The branch is on `origin`, so a later fix cuts a fresh branch on the
-same slug — you are not losing anything by closing the worktree once it is
-actually safe to close.
+reported **and** the pre-archive checklist in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. That checklist
+blocks archival on any of: a missing or malformed process ledger, a ledger row
+still `failed to stop` or `not yet verified`, an unexplained result from the
+residual sweep of that session's worktree path, or a failed `git worktree
+remove`/removal attempt — do not force any of these through, and never stop a
+shared/ambient daemon (default adb server, default Gradle daemon registry) to
+make one pass; that's a cross-session hazard, not a fix. If a child-owned
+isolated resource (its own adb port, its own emulator serial, an isolated
+`GRADLE_USER_HOME`) is still up and only the child can stop it, send it back
+to the child rather than hunting it by PID. If any check still fails after
+that: do not archive; report the exact `Id`/`Name`/`Path`/`StartTime` and
+leave the session intact for manual recovery. The branch is on `origin`, so a
+later fix cuts a fresh branch on the same slug — you are not losing anything
+by closing the worktree once it is actually safe to close.
 
 ## Matching process to the request
 
