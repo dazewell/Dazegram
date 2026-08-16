@@ -112,7 +112,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls = new ControlsLayout(context);
         controls.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         controls.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
-        addView(controls, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.CENTER_HORIZONTAL | Gravity.BOTTOM));
+        addView(controls, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, controls.rowHeightDp(), Gravity.BOTTOM));
 
         startSlot = createCollapsingSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -381,9 +381,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Row height in dp. Read at layout time rather than cached: the scale only changes while the
-     * settings screen is open, and leaving it changes it by rebuilding every fragment, so a view
-     * keeps one height for its whole life and the bounds animator never sees it move.
+     * Row height in dp for the <em>current</em> scale. This reads the live setting, so it can move
+     * under an existing view the moment the slider changes. A view that has to hold one geometry for
+     * its whole life - ControlsLayout, whose capsule radius and measured height must stay half-and-
+     * whole of each other - snapshots this once at construction instead of calling it again per pass;
+     * see ControlsLayout's geometry fields. The scale only changes while the settings screen is open
+     * and closing it rebuilds every chat, so a fresh view picks up the new value together with the
+     * layout params it is given.
      */
     public static int height() {
         return Math.round(BASE_HEIGHT * scale());
@@ -481,9 +485,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Inset of the drawn capsule inside the row, the other half of the pair with glassInset(): the
-     * painted edge lands at glassDrawInset() + glassInset() from the row edge, so both terms have to
-     * follow the scale or the row's edge drifts against its own interior.
+     * Vertical inset of the drawn capsule inside the row. Paired with the attached glass padding on
+     * the vertical axis only: the painted top and bottom land at glassDrawInset() + glassInset() from
+     * the row edge. The horizontal edges no longer use this - the capsule is painted flush to the
+     * row's left and right (see drawGlass), so this term is vertical-only now and does not decide the
+     * left/right alignment with the input pill.
      */
     private static int glassDrawInset() {
         return Math.max(1, Math.round(GLASS_DRAW_INSET * scale()));
@@ -542,13 +548,32 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
         private BlurredBackgroundDrawable glass;
+        // One scale sample for this view's whole life, captured in the constructor. Everything the row
+        // draws with - its height, the button-box inset, both glass draw insets and the capsule radius -
+        // comes off these three dp values, so a relayout can never pair a freshly read height with a
+        // radius that was sampled at some other scale (which is how the end caps would stop being
+        // semicircular in the deferred-rebuild window after the slider moves). The scale only moves
+        // while the settings screen is open and closing it rebuilds every chat, so a live view keeps
+        // one coherent geometry and a rebuilt view takes the new scale. It stays consistent with the
+        // layout params ChatActivityEnterView sizes this toolbar with because composerToolbarHeight()
+        // there reads height() in the same synchronous construction - no config write can land between
+        // the two, and a rebuild replaces both together. These hold dp with only the user's scale
+        // setting frozen in. onMeasure re-converts geometryHeightDp to px every pass, so the row height
+        // still tracks a density change; the button-box padding, glass padding and draw inset are
+        // converted to px once (in the constructor and attachGlass), exactly as they were before this
+        // change - a config change that alters density recreates the view, which is what re-reads them.
+        private final int geometryHeightDp;
+        private final int geometryInsetDp;
+        private final int geometryDrawInsetDp;
+        // The exact pixel geometry handed to the drawable at attachGlass, derived from the snapshot
+        // above. glassPaddingPx is the value passed to glass.setPadding, and drawGlass cancels it on
+        // the horizontal axis by the same field - never a fresh glassInset() - so the two cannot drift.
+        private int glassPaddingPx;
+        private int glassDrawInsetPx;
         private ValueAnimator boundsAnimator;
         private int measuredPanelWidth = -1;
         private boolean laidOut;
-        private boolean pendingBoundsAnimation;
-        private float pendingVisualLeft;
-        private float pendingVisualWidth;
-        private float animatedGlassWidth = -1;
+        private boolean availableWidthChanged;
         private boolean holdingBounds;
         private long holdStartTime;
         private int previousRightAnchoredLeft;
@@ -562,12 +587,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
             super(context);
             setClipChildren(true);
             setClipToPadding(true);
-            // 2dp of glass inset plus 2dp of breathing room: the press animation only overshoots by a
-            // fraction of a dp, so anything wider is just dead space at both ends of the capsule. Those
-            // are the 100% figures - both halves are proportional (glassInset, glassDrawInset), so the
-            // ratio holds across the scale range instead of one end of the row outgrowing the other.
-            int inset = glassInset();
-            setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
+            // Snapshot the scale-derived geometry once, before anything measures, lays out or draws, so
+            // every later read is the same sample (see the field comment).
+            geometryHeightDp = height();
+            geometryInsetDp = glassInset();
+            geometryDrawInsetDp = glassDrawInset();
+            // The button box: the first and last button sit this far inside the row, the same way the
+            // input pill has padding before its "Message" hint. Kept at glassInset() (4dp at 100%) and
+            // proportional so a button never renders under the capsule's rounded end. The painted capsule's
+            // own edges are set separately in drawGlass - flush horizontally, lifted vertically - so this
+            // padding is no longer the thing that decides where the glass is drawn.
+            setPaddingRelative(AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp));
+        }
+
+        int rowHeightDp() {
+            return geometryHeightDp;
         }
 
         void setSlots(CollapsingLinearLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -576,18 +610,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
             this.middleContent = middleContent;
             this.endSlot = endSlot;
 
-            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
-            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
-            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
+            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
+            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
+            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
         }
 
         void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
             glass = factory.create(this, colorProvider);
-            // Half the drawn capsule - the row minus the 4dp inset it is painted within. Derived rather
-            // than a fixed 26dp so a scaled row still ends in a semicircle instead of squared off corners.
-            int inset = glassInset();
-            glass.setRadius(AndroidUtilities.dp((height() - inset) / 2f));
-            glass.setPadding(AndroidUtilities.dp(inset));
+            // Radius large enough that the drawable clamps it to half the painted capsule height, so the
+            // ends come out semicircular at any scale. Built from the construction snapshot - the same
+            // geometryHeightDp onMeasure sizes the row with - so the radius is always exactly half the
+            // height it is drawn against and the two can never be sampled at two different scales. Padding
+            // and drawInset come off the same snapshot and are stored in px here for drawGlass.
+            glass.setRadius(AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f));
+            glassPaddingPx = AndroidUtilities.dp(geometryInsetDp);
+            glassDrawInsetPx = AndroidUtilities.dp(geometryDrawInsetDp);
+            glass.setPadding(glassPaddingPx);
             invalidate();
         }
 
@@ -613,7 +651,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int availableWidth = MeasureSpec.getSize(widthMeasureSpec);
-            int height = AndroidUtilities.dp(height());
+            int height = AndroidUtilities.dp(geometryHeightDp);
             int contentHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
             int heightSpec = MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY);
             int unboundedWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
@@ -626,8 +664,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int endWidth = endSlot.getMeasuredWidth();
             int middleWidth = middleContent.getMeasuredWidth();
             int horizontalPadding = getPaddingLeft() + getPaddingRight();
-            int desiredWidth = horizontalPadding + startWidth + middleWidth + endWidth;
-            int panelWidth = Math.min(desiredWidth, availableWidth);
+            // Always take the full width the row offers instead of shrink-wrapping the content, so the
+            // glass capsule lines up edge to edge with the main input pill above at every button count.
+            int panelWidth = availableWidth;
             int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth));
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
@@ -638,8 +677,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 middleScrollView.setClipChildren(clipMiddle);
             }
             if (laidOut && measuredPanelWidth != panelWidth) {
-                captureVisualState();
-                pendingBoundsAnimation = true;
+                // The panel width only moves now when the row itself is resized (rotation, multi-window).
+                // The layout pass settles the buttons on the new width, so snap the capsule to it rather
+                // than easing a stale edge out behind buttons that have already arrived.
+                availableWidthChanged = true;
             }
             measuredPanelWidth = panelWidth;
             setMeasuredDimension(panelWidth, height);
@@ -655,18 +696,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int contentTop = getPaddingTop();
             int contentBottom = getHeight() - getPaddingBottom();
             if (getLayoutDirection() == LAYOUT_DIRECTION_RTL) {
+                // Leading zone (startSlot) sits at the right edge, trailing (endSlot) at the left.
+                // Anchor the scrolling middle group to the leading zone so the slack on a sparse row
+                // falls between the middle group and the trailing zone, the same side it does in LTR.
                 endSlot.layout(contentLeft, contentTop, contentLeft + endWidth, contentBottom);
-                middleScrollView.layout(contentLeft + endWidth, contentTop, contentLeft + endWidth + middleWidth, contentBottom);
+                middleScrollView.layout(contentRight - startWidth - middleWidth, contentTop, contentRight - startWidth, contentBottom);
                 startSlot.layout(contentRight - startWidth, contentTop, contentRight, contentBottom);
             } else {
                 startSlot.layout(contentLeft, contentTop, contentLeft + startWidth, contentBottom);
                 middleScrollView.layout(contentLeft + startWidth, contentTop, contentLeft + startWidth + middleWidth, contentBottom);
                 endSlot.layout(contentRight - endWidth, contentTop, contentRight, contentBottom);
             }
-            // Whichever slot is pinned to the panel's right edge is laid out against the new width the
-            // instant a control claims its slot, so it jumps ahead while the glass is still easing over.
-            // Hand its catch-up to the bounds animator below rather than giving it its own, so the group
-            // and the edge it is pinned to move on the same frames.
+            // Whichever slot is pinned to the trailing edge is laid out against its new anchor the
+            // instant a control claims or frees a slot, so it jumps there in a single frame. Hand its
+            // catch-up to the bounds animator below so it eases back over the settle window instead.
             View trailingSlot = getLayoutDirection() == LAYOUT_DIRECTION_RTL ? startSlot : endSlot;
             if (trailingSlot != rightAnchoredSlot) {
                 if (rightAnchoredSlot != null) {
@@ -681,13 +724,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             hasRightAnchoredLeft = true;
             if (!laidOut) {
                 laidOut = true;
-                animatedGlassWidth = getWidth();
-            } else if (pendingBoundsAnimation) {
-                pendingBoundsAnimation = false;
-                holdCapturedVisualState(endShift);
+            } else if (availableWidthChanged) {
+                // Rotation or multi-window: the row and the anchored slot are already at their new
+                // positions, so settle the capsule and the slot on the new bounds without a slide.
+                availableWidthChanged = false;
+                snapBounds();
+            } else if (endShift != 0) {
+                // The trailing group jumped to a new anchor while the panel width held (a control
+                // claimed or freed its slot). Ease it back so it and the buttons beside it settle
+                // together instead of popping.
+                holdTrailingSlide(endShift);
                 AndroidUtilities.runOnUIThread(boundsAnimationStarter, resumingMidAnimation ? 0 : getRemainingSettleDelay());
             } else if (!holdingBounds) {
-                animatedGlassWidth = getWidth();
                 trailingSlot.setTranslationX(0);
             }
         }
@@ -702,43 +750,41 @@ public final class ComposerToolbarLayout extends FrameLayout {
             if (glass == null || getWidth() <= 0 || getHeight() <= 0) {
                 return;
             }
-            int inset = AndroidUtilities.dp(glassDrawInset());
-            int width = Math.round(animatedGlassWidth < 0 ? getWidth() : animatedGlassWidth);
-            if (width <= inset * 2 || getHeight() <= inset * 2) {
+            // Horizontal is flush with the row edge so the capsule lines up with the main input pill;
+            // vertical keeps the drawInset + padding lift the composer island's bottom gap is calibrated
+            // on. glass.setPadding is a single uniform value, so the two axes are decoupled here in the
+            // bounds: on the horizontal axis the -glassPaddingPx left and +glassPaddingPx right are the
+            // exact negatives of the padding the drawable then adds back (boundsWithPadding.inset in
+            // BlurredBackgroundDrawable), so the painted left reaches 0 and right reaches getWidth() by
+            // arithmetic - not a clamp. Both terms are the captured attach-time pixels, so the
+            // cancellation holds even mid scale-change. The vertical bounds leave the lift in place.
+            if (getHeight() <= (glassDrawInsetPx + glassPaddingPx) * 2) {
                 return;
             }
-            glass.setBounds(inset, inset, width - inset, getHeight() - inset);
+            glass.setBounds(-glassPaddingPx, glassDrawInsetPx, getWidth() + glassPaddingPx, getHeight() - glassDrawInsetPx);
             glass.draw(canvas);
         }
 
-        private void captureVisualState() {
-            pendingVisualLeft = getLeft() + getTranslationX();
-            pendingVisualWidth = animatedGlassWidth >= 0 ? animatedGlassWidth : getWidth();
-            // A slot that is already sliding restarts on the spot rather than waiting out the coalescing
-            // window again, so the panel has to skip it too or the glass edge falls behind its own buttons.
+        // Hold the pinned trailing group where it was drawn instead of letting it pop to its new anchor.
+        // Erasing a draft flips two slots a frame or two apart (attach arrives, the action beside it
+        // leaves), and each flip re-layouts; waiting for the anchor to settle turns what used to be two
+        // consecutive slides into one. The capsule itself no longer moves - it is full width now - so
+        // only the slot is held and eased.
+        private void holdTrailingSlide(int endShift) {
             resumingMidAnimation = boundsAnimator != null;
             cancelBoundsAnimation();
-        }
-
-        // Hold the panel exactly where it was drawn instead of moving straight away. Erasing a draft flips two
-        // slots a frame or two apart (attach arrives, the action beside it leaves), and each flip remeasures;
-        // waiting for the width to settle turns what used to be two consecutive slides into one.
-        private void holdCapturedVisualState(int endShift) {
             if (holdStartTime == 0) {
                 holdStartTime = SystemClock.elapsedRealtime();
             }
             holdingBounds = true;
-            setTranslationX(pendingVisualLeft - getLeft());
-            animatedGlassWidth = pendingVisualWidth;
             // A hold arriving mid-animation stacks on whatever is left of the last one, so the group keeps
-            // the distance it still had to cover instead of snapping back to the new edge.
+            // the distance it still had to cover instead of snapping back to the new anchor.
             pendingEndShift = rightAnchoredSlot.getTranslationX() + endShift;
             rightAnchoredSlot.setTranslationX(pendingEndShift);
-            invalidate();
         }
 
         // Each further change pushes the start back, so cap the wait: a slot that keeps resizing must not
-        // leave the panel frozen.
+        // leave the trailing group frozen.
         private long getRemainingSettleDelay() {
             return getSettleDelay(holdStartTime);
         }
@@ -747,40 +793,27 @@ public final class ComposerToolbarLayout extends FrameLayout {
             holdingBounds = false;
             holdStartTime = 0;
             resumingMidAnimation = false;
-            float finalWidth = getWidth();
-            float initialTranslation = pendingVisualLeft - getLeft();
-            float initialWidth = pendingVisualWidth;
             float initialEndShift = pendingEndShift;
             View anchored = rightAnchoredSlot;
             pendingEndShift = 0;
-            if (initialTranslation == 0 && initialWidth == finalWidth && initialEndShift == 0) {
-                setTranslationX(0);
-                animatedGlassWidth = finalWidth;
+            if (initialEndShift == 0) {
                 setAnchoredTranslation(anchored, 0);
                 return;
             }
-            setTranslationX(initialTranslation);
-            animatedGlassWidth = initialWidth;
             setAnchoredTranslation(anchored, initialEndShift);
             boundsAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
             boundsAnimator.setDuration(220);
             boundsAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
             boundsAnimator.addUpdateListener(animation -> {
                 float progress = (float) animation.getAnimatedValue();
-                setTranslationX(initialTranslation * (1.0f - progress));
-                animatedGlassWidth = initialWidth + (finalWidth - initialWidth) * progress;
                 setAnchoredTranslation(anchored, initialEndShift * (1.0f - progress));
-                invalidate();
             });
             boundsAnimator.addListener(new AnimatorListenerAdapter() {
                 @Override
                 public void onAnimationEnd(Animator animation) {
                     if (animation == boundsAnimator) {
                         boundsAnimator = null;
-                        setTranslationX(0);
-                        animatedGlassWidth = getWidth();
                         setAnchoredTranslation(anchored, 0);
-                        invalidate();
                     }
                 }
             });
@@ -792,8 +825,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             AndroidUtilities.cancelRunOnUIThread(boundsAnimationStarter);
             if (boundsAnimator != null) {
                 // Drop the reference before cancelling: cancel() runs the end listener, which would settle
-                // the panel and the pinned group on their final bounds. A recapture reads what is left of
-                // the current move, so it has to still be there. resetBounds is the path that clears them.
+                // the pinned group on its final anchor. A re-hold reads what is left of the current move,
+                // so it has to still be there. resetBounds is the path that clears it.
                 ValueAnimator running = boundsAnimator;
                 boundsAnimator = null;
                 running.cancel();
@@ -807,15 +840,23 @@ public final class ComposerToolbarLayout extends FrameLayout {
             resetBounds();
         }
 
+        // Settle the pinned group on its current anchor with no slide. Used on a real width change
+        // (rotation, multi-window), where the buttons have already moved to the new bounds.
+        private void snapBounds() {
+            cancelBoundsAnimation();
+            holdStartTime = 0;
+            resumingMidAnimation = false;
+            pendingEndShift = 0;
+            setAnchoredTranslation(rightAnchoredSlot, 0);
+        }
+
         private void resetBounds() {
-            pendingBoundsAnimation = false;
+            availableWidthChanged = false;
             holdingBounds = false;
             holdStartTime = 0;
             pendingEndShift = 0;
             resumingMidAnimation = false;
             hasRightAnchoredLeft = false;
-            setTranslationX(0);
-            animatedGlassWidth = getWidth();
             setAnchoredTranslation(rightAnchoredSlot, 0);
         }
 
