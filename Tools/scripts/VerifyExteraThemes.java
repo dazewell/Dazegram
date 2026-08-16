@@ -230,8 +230,19 @@ public class VerifyExteraThemes {
             return true;
         }
 
-        int wallpaperDarken = Integer.parseInt(wallpaperParts[1]);
-        int panelDarken = Integer.parseInt(panelParts[1]);
+        int wallpaperDarken;
+        int panelDarken;
+        try {
+            wallpaperDarken = Integer.parseInt(wallpaperParts[1]);
+            panelDarken = Integer.parseInt(panelParts[1]);
+        } catch (NumberFormatException e) {
+            // A digit run long enough to overflow int - same silent-failure class checkValues()
+            // already tolerates for MonetHelper.getColor() itself. Report it here explicitly
+            // instead of letting the exception propagate past this deterministic check.
+            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " or chat_messagePanelBackground=" + panel
+                    + " has a darken suffix that overflows int, can't compare - treat as unresolvable");
+            return false;
+        }
         int delta = Math.abs(wallpaperDarken - panelDarken);
         if (delta < MIN_DARKEN_DELTA) {
             System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " and chat_messagePanelBackground=" + panel
