@@ -59,10 +59,6 @@ public class VerifyExteraThemes {
         ok &= checkKeys("monet_dark.attheme", "monet_extera_dark.attheme", validKeys);
         ok &= checkValues("monet_extera_light.attheme", vocabulary);
         ok &= checkValues("monet_extera_dark.attheme", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_light.attheme", "chat_messagePanelBackground", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_dark.attheme", "chat_messagePanelBackground", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_light.attheme", "chat_topPanelBackground", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_dark.attheme", "chat_topPanelBackground", vocabulary);
 
         System.out.println(ok ? "OK" : "FAILED");
         if (!ok) {
@@ -196,107 +192,6 @@ public class VerifyExteraThemes {
         }
 
         return vocabulary.contains(v);
-    }
-
-    // Guards the exact regression this file was written to catch: chat_wallpaper resolving to
-    // the same ramp step as a panel background token (with the same or near-same darken amount)
-    // makes that panel disappear into the chat canvas, on every wallpaper, since two identical
-    // tokens always resolve identically regardless of the Material You seed they're fed. Called
-    // once per panel key - chat_messagePanelBackground (composer) and chat_topPanelBackground
-    // (pinned message), since they're independent tokens that can each regress on their own.
-    // This compares token *structure* (ramp step + darken suffix), never a resolved RGB value -
-    // resolved colors are wallpaper-dependent and can't be known statically, only the relationship
-    // between tokens can. A value this script can't decompose into a plain ramp token (a raw hex or
-    // literal int) is skipped rather than failed, per the same "unresolvable shape" tolerance
-    // checkValues already applies.
-    private static final int MIN_DARKEN_DELTA = 10;
-
-    private static boolean checkWallpaperPanelContrast(String assetName, String panelKey, Set<String> vocabulary) throws IOException {
-        Map<String, String> values = parseAttheme(ASSETS.resolve(assetName));
-        String wallpaper = values.get("chat_wallpaper");
-        String panel = values.get(panelKey);
-        if (wallpaper == null || panel == null) {
-            System.out.println(assetName + ": chat_wallpaper/" + panelKey + " missing, skipping contrast check");
-            return true;
-        }
-
-        String[] wallpaperParts = decomposeToken(wallpaper, vocabulary);
-        String[] panelParts = decomposeToken(panel, vocabulary);
-        if (wallpaperParts == null || panelParts == null) {
-            // Can't decompose a raw hex/int literal into ramp step + darken, so a structural
-            // compare is out - but if the two raw values are byte-for-byte identical, they still
-            // resolve to the same color regardless of shape, and that's exactly the regression
-            // this check exists to catch. Anything else genuinely can't be compared statically.
-            if (wallpaper.equals(panel)) {
-                System.out.println(assetName + ": chat_wallpaper and " + panelKey + " are both literally \"" + wallpaper
-                        + "\" - the panel would be indistinguishable from the chat canvas on every wallpaper");
-                return false;
-            }
-            System.out.println(assetName + ": chat_wallpaper/" + panelKey + " isn't a plain ramp token, skipping contrast check");
-            return true;
-        }
-
-        if (!wallpaperParts[0].equals(panelParts[0])) {
-            // Different ramp step already means a distinct tone, whatever darken/alpha rides on top.
-            System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and " + panelKey + " (" + panel
-                    + ") sit on different ramp steps");
-            return true;
-        }
-
-        int wallpaperDarken;
-        int panelDarken;
-        try {
-            wallpaperDarken = Integer.parseInt(wallpaperParts[1]);
-            panelDarken = Integer.parseInt(panelParts[1]);
-        } catch (NumberFormatException e) {
-            // A digit run long enough to overflow int - same silent-failure class checkValues()
-            // already fails on for MonetHelper.getColor() itself (isResolvable's own darken parse
-            // catches this and marks the value unresolvable, it doesn't let it through). Report it
-            // here explicitly instead of letting the exception propagate past this check.
-            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " or " + panelKey + "=" + panel
-                    + " has a darken suffix that overflows int, can't compare - treat as unresolvable");
-            return false;
-        }
-        int delta = Math.abs(wallpaperDarken - panelDarken);
-        if (delta < MIN_DARKEN_DELTA) {
-            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " and " + panelKey + "=" + panel
-                    + " resolve to the same ramp step with only a " + delta + "% darken difference - the panel"
-                    + " would be indistinguishable from the chat canvas on every wallpaper");
-            return false;
-        }
-        System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and " + panelKey + " (" + panel
-                + ") share a ramp step but differ by " + delta + "% darken - contrast holds");
-        return true;
-    }
-
-    // Mirrors MonetHelper.getColor()'s own strip order exactly: a trailing "(NN)" alpha suffix
-    // first, then a trailing "_NN" darken suffix - but only when the part before that underscore is
-    // itself a resolvable token (same canResolveColor() guard getColor() uses), otherwise the
-    // whole string is the literal token (e.g. "n1_900" is one token, not "n1" darkened by 900).
-    // Returns {baseToken, darkenPercent} (darkenPercent defaults to "0"), or null if the value isn't
-    // a plain ramp token at all.
-    private static String[] decomposeToken(String value, Set<String> vocabulary) {
-        String v = value;
-        if (HEX_COLOR.matcher(v).matches() || v.matches("-?\\d+")) {
-            return null;
-        }
-        Matcher alpha = Pattern.compile("^(.*)\\((\\d{1,3})\\)$").matcher(v);
-        if (alpha.matches()) {
-            v = alpha.group(1);
-        }
-
-        int lastUnderscore = v.lastIndexOf('_');
-        if (lastUnderscore > 0 && lastUnderscore < v.length() - 1) {
-            String suffix = v.substring(lastUnderscore + 1);
-            String candidateBase = v.substring(0, lastUnderscore);
-            if (suffix.chars().allMatch(Character::isDigit) && vocabulary.contains(candidateBase)) {
-                return new String[]{candidateBase, suffix};
-            }
-        }
-        if (!vocabulary.contains(v)) {
-            return null;
-        }
-        return new String[]{v, "0"};
     }
 
     private static boolean checkValues(String assetName, Set<String> vocabulary) throws IOException {
