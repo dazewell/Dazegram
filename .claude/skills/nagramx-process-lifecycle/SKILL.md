@@ -97,6 +97,12 @@ the pre-archive verification side (below) for every child session it archives.
      `adb -s <recorded-serial> emu kill`. Never kill an emulator you did not
      start, and never issue an unqualified `adb emu kill` that acts on
      whichever emulator happens to be current.
+   - **Kotlin compile daemon.** A Gradle build that compiles Kotlin spawns a
+     separate long-lived `KotlinCompileDaemon` (typically
+     `--daemon-autoshutdownIdleSeconds=7200`, registered under
+     `%LOCALAPPDATA%\kotlin\daemon`). It is shared and it outlives the build
+     that started it by design, so it is **not** a leak and **not** yours to
+     stop. It survives `gradlew --stop`. Leave it alone; it idles out.
 9. **Keep long-running processes' working directory and logs outside the
    session worktree.** Start them with a working directory such as `$env:TEMP`
    and redirect any log output there too, not into the worktree. A process
@@ -114,6 +120,52 @@ the pre-archive verification side (below) for every child session it archives.
     that gap is exactly what caused the incident this file exists to prevent.
     If a process must outlive one turn, re-verify it (identity-checked, per
     rule 7) at the start of the next turn, or stop it.
+
+## Other sessions run concurrently — that is normal, and their processes are not yours
+
+Several sessions, each in its own worktree, routinely run on this machine at the
+same time, and more than one of them may be building. **Seeing processes you did
+not start is the expected steady state, not evidence of a leak**, and it is never
+on its own a reason to clean anything up.
+
+Two rules follow, and they bind every role:
+
+1. **Scope every sweep to your own worktree path.** The residual sweep below is
+   deliberately filtered to one worktree. A broad listing — "every `java.exe` on
+   the machine", `Get-Process gradle`, anything matched on image name alone — is
+   **diagnostic only**. It is never a cleanup list, its rows are not findings,
+   and it must not gate an archive.
+2. **Attribute before you even consider acting.** A process is yours only if it
+   matches a row in your own ledger by PID **and** image name **and** start time
+   (rule 7). Anything else is someone else's or ambient. In particular:
+   - A command line naming a **different worktree** is another live session's.
+     Leave it strictly alone — it may be mid-build, and killing it destroys
+     work in another session that has no idea you exist.
+   - A **shared daemon** (rule 8) is ambient. Leave it.
+   - A process whose `CommandLine`/`ExecutablePath` is **inaccessible**
+     (permission boundary, another user or session context) cannot be attributed
+     to you, so by default it is **not yours**. Report it; never stop it on
+     suspicion.
+
+The discriminator that settles almost every case is the worktree path in the
+command line, so check that before anything else:
+
+```powershell
+# Diagnostic only. Attribution, not a kill list.
+# Windows paths are case-insensitive, so compare that way or a real match is missed.
+$mine = (Resolve-Path $myWorktreePath).ProviderPath.TrimEnd('\')
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -match 'java|gradle|adb|node' } |
+  Select-Object ProcessId, Name, CreationDate,
+    @{n='mine';e={ $_.CommandLine -and $_.CommandLine.IndexOf($mine, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }},
+    @{n='cmd'; e={ if ($_.CommandLine) { $_.CommandLine } else { '(inaccessible)' } }}
+```
+
+**When in doubt, leave it running and say so.** A stray process that idles out on
+its own costs nothing. Killing another session's build costs someone their work
+and is unrecoverable — so the asymmetry always favours leaving it alone. "I found
+processes I could not attribute to this session, so I left them and am reporting
+them" is a correct, complete outcome, not a failure to finish the job.
 
 ## The canonical example
 
@@ -268,16 +320,30 @@ hold it open).
    $worktree = (Resolve-Path $childWorktreePath).ProviderPath.TrimEnd('\')
    Get-CimInstance Win32_Process | Where-Object {
        ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($worktree, [System.StringComparison]::OrdinalIgnoreCase)) -or
-       ($_.CommandLine -and $_.CommandLine.Contains($worktree))
+       ($_.CommandLine -and $_.CommandLine.IndexOf($worktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
    } | Select-Object ProcessId, Name, CreationDate, ExecutablePath, CommandLine
    ```
 
    Every row this returns must be explained — matched back to a ledger entry
    and identity-confirmed, or investigated as a leak. **An unexplained result
-   blocks archival.** If anything found here needs stopping, that still goes
-   through the exact-identity rule (rule 5) and the ownership rule (rule 8) —
-   never a blanket kill off this list. If `handle.exe`/`handle64.exe` is
-   already installed on the machine, you may also run it against the exact
+   blocks archival.** Note the scope carefully, because two different checks
+   are easy to conflate:
+   - **This query is worktree-filtered**, so a row here genuinely does touch
+     the tree you are about to remove. It is explained by matching a ledger
+     entry, or by being a **shared/ambient daemon** that merely references this
+     path (rule 8) — a daemon is still not yours to stop. Anything else here is
+     a leak and blocks the archive.
+   - **A broad machine-wide listing** (see "Other sessions run concurrently"
+     above) is where another live session's processes actually show up, since
+     they name *their* worktree and never match the filter here. That listing
+     is **diagnostic only**: its rows carry no blocking weight whatsoever, are
+     not leaks, are not yours to stop, and must not be promoted into findings.
+     Attribute them, report them, leave them running.
+
+   If anything found by the worktree-filtered query needs stopping, that still
+   goes through the exact-identity rule (rule 5) and the ownership rule
+   (rule 8) — never a blanket kill off this list. If `handle.exe`/`handle64.exe`
+   is already installed on the machine, you may also run it against the exact
    worktree path for open-handle diagnostics; do not install new tooling just
    to perform this check.
 6. **The final release step depends on who owns the worktree, and the two
