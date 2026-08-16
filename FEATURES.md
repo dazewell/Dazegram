@@ -222,3 +222,9 @@ If you have two or more providers set up with working credentials, the Retry opt
 ### Long-press the transcription button to switch providers <!-- #transcribe-retry -->
 
 The same "Retry with…" list is one press away on the message itself. Hold the "A" transcription button on a voice or round video to stop whatever attempt is running (handy when a provider hangs and the spinner won't quit) and open the provider list right there. It only kicks in with your own providers; with one set up it just re-runs.
+
+## Appearance
+
+### Extera themes <!-- #extera-themes -->
+
+Two more dynamic Material You themes, Extera Light and Extera Dark, land at the end of the theme strip in Chat Settings, right after Monet AMOLED (Android 12+ only, same as the rest of that row). They reproduce exteraGram's take on the same wallpaper-driven palette instead of ours: flat neutral surfaces rather than our lightened, desaturated ones, and a saturated outgoing bubble rather than our pale one. Picking one behaves exactly like the existing Monet themes — colours re-derive when the wallpaper changes, no restart needed, and neither is preselected. Avatar colours in the chat list stay ours either way: exteraGram flattens every avatar to one colour, which would undo the per-peer harmonized colours that make chats tell apart at a glance.
