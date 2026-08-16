@@ -122,6 +122,26 @@ public class MonetHelper {
     public static int getColor(String color) {
         try {
             String rawColor = color == null ? "" : color.trim();
+
+            // Strip a trailing (NN) alpha modifier FIRST: it must not be seen by the
+            // underscore/darken parsing below, or a combined token like n1_800_75(50)
+            // would have its alpha swallowed into the darken suffix and fail to resolve.
+            Integer alphaPercent = null;
+            if (rawColor.endsWith(")")) {
+                int openParen = rawColor.lastIndexOf('(');
+                if (openParen > 0) {
+                    String alphaSuffix = rawColor.substring(openParen + 1, rawColor.length() - 1);
+                    if (isDigitsOnly(alphaSuffix)) {
+                        int parsedAlpha = Integer.parseInt(alphaSuffix);
+                        if (parsedAlpha < 0 || parsedAlpha > 100) {
+                            throw new IllegalArgumentException("Alpha percent out of range: " + parsedAlpha);
+                        }
+                        alphaPercent = parsedAlpha;
+                        rawColor = rawColor.substring(0, openParen);
+                    }
+                }
+            }
+
             String baseColor = rawColor;
             String darkenPercentValue = null;
 
@@ -138,6 +158,9 @@ public class MonetHelper {
             int resolvedColor = resolveColor(baseColor);
             if (darkenPercentValue != null) {
                 resolvedColor = darkenByPercent(resolvedColor, Integer.parseInt(darkenPercentValue));
+            }
+            if (alphaPercent != null) {
+                resolvedColor = applyAlphaPercent(resolvedColor, alphaPercent);
             }
             return resolvedColor;
         } catch (Exception e) {
@@ -193,6 +216,10 @@ public class MonetHelper {
         hsl[2] = Math.max(0f, Math.min(hsl[2] * normalizedPercent / 100f, 1f));
 
         return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(hsl), Color.alpha(color));
+    }
+
+    private static int applyAlphaPercent(int color, int percent) {
+        return ColorUtils.setAlphaComponent(color, Math.round(255f * percent / 100f));
     }
 
     private static boolean isDigitsOnly(String value) {
