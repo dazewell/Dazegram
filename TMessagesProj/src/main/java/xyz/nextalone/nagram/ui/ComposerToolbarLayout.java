@@ -481,9 +481,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Inset of the drawn capsule inside the row, the other half of the pair with glassInset(): the
-     * painted edge lands at glassDrawInset() + glassInset() from the row edge, so both terms have to
-     * follow the scale or the row's edge drifts against its own interior.
+     * Vertical inset of the drawn capsule inside the row. Paired with the attached glass padding on
+     * the vertical axis only: the painted top and bottom land at glassDrawInset() + glassInset() from
+     * the row edge. The horizontal edges no longer use this - the capsule is painted flush to the
+     * row's left and right (see drawGlass), so this term is vertical-only now and does not decide the
+     * left/right alignment with the input pill.
      */
     private static int glassDrawInset() {
         return Math.max(1, Math.round(GLASS_DRAW_INSET * scale()));
@@ -542,6 +544,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
         private BlurredBackgroundDrawable glass;
+        // The exact pixel geometry handed to the drawable at attachGlass, captured so drawGlass draws
+        // the capsule at one consistent scale for the view's whole life (its height() is fixed the same
+        // way). glassPaddingPx in particular is the value passed to glass.setPadding, and drawGlass
+        // cancels it on the horizontal axis by the same field - never a fresh glassInset() - so the two
+        // cannot drift apart during the scale-slider transition window before the old chat is rebuilt.
+        private int glassPaddingPx;
+        private int glassDrawInsetPx;
         private ValueAnimator boundsAnimator;
         private int measuredPanelWidth = -1;
         private boolean laidOut;
@@ -584,10 +593,14 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // Radius large enough that the drawable clamps it to half the painted capsule height, so the
             // ends come out semicircular at any scale. Derived from the vertical geometry (height() and
             // glassInset), which this change leaves alone - only the horizontal painted inset moved, in
-            // drawGlass - so the end caps are unaffected.
+            // drawGlass - so the end caps are unaffected. Radius, padding and drawInset are all sampled
+            // here at attach, matching the view's fixed height(), so the drawn capsule never mixes two
+            // scales even if the config changes under a not-yet-rebuilt chat.
             int inset = glassInset();
             glass.setRadius(AndroidUtilities.dp((height() - inset) / 2f));
-            glass.setPadding(AndroidUtilities.dp(inset));
+            glassPaddingPx = AndroidUtilities.dp(inset);
+            glassDrawInsetPx = AndroidUtilities.dp(glassDrawInset());
+            glass.setPadding(glassPaddingPx);
             invalidate();
         }
 
@@ -714,15 +727,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
             // Horizontal is flush with the row edge so the capsule lines up with the main input pill;
             // vertical keeps the drawInset + padding lift the composer island's bottom gap is calibrated
-            // on. glass.setPadding is a single uniform value, so the two are decoupled here: the negative
-            // left / over-width right cancel the padding on the horizontal axis (net 0) while the vertical
-            // bounds leave it in place. The drawable clamps boundsWithPadding.left to 0.
-            int padding = AndroidUtilities.dp(glassInset());
-            int drawInset = AndroidUtilities.dp(glassDrawInset());
-            if (getHeight() <= (drawInset + padding) * 2) {
+            // on. glass.setPadding is a single uniform value, so the two axes are decoupled here in the
+            // bounds: on the horizontal axis the -glassPaddingPx left and +glassPaddingPx right are the
+            // exact negatives of the padding the drawable then adds back (boundsWithPadding.inset in
+            // BlurredBackgroundDrawable), so the painted left reaches 0 and right reaches getWidth() by
+            // arithmetic - not a clamp. Both terms are the captured attach-time pixels, so the
+            // cancellation holds even mid scale-change. The vertical bounds leave the lift in place.
+            if (getHeight() <= (glassDrawInsetPx + glassPaddingPx) * 2) {
                 return;
             }
-            glass.setBounds(-padding, drawInset, getWidth() + padding, getHeight() - drawInset);
+            glass.setBounds(-glassPaddingPx, glassDrawInsetPx, getWidth() + glassPaddingPx, getHeight() - glassDrawInsetPx);
             glass.draw(canvas);
         }
 
