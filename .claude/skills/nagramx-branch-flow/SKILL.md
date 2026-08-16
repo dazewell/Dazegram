@@ -256,7 +256,16 @@ cd ..\NagramX-<slug>                                    # work here; the main cl
 ```
 Same tag/commit/`FEATURES.md` rules as the plain variant — the hook and config
 carry over from the shared `.git`. Build and PR from the worktree exactly as
-normal. After the change lands and the branch is deleted, clean up:
+normal. After the change lands and the branch is deleted, clean up — but only
+once every process that ran in that worktree (Gradle daemon, adb, a dev
+server) is stopped and verified gone, per the `nagramx-process-lifecycle`
+skill; a directory handle still open there is exactly what turns this
+removal into a partial one. **This `git worktree remove`/`prune` pair is the
+release path only for a worktree you created and manage yourself outside the
+app's session tooling** — a worktree backing an app-managed child session is
+released solely through that app's `archive_session` operation (see the
+lifecycle skill's orchestrator-side checklist); never run these commands
+against a child session's worktree ahead of, or instead of, that call:
 ```powershell
 cd ..\NagramX
 git worktree remove ..\NagramX-<slug>                   # drop the sibling tree
@@ -331,7 +340,11 @@ git merge --no-edit <YYYY-MM-DD>_<slug>     # merge commit -> staging.yml builds
 git push origin dev
 git branch -d <YYYY-MM-DD>_<slug>; git push origin --delete <YYYY-MM-DD>_<slug>   # unless upstream candidate
 ```
-If the change lived in a worktree, remove it after the branch is gone:
+If the change lived in a worktree, remove it after the branch is gone —
+process-lifecycle checks apply here too (`nagramx-process-lifecycle` skill),
+not only when an agent session archives itself. As above, this manual
+`git worktree remove` is for a worktree you're managing yourself; a child
+session's worktree goes through `archive_session` instead, never this command:
 `git worktree remove ..\NagramX-<slug>` (from the main clone).
 
 ### Add a fix to an existing change (the "week later" case)

@@ -88,6 +88,10 @@ very differently.
 - **You do not decide feasibility.** If you suspect something is expensive or
   fights the architecture, flag it as a question for the architect rather than
   quietly designing around a constraint you assumed.
+- **You are bound by the process-lifecycle contract too.** If this ever
+  requires a long-running or background command, the
+  `nagramx-process-lifecycle` skill's starter-side rules apply to you like any
+  other agent.
 
 ## Your output
 

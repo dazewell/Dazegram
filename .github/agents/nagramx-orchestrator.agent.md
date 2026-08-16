@@ -54,6 +54,8 @@ quote only the specific rule you are acting on.
 - `.claude/skills/nagramx-branch-flow/SKILL.md` — where commits live and how
   they move.
 - `.claude/skills/nagramx-code-review/SKILL.md` — what the review rounds check.
+- `.claude/skills/nagramx-process-lifecycle/SKILL.md` — the process-lifecycle
+  contract; you own the pre-archive verification side of it.
 - `CLAUDE.md` — the repo-wide rules.
 - `FEATURES.md` — what already ships. Check it before treating anything as new.
 
@@ -383,8 +385,32 @@ emulator. Say where one is needed and let dazewell grab it from the build. Never
 imply you have seen the app running.
 
 Then clean up: archive a child session once its pull request is verified and
-reported. The branch is on `origin`, so a later fix cuts a fresh branch on the
-same slug — you are not losing anything by closing the worktree.
+reported **and** the pre-archive checklist in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. That checklist
+blocks archival on any of: a missing or malformed process ledger, a ledger row
+still `failed to stop` or `not yet verified`, or an unexplained result from the
+residual sweep of that session's worktree path — do not force any of these
+through, and never stop a shared/ambient daemon (default adb server, default
+Gradle daemon registry) to make one pass; that's a cross-session hazard, not a
+fix. If a child-owned isolated resource (its own adb port, its own emulator
+serial, an isolated `GRADLE_USER_HOME`) is still up and only the child can
+stop it, send it back to the child rather than hunting it by PID.
+
+**Once those checks pass, the child is an app-managed session, so the final
+step is calling `archive_session` exactly once** — never manually run
+`git worktree remove`, run `git worktree prune`, or delete the worktree
+directory yourself first. `archive_session` owns stopping the child's CLI
+process and removing its worktree as one unit; removing the worktree ahead of
+it is the exact failure this contract exists to prevent (an app session
+record left pointing at a directory with no `.git`). If `archive_session`
+fails or only partially removes the worktree: do not retry it, do not
+manually repair or prune anything, and do not force it through — report the
+exact `Id`/`Name`/`Path`/`StartTime`/failure evidence and leave the session
+record intact for manual recovery. (`git worktree remove`/`prune` are the
+release path only for a manually managed worktree you created yourself
+outside the app's session tooling — not for a child session's worktree.) The
+branch is on `origin`, so a later fix cuts a fresh branch on the same slug —
+you are not losing anything by archiving once it is actually safe to.
 
 ## Matching process to the request
 

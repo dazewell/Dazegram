@@ -23,6 +23,11 @@ summarised here:
   fallback, the `FEATURES.md` entry, commit style, the pull request step.
 - `.claude/skills/nagramx-branch-flow/SKILL.md` — branch naming, the `#<slug>`
   tag, the append-only rule, how the staging build works.
+- `.claude/skills/nagramx-process-lifecycle/SKILL.md` — the contract for any
+  process you start (adb, logcat, Gradle daemons, dev servers, watchers,
+  emulators, detached shells): record its exact PID or handle, stop it by
+  exact identity as soon as it's no longer needed, and report it in your
+  process ledger before handback.
 - `CLAUDE.md` — the repo-wide rules.
 
 Your brief may summarise them. The files win.
@@ -144,6 +149,16 @@ failure, and say plainly in the pull request body that the change is unverified
 locally, so nothing gets installed on a phone on the assumption it compiled.
 
 Never claim you compiled something you did not. Say which gate you used.
+
+Running the compile gate can start a Gradle daemon in the worktree. Before you
+report done, follow `.claude/skills/nagramx-process-lifecycle/SKILL.md`'s
+ownership rule (rule 8) — don't run a bare `.\gradlew.bat --stop` against the
+default `GRADLE_USER_HOME`, since another session may have a live daemon
+registered there. Prefer `--no-daemon` for a one-off compile, or an isolated
+`GRADLE_USER_HOME` if you need the warm-daemon speed, and stop only that
+isolated daemon. Do the same ownership-aware treatment for anything else you
+started (adb, logcat, a dev server): record it, stop it by exact PID/handle,
+verify it's gone, and list it in the process ledger in your report.
 
 ## Commits
 
@@ -285,11 +300,14 @@ Compile gate:  local | staging build | not applicable (doc-only) — with the re
 Staging build: <conclusion, and whether the APK was uploaded>
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
+Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md
 What changed:  <bullets — one per user-visible behaviour, plus the hook points touched>
 Reused:        <what existing components you reused, or why nothing fit>
 Assumptions:   <anything you decided that was not in the brief>
 Not done:      <anything deliberately left out, and why>
 ```
 
-Flag assumptions rather than burying them, and never report a gate as passed
-when it was skipped.
+Flag assumptions rather than burying them, never report a gate as passed when
+it was skipped, and never omit the process ledger line — a missing ledger
+reads as "assume something is still running" to whoever archives this
+session.
