@@ -557,9 +557,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // one coherent geometry and a rebuilt view takes the new scale. It stays consistent with the
         // layout params ChatActivityEnterView sizes this toolbar with because composerToolbarHeight()
         // there reads height() in the same synchronous construction - no config write can land between
-        // the two, and a rebuild replaces both together. Density is not frozen: these are dp, converted
-        // with AndroidUtilities.dp() at each use, so a window resize still re-scales - only the user's
-        // scale setting is held.
+        // the two, and a rebuild replaces both together. These hold dp with only the user's scale
+        // setting frozen in. onMeasure re-converts geometryHeightDp to px every pass, so the row height
+        // still tracks a density change; the button-box padding, glass padding and draw inset are
+        // converted to px once (in the constructor and attachGlass), exactly as they were before this
+        // change - a config change that alters density recreates the view, which is what re-reads them.
         private final int geometryHeightDp;
         private final int geometryInsetDp;
         private final int geometryDrawInsetDp;
