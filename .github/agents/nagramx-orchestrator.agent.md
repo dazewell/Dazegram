@@ -392,14 +392,15 @@ still `failed to stop` or `not yet verified`, or an unexplained result from the
 residual sweep of that session's worktree path — do not force any of these
 through, and never stop a shared/ambient daemon (default adb server, default
 Gradle daemon registry, the Kotlin compile daemon) to make one pass; that's a
-cross-session hazard, not a fix. Other sessions run concurrently here as a
-matter of course, so processes belonging to **another worktree** are expected,
-are not leaks, are not yours to stop, and do **not** block the archive —
-attribute them, report them, leave them running. Scope the sweep to the child's
-own worktree path; a broad machine-wide process listing is diagnostic only and
-never a cleanup list. If a child-owned isolated resource (its own adb port, its
-own emulator serial, an isolated `GRADLE_USER_HOME`) is still up and only the
-child can stop it, send it back to the child rather than hunting it by PID.
+cross-session hazard, not a fix. Keep the two checks distinct: the residual
+sweep is **filtered to the child's own worktree**, so a row there touches the
+tree you are removing and must be explained. Other sessions' processes name
+*their* worktree and so only surface in a **broad machine-wide listing**, which
+is diagnostic only — those rows are expected, are not leaks, are not yours to
+stop, and do **not** block the archive; attribute them, report them, leave them
+running. If a child-owned isolated resource (its own adb port, its own emulator
+serial, an isolated `GRADLE_USER_HOME`) is still up and only the child can
+stop it, send it back to the child rather than hunting it by PID.
 
 **Once those checks pass, the child is an app-managed session, so the final
 step is calling `archive_session` exactly once** — never manually run

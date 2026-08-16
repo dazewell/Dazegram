@@ -152,11 +152,12 @@ command line, so check that before anything else:
 
 ```powershell
 # Diagnostic only. Attribution, not a kill list.
+# Windows paths are case-insensitive, so compare that way or a real match is missed.
 $mine = (Resolve-Path $myWorktreePath).ProviderPath.TrimEnd('\')
 Get-CimInstance Win32_Process |
   Where-Object { $_.Name -match 'java|gradle|adb|node' } |
   Select-Object ProcessId, Name, CreationDate,
-    @{n='mine';e={ $_.CommandLine -and $_.CommandLine.Contains($mine) }},
+    @{n='mine';e={ $_.CommandLine -and $_.CommandLine.IndexOf($mine, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }},
     @{n='cmd'; e={ if ($_.CommandLine) { $_.CommandLine } else { '(inaccessible)' } }}
 ```
 
@@ -319,24 +320,30 @@ hold it open).
    $worktree = (Resolve-Path $childWorktreePath).ProviderPath.TrimEnd('\')
    Get-CimInstance Win32_Process | Where-Object {
        ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($worktree, [System.StringComparison]::OrdinalIgnoreCase)) -or
-       ($_.CommandLine -and $_.CommandLine.Contains($worktree))
+       ($_.CommandLine -and $_.CommandLine.IndexOf($worktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
    } | Select-Object ProcessId, Name, CreationDate, ExecutablePath, CommandLine
    ```
 
    Every row this returns must be explained — matched back to a ledger entry
    and identity-confirmed, or investigated as a leak. **An unexplained result
-   blocks archival.** "Unexplained" is scoped to *this* query: the filter is
-   the child's own worktree path, so a row here genuinely does touch the tree
-   you are about to remove. Attributing a row to **another live session's
-   worktree**, or to a **shared/ambient daemon**, *is* an explanation — such a
-   row is expected, is not a leak, is not yours to stop, and does **not** block
-   the archive. Note it and move on. If you also ran a broader machine-wide
-   listing (see "Other sessions run concurrently" above), its extra rows are
-   diagnostic only and carry no blocking weight whatsoever — do not promote
-   them into findings. If anything found here needs stopping, that still goes
-   through the exact-identity rule (rule 5) and the ownership rule (rule 8) —
-   never a blanket kill off this list. If `handle.exe`/`handle64.exe` is
-   already installed on the machine, you may also run it against the exact
+   blocks archival.** Note the scope carefully, because two different checks
+   are easy to conflate:
+   - **This query is worktree-filtered**, so a row here genuinely does touch
+     the tree you are about to remove. It is explained by matching a ledger
+     entry, or by being a **shared/ambient daemon** that merely references this
+     path (rule 8) — a daemon is still not yours to stop. Anything else here is
+     a leak and blocks the archive.
+   - **A broad machine-wide listing** (see "Other sessions run concurrently"
+     above) is where another live session's processes actually show up, since
+     they name *their* worktree and never match the filter here. That listing
+     is **diagnostic only**: its rows carry no blocking weight whatsoever, are
+     not leaks, are not yours to stop, and must not be promoted into findings.
+     Attribute them, report them, leave them running.
+
+   If anything found by the worktree-filtered query needs stopping, that still
+   goes through the exact-identity rule (rule 5) and the ownership rule
+   (rule 8) — never a blanket kill off this list. If `handle.exe`/`handle64.exe`
+   is already installed on the machine, you may also run it against the exact
    worktree path for open-handle diagnostics; do not install new tooling just
    to perform this check.
 6. **The final release step depends on who owns the worktree, and the two
