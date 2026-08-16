@@ -2,7 +2,7 @@
 // test source set under TMessagesProj/src, so this is a standalone script (JDK 21 single-file
 // source launch, no build step, no dependencies), the same way IconInk.java in this directory is.
 //
-// It checks two things a mistyped or dropped token can't be caught by eyeballing a themed screen:
+// It checks two things, since a mistyped or dropped token is invisible to eyeballing a themed screen:
 //
 //   1. monet_extera_{light,dark}.attheme carry every key their monet_{light,dark}.attheme
 //      counterpart does (a superset), so nothing silently falls back to the XML default.
