@@ -280,17 +280,36 @@ hold it open).
    already installed on the machine, you may also run it against the exact
    worktree path for open-handle diagnostics; do not install new tooling just
    to perform this check.
-6. **The archive/`git worktree remove` attempt itself, run from outside the
-   worktree, is the final and authoritative release check.** A sharing
-   violation or any other failure there blocks archival — do not force a
-   recursive delete, retry blindly, or broadly kill processes to force it
-   through. A worktree left partially removed is reconciled from the main
-   clone with `git worktree prune`, never a forced delete.
+6. **The final release step depends on who owns the worktree, and the two
+   paths must not be mixed:**
+   - **App-managed child session** (the normal case — a session created via
+     the app's session tooling, e.g. `create_session`): after 1–5 pass clean,
+     call the app's `archive_session` operation **exactly once**, as the
+     final operation. **Never manually run `git worktree remove`,
+     `git worktree prune`, or delete the directory first** — `archive_session`
+     owns stopping the session's CLI process and removing its worktree as one
+     unit, and a manual removal ahead of it is exactly the failure mode that
+     motivated this file: the app record is left pointing at a directory that
+     no longer has `.git`. If `archive_session` fails, or only partially
+     removes the worktree, **do not retry it, do not manually repair or prune
+     it, and do not force anything through** — report the exact
+     failure/process/handle evidence and leave the app session record intact
+     for manual recovery.
+   - **Manually managed worktree** (not owned by an app session — e.g. one
+     you created yourself with `git worktree add` for a throwaway check):
+     after 1–5 pass clean, `git worktree remove`, run from outside the
+     worktree, **is** the final and authoritative release check. A sharing
+     violation or any other failure there blocks cleanup — do not force a
+     recursive delete or retry blindly. A worktree left partially removed
+     this way is reconciled from the main clone with `git worktree prune`;
+     that prune recovery path is for this manually managed case only, never
+     a substitute for `archive_session` on an app-managed child.
 7. Archive only after 1–6 all pass clean. If a missing ledger, a remaining or
    unverified process, an unexplained residual-sweep/handle result, or a
-   removal failure blocks any step: **do not archive.** Report the exact
-   `Id`, `Name`, `Path`, `StartTime`, and command line (where available) and
-   leave the session intact for manual recovery.
+   removal/`archive_session` failure blocks any step: **do not archive.**
+   Report the exact `Id`, `Name`, `Path`, `StartTime`, and command line
+   (where available) and leave the session (or worktree) intact for manual
+   recovery.
 
 ## Coverage
 
