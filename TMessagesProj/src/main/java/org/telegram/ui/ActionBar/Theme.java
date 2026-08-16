@@ -2222,12 +2222,23 @@ public class Theme {
         private final static int LIGHT = 0;
         private final static int UNKNOWN = -1;
 
+        // NagramX: family+shade of a dynamic (Monet-derived) theme, so isMonet*() doesn't
+        // need a per-theme-name literal for every dynamic palette we ship (see Extera Light/Dark).
+        private int monetKind = MONET_NONE;
+
+        private final static int MONET_NONE = 0;
+        private final static int MONET_LIGHT = 1;
+        private final static int MONET_DARK = 2;
+        private final static int MONET_AMOLED = 3;
+
         ThemeInfo() {
 
         }
 
         public ThemeInfo(ThemeInfo other) {
             this.name = other.name;
+            this.monetKind = other.monetKind; // NagramX: isMonet*() reads this, not name, so a copy must carry it over
+            this.isDark = other.isDark; // NagramX: Extera Light/Dark only get isDark from this preset, not the name-based fallback in isDark()
             this.pathToFile = other.pathToFile;
             this.pathToWallpaper = other.pathToWallpaper;
             this.assetName = other.assetName;
@@ -2482,19 +2493,19 @@ public class Theme {
         }
 
         public boolean isMonet() {
-            return "Monet Dark".equals(name) || "Monet Light".equals(name) || "Monet AMOLED".equals(name);
+            return monetKind != MONET_NONE;
         }
 
         public boolean isMonetLight() {
-            return "Monet Light".equals(name);
+            return monetKind == MONET_LIGHT;
         }
 
         public boolean isMonetDark() {
-            return "Monet Dark".equals(name);
+            return monetKind == MONET_DARK;
         }
 
         public boolean isMonetAmoled() {
-            return "Monet AMOLED".equals(name);
+            return monetKind == MONET_AMOLED;
         }
 
         public boolean isMonetNight() {
@@ -4798,6 +4809,7 @@ public class Theme {
             themeInfo.previewInColor = MonetHelper.getColor("a2_50");
             themeInfo.previewOutColor = MonetHelper.getColor("a1_600");
             themeInfo.sortIndex = 6;
+            themeInfo.monetKind = ThemeInfo.MONET_LIGHT;
             themes.add(themeInfo);
             themesDict.put("Monet Light", themeInfo);
 
@@ -4808,6 +4820,7 @@ public class Theme {
             themeInfo.previewInColor = MonetHelper.getColor("n2_800");
             themeInfo.previewOutColor = MonetHelper.getColor("a1_100");
             themeInfo.sortIndex = 7;
+            themeInfo.monetKind = ThemeInfo.MONET_DARK;
             themes.add(themeInfo);
             themesDict.put("Monet Dark", themeInfo);
 
@@ -4818,8 +4831,35 @@ public class Theme {
             themeInfo.previewInColor = MonetHelper.getColor("n2_800");
             themeInfo.previewOutColor = MonetHelper.getColor("a1_100");
             themeInfo.sortIndex = 8;
+            themeInfo.monetKind = ThemeInfo.MONET_AMOLED;
             themes.add(themeInfo);
             themesDict.put("Monet AMOLED", themeInfo);
+
+            // NagramX: reproduces exteraGram's Monet role-mapping (flat neutral1 surfaces,
+            // saturated outgoing bubble) as a second dynamic palette alongside the trio above.
+            themeInfo = new ThemeInfo();
+            themeInfo.name = "Extera Light";
+            themeInfo.assetName = "monet_extera_light.attheme";
+            themeInfo.previewBackgroundColor = MonetHelper.getColor("n1_0");
+            themeInfo.previewInColor = MonetHelper.getColor("n1_50");
+            themeInfo.previewOutColor = MonetHelper.getColor("a1_600");
+            themeInfo.sortIndex = 9;
+            themeInfo.monetKind = ThemeInfo.MONET_LIGHT;
+            themeInfo.isDark = ThemeInfo.LIGHT;
+            themes.add(themeInfo);
+            themesDict.put("Extera Light", themeInfo);
+
+            themeInfo = new ThemeInfo();
+            themeInfo.name = "Extera Dark";
+            themeInfo.assetName = "monet_extera_dark.attheme";
+            themeInfo.previewBackgroundColor = MonetHelper.getColor("n1_900");
+            themeInfo.previewInColor = MonetHelper.getColor("n1_800");
+            themeInfo.previewOutColor = MonetHelper.getColor("a1_200");
+            themeInfo.sortIndex = 10;
+            themeInfo.monetKind = ThemeInfo.MONET_DARK;
+            themeInfo.isDark = ThemeInfo.DARK;
+            themes.add(themeInfo);
+            themesDict.put("Extera Dark", themeInfo);
         }
 
         String themesString = themeConfig.getString("themes2", null);
