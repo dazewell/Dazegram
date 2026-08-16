@@ -19,6 +19,7 @@
 //     java Tools/scripts/VerifyExteraThemes.java
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -56,7 +57,7 @@ public class VerifyExteraThemes {
     // this is the only place either map is populated, so a plain regex over the whole file is
     // exact and needs no Java parser.
     private static Set<String> loadVocabulary(Path monetHelperJava) throws IOException {
-        String source = Files.readString(monetHelperJava);
+        String source = Files.readString(monetHelperJava, StandardCharsets.UTF_8);
         Set<String> tokens = new TreeSet<>();
         Matcher m = Pattern.compile("put\\(\"([A-Za-z0-9_]+)\"").matcher(source);
         while (m.find()) {
@@ -67,7 +68,7 @@ public class VerifyExteraThemes {
 
     private static Map<String, String> parseAttheme(Path file) throws IOException {
         Map<String, String> values = new LinkedHashMap<>();
-        for (String line : Files.readAllLines(file)) {
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
             if (line.isEmpty() || line.equals("end") || line.startsWith("//")) {
                 continue;
             }
