@@ -101,6 +101,9 @@ architecture. Compare against a recent comparable feature with
 - **Distinguish your findings from pre-existing problems.** If the flaw is in
   upstream code the change merely sits next to, say so explicitly; it is not a
   reason to hold this change.
+- **If you ever run a long-running or background command**, the
+  `nagramx-process-lifecycle` skill's starter-side rules bind you like any
+  other agent — record it, stop it by exact identity, don't leave it running.
 
 ## On a re-review pass
 

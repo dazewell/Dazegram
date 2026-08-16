@@ -28,6 +28,10 @@ point and the mistake only surfaces at review.
 
 `git` is for inspection only: `log`, `show`, `diff`, `grep`, `blame`.
 
+If recon ever needs a long-running or background command, the
+`nagramx-process-lifecycle` skill's starter-side rules bind you the same as
+any other agent — record the exact PID/handle and stop it before you report.
+
 ## Read these when they matter
 
 `.claude/skills/nagramx-workflow/SKILL.md` is the source of truth for hook

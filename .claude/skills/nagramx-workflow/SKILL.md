@@ -324,10 +324,13 @@ code are not.
 
    **Wait for the review, then act on it.** Copilot posts a minute or two later,
    so don't move on assuming it's clean. Note the current Copilot review count
-   as a baseline, then run a background watcher that blocks until a new one
-   lands and prints the review body plus its inline comments — run it in the
-   background (async terminal) so you're notified when it returns rather than
-   polling by hand. Login gotcha: the *reviews* endpoint lists Copilot as
+   as a baseline, then run a wait loop that blocks until a new one lands and
+   prints the review body plus its inline comments — run it **synchronously,
+   in the foreground**, not backgrounded: a session-attached process dies when
+   the session goes idle, so backgrounding this and ending your turn loses it
+   silently instead of notifying you. See the `nagramx-process-lifecycle`
+   skill for the general rule this follows. Login gotcha: the *reviews*
+   endpoint lists Copilot as
    `copilot-pull-request-reviewer[bot]`, but the inline *comments* endpoint lists
    it as `Copilot` — an exact-match filter on one silently returns 0 on the
    other, so match case-insensitively on a wildcard. Filter in PowerShell, not

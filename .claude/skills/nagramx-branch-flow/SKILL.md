@@ -256,7 +256,11 @@ cd ..\NagramX-<slug>                                    # work here; the main cl
 ```
 Same tag/commit/`FEATURES.md` rules as the plain variant — the hook and config
 carry over from the shared `.git`. Build and PR from the worktree exactly as
-normal. After the change lands and the branch is deleted, clean up:
+normal. After the change lands and the branch is deleted, clean up — but only
+once every process that ran in that worktree (Gradle daemon, adb, a dev
+server) is stopped and verified gone, per the `nagramx-process-lifecycle`
+skill; a directory handle still open there is exactly what turns this
+removal into a partial one:
 ```powershell
 cd ..\NagramX
 git worktree remove ..\NagramX-<slug>                   # drop the sibling tree
@@ -331,7 +335,9 @@ git merge --no-edit <YYYY-MM-DD>_<slug>     # merge commit -> staging.yml builds
 git push origin dev
 git branch -d <YYYY-MM-DD>_<slug>; git push origin --delete <YYYY-MM-DD>_<slug>   # unless upstream candidate
 ```
-If the change lived in a worktree, remove it after the branch is gone:
+If the change lived in a worktree, remove it after the branch is gone —
+process-lifecycle checks apply here too (`nagramx-process-lifecycle` skill),
+not only when an agent session archives itself:
 `git worktree remove ..\NagramX-<slug>` (from the main clone).
 
 ### Add a fix to an existing change (the "week later" case)

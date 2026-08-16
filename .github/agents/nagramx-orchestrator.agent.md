@@ -54,6 +54,8 @@ quote only the specific rule you are acting on.
 - `.claude/skills/nagramx-branch-flow/SKILL.md` — where commits live and how
   they move.
 - `.claude/skills/nagramx-code-review/SKILL.md` — what the review rounds check.
+- `.claude/skills/nagramx-process-lifecycle/SKILL.md` — the process-lifecycle
+  contract; you own the pre-archive verification side of it.
 - `CLAUDE.md` — the repo-wide rules.
 - `FEATURES.md` — what already ships. Check it before treating anything as new.
 
@@ -383,8 +385,15 @@ emulator. Say where one is needed and let dazewell grab it from the build. Never
 imply you have seen the app running.
 
 Then clean up: archive a child session once its pull request is verified and
-reported. The branch is on `origin`, so a later fix cuts a fresh branch on the
-same slug — you are not losing anything by closing the worktree.
+reported **and** the pre-archive process-lifecycle checklist in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes — read the
+implementer's process ledger from its report, stop and identity-verify
+anything not already marked stopped, and do a scoped residual sweep of that
+session's worktree path before removing it. If a process or handle cannot be
+released, do not archive; report the exact PID/name and leave the session
+intact. The branch is on `origin`, so a later fix cuts a fresh branch on the
+same slug — you are not losing anything by closing the worktree once it is
+actually safe to close.
 
 ## Matching process to the request
 
