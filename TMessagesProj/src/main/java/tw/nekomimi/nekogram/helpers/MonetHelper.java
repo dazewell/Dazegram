@@ -190,7 +190,7 @@ public class MonetHelper {
 
         float[] hsl = new float[3];
         ColorUtils.colorToHSL(color, hsl);
-        hsl[2] = Math.max(0f, Math.min(1f, hsl[2] * normalizedPercent / 100f));
+        hsl[2] = Math.max(0f, Math.min(hsl[2] * normalizedPercent / 100f, 1f));
 
         return ColorUtils.setAlphaComponent(ColorUtils.HSLToColor(hsl), Color.alpha(color));
     }

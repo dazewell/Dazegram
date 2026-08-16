@@ -2,6 +2,7 @@ import os
 import re
 import contextlib
 from asyncio import sleep
+import html
 from pathlib import Path
 from sys import argv
 
@@ -53,12 +54,13 @@ def get_caption(commit_msg_budget=None) -> str:
     # the caption valid while leaving room for the AI summary.
     if commit_msg_budget is not None:
         commit_message = truncate_text(commit_message, commit_msg_budget)
+    escaped_commit_message = html.escape(commit_message)
     caption = ""
     for build_label, package_name in VARIANTS:
         caption += f"{build_label} package: <code>{package_name}</code>\n"
     caption += "\n"
-    caption += f"Commit Message:\n<blockquote expandable>{commit_message}</blockquote>\n\n"
-    caption += f"See commit details [{commit_id}]({commit_url}) on <code>{branch}</code>"
+    caption += f"Commit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>\n\n"
+    caption += f"See commit details [{commit_id}]({commit_url}) on <code>{html.escape(branch)}</code>"
     return caption
 
 def get_document() -> list["InputMediaDocument"]:
@@ -87,7 +89,7 @@ def get_document() -> list["InputMediaDocument"]:
 
 def get_metadata():
     commit_id = "<code>" + (os.environ.get("COMMIT_ID") or "unknown")[:7] + "</code>"
-    commit_message = "<code>" + (os.environ.get("COMMIT_MESSAGE") or "unknown") + "</code>"
+    commit_message = "<code>" + html.escape(os.environ.get("COMMIT_MESSAGE") or "unknown") + "</code>"
     build_timestamp = "<code>" + (os.environ.get("BUILD_TIMESTAMP") or "-1") + "</code>"
     branch = "<code>" + (os.environ.get("BRANCH") or "unknown") + "</code>"
     return build_timestamp + " " + commit_id + " " + branch + "\n" + commit_message

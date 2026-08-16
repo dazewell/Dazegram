@@ -1015,7 +1015,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         avatarImageView.layout(avatarLeft, 1 + viewTop, avatarLeft + avatarImageView.getMeasuredWidth(), 1 + viewTop + avatarImageView.getMeasuredHeight());
 
         int l = leftPadding + (avatarImageView.getVisibility() == VISIBLE && !isCentered() ? dp(glassMode ? 49.66f : 55) : (isCentered() ? 0 : dp(glassMode ? 13 : 1))) + (isCentered() ? 0 : rightAvatarPadding);
-        if (glassMode && isCentered() && !isPreviewMode()) {
+        final boolean forkCentred = glassMode && isCentered() && !isPreviewMode();
+        if (forkCentred) {
             int tzPillReserve = (tzClockPill != null && tzClockPill.getVisibility() == VISIBLE)
                     ? tzClockPill.getMeasuredWidth() + pillLeadingGap() : 0;
             // Centre the title (plus the time-zone pill, when it's there) on the action bar, not
@@ -1033,6 +1034,8 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         }
         if (isPreviewMode() && isCentered()) {
             l += dp(AndroidUtilities.isTablet() ? 80 : 72) / 2;
+        } else if (isCentered() && !forkCentred) {
+            l += dp(6);
         }
         SimpleTextView titleTextLargerCopyView = this.titleTextLargerCopyView.get();
         if (getSubtitleTextView().getVisibility() != GONE) {

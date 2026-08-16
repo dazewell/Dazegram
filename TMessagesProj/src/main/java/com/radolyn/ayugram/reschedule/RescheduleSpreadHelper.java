@@ -148,18 +148,18 @@ public final class RescheduleSpreadHelper {
             case UNIT_HOURS:
                 valuePicker.setMinValue(1);
                 valuePicker.setMaxValue(23);
-                valuePicker.setValue(Math.clamp(previous, 1, 23));
+                valuePicker.setValue(Math.max(1, Math.min(previous, 23)));
                 break;
             case UNIT_DAYS:
                 valuePicker.setMinValue(1);
                 valuePicker.setMaxValue(30);
-                valuePicker.setValue(Math.clamp(previous, 1, 30));
+                valuePicker.setValue(Math.max(1, Math.min(previous, 30)));
                 break;
             case UNIT_MINUTES:
             default:
                 valuePicker.setMinValue(1);
                 valuePicker.setMaxValue(59);
-                valuePicker.setValue(Math.clamp(previous, 1, 59));
+                valuePicker.setValue(Math.max(1, Math.min(previous, 59)));
                 break;
         }
         valuePicker.invalidate();
