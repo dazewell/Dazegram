@@ -59,8 +59,10 @@ public class VerifyExteraThemes {
         ok &= checkKeys("monet_dark.attheme", "monet_extera_dark.attheme", validKeys);
         ok &= checkValues("monet_extera_light.attheme", vocabulary);
         ok &= checkValues("monet_extera_dark.attheme", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_light.attheme", vocabulary);
-        ok &= checkWallpaperPanelContrast("monet_extera_dark.attheme", vocabulary);
+        ok &= checkWallpaperPanelContrast("monet_extera_light.attheme", "chat_messagePanelBackground", vocabulary);
+        ok &= checkWallpaperPanelContrast("monet_extera_dark.attheme", "chat_messagePanelBackground", vocabulary);
+        ok &= checkWallpaperPanelContrast("monet_extera_light.attheme", "chat_topPanelBackground", vocabulary);
+        ok &= checkWallpaperPanelContrast("monet_extera_dark.attheme", "chat_topPanelBackground", vocabulary);
 
         System.out.println(ok ? "OK" : "FAILED");
         if (!ok) {
@@ -197,9 +199,11 @@ public class VerifyExteraThemes {
     }
 
     // Guards the exact regression this file was written to catch: chat_wallpaper resolving to
-    // the same ramp step as chat_messagePanelBackground (with the same or near-same darken amount)
-    // makes the composer panel disappear into the chat canvas, on every wallpaper, since two
-    // identical tokens always resolve identically regardless of the Material You seed they're fed.
+    // the same ramp step as a panel background token (with the same or near-same darken amount)
+    // makes that panel disappear into the chat canvas, on every wallpaper, since two identical
+    // tokens always resolve identically regardless of the Material You seed they're fed. Called
+    // once per panel key - chat_messagePanelBackground (composer) and chat_topPanelBackground
+    // (pinned message), since they're independent tokens that can each regress on their own.
     // This compares token *structure* (ramp step + darken suffix), never a resolved RGB value -
     // resolved colors are wallpaper-dependent and can't be known statically, only the relationship
     // between tokens can. A value this script can't decompose into a plain ramp token (a raw hex or
@@ -207,25 +211,25 @@ public class VerifyExteraThemes {
     // checkValues already applies.
     private static final int MIN_DARKEN_DELTA = 10;
 
-    private static boolean checkWallpaperPanelContrast(String assetName, Set<String> vocabulary) throws IOException {
+    private static boolean checkWallpaperPanelContrast(String assetName, String panelKey, Set<String> vocabulary) throws IOException {
         Map<String, String> values = parseAttheme(ASSETS.resolve(assetName));
         String wallpaper = values.get("chat_wallpaper");
-        String panel = values.get("chat_messagePanelBackground");
+        String panel = values.get(panelKey);
         if (wallpaper == null || panel == null) {
-            System.out.println(assetName + ": chat_wallpaper/chat_messagePanelBackground missing, skipping contrast check");
+            System.out.println(assetName + ": chat_wallpaper/" + panelKey + " missing, skipping contrast check");
             return true;
         }
 
         String[] wallpaperParts = decomposeToken(wallpaper, vocabulary);
         String[] panelParts = decomposeToken(panel, vocabulary);
         if (wallpaperParts == null || panelParts == null) {
-            System.out.println(assetName + ": chat_wallpaper/chat_messagePanelBackground isn't a plain ramp token, skipping contrast check");
+            System.out.println(assetName + ": chat_wallpaper/" + panelKey + " isn't a plain ramp token, skipping contrast check");
             return true;
         }
 
         if (!wallpaperParts[0].equals(panelParts[0])) {
             // Different ramp step already means a distinct tone, whatever darken/alpha rides on top.
-            System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and chat_messagePanelBackground (" + panel
+            System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and " + panelKey + " (" + panel
                     + ") sit on different ramp steps");
             return true;
         }
@@ -239,18 +243,18 @@ public class VerifyExteraThemes {
             // A digit run long enough to overflow int - same silent-failure class checkValues()
             // already tolerates for MonetHelper.getColor() itself. Report it here explicitly
             // instead of letting the exception propagate past this deterministic check.
-            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " or chat_messagePanelBackground=" + panel
+            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " or " + panelKey + "=" + panel
                     + " has a darken suffix that overflows int, can't compare - treat as unresolvable");
             return false;
         }
         int delta = Math.abs(wallpaperDarken - panelDarken);
         if (delta < MIN_DARKEN_DELTA) {
-            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " and chat_messagePanelBackground=" + panel
-                    + " resolve to the same ramp step with only a " + delta + "% darken difference - the composer panel"
+            System.out.println(assetName + ": chat_wallpaper=" + wallpaper + " and " + panelKey + "=" + panel
+                    + " resolve to the same ramp step with only a " + delta + "% darken difference - the panel"
                     + " would be indistinguishable from the chat canvas on every wallpaper");
             return false;
         }
-        System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and chat_messagePanelBackground (" + panel
+        System.out.println(assetName + ": chat_wallpaper (" + wallpaper + ") and " + panelKey + " (" + panel
                 + ") share a ramp step but differ by " + delta + "% darken - contrast holds");
         return true;
     }
