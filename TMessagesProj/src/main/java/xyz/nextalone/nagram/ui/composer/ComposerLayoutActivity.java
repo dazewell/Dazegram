@@ -542,7 +542,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     });
                     // After set(), not before: setMinValueAllowed returns early while options is
                     // still null, so the order is what makes the floor stick.
-                    spacingView.setMinValueAllowed(ComposerToolbarLayout.lowestUsableSpacing(currentScale()));
+                    spacingView.setMinValueAllowed(spacingFloor());
                     break;
                 case TYPE_SLIDER_HEADER:
                     ((HeaderCell) holder.itemView).setText(LocaleController.getString(
@@ -820,7 +820,19 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static SlideIntChooseView.Options spacingOptions() {
         return SlideIntChooseView.Options.make(0, SPACING_STEPS, SPACING_BETWEEN_STEPS,
-                (type, value) -> value + "%");
+                // The left endpoint (type == -1) is handed SPACING_STEPS[0], the static anchor -
+                // not what's substituted here. The floor the user can actually reach depends on
+                // the toolbar scale, so the label has to ask the toolbar rather than echo the step.
+                (type, value) -> (type == -1 ? spacingFloor() : value) + "%");
+    }
+
+    /**
+     * One place for the scale-dependent packing floor, read both by the knob's clamp above and by
+     * the label lambda here - the bug this fixes was those two agreeing by coincidence rather than
+     * by construction.
+     */
+    private static int spacingFloor() {
+        return ComposerToolbarLayout.lowestUsableSpacing(currentScale());
     }
 
     /**
