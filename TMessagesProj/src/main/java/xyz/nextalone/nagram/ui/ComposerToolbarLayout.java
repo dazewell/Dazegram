@@ -112,7 +112,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls = new ControlsLayout(context);
         controls.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         controls.setLayoutDirection(LocaleController.isRTL ? View.LAYOUT_DIRECTION_RTL : View.LAYOUT_DIRECTION_LTR);
-        addView(controls, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, height(), Gravity.BOTTOM));
+        addView(controls, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, controls.rowHeightDp(), Gravity.BOTTOM));
 
         startSlot = createCollapsingSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
@@ -381,9 +381,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Row height in dp. Read at layout time rather than cached: the scale only changes while the
-     * settings screen is open, and leaving it changes it by rebuilding every fragment, so a view
-     * keeps one height for its whole life and the bounds animator never sees it move.
+     * Row height in dp for the <em>current</em> scale. This reads the live setting, so it can move
+     * under an existing view the moment the slider changes. A view that has to hold one geometry for
+     * its whole life - ControlsLayout, whose capsule radius and measured height must stay half-and-
+     * whole of each other - snapshots this once at construction instead of calling it again per pass;
+     * see ControlsLayout's geometry fields. The scale only changes while the settings screen is open
+     * and closing it rebuilds every chat, so a fresh view picks up the new value together with the
+     * layout params it is given.
      */
     public static int height() {
         return Math.round(BASE_HEIGHT * scale());
@@ -544,11 +548,24 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
         private BlurredBackgroundDrawable glass;
-        // The exact pixel geometry handed to the drawable at attachGlass, captured so drawGlass draws
-        // the capsule at one consistent scale for the view's whole life (its height() is fixed the same
-        // way). glassPaddingPx in particular is the value passed to glass.setPadding, and drawGlass
-        // cancels it on the horizontal axis by the same field - never a fresh glassInset() - so the two
-        // cannot drift apart during the scale-slider transition window before the old chat is rebuilt.
+        // One scale sample for this view's whole life, captured in the constructor. Everything the row
+        // draws with - its height, the button-box inset, both glass draw insets and the capsule radius -
+        // comes off these three dp values, so a relayout can never pair a freshly read height with a
+        // radius that was sampled at some other scale (which is how the end caps would stop being
+        // semicircular in the deferred-rebuild window after the slider moves). The scale only moves
+        // while the settings screen is open and closing it rebuilds every chat, so a live view keeps
+        // one coherent geometry and a rebuilt view takes the new scale. It stays consistent with the
+        // layout params ChatActivityEnterView sizes this toolbar with because composerToolbarHeight()
+        // there reads height() in the same synchronous construction - no config write can land between
+        // the two, and a rebuild replaces both together. Density is not frozen: these are dp, converted
+        // with AndroidUtilities.dp() at each use, so a window resize still re-scales - only the user's
+        // scale setting is held.
+        private final int geometryHeightDp;
+        private final int geometryInsetDp;
+        private final int geometryDrawInsetDp;
+        // The exact pixel geometry handed to the drawable at attachGlass, derived from the snapshot
+        // above. glassPaddingPx is the value passed to glass.setPadding, and drawGlass cancels it on
+        // the horizontal axis by the same field - never a fresh glassInset() - so the two cannot drift.
         private int glassPaddingPx;
         private int glassDrawInsetPx;
         private ValueAnimator boundsAnimator;
@@ -568,13 +585,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
             super(context);
             setClipChildren(true);
             setClipToPadding(true);
+            // Snapshot the scale-derived geometry once, before anything measures, lays out or draws, so
+            // every later read is the same sample (see the field comment).
+            geometryHeightDp = height();
+            geometryInsetDp = glassInset();
+            geometryDrawInsetDp = glassDrawInset();
             // The button box: the first and last button sit this far inside the row, the same way the
             // input pill has padding before its "Message" hint. Kept at glassInset() (4dp at 100%) and
             // proportional so a button never renders under the capsule's rounded end. The painted capsule's
             // own edges are set separately in drawGlass - flush horizontally, lifted vertically - so this
             // padding is no longer the thing that decides where the glass is drawn.
-            int inset = glassInset();
-            setPaddingRelative(AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset), AndroidUtilities.dp(inset));
+            setPaddingRelative(AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp));
+        }
+
+        int rowHeightDp() {
+            return geometryHeightDp;
         }
 
         void setSlots(CollapsingLinearLayout startSlot, HorizontalScrollView middleScrollView, LinearLayout middleContent, CollapsingLinearLayout endSlot) {
@@ -583,23 +608,21 @@ public final class ComposerToolbarLayout extends FrameLayout {
             this.middleContent = middleContent;
             this.endSlot = endSlot;
 
-            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
-            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
-            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, height(), Gravity.LEFT));
+            addView(startSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
+            addView(middleScrollView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
+            addView(endSlot, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, geometryHeightDp, Gravity.LEFT));
         }
 
         void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
             glass = factory.create(this, colorProvider);
             // Radius large enough that the drawable clamps it to half the painted capsule height, so the
-            // ends come out semicircular at any scale. Derived from the vertical geometry (height() and
-            // glassInset), which this change leaves alone - only the horizontal painted inset moved, in
-            // drawGlass - so the end caps are unaffected. Radius, padding and drawInset are all sampled
-            // here at attach, matching the view's fixed height(), so the drawn capsule never mixes two
-            // scales even if the config changes under a not-yet-rebuilt chat.
-            int inset = glassInset();
-            glass.setRadius(AndroidUtilities.dp((height() - inset) / 2f));
-            glassPaddingPx = AndroidUtilities.dp(inset);
-            glassDrawInsetPx = AndroidUtilities.dp(glassDrawInset());
+            // ends come out semicircular at any scale. Built from the construction snapshot - the same
+            // geometryHeightDp onMeasure sizes the row with - so the radius is always exactly half the
+            // height it is drawn against and the two can never be sampled at two different scales. Padding
+            // and drawInset come off the same snapshot and are stored in px here for drawGlass.
+            glass.setRadius(AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f));
+            glassPaddingPx = AndroidUtilities.dp(geometryInsetDp);
+            glassDrawInsetPx = AndroidUtilities.dp(geometryDrawInsetDp);
             glass.setPadding(glassPaddingPx);
             invalidate();
         }
@@ -626,7 +649,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
             int availableWidth = MeasureSpec.getSize(widthMeasureSpec);
-            int height = AndroidUtilities.dp(height());
+            int height = AndroidUtilities.dp(geometryHeightDp);
             int contentHeight = Math.max(0, height - getPaddingTop() - getPaddingBottom());
             int heightSpec = MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY);
             int unboundedWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
