@@ -94,7 +94,10 @@ public class MonetHelper {
         put("monetRedCall", R.color.monetRedCall);
         put("monetGreenCall", R.color.monetGreenCall);
     }};
-    private static final HashMap<String, Integer> avatarBaseColors = new HashMap<>() {{
+    // Named monetColor* entries below are harmonized category-color tokens (chat folder tags,
+    // shared-content swatches, etc.), not avatars - they share this map with the avatar base
+    // colors purely because both need the same harmonize-against-accent treatment in resolveColor().
+    private static final HashMap<String, Integer> harmonizedBaseColors = new HashMap<>() {{
         put("monetAvatarRed", 0xffFF845E);
         put("monetAvatarOrange", 0xffFEBB5B);
         put("monetAvatarViolet", 0xffB694F9);
@@ -116,6 +119,15 @@ public class MonetHelper {
         put("monetAvatarNameDarkCyan", 0xff309EBA);
         put("monetAvatarNameDarkBlue", 0xff368AD1);
         put("monetAvatarNameDarkPink", 0xffC7508B);
+        put("monetColorRed", 0xffE05356);
+        put("monetColorOrange", 0xffF28C39);
+        put("monetColorYellow", 0xffE3B727);
+        put("monetColorGreen", 0xff61C752);
+        put("monetColorLightGreen", 0xff8FCF39);
+        put("monetColorCyan", 0xff2FA3C9);
+        put("monetColorBlue", 0xff327FE5);
+        put("monetColorLightBlue", 0xff58A8ED);
+        put("monetColorPurple", 0xff7F79F3);
     }};
     private static int lastMonetColor = 0;
 
@@ -170,7 +182,7 @@ public class MonetHelper {
     }
 
     private static boolean canResolveColor(String color) {
-        return ids.containsKey(color) || avatarBaseColors.containsKey(color);
+        return ids.containsKey(color) || harmonizedBaseColors.containsKey(color);
     }
 
     private static int resolveColor(String color) {
@@ -179,9 +191,9 @@ public class MonetHelper {
             return ApplicationLoader.applicationContext.getColor(id);
         }
 
-        Integer avatarBaseColor = avatarBaseColors.get(color);
-        if (avatarBaseColor != null) {
-            int harmonizedColor = getHarmonizedAvatarColor(avatarBaseColor);
+        Integer baseColor = harmonizedBaseColors.get(color);
+        if (baseColor != null) {
+            int harmonizedColor = getHarmonizedColor(baseColor);
             if (color.startsWith("monetAvatarNameDark")) {
                 return softenColorForDarkText(harmonizedColor);
             }
@@ -191,13 +203,13 @@ public class MonetHelper {
         throw new IllegalArgumentException("Unknown Monet color token: " + color);
     }
 
-    private static int getHarmonizedAvatarColor(int baseColor) {
+    private static int getHarmonizedColor(int baseColor) {
         int accentColor = resolveColor("a1_600");
         return Blend.harmonize(baseColor, accentColor);
     }
 
     public static int harmonizeColor(int baseColor) {
-        return getHarmonizedAvatarColor(baseColor);
+        return getHarmonizedColor(baseColor);
     }
 
     private static int softenColorForDarkText(int color) {
