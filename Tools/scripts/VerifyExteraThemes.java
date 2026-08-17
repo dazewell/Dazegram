@@ -26,12 +26,12 @@
 //      than needing its own hand-carved exception - but a recognized key present in only one of the
 //      two variants would mean that surface silently falls back to the XML default in just one of
 //      Light/Dark, which is exactly as invisible on a themed screen as check 2's dropped keys.
-//   5. every raw decimal literal in the two Extera assets fits a signed 32-bit int and round-trips
-//      through the exact same manual digit-accumulation algorithm MonetHelper's caller
-//      (Utilities.parseInt()) uses at runtime - copied verbatim here but accumulated into a long so
-//      an overflow that would silently wrap in the real int-typed accumulator is detectable instead
-//      of just producing a value unrelated to the source digits (the same failure class as an
-//      unresolved token resolving to 0).
+//   5. every raw decimal literal in the two Extera assets is one Integer.parseInt() actually
+//      accepts, matching the runtime path exactly: Utilities.parseInt(CharSequence) - what
+//      Theme.getThemeFileValues() calls for a raw decimal attheme value - extracts the leading
+//      "-?[0-9]+" run and hands it straight to Integer.parseInt(), silently returning 0 if that
+//      throws (out-of-range or otherwise). A value outside the signed 32-bit range is exactly as
+//      invisible on a themed screen as an unresolved token resolving to 0.
 //
 // Run with no build step and no dependencies (JDK 21 single-file source launch), from the repo
 // root, and paste the output in the PR body:
@@ -248,8 +248,10 @@ public class VerifyExteraThemes {
         return true;
     }
 
-    // Check 5: every raw decimal literal must fit a signed 32-bit int and round-trip the way
-    // Utilities.parseInt() actually parses it at runtime, not just satisfy a "-?\d+" shape.
+    // Check 5: every raw decimal literal must be a value Integer.parseInt() actually accepts, since
+    // that's what Utilities.parseInt(CharSequence) - the runtime path MonetHelper's caller uses for a
+    // raw decimal attheme value - delegates to internally (wrapped in its own try/catch that quietly
+    // returns 0 on any failure, same fallback class as an unresolved token).
     private static boolean checkInt32RoundTrip(String assetName) throws IOException {
         Map<String, String> values = parseAttheme(ASSETS.resolve(assetName));
         List<String> bad = new ArrayList<>();
@@ -260,34 +262,30 @@ public class VerifyExteraThemes {
             }
         }
         if (!bad.isEmpty()) {
-            System.out.println(assetName + " has " + bad.size() + " decimal value(s) that overflow Utilities.parseInt()'s "
-                    + "int accumulator: " + bad);
+            System.out.println(assetName + " has " + bad.size() + " decimal value(s) Integer.parseInt() rejects "
+                    + "(out of signed 32-bit range): " + bad);
             return false;
         }
         System.out.println(assetName + ": all raw decimal values fit a signed 32-bit int");
         return true;
     }
 
-    // A verbatim port of Utilities.parseInt()'s manual digit-accumulation algorithm (it doesn't use
-    // Integer.parseInt), except accumulated into a long instead of an int. Utilities.parseInt()'s own
-    // int accumulator would silently wrap past Integer.MIN_VALUE/MAX_VALUE with no exception, handing
-    // MonetHelper a value unrelated to the source digits - the same failure class as an unresolved
-    // token resolving to 0, and just as invisible on a themed screen. Callers must already have
-    // confirmed the string matches "-?\d+" (parseAttheme/isResolvable's own decimal check).
+    // Utilities.parseInt(CharSequence) - the public overload Theme.getThemeFileValues() actually
+    // calls for a raw decimal attheme value - extracts the leading "-?[0-9]+" run and hands it to
+    // Integer.parseInt(), catching everything (including the NumberFormatException an out-of-range
+    // value throws) and returning 0 on failure. It does NOT go through Utilities' own private
+    // manual-accumulator parseInt(String) overload, which is dead code here - that one is never
+    // called (its only call site is commented out) and doesn't match runtime behaviour: it wraps
+    // silently past Integer.MIN_VALUE/MAX_VALUE with no exception instead of failing. Since
+    // parseAttheme's decimal values here already match "-?\d+" in full (isResolvable's own decimal
+    // check), the extraction step is a no-op, so calling Integer.parseInt() directly reproduces the
+    // exact runtime outcome.
     private static boolean isInt32RoundTrip(String value) {
-        long num = 0;
-        boolean negative = true;
-        char ch = value.charAt(0);
-        int i = 1;
-        if (ch == '-') {
-            negative = false;
-        } else {
-            num = '0' - ch;
+        try {
+            Integer.parseInt(value);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
         }
-        while (i < value.length()) {
-            num = num * 10 + '0' - value.charAt(i++);
-        }
-        long result = negative ? -num : num;
-        return result >= Integer.MIN_VALUE && result <= Integer.MAX_VALUE;
     }
 }
