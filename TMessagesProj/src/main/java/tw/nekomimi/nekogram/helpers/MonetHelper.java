@@ -191,9 +191,9 @@ public class MonetHelper {
             return ApplicationLoader.applicationContext.getColor(id);
         }
 
-        Integer avatarBaseColor = harmonizedBaseColors.get(color);
-        if (avatarBaseColor != null) {
-            int harmonizedColor = getHarmonizedAvatarColor(avatarBaseColor);
+        Integer baseColor = harmonizedBaseColors.get(color);
+        if (baseColor != null) {
+            int harmonizedColor = getHarmonizedColor(baseColor);
             if (color.startsWith("monetAvatarNameDark")) {
                 return softenColorForDarkText(harmonizedColor);
             }
@@ -203,13 +203,13 @@ public class MonetHelper {
         throw new IllegalArgumentException("Unknown Monet color token: " + color);
     }
 
-    private static int getHarmonizedAvatarColor(int baseColor) {
+    private static int getHarmonizedColor(int baseColor) {
         int accentColor = resolveColor("a1_600");
         return Blend.harmonize(baseColor, accentColor);
     }
 
     public static int harmonizeColor(int baseColor) {
-        return getHarmonizedAvatarColor(baseColor);
+        return getHarmonizedColor(baseColor);
     }
 
     private static int softenColorForDarkText(int color) {
