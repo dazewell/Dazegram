@@ -2,7 +2,7 @@
 // test source set under TMessagesProj/src, so this is a standalone script (JDK 21 single-file
 // source launch, no build step, no dependencies), the same way IconInk.java in this directory is.
 //
-// It checks three things, since a mistyped, dropped, or unrecognized token is invisible to
+// It checks five things, since a mistyped, dropped, or unrecognized token is invisible to
 // eyeballing a themed screen:
 //
 //   1. monet_extera_{light,dark}.attheme carry every key their monet_{light,dark}.attheme
@@ -19,6 +19,19 @@
 //      at runtime. 0 doubles as MonetHelper's own "failed to resolve" sentinel (see getColor()'s
 //      catch clause), so a bad token and an intentional zero both render identically and neither
 //      eyeballing a themed screen nor a runtime log line can tell them apart after the fact.
+//   4. the Light and Dark Extera assets carry the exact same set of keys once restricted to names
+//      ThemeColors actually recognizes. The two raw files are allowed to differ - Light alone
+//      inherits an unrelated pre-existing typo'd key (kvoipgroup_overlayAlertMutedByAdmin2) that
+//      isn't a recognized key either way, so it drops out of both sides of this comparison rather
+//      than needing its own hand-carved exception - but a recognized key present in only one of the
+//      two variants would mean that surface silently falls back to the XML default in just one of
+//      Light/Dark, which is exactly as invisible on a themed screen as check 2's dropped keys.
+//   5. every raw decimal literal in the two Extera assets fits a signed 32-bit int and round-trips
+//      through the exact same manual digit-accumulation algorithm MonetHelper's caller
+//      (Utilities.parseInt()) uses at runtime - copied verbatim here but accumulated into a long so
+//      an overflow that would silently wrap in the real int-typed accumulator is detectable instead
+//      of just producing a value unrelated to the source digits (the same failure class as an
+//      unresolved token resolving to 0).
 //
 // Run with no build step and no dependencies (JDK 21 single-file source launch), from the repo
 // root, and paste the output in the PR body:
@@ -59,6 +72,9 @@ public class VerifyExteraThemes {
         ok &= checkKeys("monet_dark.attheme", "monet_extera_dark.attheme", validKeys);
         ok &= checkValues("monet_extera_light.attheme", vocabulary);
         ok &= checkValues("monet_extera_dark.attheme", vocabulary);
+        ok &= checkValidKeyParity("monet_extera_light.attheme", "monet_extera_dark.attheme", validKeys);
+        ok &= checkInt32RoundTrip("monet_extera_light.attheme");
+        ok &= checkInt32RoundTrip("monet_extera_dark.attheme");
 
         System.out.println(ok ? "OK" : "FAILED");
         if (!ok) {
@@ -79,7 +95,7 @@ public class VerifyExteraThemes {
         return keys;
     }
 
-    // MonetHelper's `ids` and `avatarBaseColors` maps are both just chains of put("token", ...);
+    // MonetHelper's `ids` and `harmonizedBaseColors` maps are both just chains of put("token", ...);
     // this is the only place either map is populated, so a plain regex over the whole file is
     // exact and needs no Java parser.
     private static Set<String> loadVocabulary(Path monetHelperJava) throws IOException {
@@ -208,5 +224,70 @@ public class VerifyExteraThemes {
         }
         System.out.println(assetName + ": all " + values.size() + " values resolve");
         return true;
+    }
+
+    // Check 4: the two Extera variants must expose the same set of ThemeColors-recognized keys.
+    // Restricting to validKeys first (rather than diffing the raw key sets) is what lets this skip
+    // a hand-written exception for the pre-existing kvoipgroup_overlayAlertMutedByAdmin2 typo that
+    // only Light's raw file carries - it isn't a recognized key on either side, so it never enters
+    // either set being compared.
+    private static boolean checkValidKeyParity(String lightName, String darkName, Set<String> validKeys) throws IOException {
+        Map<String, String> light = parseAttheme(ASSETS.resolve(lightName));
+        Map<String, String> dark = parseAttheme(ASSETS.resolve(darkName));
+        Set<String> lightValid = light.keySet().stream().filter(validKeys::contains).collect(Collectors.toCollection(TreeSet::new));
+        Set<String> darkValid = dark.keySet().stream().filter(validKeys::contains).collect(Collectors.toCollection(TreeSet::new));
+        List<String> onlyInLight = lightValid.stream().filter(k -> !darkValid.contains(k)).collect(Collectors.toList());
+        List<String> onlyInDark = darkValid.stream().filter(k -> !lightValid.contains(k)).collect(Collectors.toList());
+        if (!onlyInLight.isEmpty() || !onlyInDark.isEmpty()) {
+            System.out.println(lightName + " vs " + darkName + ": recognized-key parity mismatch. Only in "
+                    + lightName + ": " + onlyInLight + "; only in " + darkName + ": " + onlyInDark);
+            return false;
+        }
+        System.out.println(lightName + " and " + darkName + ": " + lightValid.size()
+                + " recognized keys match (raw files may still differ by keys unrecognized on either side)");
+        return true;
+    }
+
+    // Check 5: every raw decimal literal must fit a signed 32-bit int and round-trip the way
+    // Utilities.parseInt() actually parses it at runtime, not just satisfy a "-?\d+" shape.
+    private static boolean checkInt32RoundTrip(String assetName) throws IOException {
+        Map<String, String> values = parseAttheme(ASSETS.resolve(assetName));
+        List<String> bad = new ArrayList<>();
+        for (Map.Entry<String, String> e : values.entrySet()) {
+            String v = e.getValue();
+            if (v.matches("-?\\d+") && !isInt32RoundTrip(v)) {
+                bad.add(e.getKey() + "=" + v);
+            }
+        }
+        if (!bad.isEmpty()) {
+            System.out.println(assetName + " has " + bad.size() + " decimal value(s) that overflow Utilities.parseInt()'s "
+                    + "int accumulator: " + bad);
+            return false;
+        }
+        System.out.println(assetName + ": all raw decimal values fit a signed 32-bit int");
+        return true;
+    }
+
+    // A verbatim port of Utilities.parseInt()'s manual digit-accumulation algorithm (it doesn't use
+    // Integer.parseInt), except accumulated into a long instead of an int. Utilities.parseInt()'s own
+    // int accumulator would silently wrap past Integer.MIN_VALUE/MAX_VALUE with no exception, handing
+    // MonetHelper a value unrelated to the source digits - the same failure class as an unresolved
+    // token resolving to 0, and just as invisible on a themed screen. Callers must already have
+    // confirmed the string matches "-?\d+" (parseAttheme/isResolvable's own decimal check).
+    private static boolean isInt32RoundTrip(String value) {
+        long num = 0;
+        boolean negative = true;
+        char ch = value.charAt(0);
+        int i = 1;
+        if (ch == '-') {
+            negative = false;
+        } else {
+            num = '0' - ch;
+        }
+        while (i < value.length()) {
+            num = num * 10 + '0' - value.charAt(i++);
+        }
+        long result = negative ? -num : num;
+        return result >= Integer.MIN_VALUE && result <= Integer.MAX_VALUE;
     }
 }
