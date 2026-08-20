@@ -3251,12 +3251,21 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // input buffers -- KEY_MAX_INPUT_SIZE holds exactly one AudioBufferInfo, so a second queued
             // record does not fit alongside the first and the call returns with it still unconsumed. The
             // steady per-frame caller lets the next frame pick that up; here there is no next frame before
-            // finishMuxer(), so keep calling until the backlog (at most the 3-buffer pool) is actually
-            // empty. Bounded by attempts, not by buffersToWrite shrinking: a call can make real progress
-            // inside one AudioBufferInfo without removing it from the list yet.
-            int rolloverFlushAttempts = 0;
-            while (!buffersToWrite.isEmpty() && rolloverFlushAttempts++ < 8) {
-                feedAudioToEncoder(buffersToWrite.get(0));
+            // finishMuxer(), so keep calling until the backlog is actually empty. buffersToWrite isn't
+            // hard-bounded to the 3-buffer pool (recorderRunnable allocates past it if starved), so the
+            // loop is bounded by actual lack of progress rather than a fixed attempt count: if the same
+            // buffer is still at the head at the same read position after a call, feedAudioToEncoder's own
+            // stall guard already gave up and another attempt would just spin on the same stuck codec.
+            AudioBufferInfo previousHead = null;
+            int previousHeadPosition = -1;
+            while (!buffersToWrite.isEmpty()) {
+                AudioBufferInfo head = buffersToWrite.get(0);
+                if (head == previousHead && head.lastWroteBuffer == previousHeadPosition) {
+                    break;
+                }
+                previousHead = head;
+                previousHeadPosition = head.lastWroteBuffer;
+                feedAudioToEncoder(head);
             }
             if (!buffersToWrite.isEmpty()) {
                 FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));

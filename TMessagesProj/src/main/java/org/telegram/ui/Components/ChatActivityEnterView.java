@@ -16710,8 +16710,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // NagramX: this overload is also used to resume after a pause, with the elapsed time carried
                 // over in milliseconds -- only a genuine new segment (fresh recording or rollover, both of
                 // which call start(0)) should re-arm the pre-cut warning, or resuming after the 54.5s mark
-                // would fire it again immediately
+                // would fire it again immediately. Also drop any warning pulse left over from a previous
+                // recording: handleStopRecording clears InstantCameraView's flag from its own async teardown,
+                // which can still be pending if a new recording starts right after a manual stop.
                 warnedInternal = false;
+                setInfiniteVideoWarningActive(false);
             }
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
