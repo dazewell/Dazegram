@@ -684,13 +684,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // button cells. 2 x the box inset (8dp at 100%), scale-derived and frozen with the rest of
             // the geometry.
             gapPx = 2 * AndroidUtilities.dp(geometryInsetDp);
-            // The button box: the first and last button sit this far inside the row, the same way the
-            // input pill has padding before its "Message" hint. Kept at glassInset() (4dp at 100%) and
-            // proportional so a button never renders under a bubble's rounded end. Each bubble's own
-            // edges are set separately in drawGlass - outer edges flush, inner edges at their group's
-            // content edge, lifted vertically - so this padding is not the thing that decides where the
-            // glass is drawn.
-            setPaddingRelative(AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp));
+            // Vertical inset only. The row keeps glassInset() (4dp at 100%) of top and bottom padding so
+            // its slots still measure to the unpacked cell (see the height comment above) and each bubble
+            // sits lifted off the row edge vertically. The horizontal component is deliberately zero:
+            // while it was glassInset() too, a bubble's flush edge - painted to the row edge (literal 0 /
+            // getWidth() in drawGlass) - picked up that whole glassInset() of clearance, but its inner
+            // edge, set from live content geometry, sat right on the content, so a single-flush leading or
+            // trailing bubble came out lopsided (wider gap on the flush side). That was F3/F4. At zero,
+            // contentLeft is 0 and contentRight is getWidth(), so the content edges coincide with the
+            // painted flush edges and painted-edge-to-content is the same on every edge, flush or inner.
+            // The trade: the outermost glyph now sits glassInset() nearer the row edge and no longer lines
+            // up with the input pill's hint start (the bubble edge still does). Accepted.
+            setPaddingRelative(0, AndroidUtilities.dp(geometryInsetDp), 0, AndroidUtilities.dp(geometryInsetDp));
         }
 
         int rowHeightDp() {
