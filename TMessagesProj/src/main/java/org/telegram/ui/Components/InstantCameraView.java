@@ -2475,6 +2475,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         private long lastCommitedFrameTime;
         private long audioStartTime = -1;
+        // NagramX: audioStartTime is now the PTS base for the whole recording (see handleRollover), so
+        // the 60s per-segment cutoff in handleAudioFrameAvailable needs its own start marker that does
+        // get rebased at every rollover
+        private long segmentAudioStartTime = -1;
         private boolean firstVideoFrameSincePause;
 
         private long currentTimestamp = 0;
@@ -2812,6 +2816,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (audioStartTime == -1) {
                 audioStartTime = input.offset[input.lastWroteBuffer];
             }
+            // NagramX: segmentAudioStartTime marks only the current segment's start, rebased to -1 by
+            // handleRollover, so the 60s cutoff below keeps measuring per-segment length even though
+            // audioStartTime (the PTS base) now stays continuous across the whole recording
+            if (segmentAudioStartTime == -1) {
+                segmentAudioStartTime = input.offset[input.lastWroteBuffer];
+            }
             if (buffersToWrite.size() > 1) {
                 input = buffersToWrite.get(0);
             }
@@ -2820,6 +2830,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
+            feedAudioToEncoder(input);
+        }
+
+        // NagramX: pulled out of handleAudioFrameAvailable so handleRollover can flush whatever PCM is
+        // still queued in buffersToWrite into segment N's encoder before its muxer closes -- otherwise
+        // that tail never reaches file N and gets discarded by segment N+1 as if it belonged before the
+        // (rebased) segment start. Must not be called from inside drainEncoder: drainEncoder already runs
+        // mid-loop from here, and this mutates buffersToWrite / recycles buffers that the AudioRecord
+        // thread refills from concurrently.
+        private void feedAudioToEncoder(AudioBufferInfo input) {
             try {
                 boolean isLast = false;
                 while (input != null) {
@@ -2830,7 +2850,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         long startWriteTime = input.offset[input.lastWroteBuffer];
                         for (int a = input.lastWroteBuffer; a <= input.results; a++) {
                             if (a < input.results) {
-                                long totalTime = input.offset[a] - audioStartTime;
+                                long totalTime = input.offset[a] - segmentAudioStartTime;
                                 if (!running && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
                                     if (BuildVars.LOGS_ENABLED) {
                                         if (totalTime >= 60_000000) {
@@ -3169,6 +3189,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 return;
             }
+            // NagramX: flush whatever PCM arrived just before the cut into segment N's encoder first, so
+            // its audio tail lands in file N instead of sitting in buffersToWrite for segment N+1 to find
+            // and discard as pre-segment audio. running is still true here (only handleStopRecording flips
+            // it), so the 60s-cutoff branch inside this feed can't fire and truncate the feed early.
+            if (!buffersToWrite.isEmpty()) {
+                feedAudioToEncoder(buffersToWrite.get(0));
+            }
             try {
                 drainEncoder(false);
             } catch (Exception e) {
@@ -3225,21 +3252,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            // the encoder clocks have to keep running forward, but the audio re-syncs to the next segment's
-            // first video frame the same way it does after a pause: that also rebases the 60s audio cut-off,
-            // which is measured from audioStartTime and would otherwise truncate the last segment
-            prevVideoLast = videoLast + videoLastDt;
-            prevAudioLast = audioLast + audioLastDt;
-            firstVideoFrameSincePause = true;
-            lastTimestamp = -1;
-            lastCommitedFrameTime = 0;
-            audioStartTime = -1;
-            audioFirst = -1;
-            videoFirst = -1;
-            videoLast = -1;
-            videoDiff = -1;
-            audioLast = -1;
-            desyncTime = 0;
+            // NagramX: unlike a pause, nothing here actually stops the camera, AudioRecord or either
+            // MediaCodec, so none of prevVideoLast/prevAudioLast/firstVideoFrameSincePause/lastTimestamp/
+            // lastCommitedFrameTime/audioStartTime/audioFirst/videoFirst/videoLast/videoDiff/audioLast/
+            // desyncTime get touched: that's what used to re-arm the start-of-recording A/V sync on every
+            // rollover, discarding audio arriving right at the boundary as if it were noise before the real
+            // start (Track.prepare rebases every file to its own first sample anyway, so a climbing PTS
+            // across segments is fine). Leaving lastTimestamp alone also means handleVideoFrameAvailable
+            // never re-enters its first-frame-after-restart branch, so lastCommitedFrameTime (only read
+            // there) doesn't need resetting either -- it keeps updating every frame regardless.
+            // segmentAudioStartTime is the one thing that does need a fresh per-segment baseline, since it
+            // drives the 60s-per-segment cutoff above.
+            segmentAudioStartTime = -1;
         }
 
         // NagramX: pulled out of prepareEncoder so a rollover opens the next segment's movie the same way
@@ -3650,6 +3674,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 lastTimestamp = -1;
                 lastCommitedFrameTime = 0;
                 audioStartTime = -1;
+                segmentAudioStartTime = -1;
                 audioFirst = -1;
                 videoFirst = -1;
                 videoLast = -1;
