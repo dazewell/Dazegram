@@ -251,6 +251,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
      */
     public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
         AndroidUtilities.removeFromParent(view);
+        if (view == pinnedTrailingView) {
+            // The anchor is being re-placed. Drop the stale reference now so moving it to another zone
+            // or to Hidden - both return before re-pinning - does not leave the pinned bubble tracking a
+            // view that is no longer the trailing anchor. Re-set below if it stays pinned.
+            pinnedTrailingView = null;
+            controls.setTrailingPinnedView(null);
+        }
         configuredOrder.put(view, order);
         // One sizing gate for every configurable button, whatever zone it lands in. The assets are all
         // 24dp vectors, but their ink fills the canvas by different amounts and sits off-centre by a
@@ -871,7 +878,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         private void setBubbleSpan(int role, View view) {
-            if (view == null || !isBubbleContent(view)) {
+            if (view == null || !isDescendantOfThis(view) || !isBubbleContent(view)) {
                 bubbleOccupied[role] = false;
                 return;
             }
@@ -880,6 +887,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
             bubbleRight[role] = left + view.getWidth();
             bubbleAlpha[role] = alphaOf(view);
             bubbleOccupied[role] = true;
+        }
+
+        // The cached context and pinned references outlive the views they point at if one is moved out of
+        // the row; only paint their bubble while the view is still parented under this layout, so a
+        // detached view never paints at stale coordinates.
+        private boolean isDescendantOfThis(View view) {
+            ViewParent parent = view.getParent();
+            while (parent != null) {
+                if (parent == this) {
+                    return true;
+                }
+                parent = parent.getParent();
+            }
+            return false;
         }
 
         // The configurable bubble spans every trailing button that is not the attach context group or the
