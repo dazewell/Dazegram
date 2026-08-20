@@ -154,7 +154,11 @@ public final class ComposerButtons {
      * <p>Every number here is output from {@code Tools/scripts/IconInk.java} measuring the drawable the
      * button actually draws - not the registry asset, where the two differ - and may only ever be
      * re-measured, never nudged. The trailing comment on each line is the measurement it came from:
-     * ink area, then ink bounding box, both as a percentage of the canvas.
+     * ink area, then ink bounding box, both as a percentage of the canvas. Where that drawable is a
+     * {@code CombinedDrawable} layering a differently-tinted accent over the glyph rather than more
+     * glyph ink (schedule's badge dot, see its entry below), the accent is measured out of the area
+     * term - left in, it drives the area cap and shrinks the whole glyph to fit an accent that was
+     * never meant to read as ink.
      *
      * <p>Nothing is baked into an asset any more. Under the toolbar's FIT_CENTER icon box a runtime
      * scale and a {@code <group>} scale are the same transform, so keeping it here makes the row
@@ -171,7 +175,17 @@ public final class ComposerButtons {
     }
 
     static {
-        iconScale(SCHEDULE, 0.8769f);   // 29.91% ink, 90.43 x 88.28 - CombinedDrawable, densest in the row
+        // Measured on the base layer alone (input_calendar1_solar), not the CombinedDrawable union:
+        // drawable2 is a badge dot tinted key_chat_recordedVoiceDot against drawable1's
+        // key_glass_defaultIcon, a differently-tinted accent rather than glyph ink. It was contributing
+        // 4.91pp of ink area on an identical bbox (0.00pp), which alone pushed the union past the area
+        // ceiling and shrank the frame the eye actually compares against the paperclip beside it.
+        // Consequence, accepted: the drawn union is still both layers, so at this scale it comes out to
+        // 29.91% x 0.9212^2 = 25.4% ink - above the model's 23% ceiling and above attach's 22.75% - and
+        // schedule is no longer the densest row entry (paste is, at 29.09%). The remaining size gap to
+        // attach is structural (attach is pinned at the height cap; the calendar is a near-square glyph
+        // well short of it), not a number this table can fix.
+        iconScale(SCHEDULE, 0.9212f);   // 25.00% ink, 90.43 x 88.28 - base layer only, see note above
         iconScale(PASTE, 0.8892f);      // 29.09% ink, 75.00 x 91.70
         iconScale("date", 0.9292f);     // 25.72% ink, 89.65 x 87.60
         iconScale(COPY, 0.9660f);       // 24.51% ink, 86.23 x 94.53
