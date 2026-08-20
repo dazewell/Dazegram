@@ -16682,6 +16682,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
         // re-arm every segment instead of just once per recording
         boolean warnedInternal;
+        // NagramX: isInfiniteVideoAvailable() is throttled to this interval inside the warning window (see
+        // below) instead of being read fresh every draw frame -- a cache miss inside it reschedules a 60ms
+        // async lookup on every call, so calling it faster than that reschedule delay never lets the lookup
+        // land and the availability check never actually resolves.
+        static final long INFINITE_AVAILABILITY_CHECK_INTERVAL = 250;
+        long lastInfiniteAvailabilityCheck;
+        boolean cachedInfiniteAvailable;
         String oldString;
         long startTime;
         long stopTime;
@@ -16715,6 +16722,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // which can still be pending if a new recording starts right after a manual stop.
                 warnedInternal = false;
                 setInfiniteVideoWarningActive(false);
+                lastInfiniteAvailabilityCheck = 0;
             }
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
@@ -16757,7 +16765,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // infinite mode away mid-warning, and the toggle can be flipped off too. warnedInternal
                     // tracks whether we've already fired for this segment, separately from whether a rollover
                     // is still actually pending.
-                    boolean infiniteRolloverPending = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable();
+                    // NagramX: even limited to this 5s window, a draw-frame-rate call still re-triggers the
+                    // 60ms reschedule faster than it can fire. Throttling the read to once per
+                    // INFINITE_AVAILABILITY_CHECK_INTERVAL leaves gaps wide enough for the lookup to land.
+                    if (lastInfiniteAvailabilityCheck == 0 || currentTimeMillis - lastInfiniteAvailabilityCheck >= INFINITE_AVAILABILITY_CHECK_INTERVAL) {
+                        cachedInfiniteAvailable = isInfiniteVideoAvailable();
+                        lastInfiniteAvailabilityCheck = currentTimeMillis;
+                    }
+                    boolean infiniteRolloverPending = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && cachedInfiniteAvailable;
                     if (warnedInternal && !infiniteRolloverPending) {
                         // the cut this warned about isn't coming after all -- drop the pulse and allow a fresh
                         // warning if the condition comes back before this segment's 59.5s mark
