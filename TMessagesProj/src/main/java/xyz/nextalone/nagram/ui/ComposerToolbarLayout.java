@@ -796,17 +796,24 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         // Which trailing groups occupy space this pass. Read straight off visibility/alpha so it can run
-        // before the end slot is measured and feed its gap margins. The groups use the slot's own
-        // occupancy line (VISIBLE and alpha >= 0.5), matching what the slot actually lays out, so a gap
-        // reserved here always lines up with a button that is really there. Context is occupied only when
-        // it also has a visible child: in a plain 1:1 chat it stays VISIBLE at zero width, and reserving
-        // a gap after an empty context would strand blank glass. The leading and middle groups are not
-        // decided here - they come from measured width once the slots have been measured.
+        // before the end slot is measured and feed its gap margins. The configurable and pinned groups
+        // are single buttons in the slot, so the slot's own occupancy line (VISIBLE and alpha >= 0.5)
+        // matches what it lays out. Context is different: attachLayout is a plain LinearLayout that still
+        // measures a VISIBLE child to full width at alpha 0 (a suggestion button that finished fading out
+        // stays VISIBLE in toolbar mode), and its bubble is painted from that measured width - so its
+        // occupancy has to be decided by the same predicate the painter uses (isBubbleContent on the
+        // wrapper: VISIBLE and alpha > 0 and a laid-out child), not by whether a child is currently
+        // opaque. Deciding it by opaque children left the wrapper drawing a bubble with no gap reserved
+        // beside the pinned anchor. A non-GONE child is the pre-measure stand-in for "wrapper has width";
+        // in a plain 1:1 chat every context child is GONE, so the wrapper has no width and no bubble. The
+        // leading and middle groups are not decided here - they come from measured width once the slots
+        // have been measured.
         private void computeEndSlotOccupancy() {
-            occContext = trailingContextGroup != null && endSlot != null
-                    && endSlot.isOccupied(trailingContextGroup)
+            occContext = trailingContextGroup != null
+                    && trailingContextGroup.getVisibility() == VISIBLE
+                    && trailingContextGroup.getAlpha() > 0f
                     && trailingContextGroup instanceof ViewGroup
-                    && anyVisibleChild((ViewGroup) trailingContextGroup);
+                    && hasNonGoneChild((ViewGroup) trailingContextGroup);
             occPinned = trailingPinnedView != null && endSlot != null && endSlot.isOccupied(trailingPinnedView);
             occConfigurable = false;
             if (endSlot != null) {
@@ -823,10 +830,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
         }
 
-        private static boolean anyVisibleChild(ViewGroup group) {
+        // Any child that is not GONE, regardless of alpha. A LinearLayout still measures a VISIBLE child
+        // at alpha 0 to its full width, so this - not "any opaque child" - is what predicts whether the
+        // wrapper occupies width and therefore paints a bubble, keeping occupancy and the painted span in
+        // agreement.
+        private static boolean hasNonGoneChild(ViewGroup group) {
             for (int i = 0; i < group.getChildCount(); i++) {
-                View child = group.getChildAt(i);
-                if (child.getVisibility() != GONE && child.getAlpha() > 0f) {
+                if (group.getChildAt(i).getVisibility() != GONE) {
                     return true;
                 }
             }
