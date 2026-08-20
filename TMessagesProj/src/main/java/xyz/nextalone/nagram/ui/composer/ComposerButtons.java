@@ -155,7 +155,8 @@ public final class ComposerButtons {
      *
      * <p>Every number here is output from {@code Tools/scripts/IconInk.java} measuring the drawable the
      * button actually draws - not the registry asset, where the two differ - and may only ever be
-     * re-measured, never nudged. The trailing comment on each line is the measurement it came from:
+     * re-measured, never nudged, with the one stated exception below (schedule). The trailing comment
+     * on each line is the measurement it came from:
      * ink area, then ink bounding box, both as a percentage of the canvas. Where that drawable is a
      * {@code CombinedDrawable} layering a differently-tinted accent over the glyph rather than more
      * glyph ink (schedule's badge dot, see its entry below), the accent is measured out of the area
@@ -182,10 +183,11 @@ public final class ComposerButtons {
         // key_glass_defaultIcon, a differently-tinted accent rather than glyph ink. It was contributing
         // 4.91pp of ink area on an identical bbox (0.00pp), which alone pushed the union past the area
         // ceiling and shrank the frame the eye actually compares against the paperclip beside it. This
-        // base-layer measurement is unchanged and still stands: 25.00% ink, 90.43 x 88.28. At the scale
-        // that measurement alone implies (0.9212, the union still both layers so 29.91% x 0.9212^2 =
-        // 25.4% ink), the change from the prior 0.8769 was +5% - about 1dp on a 19dp glyph - installed
-        // and confirmed on device to look identical to before, i.e. below the threshold of visibility.
+        // base-layer measurement is unchanged and still stands: 25.00% ink, 90.43 x 88.28. That
+        // measurement alone implies an intermediate scale of 0.9212 (not the constant below), where the
+        // union is still both layers so 29.91% x 0.9212^2 = 25.4% ink; the change from the prior 0.8769
+        // to that intermediate 0.9212 was +5% - about 1dp on a 19dp glyph - installed and confirmed on
+        // device to look identical to before, i.e. below the threshold of visibility.
         //
         // What that measurement fix could not touch: the model normalises on ink *width* (see the class
         // comment above), and schedule's bbox is the only near-square glyph in the row (aspect 1.02) -
