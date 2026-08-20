@@ -2929,6 +2929,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                             }
                             if (!buffersToWrite.isEmpty()) {
                                 input = buffersToWrite.get(0);
+                                // NagramX: `a` belongs to the buffer we just finished, not the new one. A
+                                // single encoder input buffer can span two AudioBufferInfos when the first
+                                // one wasn't full (KEY_MAX_INPUT_SIZE only covers one MAX_SAMPLES record), so
+                                // without this the next samples copied would start from the old buffer's
+                                // tail index instead of the new buffer's own lastWroteBuffer.
+                                a = input.lastWroteBuffer - 1;
                             } else {
                                 isLast = input.last;
                                 input = null;

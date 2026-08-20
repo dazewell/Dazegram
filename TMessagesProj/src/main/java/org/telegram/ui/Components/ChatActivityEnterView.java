@@ -16754,7 +16754,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // warning if the condition comes back before this segment's 59.5s mark
                     warnedInternal = false;
                     setInfiniteVideoWarningActive(false);
-                } else if (!warnedInternal && t >= 54500 && infiniteRolloverPending) {
+                } else if (isRunning && !warnedInternal && t >= 54500 && infiniteRolloverPending) {
+                    // NagramX: stop() freezes t at stopTime, and its invalidate() still drives one more
+                    // onDraw pass. Without the isRunning check a manual stop landing right past 54.5s would
+                    // arm a warning for a cut that is never coming -- gate the arm on the recording actually
+                    // still being live, not just on the frozen elapsed time looking late enough.
                     warnedInternal = true;
                     BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
                     setInfiniteVideoWarningActive(true);
