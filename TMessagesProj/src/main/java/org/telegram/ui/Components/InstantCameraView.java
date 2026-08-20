@@ -2847,14 +2847,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (audioStartTime == -1) {
                 audioStartTime = input.offset[input.lastWroteBuffer];
             }
-            // NagramX: segmentAudioStartTime marks only the current segment's start, rebased to -1 by
-            // handleRollover, so the 60s cutoff below keeps measuring per-segment length even though
-            // audioStartTime (the PTS base) now stays continuous across the whole recording
-            if (segmentAudioStartTime == -1) {
-                segmentAudioStartTime = input.offset[input.lastWroteBuffer];
-            }
             if (buffersToWrite.size() > 1) {
                 input = buffersToWrite.get(0);
+            }
+            // NagramX: segmentAudioStartTime marks only the current segment's start, rebased to -1 by
+            // handleRollover, so the 60s cutoff below keeps measuring per-segment length even though
+            // audioStartTime (the PTS base) now stays continuous across the whole recording. Read after
+            // the backlog reassignment above -- when a backlog exists this segment's actual first fed
+            // buffer is buffersToWrite.get(0), not whatever input arrived as, and pinning the marker to
+            // the wrong (later) buffer would push the 60s cutoff later than the real segment length.
+            if (segmentAudioStartTime == -1) {
+                segmentAudioStartTime = input.offset[input.lastWroteBuffer];
             }
             try {
                 drainEncoder(false);
@@ -3280,8 +3283,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
                 // NagramX: the cut haptic fires here, once segment N has actually finished writing, not
-                // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little
-                BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little.
+                // Guarded by the same recorder-identity check as the teardown clear: finishMuxer() can take
+                // a moment, and if the recording was cancelled/replaced while it ran, this stale rollover
+                // shouldn't buzz on top of whatever comes next. sendSegment below runs unconditionally
+                // either way (unguarded pre-existing behavior, not introduced here and not this change's
+                // scope to fix), so only the added haptic gets the guard.
+                if (InstantCameraView.this.videoEncoder == this) {
+                    BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                }
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
                 if (info != null) {
                     info.notReadyYet = false;

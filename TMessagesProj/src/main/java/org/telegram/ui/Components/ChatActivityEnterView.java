@@ -16807,7 +16807,10 @@ public class ChatActivityEnterView extends FrameLayout implements
                         // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
                         // dropping into the preview. The last allowed segment falls back to the normal stop, as
                         // does anything that armed view-once or started a slow mode countdown mid-recording.
-                        if (infiniteRolloverPending) {
+                        // NagramX: isRunning gates this too, not just the warning arm above -- stop() freezes t
+                        // and still drives one more onDraw pass, and without this a manual stop landing right
+                        // at/after 59.5s could fire a rollover (state 6) instead of honoring the stop.
+                        if (isRunning && infiniteRolloverPending) {
                             infiniteVideoSegments++;
                             startedDraggingX = -1;
                             delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
