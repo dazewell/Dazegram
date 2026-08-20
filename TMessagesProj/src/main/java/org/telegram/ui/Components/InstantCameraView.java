@@ -1793,6 +1793,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private VideoRecorder videoEncoder;
+    // NagramX: object identity alone can't tell "this recording" apart from a later one -- onDraw below
+    // reuses the same VideoRecorder instance across a stop/restart until its async teardown nulls
+    // videoEncoder, and a fast cancel-then-record-again can beat that null out. volatile since it's written
+    // from the GL thread (startRecording) and read from the encoder thread later.
+    private volatile int recordingGeneration;
 
     private Bitmap firstFrameThumb;
     private volatile int surfaceIndex;
@@ -2672,8 +2677,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         };
 
         private boolean started;
+        // NagramX: this recording's stamp, taken from recordingGeneration in startRecording(). A rollover
+        // or teardown callback captures this into a local before posting so a later recording bumping
+        // recordingGeneration -- even one that reuses this very instance -- makes the stale callback's
+        // snapshot stop matching. volatile: written on the GL thread, read on the encoder thread.
+        private volatile int recordingToken;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
+            recordingToken = ++InstantCameraView.this.recordingGeneration;
             if (started && (handler != null && handler.getLooper() != null && handler.getLooper().getThread() != null && handler.getLooper().getThread().isAlive())) {
                 sharedEglContext = sharedContext;
                 handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING, 1, 0));
@@ -2856,7 +2867,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // the backlog reassignment above -- when a backlog exists this segment's actual first fed
             // buffer is buffersToWrite.get(0), not whatever input arrived as, and pinning the marker to
             // the wrong (later) buffer would push the 60s cutoff later than the real segment length.
-            if (segmentAudioStartTime == -1) {
+            // input.results == 0 means the recorderRunnable's very first read of this buffer failed, so
+            // offset[0] was never written this round and still holds whatever this pooled buffer last
+            // held -- possibly a much older timestamp that would make totalTime below look like 60s have
+            // already passed. Skip it and wait for the next call to pin the marker from a real sample.
+            if (segmentAudioStartTime == -1 && input.results > 0) {
                 segmentAudioStartTime = input.offset[input.lastWroteBuffer];
             }
             try {
@@ -3272,24 +3287,36 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (!buffersToWrite.isEmpty()) {
                 FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));
+                // NagramX: the audio encoder is genuinely stuck at this point (feedAudioToEncoder's own
+                // stall guard already gave up on it), so segment N+1 won't be able to encode any better than
+                // segment N just did. Leaving these queued would make handleAudioFrameAvailable pick them up
+                // as segment N+1's own PCM and pin its segmentAudioStartTime from segment N's old offsets,
+                // mislabeling audio that already failed to reach file N as file N+1's tail instead.
+                buffersToWrite.clear();
             }
             try {
                 drainEncoder(false);
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            finishMuxer();
+            final boolean segmentClosedOk = finishMuxer();
             final File segmentFile = videoFile;
             final boolean segmentFirstWrite = videoConvertFirstWrite;
+            // NagramX: snapshot this recording's stamp now, on the encoder thread, while it's still
+            // guaranteed current (a newer recording can't start until this one stops). The runnable below
+            // compares it against the live recordingGeneration at execution time, not object identity --
+            // the same VideoRecorder instance can get reused for a later recording before this runs.
+            final int capturedGeneration = recordingToken;
             AndroidUtilities.runOnUIThread(() -> {
                 // NagramX: the cut haptic fires here, once segment N has actually finished writing, not
                 // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little.
-                // Guarded by the same recorder-identity check as the teardown clear: finishMuxer() can take
-                // a moment, and if the recording was cancelled/replaced while it ran, this stale rollover
-                // shouldn't buzz on top of whatever comes next. sendSegment below runs unconditionally
-                // either way (unguarded pre-existing behavior, not introduced here and not this change's
-                // scope to fix), so only the added haptic gets the guard.
-                if (InstantCameraView.this.videoEncoder == this) {
+                // Also gated on segmentClosedOk: finishMuxer() can fail (I/O error) and swallow it, and the
+                // "cut" haptic shouldn't tell the user a segment landed when it didn't. If the recording was
+                // cancelled/replaced while finishMuxer() ran, this stale rollover shouldn't buzz on top of
+                // whatever comes next either. sendSegment below runs unconditionally either way (unguarded
+                // pre-existing behavior, not introduced here and not this change's scope to fix), so only
+                // the added haptic gets either guard.
+                if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
                 }
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
@@ -3378,11 +3405,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
         }
 
-        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way
-        private void finishMuxer() {
+        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way. Returns
+        // whether finishMovie() actually completed instead of throwing, so a caller that wants to know
+        // before treating the segment as done (the rollover haptic) can check, without changing the
+        // pre-existing swallow-and-log behavior the other caller already relies on.
+        private boolean finishMuxer() {
             if (mediaMuxer == null) {
-                return;
+                return false;
             }
+            boolean[] success = {true};
             if (WRITE_TO_FILE_IN_BACKGROUND) {
                 CountDownLatch countDownLatch = new CountDownLatch(1);
                 fileWriteQueue.postRunnable(() -> {
@@ -3390,6 +3421,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         mediaMuxer.finishMovie();
                     } catch (Exception e) {
                         e.printStackTrace();
+                        success[0] = false;
                     }
                     countDownLatch.countDown();
                 });
@@ -3397,12 +3429,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     countDownLatch.await();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
+                    success[0] = false;
                 }
             } else {
                 try {
                     mediaMuxer.finishMovie();
                 } catch (Exception e) {
                     FileLog.e(e);
+                    success[0] = false;
                 }
             }
             FileLog.d("InstantCamera finish muxer " + videoFile);
@@ -3426,6 +3460,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
+            return success[0];
         }
 
         private void setupVideoPlayer(File file) {
