@@ -3688,10 +3688,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             AndroidUtilities.runOnUIThread(() -> {
                 if (InstantCameraView.this.videoEncoder == this) {
                     InstantCameraView.this.videoEncoder = null;
+                    // NagramX: recording is over one way or another, so any pre-cut warning still showing
+                    // (e.g. the last segment stopped normally instead of rolling over) needs clearing too.
+                    // Guarded by the same identity check -- this teardown is posted async and can land after
+                    // a newer recording already replaced videoEncoder, whose own warning must not be touched.
+                    setInfiniteWarningActive(false);
                 }
-                // NagramX: recording is over one way or another, so any pre-cut warning still showing
-                // (e.g. the last segment stopped normally instead of rolling over) needs clearing too
-                setInfiniteWarningActive(false);
             });
         }
 

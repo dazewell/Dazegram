@@ -16723,6 +16723,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 warnedInternal = false;
                 setInfiniteVideoWarningActive(false);
                 lastInfiniteAvailabilityCheck = 0;
+            } else if (warnedInternal) {
+                // NagramX: resuming after a pause that had already warned before it paused. onDraw's stop
+                // branch below clears the visual pulse when isRunning goes false but leaves warnedInternal
+                // set (so a resume doesn't also fire a duplicate haptic) -- restore the pulse here since the
+                // elapsed time carried over means we're still in the same warning window as before the pause.
+                setInfiniteVideoWarningActive(true);
             }
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
@@ -16790,6 +16796,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                         warnedInternal = true;
                         BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
                         setInfiniteVideoWarningActive(true);
+                    } else if (!isRunning && warnedInternal) {
+                        // NagramX: a stop (or pause) landed mid-warning. Nothing else clears the visual pulse
+                        // promptly -- InstantCameraView's own clear only runs from its async teardown, which
+                        // can lag noticeably. warnedInternal is left set so a resume doesn't re-fire the
+                        // haptic; start() restores the pulse if this turns out to be a pause, not a real stop.
+                        setInfiniteVideoWarningActive(false);
                     }
                     if (t >= 59500 && !stoppedInternal) {
                         // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
