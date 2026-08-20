@@ -253,10 +253,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
         AndroidUtilities.removeFromParent(view);
         if (view == pinnedTrailingView) {
             // The anchor is being re-placed. Drop the stale reference now so moving it to another zone
-            // or to Hidden - both return before re-pinning - does not leave the pinned bubble tracking a
-            // view that is no longer the trailing anchor. Re-set below if it stays pinned.
+            // or to Hidden - both return before re-pinning - does not leave a later configurable button
+            // ordering itself (via endContextIndex) against a view that is no longer the trailing anchor.
+            // Re-set below if it stays pinned.
             pinnedTrailingView = null;
-            controls.setTrailingPinnedView(null);
         }
         configuredOrder.put(view, order);
         // One sizing gate for every configurable button, whatever zone it lands in. The assets are all
@@ -276,7 +276,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
         if (zone == ComposerButtons.ZONE_END) {
             if (key.equals(trailingKey)) {
                 pinnedTrailingView = view;
-                controls.setTrailingPinnedView(view);
                 endSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
             } else {
                 endSlot.addView(view, insertIndex(endSlot, order, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
@@ -583,24 +582,25 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private HorizontalScrollView middleScrollView;
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
-        // The row is drawn as up to five separate glass bubbles instead of one full-width capsule, one
+        // The row is drawn as up to four separate glass bubbles instead of one full-width capsule, one
         // per child group that can collapse or slide independently. Left to right in LTR: the leading
-        // zone, the scrolling middle group, the attach context group, the configurable trailing buttons
-        // and the pinned trailing anchor. Each has its own drawable (see attachGlass) so its own backdrop
-        // sample and render node stay correct; a single drawable re-bounded across the rects would force a
-        // chat-wide re-capture every frame.
+        // zone, the scrolling middle group, the attach context group, and the trailing group - every
+        // configurable end-slot button and the pinned trailing anchor now share one bubble, since with
+        // attach pinned (see #composer-attach-pinned) there is no visible show/hide difference left
+        // between them to keep them apart, and both ends of the row then read the same. Each has its own
+        // drawable (see attachGlass) so its own backdrop sample and render node stay correct; a single
+        // drawable re-bounded across the rects would force a chat-wide re-capture every frame.
         private static final int BUBBLE_LEADING = 0;
         private static final int BUBBLE_MIDDLE = 1;
         private static final int BUBBLE_CONTEXT = 2;
-        private static final int BUBBLE_CONFIGURABLE = 3;
-        private static final int BUBBLE_PINNED = 4;
-        private static final int BUBBLE_COUNT = 5;
+        private static final int BUBBLE_TRAILING = 3;
+        private static final int BUBBLE_COUNT = 4;
         private BlurredBackgroundDrawable[] bubbles;
-        // The two trailing sub-groups the drawGlass split needs to tell apart inside endSlot: the attach
-        // context group (endSlot child 0, its own chat-type lifecycle) and the pinned trailing anchor.
-        // Everything else in endSlot is the configurable bubble.
+        // The one trailing sub-group the drawGlass split still needs to tell apart inside endSlot: the
+        // attach context group (endSlot child 0, its own chat-type lifecycle). Everything else in endSlot
+        // - the configurable buttons and the pinned trailing anchor together - is the single trailing
+        // bubble, so the anchor no longer needs its own reference here.
         private View trailingContextGroup;
-        private View trailingPinnedView;
         // Reused across dispatchDraw so no frame allocates: each bubble's content span in this view's
         // coordinates, whether it has anything to draw, and the alpha its group is currently faded to.
         private final float[] bubbleLeft = new float[BUBBLE_COUNT];
@@ -643,16 +643,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // this dimension would compound one squeeze the user meant once. Fixed for the view's life like
         // the rest of the geometry, so it is captured in the constructor rather than at attachGlass.
         private final int gapPx;
-        // Which of the five semantic groups actually occupy space this pass. The three trailing groups
-        // are read off visibility/alpha before the end slot is measured, since they feed its gap margins;
-        // the leading and middle groups come from measured width afterwards. The end-slot gap margins and
-        // the middle viewport subtraction both key off these, so a gap is only reserved between two
-        // groups that are both present. Reused every measure, no allocation.
+        // Which of the four semantic groups actually occupy space this pass. The two trailing groups
+        // (context and trailing) are read off visibility/alpha before the end slot is measured, since they
+        // feed its gap margin; the leading and middle groups come from measured width afterwards. The
+        // end-slot gap margin and the middle viewport subtraction both key off these, so a gap is only
+        // reserved between two groups that are both present. Reused every measure, no allocation.
         private boolean occLeading;
         private boolean occMiddle;
         private boolean occContext;
-        private boolean occConfigurable;
-        private boolean occPinned;
+        private boolean occTrailing;
         // The leading|middle gap, carried from onMeasure to onLayout so the middle group is shifted off
         // the leading zone by the same amount its viewport was shrunk. Nothing else needs carrying: the
         // middle|end and the two end-slot gaps fall out of the viewport subtraction and the child
@@ -750,10 +749,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
             trailingContextGroup = view;
         }
 
-        void setTrailingPinnedView(View view) {
-            trailingPinnedView = view;
-        }
-
         void setPanelVisible(boolean visible) {
             int visibility = visible ? VISIBLE : GONE;
             if (getVisibility() != visibility) {
@@ -803,7 +798,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             // push the middle group off the leading zone by the same amount; the middle|end gap needs no
             // shift because the end slot is right-anchored, so shrinking the viewport leaves the gap
             // between the middle group's right edge and the end slot.
-            boolean endHasContent = occContext || occConfigurable || occPinned;
+            boolean endHasContent = occContext || occTrailing;
             leadingMiddleGapPx = (occLeading && occMiddle) ? gapPx : 0;
             int middleEndGapPx = (occMiddle && endHasContent) ? gapPx : 0;
             int reservedGaps = leadingMiddleGapPx + middleEndGapPx;
@@ -827,9 +822,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         // Which trailing groups occupy space this pass. Read straight off visibility/alpha so it can run
-        // before the end slot is measured and feed its gap margins. The configurable and pinned groups
-        // are single buttons in the slot, so the slot's own occupancy line (VISIBLE and alpha >= 0.5)
-        // matches what it lays out. Context is different: attachLayout is a plain LinearLayout that still
+        // before the end slot is measured and feed its gap margin. The trailing group is every end-slot
+        // button that is not the context group - each a single button whose slot occupancy line (VISIBLE
+        // and alpha >= 0.5) matches what it lays out, the pinned anchor included - so it is occupied if any
+        // one of them is. Context is different: attachLayout is a plain LinearLayout that still
         // measures a VISIBLE child to full width at alpha 0 (a suggestion button that finished fading out
         // stays VISIBLE in toolbar mode), so it is occupied only while it holds an engaged child - the
         // same rule the end slot collapses on (hasEngagedChild) - not merely because the wrapper is on
@@ -843,38 +839,35 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     && trailingContextGroup.getAlpha() > 0f
                     && trailingContextGroup instanceof ViewGroup
                     && hasEngagedChild((ViewGroup) trailingContextGroup);
-            occPinned = trailingPinnedView != null && endSlot != null && endSlot.isOccupied(trailingPinnedView);
-            occConfigurable = false;
+            occTrailing = false;
             if (endSlot != null) {
                 for (int i = 0; i < endSlot.getChildCount(); i++) {
                     View child = endSlot.getChildAt(i);
-                    if (child == trailingContextGroup || child == trailingPinnedView) {
+                    if (child == trailingContextGroup) {
                         continue;
                     }
                     if (endSlot.isOccupied(child)) {
-                        occConfigurable = true;
+                        occTrailing = true;
                         break;
                     }
                 }
             }
         }
 
-        // Reserve the two end-slot gaps - context|configurable and (context or configurable)|pinned - as
-        // margins on the child that owns each gap, so SlidingLinearLayout spaces them out for free in
-        // both measure and layout. The context gap rides context's array-trailing margin and the pinned
-        // gap rides the pinned view's array-leading margin; the walk in SlidingLinearLayout advances by
-        // rightMargin then leftMargin in LTR and by leftMargin then rightMargin in RTL, so the side each
-        // gap lives on flips with the layout direction. A gap is suppressed unless both its groups are
-        // present, which keeps the first occupied end-slot group flush against the middle|end gap rather
-        // than doubling it, and leaves an empty context reserving nothing.
+        // Reserve the one end-slot gap - context|trailing - as a margin on the context group, which owns
+        // it, so SlidingLinearLayout spaces it out for free in both measure and layout. The gap rides
+        // context's array-trailing margin; the walk in SlidingLinearLayout advances by rightMargin in LTR
+        // and leftMargin in RTL, so the side it lives on flips with the layout direction. It is keyed on
+        // occTrailing (any non-context end-slot button, pinned anchor included) so the common
+        // context-group-plus-attach row still gets its gap now that the pinned anchor no longer carries
+        // its own. Suppressed unless both groups are present, which keeps the first occupied end-slot
+        // group flush against the middle|end gap rather than doubling it, and leaves an empty context
+        // reserving nothing.
         private void applyEndSlotGapMargins() {
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
-            int contextGap = (occContext && occConfigurable) ? gapPx : 0;
-            int pinnedGap = (occPinned && (occContext || occConfigurable)) ? gapPx : 0;
+            int contextGap = (occContext && occTrailing) ? gapPx : 0;
             // Context's trailing-in-array side: rightMargin in LTR, leftMargin in RTL.
             setBubbleMargins(trailingContextGroup, rtl ? contextGap : 0, rtl ? 0 : contextGap);
-            // The pinned view's leading-in-array side: leftMargin in LTR, rightMargin in RTL.
-            setBubbleMargins(trailingPinnedView, rtl ? 0 : pinnedGap, rtl ? pinnedGap : 0);
         }
 
         private static void setBubbleMargins(View view, int leftMargin, int rightMargin) {
@@ -964,13 +957,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int top = glassDrawInsetPx;
             int bottom = getHeight() - glassDrawInsetPx;
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
-            // The leading group owns the row's leading edge and the trailing anchor its trailing edge;
-            // those two outer edges repeat the capsule's flush arithmetic so they still line up with the
-            // input pill above. Every other edge sits at its group's own content edge, and the real gap
-            // reserved in layout separates it from its neighbour. If the trailing zone is empty the row
-            // loses its trailing flush (accepted), which trailingEdgeRole reports as -1; likewise a bare
-            // trailing-only row leaves the leading edge unflushed rather than stretching a trailing pill
-            // across the empty leading side.
+            // The leading group owns the row's leading edge and the trailing group its trailing edge (the
+            // trailing group ends at the pinned anchor); those two outer edges repeat the capsule's flush
+            // arithmetic so they still line up with the input pill above. Every other edge sits at its
+            // group's own content edge, and the real gap reserved in layout separates it from its
+            // neighbour. If the trailing zone is empty the row loses its trailing flush (accepted), which
+            // trailingEdgeRole reports as -1; likewise a bare trailing-only row leaves the leading edge
+            // unflushed rather than stretching a trailing pill across the empty leading side.
             int leadingEdgeRole = leadingEdgeRole();
             int trailingEdgeRole = trailingEdgeRole();
             for (int role = 0; role < BUBBLE_COUNT; role++) {
@@ -1026,8 +1019,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setBubbleSpan(BUBBLE_LEADING, startSlot);
             setBubbleSpan(BUBBLE_MIDDLE, middleScrollView);
             setBubbleSpan(BUBBLE_CONTEXT, trailingContextGroup);
-            setBubbleSpan(BUBBLE_PINNED, trailingPinnedView);
-            computeConfigurableSpan();
+            computeTrailingSpan();
         }
 
         private void setBubbleSpan(int role, View view) {
@@ -1056,11 +1048,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return false;
         }
 
-        // The configurable bubble spans every trailing button that is not the attach context group or the
-        // pinned anchor, from the leftmost occupied one to the rightmost, so it hugs its content and
-        // collapses with it.
-        private void computeConfigurableSpan() {
-            bubbleOccupied[BUBBLE_CONFIGURABLE] = false;
+        // The trailing bubble spans every end-slot button that is not the attach context group - the
+        // configurable buttons and the pinned anchor together - from the leftmost occupied one to the
+        // rightmost, so it hugs its content and collapses with it.
+        private void computeTrailingSpan() {
+            bubbleOccupied[BUBBLE_TRAILING] = false;
             if (endSlot == null) {
                 return;
             }
@@ -1069,7 +1061,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int alpha = 0;
             for (int i = 0; i < endSlot.getChildCount(); i++) {
                 View child = endSlot.getChildAt(i);
-                if (child == trailingContextGroup || child == trailingPinnedView) {
+                if (child == trailingContextGroup) {
                     continue;
                 }
                 if (!isBubbleContent(child)) {
@@ -1083,15 +1075,17 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 if (right > max) {
                     max = right;
                 }
-                // The most opaque button drives the pill: a single button fading in makes the pill fade
-                // with it, while a button fading in beside an opaque one leaves the pill solid.
+                // The most opaque button drives the pill. The pinned attach anchor is always fully opaque,
+                // so once it shares this bubble the pill stays solid whenever attach is present - a
+                // configurable button fading in beside it no longer fades the whole pill. Accepted: the
+                // pill is there because attach is.
                 alpha = Math.max(alpha, alphaOf(child));
             }
             if (max > min) {
-                bubbleLeft[BUBBLE_CONFIGURABLE] = min;
-                bubbleRight[BUBBLE_CONFIGURABLE] = max;
-                bubbleAlpha[BUBBLE_CONFIGURABLE] = alpha;
-                bubbleOccupied[BUBBLE_CONFIGURABLE] = true;
+                bubbleLeft[BUBBLE_TRAILING] = min;
+                bubbleRight[BUBBLE_TRAILING] = max;
+                bubbleAlpha[BUBBLE_TRAILING] = alpha;
+                bubbleOccupied[BUBBLE_TRAILING] = true;
             }
         }
 
@@ -1109,14 +1103,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return -1;
         }
 
-        // Whichever present bubble sits against the row's trailing edge: the pinned anchor, else the
-        // configurable group, else the context group. -1 when the whole trailing zone is empty.
+        // Whichever present bubble sits against the row's trailing edge: the trailing group, else the
+        // context group. -1 when the whole trailing zone is empty.
         private int trailingEdgeRole() {
-            if (bubbleOccupied[BUBBLE_PINNED]) {
-                return BUBBLE_PINNED;
-            }
-            if (bubbleOccupied[BUBBLE_CONFIGURABLE]) {
-                return BUBBLE_CONFIGURABLE;
+            if (bubbleOccupied[BUBBLE_TRAILING]) {
+                return BUBBLE_TRAILING;
             }
             if (bubbleOccupied[BUBBLE_CONTEXT]) {
                 return BUBBLE_CONTEXT;
