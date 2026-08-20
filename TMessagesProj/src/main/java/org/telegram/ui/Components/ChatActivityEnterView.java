@@ -16747,41 +16747,48 @@ public class ChatActivityEnterView extends FrameLayout implements
             int ms = (int) (t % 1000L) / 10;
 
             if (isInVideoMode()) {
-                // NagramX: re-checked every frame, not just when arming: view-once/slow mode can take
-                // infinite mode away mid-warning, and the toggle can be flipped off too. warnedInternal
-                // tracks whether we've already fired for this segment, separately from whether a rollover
-                // is still actually pending.
-                boolean infiniteRolloverPending = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable();
-                if (warnedInternal && !infiniteRolloverPending) {
-                    // the cut this warned about isn't coming after all -- drop the pulse and allow a fresh
-                    // warning if the condition comes back before this segment's 59.5s mark
-                    warnedInternal = false;
-                    setInfiniteVideoWarningActive(false);
-                } else if (isRunning && !warnedInternal && t >= 54500 && infiniteRolloverPending) {
-                    // NagramX: stop() freezes t at stopTime, and its invalidate() still drives one more
-                    // onDraw pass. Without the isRunning check a manual stop landing right past 54.5s would
-                    // arm a warning for a cut that is never coming -- gate the arm on the recording actually
-                    // still being live, not just on the frozen elapsed time looking late enough.
-                    warnedInternal = true;
-                    BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
-                    setInfiniteVideoWarningActive(true);
-                }
-                if (t >= 59500 && !stoppedInternal) {
-                    // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
-                    // dropping into the preview. The last allowed segment falls back to the normal stop, as
-                    // does anything that armed view-once or started a slow mode countdown mid-recording.
-                    if (infiniteRolloverPending) {
-                        infiniteVideoSegments++;
-                        startedDraggingX = -1;
-                        delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                        sendButton.setEffect(effectId = 0);
-                        start(0);
-                        return;
+                // NagramX: isInfiniteVideoAvailable() isn't free -- it can hit AlertsCreator.needsPaidMessageAlert(),
+                // which reschedules a 60ms contact-lookup runnable on every cache miss. Only evaluate it inside
+                // the warning window (the same t >= 59500 window the pre-existing cut check already used this
+                // for), not for the whole ~59.5s segment, or a call every onDraw frame keeps cancelling that
+                // lookup before it ever runs.
+                if (t >= 54500) {
+                    // re-checked every frame in this window, not just when arming: view-once/slow mode can take
+                    // infinite mode away mid-warning, and the toggle can be flipped off too. warnedInternal
+                    // tracks whether we've already fired for this segment, separately from whether a rollover
+                    // is still actually pending.
+                    boolean infiniteRolloverPending = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable();
+                    if (warnedInternal && !infiniteRolloverPending) {
+                        // the cut this warned about isn't coming after all -- drop the pulse and allow a fresh
+                        // warning if the condition comes back before this segment's 59.5s mark
+                        warnedInternal = false;
+                        setInfiniteVideoWarningActive(false);
+                    } else if (isRunning && !warnedInternal && infiniteRolloverPending) {
+                        // NagramX: stop() freezes t at stopTime, and its invalidate() still drives one more
+                        // onDraw pass. Without the isRunning check a manual stop landing right past 54.5s would
+                        // arm a warning for a cut that is never coming -- gate the arm on the recording actually
+                        // still being live, not just on the frozen elapsed time looking late enough.
+                        warnedInternal = true;
+                        BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
+                        setInfiniteVideoWarningActive(true);
                     }
-                    startedDraggingX = -1;
-                    delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                    sendButton.setEffect(effectId = 0);
-                    stoppedInternal = true;
+                    if (t >= 59500 && !stoppedInternal) {
+                        // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
+                        // dropping into the preview. The last allowed segment falls back to the normal stop, as
+                        // does anything that armed view-once or started a slow mode countdown mid-recording.
+                        if (infiniteRolloverPending) {
+                            infiniteVideoSegments++;
+                            startedDraggingX = -1;
+                            delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                            sendButton.setEffect(effectId = 0);
+                            start(0);
+                            return;
+                        }
+                        startedDraggingX = -1;
+                        delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                        sendButton.setEffect(effectId = 0);
+                        stoppedInternal = true;
+                    }
                 }
             }
 
