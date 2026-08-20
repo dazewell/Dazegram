@@ -680,8 +680,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private boolean occTrailing;
         // The leading|middle gap, carried from onMeasure to onLayout so the middle group is shifted off
         // the leading zone by the same amount its viewport was shrunk. Nothing else needs carrying: the
-        // middle|end and the two end-slot gaps fall out of the viewport subtraction and the child
-        // margins respectively.
+        // middle|end gap and the one remaining end-slot gap (context group to trailing) fall out of the
+        // viewport subtraction and the child margin respectively.
         private int leadingMiddleGapPx;
         private ValueAnimator boundsAnimator;
         private int measuredPanelWidth = -1;
@@ -1074,9 +1074,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
             bubbleOccupied[role] = true;
         }
 
-        // The cached context and pinned references outlive the views they point at if one is moved out of
-        // the row; only paint their bubble while the view is still parented under this layout, so a
-        // detached view never paints at stale coordinates.
+        // The cached context reference outlives the view it points at if the group is moved out of the
+        // row; only paint its bubble while the view is still parented under this layout, so a detached
+        // view never paints at stale coordinates.
         private boolean isDescendantOfThis(View view) {
             ViewParent parent = view.getParent();
             while (parent != null) {
