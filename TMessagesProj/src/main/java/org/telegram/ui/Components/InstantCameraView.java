@@ -2682,6 +2682,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // recordingGeneration -- even one that reuses this very instance -- makes the stale callback's
         // snapshot stop matching. volatile: written on the GL thread, read on the encoder thread.
         private volatile int recordingToken;
+        // NagramX: handleStopRecording runs twice for one real stop -- once when the request first arrives
+        // (running still true, no teardown yet) and again once the audio thread notices running went false
+        // and re-posts the stop message (this is the call that actually tears down and posts the teardown
+        // runnable). recordingToken can't be read fresh in that second call: a fast stop-then-record-again
+        // can reuse this instance and move recordingToken on in the gap between the two calls. Stashed once,
+        // on the first call, while running is still true and no new recording can have started yet.
+        private int stoppedGeneration;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
             recordingToken = ++InstantCameraView.this.recordingGeneration;
@@ -3261,6 +3268,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 return;
             }
+            // NagramX: snapshot this recording's stamp now, before any of the flush/drain/finishMuxer work
+            // below that can block for a while -- a fast stop-then-record-again can reuse this VideoRecorder
+            // instance and bump recordingToken while that work is still running, and reading it only
+            // afterward would pick up the new recording's stamp instead of this one's.
+            final int capturedGeneration = recordingToken;
             // NagramX: flush whatever PCM arrived just before the cut into segment N's encoder first, so
             // its audio tail lands in file N instead of sitting in buffersToWrite for segment N+1 to find
             // and discard as pre-segment audio. running is still true here (only handleStopRecording flips
@@ -3302,20 +3314,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final boolean segmentClosedOk = finishMuxer();
             final File segmentFile = videoFile;
             final boolean segmentFirstWrite = videoConvertFirstWrite;
-            // NagramX: snapshot this recording's stamp now, on the encoder thread, while it's still
-            // guaranteed current (a newer recording can't start until this one stops). The runnable below
-            // compares it against the live recordingGeneration at execution time, not object identity --
-            // the same VideoRecorder instance can get reused for a later recording before this runs.
-            final int capturedGeneration = recordingToken;
             AndroidUtilities.runOnUIThread(() -> {
                 // NagramX: the cut haptic fires here, once segment N has actually finished writing, not
                 // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little.
                 // Also gated on segmentClosedOk: finishMuxer() can fail (I/O error) and swallow it, and the
                 // "cut" haptic shouldn't tell the user a segment landed when it didn't. If the recording was
-                // cancelled/replaced while finishMuxer() ran, this stale rollover shouldn't buzz on top of
-                // whatever comes next either. sendSegment below runs unconditionally either way (unguarded
-                // pre-existing behavior, not introduced here and not this change's scope to fix), so only
-                // the added haptic gets either guard.
+                // cancelled/replaced (capturedGeneration taken before the blocking work above, see top of
+                // this method) this stale rollover shouldn't buzz on top of whatever comes next either.
+                // sendSegment below runs unconditionally either way (unguarded pre-existing behavior, not
+                // introduced here and not this change's scope to fix), so only the added haptic gets either
+                // guard.
                 if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
                 }
@@ -3452,11 +3460,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (!fileToWrite.renameTo(videoFile)) {
                     FileLog.e("InstantCamera unable to rename file, try move file");
                     try {
-                        AndroidUtilities.copyFile(fileToWrite, videoFile);
+                        if (!AndroidUtilities.copyFile(fileToWrite, videoFile)) {
+                            success[0] = false;
+                        }
                         fileToWrite.delete();
                     } catch (IOException e) {
                         FileLog.e(e);
                         FileLog.e("InstantCamera unable to move file");
+                        success[0] = false;
                     }
                 }
             }
@@ -3542,6 +3553,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private boolean sentMedia;
 
         private void handleStopRecording(final int send, final SendOptions sendOptions) {
+            // NagramX: stash this recording's generation before anything else runs. This method is invoked
+            // twice for one real stop (see the field comment above), and running is only ever true on the
+            // first of those two calls -- capture it here, unconditionally, so the second call's teardown
+            // has a stable value to compare against instead of reading recordingToken fresh at that point.
+            if (running) {
+                stoppedGeneration = recordingToken;
+            }
             final boolean runDone;
             if (send == ENCODER_SEND_SEND && (videoEditedInfo == null || !videoEditedInfo.needConvert()) && !delegate.isInScheduleMode()) {
                 runDone = false;
@@ -3730,13 +3748,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 overlayHelper.destroy();
                 overlayHelper = null;
             }
+            // NagramX: same generation guard as handleRollover's cut haptic, and for the same reason: this
+            // teardown is posted async, drainEncoder/MediaCodec release/EGL teardown above can all take a
+            // moment, and a fast stop-then-record-again can reuse this exact instance in that window.
+            // stoppedGeneration was pinned back when this stop sequence started (see its field comment), so
+            // it stays correct here regardless of what recordingToken has since been bumped to.
+            final int capturedGeneration = stoppedGeneration;
             AndroidUtilities.runOnUIThread(() -> {
-                if (InstantCameraView.this.videoEncoder == this) {
+                if (InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     InstantCameraView.this.videoEncoder = null;
                     // NagramX: recording is over one way or another, so any pre-cut warning still showing
                     // (e.g. the last segment stopped normally instead of rolling over) needs clearing too.
-                    // Guarded by the same identity check -- this teardown is posted async and can land after
-                    // a newer recording already replaced videoEncoder, whose own warning must not be touched.
                     setInfiniteWarningActive(false);
                 }
             });
