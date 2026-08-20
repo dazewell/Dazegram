@@ -970,7 +970,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     continue;
                 }
                 BlurredBackgroundDrawable drawable = bubbles[role];
-                drawable.setAlpha(bubbleAlpha[role]);
+                // setAlpha unconditionally sets renderNodeInvalidated (BlurredBackgroundDrawableRenderNode),
+                // forcing a display-list re-record even when the value is unchanged. Only write it when it
+                // actually moves, so an idle bubble at full opacity re-records nothing frame to frame; the
+                // ones that are fading still re-record because their alpha is genuinely changing.
+                if (drawable.getAlpha() != bubbleAlpha[role]) {
+                    drawable.setAlpha(bubbleAlpha[role]);
+                }
                 drawable.setBounds(left, top, right, bottom);
                 drawable.draw(canvas);
                 bubbleDrawn[role] = true;
