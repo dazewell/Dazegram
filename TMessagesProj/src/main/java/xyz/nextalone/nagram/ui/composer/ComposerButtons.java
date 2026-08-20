@@ -190,13 +190,13 @@ public final class ComposerButtons {
         // device to look identical to before, i.e. below the threshold of visibility.
         //
         // What that measurement fix could not touch: the model normalises on ink *width* (see the class
-        // comment above), and schedule's bbox is the only near-square glyph in the row (aspect 1.02) -
-        // every other entry is taller than it is wide and gains height for free once width is matched.
-        // At 0.9212 schedule is already tied widest in the row (20.0dp ink), but it is still the
-        // shortest glyph drawn, because attach, the glyph it shares a bubble with, is 16% taller.
+        // comment above), and schedule sits in the same bubble as attach, directly beside it. Attach is
+        // pinned at the 94% height cap, so it draws unusually tall (22.56dp ink) while narrow (77.93%
+        // width); schedule normalised on width alone draws 20.0 x 19.5dp at 0.9212 - matched on width
+        // but conspicuously shorter than the one glyph it is compared against in the same bubble.
         // Matching attach's height exactly would need s=1.0665 (a 23.1dp-wide calendar, 16% wider than
-        // every other icon in the row), so the two dimensions cannot both be matched - this is
-        // structural to width-normalisation for a near-square glyph, not a number the table can fix.
+        // every other icon in the row), so the two dimensions cannot both be matched for this specific
+        // pairing - not a number the table can fix.
         //
         // 0.9767 is an authored exception, in the style of MENU_ICON_SCALE and NOTIFY_ICON_SCALE below:
         // it splits the difference by matching the geometric mean of schedule's drawn ink box to
