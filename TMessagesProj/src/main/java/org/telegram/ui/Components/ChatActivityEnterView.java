@@ -16768,11 +16768,15 @@ public class ChatActivityEnterView extends FrameLayout implements
                     // NagramX: even limited to this 5s window, a draw-frame-rate call still re-triggers the
                     // 60ms reschedule faster than it can fire. Throttling the read to once per
                     // INFINITE_AVAILABILITY_CHECK_INTERVAL leaves gaps wide enough for the lookup to land.
-                    if (lastInfiniteAvailabilityCheck == 0 || currentTimeMillis - lastInfiniteAvailabilityCheck >= INFINITE_AVAILABILITY_CHECK_INTERVAL) {
+                    // Gate the refresh on infiniteEligible too -- an ordinary recording with the toggle off
+                    // (or one on its last allowed segment) has no reason to touch isInfiniteVideoAvailable()
+                    // at all, same as the short-circuited && below used to guarantee before this was pulled out.
+                    boolean infiniteEligible = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1;
+                    if (infiniteEligible && (lastInfiniteAvailabilityCheck == 0 || currentTimeMillis - lastInfiniteAvailabilityCheck >= INFINITE_AVAILABILITY_CHECK_INTERVAL)) {
                         cachedInfiniteAvailable = isInfiniteVideoAvailable();
                         lastInfiniteAvailabilityCheck = currentTimeMillis;
                     }
-                    boolean infiniteRolloverPending = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && cachedInfiniteAvailable;
+                    boolean infiniteRolloverPending = infiniteEligible && cachedInfiniteAvailable;
                     if (warnedInternal && !infiniteRolloverPending) {
                         // the cut this warned about isn't coming after all -- drop the pulse and allow a fresh
                         // warning if the condition comes back before this segment's 59.5s mark
