@@ -149,7 +149,9 @@ public final class ComposerButtons {
      * smudge, then capped at 92% width and 94% height so nothing runs to the canvas edge. Width leads
      * because in a horizontal row the gap the eye reads is horizontal, and the complaint that started
      * this ("excessive padding") was about that gap. Where the constraints fight, the cap wins and the
-     * glyph is left off target rather than given a private exception.
+     * glyph is left off target rather than given a private exception. One entry, schedule, is a stated
+     * exception to that rule - see its comment below for why width-normalisation fails it and what it
+     * costs.
      *
      * <p>Every number here is output from {@code Tools/scripts/IconInk.java} measuring the drawable the
      * button actually draws - not the registry asset, where the two differ - and may only ever be
@@ -179,13 +181,32 @@ public final class ComposerButtons {
         // drawable2 is a badge dot tinted key_chat_recordedVoiceDot against drawable1's
         // key_glass_defaultIcon, a differently-tinted accent rather than glyph ink. It was contributing
         // 4.91pp of ink area on an identical bbox (0.00pp), which alone pushed the union past the area
-        // ceiling and shrank the frame the eye actually compares against the paperclip beside it.
-        // Consequence, accepted: the drawn union is still both layers, so at this scale it comes out to
-        // 29.91% x 0.9212^2 = 25.4% ink - above the model's 23% ceiling and above attach's 22.75% - and
-        // schedule is no longer the densest row entry (paste is, at 29.09%). The remaining size gap to
-        // attach is structural (attach is pinned at the height cap; the calendar is a near-square glyph
-        // well short of it), not a number this table can fix.
-        iconScale(SCHEDULE, 0.9212f);   // 25.00% ink, 90.43 x 88.28 - base layer only, see note above
+        // ceiling and shrank the frame the eye actually compares against the paperclip beside it. This
+        // base-layer measurement is unchanged and still stands: 25.00% ink, 90.43 x 88.28. At the scale
+        // that measurement alone implies (0.9212, the union still both layers so 29.91% x 0.9212^2 =
+        // 25.4% ink), the change from the prior 0.8769 was +5% - about 1dp on a 19dp glyph - installed
+        // and confirmed on device to look identical to before, i.e. below the threshold of visibility.
+        //
+        // What that measurement fix could not touch: the model normalises on ink *width* (see the class
+        // comment above), and schedule's bbox is the only near-square glyph in the row (aspect 1.02) -
+        // every other entry is taller than it is wide and gains height for free once width is matched.
+        // At 0.9212 schedule is already tied widest in the row (20.0dp ink), but it is still the
+        // shortest glyph drawn, because attach, the glyph it shares a bubble with, is 16% taller.
+        // Matching attach's height exactly would need s=1.0665 (a 23.1dp-wide calendar, 16% wider than
+        // every other icon in the row), so the two dimensions cannot both be matched - this is
+        // structural to width-normalisation for a near-square glyph, not a number the table can fix.
+        //
+        // 0.9767 is an authored exception, in the style of MENU_ICON_SCALE and NOTIFY_ICON_SCALE below:
+        // it splits the difference by matching the geometric mean of schedule's drawn ink box to
+        // attach's - the glyph it is actually compared against - rather than matching either dimension
+        // alone. It scales *from* the corrected 25.00%/90.43x88.28 basis above; it does not replace it.
+        //   attach:   box = 24 x 1.0395 = 24.95; ink = 19.44 x 22.56 (77.93% x 90.43%); gm = 20.94
+        //   schedule: box = 24 x 0.9767 = 23.44; ink = 21.20 x 20.69 (90.43% x 88.28%); gm = 20.94
+        // Accepted cost, knowingly above the model's ceilings: drawn ink width is +6.0% over the
+        // model's 20/24 (83.3%) target, and ink area is 23.85% base / 28.53% drawn union - both above
+        // the model's 23% area ceiling. This is a deliberate exception, not a re-measurement - do not
+        // read 23.85%/28.53% back into the model's band or re-derive 0.9212 from them.
+        iconScale(SCHEDULE, 0.9767f);   // authored exception scaled off 25.00% ink, 90.43 x 88.28 base layer - see note above
         iconScale(PASTE, 0.8892f);      // 29.09% ink, 75.00 x 91.70
         iconScale("date", 0.9292f);     // 25.72% ink, 89.65 x 87.60
         iconScale(COPY, 0.9660f);       // 24.51% ink, 86.23 x 94.53
