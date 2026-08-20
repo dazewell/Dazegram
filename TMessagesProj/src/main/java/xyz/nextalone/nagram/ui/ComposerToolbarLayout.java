@@ -505,6 +505,30 @@ public final class ComposerToolbarLayout extends FrameLayout {
         return Math.max(1, Math.round(GLASS_DRAW_INSET * scale()));
     }
 
+    /**
+     * One icon inset (glyph-to-cell-edge at the neutral glyph scale) of horizontal padding for the
+     * scrolling middle content, so its first and last icons clear the bubble's rounded end the same way
+     * a mid-row icon clears its neighbour instead of running to the glass edge. Middle alone gets this:
+     * it is the only bubble that scrolls and the only one whose item count the user leaves unbounded, so
+     * it is the only one whose content can reach its own ends. Leading and the merged trailing group each
+     * stay at one icon inset and so match each other, which is what keeps the row's two ends reading the
+     * same; the trailing zone's roles share one slot with no container of their own, where padding would
+     * become gap rather than clearance, so it is not given any.
+     *
+     * <p>Derived from the exact expression applyIconBox uses, evaluated at iconScale 1f - the per-key
+     * optical corrections make any single button's inset glyph-specific, so reading one real button's
+     * value would make this drift with the user's layout. Re-derived per measure pass rather than frozen
+     * as a dp. 12dp at 100% scale, 9dp at 75%, 15dp at 125%. This is a taste number, not a derived
+     * constraint - the 22dp rounded corner sweeps back across the glyph's corner, so perpendicular
+     * clearance wants roughly one icon inset even though the linear reference sits nearer half that. Kept
+     * as one expression in one place so halving it later is a one-line change.
+     */
+    private static int middleContentSideInset() {
+        int cellPx = Math.round(AndroidUtilities.dpf2(buttonSize()));
+        int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH));
+        return Math.max(0, cellPx - glyphPx) / 2;
+    }
+
     private static void applyIconBox(View view, int cellDp, float scale) {
         int cellPx = Math.round(AndroidUtilities.dpf2(cellDp));
         // Kept in pixel space rather than rounded to whole dp: at the odd steps the scaled glyph
@@ -779,16 +803,27 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
             startSlot.measure(unboundedWidthSpec, heightSpec);
             endSlot.measure(unboundedWidthSpec, heightSpec);
+            // One icon inset of horizontal padding on the scrolling middle content so its first and last
+            // icons clear the bubble's rounded corner (F2) instead of running almost to the glass edge.
+            // Set here, guarded like the clip toggle below so it only writes when it actually changes, and
+            // re-derived each pass rather than frozen. Measured into middleContent's width, so it flows
+            // through middleViewportWidth and the reserved gaps stay correct.
+            int middleInset = middleContentSideInset();
+            if (middleContent.getPaddingLeft() != middleInset || middleContent.getPaddingRight() != middleInset) {
+                middleContent.setPadding(middleInset, 0, middleInset, 0);
+            }
             middleContent.measure(unboundedWidthSpec, heightSpec);
 
             int startWidth = startSlot.getMeasuredWidth();
             int endWidth = endSlot.getMeasuredWidth();
             int middleWidth = middleContent.getMeasuredWidth();
             int horizontalPadding = getPaddingLeft() + getPaddingRight();
-            // The leading and middle groups occupy space when their measured content has width; the
-            // middle group's two sub-slots are always attached, so only their buttons count.
+            // The leading and middle groups occupy space when their measured content has width. Middle now
+            // carries its own horizontal padding, so subtract it: an empty middle measures to just the
+            // padding, and counting that as occupied would draw a blank pill and reserve gaps around it.
+            int middleButtonsWidth = Math.max(0, middleWidth - middleContent.getPaddingLeft() - middleContent.getPaddingRight());
             occLeading = startWidth > 0;
-            occMiddle = middleWidth > 0;
+            occMiddle = middleButtonsWidth > 0;
             // Always take the full width the row offers instead of shrink-wrapping the content, so the
             // leading and trailing bubbles can reach the row edges and line up with the main input pill
             // above, and the trailing zone stays anchored right at every button count.
@@ -802,7 +837,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
             leadingMiddleGapPx = (occLeading && occMiddle) ? gapPx : 0;
             int middleEndGapPx = (occMiddle && endHasContent) ? gapPx : 0;
             int reservedGaps = leadingMiddleGapPx + middleEndGapPx;
-            int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
+            // An empty middle reserves no viewport, so its padding never becomes a stray blank pill; an
+            // occupied one takes content plus padding into its window (capped by the width the row has left).
+            int desiredMiddleWidth = occMiddle ? middleWidth : 0;
+            int middleViewportWidth = Math.min(desiredMiddleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth - reservedGaps));
 
             middleScrollView.measure(MeasureSpec.makeMeasureSpec(middleViewportWidth, MeasureSpec.EXACTLY), heightSpec);
             // A control fading out inside the middle group sits past the viewport edge, so only clip once the
