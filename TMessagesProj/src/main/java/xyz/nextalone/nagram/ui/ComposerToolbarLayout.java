@@ -311,6 +311,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
         endSlot.addView(view, 0, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        endSlot.setContextGroup(view);
         controls.setTrailingContextGroup(view);
     }
 
@@ -550,6 +551,31 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static long getSettleDelay(long holdStartTime) {
         long held = SystemClock.elapsedRealtime() - holdStartTime;
         return Math.max(0, Math.min(BOUNDS_SETTLE_DELAY, BOUNDS_SETTLE_MAX - held));
+    }
+
+    // A context child (a button inside the attach wrapper) is engaged when it is on screen and not faded
+    // out. This is the single rule that decides whether the context group is carrying anything: the end
+    // slot's collapse, the gap occupancy and - through the collapsed geometry - the painted bubble all
+    // route through it, so they cannot disagree. attachLayout is a plain LinearLayout, so a VISIBLE child
+    // still measures to full width at alpha 0; in toolbar mode a hidden suggestion button only fades its
+    // alpha to 0 and stays VISIBLE (ChatActivityEnterView never sets it GONE on this path), so without this
+    // the wrapper would hold full width with nothing to show. Width is deliberately not part of the rule:
+    // a child only gets a width once the group is measured, and the group is only measured once it has an
+    // engaged child, so gating engagement on width would deadlock the group's first appearance. Non-zero
+    // width is enforced where it is live instead - the painter's isBubbleContent check on the wrapper - and
+    // the two cannot disagree, because an engaged group is always measured to a real width and a released
+    // one always collapses to zero.
+    private static boolean isContextChildEngaged(View child) {
+        return child.getVisibility() == View.VISIBLE && child.getAlpha() > 0f;
+    }
+
+    private static boolean hasEngagedChild(ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            if (isContextChildEngaged(group.getChildAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static final class ControlsLayout extends FrameLayout {
@@ -800,20 +826,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // are single buttons in the slot, so the slot's own occupancy line (VISIBLE and alpha >= 0.5)
         // matches what it lays out. Context is different: attachLayout is a plain LinearLayout that still
         // measures a VISIBLE child to full width at alpha 0 (a suggestion button that finished fading out
-        // stays VISIBLE in toolbar mode), and its bubble is painted from that measured width - so its
-        // occupancy has to be decided by the same predicate the painter uses (isBubbleContent on the
-        // wrapper: VISIBLE and alpha > 0 and a laid-out child), not by whether a child is currently
-        // opaque. Deciding it by opaque children left the wrapper drawing a bubble with no gap reserved
-        // beside the pinned anchor. A non-GONE child is the pre-measure stand-in for "wrapper has width";
-        // in a plain 1:1 chat every context child is GONE, so the wrapper has no width and no bubble. The
-        // leading and middle groups are not decided here - they come from measured width once the slots
-        // have been measured.
+        // stays VISIBLE in toolbar mode), so it is occupied only while it holds an engaged child - the
+        // same rule the end slot collapses on (hasEngagedChild) - not merely because the wrapper is on
+        // screen. A wrapper full of faded-out buttons collapses to zero width, so reserving a gap after it
+        // would strand blank glass. The wrapper's own alpha > 0 tracks the painter through its chat-type
+        // fade. The leading and middle groups are not decided here - they come from measured width once the
+        // slots have been measured.
         private void computeEndSlotOccupancy() {
             occContext = trailingContextGroup != null
                     && trailingContextGroup.getVisibility() == VISIBLE
                     && trailingContextGroup.getAlpha() > 0f
                     && trailingContextGroup instanceof ViewGroup
-                    && hasNonGoneChild((ViewGroup) trailingContextGroup);
+                    && hasEngagedChild((ViewGroup) trailingContextGroup);
             occPinned = trailingPinnedView != null && endSlot != null && endSlot.isOccupied(trailingPinnedView);
             occConfigurable = false;
             if (endSlot != null) {
@@ -828,19 +852,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     }
                 }
             }
-        }
-
-        // Any child that is not GONE, regardless of alpha. A LinearLayout still measures a VISIBLE child
-        // at alpha 0 to its full width, so this - not "any opaque child" - is what predicts whether the
-        // wrapper occupies width and therefore paints a bubble, keeping occupancy and the painted span in
-        // agreement.
-        private static boolean hasNonGoneChild(ViewGroup group) {
-            for (int i = 0; i < group.getChildCount(); i++) {
-                if (group.getChildAt(i).getVisibility() != GONE) {
-                    return true;
-                }
-            }
-            return false;
         }
 
         // Reserve the two end-slot gaps - context|configurable and (context or configurable)|pinned - as
@@ -1426,13 +1437,20 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // it the moment the row stops counting it wiped it off screen at half opacity, so every swap looked
         // like a pop rather than a fade.
         private void layoutReleasedChild(View child, int x) {
-            if (child.getWidth() > 0 && child.getVisibility() == VISIBLE && child.getAlpha() > 0) {
+            if (shouldKeepReleasedBox(child)) {
                 child.layout(child.getLeft(), child.getTop(), child.getRight(), child.getBottom());
                 setHiddenFromAccessibility(child, true);
                 return;
             }
             setHiddenFromAccessibility(child, false);
             child.layout(x, getPaddingTop(), x, getPaddingTop());
+        }
+
+        // A released control still has something on screen to hold in place while it is VISIBLE, past zero
+        // alpha and still holding width. Subclasses that wrap their content override this where the wrapper's
+        // own alpha is not what is fading.
+        protected boolean shouldKeepReleasedBox(View child) {
+            return child.getWidth() > 0 && child.getVisibility() == VISIBLE && child.getAlpha() > 0;
         }
 
         // Touch is swallowed below, but a screen reader would still reach a control that is on its way out.
@@ -1477,6 +1495,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     private static final class CollapsingLinearLayout extends SlidingLinearLayout {
+        private View contextGroup;
         private final Runnable settleCheck = () -> {
             if (needsRelayout()) {
                 requestLayout();
@@ -1487,13 +1506,41 @@ public final class ComposerToolbarLayout extends FrameLayout {
             super(context);
         }
 
+        // The attach wrapper is a plain LinearLayout whose own visibility and alpha stay put while its
+        // buttons come and go, so the row cannot judge it the way it judges a single button. Point the slot
+        // at it so isOccupied and the release path can look at its content instead.
+        void setContextGroup(View view) {
+            contextGroup = view;
+        }
+
         // A control claims its slot once its fade is past halfway and gives it up at the same point on
         // the way out. Releasing only at alpha 0 made a leaving control hold the row open for its whole
         // fade, so the panel reflowed twice - once when its replacement arrived, again when it finally
-        // let go - and the neighbouring buttons crawled back into place.
+        // let go - and the neighbouring buttons crawled back into place. The attach wrapper adds one more
+        // condition: even while it is on screen it only occupies the row while it holds an engaged child,
+        // so a wrapper full of faded-out buttons (a hidden suggestion button stays VISIBLE at alpha 0 in
+        // toolbar mode) collapses to zero width and the pinned attach button slides left instead of sitting
+        // beyond an empty opaque pill.
         @Override
         boolean isOccupied(View child) {
+            if (child == contextGroup && child instanceof ViewGroup
+                    && !hasEngagedChild((ViewGroup) child)) {
+                return false;
+            }
             return child.getVisibility() == VISIBLE && child.getAlpha() >= 0.5f;
+        }
+
+        // The wrapper's own alpha is not what fades when its buttons leave, so the released-box hold has to
+        // look at its content. Once it holds no engaged child there is nothing to fade out, so collapse it
+        // now rather than holding an opaque empty box; while it still has an engaged child (its own
+        // chat-type fade) the base rule keeps the box the whole way down as before.
+        @Override
+        protected boolean shouldKeepReleasedBox(View child) {
+            if (child == contextGroup && child instanceof ViewGroup
+                    && !hasEngagedChild((ViewGroup) child)) {
+                return false;
+            }
+            return super.shouldKeepReleasedBox(child);
         }
 
         @Override
