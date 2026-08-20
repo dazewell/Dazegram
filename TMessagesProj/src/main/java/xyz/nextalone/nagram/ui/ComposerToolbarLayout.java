@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewConfiguration;
+import android.view.ViewParent;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -268,6 +269,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         if (zone == ComposerButtons.ZONE_END) {
             if (key.equals(trailingKey)) {
                 pinnedTrailingView = view;
+                controls.setTrailingPinnedView(view);
                 endSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
             } else {
                 endSlot.addView(view, insertIndex(endSlot, order, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
@@ -302,6 +304,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     public void addContextGroup(View view) {
         AndroidUtilities.removeFromParent(view);
         endSlot.addView(view, 0, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+        controls.setTrailingContextGroup(view);
     }
 
     private int endContextIndex() {
@@ -485,11 +488,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     /**
-     * Vertical inset of the drawn capsule inside the row. Paired with the attached glass padding on
-     * the vertical axis only: the painted top and bottom land at glassDrawInset() + glassInset() from
-     * the row edge. The horizontal edges no longer use this - the capsule is painted flush to the
-     * row's left and right (see drawGlass), so this term is vertical-only now and does not decide the
-     * left/right alignment with the input pill.
+     * Vertical inset of the drawn bubbles inside the row. Paired with the attached glass padding on
+     * the vertical axis only: each bubble's painted top and bottom land at glassDrawInset() +
+     * glassInset() from the row edge. The horizontal edges do not use this - a bubble's outer flush
+     * edge reaches the row edge and its inner edges are set from live child geometry (see drawGlass),
+     * so this term is vertical-only and does not decide left/right alignment with the input pill.
      */
     private static int glassDrawInset() {
         return Math.max(1, Math.round(GLASS_DRAW_INSET * scale()));
@@ -547,7 +550,34 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private HorizontalScrollView middleScrollView;
         private LinearLayout middleContent;
         private CollapsingLinearLayout endSlot;
-        private BlurredBackgroundDrawable glass;
+        // The row is drawn as up to five separate glass bubbles instead of one full-width capsule, one
+        // per child group that can collapse or slide independently. Left to right in LTR: the leading
+        // zone, the scrolling middle group, the attach context group, the configurable trailing buttons
+        // and the pinned trailing anchor. Each has its own drawable (see attachGlass) so its own backdrop
+        // sample and render node stay correct; a single drawable re-bounded across the rects would force a
+        // chat-wide re-capture every frame.
+        private static final int BUBBLE_LEADING = 0;
+        private static final int BUBBLE_MIDDLE = 1;
+        private static final int BUBBLE_CONTEXT = 2;
+        private static final int BUBBLE_CONFIGURABLE = 3;
+        private static final int BUBBLE_PINNED = 4;
+        private static final int BUBBLE_COUNT = 5;
+        private BlurredBackgroundDrawable[] bubbles;
+        // The two trailing sub-groups the drawGlass split needs to tell apart inside endSlot: the attach
+        // context group (endSlot child 0, its own chat-type lifecycle) and the pinned trailing anchor.
+        // Everything else in endSlot is the configurable bubble.
+        private View trailingContextGroup;
+        private View trailingPinnedView;
+        // Reused across dispatchDraw so no frame allocates: each bubble's content span in this view's
+        // coordinates, whether it has anything to draw, and the alpha its group is currently faded to.
+        private final float[] bubbleLeft = new float[BUBBLE_COUNT];
+        private final float[] bubbleRight = new float[BUBBLE_COUNT];
+        private final boolean[] bubbleOccupied = new boolean[BUBBLE_COUNT];
+        private final int[] bubbleAlpha = new int[BUBBLE_COUNT];
+        // Whether each bubble actually painted last frame. A bubble that stops painting has its bounds
+        // cleared to empty once, so getVisiblePositions stops reporting a phantom backdrop region for it;
+        // this fires only on the occupied->hidden edge, never per frame, so it does not churn render nodes.
+        private final boolean[] bubbleDrawn = new boolean[BUBBLE_COUNT];
         // One scale sample for this view's whole life, captured in the constructor. Everything the row
         // draws with - its height, the button-box inset, both glass draw insets and the capsule radius -
         // comes off these three dp values, so a relayout can never pair a freshly read height with a
@@ -565,9 +595,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private final int geometryHeightDp;
         private final int geometryInsetDp;
         private final int geometryDrawInsetDp;
-        // The exact pixel geometry handed to the drawable at attachGlass, derived from the snapshot
-        // above. glassPaddingPx is the value passed to glass.setPadding, and drawGlass cancels it on
-        // the horizontal axis by the same field - never a fresh glassInset() - so the two cannot drift.
+        // The exact pixel geometry handed to every bubble drawable at attachGlass, derived from the
+        // snapshot above. glassPaddingPx is the value passed to each drawable's setPadding; drawGlass
+        // cancels it only on the bubbles' outer flush edges by the same field - never a fresh
+        // glassInset() - so the two cannot drift, and on the inner edges it is left in place, which is
+        // what opens the 2 x glassPaddingPx gap between neighbouring bubbles.
         private int glassPaddingPx;
         private int glassDrawInsetPx;
         private ValueAnimator boundsAnimator;
@@ -594,9 +626,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
             geometryDrawInsetDp = glassDrawInset();
             // The button box: the first and last button sit this far inside the row, the same way the
             // input pill has padding before its "Message" hint. Kept at glassInset() (4dp at 100%) and
-            // proportional so a button never renders under the capsule's rounded end. The painted capsule's
-            // own edges are set separately in drawGlass - flush horizontally, lifted vertically - so this
-            // padding is no longer the thing that decides where the glass is drawn.
+            // proportional so a button never renders under a bubble's rounded end. Each bubble's own
+            // edges are set separately in drawGlass - outer edges flush, inner edges from live child
+            // geometry, lifted vertically - so this padding is not the thing that decides where the
+            // glass is drawn.
             setPaddingRelative(AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp), AndroidUtilities.dp(geometryInsetDp));
         }
 
@@ -616,24 +649,44 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
-            glass = factory.create(this, colorProvider);
-            // Radius large enough that the drawable clamps it to half the painted capsule height, so the
-            // ends come out semicircular at any scale. Built from the construction snapshot - the same
-            // geometryHeightDp onMeasure sizes the row with - so the radius is always exactly half the
-            // height it is drawn against and the two can never be sampled at two different scales. Padding
-            // and drawInset come off the same snapshot and are stored in px here for drawGlass.
-            glass.setRadius(AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f));
             glassPaddingPx = AndroidUtilities.dp(geometryInsetDp);
             glassDrawInsetPx = AndroidUtilities.dp(geometryDrawInsetDp);
-            glass.setPadding(glassPaddingPx);
+            // One drawable per bubble, each created with this view so viewPositionWatcher.subscribe wires
+            // it to the shared backdrop; multiple subscriptions of the same view are supported, and each
+            // drawable then samples the region under its own bounds. Radius large enough that every
+            // drawable clamps it to half its own painted height, so a one-item bubble comes out a circle
+            // and a wider one keeps semicircular ends - all off the construction snapshot, so radius and
+            // the height it is drawn against are always the same scale. Padding and drawInset are stored
+            // in px here for drawGlass.
+            int radius = AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f);
+            bubbles = new BlurredBackgroundDrawable[BUBBLE_COUNT];
+            for (int i = 0; i < BUBBLE_COUNT; i++) {
+                BlurredBackgroundDrawable drawable = factory.create(this, colorProvider);
+                drawable.setRadius(radius);
+                drawable.setPadding(glassPaddingPx);
+                bubbles[i] = drawable;
+            }
             invalidate();
         }
 
         void updateColors() {
-            if (glass != null) {
-                glass.updateColors();
-                invalidate();
+            if (bubbles == null) {
+                return;
             }
+            for (BlurredBackgroundDrawable drawable : bubbles) {
+                if (drawable != null) {
+                    drawable.updateColors();
+                }
+            }
+            invalidate();
+        }
+
+        void setTrailingContextGroup(View view) {
+            trailingContextGroup = view;
+        }
+
+        void setTrailingPinnedView(View view) {
+            trailingPinnedView = view;
         }
 
         void setPanelVisible(boolean visible) {
@@ -665,7 +718,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int middleWidth = middleContent.getMeasuredWidth();
             int horizontalPadding = getPaddingLeft() + getPaddingRight();
             // Always take the full width the row offers instead of shrink-wrapping the content, so the
-            // glass capsule lines up edge to edge with the main input pill above at every button count.
+            // leading and trailing bubbles can reach the row edges and line up with the main input pill
+            // above, and the trailing zone stays anchored right at every button count.
             int panelWidth = availableWidth;
             int middleViewportWidth = Math.min(middleWidth, Math.max(0, panelWidth - horizontalPadding - startWidth - endWidth));
 
@@ -747,29 +801,172 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         private void drawGlass(Canvas canvas) {
-            if (glass == null || getWidth() <= 0 || getHeight() <= 0) {
+            if (bubbles == null || getWidth() <= 0 || getHeight() <= 0) {
                 return;
             }
-            // Horizontal is flush with the row edge so the capsule lines up with the main input pill;
-            // vertical keeps the drawInset + padding lift the composer island's bottom gap is calibrated
-            // on. glass.setPadding is a single uniform value, so the two axes are decoupled here in the
-            // bounds: on the horizontal axis the -glassPaddingPx left and +glassPaddingPx right are the
-            // exact negatives of the padding the drawable then adds back (boundsWithPadding.inset in
-            // BlurredBackgroundDrawable), so the painted left reaches 0 and right reaches getWidth() by
-            // arithmetic - not a clamp. Both terms are the captured attach-time pixels, so the
-            // cancellation holds even mid scale-change. The vertical bounds leave the lift in place.
+            // Same global vertical guard the single capsule used: below this the painted band would
+            // invert once each drawable insets its padding. Cheap to test once for the whole row.
             if (getHeight() <= (glassDrawInsetPx + glassPaddingPx) * 2) {
                 return;
             }
-            glass.setBounds(-glassPaddingPx, glassDrawInsetPx, getWidth() + glassPaddingPx, getHeight() - glassDrawInsetPx);
-            glass.draw(canvas);
+            computeBubbleSpans();
+            int top = glassDrawInsetPx;
+            int bottom = getHeight() - glassDrawInsetPx;
+            boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
+            // The leading zone owns the row's leading edge and the trailing anchor its trailing edge;
+            // those two outer edges repeat the capsule's flush arithmetic so they still line up with the
+            // input pill above. If the trailing zone is empty the row simply loses its trailing flush
+            // (accepted), which trailingEdgeRole reports as -1.
+            int trailingEdgeRole = trailingEdgeRole();
+            for (int role = 0; role < BUBBLE_COUNT; role++) {
+                if (!bubbleOccupied[role]) {
+                    hideBubble(role);
+                    continue;
+                }
+                boolean leadingEdge = role == BUBBLE_LEADING;
+                boolean trailingEdge = role == trailingEdgeRole;
+                boolean flushLeft = rtl ? trailingEdge : leadingEdge;
+                boolean flushRight = rtl ? leadingEdge : trailingEdge;
+                // Outer flush edge: -/+ glassPaddingPx exactly cancels the padding the drawable adds back
+                // (boundsWithPadding.inset in BlurredBackgroundDrawable), so the painted edge reaches the
+                // row edge by arithmetic. Inner edge: bounds sit at the content edge and the drawable's
+                // own padding insets glassPaddingPx into it, which is the half-gap; two neighbours each
+                // contribute one, opening a 2 x glassPaddingPx gap. Inflating an inner edge as well would
+                // eat that gap.
+                int left = flushLeft ? -glassPaddingPx : Math.round(bubbleLeft[role]);
+                int right = flushRight ? getWidth() + glassPaddingPx : Math.round(bubbleRight[role]);
+                if (right - left <= glassPaddingPx * 2) {
+                    // Painted width would be zero or negative once padding is applied. Skip so a collapsed
+                    // bubble never paints a sliver; not drawing also removes its side of the adjacent gap.
+                    hideBubble(role);
+                    continue;
+                }
+                BlurredBackgroundDrawable drawable = bubbles[role];
+                drawable.setAlpha(bubbleAlpha[role]);
+                drawable.setBounds(left, top, right, bottom);
+                drawable.draw(canvas);
+                bubbleDrawn[role] = true;
+            }
+        }
+
+        // Drops a bubble that is not painting this frame back to empty bounds, but only on the frame it
+        // stops - Drawable.setBounds short-circuits an unchanged rect, so a bubble that was already hidden
+        // costs nothing and never re-triggers onBoundsChange.
+        private void hideBubble(int role) {
+            if (bubbleDrawn[role]) {
+                bubbles[role].setBounds(0, 0, 0, 0);
+                bubbleDrawn[role] = false;
+            }
+        }
+
+        // Fills bubbleLeft/bubbleRight/bubbleOccupied/bubbleAlpha for this frame from the live child
+        // geometry, so every bubble follows its buttons through the existing slot slides and the trailing
+        // catch-up with no animator of its own. All reused fields, no allocation.
+        private void computeBubbleSpans() {
+            setBubbleSpan(BUBBLE_LEADING, startSlot);
+            setBubbleSpan(BUBBLE_MIDDLE, middleScrollView);
+            setBubbleSpan(BUBBLE_CONTEXT, trailingContextGroup);
+            setBubbleSpan(BUBBLE_PINNED, trailingPinnedView);
+            computeConfigurableSpan();
+        }
+
+        private void setBubbleSpan(int role, View view) {
+            if (view == null || !isBubbleContent(view)) {
+                bubbleOccupied[role] = false;
+                return;
+            }
+            float left = descendantLeft(view);
+            bubbleLeft[role] = left;
+            bubbleRight[role] = left + view.getWidth();
+            bubbleAlpha[role] = alphaOf(view);
+            bubbleOccupied[role] = true;
+        }
+
+        // The configurable bubble spans every trailing button that is not the attach context group or the
+        // pinned anchor, from the leftmost occupied one to the rightmost, so it hugs its content and
+        // collapses with it.
+        private void computeConfigurableSpan() {
+            bubbleOccupied[BUBBLE_CONFIGURABLE] = false;
+            if (endSlot == null) {
+                return;
+            }
+            float min = Float.MAX_VALUE;
+            float max = -Float.MAX_VALUE;
+            for (int i = 0; i < endSlot.getChildCount(); i++) {
+                View child = endSlot.getChildAt(i);
+                if (child == trailingContextGroup || child == trailingPinnedView) {
+                    continue;
+                }
+                if (!isBubbleContent(child)) {
+                    continue;
+                }
+                float left = descendantLeft(child);
+                float right = left + child.getWidth();
+                if (left < min) {
+                    min = left;
+                }
+                if (right > max) {
+                    max = right;
+                }
+            }
+            if (max > min) {
+                bubbleLeft[BUBBLE_CONFIGURABLE] = min;
+                bubbleRight[BUBBLE_CONFIGURABLE] = max;
+                bubbleAlpha[BUBBLE_CONFIGURABLE] = 255;
+                bubbleOccupied[BUBBLE_CONFIGURABLE] = true;
+            }
+        }
+
+        // Whichever present bubble sits against the row's trailing edge: the pinned anchor, else the
+        // configurable group, else the context group. -1 when the whole trailing zone is empty.
+        private int trailingEdgeRole() {
+            if (bubbleOccupied[BUBBLE_PINNED]) {
+                return BUBBLE_PINNED;
+            }
+            if (bubbleOccupied[BUBBLE_CONFIGURABLE]) {
+                return BUBBLE_CONFIGURABLE;
+            }
+            if (bubbleOccupied[BUBBLE_CONTEXT]) {
+                return BUBBLE_CONTEXT;
+            }
+            return -1;
+        }
+
+        // The left edge of a descendant in this view's coordinates, following getLeft() + translationX up
+        // to this layout. getLeft() already carries the slot slides (SlidingLinearLayout uses
+        // offsetLeftAndRight), and endSlot's translationX carries the trailing catch-up, so a bubble
+        // tracks exactly where its buttons are drawn.
+        private float descendantLeft(View view) {
+            float x = 0f;
+            View current = view;
+            while (current != null && current != this) {
+                x += current.getLeft() + current.getTranslationX();
+                ViewParent parent = current.getParent();
+                current = parent instanceof View ? (View) parent : null;
+            }
+            return x;
+        }
+
+        private static boolean isBubbleContent(View view) {
+            return view.getVisibility() == VISIBLE && view.getAlpha() > 0f && view.getWidth() > 0;
+        }
+
+        private static int alphaOf(View view) {
+            float alpha = view.getAlpha();
+            if (alpha <= 0f) {
+                return 0;
+            }
+            if (alpha >= 1f) {
+                return 255;
+            }
+            return Math.round(alpha * 255);
         }
 
         // Hold the pinned trailing group where it was drawn instead of letting it pop to its new anchor.
         // Erasing a draft flips two slots a frame or two apart (attach arrives, the action beside it
         // leaves), and each flip re-layouts; waiting for the anchor to settle turns what used to be two
-        // consecutive slides into one. The capsule itself no longer moves - it is full width now - so
-        // only the slot is held and eased.
+        // consecutive slides into one. Only the slot is held and eased; the trailing bubbles are derived
+        // from the slot's live geometry every frame, so they ride the same ease with no clock of their own.
         private void holdTrailingSlide(int endShift) {
             resumingMidAnimation = boundsAnimator != null;
             cancelBoundsAnimation();
