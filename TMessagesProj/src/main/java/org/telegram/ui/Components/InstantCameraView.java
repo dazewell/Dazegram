@@ -2873,60 +2873,77 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private void feedAudioToEncoder(AudioBufferInfo input) {
             try {
                 boolean isLast = false;
+                int stalledDequeues = 0;
                 while (input != null) {
                     int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
-                    if (inputBufferIndex >= 0) {
-                        ByteBuffer inputBuffer;
-                        inputBuffer = audioEncoder.getInputBuffer(inputBufferIndex);
-                        long startWriteTime = input.offset[input.lastWroteBuffer];
-                        for (int a = input.lastWroteBuffer; a <= input.results; a++) {
-                            if (a < input.results) {
-                                long totalTime = input.offset[a] - segmentAudioStartTime;
-                                if (!running && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
-                                    if (BuildVars.LOGS_ENABLED) {
-                                        if (totalTime >= 60_000000) {
-                                            FileLog.d("InstantCamera stop audio encoding because recorded time more than 60s");
-                                        } else {
-                                            FileLog.d("InstantCamera stop audio encoding because of stoped video recording at " + input.offset[a] + " last video " + videoLast);
-                                        }
-
-                                    }
-                                    audioStopedByTime = true;
-                                    isLast = true;
-                                    input = null;
-                                    buffersToWrite.clear();
-                                    break;
-                                }
-                                if (inputBuffer.remaining() < input.read[a]) {
-                                    input.lastWroteBuffer = a;
-                                    input = null;
-                                    break;
-                                }
-                                inputBuffer.put(input.buffer[a]);
-                            }
-                            if (a >= input.results - 1) {
-                                buffersToWrite.remove(input);
-                                if (running) {
-                                    buffers.put(input);
-                                }
-                                if (!buffersToWrite.isEmpty()) {
-                                    input = buffersToWrite.get(0);
-                                } else {
-                                    isLast = input.last;
-                                    input = null;
-                                    break;
-                                }
-                            }
+                    if (inputBufferIndex < 0) {
+                        // NagramX: the codec can have no free input slot for a moment, and handleRollover's
+                        // flush can hand this more backlog at once than the steady per-frame caller usually
+                        // does. A drain can free a slot on some encoder implementations; bounded so a codec
+                        // that's actually stuck doesn't spin this encoder-thread call forever instead of
+                        // reaching finishMuxer() and the next segment.
+                        if (++stalledDequeues > 50) {
+                            FileLog.e(new RuntimeException("InstantCamera audio encoder produced no input buffer, dropping remaining backlog"));
+                            break;
                         }
-                        long time = startWriteTime == 0 ? 0 : startWriteTime - audioStartTime;
-                        long realtime = time;
-                        if (prevAudioLast >= 0) {
-                            time += prevAudioLast;
+                        try {
+                            drainEncoder(false);
+                        } catch (Exception e) {
+                            FileLog.e(e);
                         }
-                        audioLastDt = time - audioLast;
-                        audioLast = time;
-                        audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                        continue;
                     }
+                    stalledDequeues = 0;
+                    ByteBuffer inputBuffer;
+                    inputBuffer = audioEncoder.getInputBuffer(inputBufferIndex);
+                    long startWriteTime = input.offset[input.lastWroteBuffer];
+                    for (int a = input.lastWroteBuffer; a <= input.results; a++) {
+                        if (a < input.results) {
+                            long totalTime = input.offset[a] - segmentAudioStartTime;
+                            if (!running && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
+                                if (BuildVars.LOGS_ENABLED) {
+                                    if (totalTime >= 60_000000) {
+                                        FileLog.d("InstantCamera stop audio encoding because recorded time more than 60s");
+                                    } else {
+                                        FileLog.d("InstantCamera stop audio encoding because of stoped video recording at " + input.offset[a] + " last video " + videoLast);
+                                    }
+
+                                }
+                                audioStopedByTime = true;
+                                isLast = true;
+                                input = null;
+                                buffersToWrite.clear();
+                                break;
+                            }
+                            if (inputBuffer.remaining() < input.read[a]) {
+                                input.lastWroteBuffer = a;
+                                input = null;
+                                break;
+                            }
+                            inputBuffer.put(input.buffer[a]);
+                        }
+                        if (a >= input.results - 1) {
+                            buffersToWrite.remove(input);
+                            if (running) {
+                                buffers.put(input);
+                            }
+                            if (!buffersToWrite.isEmpty()) {
+                                input = buffersToWrite.get(0);
+                            } else {
+                                isLast = input.last;
+                                input = null;
+                                break;
+                            }
+                        }
+                    }
+                    long time = startWriteTime == 0 ? 0 : startWriteTime - audioStartTime;
+                    long realtime = time;
+                    if (prevAudioLast >= 0) {
+                        time += prevAudioLast;
+                    }
+                    audioLastDt = time - audioLast;
+                    audioLast = time;
+                    audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
                 }
             } catch (Throwable e) {
                 FileLog.e(e);
