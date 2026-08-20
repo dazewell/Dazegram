@@ -3247,8 +3247,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // its audio tail lands in file N instead of sitting in buffersToWrite for segment N+1 to find
             // and discard as pre-segment audio. running is still true here (only handleStopRecording flips
             // it), so the 60s-cutoff branch inside this feed can't fire and truncate the feed early.
-            if (!buffersToWrite.isEmpty()) {
+            // One call to feedAudioToEncoder only fills what fits in the encoder's currently available
+            // input buffers -- KEY_MAX_INPUT_SIZE holds exactly one AudioBufferInfo, so a second queued
+            // record does not fit alongside the first and the call returns with it still unconsumed. The
+            // steady per-frame caller lets the next frame pick that up; here there is no next frame before
+            // finishMuxer(), so keep calling until the backlog (at most the 3-buffer pool) is actually
+            // empty. Bounded by attempts, not by buffersToWrite shrinking: a call can make real progress
+            // inside one AudioBufferInfo without removing it from the list yet.
+            int rolloverFlushAttempts = 0;
+            while (!buffersToWrite.isEmpty() && rolloverFlushAttempts++ < 8) {
                 feedAudioToEncoder(buffersToWrite.get(0));
+            }
+            if (!buffersToWrite.isEmpty()) {
+                FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));
             }
             try {
                 drainEncoder(false);
