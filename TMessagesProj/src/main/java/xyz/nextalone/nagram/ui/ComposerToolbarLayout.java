@@ -515,17 +515,19 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * same; the trailing zone's roles share one slot with no container of their own, where padding would
      * become gap rather than clearance, so it is not given any.
      *
-     * <p>Derived from the exact expression applyIconBox uses, evaluated at iconScale 1f - the per-key
-     * optical corrections make any single button's inset glyph-specific, so reading one real button's
-     * value would make this drift with the user's layout. Re-derived per measure pass rather than frozen
-     * as a dp. 12dp at 100% scale, 9dp at 75%, 15dp at 125%. This is a taste number, not a derived
+     * <p>Derived from the exact expression applyIconBox uses for a neutral glyph: the row scale() still
+     * applies (that is the factor applyPanelIconBox passes for a plain glyph), only the per-key optical
+     * correction is dropped to 1, since those corrections make any single button's inset glyph-specific
+     * and reading one real button's value would make this drift with the user's layout. Re-derived per
+     * measure pass rather than frozen as a dp. 12dp at 100% scale, 9dp at 75%, 15dp at 125%. This is a
+     * taste number, not a derived
      * constraint - the 22dp rounded corner sweeps back across the glyph's corner, so perpendicular
      * clearance wants roughly one icon inset even though the linear reference sits nearer half that. Kept
      * as one expression in one place so halving it later is a one-line change.
      */
     private static int middleContentSideInset() {
         int cellPx = Math.round(AndroidUtilities.dpf2(buttonSize()));
-        int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH));
+        int glyphPx = Math.round(AndroidUtilities.dpf2(ICON_GLYPH) * scale());
         return Math.max(0, cellPx - glyphPx) / 2;
     }
 
