@@ -892,6 +892,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
             float min = Float.MAX_VALUE;
             float max = -Float.MAX_VALUE;
+            int alpha = 0;
             for (int i = 0; i < endSlot.getChildCount(); i++) {
                 View child = endSlot.getChildAt(i);
                 if (child == trailingContextGroup || child == trailingPinnedView) {
@@ -908,11 +909,14 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 if (right > max) {
                     max = right;
                 }
+                // The most opaque button drives the pill: a single button fading in makes the pill fade
+                // with it, while a button fading in beside an opaque one leaves the pill solid.
+                alpha = Math.max(alpha, alphaOf(child));
             }
             if (max > min) {
                 bubbleLeft[BUBBLE_CONFIGURABLE] = min;
                 bubbleRight[BUBBLE_CONFIGURABLE] = max;
-                bubbleAlpha[BUBBLE_CONFIGURABLE] = 255;
+                bubbleAlpha[BUBBLE_CONFIGURABLE] = alpha;
                 bubbleOccupied[BUBBLE_CONFIGURABLE] = true;
             }
         }
