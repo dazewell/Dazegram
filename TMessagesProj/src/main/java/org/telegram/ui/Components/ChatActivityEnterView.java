@@ -16679,6 +16679,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     public class TimerView extends View {
         boolean isRunning;
         boolean stoppedInternal;
+        // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
+        // re-arm every segment instead of just once per recording
+        boolean warnedInternal;
         String oldString;
         long startTime;
         long stopTime;
@@ -16703,6 +16706,7 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         public void start(long milliseconds) {
             isRunning = true;
+            warnedInternal = false;
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
             invalidate();
@@ -16734,6 +16738,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             int ms = (int) (t % 1000L) / 10;
 
             if (isInVideoMode()) {
+                // NagramX: warn ~5s before an infinite-mode cut lands, so a user who isn't watching the
+                // screen still knows one is coming. Armed from the same condition the cut below checks, so
+                // it never promises a rollover that a last-segment or slow-mode/view-once stop won't give.
+                if (infiniteVideoMessage && !warnedInternal && t >= 54500 && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
+                    warnedInternal = true;
+                    BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
+                    armInfiniteVideoWarning();
+                }
                 if (t >= 59500 && !stoppedInternal) {
                     // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
                     // dropping into the preview. The last allowed segment falls back to the normal stop, as
@@ -18356,6 +18368,15 @@ public class ChatActivityEnterView extends FrameLayout implements
     private void updateInfiniteRecordingButton() {
         if (parentFragment != null && parentFragment.instantCameraView != null) {
             parentFragment.instantCameraView.updateInfiniteButton();
+        }
+    }
+
+    // NagramX: infinite video message: tells InstantCameraView to pulse its progress arc for the last
+    // ~5s before a rollover. Kept as a plain setter call, not a new delegate/state number -- TimerView
+    // already reaches the view directly through parentFragment for updateInfiniteRecordingButton() above.
+    private void armInfiniteVideoWarning() {
+        if (parentFragment != null && parentFragment.instantCameraView != null) {
+            parentFragment.instantCameraView.setInfiniteWarningActive(true);
         }
     }
 

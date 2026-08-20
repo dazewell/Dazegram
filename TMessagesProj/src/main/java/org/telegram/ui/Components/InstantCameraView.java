@@ -76,6 +76,7 @@ import com.google.android.exoplayer2.ExoPlayer;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.AutoDeleteMediaTask;
+import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLoader;
@@ -189,6 +190,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean recording;
     private long recordedTime;
     private boolean cancelled;
+
+    // NagramX: infinite video message: true for the last ~5s before a rollover actually lands, so onDraw
+    // can pulse the arc. Set from ChatActivityEnterView.TimerView (the same place that arms the cut
+    // itself) and only ever read here -- no state decisions get made inside onDraw.
+    private volatile boolean infiniteWarningActive;
+    private Paint infiniteWarningPaint;
 
     private CameraGLThread cameraThread;
     private Size[] previewSize = new Size[2];
@@ -674,6 +681,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 
+    // NagramX: infinite video message: arms (or clears) the pre-cut pulse on the progress arc. Called
+    // from TimerView, which already owns the "will this segment actually roll over" decision -- onDraw
+    // here just reads the flag it sets.
+    public void setInfiniteWarningActive(boolean active) {
+        if (infiniteWarningActive != active) {
+            infiniteWarningActive = active;
+            invalidate();
+        }
+    }
+
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.fileUploaded) {
@@ -725,6 +742,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 canvas.scale(cameraContainer.getScaleX(), cameraContainer.getScaleY(), rect.centerX(), rect.centerY());
             }
             canvas.drawArc(rect, -90, 360 * progress, false, paint);
+            // NagramX: pulse a second arc over the shared white one for the last ~5s before an infinite-mode
+            // cut. A separate paint on purpose -- `paint`'s alpha is already driven by the PAINT_ALPHA
+            // animator in setupVideoPlayer, and tinting it here would fight that animation. A pulse rather
+            // than a flat tint because a colour shift on a thin white arc barely reads on a bright screen.
+            if (infiniteWarningActive) {
+                if (infiniteWarningPaint == null) {
+                    infiniteWarningPaint = new Paint(paint);
+                    infiniteWarningPaint.setColor(0xffff5252);
+                }
+                float phase = (System.currentTimeMillis() % 700L) / 700f;
+                infiniteWarningPaint.setAlpha((int) (110 + 145 * Math.abs(Math.sin(phase * Math.PI))));
+                canvas.drawArc(rect, -90, 360 * progress, false, infiniteWarningPaint);
+            }
             canvas.restore();
         }
     }
@@ -1296,6 +1326,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         recordStartTime = System.currentTimeMillis();
         recordedTime = 0;
         progress = 0;
+        setInfiniteWarningActive(false);
         invalidate();
         updateInfiniteButton();
     }
@@ -3205,6 +3236,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final File segmentFile = videoFile;
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
+                // NagramX: the cut haptic fires here, once segment N has actually finished writing, not
+                // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little
+                BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
                 if (info != null) {
                     info.notReadyYet = false;
@@ -3612,6 +3646,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (InstantCameraView.this.videoEncoder == this) {
                     InstantCameraView.this.videoEncoder = null;
                 }
+                // NagramX: recording is over one way or another, so any pre-cut warning still showing
+                // (e.g. the last segment stopped normally instead of rolling over) needs clearing too
+                setInfiniteWarningActive(false);
             });
         }
 
