@@ -976,6 +976,17 @@ public final class ComposerToolbarLayout extends FrameLayout {
             } else if (!holdingBounds) {
                 trailingSlot.setTranslationX(0);
             }
+            invalidate();
+        }
+
+        // This row paints content derived from its descendants' geometry (see drawGlass), but a
+        // descendant invalidation only marks ancestors dirty without re-recording them - the child's own
+        // render node refreshes while this view replays its last recorded bubble span. Invalidate
+        // explicitly so the painter is never staler than what it is painting.
+        @Override
+        public void onDescendantInvalidated(View child, View target) {
+            super.onDescendantInvalidated(child, target);
+            invalidate();
         }
 
         @Override

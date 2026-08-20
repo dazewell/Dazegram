@@ -57,7 +57,7 @@ Clear Message Database now removes only the media this install has database rows
 
 ## Composer and input
 
-### Composer toolbar <!-- #composer-toolbar -->
+### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->
 
 The separate glass text pill keeps its renderer 16dp from both logical edges and holds Send or mic at its trailing end. A row of glass action bubbles sits below it, drawn in the same blurred glass as the text pill so the two read as one material where they meet: emoji sits in its own bubble at one edge, attachments shares a bubble at the other end with expand and schedule, and the controls between them get a bubble that hugs its buttons and scrolls only when more than fit. Each group rounds into its own pill with a small gap between them, and a bubble holding a single button — emoji on its own at the leading edge, or the attach paperclip by itself — rounds all the way to a circle. The leading and trailing bubbles stay flush to the row's edges so they still line up with the text pill above at any button count or toolbar size, and a sparse row simply widens the gaps between the bubbles instead of leaving blank glass or shrinking to a centred pill. The scrolling middle bubble keeps its end icons an icon's width clear of its rounded corners rather than running them up to the glass. Quote, Spoiler, Select All, and Clear stay in the toolbar. Quote, Spoiler, and Clear enable when text is selected; Select All enables whenever the field has text and selects the whole draft. Monospace is gone from the row (still there in the long-press selection menu). Toggle any of them off in settings.
 
