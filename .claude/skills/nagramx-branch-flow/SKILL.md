@@ -187,6 +187,12 @@ hyphens inside the slug. Both forms are valid and equal:
   (`2026-08-05-video-cc`) — that's a valid name, leave it. **The date is the
   part that must never be lost**; if the generated name lost the date, rename
   it.
+- **In an agent worktree session, `create_session` auto-names the branch with no
+  date prefix at all** (e.g. `haptic-configuration`), and there `rename_branch`
+  is one-shot and raw `git branch -m` is forbidden — so the rename must be the
+  child's *first* action, before any commit. The orchestrator writes that into
+  the kickoff prompt; see its `create_session` dispatch checklist in
+  `.github/agents/nagramx-orchestrator.agent.md`.
 - **Wrong name already created?** Rename it before it accumulates review
   history, rather than living with it:
   ```powershell

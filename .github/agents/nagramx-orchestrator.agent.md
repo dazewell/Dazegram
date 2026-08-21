@@ -74,10 +74,9 @@ for code, wasteful for an opinion. Scout, UX and architect never need a branch.
 
 Dispatch a subagent with the `task` tool (`agent_type: nagramx-scout`, and so
 on), passing `model` and `reasoning_effort` from the table below. Dispatch an
-implementer with `create_session`, passing `kickoff.agent:
-nagramx-implementer`, `kickoff.mode: autopilot`, `kickoff.model` and
-`kickoff.reasoning_effort`, and `notify_on_idle: always`. Leave `base_branch`
-unset so it cuts from `dev`. Use `list_projects` if you need the NagramX
+implementer with `create_session` — every field it needs is in the dispatch
+checklist below, because `create_session`'s defaults are wrong for this repo and
+none of them fail loudly. Use `list_projects` if you need the NagramX
 project id. Talk to a running session with `send_session_message`, inspect it
 with `get_session`, and if one ever pauses waiting for plan approval, unblock it
 with `respond_to_session_plan` — dazewell asked for this to run unattended, so
@@ -108,6 +107,46 @@ git fetch origin; git log --oneline dev..origin/dev
   files existed on disk, and dispatching them silently falls back to a generic
   agent that has read none of the skills. Say so and ask dazewell to restart the
   session rather than working around it.
+
+### The `create_session` dispatch checklist
+
+`create_session` names the branch for you and picks an agent, a mode and a model
+for you when you don't. Every one of those defaults is wrong here, and not one of
+them warns you — a wrong default surfaces only as subtly wrong behaviour a long
+way downstream (a child on the generic agent hands back a plausible report; a
+misnamed branch ships before anyone reads the metadata). **A tool that silently
+substitutes a default is more dangerous than one that fails.** So set each of
+these explicitly at every call, never trusting the default:
+
+- **`kickoff.agent: nagramx-implementer`** — the default is a generic agent with
+  none of the role behaviour (no don't-implement-it-yourself rule, no
+  verify-the-child's-claims discipline, no lifecycle checklist, no handback
+  format). A kickoff prompt that happens to describe the pipeline is not a
+  substitute; that's luck, not the encoded role.
+- **`kickoff.mode: autopilot`** — so it runs unattended rather than stopping for
+  plan approval.
+- **`kickoff.model` and `kickoff.reasoning_effort`** — from the table below and
+  the task-*class* rule; the frontmatter default is `claude-sonnet-5`, wrong for
+  a hard-class change.
+- **`notify_on_idle: always`** — so a stalled or finished child reaches you.
+- **`base_branch`** — leave unset so it cuts from `dev`. Set it only for a
+  genuine dependency on another in-flight branch, and say which and why.
+
+The branch is the one field you cannot fix from here after the fact:
+`create_session` auto-names it (e.g. `haptic-configuration`) with **no
+`<YYYY-MM-DD>_` prefix**, `rename_branch` is one-shot per session, and raw
+`git branch -m` is forbidden in the workspace. So **make renaming the branch the
+child's first action, written into the kickoff prompt itself** — not a follow-up
+message, which can arrive after the one-shot tool has already been spent. The
+brief's fixed block already carries the dated name; the prompt must also instruct
+the child to apply it before touching a file.
+
+**Then verify the dispatch before letting the child do real work:** confirm with
+`get_session` that it is running `nagramx-implementer` and sits on a
+correctly-dated branch. This is free while the session has zero diff and
+expensive once it has commits — the misnamed branch on PR #166 shipped precisely
+because nobody looked until it had history. A misnamed branch caught by a human
+rather than by any of our review machinery is a signal about where the gaps are.
 
 ## Choosing the model for each job
 
@@ -229,7 +268,8 @@ specialist reports **verbatim** and lead with the fixed block:
 
 ```
 Slug:           <slug>
-Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the date)
+Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the date;
+                  child renames to this with `rename_branch` before touching a file)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
