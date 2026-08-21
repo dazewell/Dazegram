@@ -16745,20 +16745,22 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         // NagramX: fires the pre-cut warning at the level chosen in Camera settings, via the shared
         // RecordingLimitVibration pulse (see its javadoc for why this doesn't go through
-        // BotWebViewVibrationEffect). Every level schedules the same pulse twice, ~78ms apart, so the
-        // warning reads as two taps regardless of intensity. capturedStartTime pins the delayed tap to
-        // this segment: a stop, pause, or a fresh recording landing in that gap changes startTime, so
-        // it's skipped instead of firing into whatever's running by then.
+        // BotWebViewVibrationEffect). `this` doubles as the performHapticFeedback fallback target if the
+        // Vibrator route comes back dead -- TimerView extends View, so it's already one. Every level
+        // schedules the same pulse twice, ~78ms apart, so the warning reads as two taps regardless of
+        // intensity. capturedStartTime pins the delayed tap to this segment: a stop, pause, or a fresh
+        // recording landing in that gap changes startTime, so it's skipped instead of firing into
+        // whatever's running by then.
         private void fireLimitWarningVibration() {
             final int level = NaConfig.INSTANCE.getVideoMessagesWarningVibration().Int();
             if (level == 0) {
                 return;
             }
             final long capturedStartTime = startTime;
-            RecordingLimitVibration.fire(level);
+            RecordingLimitVibration.fire(level, this);
             AndroidUtilities.runOnUIThread(() -> {
                 if (isRunning && recordingAudioVideo && startTime == capturedStartTime) {
-                    RecordingLimitVibration.fire(level);
+                    RecordingLimitVibration.fire(level, this);
                 }
             }, LIMIT_WARNING_DOUBLE_TAP_GAP_MS);
         }

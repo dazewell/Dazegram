@@ -5,8 +5,11 @@ import android.os.Build;
 import android.os.VibrationAttributes;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.view.HapticFeedbackConstants;
+import android.view.View;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
@@ -34,42 +37,86 @@ public final class RecordingLimitVibration {
     private static final long[] DURATION_MS = {30, 50, 80};
     private static final int[] AMPLITUDE = {120, 180, 255};
 
-    public static void fire(int level) {
+    // fallback constants for when the Vibrator route comes back dead. No per-level duration/amplitude
+    // control this way -- just three progressively more assertive HapticFeedbackConstants -- but a real
+    // buzz beats silence.
+    private static final int[] HAPTIC_FEEDBACK_CONSTANT = {
+            HapticFeedbackConstants.CLOCK_TICK,
+            HapticFeedbackConstants.KEYBOARD_TAP,
+            HapticFeedbackConstants.LONG_PRESS,
+    };
+
+    // NagramX: both current callers (InstantCameraView's fireCutVibration and ChatActivityEnterView's
+    // TimerView.fireLimitWarningVibration) already run on the UI thread, which performHapticFeedback
+    // requires -- this doesn't dispatch anywhere itself, so calling it off the UI thread is on the caller.
+    public static void fire(int level, View view) {
         if (level < LIGHT || level > STRONG) {
             return; // 0 = off, and anything out of range
         }
         if (NekoConfig.disableVibration.Bool()) {
             // BotWebViewVibrationEffect.vibrate() applied this gate for every caller that used it; now
-            // that these two buzzes build their own VibrationEffect instead of going through it, it has
-            // to be repeated here or the global off switch silently stops covering them.
+            // that this builds its own VibrationEffect instead of going through it, it has to be repeated
+            // here or the global off switch silently stops covering both buzzes.
             return;
         }
+        if (fireVibrator(level)) {
+            return;
+        }
+        // NagramX: the Vibrator route came back dead -- no vibrator, hasVibrator() false, or vibrate()
+        // itself threw. Confirmed on a real device that performHapticFeedback with
+        // FLAG_IGNORE_VIEW_SETTING still fires under a condition (Do Not Disturb) where a bare
+        // Vibrator.vibrate() call silently didn't, so falling back to it beats going silent. Loses the
+        // per-level duration/amplitude control above -- HAPTIC_FEEDBACK_CONSTANT is just three
+        // progressively stronger constants, not tuned to the same ms/amplitude pairs.
+        if (view != null) {
+            view.performHapticFeedback(HAPTIC_FEEDBACK_CONSTANT[level - 1], HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+        }
+    }
+
+    // level is already validated 1-3 by fire() above. Returns true if the vibrator ran without error,
+    // false if the caller should fall back to performHapticFeedback instead.
+    private static boolean fireVibrator(int level) {
         Vibrator vibrator = AndroidUtilities.getVibrator();
-        if (vibrator == null) {
-            return;
+        if (vibrator == null || !vibrator.hasVibrator()) {
+            return false;
         }
-        long duration = DURATION_MS[level - 1];
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // hasAmplitudeControl() == false doesn't need a separate fallback array here: createWaveform's
-            // 3-arg (timings + amplitudes) overload maps each timing straight to its amplitude rather than
-            // assuming an off-first on/off pattern, so on a device without amplitude control it still
-            // vibrates for the full `duration` at that device's default strength -- it just can't scale the
-            // strength. Duration is what makes these perceptible over the old 7ms pulses, so this degrades
-            // sensibly without any extra branching.
-            VibrationEffect effect = VibrationEffect.createWaveform(new long[]{duration}, new int[]{AMPLITUDE[level - 1]}, -1);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_NOTIFICATION));
+        try {
+            long duration = DURATION_MS[level - 1];
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                // hasAmplitudeControl() == false doesn't need a separate fallback array here: createWaveform's
+                // 3-arg (timings + amplitudes) overload maps each timing straight to its amplitude rather than
+                // assuming an off-first on/off pattern, so on a device without amplitude control it still
+                // vibrates for the full `duration` at that device's default strength -- it just can't scale the
+                // strength. Duration is what makes these perceptible over the old 7ms pulses, so this degrades
+                // sensibly without any extra branching.
+                VibrationEffect effect = VibrationEffect.createWaveform(new long[]{duration}, new int[]{AMPLITUDE[level - 1]}, -1);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    // USAGE_TOUCH, not USAGE_NOTIFICATION: confirmed on a real device that notification-class
+                    // vibration is muted by Do Not Disturb while performHapticFeedback -- which the platform
+                    // itself issues as USAGE_TOUCH -- isn't. That's also the right category on its own merits,
+                    // not just the one DND leaves alone: this is app-driven interaction feedback during an
+                    // active recording, not a notification. USAGE_HARDWARE_FEEDBACK is for things like
+                    // fingerprint-sensor acknowledgement and USAGE_PHYSICAL_EMULATION for simulated hardware
+                    // controls (e.g. an edge squeeze) -- neither matches on-screen interaction feedback.
+                    vibrator.vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH));
+                } else {
+                    // AudioAttributes has no touch/haptic-feedback usage. USAGE_ASSISTANCE_SONIFICATION with
+                    // CONTENT_TYPE_SONIFICATION is the conventional pairing for app-generated haptics on these
+                    // API levels, and USAGE_NOTIFICATION is out for the same DND reason as above.
+                    vibrator.vibrate(effect, new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build());
+                }
             } else {
-                // USAGE_NOTIFICATION, not USAGE_ALARM: this is an in-app heads-up during an active recording,
-                // not a system alarm, and it's the usage NotificationsController already vibrates message
-                // notifications with -- unlike USAGE_UNKNOWN (what calling vibrate() with no attributes at
-                // all gets you), it isn't tied to the touch-feedback setting that was eating these buzzes.
-                vibrator.vibrate(effect, new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_NOTIFICATION).build());
+                // dead code on this app's minSdk 27, kept anyway: the classic pattern below is off-first, so a
+                // single-element array would be silent -- {0, duration} is off for 0ms then on for `duration`.
+                vibrator.vibrate(new long[]{0, duration}, -1);
             }
-        } else {
-            // dead code on this app's minSdk 27, kept anyway: the classic pattern below is off-first, so a
-            // single-element array would be silent -- {0, duration} is off for 0ms then on for `duration`.
-            vibrator.vibrate(new long[]{0, duration}, -1);
+            return true;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
         }
     }
 }

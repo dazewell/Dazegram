@@ -3277,8 +3277,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         // NagramX: maps the Camera-settings cutoff level to a pulse, shared by both cutoff sites below
         // (this rollover and handleStopRecording's cap auto-stop) so one can't drift from the other.
+        // InstantCameraView.this, not `this` (VideoRecorder isn't a View) -- needed as the
+        // performHapticFeedback fallback target if the Vibrator route comes back dead.
         private void fireCutVibration() {
-            RecordingLimitVibration.fire(NaConfig.INSTANCE.getVideoMessagesCutVibration().Int());
+            RecordingLimitVibration.fire(NaConfig.INSTANCE.getVideoMessagesCutVibration().Int(), InstantCameraView.this);
         }
 
         // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next
