@@ -196,6 +196,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // volatile needed.
     private boolean limitWarningActive;
     private Paint limitWarningPaint;
+    // NagramX: armed right before the ordinary 60s auto-stop dispatch. state==3 alone doesn't mean "hit
+    // the cap" -- NekoConfig.confirmAVMessage reuses it for a manual send that wants a preview too -- so
+    // this is a direct signal instead. Read and cleared once in shutdown() below.
+    private boolean limitStopHapticArmed;
 
     private CameraGLThread cameraThread;
     private Size[] previewSize = new Size[2];
@@ -688,6 +692,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             limitWarningActive = active;
             invalidate();
         }
+    }
+
+    // NagramX: called right before the cap auto-stop dispatch, consumed once in shutdown() below.
+    public void armLimitStopHaptic() {
+        limitStopHapticArmed = true;
     }
 
     @Override
@@ -2336,7 +2345,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             Handler handler = getHandler();
             if (handler != null) {
                 handler.removeMessages(DO_RENDER_MESSAGE);
-                sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0)), 0);
+                SendOptions options = new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0);
+                // NagramX: still on the UI thread here, same call stack as the dispatch that may have just
+                // armed this -- read and clear before SendOptions crosses to the encoder thread
+                options.limitStop = limitStopHapticArmed;
+                limitStopHapticArmed = false;
+                sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, options), 0);
             }
         }
 
@@ -2440,6 +2454,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         int ttl;
         long effectId;
         long stars;
+        // NagramX: set once in CameraGLThread.shutdown() below, read in handleStopRecording() to fire the
+        // cap-stop haptic for exactly the auto-stop, not a manual send/stop that happens to share state==3
+        boolean limitStop;
 
         public SendOptions(boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
             this.notify = notify;
@@ -3749,12 +3766,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // stoppedGeneration was pinned back when this stop sequence started (see its field comment), so
             // it stays correct here regardless of what recordingToken has since been bumped to.
             final int capturedGeneration = stoppedGeneration;
+            final boolean fireLimitStopHaptic = sendOptions != null && sendOptions.limitStop;
             AndroidUtilities.runOnUIThread(() -> {
                 if (InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     InstantCameraView.this.videoEncoder = null;
                     // NagramX: recording is over one way or another, so any pre-cut warning still showing
                     // (e.g. the last segment stopped normally instead of rolling over) needs clearing too.
                     setLimitWarningActive(false);
+                    // NagramX: same buzz as a rollover cut, fired only for the ordinary 60s auto-stop
+                    if (fireLimitStopHaptic) {
+                        org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                    }
                 }
             });
         }

@@ -16773,13 +16773,19 @@ public class ChatActivityEnterView extends FrameLayout implements
                         // must land the stop it actually requested, not a rollover. Only checked here, once,
                         // instead of every frame in the warning window -- isInfiniteVideoAvailable() can hit
                         // a network-backed lookup and this is the only place that still needs the answer.
-                        if (isRunning && infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
-                            infiniteVideoSegments++;
-                            startedDraggingX = -1;
-                            delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                            sendButton.setEffect(effectId = 0);
-                            start(0);
-                            return;
+                        if (isRunning) {
+                            if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
+                                infiniteVideoSegments++;
+                                startedDraggingX = -1;
+                                delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                                sendButton.setEffect(effectId = 0);
+                                start(0);
+                                return;
+                            }
+                            // NagramX: only arm here, not on the fallthrough below -- if a manual stop
+                            // already landed this pass just re-lands that stop with cameraThread already
+                            // gone, and arming it would leave the flag set for whatever recording stops next
+                            armRecordingLimitStopHaptic();
                         }
                         startedDraggingX = -1;
                         delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -18402,6 +18408,15 @@ public class ChatActivityEnterView extends FrameLayout implements
     private void setRecordingLimitWarningActive(boolean active) {
         if (parentFragment != null && parentFragment.instantCameraView != null) {
             parentFragment.instantCameraView.setLimitWarningActive(active);
+        }
+    }
+
+    // NagramX: arms InstantCameraView's cap-stop haptic right before dispatching the ordinary 60s
+    // auto-stop. state==3 alone doesn't mean "hit the cap" -- NekoConfig.confirmAVMessage reuses it for a
+    // manual send that also wants a preview -- so this is a direct signal instead of overloading state.
+    private void armRecordingLimitStopHaptic() {
+        if (parentFragment != null && parentFragment.instantCameraView != null) {
+            parentFragment.instantCameraView.armLimitStopHaptic();
         }
     }
 
