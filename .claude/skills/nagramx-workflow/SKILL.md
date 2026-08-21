@@ -72,18 +72,24 @@ code are not.
    dispatch/output template live in the `nagramx-code-review` skill — read it
    for *what* this review actually checks.
 
-   **A design gate for stateful or concurrent changes.** If recon shows the
-   change touches a cache, asynchronous work, or invalidation — any two of the
-   three, or any one plus multi-threading — write a short state-and-interleaving
-   spec *before* the implementation: what state exists, who writes it, on which
-   thread, what clears it, and the interleavings that matter. Get it reviewed as
-   part of round 1, or as a quick round 1.5 the moment the risky part surfaces
-   mid-implementation, since round 1 usually runs before that part exists. It
-   costs a paragraph, not a build — say plainly that a plan review conducted
-   before the hard part existed has not reviewed the hard part. (The `#personal-replies`
+   **A design gate for stateful or concurrent changes — a real gate, not a
+   note.** If recon *or implementation* reveals the change touches a cache,
+   asynchronous work, or invalidation — any two of the three, or any one plus
+   multi-threading — implementation **stops** until a short
+   state-and-interleaving spec goes back through review: what state exists, who
+   writes it, on which thread, what clears it, and the interleavings that matter.
+   Route it through round 1, or through a **round 1.5** the moment the risky part
+   surfaces mid-implementation — because round 1 almost always ran before that
+   part existed, and **a design review conducted before the hard part existed has
+   not reviewed the hard part.** Say that plainly rather than assuming round 1
+   covered it. It costs a paragraph, not a build. (The `#personal-replies`
    reply-counter fix took five implementation rounds and four review passes
    converging on this exact mechanism; a spec up front would have caught it in
-   round 1 instead of round 3.)
+   round 1 instead of round 3. The `#infinite-video` rollover fix is the sharper
+   case: round 1 reviewed a plan in which the re-arm-on-rollover path did not yet
+   exist, so the concurrency bug that dominated the change was never in front of
+   a reviewer as a design question — only ever as isolated line fixes, one of
+   which shipped.)
 
    **State the trade-off budget in the brief.** Every change brief should say,
    in one line, what may be spent for correctness — an extra query, an extra
@@ -230,6 +236,21 @@ code are not.
    the severity calibration, and the strengths-plus-issues-plus-verdict output
    format the reviewer returns.
 
+   **Then review the whole, on the final state of the code — not the lines, and
+   not commit-by-commit.** Round 2 as run above fixes local defects one at a
+   time; it never asks whether the *accumulation* of those fixes is a design
+   anyone should own, and a smell fixed in isolation can be hiding a design that
+   went wrong. So once the branch is otherwise done (green, round-2 findings
+   resolved), run two more passes over the *final* code, both defined in the
+   `nagramx-code-review` skill: a **whole-feature review** ("would a maintainer
+   be happy to own this?", not "is each line correct?") and an independent
+   **craftsmanship pass** ("is this good code or a batch of hacks?"). These are
+   what catch the bug that a dozen line-by-line passes fixed *around* — read the
+   skill for what each checks, why the craftsmanship pass runs at least twice
+   from model families different from both the implementer and the architect, and
+   how a split verdict is adjudicated. Whoever drives the change dispatches them;
+   in the Copilot roster that is the orchestrator (Phase 4).
+
 6. **Feature doc entry — rides with the feature.** If the change is
    user-visible, write its entry for `FEATURES.md`: under the right
    `## section`, a `### Feature name` heading, then a plain-spoken
@@ -357,19 +378,36 @@ code are not.
      ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
    ```
 
-   Then triage its findings like any review: fix the real ones in place and push,
-   note the false positives. **Do this exactly once — one Copilot pass, not a
-   loop.** Request the review, wait for that first review, address what's worth
-   addressing, push, and stop. Do **not** re-request another Copilot review to
-   "check the fix" — Copilot tends to surface a fresh nitpick every round, so
-   re-requesting after each fix turns into endless churn on diminishing returns.
-   The round-2 architect review is the real quality gate; Copilot is one
-   supplementary machine pass. If a later Copilot pass is genuinely warranted
-   (e.g. the fix was large or risky), dazewell asks for it explicitly. Fixes go
-   in as **new commits** — don't amend and force-push, and don't write
-   "address Copilot review" either; say what the commit actually changes and
-   tag it `#<slug>` (see *Follow up with a new commit* in
-   `nagramx-branch-flow`).
+   Then triage its findings like any review — but **the automated reviewer
+   re-fires on every push to the PR**, so you cannot hold it to "one pass": each
+   fix you push triggers another review and another ~18-minute dual-package
+   build, and each review tends to surface a fresh low-severity nitpick, so the
+   loop does not terminate on its own. Bound it yourself, unilaterally, without
+   waiting for anyone to intervene:
+
+   - **Severity floor.** Triage the first review once, then act **only on
+     findings at Important or above** — data loss, a crash, a race with a
+     user-visible consequence, or a wrong-behaviour regression. Nitpicks, naming
+     preferences, comment suggestions, and speculative defensive guards are
+     **not** grounds for another commit; record them and move on. Asking a
+     machine to "find problems" manufactures Minor ones indefinitely.
+   - **Round cap.** Make **at most two** automated-review-driven push cycles.
+     If Important-or-above findings remain after the second, **stop and report**
+     rather than fixing again — anything still surfacing after two cycles is
+     either churn or a signal the design needs revisiting (the repeated-fix
+     trigger in `nagramx-code-review`), not another line fix. Two matches the
+     architect re-review cap: the first cycle lets a genuine Important finding
+     that only appeared after the first fix still land; a third almost never
+     buys correctness, only build cost.
+
+   This is the implementer's own responsibility — it applies the floor and the
+   cap without an orchestrator noticing and stepping in. Fixes go in as **new
+   commits** — don't amend and force-push, and don't write "address Copilot
+   review"; say what the commit actually changes and tag it `#<slug>` (see
+   *Follow up with a new commit* in `nagramx-branch-flow`). Do **not** re-request
+   the reviewer to "check the fix": the push already re-fired it, and
+   re-requesting only adds passes. The round-2 architect review and the
+   final-state passes (step 5), not this machine loop, are the real quality gate.
 
    Iterate by pushing to the branch (each push rebuilds + re-uploads, and
    supersedes a build still running on that PR rather than adding to it). On a
@@ -385,12 +423,19 @@ code are not.
    cancels a superseded run via its concurrency group, so the actual cost comes
    from choosing to push separately rather than from the workflow itself. Work
    through all of one review round's findings locally, then push once — don't
-   push a fix, wait for its build, then push the next. If you genuinely need a
-   build mid-round to check something, say so and take it as a deliberate
-   exception rather than a habit. The honest corollary: the automated PR review
-   only runs on a push, so batching trades some review granularity for build
-   cost within that round — worth it, but say so rather than pretending it's
-   free.
+   push a fix, wait for its build, then push the next. Batching bounds the cost
+   *within* a cycle; the round cap above bounds the *number* of cycles — they're
+   two different limits and you want both. If you genuinely need a build
+   mid-round to check something, say so and take it as a deliberate exception.
+
+   **Absorb mid-flight scope growth cheaply — don't re-review after each
+   addition.** A change legitimately grows while it's in flight (a hotfix, then
+   the same feature extended, then a follow-on tweak) — that's a fine way for
+   dazewell to work and isn't to be discouraged. But each addition lands on an
+   already-reviewed diff, and re-running review and a build after every one is
+   where cost explodes. When a scope addition is still settling, **hold the
+   review and the build until it's stable**, then review and build the combined
+   state once, rather than paying a full round per increment.
 
    **Close every GitHub review point.** Each inline comment or review thread
    must get either a code fix or an explicit reply explaining why it will not
@@ -424,6 +469,30 @@ code are not.
 - Either way, still **only push to shared branches when that's the intent** —
   the default-PR rule is about not re-asking for *feature* work, not about
   pushing chores nobody requested.
+
+## Priorities: protect the irreplaceable thing first
+
+Rank every decision on a change by what it *risks*, not by what it improves.
+dazewell's framing settles most of these arguments cheaply: *"if it does not
+introduce more risks of losing video — because it can sometimes be unique — I'm
+fine."* Some artifacts a change touches are **irreplaceable** — a round-video
+message, a draft, a queued send — and losing one is unrecoverable in a way a bug
+is not. So the ranking, high to low:
+
+1. **Risk of losing or corrupting the irreplaceable thing** — the recording, the
+   message, the user's data. Nothing below outranks it.
+2. **Behavioural correctness the user would notice** — right output, no crash,
+   no wrong-account leak.
+3. **Maintainability and elegance** — lean code, a clean state machine, fewer
+   moving parts.
+
+(3) is real and worth doing, but it is **never worth a regression risk on green
+code.** Name the irreplaceable thing for the change at hand up front and rank
+accordingly. The corollary that's easy to forget: **a cleanup pass on working
+code is not free** — it risks introducing the very class of bug it's tidying
+around, so a refactor of a load-bearing path clears the same bar as a feature,
+not the lighter bar of "just cleanup." The review skill applies the same ranking
+when it calibrates severity.
 
 ## Coding conventions
 

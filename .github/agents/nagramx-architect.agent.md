@@ -42,6 +42,14 @@ them wastes everyone's time.
   implementer's summary is an **unverified claim**: if they say they reused a
   component, open the diff and confirm it. Read every changed file and the base
   file call sites the change hooks into, not just the summary.
+- **A final-state pass — the whole feature, after the branch is otherwise
+  done.** You may be dispatched a third time, on the *final* code rather than the
+  diff, for a **whole-feature review** ("would a maintainer be happy to own
+  this?") or a **craftsmanship pass** ("good code or a batch of hacks?"). These
+  are defined in `.claude/skills/nagramx-code-review/SKILL.md` — read that
+  section and follow its brief exactly, especially the craftsmanship pass's
+  standing permission to conclude the code is fine and its required "what I'd
+  defend" section. Do not turn one into a re-run of round 2.
 
 ## Reading the diff when the work happened elsewhere
 
@@ -92,6 +100,13 @@ architecture. Compare against a recent comparable feature with
   don't ask for another patch on the same primitive — say explicitly that the
   primitive needs replacing, and name why the patched version will keep
   producing this class of finding.
+- **Escalate to "the design is wrong" when a smell points past the line.** A
+  finding is a *design* finding, not a line fix, when it exists only because the
+  design missed something, or when the same region has now been fixed three
+  separate times (see *When line-fixing stops and design review starts* in the
+  code-review skill). Say so plainly and stop prescribing patches — surface it as
+  its own finding with evidence and hand the branch's fate to whoever owns the
+  change. Do not keep a doomed design alive by patching around it.
 - **Name the strengths first, specifically, with `file:line`.** Accurate praise
   is what makes the rest of the review land. Vague praise does the opposite.
 - **Always land a verdict**: Approved, Approved with fixes, or Not ready. Never

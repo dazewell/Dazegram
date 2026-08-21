@@ -129,9 +129,29 @@ Two rules on top of the table. **Pass the model explicitly at dispatch** —
 pin the implementer to `claude-sonnet-5` and the architect to `claude-opus-5`,
 which are the same family, so on anything risky **override the round-2 architect
 onto a different family** (`gpt-5.6-sol` or `gemini-3.1-pro-preview`): a model
-tends to be blind to its own mistakes in the same places. And the table is
-advisory — if an identifier is unavailable, pick the nearest equivalent and say
-which you used rather than failing.
+tends to be blind to its own mistakes in the same places. The same
+different-family rule binds the craftsmanship pass in Phase 4 — both its
+reviewers must differ from the implementer's family and from each other. And the
+table is advisory — if an identifier is unavailable, pick the nearest equivalent
+and say which you used rather than failing.
+
+**Match model strength to the task *class*, not just its size.** A small change
+can be a hard *class*: concurrency, a media pipeline, a lifecycle re-arm, cache
+invalidation, anything with interleavings the code never stops for. That class
+warrants a stronger implementer model (`claude-opus-4.8` or `gpt-5.3-codex`, not
+the default `claude-sonnet-5`) even when the diff is small — the failure isn't
+volume of code, it's a subtle wrong guard on a path that only misbehaves under
+timing. Be honest about what a stronger model does and does not buy: it does
+**not** shrink the review-and-CI churn that dominates elapsed time (that's the
+auto-firing review loop and mid-flight scope growth, not the model), so don't
+reach for a bigger model expecting a faster run. Reach for it to lower the odds
+of a *silent behavioural bug* on a hard-class change. The observable symptoms of
+a bad fit, so you catch it at hour one rather than hour eight: a guard applied to
+one of two adjacent checks that clearly need the same guard; a comment that
+correctly describes a hazard the code right beside it doesn't handle; the same
+region needing fix after fix. When you see those on a concurrency/media/lifecycle
+change, the model is under-strength for the class — escalate it rather than
+grinding more review rounds.
 
 ## How you run a change
 
@@ -253,6 +273,18 @@ seed finding on `#personal-replies`: the round-1 brief itself specified "apply
 the increment as a delta to that query's result" for a problem that hadn't
 materialized yet, and that delta fold became the first Critical finding.
 
+**When dazewell grows the scope mid-flight, absorb it — don't re-run the loop
+per increment.** A change legitimately gains scope while it's in flight (a
+hotfix, then the feature extended, then a follow-on option); that's a fine way
+for him to work and isn't to be discouraged. But each addition lands on an
+already-reviewed diff, and re-reviewing and rebuilding after every one is where
+elapsed cost explodes. While an addition is still settling, tell the implementer
+to **hold review and the staging build until it's stable**, then review and
+build the combined state once. Rank the additions by the priorities in
+`nagramx-workflow` (risk to the irreplaceable thing first): a scope addition
+that raises the risk of losing the artifact gets scrutiny; a pure tidiness
+addition to green code may not be worth its build at all.
+
 ### Phase 4 — Verify, against evidence
 
 **Every claim a child makes is unverified until you check it.** "The build
@@ -340,6 +372,41 @@ the implementer fixes them as new commits and you re-verify.
   introduced — not to re-review the whole change, and never to resurface a
   finding already declined with a stated reason. A fresh full pass over a
   slightly changed diff produces new Minor findings forever.
+
+The **automated Copilot review** the implementer waits on is a *different* loop
+from this architect one, and it is the **implementer's** job to bound — it
+applies the severity floor and the two-cycle cap from `nagramx-workflow` step 9
+itself. You do not police that loop push-by-push; you only see its residue at
+Phase 4 verification. Do not re-open it by asking for more machine passes.
+
+**Then run the final-state passes, once the architect loop is clean.** Round 2
+fixes lines as they land and never judges the finished artifact as a whole,
+which is exactly where a subtle bug survives. These passes are proportional —
+reserve them for a substantial feature or a hard-class change (concurrency,
+media pipeline, lifecycle); a one-line CI or doc fix does not earn two
+craftsmanship reviewers. When they apply, and round 2 returns no Critical and no
+Important, dispatch the two final-state reviews defined in
+`nagramx-code-review` over the *final* code:
+
+- A **whole-feature review** — "would a maintainer be happy to own this?" — one
+  reviewer reading the finished feature as a unit.
+- A **craftsmanship pass, run at least twice**, each reviewer on a model family
+  different from the implementer and from the architect (see *Choosing the
+  model*). Give them the skill's brief verbatim: final state not diff, explicit
+  permission to conclude the code is fine, a required "what I'd defend" section,
+  and the fork's constraints (legacy Java, minimal footprint, no
+  Compose/DI/test-scaffolding advice).
+
+Read their results as a set: **convergence is signal** (two reviewers naming the
+same region is where a real problem lives — that is what caught the shipping bug
+the automated passes missed), **divergence is a question, not an average.** When
+they split on the remedy, **adjudicate the contested points specifically** with
+a third reviewer — not a fresh full re-review. Route any Important-or-above
+finding these surface back through the capped implementer loop; record Minor ones
+in the handback. If a finding is really "the design is wrong here" (the
+repeated-fix trigger, or a smell pointing past itself), that is an architectural
+call — decide the branch's fate (refactor in place, or stop and re-spec via a
+round 1.5) rather than asking for another patch.
 
 If a fix is contested on technical grounds, decide it yourself. **An
 architectural call — the only kind that goes to dazewell — is exactly one of:**
