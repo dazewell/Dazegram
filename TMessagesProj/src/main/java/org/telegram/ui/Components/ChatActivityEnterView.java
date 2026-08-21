@@ -16683,10 +16683,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
         // re-arm every segment instead of just once per recording
         boolean warnedInternal;
-        // NagramX: gap between the two scheduled taps of a Light/Medium warning buzz, matched to
-        // NOTIFICATION_WARNING's own first-pulse-to-second-pulse timing. Unverified on real hardware
-        // whether this reads as two distinct taps or the second swallows the first -- adjust here if not.
-        private static final long LIMIT_WARNING_DOUBLE_TAP_GAP_MS = 78;
+        // NagramX: gap between the two scheduled taps of a Light/Medium warning buzz, shared with
+        // RecordingLimitVibration.fireWarningPreview() so the real rhythm and its settings preview can't
+        // drift apart.
+        private static final long LIMIT_WARNING_DOUBLE_TAP_GAP_MS = RecordingLimitVibration.WARNING_DOUBLE_TAP_GAP_MS;
         String oldString;
         long startTime;
         long stopTime;
