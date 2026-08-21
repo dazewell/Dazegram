@@ -2925,7 +2925,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     for (int a = input.lastWroteBuffer; a <= input.results; a++) {
                         if (a < input.results) {
                             long totalTime = input.offset[a] - segmentAudioStartTime;
-                            if (!running && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
+                            if (!running && segmentAudioStartTime != -1 && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
                                 if (BuildVars.LOGS_ENABLED) {
                                     if (totalTime >= 60_000000) {
                                         FileLog.d("InstantCamera stop audio encoding because recorded time more than 60s");
