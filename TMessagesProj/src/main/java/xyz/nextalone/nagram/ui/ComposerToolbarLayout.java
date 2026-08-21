@@ -637,6 +637,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // cleared to empty once, so getVisiblePositions stops reporting a phantom backdrop region for it;
         // this fires only on the occupied->hidden edge, never per frame, so it does not churn render nodes.
         private final boolean[] bubbleDrawn = new boolean[BUBBLE_COUNT];
+        // The clamped capsule radius last written to each bubble drawable. drawGlass recomputes the
+        // clamp every frame off live width but only calls setRadius when it actually moves, because
+        // setRadius rebuilds the drawable's props and (with blur off) re-keys and re-bakes its
+        // nine-patch. Initialised to -1 in attachGlass so the first painted frame always writes.
+        private final float[] bubbleRadius = new float[BUBBLE_COUNT];
         // One scale sample for this view's whole life, captured in the constructor. Everything the row
         // draws with - its height, the button-box inset, both glass draw insets and the capsule radius -
         // comes off these three dp values, so a relayout can never pair a freshly read height with a
@@ -662,6 +667,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // separates the button cells rather than being inset inside them.
         private int glassPaddingPx;
         private int glassDrawInsetPx;
+        // The full requested capsule radius - half the unpacked bubble height, off the construction
+        // snapshot - computed once in attachGlass. drawGlass clamps this down against each bubble's own
+        // painted box every frame; it is never handed to a drawable raw.
+        private float requestedRadiusPx;
         // The gap reserved in layout between two adjacent occupied bubbles, and the same value the
         // bubbles then read back when they derive their rects from the laid-out geometry. Scale-derived
         // off the construction snapshot (2 x the box inset, 8dp at 100%) and never multiplied by
@@ -743,18 +752,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
             glassDrawInsetPx = AndroidUtilities.dp(geometryDrawInsetDp);
             // One drawable per bubble, each created with this view so viewPositionWatcher.subscribe wires
             // it to the shared backdrop; multiple subscriptions of the same view are supported, and each
-            // drawable then samples the region under its own bounds. Radius large enough that every
-            // drawable clamps it to half its own painted height, so a one-item bubble comes out a circle
-            // and a wider one keeps semicircular ends - all off the construction snapshot, so radius and
-            // the height it is drawn against are always the same scale. Padding and drawInset are stored
-            // in px here for drawGlass.
-            int radius = AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f);
+            // drawable then samples the region under its own bounds. The capsule radius handed to each
+            // drawable is clamped against that bubble's own painted box every frame in drawGlass, not set
+            // for good here: only the blur+glass RenderNode path clips to an outline (which clamps the
+            // radius to half its shorter painted side), so with that path off nothing else would reduce an
+            // over-large radius and a short bubble would paint an impossible corner. requestedRadiusPx is
+            // the unclamped starting value, off the construction snapshot so it stays the same scale as the
+            // height it is drawn against. Padding and drawInset are stored in px here for drawGlass.
+            requestedRadiusPx = AndroidUtilities.dp((geometryHeightDp - geometryInsetDp) / 2f);
             bubbles = new BlurredBackgroundDrawable[BUBBLE_COUNT];
             for (int i = 0; i < BUBBLE_COUNT; i++) {
                 BlurredBackgroundDrawable drawable = factory.create(this, colorProvider);
-                drawable.setRadius(radius);
+                drawable.setRadius(requestedRadiusPx);
                 drawable.setPadding(glassPaddingPx);
                 bubbles[i] = drawable;
+                // -1 so the first drawGlass pass always writes the clamped radius (see bubbleRadius).
+                bubbleRadius[i] = -1f;
             }
             invalidate();
         }
@@ -1040,6 +1053,22 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     continue;
                 }
                 BlurredBackgroundDrawable drawable = bubbles[role];
+                // Clamp the requested radius down to half the bubble's own painted box before drawing it.
+                // The painted box is the setBounds rect inset by glassPaddingPx on every side - the same
+                // boundsWithPadding the RenderNode outline measures against on the blur+glass path
+                // (BlurredBackgroundDrawable.getOutline), so glass-on stays bit-identical (the clamp is
+                // idempotent there) and glass-off converges on the same shape instead of over-rounding.
+                // min(w,h)/2f, not h/2: a single-button bubble can be narrower than it is tall at a
+                // reachable scale/spacing, and clamping only the height would round the same impossible
+                // corner into the width. Recomputed every frame because widths move with the slot slides
+                // and the bounds animator; written only when it changes so an idle bubble re-bakes nothing.
+                float paintedW = (right - left) - 2f * glassPaddingPx;
+                float paintedH = (bottom - top) - 2f * glassPaddingPx;
+                float effectiveRadius = Math.min(requestedRadiusPx, Math.min(paintedW, paintedH) / 2f);
+                if (bubbleRadius[role] != effectiveRadius) {
+                    drawable.setRadius(effectiveRadius);
+                    bubbleRadius[role] = effectiveRadius;
+                }
                 // setAlpha unconditionally sets renderNodeInvalidated (BlurredBackgroundDrawableRenderNode),
                 // forcing a display-list re-record even when the value is unchanged. Only write it when it
                 // actually moves, so an idle bubble at full opacity re-records nothing frame to frame; the
