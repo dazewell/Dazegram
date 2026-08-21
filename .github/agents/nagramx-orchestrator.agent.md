@@ -146,7 +146,12 @@ the child to apply it before touching a file.
 correctly-dated branch. This is free while the session has zero diff and
 expensive once it has commits — the misnamed branch on PR #166 shipped precisely
 because nobody looked until it had history. A misnamed branch caught by a human
-rather than by any of our review machinery is a signal about where the gaps are.
+rather than by any of our review machinery is a signal about where the gaps are:
+every review round hardens the *diff*, but this failure happens **before the
+first line is written and leaves no trace in any diff**, so no final-state or
+craftsmanship pass could ever catch it. Some failure classes are upstream of
+review entirely — the answer to them is this pre-flight checklist, not another
+review round.
 
 ## Choosing the model for each job
 
