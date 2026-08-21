@@ -129,9 +129,30 @@ Two rules on top of the table. **Pass the model explicitly at dispatch** —
 pin the implementer to `claude-sonnet-5` and the architect to `claude-opus-5`,
 which are the same family, so on anything risky **override the round-2 architect
 onto a different family** (`gpt-5.6-sol` or `gemini-3.1-pro-preview`): a model
-tends to be blind to its own mistakes in the same places. And the table is
-advisory — if an identifier is unavailable, pick the nearest equivalent and say
-which you used rather than failing.
+tends to be blind to its own mistakes in the same places. The same
+different-family rule binds the craftsmanship pass in Phase 4 — both its
+reviewers must differ from the implementer's family, from the architect's, and
+from each other. The
+table is advisory — if an identifier is unavailable, pick the nearest equivalent
+and say which you used rather than failing.
+
+**Match model strength to the task *class*, not just its size.** A small change
+can be a hard *class*: concurrency, a media pipeline, a lifecycle re-arm, cache
+invalidation, anything with interleavings the code never stops for. That class
+warrants a stronger implementer model (`claude-opus-4.8` or `gpt-5.3-codex`, not
+the default `claude-sonnet-5`) even when the diff is small — the failure isn't
+volume of code, it's a subtle wrong guard on a path that only misbehaves under
+timing. Be honest about what a stronger model does and does not buy: it does
+**not** shrink the review-and-CI churn that dominates elapsed time (that's the
+auto-firing review loop and mid-flight scope growth, not the model), so don't
+reach for a bigger model expecting a faster run. Reach for it to lower the odds
+of a *silent behavioural bug* on a hard-class change. The observable symptoms of
+a bad fit, so you catch it at hour one rather than hour eight: a guard applied to
+one of two adjacent checks that clearly need the same guard; a comment that
+correctly describes a hazard the code right beside it doesn't handle; the same
+region needing fix after fix. When you see those on a concurrency/media/lifecycle
+change, the model is under-strength for the class — escalate it rather than
+grinding more review rounds.
 
 ## How you run a change
 
@@ -253,6 +274,18 @@ seed finding on `#personal-replies`: the round-1 brief itself specified "apply
 the increment as a delta to that query's result" for a problem that hadn't
 materialized yet, and that delta fold became the first Critical finding.
 
+**When dazewell grows the scope mid-flight, absorb it — don't re-run the loop
+per increment.** A change legitimately gains scope while it's in flight (a
+hotfix, then the feature extended, then a follow-on option); that's a fine way
+for him to work and isn't to be discouraged. But each addition lands on an
+already-reviewed diff, and re-reviewing and rebuilding after every one is where
+elapsed cost explodes. While an addition is still settling, tell the implementer
+to **hold review and the staging build until it's stable**, then review and
+build the combined state once. Rank the additions by the priorities in
+`nagramx-workflow` (risk to the irreplaceable thing first): a scope addition
+that raises the risk of losing the artifact gets scrutiny; a pure tidiness
+addition to green code may not be worth its build at all.
+
 ### Phase 4 — Verify, against evidence
 
 **Every claim a child makes is unverified until you check it.** "The build
@@ -340,6 +373,72 @@ the implementer fixes them as new commits and you re-verify.
   introduced — not to re-review the whole change, and never to resurface a
   finding already declined with a stated reason. A fresh full pass over a
   slightly changed diff produces new Minor findings forever.
+
+The **automated Copilot review** the implementer waits on is a *different* loop
+from this architect one, and it is the **implementer's** job to bound — it
+applies the severity floor and the two-cycle cap from `nagramx-workflow` step 9
+itself. You do not police that loop push-by-push; you only see its residue at
+Phase 4 verification. Do not re-open it by asking for more machine passes.
+
+**Then run the final-state passes, once the architect loop is clean.** Round 2
+fixes lines as they land and never judges the finished artifact as a whole,
+which is exactly where a subtle bug survives. These passes are proportional —
+they must not run on every chore — but the trigger is **observed as well as
+classified**, because an a-priori size estimate is exactly what misled here: this
+incident was scoped up front as the deliberately-simple "hotfix" half of a split,
+then took 34 commits and 20 builds and the final-state pass caught a data-loss
+bug twelve automated rounds had missed. So run the full final-state pass when
+**any** of these holds, regardless of the initial sizing:
+
+- it touches concurrency, a media pipeline, or object lifecycle (the a-priori
+  hard class);
+- it **hit the automated-review round cap** (`nagramx-workflow` step 9) — a
+  change whose per-line review didn't converge has earned a look at its whole;
+- **repeated fixes landed in the same region** (the Lesson-2 design-review
+  trigger feeds this pass too);
+- **scope grew mid-flight** after review had already run (Phase 3).
+
+A one-line CI or doc fix that trips none of these does not earn two craftsmanship
+reviewers. The principle to hold onto: **a change that needed many rounds to
+stabilise is precisely the one whose final state nobody has read whole** — the
+cheapness of the first estimate is not evidence of simplicity. When a pass
+applies and round 2 returns no Critical and no Important, dispatch the two
+final-state reviews defined in `nagramx-code-review` over the *final* code:
+
+- A **whole-feature review** — "would a maintainer be happy to own this?" — one
+  reviewer reading the finished feature as a unit.
+- A **craftsmanship pass, run at least twice**, each reviewer on a model family
+  different from the implementer, from the architect, and from the other
+  craftsmanship reviewer (see *Choosing the
+  model*). Give them the skill's brief verbatim: final state not diff, explicit
+  permission to conclude the code is fine, a required "what I'd defend" section,
+  the fork's constraints (legacy Java, minimal footprint, no
+  Compose/DI/test-scaffolding advice), and — the point that saved a shipping
+  regression here — **report the smell and its evidence, do not prescribe a
+  remedy in code whose threading and lifecycle you have not traced.** A remedy
+  offered without that trace is a question for adjudication, not an instruction.
+
+Read their results as a set: **convergence is signal** (two reviewers naming the
+same region is where a real problem lives — that is what caught the shipping bug
+the automated passes missed), **divergence is a question, not an average.** When
+they split on the remedy, **adjudicate as a first-class step, per the
+`nagramx-code-review` rules** — a single adjudicator on a model family suited to
+tracing the code, given the contested points only (not a full re-review), **told
+the priority ranking up front** (it flipped a ruling on this incident once
+loss-risk outweighed efficiency), **required to state both exposures per item**
+(the cost of leaving it as-is *and* the cost of changing it — that framing is
+what exposed two remedies that would each have reintroduced the data loss), and
+**forced onto one unhedged verdict** from *merge as-is / minimal fix list / real
+cleanup*, with "merge as-is" explicitly allowed. **If the adjudicator is ruling
+on its own earlier prescription, tell it so** — it must review the code as code,
+not defend its prior idea; on this incident that instruction is what let it
+reverse a bounded-drain fix it had itself specified a round earlier.
+
+Route any Important-or-above finding they surface back through the capped
+implementer loop; record Minor ones in the handback. If a finding is really "the
+design is wrong here" (the repeated-fix trigger, or a smell pointing past
+itself), that is an architectural call — decide the branch's fate (refactor in
+place, or stop and re-spec via a round 1.5) rather than asking for another patch.
 
 If a fix is contested on technical grounds, decide it yourself. **An
 architectural call — the only kind that goes to dazewell — is exactly one of:**
@@ -459,7 +558,13 @@ lighter touch.
   unavailable, say so and stop rather than skipping the gate.
 - **Do not merge on dazewell's behalf.** Hand back the URL; the merge is his.
 - **Do not widen the diff.** Unrelated cleanups and drive-by refactors make the
-  next upstream merge more expensive. Raise them as separate suggestions.
+  next upstream merge more expensive. Raise them as separate suggestions. The one
+  exception a child may legitimately take: a defect it proves is a data-loss or
+  deadlock risk, whose fix is provably local and matches existing practice in the
+  same file (see the implementer's scope rules). When one is flagged in a
+  handback, verify the proof rather than reflexively treating it as scope creep —
+  and if the fix touched a lifecycle, hook point, config or storage surface, it
+  was *not* local and should have come back to you instead.
 - **Do not report a gate as passed when it was skipped.** Say which gate ran,
   which was substituted, and which did not apply.
 

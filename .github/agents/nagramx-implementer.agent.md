@@ -211,12 +211,12 @@ read — say which of the two happened rather than implying it passed.
 them in a row trips the bot's flood limit. Batch your pushes: commit each fix
 separately, push once per round of work, never once per commit.
 
-**Wait for the automated review, then act on it — exactly once.** It posts a
-minute or two later, so do not move on assuming it is clean. Note the current
-review count as a baseline, then run the wait loop from `nagramx-workflow`
-step 9 **synchronously**, with its 20-minute deadline — do not background it and
-end your turn, because a session-attached process dies when the session goes
-idle. Login gotcha: the *reviews* endpoint lists the bot as
+**Wait for the automated review, then bound it yourself.** It posts a minute or
+two later, so do not move on assuming it is clean. Note the current review count
+as a baseline, then run the wait loop from `nagramx-workflow` step 9
+**synchronously**, with its 20-minute deadline — do not background it and end
+your turn, because a session-attached process dies when the session goes idle.
+Login gotcha: the *reviews* endpoint lists the bot as
 `copilot-pull-request-reviewer[bot]` but the inline *comments* endpoint lists it
 as `Copilot`, so an exact-match filter on either name silently returns zero on
 the other endpoint. Match case-insensitively on a wildcard instead.
@@ -235,9 +235,22 @@ $comments | Where-Object { $_.user.login -like '*opilot*' } |
   ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
 ```
 
-Triage it like any review: fix the real findings as new commits, note the false
-positives with a reason. **Do not re-request it after each fix** — that loop
-produces diminishing nitpicks.
+Triage it, then apply `nagramx-workflow` step 9's two limits **yourself** — the
+automated reviewer re-fires on every push, so this loop does not end on its own
+and nobody is watching it for you:
+
+- **Severity floor.** Act only on findings at **Important or above** — data loss,
+  a crash, a race with a user-visible consequence, a wrong-behaviour regression.
+  Nitpicks, naming, comment suggestions, and speculative defensive guards are not
+  grounds for another commit; record them and move on.
+- **Round cap.** At most **two** automated-review-driven push cycles. If
+  Important-or-above findings remain after the second, **stop and report** rather
+  than fixing again — more churn there usually means the design needs revisiting
+  (the repeated-fix trigger in `nagramx-code-review`), which is a report, not a
+  patch.
+
+Fix the real findings as new commits; note the false positives with a reason.
+**Do not re-request the reviewer** — the push already re-fired it.
 
 **Close every review point before you hand back.** Each inline comment and
 review thread gets either a fix or an explicit reply explaining why it will not
@@ -286,6 +299,20 @@ changes. Everything else is yours to call.
   `clean -fd`, branch deletion, or a checkout that discards uncommitted work.
 - **Never widen the scope.** One change per branch. If you discover a second
   problem, report it; do not fix it here.
+
+  **The one narrow exception — a provably local, provably severe defect.** When
+  the branch is otherwise frozen, report-don't-fix is the default: a second
+  problem gets reported and left. But a defect you can *prove* is a **data-loss
+  or deadlock risk**, whose fix is **provably local** (one call site, no
+  lifecycle, hook-point, config, storage or user-visible behaviour change) **and
+  matches existing practice already in the same file**, you may fix in place —
+  with the reasoning stated in the commit message and the fix **flagged
+  prominently in your handback**. The test is severity *and* locality together,
+  not severity alone: a `put()` that deadlocks changed to the `offer()` a sibling
+  path three lines down already uses is inside the line; the same severity with a
+  fix that would touch the lifecycle goes back to the orchestrator untouched. If
+  you can't prove both halves, report and stop — don't reach for this to justify
+  a fix you simply wanted to make.
 - **Never put two unrelated changes on one branch.**
 
 ## Reporting back

@@ -145,6 +145,16 @@ and still be wrong for this repo.
   underlying cause is the same as one already fixed, don't ask for another
   patch on top of it — the primitive itself needs replacing. The tell: a
   successive fix keeps the same clever primitive and adds a guard around it.
+- **A smell can mean the design is wrong, not the line.** When you find a local
+  defect, ask the second question dazewell cares about most: does this indicate
+  the *design* missed something — often data that only surfaced during
+  implementation and is now worth reconsidering — rather than just a line that
+  needs patching? Three overlapping retry mechanisms in one flush path, three
+  generation-token fields guarding a lifecycle nobody re-examined, a state
+  machine in an `onDraw` that grew one branch per review round: each individual
+  fix was defensible, the aggregate was not, and a pass that only judged lines
+  could never see it. When the design is what's wrong, say so and stop patching
+  — see *When line-fixing stops and design review starts* below.
 
 ### 3. Android correctness (the traps generic reviewers miss)
 
@@ -225,6 +235,146 @@ and still be wrong for this repo.
   where they have one), tagged `<!-- #slug -->`? It rides *with* the code in the
   same PR, so its absence on a user-visible change is a finding.
 
+## When line-fixing stops and design review starts
+
+A review that only ever fixes the line in front of it will fix a feature to
+death: twelve isolated fixes, each correct, can add up to a design no one should
+own. Two triggers say the design — not the line — is what needs the next look:
+
+- **The same region keeps getting fixed.** When **three separate fixes** land on
+  the same method, or on the same small cluster of fields, the region is the
+  finding. The next review of that region is a **design review of it** — "is this
+  the right shape?" — not a fourth line fix. (Three, not two: the existing
+  same-root-cause rule already trips at two when the cause is provably shared;
+  this one catches accumulation even when each fix looked independent, so it
+  needs one more data point before it fires.)
+- **A smell points past itself.** A defect that only exists because the design
+  missed something — data that surfaced during implementation, a lifecycle that
+  was never re-examined — is a design finding wearing a line's clothes.
+
+When either fires, **say so explicitly and stop prescribing patches.** Raise it
+as its own finding: "the design needs revisiting because X," with the evidence.
+Who decides what happens next is **not** the reviewer and **not** the
+implementer — it goes to whoever owns the change (the orchestrator, or dazewell
+for an architectural call), because the answer may be to keep the in-flight
+branch and refactor the region, or to stop, re-spec the design (a round 1.5 in
+`nagramx-workflow`), and rebuild that part. The reviewer's job is to surface the
+choice with evidence, not to keep the branch alive by patching.
+
+## The final-state passes (whole-feature and craftsmanship)
+
+Rounds 1 and 2 above run *as the change is built* — round 1 on a plan, round 2
+commit-by-commit as fixes land. Neither judges the finished artifact as a whole,
+and that is exactly the gap a subtle bug survives in. So after the branch is
+otherwise done — green, round-2 findings resolved — two more passes run on the
+**final state of the code**, not on the diff commit-by-commit. They are distinct
+jobs from the architect rounds and from each other; say which you are running.
+
+### Whole-feature review
+
+One question: **"would a maintainer be happy to own this?"** — not "is each line
+correct." Read the finished feature as a unit and judge the shape: the number of
+moving parts, whether three mechanisms are doing one job, whether the state is
+comprehensible, whether the next person can change it without fear. This is the
+pass that sees the aggregate the commit-by-commit rounds could not.
+
+### Craftsmanship pass
+
+One question: **"is this good code, or a batch of hacks held together?"** It is
+deliberately **not** a bug hunt and **not** an architecture review — those are
+covered by round 2 and the whole-feature pass. What makes it work as a prompt:
+
+- **It reviews the final state**, not the diff commit-by-commit.
+- **It has explicit permission to conclude the code is fine.** Asking a reviewer
+  to "find the problems" reliably manufactures problems; say plainly that
+  "this is solid, ship it" is a valid and welcome verdict, or you get invented
+  rewrites.
+- **It reports the smell and its evidence — it does not prescribe a remedy in
+  code whose lifecycle and threading it has not traced end to end.** A
+  craftsmanship reviewer is good at spotting that code is ugly and unreliable at
+  knowing *why* it's ugly, so a remedy it offers without that trace is a
+  **question for the adjudicator, not an instruction.** This is not caution for
+  its own sake: on the motivating incident *both* reviewers proposed concrete
+  fixes and *both* fixes would have caused the exact data loss they meant to
+  prevent — deleting generation tokens that guard the routine pause/resume
+  teardown, and exiting the audio drain earlier and so displacing a segment's
+  tail across the cut. Name the smell, cite it, stop there.
+- **"This code is ugly" and "this code is wrong" are different claims needing
+  different evidence** — and the first never implies the second. Ugliness is
+  read off the code; wrongness needs the trace. Keep them separate in the report.
+- **Ugly-but-correct beats elegant-but-unproven when the asset at risk is
+  irreplaceable.** Code that has survived many review rounds is often ugly
+  *because* it encodes hard-won constraints — the accretion is sometimes the
+  knowledge. Weigh a proposed simplification against what it risks (the
+  priorities in `nagramx-workflow`), not against how clean it would look.
+- **It must produce a "what I'd defend" section** — code that looks convoluted
+  but is load-bearing (a real race guard, an ordering that looks redundant but
+  isn't), named so a later reader doesn't "simplify" a correctness guarantee
+  away. On the incident that motivated this, that section proved as valuable as
+  the criticism.
+- **It's told the fork's constraints** — legacy Java, minimal base-file
+  footprint, no Compose / DI / test-scaffolding recommendations — so its advice
+  is usable here rather than generically aspirational.
+- **Run at least two, from model families different from the implementer, the
+  architect, and each other.** A model is blind to its own class of mistake, so a
+  same-family reviewer misses the same things — and two same-family craftsmanship
+  reviewers would miss them together, defeating the point of running two. Treat
+  **convergence as signal**
+  (two independent reviewers naming the same region is where to look) and
+  **divergence as a question to adjudicate**, not something to average: on the
+  motivating incident the two split hard on how much to rewrite but agreed on
+  exactly which three regions, and one of them found the confirmed bug the
+  automated passes missed.
+
+### Adjudicating a split
+
+When the craftsmanship reviewers disagree, adjudication is a **first-class step**,
+not an ad-hoc tiebreak — because on the motivating incident it was adjudication,
+armed with the priority ranking, that caught that both proposed remedies would
+have reintroduced the data loss. A single adjudicator (a reviewer or the
+architect, on a model family suited to tracing the code) rules on it, and the
+staging of it is owned by whoever drives the change (in the Copilot roster, the
+orchestrator, Phase 4). It runs to these rules:
+
+- **Given the contested points specifically**, with each reviewer's claim and
+  proposed remedy — not asked to re-review the whole change, which just mints a
+  fresh crop of Minor findings.
+- **Told the priority ranking up front** (`nagramx-workflow` — risk to the
+  irreplaceable thing first). It changed the ruling here: one earlier ruling
+  flipped once loss-risk was weighed above efficiency.
+- **Required to state, per contested item, two exposures separately: the cost of
+  leaving it as-is, and the cost of changing it.** That framing is exactly what
+  exposed the bad remedies — each looked like an improvement until its
+  change-exposure (reintroduced data loss) was written down next to its
+  as-is-exposure (some duplicated frames, some ugliness).
+- **Forced to land on one unhedged recommendation from a fixed set** — *merge
+  as-is*, *minimal fix list*, or *real cleanup* — with **explicit permission to
+  choose "merge as-is".** No "it depends"; the change runs to a pull request
+  after it.
+- **Told when it is ruling on its own prior prescription**, so it reviews the
+  code as code rather than defending its earlier idea. On the incident the
+  adjudicator had itself specified the bounded audio drain at an earlier round
+  and then ruled against changing it — that reversal only happened because it was
+  pointed at the code, not at its own proposal.
+
+**A dismissal's own mitigation is in scope — check it.** When a reviewer or
+adjudicator dismisses a finding as harmless, the mechanism it *cites as the
+mitigation* is code too, with its own failure modes, and "X can't hurt us because
+Y absorbs it" is an unverified claim about Y until Y is read. So require the
+dismissal to state what would have to be true of Y for it to hold, and check
+that: is the queue bounded or unbounded, does the hot path allocate, is the call
+blocking or non-blocking, what's the capacity. This is not paranoia — on the
+motivating incident the adjudicator correctly argued the 100 ms stall "costs an
+allocation, not audio, because the recorder allocates a fresh `AudioBufferInfo`
+on a `poll()` miss instead of blocking." True — and the *exact* mechanism of a
+separate deadlock it didn't see: `buffers` is an `ArrayBlockingQueue<>(10)` seeded
+with 3, so allocating on every miss lets buffers in circulation exceed capacity,
+at which point the encoder thread's `buffers.put(...)` blocks forever (camera
+freeze, recording lost) — and this branch newly reached that line on the encoder
+thread. Two of the ruling's three arguments turned on a data structure whose
+capacity was never checked. A mitigation you lean on to say "harmless" is exactly
+the code most worth tracing.
+
 ## Calibration
 
 Categorize by **actual** severity — not everything is Critical. Acknowledge what
@@ -240,6 +390,14 @@ was done well first; accurate praise makes the rest of the review trusted.
 If a finding is about the *plan* rather than the code (round 1), or about the
 *upstream* code rather than this change, say so explicitly so it isn't
 mistaken for an implementation defect.
+
+**A Minor on green code is not worth a regression risk.** Weigh the fix against
+what it touches, not just its own merit: a naming or tidiness suggestion that
+means editing a working, load-bearing path can cost more than it buys, because a
+cleanup pass risks introducing the class of bug it's cleaning around. Rank by the
+priorities in `nagramx-workflow` (risk to the irreplaceable thing first,
+maintainability last), and don't let a Minor drive a change to code that already
+works.
 
 ## Output format
 
