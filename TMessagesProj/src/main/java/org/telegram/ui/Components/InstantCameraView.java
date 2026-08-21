@@ -4241,13 +4241,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private void drainRolloverAudioTail() {
             long deadline = SystemClock.elapsedRealtime() + 100;
             try {
-                int status;
-                do {
-                    status = drainAudioEncoderOutput(2000);
-                    if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                // NagramX: INFO_TRY_AGAIN_LATER is a normal "nothing ready in this 2ms poll" result, not a
+                // stop signal -- only the deadline should end this loop. audioBufferInfo is only trustworthy
+                // right after a real (>=0) dequeue, same as drainEncoder's own audio loop above.
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    int encoderStatus = drainAudioEncoderOutput(2000);
+                    if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         break;
                     }
-                } while (status >= 0 && SystemClock.elapsedRealtime() < deadline);
+                }
             } catch (Exception e) {
                 FileLog.e(e);
             }
