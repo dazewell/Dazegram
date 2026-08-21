@@ -16763,6 +16763,14 @@ public class ChatActivityEnterView extends FrameLayout implements
                         warnedInternal = true;
                         BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
                         setRecordingLimitWarningActive(true);
+                        if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+                            // NagramX: the rollover decision below reads isInfiniteVideoAvailable() exactly
+                            // once, at the cutoff -- if that's the dialog's first contact-blocked lookup ever,
+                            // it's a cache miss that answers "allowed" while the real result loads in the
+                            // background. Reading it here too, 5s earlier, gives that lookup time to land
+                            // before the decision that actually needs it.
+                            isInfiniteVideoAvailable();
+                        }
                     } else if (!isRunning && warnedInternal) {
                         // a stop or pause landed mid-warning -- clear the pulse now instead of waiting on
                         // InstantCameraView's async teardown, which can lag; start() restores it on resume
@@ -16770,9 +16778,8 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     if (t >= 59500 && !stoppedInternal) {
                         // isRunning here for the same reason as above: a manual stop right at/after 59.5s
-                        // must land the stop it actually requested, not a rollover. Only checked here, once,
-                        // instead of every frame in the warning window -- isInfiniteVideoAvailable() can hit
-                        // a network-backed lookup and this is the only place that still needs the answer.
+                        // must land the stop it actually requested, not a rollover. This is the decision
+                        // that matters -- the read above only primes the cache it depends on.
                         if (isRunning) {
                             if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
                                 infiniteVideoSegments++;
