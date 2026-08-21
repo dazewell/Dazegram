@@ -16756,10 +16756,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // NagramX: any round video recording gets the warning now, not just infinite mode -- a word
                 // cut off at the ordinary 60s cap is just as lost as one cut off by a rollover.
                 if (t >= 54500) {
-                    if (isRunning && !warnedInternal) {
+                    if (isRunning && recordingAudioVideo && !warnedInternal) {
                         // isRunning guards against stop()'s frozen t: its invalidate() still drives one more
                         // onDraw pass, and without this a manual stop past 54.5s would arm a warning for a
-                        // cut that isn't coming
+                        // cut that isn't coming. recordingAudioVideo also matters here: a video pause posts
+                        // recordStopped with the preparing reason, which skips updateRecordInterface() and
+                        // never calls stop() on this timer, so isRunning alone stays true through a pause and
+                        // t keeps climbing on wall clock while nothing is actually recording.
                         warnedInternal = true;
                         BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
                         setRecordingLimitWarningActive(true);
