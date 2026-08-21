@@ -76,7 +76,6 @@ import com.google.android.exoplayer2.ExoPlayer;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.AutoDeleteMediaTask;
-import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.DispatchQueue;
 import org.telegram.messenger.FileLoader;
@@ -3344,7 +3343,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // introduced here and not this change's scope to fix), so only the added haptic gets either
                 // guard.
                 if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
-                    BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                    org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
                 }
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
                 if (info != null) {
