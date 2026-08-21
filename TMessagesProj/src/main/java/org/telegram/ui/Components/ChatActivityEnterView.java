@@ -16804,9 +16804,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                             // before the decision that actually needs it.
                             isInfiniteVideoAvailable();
                         }
-                    } else if (!isRunning && warnedInternal) {
+                    } else if (!recordingAudioVideo && warnedInternal) {
                         // a stop or pause landed mid-warning -- clear the pulse now instead of waiting on
-                        // InstantCameraView's async teardown, which can lag; start() restores it on resume
+                        // InstantCameraView's async teardown, which can lag; start() restores it on resume.
+                        // recordingAudioVideo, not isRunning: a pause leaves isRunning true (see above), so
+                        // keying this on isRunning would leave the pulse stuck on through the whole pause.
                         setRecordingLimitWarningActive(false);
                     }
                     if (t >= 59500 && !stoppedInternal) {
