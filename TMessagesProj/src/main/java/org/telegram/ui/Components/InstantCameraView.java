@@ -2677,10 +2677,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         };
 
         private boolean started;
-        // NagramX: this recording's stamp, taken from recordingGeneration in startRecording(). A rollover
-        // or teardown callback captures this into a local before posting so a later recording bumping
-        // recordingGeneration -- even one that reuses this very instance -- makes the stale callback's
-        // snapshot stop matching. volatile: written on the GL thread, read on the encoder thread.
+        // NagramX: this recording's stamp, bumped in startRecording() -- which also runs on every
+        // pause/resume, not just a fresh recording, so this moves more often than "one recording" implies
+        // (harmless: a rollover can't be mid-flight while paused). A rollover or teardown callback captures
+        // it into a local before posting so a later bump -- even one reusing this same instance -- makes a
+        // stale callback's snapshot stop matching. volatile: written on the GL thread, read on the encoder
+        // thread.
         private volatile int recordingToken;
         // NagramX: handleStopRecording runs twice for one real stop -- once when the request first arrives
         // (running still true, no teardown yet) and again once the audio thread notices running went false
