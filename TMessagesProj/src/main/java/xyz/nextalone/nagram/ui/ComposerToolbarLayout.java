@@ -1056,8 +1056,11 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 // Clamp the requested radius down to half the bubble's own painted box before drawing it.
                 // The painted box is the setBounds rect inset by glassPaddingPx on every side - the same
                 // boundsWithPadding the RenderNode outline measures against on the blur+glass path
-                // (BlurredBackgroundDrawable.getOutline), so glass-on stays bit-identical (the clamp is
-                // idempotent there) and glass-off converges on the same shape instead of over-rounding.
+                // (BlurredBackgroundDrawable.getOutline), so glass-off converges on that outline's shape
+                // instead of over-rounding. The blur+glass outline itself is unchanged - it already clamps
+                // to min(w,h)/2 on its own; in the width-bound case the clamp additionally pulls the
+                // liquid-glass shader radius down to match that outline, where LiquidGlassEffect otherwise
+                // held a height-only value.
                 // min(w,h)/2f, not h/2: a single-button bubble can be narrower than it is tall at a
                 // reachable scale/spacing, and clamping only the height would round the same impossible
                 // corner into the width. Recomputed every frame because widths move with the slot slides
