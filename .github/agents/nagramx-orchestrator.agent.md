@@ -132,7 +132,7 @@ onto a different family** (`gpt-5.6-sol` or `gemini-3.1-pro-preview`): a model
 tends to be blind to its own mistakes in the same places. The same
 different-family rule binds the craftsmanship pass in Phase 4 — both its
 reviewers must differ from the implementer's family, from the architect's, and
-from each other. And the
+from each other. The
 table is advisory — if an identifier is unavailable, pick the nearest equivalent
 and say which you used rather than failing.
 
@@ -434,7 +434,7 @@ on its own earlier prescription, tell it so** — it must review the code as cod
 not defend its prior idea; on this incident that instruction is what let it
 reverse a bounded-drain fix it had itself specified a round earlier.
 
-Route any Important-or-above finding these surface back through the capped
+Route any Important-or-above finding they surface back through the capped
 implementer loop; record Minor ones in the handback. If a finding is really "the
 design is wrong here" (the repeated-fix trigger, or a smell pointing past
 itself), that is an architectural call — decide the branch's fate (refactor in

@@ -252,7 +252,7 @@ code are not.
    how a split verdict is adjudicated. Whoever drives the change dispatches them;
    in the Copilot roster that is the orchestrator (Phase 4).
 
-   **When these run is triggered by what happened, not just by up-front size.**
+   **What triggers these is what happened, not just up-front size.**
    They're proportional — a one-line chore doesn't earn them — but reserve them
    for more than "looks substantial," because the initial estimate is exactly
    what misleads: a change scoped as the *simple* half of a split still hit 34

@@ -304,7 +304,7 @@ changes. Everything else is yours to call.
   the branch is otherwise frozen, report-don't-fix is the default: a second
   problem gets reported and left. But a defect you can *prove* is a **data-loss
   or deadlock risk**, whose fix is **provably local** (one call site, no
-  lifecycle, hook-point, config, storage or user-visible-behaviour change) **and
+  lifecycle, hook-point, config, storage or user-visible behaviour change) **and
   matches existing practice already in the same file**, you may fix in place —
   with the reasoning stated in the commit message and the fix **flagged
   prominently in your handback**. The test is severity *and* locality together,
