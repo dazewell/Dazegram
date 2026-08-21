@@ -82,6 +82,9 @@ public final class RecordingLimitVibration {
     // since there's no recording here for that guard to protect against a stop/pause landing mid-gap.
     public static void fireWarningPreview(int level, View view) {
         fire(level, view);
+        if (level < LIGHT || level > STRONG) {
+            return; // same range fire() checks -- skip scheduling a second tap that would be a guaranteed no-op
+        }
         AndroidUtilities.runOnUIThread(() -> fire(level, view), WARNING_DOUBLE_TAP_GAP_MS);
     }
 
