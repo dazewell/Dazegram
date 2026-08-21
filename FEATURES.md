@@ -197,7 +197,9 @@ A word landing right on the cut used to get dropped from both the message that j
 
 ### Warning before a round video message hits its limit <!-- #video-limit-warning -->
 
-Any round video recording warns you now, not just an infinite one. About five seconds before it ends you feel a short double-buzz and the recording ring starts pulsing red, so you know it's coming even with the phone away from your face. A single sharper buzz marks the moment it actually lands — a handover to the next segment if infinite mode is carrying the recording, or the ordinary stop into the preview if it isn't, including the tenth and last infinite segment, which used to get no warning at all since it ends the same way a normal recording does. Lifting your finger or tapping send yourself stays silent, since that's already a deliberate choice. Turn vibration off in NekoGram settings and you still get the ring pulse.
+Any round video recording warns you now, not just an infinite one. About five seconds before it ends you feel a double-buzz and the recording ring starts pulsing red, so you know it's coming even with the phone away from your face. A single buzz marks the moment it actually lands — a handover to the next segment if infinite mode is carrying the recording, or the ordinary stop into the preview if it isn't, including the tenth and last infinite segment, which used to get no warning at all since it ends the same way a normal recording does. Lifting your finger or tapping send yourself stays silent, since that's already a deliberate choice.
+
+Both buzzes have their own strength in NagramX chat settings, under Camera: *Recording limit warning buzz* (Off / Light / Medium / Strong, Light by default) for the five-second warning, and *Recording limit cutoff buzz* (same four levels, Medium by default) for the moment it lands. Off just mutes that one buzz — the red ring pulse still runs regardless, so it's not your only cue if you'd rather keep both buzzes quiet, or if vibration is off globally in NekoGram settings.
 
 ### Smoother video message zoom <!-- #video-zoom -->
 
