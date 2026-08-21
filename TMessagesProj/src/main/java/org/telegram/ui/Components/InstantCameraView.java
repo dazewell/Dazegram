@@ -3315,13 +3315,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));
                 // NagramX: the encoder is stuck, so segment N+1 won't fare any better with this backlog
                 // than segment N just did -- return the buffers to the pool and drop it rather than
-                // mislabeling stale PCM as segment N+1's own
-                try {
-                    for (AudioBufferInfo b : buffersToWrite) {
-                        buffers.put(b);
-                    }
-                } catch (InterruptedException e) {
-                    FileLog.e(e);
+                // mislabeling stale PCM as segment N+1's own. offer(), not put(): this runs on the encoder
+                // thread while the pool is normally only drained by a non-blocking poll() on the recorder
+                // thread, so put() could block this thread if the pool happened to be at capacity -- a
+                // dropped buffer just means one more gets allocated later, which is cheap.
+                for (AudioBufferInfo b : buffersToWrite) {
+                    buffers.offer(b);
                 }
                 buffersToWrite.clear();
             }
