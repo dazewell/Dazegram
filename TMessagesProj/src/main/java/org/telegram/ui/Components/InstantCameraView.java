@@ -3291,8 +3291,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // NagramX: snapshot this recording's stamp now, before any of the flush/drain/finishMuxer work
             // below that can block for a while -- a fast stop-then-record-again can reuse this VideoRecorder
             // instance and bump recordingToken while that work is still running, and reading it only
-            // afterward would pick up the new recording's stamp instead of this one's.
+            // afterward would pick up the new recording's stamp instead of this one's. segmentFile is
+            // snapshotted here for the same reason: startRecording() reassigns videoFile straight from the
+            // GL thread (not through this thread's handler), so reading it after the flush/drain instead of
+            // now would risk grabbing the next recording's file instead of this segment's.
             final int capturedGeneration = recordingToken;
+            final File segmentFile = videoFile;
             // NagramX: push whatever PCM arrived just before the cut into segment N's encoder and drain its
             // output (drainRolloverAudioTail below) before finishMuxer, so the tail lands in file N instead
             // of surfacing later in file N+1 with file N's timestamps. running is still true, so
@@ -3334,7 +3338,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 FileLog.e(e);
             }
             final boolean segmentClosedOk = finishMuxer();
-            final File segmentFile = videoFile;
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
                 // NagramX: fires from the actual commit, not TimerView's wall-clock trigger -- the encoder
