@@ -133,6 +133,7 @@ import javax.microedition.khronos.egl.EGLSurface;
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.InstantZoomControlView;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -3272,14 +3273,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         // NagramX: maps the Camera-settings cutoff level to a pulse, shared by both cutoff sites below
         // (this rollover and handleStopRecording's cap auto-stop) so one can't drift from the other.
-        // Strong is bit-for-bit the only behavior that existed before this setting.
         private void fireCutVibration() {
-            switch (NaConfig.INSTANCE.getVideoMessagesCutVibration().Int()) {
-                case 1 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_LIGHT.vibrate();
-                case 2 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_MEDIUM.vibrate();
-                case 3 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
-                default -> { } // 0 = off
-            }
+            RecordingLimitVibration.fire(NaConfig.INSTANCE.getVideoMessagesCutVibration().Int());
         }
 
         // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next

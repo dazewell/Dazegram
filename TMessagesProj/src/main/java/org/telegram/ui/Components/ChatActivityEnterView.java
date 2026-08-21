@@ -244,6 +244,7 @@ import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -16742,28 +16743,22 @@ public class ChatActivityEnterView extends FrameLayout implements
             lastSendTypingTime = 0;
         }
 
-        // NagramX: fires the pre-cut warning at the level chosen in Camera settings. Light/Medium
-        // schedule the same tap twice, ~78ms apart -- the gap NOTIFICATION_WARNING's own two pulses
-        // already use -- so the warning still reads as two taps regardless of intensity.
-        // BotWebViewVibrationEffect has no gentle double-pulse constant, so the second tap is scheduled
-        // here rather than adding one to that enum. capturedStartTime pins the delayed tap to this
-        // segment: a stop, pause, or a fresh recording landing in that gap changes startTime, so it's
-        // skipped instead of firing into whatever's running by then.
+        // NagramX: fires the pre-cut warning at the level chosen in Camera settings, via the shared
+        // RecordingLimitVibration pulse (see its javadoc for why this doesn't go through
+        // BotWebViewVibrationEffect). Every level schedules the same pulse twice, ~78ms apart, so the
+        // warning reads as two taps regardless of intensity. capturedStartTime pins the delayed tap to
+        // this segment: a stop, pause, or a fresh recording landing in that gap changes startTime, so
+        // it's skipped instead of firing into whatever's running by then.
         private void fireLimitWarningVibration() {
-            int level = NaConfig.INSTANCE.getVideoMessagesWarningVibration().Int();
+            final int level = NaConfig.INSTANCE.getVideoMessagesWarningVibration().Int();
             if (level == 0) {
                 return;
             }
-            if (level == 3) {
-                BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
-                return;
-            }
-            final BotWebViewVibrationEffect effect = level == 2 ? BotWebViewVibrationEffect.IMPACT_MEDIUM : BotWebViewVibrationEffect.IMPACT_LIGHT;
             final long capturedStartTime = startTime;
-            effect.vibrate();
+            RecordingLimitVibration.fire(level);
             AndroidUtilities.runOnUIThread(() -> {
                 if (isRunning && recordingAudioVideo && startTime == capturedStartTime) {
-                    effect.vibrate();
+                    RecordingLimitVibration.fire(level);
                 }
             }, LIMIT_WARNING_DOUBLE_TAP_GAP_MS);
         }
