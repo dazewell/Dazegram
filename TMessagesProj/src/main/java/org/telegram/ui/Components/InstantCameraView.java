@@ -2899,15 +2899,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             try {
                 boolean isLast = false;
                 int stalledDequeues = 0;
+                long stallDeadline = 0;
                 while (input != null) {
                     int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
                     if (inputBufferIndex < 0) {
                         // NagramX: the codec can have no free input slot for a moment, and handleRollover's
                         // flush can hand this more backlog at once than the steady per-frame caller usually
-                        // does. A drain can free a slot on some encoder implementations; bounded so a codec
-                        // that's actually stuck doesn't spin this encoder-thread call forever instead of
-                        // reaching finishMuxer() and the next segment.
-                        if (++stalledDequeues > 50) {
+                        // does. Bounded by both a retry count and a wall clock, since each retry's
+                        // drainEncoder(false) can itself block up to ~10ms on the video dequeue timeout --
+                        // the count alone doesn't cap how long a genuinely stuck codec holds this thread
+                        // (and therefore the camera).
+                        if (stallDeadline == 0) {
+                            stallDeadline = SystemClock.elapsedRealtime() + 500;
+                        }
+                        if (++stalledDequeues > 50 || SystemClock.elapsedRealtime() > stallDeadline) {
                             FileLog.e(new RuntimeException("InstantCamera audio encoder produced no input buffer, dropping remaining backlog"));
                             break;
                         }
@@ -2919,6 +2924,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         continue;
                     }
                     stalledDequeues = 0;
+                    stallDeadline = 0;
                     ByteBuffer inputBuffer;
                     inputBuffer = audioEncoder.getInputBuffer(inputBufferIndex);
                     long startWriteTime = input.offset[input.lastWroteBuffer];
