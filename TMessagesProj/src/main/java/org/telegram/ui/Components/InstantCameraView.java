@@ -3265,6 +3265,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             pauseRecorder = false;
         }
 
+        // NagramX: maps the Camera-settings cutoff level to a pulse, shared by both cutoff sites below
+        // (this rollover and handleStopRecording's cap auto-stop) so one can't drift from the other.
+        // Strong is bit-for-bit the only behavior that existed before this setting.
+        private void fireCutVibration() {
+            switch (NaConfig.INSTANCE.getVideoMessagesCutVibration().Int()) {
+                case 1 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_LIGHT.vibrate();
+                case 2 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_MEDIUM.vibrate();
+                case 3 -> org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                default -> { } // 0 = off
+            }
+        }
+
         // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next
         // one on the same encoders. Nothing is stopped or released here, so the camera never blinks.
         private void handleRollover(long segmentDuration, SendOptions sendOptions) {
@@ -3344,7 +3356,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // can lag the 59.5s mark. Skipped if finishMuxer failed or this recording was replaced
                 // while the flush/drain above was running.
                 if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
-                    org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                    fireCutVibration();
                 }
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
                 if (info != null) {
@@ -3777,7 +3789,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     setLimitWarningActive(false);
                     // NagramX: same buzz as a rollover cut, fired only for the ordinary 60s auto-stop
                     if (fireLimitStopHaptic) {
-                        org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
+                        fireCutVibration();
                     }
                 }
             });
