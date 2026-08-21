@@ -247,7 +247,8 @@ code are not.
    **craftsmanship pass** ("is this good code or a batch of hacks?"). These are
    what catch the bug that a dozen line-by-line passes fixed *around* — read the
    skill for what each checks, why the craftsmanship pass runs at least twice
-   from model families different from both the implementer and the architect, and
+   from model families different from the implementer, the architect, and each
+   other, and
    how a split verdict is adjudicated. Whoever drives the change dispatches them;
    in the Copilot roster that is the orchestrator (Phase 4).
 

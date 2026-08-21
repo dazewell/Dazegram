@@ -315,9 +315,11 @@ covered by round 2 and the whole-feature pass. What makes it work as a prompt:
 - **It's told the fork's constraints** — legacy Java, minimal base-file
   footprint, no Compose / DI / test-scaffolding recommendations — so its advice
   is usable here rather than generically aspirational.
-- **Run at least two, from model families different from both the implementer
-  and the architect.** A model is blind to its own class of mistake, so a
-  same-family reviewer misses the same things. Treat **convergence as signal**
+- **Run at least two, from model families different from the implementer, the
+  architect, and each other.** A model is blind to its own class of mistake, so a
+  same-family reviewer misses the same things — and two same-family craftsmanship
+  reviewers would miss them together, defeating the point of running two. Treat
+  **convergence as signal**
   (two independent reviewers naming the same region is where to look) and
   **divergence as a question to adjudicate**, not something to average: on the
   motivating incident the two split hard on how much to rewrite but agreed on

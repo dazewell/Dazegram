@@ -131,7 +131,8 @@ which are the same family, so on anything risky **override the round-2 architect
 onto a different family** (`gpt-5.6-sol` or `gemini-3.1-pro-preview`): a model
 tends to be blind to its own mistakes in the same places. The same
 different-family rule binds the craftsmanship pass in Phase 4 — both its
-reviewers must differ from the implementer's family and from each other. And the
+reviewers must differ from the implementer's family, from the architect's, and
+from each other. And the
 table is advisory — if an identifier is unavailable, pick the nearest equivalent
 and say which you used rather than failing.
 
@@ -407,7 +408,8 @@ final-state reviews defined in `nagramx-code-review` over the *final* code:
 - A **whole-feature review** — "would a maintainer be happy to own this?" — one
   reviewer reading the finished feature as a unit.
 - A **craftsmanship pass, run at least twice**, each reviewer on a model family
-  different from the implementer and from the architect (see *Choosing the
+  different from the implementer, from the architect, and from the other
+  craftsmanship reviewer (see *Choosing the
   model*). Give them the skill's brief verbatim: final state not diff, explicit
   permission to conclude the code is fine, a required "what I'd defend" section,
   the fork's constraints (legacy Java, minimal footprint, no
