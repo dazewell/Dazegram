@@ -16682,6 +16682,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
         // re-arm every segment instead of just once per recording
         boolean warnedInternal;
+        // NagramX: gap between the two scheduled taps of a Light/Medium warning buzz, matched to
+        // NOTIFICATION_WARNING's own first-pulse-to-second-pulse timing. Unverified on real hardware
+        // whether this reads as two distinct taps or the second swallows the first -- adjust here if not.
+        private static final long LIMIT_WARNING_DOUBLE_TAP_GAP_MS = 78;
         String oldString;
         long startTime;
         long stopTime;
@@ -16738,6 +16742,32 @@ public class ChatActivityEnterView extends FrameLayout implements
             lastSendTypingTime = 0;
         }
 
+        // NagramX: fires the pre-cut warning at the level chosen in Camera settings. Light/Medium
+        // schedule the same tap twice, ~78ms apart -- the gap NOTIFICATION_WARNING's own two pulses
+        // already use -- so the warning still reads as two taps regardless of intensity.
+        // BotWebViewVibrationEffect has no gentle double-pulse constant, so the second tap is scheduled
+        // here rather than adding one to that enum. capturedStartTime pins the delayed tap to this
+        // segment: a stop, pause, or a fresh recording landing in that gap changes startTime, so it's
+        // skipped instead of firing into whatever's running by then.
+        private void fireLimitWarningVibration() {
+            int level = NaConfig.INSTANCE.getVideoMessagesWarningVibration().Int();
+            if (level == 0) {
+                return;
+            }
+            if (level == 3) {
+                BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
+                return;
+            }
+            final BotWebViewVibrationEffect effect = level == 2 ? BotWebViewVibrationEffect.IMPACT_MEDIUM : BotWebViewVibrationEffect.IMPACT_LIGHT;
+            final long capturedStartTime = startTime;
+            effect.vibrate();
+            AndroidUtilities.runOnUIThread(() -> {
+                if (isRunning && recordingAudioVideo && startTime == capturedStartTime) {
+                    effect.vibrate();
+                }
+            }, LIMIT_WARNING_DOUBLE_TAP_GAP_MS);
+        }
+
         @SuppressLint("DrawAllocation")
         @Override
         protected void onDraw(Canvas canvas) {
@@ -16764,7 +16794,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         // never calls stop() on this timer, so isRunning alone stays true through a pause and
                         // t keeps climbing on wall clock while nothing is actually recording.
                         warnedInternal = true;
-                        BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
+                        fireLimitWarningVibration();
                         setRecordingLimitWarningActive(true);
                         if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
                             // NagramX: the rollover decision below reads isInfiniteVideoAvailable() exactly
