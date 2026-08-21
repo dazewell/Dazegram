@@ -16811,7 +16811,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         // keying this on isRunning would leave the pulse stuck on through the whole pause.
                         setRecordingLimitWarningActive(false);
                     }
-                    if (t >= 59500 && !stoppedInternal) {
+                    if (t >= 59500 && !stoppedInternal && recordingAudioVideo) {
                         // isRunning here for the same reason as above: a manual stop right at/after 59.5s
                         // must land the stop it actually requested, not a rollover. This is the decision
                         // that matters -- the read above only primes the cache it depends on.
