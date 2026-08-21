@@ -1060,7 +1060,12 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     private void previewRecordingLimitVibration(int level, boolean warning) {
         // ConfigCellSelectBox calls getParentLayout().rebuildFragments(0) immediately before running this
         // callback, so the fragment view is mid-rebuild -- read it now rather than capturing it earlier.
+        // It can still come back null while that rebuild is in flight; fall back to the decor view so
+        // fire()'s performHapticFeedback fallback has something to call if the Vibrator route is dead too.
         View view = getFragmentView();
+        if (view == null && getParentActivity() != null) {
+            view = getParentActivity().getWindow().getDecorView();
+        }
         if (warning) {
             RecordingLimitVibration.fireWarningPreview(level, view);
         } else {
