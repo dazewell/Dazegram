@@ -15,6 +15,8 @@
     <string name="VideoMessagesVibrationLight">Light</string>
     <string name="VideoMessagesVibrationMedium">Medium</string>
     <string name="VideoMessagesVibrationStrong">Strong</string>
+    <string name="VideoMessagesVibrationPreviewDisabled">Turn off \"Disable Vibration\" above to feel this</string>
+    <string name="VideoMessagesVibrationPreviewMayNotFeelIt">You may not feel this on this device -- check its vibration settings</string>
     <string name="VideoMessagesMute">Mute video messages</string>
     <string name="VideoMessagesUnmute">Unmute video messages</string>
     <string name="VideoMessagesCaptions">Closed captions</string>

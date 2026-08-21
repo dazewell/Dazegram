@@ -46,6 +46,10 @@ public final class RecordingLimitVibration {
             HapticFeedbackConstants.LONG_PRESS,
     };
 
+    // NagramX: gap between the warning's two taps. Shared with ChatActivityEnterView.TimerView's guarded
+    // scheduling (see fireWarningPreview below) so the real rhythm and the settings preview can't drift apart.
+    public static final long WARNING_DOUBLE_TAP_GAP_MS = 78;
+
     // NagramX: both current callers (InstantCameraView's fireCutVibration and ChatActivityEnterView's
     // TimerView.fireLimitWarningVibration) already run on the UI thread, which performHapticFeedback
     // requires -- this doesn't dispatch anywhere itself, so calling it off the UI thread is on the caller.
@@ -71,6 +75,17 @@ public final class RecordingLimitVibration {
         if (view != null) {
             view.performHapticFeedback(HAPTIC_FEEDBACK_CONSTANT[level - 1], HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
         }
+    }
+
+    // NagramX: settings-screen preview for the warning -- reproduces the same ~78ms two-tap rhythm as
+    // ChatActivityEnterView.TimerView.fireLimitWarningVibration() but without its capturedStartTime guard,
+    // since there's no recording here for that guard to protect against a stop/pause landing mid-gap.
+    public static void fireWarningPreview(int level, View view) {
+        fire(level, view);
+        if (level < LIGHT || level > STRONG) {
+            return; // same range fire() checks -- skip scheduling a second tap that would be a guaranteed no-op
+        }
+        AndroidUtilities.runOnUIThread(() -> fire(level, view), WARNING_DOUBLE_TAP_GAP_MS);
     }
 
     // level is already validated 1-3 by fire() above. Returns true if the vibrator ran without error,

@@ -7,6 +7,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.os.Vibrator;
+import android.provider.Settings;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextPaint;
@@ -72,6 +74,7 @@ import tw.nekomimi.nekogram.ui.cells.EmojiSetCell;
 import tw.nekomimi.nekogram.ui.cells.StickerSizePreviewMessagesCell;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.DoubleTap;
+import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 @SuppressLint("RtlHardcoded")
 @SuppressWarnings({"unused", "FieldCanBeLocal"})
@@ -680,6 +683,10 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                 if ((boolean) newValue) {
                     checkHalSmoothZoomSupport();
                 }
+            } else if (key.equals(NaConfig.INSTANCE.getVideoMessagesWarningVibration().getKey())) {
+                previewRecordingLimitVibration((int) newValue, true);
+            } else if (key.equals(NaConfig.INSTANCE.getVideoMessagesCutVibration().getKey())) {
+                previewRecordingLimitVibration((int) newValue, false);
             } else if (key.equals("PremiumElements") || key.equals("DisableSwipeToNext")) {
                 addRowsToMap(cellGroup);
             }
@@ -1042,6 +1049,42 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
                     break;
             }
             return view;
+        }
+    }
+
+    // NagramX: fires the level a user just picked in either recording-limit vibration row, so the setting
+    // is self-explanatory without a 60-second recording. Goes through the same RecordingLimitVibration path
+    // the real warning/cutoff use -- a working preview can never coexist with a broken one -- then, since
+    // the buzz always fires regardless of what the device reports, separately informs why it may not have
+    // been felt. Level == OFF stays silent with no bulletin: that's the correct result of picking Off.
+    private void previewRecordingLimitVibration(int level, boolean warning) {
+        // ConfigCellSelectBox calls getParentLayout().rebuildFragments(0) immediately before running this
+        // callback, so the fragment view is mid-rebuild -- read it now rather than capturing it earlier.
+        // It can still come back null while that rebuild is in flight; fall back to the decor view so
+        // fire()'s performHapticFeedback fallback has something to call if the Vibrator route is dead too.
+        View view = getFragmentView();
+        if (view == null && getParentActivity() != null) {
+            view = getParentActivity().getWindow().getDecorView();
+        }
+        if (warning) {
+            RecordingLimitVibration.fireWarningPreview(level, view);
+        } else {
+            RecordingLimitVibration.fire(level, view);
+        }
+        if (level == RecordingLimitVibration.OFF) {
+            return;
+        }
+        if (NekoConfig.disableVibration.Bool()) {
+            BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(R.string.VideoMessagesVibrationPreviewDisabled)).show();
+            return;
+        }
+        if (getParentActivity() != null && Settings.System.getInt(getParentActivity().getContentResolver(), Settings.System.HAPTIC_FEEDBACK_ENABLED, 1) == 0) {
+            BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(R.string.VideoMessagesVibrationPreviewMayNotFeelIt)).show();
+            return;
+        }
+        Vibrator vibrator = AndroidUtilities.getVibrator();
+        if (vibrator == null || !vibrator.hasVibrator()) {
+            BulletinFactory.of(this).createSimpleBulletin(R.raw.info, getString(R.string.VideoMessagesVibrationPreviewMayNotFeelIt)).show();
         }
     }
 
