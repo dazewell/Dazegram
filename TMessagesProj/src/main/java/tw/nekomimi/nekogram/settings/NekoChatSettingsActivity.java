@@ -171,6 +171,18 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     }, null));
     private final AbstractConfigCell videoMessagesResetZoomOnSwitchRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesResetZoomOnSwitch()));
     private final AbstractConfigCell videoMessagesHalSmoothZoomRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getVideoMessagesHalSmoothZoom(), getString(R.string.VideoMessagesHalSmoothZoomNotice)));
+    private final AbstractConfigCell videoMessagesWarningVibrationRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoMessagesWarningVibration", NaConfig.INSTANCE.getVideoMessagesWarningVibration(), new String[]{
+            getString(R.string.VideoMessagesVibrationOff),
+            getString(R.string.VideoMessagesVibrationLight),
+            getString(R.string.VideoMessagesVibrationMedium),
+            getString(R.string.VideoMessagesVibrationStrong)
+    }, null));
+    private final AbstractConfigCell videoMessagesCutVibrationRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoMessagesCutVibration", NaConfig.INSTANCE.getVideoMessagesCutVibration(), new String[]{
+            getString(R.string.VideoMessagesVibrationOff),
+            getString(R.string.VideoMessagesVibrationLight),
+            getString(R.string.VideoMessagesVibrationMedium),
+            getString(R.string.VideoMessagesVibrationStrong)
+    }, null));
     private final AbstractConfigCell dividerCamera = cellGroup.appendCell(new ConfigCellDivider());
 
     // Media

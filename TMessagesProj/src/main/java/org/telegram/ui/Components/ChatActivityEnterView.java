@@ -244,6 +244,7 @@ import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -16679,6 +16680,13 @@ public class ChatActivityEnterView extends FrameLayout implements
     public class TimerView extends View {
         boolean isRunning;
         boolean stoppedInternal;
+        // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
+        // re-arm every segment instead of just once per recording
+        boolean warnedInternal;
+        // NagramX: gap between the two scheduled taps of a Light/Medium warning buzz, matched to
+        // NOTIFICATION_WARNING's own first-pulse-to-second-pulse timing. Unverified on real hardware
+        // whether this reads as two distinct taps or the second swallows the first -- adjust here if not.
+        private static final long LIMIT_WARNING_DOUBLE_TAP_GAP_MS = 78;
         String oldString;
         long startTime;
         long stopTime;
@@ -16703,6 +16711,22 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         public void start(long milliseconds) {
             isRunning = true;
+            if (milliseconds == 0) {
+                // NagramX: this overload is also used to resume after a pause, with the elapsed time carried
+                // over in milliseconds -- only a genuine new segment (fresh recording or rollover, both of
+                // which call start(0)) should re-arm the pre-cut warning, or resuming after the 54.5s mark
+                // would fire it again immediately. Also drop any warning pulse left over from a previous
+                // recording: handleStopRecording clears InstantCameraView's flag from its own async teardown,
+                // which can still be pending if a new recording starts right after a manual stop.
+                warnedInternal = false;
+                setRecordingLimitWarningActive(false);
+            } else if (warnedInternal) {
+                // NagramX: resuming after a pause that had already warned before it paused. onDraw's stop
+                // branch below clears the visual pulse when isRunning goes false but leaves warnedInternal
+                // set (so a resume doesn't also fire a duplicate haptic) -- restore the pulse here since the
+                // elapsed time carried over means we're still in the same warning window as before the pause.
+                setRecordingLimitWarningActive(true);
+            }
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
             invalidate();
@@ -16717,6 +16741,28 @@ public class ChatActivityEnterView extends FrameLayout implements
                 invalidate();
             }
             lastSendTypingTime = 0;
+        }
+
+        // NagramX: fires the pre-cut warning at the level chosen in Camera settings, via the shared
+        // RecordingLimitVibration pulse (see its javadoc for why this doesn't go through
+        // BotWebViewVibrationEffect). `this` doubles as the performHapticFeedback fallback target if the
+        // Vibrator route comes back dead -- TimerView extends View, so it's already one. Every level
+        // schedules the same pulse twice, ~78ms apart, so the warning reads as two taps regardless of
+        // intensity. capturedStartTime pins the delayed tap to this segment: a stop, pause, or a fresh
+        // recording landing in that gap changes startTime, so it's skipped instead of firing into
+        // whatever's running by then.
+        private void fireLimitWarningVibration() {
+            final int level = NaConfig.INSTANCE.getVideoMessagesWarningVibration().Int();
+            if (level == 0) {
+                return;
+            }
+            final long capturedStartTime = startTime;
+            RecordingLimitVibration.fire(level, this);
+            AndroidUtilities.runOnUIThread(() -> {
+                if (isRunning && recordingAudioVideo && startTime == capturedStartTime) {
+                    RecordingLimitVibration.fire(level, this);
+                }
+            }, LIMIT_WARNING_DOUBLE_TAP_GAP_MS);
         }
 
         @SuppressLint("DrawAllocation")
@@ -16734,22 +16780,57 @@ public class ChatActivityEnterView extends FrameLayout implements
             int ms = (int) (t % 1000L) / 10;
 
             if (isInVideoMode()) {
-                if (t >= 59500 && !stoppedInternal) {
-                    // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
-                    // dropping into the preview. The last allowed segment falls back to the normal stop, as
-                    // does anything that armed view-once or started a slow mode countdown mid-recording.
-                    if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
-                        infiniteVideoSegments++;
-                        startedDraggingX = -1;
-                        delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                        sendButton.setEffect(effectId = 0);
-                        start(0);
-                        return;
+                // NagramX: any round video recording gets the warning now, not just infinite mode -- a word
+                // cut off at the ordinary 60s cap is just as lost as one cut off by a rollover.
+                if (t >= 54500) {
+                    if (isRunning && recordingAudioVideo && !warnedInternal) {
+                        // isRunning guards against stop()'s frozen t: its invalidate() still drives one more
+                        // onDraw pass, and without this a manual stop past 54.5s would arm a warning for a
+                        // cut that isn't coming. recordingAudioVideo also matters here: a video pause posts
+                        // recordStopped with the preparing reason, which skips updateRecordInterface() and
+                        // never calls stop() on this timer, so isRunning alone stays true through a pause and
+                        // t keeps climbing on wall clock while nothing is actually recording.
+                        warnedInternal = true;
+                        fireLimitWarningVibration();
+                        setRecordingLimitWarningActive(true);
+                        if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+                            // NagramX: the rollover decision below reads isInfiniteVideoAvailable() exactly
+                            // once, at the cutoff -- if that's the dialog's first contact-blocked lookup ever,
+                            // it's a cache miss that answers "allowed" while the real result loads in the
+                            // background. Reading it here too, 5s earlier, gives that lookup time to land
+                            // before the decision that actually needs it.
+                            isInfiniteVideoAvailable();
+                        }
+                    } else if (!recordingAudioVideo && warnedInternal) {
+                        // a stop or pause landed mid-warning -- clear the pulse now instead of waiting on
+                        // InstantCameraView's async teardown, which can lag; start() restores it on resume.
+                        // recordingAudioVideo, not isRunning: a pause leaves isRunning true (see above), so
+                        // keying this on isRunning would leave the pulse stuck on through the whole pause.
+                        setRecordingLimitWarningActive(false);
                     }
-                    startedDraggingX = -1;
-                    delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
-                    sendButton.setEffect(effectId = 0);
-                    stoppedInternal = true;
+                    if (t >= 59500 && !stoppedInternal && recordingAudioVideo) {
+                        // isRunning here for the same reason as above: a manual stop right at/after 59.5s
+                        // must land the stop it actually requested, not a rollover. This is the decision
+                        // that matters -- the read above only primes the cache it depends on.
+                        if (isRunning) {
+                            if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
+                                infiniteVideoSegments++;
+                                startedDraggingX = -1;
+                                delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                                sendButton.setEffect(effectId = 0);
+                                start(0);
+                                return;
+                            }
+                            // NagramX: only arm here, not on the fallthrough below -- if a manual stop
+                            // already landed this pass just re-lands that stop with cameraThread already
+                            // gone, and arming it would leave the flag set for whatever recording stops next
+                            armRecordingLimitStopHaptic();
+                        }
+                        startedDraggingX = -1;
+                        delegate.needStartRecordVideo(3, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
+                        sendButton.setEffect(effectId = 0);
+                        stoppedInternal = true;
+                    }
                 }
             }
 
@@ -18356,6 +18437,25 @@ public class ChatActivityEnterView extends FrameLayout implements
     private void updateInfiniteRecordingButton() {
         if (parentFragment != null && parentFragment.instantCameraView != null) {
             parentFragment.instantCameraView.updateInfiniteButton();
+        }
+    }
+
+    // NagramX: tells InstantCameraView to pulse (or stop pulsing) its progress arc for the pre-cut
+    // warning, which now fires for any round video recording, not just infinite mode. Kept as a plain
+    // setter call, not a new delegate/state number -- TimerView already reaches the view directly through
+    // parentFragment for updateInfiniteRecordingButton() above.
+    private void setRecordingLimitWarningActive(boolean active) {
+        if (parentFragment != null && parentFragment.instantCameraView != null) {
+            parentFragment.instantCameraView.setLimitWarningActive(active);
+        }
+    }
+
+    // NagramX: arms InstantCameraView's cap-stop haptic right before dispatching the ordinary 60s
+    // auto-stop. state==3 alone doesn't mean "hit the cap" -- NekoConfig.confirmAVMessage reuses it for a
+    // manual send that also wants a preview -- so this is a direct signal instead of overloading state.
+    private void armRecordingLimitStopHaptic() {
+        if (parentFragment != null && parentFragment.instantCameraView != null) {
+            parentFragment.instantCameraView.armLimitStopHaptic();
         }
     }
 

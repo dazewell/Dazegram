@@ -989,6 +989,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val videoMessagesWarningVibration =
+        addConfig(
+            "VideoMessagesWarningVibration",
+            ConfigItem.configTypeInt,
+            1 // 0: off; 1: light; 2: medium; 3: strong
+        )
+    val videoMessagesCutVibration =
+        addConfig(
+            "VideoMessagesCutVibration",
+            ConfigItem.configTypeInt,
+            2 // 0: off; 1: light; 2: medium; 3: strong
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",

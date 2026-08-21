@@ -133,6 +133,7 @@ import javax.microedition.khronos.egl.EGLSurface;
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.InstantZoomControlView;
 import xyz.nextalone.nagram.NaConfig;
+import xyz.nextalone.nagram.helper.RecordingLimitVibration;
 
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -189,6 +190,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean recording;
     private long recordedTime;
     private boolean cancelled;
+
+    // NagramX: true for the last ~5s before any round video recording hits its limit (rollover or plain
+    // stop), so onDraw can pulse the arc. All writes come from ChatActivityEnterView.TimerView (armed) or
+    // the stop/rollover paths (cleared), and they all run on the UI thread, same as the onDraw read -- no
+    // volatile needed.
+    private boolean limitWarningActive;
+    private Paint limitWarningPaint;
+    // NagramX: armed right before the ordinary 60s auto-stop dispatch. state==3 alone doesn't mean "hit
+    // the cap" -- NekoConfig.confirmAVMessage reuses it for a manual send that wants a preview too -- so
+    // this is a direct signal instead. Read and cleared once in shutdown() below.
+    private boolean limitStopHapticArmed;
 
     private CameraGLThread cameraThread;
     private Size[] previewSize = new Size[2];
@@ -674,6 +686,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 
+    // NagramX: arms (or clears) the pre-cut pulse on the progress arc. Called from TimerView, which
+    // already owns the "what happens at the cap" decision -- onDraw here just reads the flag it sets.
+    public void setLimitWarningActive(boolean active) {
+        if (limitWarningActive != active) {
+            limitWarningActive = active;
+            invalidate();
+        }
+    }
+
+    // NagramX: called right before the cap auto-stop dispatch, consumed once in shutdown() below.
+    public void armLimitStopHaptic() {
+        limitStopHapticArmed = true;
+    }
+
     @Override
     public void didReceivedNotification(int id, int account, Object... args) {
         if (id == NotificationCenter.fileUploaded) {
@@ -725,6 +751,24 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 canvas.scale(cameraContainer.getScaleX(), cameraContainer.getScaleY(), rect.centerX(), rect.centerY());
             }
             canvas.drawArc(rect, -90, 360 * progress, false, paint);
+            // NagramX: pulse a second arc over the shared white one for the last ~5s before a round video
+            // recording hits its limit. A separate paint on purpose -- `paint`'s alpha is already driven
+            // by the PAINT_ALPHA animator in setupVideoPlayer, and tinting it here would fight that
+            // animation. A pulse rather than a flat tint because a colour shift on a thin white arc
+            // barely reads on a bright screen.
+            if (limitWarningActive) {
+                if (limitWarningPaint == null) {
+                    limitWarningPaint = new Paint(paint);
+                    limitWarningPaint.setColor(0xffff5252);
+                }
+                float phase = (System.currentTimeMillis() % 700L) / 700f;
+                // NagramX: alpha must swing down to ~0, not just to a pinkish floor -- 110 + 145*|sin| never
+                // drops below 110, so the white arc underneath was never visible again and this read as a
+                // solid pink-to-red pulse instead of a white<->red flash. 255*|sin| hits 0 at both ends of
+                // the cycle (sin is 0 at phase 0 and 1), so the white arc shows through there.
+                limitWarningPaint.setAlpha((int) (255 * Math.abs(Math.sin(phase * Math.PI))));
+                canvas.drawArc(rect, -90, 360 * progress, false, limitWarningPaint);
+            }
             canvas.restore();
         }
     }
@@ -1296,6 +1340,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         recordStartTime = System.currentTimeMillis();
         recordedTime = 0;
         progress = 0;
+        setLimitWarningActive(false);
         invalidate();
         updateInfiniteButton();
     }
@@ -1762,6 +1807,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     private VideoRecorder videoEncoder;
+    // NagramX: object identity alone can't tell "this recording" apart from a later one -- onDraw below
+    // reuses the same VideoRecorder instance across a stop/restart until its async teardown nulls
+    // videoEncoder, and a fast cancel-then-record-again can beat that null out. volatile since it's written
+    // from the GL thread (startRecording) and read from the encoder thread later.
+    private volatile int recordingGeneration;
 
     private Bitmap firstFrameThumb;
     private volatile int surfaceIndex;
@@ -2300,7 +2350,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             Handler handler = getHandler();
             if (handler != null) {
                 handler.removeMessages(DO_RENDER_MESSAGE);
-                sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0)), 0);
+                SendOptions options = new SendOptions(notify, scheduleDate, scheduleRepeatPeriod, ttl, effectId, 0);
+                // NagramX: still on the UI thread here, same call stack as the dispatch that may have just
+                // armed this -- read and clear before SendOptions crosses to the encoder thread
+                options.limitStop = limitStopHapticArmed;
+                limitStopHapticArmed = false;
+                sendMessage(handler.obtainMessage(DO_SHUTDOWN_MESSAGE, send, 0, options), 0);
             }
         }
 
@@ -2404,6 +2459,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         int ttl;
         long effectId;
         long stars;
+        // NagramX: set once in CameraGLThread.shutdown() below, read in handleStopRecording() to fire the
+        // cap-stop haptic for exactly the auto-stop, not a manual send/stop that happens to share state==3
+        boolean limitStop;
 
         public SendOptions(boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
             this.notify = notify;
@@ -2475,6 +2533,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         private long lastCommitedFrameTime;
         private long audioStartTime = -1;
+        // NagramX: audioStartTime is now the PTS base for the whole recording (see handleRollover), so
+        // the 60s per-segment cutoff in handleAudioFrameAvailable needs its own start marker that does
+        // get rebased at every rollover
+        private long segmentAudioStartTime = -1;
         private boolean firstVideoFrameSincePause;
 
         private long currentTimestamp = 0;
@@ -2637,8 +2699,23 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         };
 
         private boolean started;
+        // NagramX: this recording's stamp, bumped in startRecording() -- which also runs on every
+        // pause/resume, not just a fresh recording, so this moves more often than "one recording" implies
+        // (harmless: a rollover can't be mid-flight while paused). A rollover or teardown callback captures
+        // it into a local before posting so a later bump -- even one reusing this same instance -- makes a
+        // stale callback's snapshot stop matching. volatile: written on the GL thread, read on the encoder
+        // thread.
+        private volatile int recordingToken;
+        // NagramX: handleStopRecording runs twice for one real stop -- once when the request first arrives
+        // (running still true, no teardown yet) and again once the audio thread notices running went false
+        // and re-posts the stop message (this is the call that actually tears down and posts the teardown
+        // runnable). recordingToken can't be read fresh in that second call: a fast stop-then-record-again
+        // can reuse this instance and move recordingToken on in the gap between the two calls. Stashed once,
+        // on the first call, while running is still true and no new recording can have started yet.
+        private int stoppedGeneration;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
+            recordingToken = ++InstantCameraView.this.recordingGeneration;
             if (started && (handler != null && handler.getLooper() != null && handler.getLooper().getThread() != null && handler.getLooper().getThread().isAlive())) {
                 sharedEglContext = sharedContext;
                 handler.sendMessage(handler.obtainMessage(MSG_START_RECORDING, 1, 0));
@@ -2815,67 +2892,119 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (buffersToWrite.size() > 1) {
                 input = buffersToWrite.get(0);
             }
+            // NagramX: segmentAudioStartTime is the per-segment start (handleRollover resets it to -1),
+            // separate from audioStartTime which stays continuous as the PTS base. Read after the backlog
+            // reassignment above so it pins to this segment's actual first buffer, not the raw input
+            // argument. Skip when input.results == 0 -- that buffer's offset[0] is stale from a previous
+            // round, not a real timestamp yet.
+            if (segmentAudioStartTime == -1 && input.results > 0) {
+                segmentAudioStartTime = input.offset[input.lastWroteBuffer];
+            }
             try {
                 drainEncoder(false);
             } catch (Exception e) {
                 FileLog.e(e);
             }
+            feedAudioToEncoder(input);
+        }
+
+        // NagramX: pulled out of handleAudioFrameAvailable so handleRollover can flush whatever PCM is
+        // still queued in buffersToWrite into segment N's encoder before its muxer closes -- otherwise
+        // that tail never reaches file N and gets discarded by segment N+1 as if it belonged before the
+        // (rebased) segment start. Must not be called from inside drainEncoder: drainEncoder already runs
+        // mid-loop from here, and this mutates buffersToWrite / recycles buffers that the AudioRecord
+        // thread refills from concurrently.
+        private void feedAudioToEncoder(AudioBufferInfo input) {
             try {
                 boolean isLast = false;
+                int stalledDequeues = 0;
+                long stallDeadline = 0;
                 while (input != null) {
                     int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
-                    if (inputBufferIndex >= 0) {
-                        ByteBuffer inputBuffer;
-                        inputBuffer = audioEncoder.getInputBuffer(inputBufferIndex);
-                        long startWriteTime = input.offset[input.lastWroteBuffer];
-                        for (int a = input.lastWroteBuffer; a <= input.results; a++) {
-                            if (a < input.results) {
-                                long totalTime = input.offset[a] - audioStartTime;
-                                if (!running && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
-                                    if (BuildVars.LOGS_ENABLED) {
-                                        if (totalTime >= 60_000000) {
-                                            FileLog.d("InstantCamera stop audio encoding because recorded time more than 60s");
-                                        } else {
-                                            FileLog.d("InstantCamera stop audio encoding because of stoped video recording at " + input.offset[a] + " last video " + videoLast);
-                                        }
-
-                                    }
-                                    audioStopedByTime = true;
-                                    isLast = true;
-                                    input = null;
-                                    buffersToWrite.clear();
-                                    break;
-                                }
-                                if (inputBuffer.remaining() < input.read[a]) {
-                                    input.lastWroteBuffer = a;
-                                    input = null;
-                                    break;
-                                }
-                                inputBuffer.put(input.buffer[a]);
-                            }
-                            if (a >= input.results - 1) {
-                                buffersToWrite.remove(input);
-                                if (running) {
-                                    buffers.put(input);
-                                }
-                                if (!buffersToWrite.isEmpty()) {
-                                    input = buffersToWrite.get(0);
-                                } else {
-                                    isLast = input.last;
-                                    input = null;
-                                    break;
-                                }
-                            }
+                    if (inputBufferIndex < 0) {
+                        // NagramX: the codec can have no free input slot for a moment, and handleRollover's
+                        // flush can hand this more backlog at once than the steady per-frame caller usually
+                        // does. Bounded by both a retry count and a wall clock, since each retry's
+                        // drainEncoder(false) can itself block up to ~10ms on the video dequeue timeout --
+                        // the count alone doesn't cap how long a genuinely stuck codec holds this thread
+                        // (and therefore the camera).
+                        if (stallDeadline == 0) {
+                            stallDeadline = SystemClock.elapsedRealtime() + 500;
                         }
-                        long time = startWriteTime == 0 ? 0 : startWriteTime - audioStartTime;
-                        long realtime = time;
-                        if (prevAudioLast >= 0) {
-                            time += prevAudioLast;
+                        if (++stalledDequeues > 50 || SystemClock.elapsedRealtime() > stallDeadline) {
+                            FileLog.e(new RuntimeException("InstantCamera audio encoder produced no input buffer, dropping remaining backlog"));
+                            break;
                         }
-                        audioLastDt = time - audioLast;
-                        audioLast = time;
-                        audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                        try {
+                            drainEncoder(false);
+                        } catch (Exception e) {
+                            FileLog.e(e);
+                        }
+                        continue;
                     }
+                    stalledDequeues = 0;
+                    stallDeadline = 0;
+                    ByteBuffer inputBuffer;
+                    inputBuffer = audioEncoder.getInputBuffer(inputBufferIndex);
+                    long startWriteTime = input.offset[input.lastWroteBuffer];
+                    for (int a = input.lastWroteBuffer; a <= input.results; a++) {
+                        if (a < input.results) {
+                            long totalTime = input.offset[a] - segmentAudioStartTime;
+                            if (!running && segmentAudioStartTime != -1 && (input.offset[a] >= videoLast - desyncTime || totalTime >= 60_000000)) {
+                                if (BuildVars.LOGS_ENABLED) {
+                                    if (totalTime >= 60_000000) {
+                                        FileLog.d("InstantCamera stop audio encoding because recorded time more than 60s");
+                                    } else {
+                                        FileLog.d("InstantCamera stop audio encoding because of stoped video recording at " + input.offset[a] + " last video " + videoLast);
+                                    }
+
+                                }
+                                audioStopedByTime = true;
+                                isLast = true;
+                                input = null;
+                                buffersToWrite.clear();
+                                break;
+                            }
+                            if (inputBuffer.remaining() < input.read[a]) {
+                                input.lastWroteBuffer = a;
+                                input = null;
+                                break;
+                            }
+                            inputBuffer.put(input.buffer[a]);
+                        }
+                        if (a >= input.results - 1) {
+                            buffersToWrite.remove(input);
+                            if (running) {
+                                // NagramX: offer(), not put() -- handleRollover's flush also reaches this method
+                                // while still running, on the encoder thread, and the pool is otherwise only
+                                // drained by a non-blocking poll() on the recorder thread. put() could block this
+                                // thread if the pool happened to be at capacity; a dropped buffer just costs one
+                                // more allocation later.
+                                buffers.offer(input);
+                            }
+                            if (!buffersToWrite.isEmpty()) {
+                                input = buffersToWrite.get(0);
+                                // NagramX: `a` belongs to the buffer we just finished, not the new one. A
+                                // single encoder input buffer can span two AudioBufferInfos when the first
+                                // one wasn't full (KEY_MAX_INPUT_SIZE only covers one MAX_SAMPLES record), so
+                                // without this the next samples copied would start from the old buffer's
+                                // tail index instead of the new buffer's own lastWroteBuffer.
+                                a = input.lastWroteBuffer - 1;
+                            } else {
+                                isLast = input.last;
+                                input = null;
+                                break;
+                            }
+                        }
+                    }
+                    long time = startWriteTime == 0 ? 0 : startWriteTime - audioStartTime;
+                    long realtime = time;
+                    if (prevAudioLast >= 0) {
+                        time += prevAudioLast;
+                    }
+                    audioLastDt = time - audioLast;
+                    audioLast = time;
+                    audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
                 }
             } catch (Throwable e) {
                 FileLog.e(e);
@@ -3146,6 +3275,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             pauseRecorder = false;
         }
 
+        // NagramX: maps the Camera-settings cutoff level to a pulse, shared by both cutoff sites below
+        // (this rollover and handleStopRecording's cap auto-stop) so one can't drift from the other.
+        // InstantCameraView.this, not `this` (VideoRecorder isn't a View) -- needed as the
+        // performHapticFeedback fallback target if the Vibrator route comes back dead.
+        private void fireCutVibration() {
+            RecordingLimitVibration.fire(NaConfig.INSTANCE.getVideoMessagesCutVibration().Int(), InstantCameraView.this);
+        }
+
         // NagramX: infinite video message: close the current file, hand it off to be sent, and open the next
         // one on the same encoders. Nothing is stopped or released here, so the camera never blinks.
         private void handleRollover(long segmentDuration, SendOptions sendOptions) {
@@ -3169,15 +3306,64 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
                 return;
             }
+            // NagramX: snapshot this recording's stamp now, before any of the flush/drain/finishMuxer work
+            // below that can block for a while -- a fast stop-then-record-again can reuse this VideoRecorder
+            // instance and bump recordingToken while that work is still running, and reading it only
+            // afterward would pick up the new recording's stamp instead of this one's. segmentFile is
+            // snapshotted here for the same reason: startRecording() reassigns videoFile straight from the
+            // GL thread (not through this thread's handler), so reading it after the flush/drain instead of
+            // now would risk grabbing the next recording's file instead of this segment's.
+            final int capturedGeneration = recordingToken;
+            final File segmentFile = videoFile;
+            // NagramX: push whatever PCM arrived just before the cut into segment N's encoder and drain its
+            // output (drainRolloverAudioTail below) before finishMuxer, so the tail lands in file N instead
+            // of surfacing later in file N+1 with file N's timestamps. running is still true, so
+            // feedAudioToEncoder's 60s-cutoff branch can't fire and truncate this early. One call only
+            // fills the encoder's next free input slot, so loop until the backlog is actually gone --
+            // bounded by feedAudioToEncoder's own stall guard if the encoder itself is stuck, not by a
+            // fixed attempt count.
+            AudioBufferInfo previousHead = null;
+            int previousHeadPosition = -1;
+            while (!buffersToWrite.isEmpty()) {
+                AudioBufferInfo head = buffersToWrite.get(0);
+                if (head == previousHead && head.lastWroteBuffer == previousHeadPosition) {
+                    break;
+                }
+                previousHead = head;
+                previousHeadPosition = head.lastWroteBuffer;
+                feedAudioToEncoder(head);
+            }
+            if (!buffersToWrite.isEmpty()) {
+                FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));
+                // NagramX: the encoder is stuck, so segment N+1 won't fare any better with this backlog
+                // than segment N just did -- return the buffers to the pool and drop it rather than
+                // mislabeling stale PCM as segment N+1's own. offer(), not put(): this runs on the encoder
+                // thread while the pool is normally only drained by a non-blocking poll() on the recorder
+                // thread, so put() could block this thread if the pool happened to be at capacity -- a
+                // dropped buffer just means one more gets allocated later, which is cheap.
+                for (AudioBufferInfo b : buffersToWrite) {
+                    buffers.offer(b);
+                }
+                buffersToWrite.clear();
+            }
             try {
                 drainEncoder(false);
+                // drainEncoder's own dequeue uses a 0us timeout, which only catches output already sitting
+                // in the codec -- the AAC frames for what feedAudioToEncoder just queued above aren't out
+                // yet, so poll a little longer here
+                drainRolloverAudioTail();
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            finishMuxer();
-            final File segmentFile = videoFile;
+            final boolean segmentClosedOk = finishMuxer();
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
+                // NagramX: fires from the actual commit, not TimerView's wall-clock trigger -- the encoder
+                // can lag the 59.5s mark. Skipped if finishMuxer failed or this recording was replaced
+                // while the flush/drain above was running.
+                if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
+                    fireCutVibration();
+                }
                 VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
                 if (info != null) {
                     info.notReadyYet = false;
@@ -3225,21 +3411,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            // the encoder clocks have to keep running forward, but the audio re-syncs to the next segment's
-            // first video frame the same way it does after a pause: that also rebases the 60s audio cut-off,
-            // which is measured from audioStartTime and would otherwise truncate the last segment
-            prevVideoLast = videoLast + videoLastDt;
-            prevAudioLast = audioLast + audioLastDt;
-            firstVideoFrameSincePause = true;
-            lastTimestamp = -1;
-            lastCommitedFrameTime = 0;
-            audioStartTime = -1;
-            audioFirst = -1;
-            videoFirst = -1;
-            videoLast = -1;
-            videoDiff = -1;
-            audioLast = -1;
-            desyncTime = 0;
+            // NagramX: unlike a pause, nothing here stops the camera, AudioRecord or either MediaCodec, so
+            // the A/V sync fields are left alone rather than reset -- resetting them here is what used to
+            // re-arm start-of-recording sync and discard audio right at the boundary (Track.prepare rebases
+            // each file to its own first sample anyway, so a climbing PTS across segments is fine).
+            // segmentAudioStartTime is the one exception: it needs a fresh per-segment baseline for the
+            // 60s cutoff above.
+            segmentAudioStartTime = -1;
         }
 
         // NagramX: pulled out of prepareEncoder so a rollover opens the next segment's movie the same way
@@ -3267,11 +3445,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             mediaMuxer.setAllowSyncFiles(allowSendingWhileRecording = SharedConfig.deviceIsHigh());
         }
 
-        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way
-        private void finishMuxer() {
+        // NagramX: pulled out of handleStopRecording so a rollover closes a segment the same way. Returns
+        // whether finishMovie() actually completed instead of throwing, so a caller that wants to know
+        // before treating the segment as done (the rollover haptic) can check, without changing the
+        // pre-existing swallow-and-log behavior the other caller already relies on.
+        private boolean finishMuxer() {
             if (mediaMuxer == null) {
-                return;
+                return false;
             }
+            boolean[] success = {true};
             if (WRITE_TO_FILE_IN_BACKGROUND) {
                 CountDownLatch countDownLatch = new CountDownLatch(1);
                 fileWriteQueue.postRunnable(() -> {
@@ -3279,6 +3461,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         mediaMuxer.finishMovie();
                     } catch (Exception e) {
                         e.printStackTrace();
+                        success[0] = false;
                     }
                     countDownLatch.countDown();
                 });
@@ -3286,12 +3469,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     countDownLatch.await();
                 } catch (InterruptedException e) {
                     e.printStackTrace();
+                    success[0] = false;
                 }
             } else {
                 try {
                     mediaMuxer.finishMovie();
                 } catch (Exception e) {
                     FileLog.e(e);
+                    success[0] = false;
                 }
             }
             FileLog.d("InstantCamera finish muxer " + videoFile);
@@ -3307,14 +3492,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 if (!fileToWrite.renameTo(videoFile)) {
                     FileLog.e("InstantCamera unable to rename file, try move file");
                     try {
-                        AndroidUtilities.copyFile(fileToWrite, videoFile);
+                        if (!AndroidUtilities.copyFile(fileToWrite, videoFile)) {
+                            success[0] = false;
+                        }
                         fileToWrite.delete();
                     } catch (IOException e) {
                         FileLog.e(e);
                         FileLog.e("InstantCamera unable to move file");
+                        success[0] = false;
                     }
                 }
             }
+            return success[0];
         }
 
         private void setupVideoPlayer(File file) {
@@ -3396,6 +3585,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private boolean sentMedia;
 
         private void handleStopRecording(final int send, final SendOptions sendOptions) {
+            // NagramX: stash this recording's generation before anything else runs. This method is invoked
+            // twice for one real stop (see the field comment above), and running is only ever true on the
+            // first of those two calls -- capture it here, unconditionally, so the second call's teardown
+            // has a stable value to compare against instead of reading recordingToken fresh at that point.
+            if (running) {
+                stoppedGeneration = recordingToken;
+            }
             final boolean runDone;
             if (send == ENCODER_SEND_SEND && (videoEditedInfo == null || !videoEditedInfo.needConvert()) && !delegate.isInScheduleMode()) {
                 runDone = false;
@@ -3584,9 +3780,23 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 overlayHelper.destroy();
                 overlayHelper = null;
             }
+            // NagramX: same generation guard as handleRollover's cut haptic, and for the same reason: this
+            // teardown is posted async, drainEncoder/MediaCodec release/EGL teardown above can all take a
+            // moment, and a fast stop-then-record-again can reuse this exact instance in that window.
+            // stoppedGeneration was pinned back when this stop sequence started (see its field comment), so
+            // it stays correct here regardless of what recordingToken has since been bumped to.
+            final int capturedGeneration = stoppedGeneration;
+            final boolean fireLimitStopHaptic = sendOptions != null && sendOptions.limitStop;
             AndroidUtilities.runOnUIThread(() -> {
-                if (InstantCameraView.this.videoEncoder == this) {
+                if (InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     InstantCameraView.this.videoEncoder = null;
+                    // NagramX: recording is over one way or another, so any pre-cut warning still showing
+                    // (e.g. the last segment stopped normally instead of rolling over) needs clearing too.
+                    setLimitWarningActive(false);
+                    // NagramX: same buzz as a rollover cut, fired only for the ordinary 60s auto-stop
+                    if (fireLimitStopHaptic) {
+                        fireCutVibration();
+                    }
                 }
             });
         }
@@ -3650,6 +3860,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 lastTimestamp = -1;
                 lastCommitedFrameTime = 0;
                 audioStartTime = -1;
+                segmentAudioStartTime = -1;
                 audioFirst = -1;
                 videoFirst = -1;
                 videoLast = -1;
@@ -3975,64 +4186,92 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 
             while (true) {
-                int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 0);
+                int encoderStatus = drainAudioEncoderOutput(0);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder) {
                         break;
                     }
-                } else if (encoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = audioEncoder.getOutputFormat();
-                    if (audioTrackIndex == -5) {
-                        audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
-                        audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
-                    }
-                } else if (encoderStatus >= 0) {
-                    ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
-                    if (encodedData == null) {
-                        throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
-                    }
-                    if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        audioBufferInfo.size = 0;
-                    }
-                    if (audioBufferInfo.size != 0) {
-                        if (WRITE_TO_FILE_IN_BACKGROUND) {
-                            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-                            bufferInfo.size = audioBufferInfo.size;
-                            bufferInfo.offset = audioBufferInfo.offset;
-                            bufferInfo.flags = audioBufferInfo.flags;
-                            bufferInfo.presentationTimeUs = audioBufferInfo.presentationTimeUs;
-                            ByteBuffer byteBuffer = AndroidUtilities.cloneByteBuffer(encodedData);
-                            fileWriteQueue.postRunnable(() -> {
-                                long availableSize = 0;
-                                try {
-                                    availableSize = mediaMuxer.writeSampleData(audioTrackIndex, byteBuffer, bufferInfo, false);
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                                if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
-                                    didWriteData(videoFile, availableSize, false);
-                                }
-                            });
-                            if (audioEncoder != null) {
-                                audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                } else if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    break;
+                }
+            }
+        }
+
+        // NagramX: one dequeue-and-write pass on the audio encoder's output side, factored out of the loop
+        // above so handleRollover can also call it with its own timeout (see drainRolloverAudioTail).
+        private int drainAudioEncoderOutput(long timeoutUs) throws Exception {
+            int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, timeoutUs);
+            if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                MediaFormat newFormat = audioEncoder.getOutputFormat();
+                if (audioTrackIndex == -5) {
+                    audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
+                    audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
+                }
+            } else if (encoderStatus >= 0) {
+                ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
+                if (encodedData == null) {
+                    throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
+                }
+                if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                    audioBufferInfo.size = 0;
+                }
+                if (audioBufferInfo.size != 0) {
+                    if (WRITE_TO_FILE_IN_BACKGROUND) {
+                        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+                        bufferInfo.size = audioBufferInfo.size;
+                        bufferInfo.offset = audioBufferInfo.offset;
+                        bufferInfo.flags = audioBufferInfo.flags;
+                        bufferInfo.presentationTimeUs = audioBufferInfo.presentationTimeUs;
+                        ByteBuffer byteBuffer = AndroidUtilities.cloneByteBuffer(encodedData);
+                        fileWriteQueue.postRunnable(() -> {
+                            long availableSize = 0;
+                            try {
+                                availableSize = mediaMuxer.writeSampleData(audioTrackIndex, byteBuffer, bufferInfo, false);
+                            } catch (Exception e) {
+                                e.printStackTrace();
                             }
-                        } else {
-                            long availableSize = mediaMuxer.writeSampleData(audioTrackIndex, encodedData, audioBufferInfo, false);
                             if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
                                 didWriteData(videoFile, availableSize, false);
                             }
-                            if (audioEncoder != null) {
-                                audioEncoder.releaseOutputBuffer(encoderStatus, false);
-                            }
+                        });
+                        if (audioEncoder != null) {
+                            audioEncoder.releaseOutputBuffer(encoderStatus, false);
                         }
-                    } else if (audioEncoder != null) {
-                        audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                    } else {
+                        long availableSize = mediaMuxer.writeSampleData(audioTrackIndex, encodedData, audioBufferInfo, false);
+                        if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
+                            didWriteData(videoFile, availableSize, false);
+                        }
+                        if (audioEncoder != null) {
+                            audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                        }
                     }
-                    if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                } else if (audioEncoder != null) {
+                    audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                }
+            }
+            return encoderStatus;
+        }
+
+        // NagramX: a freshly queued AAC input isn't available as output the instant it's queued, so the
+        // single drainEncoder(false) call in handleRollover (0us timeout, returns on the first miss) grabs
+        // little to none of what feedAudioToEncoder just fed it -- the rest surfaces later, in file N+1,
+        // with file N's PTS. Poll with a short timeout instead of drainEncoder's 0us one until the codec
+        // stops handing back real output, capped so a stuck codec can't hold up the camera.
+        private void drainRolloverAudioTail() {
+            long deadline = SystemClock.elapsedRealtime() + 100;
+            try {
+                // NagramX: INFO_TRY_AGAIN_LATER is a normal "nothing ready in this 2ms poll" result, not a
+                // stop signal -- only the deadline should end this loop. audioBufferInfo is only trustworthy
+                // right after a real (>=0) dequeue, same as drainEncoder's own audio loop above.
+                while (SystemClock.elapsedRealtime() < deadline) {
+                    int encoderStatus = drainAudioEncoderOutput(2000);
+                    if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         break;
                     }
                 }
+            } catch (Exception e) {
+                FileLog.e(e);
             }
         }
 
