@@ -251,6 +251,17 @@ code are not.
    how a split verdict is adjudicated. Whoever drives the change dispatches them;
    in the Copilot roster that is the orchestrator (Phase 4).
 
+   **When these run is triggered by what happened, not just by up-front size.**
+   They're proportional — a one-line chore doesn't earn them — but reserve them
+   for more than "looks substantial," because the initial estimate is exactly
+   what misleads: a change scoped as the *simple* half of a split still hit 34
+   commits and shipped a bug a dozen line passes missed. Run the full pass when
+   the change touches concurrency / a media pipeline / lifecycle, **or** when it
+   hit the automated-review round cap, **or** when repeated fixes clustered in one
+   region, **or** when scope grew mid-flight after review already ran. A change
+   that needed many rounds to stabilise is precisely the one whose whole nobody
+   has read.
+
 6. **Feature doc entry — rides with the feature.** If the change is
    user-visible, write its entry for `FEATURES.md`: under the right
    `## section`, a `### Feature name` heading, then a plain-spoken

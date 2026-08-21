@@ -382,11 +382,27 @@ Phase 4 verification. Do not re-open it by asking for more machine passes.
 **Then run the final-state passes, once the architect loop is clean.** Round 2
 fixes lines as they land and never judges the finished artifact as a whole,
 which is exactly where a subtle bug survives. These passes are proportional —
-reserve them for a substantial feature or a hard-class change (concurrency,
-media pipeline, lifecycle); a one-line CI or doc fix does not earn two
-craftsmanship reviewers. When they apply, and round 2 returns no Critical and no
-Important, dispatch the two final-state reviews defined in
-`nagramx-code-review` over the *final* code:
+they must not run on every chore — but the trigger is **observed as well as
+classified**, because an a-priori size estimate is exactly what misled here: this
+incident was scoped up front as the deliberately-simple "hotfix" half of a split,
+then took 34 commits and 20 builds and the final-state pass caught a data-loss
+bug twelve automated rounds had missed. So run the full final-state pass when
+**any** of these holds, regardless of the initial sizing:
+
+- it touches concurrency, a media pipeline, or object lifecycle (the a-priori
+  hard class);
+- it **hit the automated-review round cap** (`nagramx-workflow` step 9) — a
+  change whose per-line review didn't converge has earned a look at its whole;
+- **repeated fixes landed in the same region** (the Lesson-2 design-review
+  trigger feeds this pass too);
+- **scope grew mid-flight** after review had already run (Phase 3).
+
+A one-line CI or doc fix that trips none of these does not earn two craftsmanship
+reviewers. The principle to hold onto: **a change that needed many rounds to
+stabilise is precisely the one whose final state nobody has read whole** — the
+cheapness of the first estimate is not evidence of simplicity. When a pass
+applies and round 2 returns no Critical and no Important, dispatch the two
+final-state reviews defined in `nagramx-code-review` over the *final* code:
 
 - A **whole-feature review** — "would a maintainer be happy to own this?" — one
   reviewer reading the finished feature as a unit.
@@ -540,7 +556,13 @@ lighter touch.
   unavailable, say so and stop rather than skipping the gate.
 - **Do not merge on dazewell's behalf.** Hand back the URL; the merge is his.
 - **Do not widen the diff.** Unrelated cleanups and drive-by refactors make the
-  next upstream merge more expensive. Raise them as separate suggestions.
+  next upstream merge more expensive. Raise them as separate suggestions. The one
+  exception a child may legitimately take: a defect it proves is a data-loss or
+  deadlock risk, whose fix is provably local and matches existing practice in the
+  same file (see the implementer's scope rules). When one is flagged in a
+  handback, verify the proof rather than reflexively treating it as scope creep —
+  and if the fix touched a lifecycle, hook point, config or storage surface, it
+  was *not* local and should have come back to you instead.
 - **Do not report a gate as passed when it was skipped.** Say which gate ran,
   which was substituted, and which did not apply.
 

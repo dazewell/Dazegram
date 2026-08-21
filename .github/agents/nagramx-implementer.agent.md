@@ -299,6 +299,20 @@ changes. Everything else is yours to call.
   `clean -fd`, branch deletion, or a checkout that discards uncommitted work.
 - **Never widen the scope.** One change per branch. If you discover a second
   problem, report it; do not fix it here.
+
+  **The one narrow exception — a provably local, provably severe defect.** When
+  the branch is otherwise frozen, report-don't-fix is the default: a second
+  problem gets reported and left. But a defect you can *prove* is a **data-loss
+  or deadlock risk**, whose fix is **provably local** (one call site, no
+  lifecycle, hook-point, config, storage or user-visible-behaviour change) **and
+  matches existing practice already in the same file**, you may fix in place —
+  with the reasoning stated in the commit message and the fix **flagged
+  prominently in your handback**. The test is severity *and* locality together,
+  not severity alone: a `put()` that deadlocks changed to the `offer()` a sibling
+  path three lines down already uses is inside the line; the same severity with a
+  fix that would touch the lifecycle goes back to the orchestrator untouched. If
+  you can't prove both halves, report and stop — don't reach for this to justify
+  a fix you simply wanted to make.
 - **Never put two unrelated changes on one branch.**
 
 ## Reporting back

@@ -355,6 +355,24 @@ orchestrator, Phase 4). It runs to these rules:
   and then ruled against changing it — that reversal only happened because it was
   pointed at the code, not at its own proposal.
 
+**A dismissal's own mitigation is in scope — check it.** When a reviewer or
+adjudicator dismisses a finding as harmless, the mechanism it *cites as the
+mitigation* is code too, with its own failure modes, and "X can't hurt us because
+Y absorbs it" is an unverified claim about Y until Y is read. So require the
+dismissal to state what would have to be true of Y for it to hold, and check
+that: is the queue bounded or unbounded, does the hot path allocate, is the call
+blocking or non-blocking, what's the capacity. This is not paranoia — on the
+motivating incident the adjudicator correctly argued the 100 ms stall "costs an
+allocation, not audio, because the recorder allocates a fresh `AudioBufferInfo`
+on a `poll()` miss instead of blocking." True — and the *exact* mechanism of a
+separate deadlock it didn't see: `buffers` is an `ArrayBlockingQueue<>(10)` seeded
+with 3, so allocating on every miss lets buffers in circulation exceed capacity,
+at which point the encoder thread's `buffers.put(...)` blocks forever (camera
+freeze, recording lost) — and this branch newly reached that line on the encoder
+thread. Two of the ruling's three arguments turned on a data structure whose
+capacity was never checked. A mitigation you lean on to say "harmless" is exactly
+the code most worth tracing.
+
 ## Calibration
 
 Categorize by **actual** severity — not everything is Critical. Acknowledge what
