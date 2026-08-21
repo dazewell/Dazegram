@@ -2869,16 +2869,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             if (buffersToWrite.size() > 1) {
                 input = buffersToWrite.get(0);
             }
-            // NagramX: segmentAudioStartTime marks only the current segment's start, rebased to -1 by
-            // handleRollover, so the 60s cutoff below keeps measuring per-segment length even though
-            // audioStartTime (the PTS base) now stays continuous across the whole recording. Read after
-            // the backlog reassignment above -- when a backlog exists this segment's actual first fed
-            // buffer is buffersToWrite.get(0), not whatever input arrived as, and pinning the marker to
-            // the wrong (later) buffer would push the 60s cutoff later than the real segment length.
-            // input.results == 0 means the recorderRunnable's very first read of this buffer failed, so
-            // offset[0] was never written this round and still holds whatever this pooled buffer last
-            // held -- possibly a much older timestamp that would make totalTime below look like 60s have
-            // already passed. Skip it and wait for the next call to pin the marker from a real sample.
+            // NagramX: segmentAudioStartTime is the per-segment start (handleRollover resets it to -1),
+            // separate from audioStartTime which stays continuous as the PTS base. Read after the backlog
+            // reassignment above so it pins to this segment's actual first buffer, not the raw input
+            // argument. Skip when input.results == 0 -- that buffer's offset[0] is stale from a previous
+            // round, not a real timestamp yet.
             if (segmentAudioStartTime == -1 && input.results > 0) {
                 segmentAudioStartTime = input.offset[input.lastWroteBuffer];
             }
@@ -3280,19 +3275,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // instance and bump recordingToken while that work is still running, and reading it only
             // afterward would pick up the new recording's stamp instead of this one's.
             final int capturedGeneration = recordingToken;
-            // NagramX: flush whatever PCM arrived just before the cut into segment N's encoder first, so
-            // its audio tail lands in file N instead of sitting in buffersToWrite for segment N+1 to find
-            // and discard as pre-segment audio. running is still true here (only handleStopRecording flips
-            // it), so the 60s-cutoff branch inside this feed can't fire and truncate the feed early.
-            // One call to feedAudioToEncoder only fills what fits in the encoder's currently available
-            // input buffers -- KEY_MAX_INPUT_SIZE holds exactly one AudioBufferInfo, so a second queued
-            // record does not fit alongside the first and the call returns with it still unconsumed. The
-            // steady per-frame caller lets the next frame pick that up; here there is no next frame before
-            // finishMuxer(), so keep calling until the backlog is actually empty. buffersToWrite isn't
-            // hard-bounded to the 3-buffer pool (recorderRunnable allocates past it if starved), so the
-            // loop is bounded by actual lack of progress rather than a fixed attempt count: if the same
-            // buffer is still at the head at the same read position after a call, feedAudioToEncoder's own
-            // stall guard already gave up and another attempt would just spin on the same stuck codec.
+            // NagramX: push whatever PCM arrived just before the cut into segment N's encoder and drain its
+            // output (drainRolloverAudioTail below) before finishMuxer, so the tail lands in file N instead
+            // of surfacing later in file N+1 with file N's timestamps. running is still true, so
+            // feedAudioToEncoder's 60s-cutoff branch can't fire and truncate this early. One call only
+            // fills the encoder's next free input slot, so loop until the backlog is actually gone --
+            // bounded by feedAudioToEncoder's own stall guard if the encoder itself is stuck, not by a
+            // fixed attempt count.
             AudioBufferInfo previousHead = null;
             int previousHeadPosition = -1;
             while (!buffersToWrite.isEmpty()) {
@@ -3306,11 +3295,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             if (!buffersToWrite.isEmpty()) {
                 FileLog.e(new RuntimeException("InstantCamera rollover audio flush left " + buffersToWrite.size() + " buffer(s) unflushed"));
-                // NagramX: the audio encoder is genuinely stuck at this point (feedAudioToEncoder's own
-                // stall guard already gave up on it), so segment N+1 won't be able to encode any better than
-                // segment N just did. Leaving these queued would make handleAudioFrameAvailable pick them up
-                // as segment N+1's own PCM and pin its segmentAudioStartTime from segment N's old offsets,
-                // mislabeling audio that already failed to reach file N as file N+1's tail instead.
+                // NagramX: the encoder is stuck, so segment N+1 won't fare any better with this backlog
+                // than segment N just did -- return the buffers to the pool and drop it rather than
+                // mislabeling stale PCM as segment N+1's own
                 try {
                     for (AudioBufferInfo b : buffersToWrite) {
                         buffers.put(b);
@@ -3333,15 +3320,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             final File segmentFile = videoFile;
             final boolean segmentFirstWrite = videoConvertFirstWrite;
             AndroidUtilities.runOnUIThread(() -> {
-                // NagramX: the cut haptic fires here, once segment N has actually finished writing, not
-                // from TimerView's wall-clock trigger -- the encoder can lag the 59.5s mark a little.
-                // Also gated on segmentClosedOk: finishMuxer() can fail (I/O error) and swallow it, and the
-                // "cut" haptic shouldn't tell the user a segment landed when it didn't. If the recording was
-                // cancelled/replaced (capturedGeneration taken before the blocking work above, see top of
-                // this method) this stale rollover shouldn't buzz on top of whatever comes next either.
-                // sendSegment below runs unconditionally either way (unguarded pre-existing behavior, not
-                // introduced here and not this change's scope to fix), so only the added haptic gets either
-                // guard.
+                // NagramX: fires from the actual commit, not TimerView's wall-clock trigger -- the encoder
+                // can lag the 59.5s mark. Skipped if finishMuxer failed or this recording was replaced
+                // while the flush/drain above was running.
                 if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
                     org.telegram.messenger.BotWebViewVibrationEffect.IMPACT_HEAVY.vibrate();
                 }
@@ -3392,17 +3373,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            // NagramX: unlike a pause, nothing here actually stops the camera, AudioRecord or either
-            // MediaCodec, so none of prevVideoLast/prevAudioLast/firstVideoFrameSincePause/lastTimestamp/
-            // lastCommitedFrameTime/audioStartTime/audioFirst/videoFirst/videoLast/videoDiff/audioLast/
-            // desyncTime get touched: that's what used to re-arm the start-of-recording A/V sync on every
-            // rollover, discarding audio arriving right at the boundary as if it were noise before the real
-            // start (Track.prepare rebases every file to its own first sample anyway, so a climbing PTS
-            // across segments is fine). Leaving lastTimestamp alone also means handleVideoFrameAvailable
-            // never re-enters its first-frame-after-restart branch, so lastCommitedFrameTime (only read
-            // there) doesn't need resetting either -- it keeps updating every frame regardless.
-            // segmentAudioStartTime is the one thing that does need a fresh per-segment baseline, since it
-            // drives the 60s-per-segment cutoff above.
+            // NagramX: unlike a pause, nothing here stops the camera, AudioRecord or either MediaCodec, so
+            // the A/V sync fields are left alone rather than reset -- resetting them here is what used to
+            // re-arm start-of-recording sync and discard audio right at the boundary (Track.prepare rebases
+            // each file to its own first sample anyway, so a climbing PTS across segments is fine).
+            // segmentAudioStartTime is the one exception: it needs a fresh per-segment baseline for the
+            // 60s cutoff above.
             segmentAudioStartTime = -1;
         }
 

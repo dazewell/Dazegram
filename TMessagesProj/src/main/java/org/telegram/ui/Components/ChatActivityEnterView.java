@@ -16761,22 +16761,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             int ms = (int) (t % 1000L) / 10;
 
             if (isInVideoMode()) {
-                // NagramX: isInfiniteVideoAvailable() isn't free -- it can hit AlertsCreator.needsPaidMessageAlert(),
-                // which reschedules a 60ms contact-lookup runnable on every cache miss. Only evaluate it inside
-                // the warning window (the same t >= 59500 window the pre-existing cut check already used this
-                // for), not for the whole ~59.5s segment, or a call every onDraw frame keeps cancelling that
-                // lookup before it ever runs.
+                // NagramX: isInfiniteVideoAvailable() can hit AlertsCreator.needsPaidMessageAlert(), which
+                // reschedules a contact-lookup runnable on every cache miss -- restrict checking it to this
+                // 5s warning window and throttle the reads within it, or every onDraw frame cancels the
+                // lookup before it can land.
                 if (t >= 54500) {
-                    // re-checked every frame in this window, not just when arming: view-once/slow mode can take
-                    // infinite mode away mid-warning, and the toggle can be flipped off too. warnedInternal
-                    // tracks whether we've already fired for this segment, separately from whether a rollover
-                    // is still actually pending.
-                    // NagramX: even limited to this 5s window, a draw-frame-rate call still re-triggers the
-                    // 60ms reschedule faster than it can fire. Throttling the read to once per
-                    // INFINITE_AVAILABILITY_CHECK_INTERVAL leaves gaps wide enough for the lookup to land.
-                    // Gate the refresh on infiniteEligible too -- an ordinary recording with the toggle off
-                    // (or one on its last allowed segment) has no reason to touch isInfiniteVideoAvailable()
-                    // at all, same as the short-circuited && below used to guarantee before this was pulled out.
                     boolean infiniteEligible = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1;
                     if (infiniteEligible && (lastInfiniteAvailabilityCheck == 0 || currentTimeMillis - lastInfiniteAvailabilityCheck >= INFINITE_AVAILABILITY_CHECK_INTERVAL)) {
                         cachedInfiniteAvailable = isInfiniteVideoAvailable();
@@ -16784,32 +16773,25 @@ public class ChatActivityEnterView extends FrameLayout implements
                     }
                     boolean infiniteRolloverPending = infiniteEligible && cachedInfiniteAvailable;
                     if (warnedInternal && !infiniteRolloverPending) {
-                        // the cut this warned about isn't coming after all -- drop the pulse and allow a fresh
-                        // warning if the condition comes back before this segment's 59.5s mark
+                        // view-once/slow mode can take infinite mode away mid-warning -- drop the pulse and
+                        // allow a fresh warning if it comes back before the cut
                         warnedInternal = false;
                         setInfiniteVideoWarningActive(false);
                     } else if (isRunning && !warnedInternal && infiniteRolloverPending) {
-                        // NagramX: stop() freezes t at stopTime, and its invalidate() still drives one more
-                        // onDraw pass. Without the isRunning check a manual stop landing right past 54.5s would
-                        // arm a warning for a cut that is never coming -- gate the arm on the recording actually
-                        // still being live, not just on the frozen elapsed time looking late enough.
+                        // isRunning guards against stop()'s frozen t: its invalidate() still drives one more
+                        // onDraw pass, and without this a manual stop past 54.5s would arm a warning for a
+                        // cut that isn't coming
                         warnedInternal = true;
                         BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
                         setInfiniteVideoWarningActive(true);
                     } else if (!isRunning && warnedInternal) {
-                        // NagramX: a stop (or pause) landed mid-warning. Nothing else clears the visual pulse
-                        // promptly -- InstantCameraView's own clear only runs from its async teardown, which
-                        // can lag noticeably. warnedInternal is left set so a resume doesn't re-fire the
-                        // haptic; start() restores the pulse if this turns out to be a pause, not a real stop.
+                        // a stop or pause landed mid-warning -- clear the pulse now instead of waiting on
+                        // InstantCameraView's async teardown, which can lag; start() restores it on resume
                         setInfiniteVideoWarningActive(false);
                     }
                     if (t >= 59500 && !stoppedInternal) {
-                        // NagramX: infinite mode wraps the segment up and keeps the recorder running instead of
-                        // dropping into the preview. The last allowed segment falls back to the normal stop, as
-                        // does anything that armed view-once or started a slow mode countdown mid-recording.
-                        // NagramX: isRunning gates this too, not just the warning arm above -- stop() freezes t
-                        // and still drives one more onDraw pass, and without this a manual stop landing right
-                        // at/after 59.5s could fire a rollover (state 6) instead of honoring the stop.
+                        // isRunning here for the same reason as above: a manual stop right at/after 59.5s
+                        // must land the stop it actually requested, not a rollover
                         if (isRunning && infiniteRolloverPending) {
                             infiniteVideoSegments++;
                             startedDraggingX = -1;
