@@ -762,7 +762,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     limitWarningPaint.setColor(0xffff5252);
                 }
                 float phase = (System.currentTimeMillis() % 700L) / 700f;
-                limitWarningPaint.setAlpha((int) (110 + 145 * Math.abs(Math.sin(phase * Math.PI))));
+                // NagramX: alpha must swing down to ~0, not just to a pinkish floor -- 110 + 145*|sin| never
+                // drops below 110, so the white arc underneath was never visible again and this read as a
+                // solid pink-to-red pulse instead of a white<->red flash. 255*|sin| hits 0 at both ends of
+                // the cycle (sin is 0 at phase 0 and 1), so the white arc shows through there.
+                limitWarningPaint.setAlpha((int) (255 * Math.abs(Math.sin(phase * Math.PI))));
                 canvas.drawArc(rect, -90, 360 * progress, false, limitWarningPaint);
             }
             canvas.restore();
