@@ -3308,6 +3308,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             try {
                 drainEncoder(false);
+                // drainEncoder's own dequeue uses a 0us timeout, which only catches output already sitting
+                // in the codec -- the AAC frames for what feedAudioToEncoder just queued above aren't out
+                // yet, so poll a little longer here
+                drainRolloverAudioTail();
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -4149,64 +4153,90 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
 
             while (true) {
-                int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, 0);
+                int encoderStatus = drainAudioEncoderOutput(0);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                     if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder) {
                         break;
                     }
-                } else if (encoderStatus == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
-                } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    MediaFormat newFormat = audioEncoder.getOutputFormat();
-                    if (audioTrackIndex == -5) {
-                        audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
-                        audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
-                    }
-                } else if (encoderStatus >= 0) {
-                    ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
-                    if (encodedData == null) {
-                        throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
-                    }
-                    if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                        audioBufferInfo.size = 0;
-                    }
-                    if (audioBufferInfo.size != 0) {
-                        if (WRITE_TO_FILE_IN_BACKGROUND) {
-                            MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
-                            bufferInfo.size = audioBufferInfo.size;
-                            bufferInfo.offset = audioBufferInfo.offset;
-                            bufferInfo.flags = audioBufferInfo.flags;
-                            bufferInfo.presentationTimeUs = audioBufferInfo.presentationTimeUs;
-                            ByteBuffer byteBuffer = AndroidUtilities.cloneByteBuffer(encodedData);
-                            fileWriteQueue.postRunnable(() -> {
-                                long availableSize = 0;
-                                try {
-                                    availableSize = mediaMuxer.writeSampleData(audioTrackIndex, byteBuffer, bufferInfo, false);
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                }
-                                if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
-                                    didWriteData(videoFile, availableSize, false);
-                                }
-                            });
-                            if (audioEncoder != null) {
-                                audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                } else if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
+                    break;
+                }
+            }
+        }
+
+        // NagramX: one dequeue-and-write pass on the audio encoder's output side, factored out of the loop
+        // above so handleRollover can also call it with its own timeout (see drainRolloverAudioTail).
+        private int drainAudioEncoderOutput(long timeoutUs) throws Exception {
+            int encoderStatus = audioEncoder.dequeueOutputBuffer(audioBufferInfo, timeoutUs);
+            if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                MediaFormat newFormat = audioEncoder.getOutputFormat();
+                if (audioTrackIndex == -5) {
+                    audioTrackIndex = mediaMuxer.addTrack(newFormat, true);
+                    audioTrackFormat = newFormat; // NagramX: reused when a rollover opens the next file
+                }
+            } else if (encoderStatus >= 0) {
+                ByteBuffer encodedData = audioEncoder.getOutputBuffer(encoderStatus);
+                if (encodedData == null) {
+                    throw new RuntimeException("encoderOutputBuffer " + encoderStatus + " was null");
+                }
+                if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                    audioBufferInfo.size = 0;
+                }
+                if (audioBufferInfo.size != 0) {
+                    if (WRITE_TO_FILE_IN_BACKGROUND) {
+                        MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
+                        bufferInfo.size = audioBufferInfo.size;
+                        bufferInfo.offset = audioBufferInfo.offset;
+                        bufferInfo.flags = audioBufferInfo.flags;
+                        bufferInfo.presentationTimeUs = audioBufferInfo.presentationTimeUs;
+                        ByteBuffer byteBuffer = AndroidUtilities.cloneByteBuffer(encodedData);
+                        fileWriteQueue.postRunnable(() -> {
+                            long availableSize = 0;
+                            try {
+                                availableSize = mediaMuxer.writeSampleData(audioTrackIndex, byteBuffer, bufferInfo, false);
+                            } catch (Exception e) {
+                                e.printStackTrace();
                             }
-                        } else {
-                            long availableSize = mediaMuxer.writeSampleData(audioTrackIndex, encodedData, audioBufferInfo, false);
                             if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
                                 didWriteData(videoFile, availableSize, false);
                             }
-                            if (audioEncoder != null) {
-                                audioEncoder.releaseOutputBuffer(encoderStatus, false);
-                            }
+                        });
+                        if (audioEncoder != null) {
+                            audioEncoder.releaseOutputBuffer(encoderStatus, false);
                         }
-                    } else if (audioEncoder != null) {
-                        audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                    } else {
+                        long availableSize = mediaMuxer.writeSampleData(audioTrackIndex, encodedData, audioBufferInfo, false);
+                        if (availableSize != 0 && !writingToDifferentFile && allowSendingWhileRecording) {
+                            didWriteData(videoFile, availableSize, false);
+                        }
+                        if (audioEncoder != null) {
+                            audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                        }
                     }
+                } else if (audioEncoder != null) {
+                    audioEncoder.releaseOutputBuffer(encoderStatus, false);
+                }
+            }
+            return encoderStatus;
+        }
+
+        // NagramX: a freshly queued AAC input isn't available as output the instant it's queued, so the
+        // single drainEncoder(false) call in handleRollover (0us timeout, returns on the first miss) grabs
+        // little to none of what feedAudioToEncoder just fed it -- the rest surfaces later, in file N+1,
+        // with file N's PTS. Poll with a short timeout instead of drainEncoder's 0us one until the codec
+        // stops handing back real output, capped so a stuck codec can't hold up the camera.
+        private void drainRolloverAudioTail() {
+            long deadline = SystemClock.elapsedRealtime() + 100;
+            try {
+                int status;
+                do {
+                    status = drainAudioEncoderOutput(2000);
                     if ((audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                         break;
                     }
-                }
+                } while (status >= 0 && SystemClock.elapsedRealtime() < deadline);
+            } catch (Exception e) {
+                FileLog.e(e);
             }
         }
 
