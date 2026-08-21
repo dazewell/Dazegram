@@ -190,11 +190,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private long recordedTime;
     private boolean cancelled;
 
-    // NagramX: infinite video message: true for the last ~5s before a rollover actually lands, so onDraw
-    // can pulse the arc. All writes come from ChatActivityEnterView.TimerView (armed) or the stop/rollover
-    // paths (cleared), and they all run on the UI thread, same as the onDraw read -- no volatile needed.
-    private boolean infiniteWarningActive;
-    private Paint infiniteWarningPaint;
+    // NagramX: true for the last ~5s before any round video recording hits its limit (rollover or plain
+    // stop), so onDraw can pulse the arc. All writes come from ChatActivityEnterView.TimerView (armed) or
+    // the stop/rollover paths (cleared), and they all run on the UI thread, same as the onDraw read -- no
+    // volatile needed.
+    private boolean limitWarningActive;
+    private Paint limitWarningPaint;
 
     private CameraGLThread cameraThread;
     private Size[] previewSize = new Size[2];
@@ -680,12 +681,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 
-    // NagramX: infinite video message: arms (or clears) the pre-cut pulse on the progress arc. Called
-    // from TimerView, which already owns the "will this segment actually roll over" decision -- onDraw
-    // here just reads the flag it sets.
-    public void setInfiniteWarningActive(boolean active) {
-        if (infiniteWarningActive != active) {
-            infiniteWarningActive = active;
+    // NagramX: arms (or clears) the pre-cut pulse on the progress arc. Called from TimerView, which
+    // already owns the "what happens at the cap" decision -- onDraw here just reads the flag it sets.
+    public void setLimitWarningActive(boolean active) {
+        if (limitWarningActive != active) {
+            limitWarningActive = active;
             invalidate();
         }
     }
@@ -741,18 +741,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 canvas.scale(cameraContainer.getScaleX(), cameraContainer.getScaleY(), rect.centerX(), rect.centerY());
             }
             canvas.drawArc(rect, -90, 360 * progress, false, paint);
-            // NagramX: pulse a second arc over the shared white one for the last ~5s before an infinite-mode
-            // cut. A separate paint on purpose -- `paint`'s alpha is already driven by the PAINT_ALPHA
-            // animator in setupVideoPlayer, and tinting it here would fight that animation. A pulse rather
-            // than a flat tint because a colour shift on a thin white arc barely reads on a bright screen.
-            if (infiniteWarningActive) {
-                if (infiniteWarningPaint == null) {
-                    infiniteWarningPaint = new Paint(paint);
-                    infiniteWarningPaint.setColor(0xffff5252);
+            // NagramX: pulse a second arc over the shared white one for the last ~5s before a round video
+            // recording hits its limit. A separate paint on purpose -- `paint`'s alpha is already driven
+            // by the PAINT_ALPHA animator in setupVideoPlayer, and tinting it here would fight that
+            // animation. A pulse rather than a flat tint because a colour shift on a thin white arc
+            // barely reads on a bright screen.
+            if (limitWarningActive) {
+                if (limitWarningPaint == null) {
+                    limitWarningPaint = new Paint(paint);
+                    limitWarningPaint.setColor(0xffff5252);
                 }
                 float phase = (System.currentTimeMillis() % 700L) / 700f;
-                infiniteWarningPaint.setAlpha((int) (110 + 145 * Math.abs(Math.sin(phase * Math.PI))));
-                canvas.drawArc(rect, -90, 360 * progress, false, infiniteWarningPaint);
+                limitWarningPaint.setAlpha((int) (110 + 145 * Math.abs(Math.sin(phase * Math.PI))));
+                canvas.drawArc(rect, -90, 360 * progress, false, limitWarningPaint);
             }
             canvas.restore();
         }
@@ -1325,7 +1326,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         recordStartTime = System.currentTimeMillis();
         recordedTime = 0;
         progress = 0;
-        setInfiniteWarningActive(false);
+        setLimitWarningActive(false);
         invalidate();
         updateInfiniteButton();
     }
@@ -3753,7 +3754,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     InstantCameraView.this.videoEncoder = null;
                     // NagramX: recording is over one way or another, so any pre-cut warning still showing
                     // (e.g. the last segment stopped normally instead of rolling over) needs clearing too.
-                    setInfiniteWarningActive(false);
+                    setLimitWarningActive(false);
                 }
             });
         }

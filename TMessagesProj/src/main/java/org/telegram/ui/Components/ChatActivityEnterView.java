@@ -16682,13 +16682,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         // NagramX: fire-once guard for the pre-cut warning, separate from stoppedInternal since it has to
         // re-arm every segment instead of just once per recording
         boolean warnedInternal;
-        // NagramX: isInfiniteVideoAvailable() is throttled to this interval inside the warning window (see
-        // below) instead of being read fresh every draw frame -- a cache miss inside it reschedules a 60ms
-        // async lookup on every call, so calling it faster than that reschedule delay never lets the lookup
-        // land and the availability check never actually resolves.
-        static final long INFINITE_AVAILABILITY_CHECK_INTERVAL = 250;
-        long lastInfiniteAvailabilityCheck;
-        boolean cachedInfiniteAvailable;
         String oldString;
         long startTime;
         long stopTime;
@@ -16721,14 +16714,13 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // recording: handleStopRecording clears InstantCameraView's flag from its own async teardown,
                 // which can still be pending if a new recording starts right after a manual stop.
                 warnedInternal = false;
-                setInfiniteVideoWarningActive(false);
-                lastInfiniteAvailabilityCheck = 0;
+                setRecordingLimitWarningActive(false);
             } else if (warnedInternal) {
                 // NagramX: resuming after a pause that had already warned before it paused. onDraw's stop
                 // branch below clears the visual pulse when isRunning goes false but leaves warnedInternal
                 // set (so a resume doesn't also fire a duplicate haptic) -- restore the pulse here since the
                 // elapsed time carried over means we're still in the same warning window as before the pause.
-                setInfiniteVideoWarningActive(true);
+                setRecordingLimitWarningActive(true);
             }
             startTime = System.currentTimeMillis() - milliseconds;
             lastSendTypingTime = startTime;
@@ -16761,38 +16753,27 @@ public class ChatActivityEnterView extends FrameLayout implements
             int ms = (int) (t % 1000L) / 10;
 
             if (isInVideoMode()) {
-                // NagramX: isInfiniteVideoAvailable() can hit AlertsCreator.needsPaidMessageAlert(), which
-                // reschedules a contact-lookup runnable on every cache miss -- restrict checking it to this
-                // 5s warning window and throttle the reads within it, or every onDraw frame cancels the
-                // lookup before it can land.
+                // NagramX: any round video recording gets the warning now, not just infinite mode -- a word
+                // cut off at the ordinary 60s cap is just as lost as one cut off by a rollover.
                 if (t >= 54500) {
-                    boolean infiniteEligible = infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1;
-                    if (infiniteEligible && (lastInfiniteAvailabilityCheck == 0 || currentTimeMillis - lastInfiniteAvailabilityCheck >= INFINITE_AVAILABILITY_CHECK_INTERVAL)) {
-                        cachedInfiniteAvailable = isInfiniteVideoAvailable();
-                        lastInfiniteAvailabilityCheck = currentTimeMillis;
-                    }
-                    boolean infiniteRolloverPending = infiniteEligible && cachedInfiniteAvailable;
-                    if (warnedInternal && !infiniteRolloverPending) {
-                        // view-once/slow mode can take infinite mode away mid-warning -- drop the pulse and
-                        // allow a fresh warning if it comes back before the cut
-                        warnedInternal = false;
-                        setInfiniteVideoWarningActive(false);
-                    } else if (isRunning && !warnedInternal && infiniteRolloverPending) {
+                    if (isRunning && !warnedInternal) {
                         // isRunning guards against stop()'s frozen t: its invalidate() still drives one more
                         // onDraw pass, and without this a manual stop past 54.5s would arm a warning for a
                         // cut that isn't coming
                         warnedInternal = true;
                         BotWebViewVibrationEffect.NOTIFICATION_WARNING.vibrate();
-                        setInfiniteVideoWarningActive(true);
+                        setRecordingLimitWarningActive(true);
                     } else if (!isRunning && warnedInternal) {
                         // a stop or pause landed mid-warning -- clear the pulse now instead of waiting on
                         // InstantCameraView's async teardown, which can lag; start() restores it on resume
-                        setInfiniteVideoWarningActive(false);
+                        setRecordingLimitWarningActive(false);
                     }
                     if (t >= 59500 && !stoppedInternal) {
                         // isRunning here for the same reason as above: a manual stop right at/after 59.5s
-                        // must land the stop it actually requested, not a rollover
-                        if (isRunning && infiniteRolloverPending) {
+                        // must land the stop it actually requested, not a rollover. Only checked here, once,
+                        // instead of every frame in the warning window -- isInfiniteVideoAvailable() can hit
+                        // a network-backed lookup and this is the only place that still needs the answer.
+                        if (isRunning && infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
                             infiniteVideoSegments++;
                             startedDraggingX = -1;
                             delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -18414,12 +18395,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
     }
 
-    // NagramX: infinite video message: tells InstantCameraView to pulse (or stop pulsing) its progress arc
-    // for the pre-cut warning. Kept as a plain setter call, not a new delegate/state number -- TimerView
-    // already reaches the view directly through parentFragment for updateInfiniteRecordingButton() above.
-    private void setInfiniteVideoWarningActive(boolean active) {
+    // NagramX: tells InstantCameraView to pulse (or stop pulsing) its progress arc for the pre-cut
+    // warning, which now fires for any round video recording, not just infinite mode. Kept as a plain
+    // setter call, not a new delegate/state number -- TimerView already reaches the view directly through
+    // parentFragment for updateInfiniteRecordingButton() above.
+    private void setRecordingLimitWarningActive(boolean active) {
         if (parentFragment != null && parentFragment.instantCameraView != null) {
-            parentFragment.instantCameraView.setInfiniteWarningActive(active);
+            parentFragment.instantCameraView.setLimitWarningActive(active);
         }
     }
 
