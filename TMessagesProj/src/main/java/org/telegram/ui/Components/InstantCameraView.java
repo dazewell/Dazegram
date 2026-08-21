@@ -3310,6 +3310,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 // segment N just did. Leaving these queued would make handleAudioFrameAvailable pick them up
                 // as segment N+1's own PCM and pin its segmentAudioStartTime from segment N's old offsets,
                 // mislabeling audio that already failed to reach file N as file N+1's tail instead.
+                try {
+                    for (AudioBufferInfo b : buffersToWrite) {
+                        buffers.put(b);
+                    }
+                } catch (InterruptedException e) {
+                    FileLog.e(e);
+                }
                 buffersToWrite.clear();
             }
             try {
