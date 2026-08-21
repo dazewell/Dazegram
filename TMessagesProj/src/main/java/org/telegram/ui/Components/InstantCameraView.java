@@ -2970,7 +2970,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         if (a >= input.results - 1) {
                             buffersToWrite.remove(input);
                             if (running) {
-                                buffers.put(input);
+                                // NagramX: offer(), not put() -- handleRollover's flush also reaches this method
+                                // while still running, on the encoder thread, and the pool is otherwise only
+                                // drained by a non-blocking poll() on the recorder thread. put() could block this
+                                // thread if the pool happened to be at capacity; a dropped buffer just costs one
+                                // more allocation later.
+                                buffers.offer(input);
                             }
                             if (!buffersToWrite.isEmpty()) {
                                 input = buffersToWrite.get(0);
