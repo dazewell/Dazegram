@@ -289,6 +289,24 @@ covered by round 2 and the whole-feature pass. What makes it work as a prompt:
   to "find the problems" reliably manufactures problems; say plainly that
   "this is solid, ship it" is a valid and welcome verdict, or you get invented
   rewrites.
+- **It reports the smell and its evidence — it does not prescribe a remedy in
+  code whose lifecycle and threading it has not traced end to end.** A
+  craftsmanship reviewer is good at spotting that code is ugly and unreliable at
+  knowing *why* it's ugly, so a remedy it offers without that trace is a
+  **question for the adjudicator, not an instruction.** This is not caution for
+  its own sake: on the motivating incident *both* reviewers proposed concrete
+  fixes and *both* fixes would have caused the exact data loss they meant to
+  prevent — deleting generation tokens that guard the routine pause/resume
+  teardown, and exiting the audio drain earlier and so displacing a segment's
+  tail across the cut. Name the smell, cite it, stop there.
+- **"This code is ugly" and "this code is wrong" are different claims needing
+  different evidence** — and the first never implies the second. Ugliness is
+  read off the code; wrongness needs the trace. Keep them separate in the report.
+- **Ugly-but-correct beats elegant-but-unproven when the asset at risk is
+  irreplaceable.** Code that has survived many review rounds is often ugly
+  *because* it encodes hard-won constraints — the accretion is sometimes the
+  knowledge. Weigh a proposed simplification against what it risks (the
+  priorities in `nagramx-workflow`), not against how clean it would look.
 - **It must produce a "what I'd defend" section** — code that looks convoluted
   but is load-bearing (a real race guard, an ordering that looks redundant but
   isn't), named so a later reader doesn't "simplify" a correctness guarantee
@@ -306,10 +324,36 @@ covered by round 2 and the whole-feature pass. What makes it work as a prompt:
   exactly which three regions, and one of them found the confirmed bug the
   automated passes missed.
 
-**Adjudicating a split.** When two craftsmanship reviewers disagree on the
-remedy, a third party rules on the **contested points specifically** — not a
-fresh full re-review, which just mints a new crop of Minor findings. Whoever
-drives the change stages this; in the Copilot roster it's the orchestrator.
+### Adjudicating a split
+
+When the craftsmanship reviewers disagree, adjudication is a **first-class step**,
+not an ad-hoc tiebreak — because on the motivating incident it was adjudication,
+armed with the priority ranking, that caught that both proposed remedies would
+have reintroduced the data loss. A single adjudicator (a reviewer or the
+architect, on a model family suited to tracing the code) rules on it, and the
+staging of it is owned by whoever drives the change (in the Copilot roster, the
+orchestrator, Phase 4). It runs to these rules:
+
+- **Given the contested points specifically**, with each reviewer's claim and
+  proposed remedy — not asked to re-review the whole change, which just mints a
+  fresh crop of Minor findings.
+- **Told the priority ranking up front** (`nagramx-workflow` — risk to the
+  irreplaceable thing first). It changed the ruling here: one earlier ruling
+  flipped once loss-risk was weighed above efficiency.
+- **Required to state, per contested item, two exposures separately: the cost of
+  leaving it as-is, and the cost of changing it.** That framing is exactly what
+  exposed the bad remedies — each looked like an improvement until its
+  change-exposure (reintroduced data loss) was written down next to its
+  as-is-exposure (some duplicated frames, some ugliness).
+- **Forced to land on one unhedged recommendation from a fixed set** — *merge
+  as-is*, *minimal fix list*, or *real cleanup* — with **explicit permission to
+  choose "merge as-is".** No "it depends"; the change runs to a pull request
+  after it.
+- **Told when it is ruling on its own prior prescription**, so it reviews the
+  code as code rather than defending its earlier idea. On the incident the
+  adjudicator had itself specified the bounded audio drain at an earlier round
+  and then ruled against changing it — that reversal only happened because it was
+  pointed at the code, not at its own proposal.
 
 ## Calibration
 

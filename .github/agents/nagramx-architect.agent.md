@@ -45,11 +45,18 @@ them wastes everyone's time.
 - **A final-state pass — the whole feature, after the branch is otherwise
   done.** You may be dispatched a third time, on the *final* code rather than the
   diff, for a **whole-feature review** ("would a maintainer be happy to own
-  this?") or a **craftsmanship pass** ("good code or a batch of hacks?"). These
-  are defined in `.claude/skills/nagramx-code-review/SKILL.md` — read that
-  section and follow its brief exactly, especially the craftsmanship pass's
-  standing permission to conclude the code is fine and its required "what I'd
-  defend" section. Do not turn one into a re-run of round 2.
+  this?"), a **craftsmanship pass** ("good code or a batch of hacks?"), or to
+  **adjudicate** a split between two craftsmanship reviewers. These are defined
+  in `.claude/skills/nagramx-code-review/SKILL.md` — read that section and follow
+  its brief exactly. Two rules there are load-bearing and easy to skip: on a
+  craftsmanship pass, **report the smell and its evidence but do not prescribe a
+  remedy in code whose threading and lifecycle you have not traced end to end** —
+  offer it as a question, because an untraced remedy can reintroduce the very bug
+  it targets. When adjudicating, state **both** exposures per contested item
+  (leave as-is vs. change), rank by loss-risk first, land one unhedged verdict
+  with "merge as-is" allowed, and if you are ruling on your *own* earlier
+  prescription, review the code as code rather than defend it. Do not turn any of
+  these into a re-run of round 2.
 
 ## Reading the diff when the work happened elsewhere
 

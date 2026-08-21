@@ -394,19 +394,33 @@ Important, dispatch the two final-state reviews defined in
   different from the implementer and from the architect (see *Choosing the
   model*). Give them the skill's brief verbatim: final state not diff, explicit
   permission to conclude the code is fine, a required "what I'd defend" section,
-  and the fork's constraints (legacy Java, minimal footprint, no
-  Compose/DI/test-scaffolding advice).
+  the fork's constraints (legacy Java, minimal footprint, no
+  Compose/DI/test-scaffolding advice), and — the point that saved a shipping
+  regression here — **report the smell and its evidence, do not prescribe a
+  remedy in code whose threading and lifecycle you have not traced.** A remedy
+  offered without that trace is a question for adjudication, not an instruction.
 
 Read their results as a set: **convergence is signal** (two reviewers naming the
 same region is where a real problem lives — that is what caught the shipping bug
 the automated passes missed), **divergence is a question, not an average.** When
-they split on the remedy, **adjudicate the contested points specifically** with
-a third reviewer — not a fresh full re-review. Route any Important-or-above
-finding these surface back through the capped implementer loop; record Minor ones
-in the handback. If a finding is really "the design is wrong here" (the
-repeated-fix trigger, or a smell pointing past itself), that is an architectural
-call — decide the branch's fate (refactor in place, or stop and re-spec via a
-round 1.5) rather than asking for another patch.
+they split on the remedy, **adjudicate as a first-class step, per the
+`nagramx-code-review` rules** — a single adjudicator on a model family suited to
+tracing the code, given the contested points only (not a full re-review), **told
+the priority ranking up front** (it flipped a ruling on this incident once
+loss-risk outweighed efficiency), **required to state both exposures per item**
+(the cost of leaving it as-is *and* the cost of changing it — that framing is
+what exposed two remedies that would each have reintroduced the data loss), and
+**forced onto one unhedged verdict** from *merge as-is / minimal fix list / real
+cleanup*, with "merge as-is" explicitly allowed. **If the adjudicator is ruling
+on its own earlier prescription, tell it so** — it must review the code as code,
+not defend its prior idea; on this incident that instruction is what let it
+reverse a bounded-drain fix it had itself specified a round earlier.
+
+Route any Important-or-above finding these surface back through the capped
+implementer loop; record Minor ones in the handback. If a finding is really "the
+design is wrong here" (the repeated-fix trigger, or a smell pointing past
+itself), that is an architectural call — decide the branch's fate (refactor in
+place, or stop and re-spec via a round 1.5) rather than asking for another patch.
 
 If a fix is contested on technical grounds, decide it yourself. **An
 architectural call — the only kind that goes to dazewell — is exactly one of:**
