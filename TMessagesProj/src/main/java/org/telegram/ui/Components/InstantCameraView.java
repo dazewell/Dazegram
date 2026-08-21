@@ -191,9 +191,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean cancelled;
 
     // NagramX: infinite video message: true for the last ~5s before a rollover actually lands, so onDraw
-    // can pulse the arc. Set from ChatActivityEnterView.TimerView (the same place that arms the cut
-    // itself) and only ever read here -- no state decisions get made inside onDraw.
-    private volatile boolean infiniteWarningActive;
+    // can pulse the arc. All writes come from ChatActivityEnterView.TimerView (armed) or the stop/rollover
+    // paths (cleared), and they all run on the UI thread, same as the onDraw read -- no volatile needed.
+    private boolean infiniteWarningActive;
     private Paint infiniteWarningPaint;
 
     private CameraGLThread cameraThread;
