@@ -1261,16 +1261,21 @@ public class FileRefController extends BaseController {
                 }
             } else if (response instanceof TLRPC.TL_help_appUpdate) {
                 TLRPC.TL_help_appUpdate appUpdate = (TLRPC.TL_help_appUpdate) response;
-                try {
-                    SharedConfig.pendingAppUpdate = appUpdate;
-                    SharedConfig.saveConfig();
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-                try {
-                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-                } catch (Exception e) {
-                    FileLog.e(e);
+                // NagramX: a file-reference refresh started while updates were on can land after
+                // the user turned them off; don't persist or announce the update in that window
+                // (announcing raises the install banner), but still resolve the file reference below.
+                if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() != tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF) {
+                    try {
+                        SharedConfig.pendingAppUpdate = appUpdate;
+                        SharedConfig.saveConfig();
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                    try {
+                        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
                 }
                 try {
                     if (appUpdate.document != null) {
@@ -1618,16 +1623,21 @@ public class FileRefController extends BaseController {
             }
         } else if (response instanceof TLRPC.TL_help_appUpdate) {
             TLRPC.TL_help_appUpdate appUpdate = (TLRPC.TL_help_appUpdate) response;
-            try {
-                SharedConfig.pendingAppUpdate = appUpdate;
-                SharedConfig.saveConfig();
-            } catch (Exception e) {
-                FileLog.e(e);
-            }
-            try {
-                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
-            } catch (Exception e) {
-                FileLog.e(e);
+            // NagramX: a file-reference refresh started while updates were on can land after
+            // the user turned them off; don't persist or announce the update in that window
+            // (announcing raises the install banner), but still resolve the file reference below.
+            if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() != tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF) {
+                try {
+                    SharedConfig.pendingAppUpdate = appUpdate;
+                    SharedConfig.saveConfig();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                try {
+                    NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.appUpdateAvailable);
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
             }
             try {
                 if (appUpdate.document != null) {

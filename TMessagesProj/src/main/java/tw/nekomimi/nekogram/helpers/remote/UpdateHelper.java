@@ -127,10 +127,6 @@ public class UpdateHelper extends BaseRemoteHelper {
             update.url = json.url;
             update.flags |= 4;
         }
-        if (NaConfig.INSTANCE.getAutoUpdateChannel().Int() == UPDATE_OFF && !update.can_not_skip) {
-            delegate.onTLResponse(null, null);
-            return;
-        }
         if (response != null) {
             var res = (TLRPC.messages_Messages) response;
             getMessagesController().removeDeletedMessagesFromArray(CHANNEL_METADATA_ID, res.messages);
@@ -202,6 +198,13 @@ public class UpdateHelper extends BaseRemoteHelper {
 
     public void checkNewVersionAvailable(Delegate delegate, boolean updateAlways) {
         this.updateAlways = updateAlways;
+        // NagramX: single point that enforces "off means no request". Covers every caller,
+        // including the two that bypass LaunchActivity.checkAppUpdate (FileRefController and
+        // BlockingUpdateView), so no update request leaves the device while checks are off.
+        if (NaConfig.INSTANCE.getAutoUpdateChannel().Int() == UPDATE_OFF) {
+            delegate.onTLResponse(null, null);
+            return;
+        }
         load(delegate);
     }
 
