@@ -5525,6 +5525,13 @@ public class ChatAttachAlert extends BottomSheet implements NotificationCenter.N
                 }
             }
         }
+        // NagramX: photoPreviewLayout is lazily created outside layouts[] (see updatePhotoPreview), so it's otherwise skipped by the loop above and never reached by a live theme switch
+        if (photoPreviewLayout != null) {
+            ArrayList<ThemeDescription> previewDescriptions = photoPreviewLayout.getThemeDescriptions();
+            if (previewDescriptions != null) {
+                descriptions.addAll(previewDescriptions);
+            }
+        }
         descriptions.add(new ThemeDescription(container, 0, null, null, null, null, Theme.key_dialogBackgroundGray));
         return descriptions;
     }
