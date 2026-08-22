@@ -599,4 +599,5 @@
     <string name="PasscodeMatchesAccount">This matches the passcode for %1$s. Choose a different code.</string>
     <string name="PasscodeSaveFailed">Couldn\'t save. Try again.</string>
     <string name="PasscodePanicCodeUniqueHint">Your Panic Code must be different from your app passcode and every account passcode. If you\'re not sure it is, set it again.</string>
+    <string name="ForceFontWeightFallback">Force Font Weight Fallback</string>
 </resources>
