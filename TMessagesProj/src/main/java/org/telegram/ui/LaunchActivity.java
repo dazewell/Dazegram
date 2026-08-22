@@ -6163,7 +6163,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             SharedConfig.lastUpdateCheckTime = System.currentTimeMillis();
             SharedConfig.saveConfig();
             AndroidUtilities.runOnUIThread(() -> {
-                if (res != null) {
+                // NagramX: Off can be selected (which purges pending state) after this check
+                // started, so re-check it here at the moment the response lands. A late result
+                // must not persist an update or raise the blocking view while Off is in effect.
+                final boolean updatesOff = xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() == tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF;
+                if (res != null && !updatesOff) {
                     SharedConfig.setNewAppVersionAvailable(res);
                     if (res.can_not_skip) {
                         showUpdateActivity(accountNum, res, false);
@@ -6172,7 +6176,7 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                         ApplicationLoader.applicationLoaderInstance.showUpdateAppPopup(LaunchActivity.this, res, accountNum);
                     }
                 } else {
-                    if (force) {
+                    if (!updatesOff && force) {
                         BaseFragment fragment = getLastFragment();
                         if (fragment != null) {
                             if (error == null) {
