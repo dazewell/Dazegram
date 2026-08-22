@@ -4860,6 +4860,30 @@ public class Theme {
             themeInfo.isDark = ThemeInfo.DARK;
             themes.add(themeInfo);
             themesDict.put("Extera Dark", themeInfo);
+
+            themeInfo = new ThemeInfo();
+            themeInfo.name = "Solid Light";
+            themeInfo.assetName = "monet_solid_light.attheme";
+            themeInfo.previewBackgroundColor = MonetHelper.getColor("n1_0");
+            themeInfo.previewInColor = MonetHelper.getColor("n1_50");
+            themeInfo.previewOutColor = MonetHelper.getColor("a1_600");
+            themeInfo.sortIndex = 11;
+            themeInfo.monetKind = ThemeInfo.MONET_LIGHT;
+            themeInfo.isDark = ThemeInfo.LIGHT;
+            themes.add(themeInfo);
+            themesDict.put("Solid Light", themeInfo);
+
+            themeInfo = new ThemeInfo();
+            themeInfo.name = "Solid Dark";
+            themeInfo.assetName = "monet_solid_dark.attheme";
+            themeInfo.previewBackgroundColor = MonetHelper.getColor("n1_900");
+            themeInfo.previewInColor = MonetHelper.getColor("n1_800");
+            themeInfo.previewOutColor = MonetHelper.getColor("a1_200");
+            themeInfo.sortIndex = 12;
+            themeInfo.monetKind = ThemeInfo.MONET_DARK;
+            themeInfo.isDark = ThemeInfo.DARK;
+            themes.add(themeInfo);
+            themesDict.put("Solid Dark", themeInfo);
         }
 
         String themesString = themeConfig.getString("themes2", null);

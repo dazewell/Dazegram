@@ -1,37 +1,48 @@
-// Sanity-checks the Extera Light/Dark Monet assets before a PR. Not a build gate - there is no
-// test source set under TMessagesProj/src, so this is a standalone script (JDK 21 single-file
-// source launch, no build step, no dependencies), the same way IconInk.java in this directory is.
+// Sanity-checks the Extera Light/Dark and Solid Light/Dark Monet assets before a PR. Not a build
+// gate - there is no test source set under TMessagesProj/src, so this is a standalone script (JDK
+// 21 single-file source launch, no build step, no dependencies), the same way IconInk.java in this
+// directory is.
 //
-// It checks five things, since a mistyped, dropped, or unrecognized token is invisible to
+// It checks six things, since a mistyped, dropped, or unrecognized token is invisible to
 // eyeballing a themed screen:
 //
-//   1. monet_extera_{light,dark}.attheme carry every key their monet_{light,dark}.attheme
+//   1. monet_{extera,solid}_{light,dark}.attheme carry every key their monet_{light,dark}.attheme
 //      counterpart does (a superset), so nothing silently falls back to the XML default.
-//   2. every key in the two Extera assets is one ThemeColors.stringKeyToInt() actually resolves -
+//   2. every key in the four assets is one ThemeColors.stringKeyToInt() actually resolves -
 //      parsed straight out of ThemeColors.java's colorKeysMap, the sole map that backs it - or is
 //      an unknown key already present verbatim in the corresponding baseline asset (a pre-existing
 //      bug this change didn't introduce and isn't the place to fix). Theme.getThemeFileValues()
 //      silently drops any key stringKeyToInt() can't resolve (keyFromString >= 0 guard), so a typo'd
 //      or renamed key is a complete no-op at runtime with nothing to show for it on screen.
-//   3. every value in the two Extera assets either matches a valid 6- or 8-digit '#' hex color, is
+//   3. every value in the four assets either matches a valid 6- or 8-digit '#' hex color, is
 //      a raw ARGB int literal, or resolves against MonetHelper's own token vocabulary - parsed
 //      straight out of MonetHelper.java so this can never drift from what the app actually resolves
 //      at runtime. 0 doubles as MonetHelper's own "failed to resolve" sentinel (see getColor()'s
 //      catch clause), so a bad token and an intentional zero both render identically and neither
 //      eyeballing a themed screen nor a runtime log line can tell them apart after the fact.
-//   4. the Light and Dark Extera assets carry the exact same set of keys once restricted to names
-//      ThemeColors actually recognizes. The two raw files are allowed to differ - Light alone
-//      inherits an unrelated pre-existing typo'd key (kvoipgroup_overlayAlertMutedByAdmin2) that
-//      isn't a recognized key either way, so it drops out of both sides of this comparison rather
-//      than needing its own hand-carved exception - but a recognized key present in only one of the
-//      two variants would mean that surface silently falls back to the XML default in just one of
-//      Light/Dark, which is exactly as invisible on a themed screen as check 2's dropped keys.
-//   5. every raw decimal literal in the two Extera assets is one Integer.parseInt() actually
+//   4. within each pair (Extera, Solid), the Light and Dark assets carry the exact same set of keys
+//      once restricted to names ThemeColors actually recognizes. The raw files are allowed to
+//      differ - Extera Light alone inherits an unrelated pre-existing typo'd key
+//      (kvoipgroup_overlayAlertMutedByAdmin2) that isn't a recognized key either way, so it drops
+//      out of both sides of this comparison rather than needing its own hand-carved exception - but
+//      a recognized key present in only one of the two variants would mean that surface silently
+//      falls back to the XML default in just one of Light/Dark, which is exactly as invisible on a
+//      themed screen as check 2's dropped keys.
+//   5. every raw decimal literal in the four assets is one Integer.parseInt() actually
 //      accepts, matching the runtime path exactly: Utilities.parseInt(CharSequence) - what
 //      Theme.getThemeFileValues() calls for a raw decimal attheme value - extracts the leading
 //      "-?[0-9]+" run and hands it straight to Integer.parseInt(), silently returning 0 if that
 //      throws (out-of-range or otherwise). A value outside the signed 32-bit range is exactly as
 //      invisible on a themed screen as an unresolved token resolving to 0.
+//   6. Solid Light/Dark stay in lockstep with the Extera pair they're derived from: identical key
+//      sets, identical values for every key except the two deliberately-overridden panel keys
+//      (chat_messagePanelBackground, dialogSearchBackground), and those two keys must actually
+//      differ (catching the case where someone forgets to apply the override, not just unwanted
+//      drift, and also catching a typo'd override key name that isn't a real key in either file).
+//      Extera's own assets have already needed correcting five times since landing, so this
+//      is the guard against Solid silently drifting apart from a future Extera-only fix - a
+//      wallpaper/panel contrast check was deliberately tried and removed instead (see
+//      71563e10b), so this script doesn't attempt to re-derive a contrast threshold.
 //
 // Run with no build step and no dependencies (JDK 21 single-file source launch), from the repo
 // root, and paste the output in the PR body:
@@ -75,6 +86,21 @@ public class VerifyExteraThemes {
         ok &= checkValidKeyParity("monet_extera_light.attheme", "monet_extera_dark.attheme", validKeys);
         ok &= checkInt32RoundTrip("monet_extera_light.attheme");
         ok &= checkInt32RoundTrip("monet_extera_dark.attheme");
+
+        ok &= checkSuperset("monet_light.attheme", "monet_solid_light.attheme");
+        ok &= checkSuperset("monet_dark.attheme", "monet_solid_dark.attheme");
+        ok &= checkKeys("monet_light.attheme", "monet_solid_light.attheme", validKeys);
+        ok &= checkKeys("monet_dark.attheme", "monet_solid_dark.attheme", validKeys);
+        ok &= checkValues("monet_solid_light.attheme", vocabulary);
+        ok &= checkValues("monet_solid_dark.attheme", vocabulary);
+        ok &= checkValidKeyParity("monet_solid_light.attheme", "monet_solid_dark.attheme", validKeys);
+        ok &= checkInt32RoundTrip("monet_solid_light.attheme");
+        ok &= checkInt32RoundTrip("monet_solid_dark.attheme");
+
+        ok &= checkDerivedParity("monet_extera_light.attheme", "monet_solid_light.attheme",
+                Set.of("chat_messagePanelBackground", "dialogSearchBackground"));
+        ok &= checkDerivedParity("monet_extera_dark.attheme", "monet_solid_dark.attheme",
+                Set.of("chat_messagePanelBackground", "dialogSearchBackground"));
 
         System.out.println(ok ? "OK" : "FAILED");
         if (!ok) {
@@ -287,5 +313,65 @@ public class VerifyExteraThemes {
         } catch (NumberFormatException e) {
             return false;
         }
+    }
+
+    // Check 6: derivedName must carry the exact same parsed key set as baseName (see checkSuperset's
+    // key-set semantics - this doesn't re-check raw formatting like line order or whitespace, only
+    // the key=value pairs parseAttheme() extracts) with identical values for every key except
+    // overrideKeys, and overrideKeys must actually have been changed. This is what catches Solid
+    // Light/Dark silently drifting apart from the Extera pair they were forked from on a future
+    // Extera-only fix, and also catches someone forgetting to apply the override in the first place
+    // - the two failure modes look identical from a themed screenshot, so this checks the parsed
+    // key/value data instead.
+    private static boolean checkDerivedParity(String baseName, String derivedName, Set<String> overrideKeys) throws IOException {
+        Map<String, String> base = parseAttheme(ASSETS.resolve(baseName));
+        Map<String, String> derived = parseAttheme(ASSETS.resolve(derivedName));
+
+        List<String> onlyInBase = base.keySet().stream().filter(k -> !derived.containsKey(k)).sorted().collect(Collectors.toList());
+        List<String> onlyInDerived = derived.keySet().stream().filter(k -> !base.containsKey(k)).sorted().collect(Collectors.toList());
+        if (!onlyInBase.isEmpty() || !onlyInDerived.isEmpty()) {
+            System.out.println(derivedName + " vs " + baseName + ": key set mismatch. Only in "
+                    + baseName + ": " + onlyInBase + "; only in " + derivedName + ": " + onlyInDerived);
+            return false;
+        }
+
+        // A typo'd or renamed overrideKeys entry (one that isn't actually a key in either file)
+        // would otherwise silently drop out of both the drift check below (excluded by the
+        // overrideKeys filter) and the unapplied-override check (base.get(k) is null there too),
+        // so an override that was never wired up to a real key would report OK. Fail loudly instead.
+        List<String> missingOverrideKeys = overrideKeys.stream()
+                .filter(k -> !base.containsKey(k))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!missingOverrideKeys.isEmpty()) {
+            System.out.println(derivedName + " vs " + baseName + ": override key(s) not present in either file "
+                    + "(typo'd override set?): " + missingOverrideKeys);
+            return false;
+        }
+
+        List<String> unexpectedDrift = base.keySet().stream()
+                .filter(k -> !overrideKeys.contains(k))
+                .filter(k -> !base.get(k).equals(derived.get(k)))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!unexpectedDrift.isEmpty()) {
+            System.out.println(derivedName + " has drifted from " + baseName + " on " + unexpectedDrift.size()
+                    + " key(s) outside the deliberate override set " + overrideKeys + ": " + unexpectedDrift);
+            return false;
+        }
+
+        List<String> unappliedOverride = overrideKeys.stream()
+                .filter(k -> base.get(k).equals(derived.get(k)))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!unappliedOverride.isEmpty()) {
+            System.out.println(derivedName + " has override key(s) identical to " + baseName
+                    + " - override was not actually applied: " + unappliedOverride);
+            return false;
+        }
+
+        System.out.println(derivedName + ": matches " + baseName + " on every key except the deliberate override set "
+                + overrideKeys + ", and every override key actually differs");
+        return true;
     }
 }

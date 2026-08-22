@@ -196,7 +196,8 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
         undoView.setEnterOffsetMargin(AndroidUtilities.dp(8 + 24));
         addView(undoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 52));
 
-        videoPlayImage = context.getResources().getDrawable(R.drawable.play_mini_video);
+        // NagramX: mutate here so tinting this drawable for key_chat_mediaTimeText below doesn't leak into every other view sharing the same ConstantState
+        videoPlayImage = context.getResources().getDrawable(R.drawable.play_mini_video).mutate();
     }
 
     public void startMediaCrossfade() {
@@ -209,6 +210,22 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
     public void invalidateGroupsView() {
         groupsView.invalidate();
+    }
+
+    @Override
+    public ArrayList<org.telegram.ui.ActionBar.ThemeDescription> getThemeDescriptions() {
+        ArrayList<org.telegram.ui.ActionBar.ThemeDescription> descriptions = new ArrayList<>();
+        // NagramX: this preview draws its duration/play badges onto a bitmap cached per media cell inside groupsView's own onDraw; a live theme switch elsewhere in the app doesn't dirty that cell's hardware display list on its own, so wire both paired keys to force a rebuild and redraw here. The background key also needs its Paint wired through so Theme.chat_timeBackgroundPaint's color is updated before this delegate runs, since Theme.setColor alone only updates the color map, not the shared Paint object drawDuration reads.
+        org.telegram.ui.ActionBar.ThemeDescription.ThemeDescriptionDelegate invalidateDurationCache = () -> {
+            for (PreviewGroupsView.PreviewGroupCell cell : groupsView.groupCells) {
+                for (PreviewGroupsView.PreviewGroupCell.MediaCell mediaCell : cell.media) {
+                    mediaCell.invalidateDurationCache();
+                }
+            }
+        };
+        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, Theme.chat_timeBackgroundPaint, null, invalidateDurationCache, Theme.key_chat_mediaTimeBackground));
+        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, null, null, invalidateDurationCache, Theme.key_chat_mediaTimeText));
+        return descriptions;
     }
 
     private ViewPropertyAnimator headerAnimator;
@@ -1986,6 +2003,11 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                     }
                 }
 
+                // NagramX: forces drawDuration to rebuild the cached badge bitmap on its next draw, without discarding the bitmap object itself when its size hasn't changed
+                public void invalidateDurationCache() {
+                    videoDurationBitmapText = null;
+                }
+
                 private void setImage(MediaController.PhotoEntry photoEntry) {
                     this.photoEntry = photoEntry;
                     if (photoEntry != null && photoEntry.isVideo) {
@@ -2252,8 +2274,11 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                             if (videoDurationTextPaint == null) {
                                 videoDurationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
                                 videoDurationTextPaint.setTypeface(AndroidUtilities.bold());
-                                videoDurationTextPaint.setColor(0xffffffff);
                             }
+                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap; theme-lifecycle invalidation (see getThemeDescriptions) is what forces a rebuild on a live theme switch
+                            int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
+                            videoDurationTextPaint.setColor(timeTextColor);
+                            videoPlayImage.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
                             final float textSize = AndroidUtilities.dp(12);
                             videoDurationTextPaint.setTextSize(textSize);
                             float textWidth = videoDurationTextPaint.measureText(durationText);
@@ -2268,6 +2293,8 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                                 videoDurationBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                             }
                             Canvas bitmapCanvas = new Canvas(videoDurationBitmap);
+                            // NagramX: clear before redrawing since a reused (same-size) bitmap keeps old pixels, which a color-only redraw would otherwise composite over
+                            bitmapCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
 
                             AndroidUtilities.rectTmp.set(0, 0, width, height);
                             bitmapCanvas.drawRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(4), AndroidUtilities.dp(4), Theme.chat_timeBackgroundPaint);
