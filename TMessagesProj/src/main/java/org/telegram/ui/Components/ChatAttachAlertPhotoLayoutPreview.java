@@ -215,7 +215,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
     @Override
     public ArrayList<org.telegram.ui.ActionBar.ThemeDescription> getThemeDescriptions() {
         ArrayList<org.telegram.ui.ActionBar.ThemeDescription> descriptions = new ArrayList<>();
-        // NagramX: this preview draws its duration/play badges onto a bitmap cached per media cell inside groupsView's own onDraw; a live theme switch elsewhere in the app doesn't dirty that cell's hardware display list on its own, so wire both paired keys to force a rebuild and redraw here
+        // NagramX: this preview draws its duration/play badges onto a bitmap cached per media cell inside groupsView's own onDraw; a live theme switch elsewhere in the app doesn't dirty that cell's hardware display list on its own, so wire both paired keys to force a rebuild and redraw here. The background key also needs its Paint wired through so Theme.chat_timeBackgroundPaint's color is updated before this delegate runs, since Theme.setColor alone only updates the color map, not the shared Paint object drawDuration reads.
         org.telegram.ui.ActionBar.ThemeDescription.ThemeDescriptionDelegate invalidateDurationCache = () -> {
             for (PreviewGroupsView.PreviewGroupCell cell : groupsView.groupCells) {
                 for (PreviewGroupsView.PreviewGroupCell.MediaCell mediaCell : cell.media) {
@@ -223,7 +223,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 }
             }
         };
-        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, null, null, invalidateDurationCache, Theme.key_chat_mediaTimeBackground));
+        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, Theme.chat_timeBackgroundPaint, null, invalidateDurationCache, Theme.key_chat_mediaTimeBackground));
         descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, null, null, invalidateDurationCache, Theme.key_chat_mediaTimeText));
         return descriptions;
     }
