@@ -2275,6 +2275,8 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                                 videoDurationBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                             }
                             Canvas bitmapCanvas = new Canvas(videoDurationBitmap);
+                            // NagramX: clear before redrawing since a reused (same-size) bitmap keeps old pixels, which a color-only redraw would otherwise composite over
+                            bitmapCanvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR);
 
                             AndroidUtilities.rectTmp.set(0, 0, width, height);
                             bitmapCanvas.drawRoundRect(AndroidUtilities.rectTmp, AndroidUtilities.dp(4), AndroidUtilities.dp(4), Theme.chat_timeBackgroundPaint);

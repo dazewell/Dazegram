@@ -124,6 +124,8 @@ public class SharedPhotoVideoCell extends FrameLayout {
 
             videoPlayImageView = new ImageView(context);
             videoPlayImageView.setImageResource(R.drawable.play_mini_video);
+            // NagramX: mutate so the tint applied above doesn't bleed into other views sharing this drawable's ConstantState
+            videoPlayImageView.getDrawable().mutate();
             videoInfoContainer.addView(videoPlayImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.CENTER_VERTICAL));
 
             videoTextView = new TextView(context);
