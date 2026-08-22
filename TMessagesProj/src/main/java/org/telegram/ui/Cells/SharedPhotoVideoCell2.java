@@ -1011,8 +1011,10 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
 
         canvas.translate(dp(4 + 18), 0);
         viewsText.setBounds(0, 0, (int) width, dp(17));
-        viewsText.setTextColor(Theme.getColor(Theme.key_chat_mediaTimeText));
-        viewsText.setAlpha((int) (0xFF * alpha));
+        // NagramX: setTextColor derives its own alpha field from the color's alpha channel, and setAlpha below fully replaces that field rather than multiplying it, so fold the color's alpha into the draw alpha here or a translucent theme color would render fully opaque
+        int viewsTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
+        viewsText.setTextColor(viewsTextColor);
+        viewsText.setAlpha((int) (Color.alpha(viewsTextColor) * alpha));
         viewsText.draw(canvas);
 
         canvas.restore();
