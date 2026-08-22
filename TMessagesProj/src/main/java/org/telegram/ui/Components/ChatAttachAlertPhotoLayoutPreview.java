@@ -196,7 +196,8 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
         undoView.setEnterOffsetMargin(AndroidUtilities.dp(8 + 24));
         addView(undoView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 52));
 
-        videoPlayImage = context.getResources().getDrawable(R.drawable.play_mini_video);
+        // NagramX: mutate here so tinting this drawable for key_chat_mediaTimeText below doesn't leak into every other view sharing the same ConstantState
+        videoPlayImage = context.getResources().getDrawable(R.drawable.play_mini_video).mutate();
     }
 
     public void startMediaCrossfade() {
@@ -2189,6 +2190,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 private String indexBitmapText = null;
                 private Bitmap videoDurationBitmap = null;
                 private String videoDurationBitmapText = null;
+                private int lastVideoDurationTextColor;
 
                 private Rect indexIn = new Rect(), indexOut = new Rect();
                 private Rect durationIn = new Rect(), durationOut = new Rect();
@@ -2248,12 +2250,17 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                 private void drawDuration(Canvas canvas, float left, float bottom, String durationText, float scale, float alpha) {
                     if (durationText != null) {
-                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText)) {
+                        int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
+                        boolean colorChanged = timeTextColor != lastVideoDurationTextColor;
+                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText) || colorChanged) {
                             if (videoDurationTextPaint == null) {
                                 videoDurationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
                                 videoDurationTextPaint.setTypeface(AndroidUtilities.bold());
-                                videoDurationTextPaint.setColor(0xffffffff);
                             }
+                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap, including on a plain theme switch with unchanged text
+                            lastVideoDurationTextColor = timeTextColor;
+                            videoDurationTextPaint.setColor(timeTextColor);
+                            videoPlayImage.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
                             final float textSize = AndroidUtilities.dp(12);
                             videoDurationTextPaint.setTextSize(textSize);
                             float textWidth = videoDurationTextPaint.measureText(durationText);

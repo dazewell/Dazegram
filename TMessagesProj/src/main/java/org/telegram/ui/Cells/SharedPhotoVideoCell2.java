@@ -896,6 +896,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         Theme.chat_timeBackgroundPaint.setAlpha((int) (oldAlpha * alpha));
         canvas.drawRoundRect(AndroidUtilities.rectTmp, dp(4), dp(4), Theme.chat_timeBackgroundPaint);
         Theme.chat_timeBackgroundPaint.setAlpha(oldAlpha);
+        // NagramX: chat_timeBackgroundPaint is provider-blind, so pair the shared duration text/play glyph to key_chat_mediaTimeText here to stay legible on themes like Extera Light
+        sharedResources.updateMediaTimeTextColor();
         if (drawVideoIcon) {
             canvas.save();
             canvas.translate(videoInfoLayot == null ? dp(5) : dp(4), (dp(17) - sharedResources.playDrawable.getIntrinsicHeight()) / 2f);
@@ -998,6 +1000,8 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         Theme.chat_timeBackgroundPaint.setAlpha((int) (oldAlpha * alpha));
         canvas.drawRoundRect(AndroidUtilities.rectTmp, dp(4), dp(4), Theme.chat_timeBackgroundPaint);
         Theme.chat_timeBackgroundPaint.setAlpha(oldAlpha);
+        // NagramX: pair the eye glyph tint with key_chat_mediaTimeText here, and set viewsText's color below before setAlpha since setTextColor resets the drawable's alpha
+        sharedResources.updateMediaTimeTextColor();
 
         canvas.save();
         canvas.translate(dp(3), (dp(17) - sharedResources.viewDrawable.getBounds().height()) / 2f);
@@ -1007,6 +1011,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
 
         canvas.translate(dp(4 + 18), 0);
         viewsText.setBounds(0, 0, (int) width, dp(17));
+        viewsText.setTextColor(Theme.getColor(Theme.key_chat_mediaTimeText));
         viewsText.setAlpha((int) (0xFF * alpha));
         viewsText.draw(canvas);
 
@@ -1234,6 +1239,7 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
         Paint highlightPaint = new Paint();
         SparseArray<String> imageFilters = new SparseArray<>();
         private final HashMap<Integer, Bitmap> privacyBitmaps = new HashMap<>();
+        private int lastMediaTimeTextColor;
 
         public SharedResources(Context context, Theme.ResourcesProvider resourcesProvider) {
             textPaint.setTextSize(dp(12));
@@ -1244,6 +1250,18 @@ public class SharedPhotoVideoCell2 extends FrameLayout {
             viewDrawable = ContextCompat.getDrawable(context, R.drawable.filled_views).mutate();
             viewDrawable.setBounds(0, 0, (int) (viewDrawable.getIntrinsicWidth() * .7f), (int) (viewDrawable.getIntrinsicHeight() * .7f));
             backgroundPaint.setColor(Theme.getColor(Theme.key_sharedMedia_photoPlaceholder, resourcesProvider));
+        }
+
+        // NagramX: chat_timeBackgroundPaint is global/provider-blind, so pull the paired text color from key_chat_mediaTimeText here instead and re-tint the already-mutated drawables it's compared against
+        void updateMediaTimeTextColor() {
+            int color = Theme.getColor(Theme.key_chat_mediaTimeText);
+            if (color != lastMediaTimeTextColor) {
+                lastMediaTimeTextColor = color;
+                textPaint.setColor(color);
+                PorterDuffColorFilter filter = new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN);
+                playDrawable.setColorFilter(filter);
+                viewDrawable.setColorFilter(filter);
+            }
         }
 
         public String getFilterString(int width) {

@@ -78,6 +78,7 @@ public class SharedPhotoVideoCell extends FrameLayout {
 
         private BackupImageView imageView;
         private TextView videoTextView;
+        private ImageView videoPlayImageView;
         private FrameLayout videoInfoContainer;
         private View selector;
         private CheckBox2 checkBox;
@@ -102,20 +103,28 @@ public class SharedPhotoVideoCell extends FrameLayout {
             videoInfoContainer = new FrameLayout(context) {
 
                 private RectF rect = new RectF();
+                private int lastTimeTextColor;
 
                 @Override
                 protected void onDraw(Canvas canvas) {
                     rect.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
                     canvas.drawRoundRect(rect, AndroidUtilities.dp(4), AndroidUtilities.dp(4), Theme.chat_timeBackgroundPaint);
+                    // NagramX: chat_timeBackgroundPaint is provider-blind, so pair the text/play glyph to key_chat_mediaTimeText at draw time to stay legible across theme switches
+                    int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
+                    if (timeTextColor != lastTimeTextColor) {
+                        lastTimeTextColor = timeTextColor;
+                        videoTextView.setTextColor(timeTextColor);
+                        videoPlayImageView.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
+                    }
                 }
             };
             videoInfoContainer.setWillNotDraw(false);
             videoInfoContainer.setPadding(AndroidUtilities.dp(5), 0, AndroidUtilities.dp(5), 0);
             container.addView(videoInfoContainer, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, 17, Gravity.BOTTOM | Gravity.LEFT, 4, 0, 0, 4));
 
-            ImageView imageView1 = new ImageView(context);
-            imageView1.setImageResource(R.drawable.play_mini_video);
-            videoInfoContainer.addView(imageView1, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.CENTER_VERTICAL));
+            videoPlayImageView = new ImageView(context);
+            videoPlayImageView.setImageResource(R.drawable.play_mini_video);
+            videoInfoContainer.addView(videoPlayImageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT | Gravity.CENTER_VERTICAL));
 
             videoTextView = new TextView(context);
             videoTextView.setTextColor(0xffffffff);

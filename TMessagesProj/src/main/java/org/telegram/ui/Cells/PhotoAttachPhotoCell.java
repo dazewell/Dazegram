@@ -249,11 +249,19 @@ public class PhotoAttachPhotoCell extends FrameLayout {
         videoInfoContainer = new FrameLayout(context) {
 
             private RectF rect = new RectF();
+            private int lastTimeTextColor;
 
             @Override
             protected void onDraw(Canvas canvas) {
                 rect.set(0, 0, getMeasuredWidth(), getMeasuredHeight());
                 canvas.drawRoundRect(rect, dp(4), dp(4), Theme.chat_timeBackgroundPaint);
+                // NagramX: chat_timeBackgroundPaint is provider-blind, so the glyphs drawn on top must pair to the same key_chat_mediaTimeText color at draw time to stay legible across theme switches
+                int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
+                if (timeTextColor != lastTimeTextColor) {
+                    lastTimeTextColor = timeTextColor;
+                    videoTextView.setTextColor(timeTextColor);
+                    videoPlayImageView.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
+                }
             }
         };
         videoInfoContainer.setWillNotDraw(false);
