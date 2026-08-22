@@ -212,6 +212,22 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
         groupsView.invalidate();
     }
 
+    @Override
+    public ArrayList<org.telegram.ui.ActionBar.ThemeDescription> getThemeDescriptions() {
+        ArrayList<org.telegram.ui.ActionBar.ThemeDescription> descriptions = new ArrayList<>();
+        // NagramX: this preview draws its duration/play badges onto a bitmap cached per media cell inside groupsView's own onDraw; a live theme switch elsewhere in the app doesn't dirty that cell's hardware display list on its own, so wire both paired keys to force a rebuild and redraw here
+        org.telegram.ui.ActionBar.ThemeDescription.ThemeDescriptionDelegate invalidateDurationCache = () -> {
+            for (PreviewGroupsView.PreviewGroupCell cell : groupsView.groupCells) {
+                for (PreviewGroupsView.PreviewGroupCell.MediaCell mediaCell : cell.media) {
+                    mediaCell.invalidateDurationCache();
+                }
+            }
+        };
+        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, null, null, invalidateDurationCache, Theme.key_chat_mediaTimeBackground));
+        descriptions.add(new org.telegram.ui.ActionBar.ThemeDescription(groupsView, 0, null, null, null, invalidateDurationCache, Theme.key_chat_mediaTimeText));
+        return descriptions;
+    }
+
     private ViewPropertyAnimator headerAnimator;
     private ChatAttachAlertPhotoLayout photoLayout;
     private boolean shown = false;
@@ -1987,6 +2003,11 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                     }
                 }
 
+                // NagramX: forces drawDuration to rebuild the cached badge bitmap on its next draw, without discarding the bitmap object itself when its size hasn't changed
+                public void invalidateDurationCache() {
+                    videoDurationBitmapText = null;
+                }
+
                 private void setImage(MediaController.PhotoEntry photoEntry) {
                     this.photoEntry = photoEntry;
                     if (photoEntry != null && photoEntry.isVideo) {
@@ -2190,8 +2211,6 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 private String indexBitmapText = null;
                 private Bitmap videoDurationBitmap = null;
                 private String videoDurationBitmapText = null;
-                private int lastVideoDurationTextColor;
-                private int lastVideoDurationBackgroundColor;
 
                 private Rect indexIn = new Rect(), indexOut = new Rect();
                 private Rect durationIn = new Rect(), durationOut = new Rect();
@@ -2251,17 +2270,13 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
 
                 private void drawDuration(Canvas canvas, float left, float bottom, String durationText, float scale, float alpha) {
                     if (durationText != null) {
-                        int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
-                        int backgroundColor = Theme.chat_timeBackgroundPaint.getColor();
-                        boolean colorChanged = timeTextColor != lastVideoDurationTextColor || backgroundColor != lastVideoDurationBackgroundColor;
-                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText) || colorChanged) {
+                        if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText)) {
                             if (videoDurationTextPaint == null) {
                                 videoDurationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
                                 videoDurationTextPaint.setTypeface(AndroidUtilities.bold());
                             }
-                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap, including on a plain theme switch with unchanged text; also watch the pill's own background color since that can change independently of the paired text color
-                            lastVideoDurationTextColor = timeTextColor;
-                            lastVideoDurationBackgroundColor = backgroundColor;
+                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap; theme-lifecycle invalidation (see getThemeDescriptions) is what forces a rebuild on a live theme switch
+                            int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
                             videoDurationTextPaint.setColor(timeTextColor);
                             videoPlayImage.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
                             final float textSize = AndroidUtilities.dp(12);
