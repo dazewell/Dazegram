@@ -2191,6 +2191,7 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 private Bitmap videoDurationBitmap = null;
                 private String videoDurationBitmapText = null;
                 private int lastVideoDurationTextColor;
+                private int lastVideoDurationBackgroundColor;
 
                 private Rect indexIn = new Rect(), indexOut = new Rect();
                 private Rect durationIn = new Rect(), durationOut = new Rect();
@@ -2251,14 +2252,16 @@ public class ChatAttachAlertPhotoLayoutPreview extends ChatAttachAlert.AttachAle
                 private void drawDuration(Canvas canvas, float left, float bottom, String durationText, float scale, float alpha) {
                     if (durationText != null) {
                         int timeTextColor = Theme.getColor(Theme.key_chat_mediaTimeText);
-                        boolean colorChanged = timeTextColor != lastVideoDurationTextColor;
+                        int backgroundColor = Theme.chat_timeBackgroundPaint.getColor();
+                        boolean colorChanged = timeTextColor != lastVideoDurationTextColor || backgroundColor != lastVideoDurationBackgroundColor;
                         if (videoDurationBitmap == null || videoDurationBitmapText == null || !videoDurationBitmapText.equals(durationText) || colorChanged) {
                             if (videoDurationTextPaint == null) {
                                 videoDurationTextPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG);
                                 videoDurationTextPaint.setTypeface(AndroidUtilities.bold());
                             }
-                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap, including on a plain theme switch with unchanged text
+                            // NagramX: chat_timeBackgroundPaint is provider-blind, so re-resolve the paired text/play glyph color here on every rebuild of this cached bitmap, including on a plain theme switch with unchanged text; also watch the pill's own background color since that can change independently of the paired text color
                             lastVideoDurationTextColor = timeTextColor;
+                            lastVideoDurationBackgroundColor = backgroundColor;
                             videoDurationTextPaint.setColor(timeTextColor);
                             videoPlayImage.setColorFilter(new android.graphics.PorterDuffColorFilter(timeTextColor, android.graphics.PorterDuff.Mode.SRC_IN));
                             final float textSize = AndroidUtilities.dp(12);
