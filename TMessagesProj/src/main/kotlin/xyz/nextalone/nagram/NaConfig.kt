@@ -1311,7 +1311,7 @@ object NaConfig {
         addConfig(
             "AutoUpdateChannel",
             ConfigItem.configTypeInt,
-            1 // 0: off; 1: release; 2: beta
+            0 // 0: off; 1: release; 2: beta
         )
     val premiumItemEmojiStatus =
         addConfig(

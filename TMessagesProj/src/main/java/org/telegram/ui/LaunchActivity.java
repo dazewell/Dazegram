@@ -6113,7 +6113,18 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
        if (!force && !BuildVars.CHECK_UPDATES) {
            return;
        }*/
-        if (ApplicationLoader.applicationLoaderInstance.isCustomUpdate()) {
+       // NagramX: gate above progress.init() below so a caller-supplied Progress is never left
+       // spinning; a force tap gets an honest bulletin instead of a false "up to date".
+       if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() == tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF) {
+           if (force) {
+               BaseFragment fragment = getLastFragment();
+               if (fragment != null) {
+                   BulletinFactory.of(fragment).createSimpleBulletin(R.raw.info, LocaleController.getString(R.string.UpdateChecksOffNax)).show();
+               }
+           }
+           return;
+       }
+       if (ApplicationLoader.applicationLoaderInstance.isCustomUpdate()) {
             final BetaUpdate prevUpdate = ApplicationLoader.applicationLoaderInstance.getUpdate();
             final boolean first = firstAppUpdateCheck;
             firstAppUpdateCheck = false;
@@ -7180,6 +7191,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
             if (messageObject != null) {
                 MediaController.getInstance().seekToProgress(messageObject, messageObject.audioProgress);
             }
+        }
+        // NagramX: while updates are off, drop any persisted pending update on the main thread
+        // before the branch below can raise BlockingUpdateView (which has no in-UI dismissal).
+        // Kept out of the ToS else-if so a pending ToS can't skip the purge.
+        if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() == tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF && SharedConfig.pendingAppUpdate != null) {
+            tw.nekomimi.nekogram.helpers.remote.UpdateHelper.cleanAppUpdate();
         }
         if (UserConfig.getInstance(UserConfig.selectedAccount).unacceptedTermsOfService != null) {
             showTosActivity(UserConfig.selectedAccount, UserConfig.getInstance(UserConfig.selectedAccount).unacceptedTermsOfService);
