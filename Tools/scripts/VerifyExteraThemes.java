@@ -38,7 +38,8 @@
 //      sets, identical values for every key except the two deliberately-overridden panel keys
 //      (chat_messagePanelBackground, dialogSearchBackground), and those two keys must actually
 //      differ (catching the case where someone forgets to apply the override, not just unwanted
-//      drift). Extera's own assets have already needed correcting five times since landing, so this
+//      drift, and also catching a typo'd override key name that isn't a real key in either file).
+//      Extera's own assets have already needed correcting five times since landing, so this
 //      is the guard against Solid silently drifting apart from a future Extera-only fix - a
 //      wallpaper/panel contrast check was deliberately tried and removed instead (see
 //      71563e10b), so this script doesn't attempt to re-derive a contrast threshold.
@@ -314,11 +315,14 @@ public class VerifyExteraThemes {
         }
     }
 
-    // Check 6: derivedName must be a byte-for-byte copy of baseName except for overrideKeys, and
-    // overrideKeys must actually have been changed. This is what catches Solid Light/Dark silently
-    // drifting apart from the Extera pair they were forked from on a future Extera-only fix, and
-    // also catches someone forgetting to apply the override in the first place - the two failure
-    // modes look identical from a themed screenshot, so this checks the raw key/value data instead.
+    // Check 6: derivedName must carry the exact same parsed key set as baseName (see checkSuperset's
+    // key-set semantics - this doesn't re-check raw formatting like line order or whitespace, only
+    // the key=value pairs parseAttheme() extracts) with identical values for every key except
+    // overrideKeys, and overrideKeys must actually have been changed. This is what catches Solid
+    // Light/Dark silently drifting apart from the Extera pair they were forked from on a future
+    // Extera-only fix, and also catches someone forgetting to apply the override in the first place
+    // - the two failure modes look identical from a themed screenshot, so this checks the parsed
+    // key/value data instead.
     private static boolean checkDerivedParity(String baseName, String derivedName, Set<String> overrideKeys) throws IOException {
         Map<String, String> base = parseAttheme(ASSETS.resolve(baseName));
         Map<String, String> derived = parseAttheme(ASSETS.resolve(derivedName));
@@ -328,6 +332,20 @@ public class VerifyExteraThemes {
         if (!onlyInBase.isEmpty() || !onlyInDerived.isEmpty()) {
             System.out.println(derivedName + " vs " + baseName + ": key set mismatch. Only in "
                     + baseName + ": " + onlyInBase + "; only in " + derivedName + ": " + onlyInDerived);
+            return false;
+        }
+
+        // A typo'd or renamed overrideKeys entry (one that isn't actually a key in either file)
+        // would otherwise silently drop out of both the drift check below (excluded by the
+        // overrideKeys filter) and the unapplied-override check (base.get(k) is null there too),
+        // so an override that was never wired up to a real key would report OK. Fail loudly instead.
+        List<String> missingOverrideKeys = overrideKeys.stream()
+                .filter(k -> !base.containsKey(k))
+                .sorted()
+                .collect(Collectors.toList());
+        if (!missingOverrideKeys.isEmpty()) {
+            System.out.println(derivedName + " vs " + baseName + ": override key(s) not present in either file "
+                    + "(typo'd override set?): " + missingOverrideKeys);
             return false;
         }
 
@@ -343,7 +361,7 @@ public class VerifyExteraThemes {
         }
 
         List<String> unappliedOverride = overrideKeys.stream()
-                .filter(k -> base.get(k) != null && base.get(k).equals(derived.get(k)))
+                .filter(k -> base.get(k).equals(derived.get(k)))
                 .sorted()
                 .collect(Collectors.toList());
         if (!unappliedOverride.isEmpty()) {
