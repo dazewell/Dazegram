@@ -1674,11 +1674,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         }
                     }
                     backgroundButtonsContainer.addView(backgroundCheckBoxView[a], layoutParams);
-                    if (a == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && Theme.getActiveTheme().isMonet()) {
+                    if (a == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)) {
                         // NagramX: the colour under a Monet pattern is the live palette, so editing it
                         // here would let the user pick a colour that render discards. Keep the tab in
                         // place to preserve the 3-tab index layout, but dim it and swallow its taps.
-                        backgroundCheckBoxView[a].setAlpha(0.5f);
+                        // Reset to full alpha otherwise so a reused view is never left dimmed.
+                        backgroundCheckBoxView[a].setAlpha(Theme.getActiveTheme().isMonet() ? 0.5f : 1.0f);
                     }
                     WallpaperCheckBoxView view = backgroundCheckBoxView[a];
                     backgroundCheckBoxView[a].setOnClickListener(v -> {
