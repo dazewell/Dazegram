@@ -48070,8 +48070,8 @@ public class ChatActivity extends BaseFragment implements
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle(getString(R.string.Repeat));
-        builder.setMessage(getString(R.string.repeatConfirmText));
+        builder.setTitle(getString(isRepeatasCopy ? R.string.RepeatAsCopy : R.string.Repeat));
+        builder.setMessage(getString(isRepeatasCopy ? R.string.RepeatAsCopyConfirmText : R.string.repeatConfirmText));
         builder.setPositiveButton(getString(R.string.OK), (dialogInterface, i) -> {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);
         });
@@ -48085,21 +48085,36 @@ public class ChatActivity extends BaseFragment implements
             selectedObject = messages.get(0);
         }
         if (selectedObject != null && selectedObject.messageOwner != null && (isLongClick || (isThreadChat() && !isTopic) || noforwards)) {
-            // If selected message contains `replyTo`:
-            // When longClick it will reply to the `replyMessage` of selectedMessage
-            // When not LongClick but in a threadchat: reply to the Thread
-            MessageObject replyTo = selectedObject.replyMessageObject != null ? isLongClick ? selectedObject.replyMessageObject : getThreadMessage() : getThreadMessage();
+            // NagramX: carry the source message's own reply (and its own quote, never the composer's
+            // staged one) into the copy, gated on hasValidReplyMessageObject() so a forum-topic anchor
+            // isn't turned into a reply to the "topic created" message. Fall back to the thread anchor
+            // when there is no real reply, so thread/topic posting still works.
+            MessageObject ownReply = getMessageHelper().getOwnReply(selectedObject);
+            MessageObject replyTo = ownReply != null ? ownReply : getThreadMessage();
+            ReplyQuote sourceQuote = ownReply != null ? getMessageHelper().getOwnReplyQuote(selectedObject) : null;
             if (replyTo != null || noforwards) {
-                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), replyingQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
-                    BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
+                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), sourceQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                    boolean refusedType = !getMessageHelper().canSendMessageAsCopy(selectedObject, selectedObjectGroup);
+                    BulletinFactory.of(this).createErrorBulletin(getString(refusedType ? R.string.RepeatAsCopyUnsupported : R.string.PleaseDownload), themeDelegate).show();
                 }
                 return;
             }
         }
         if (selectedObject == null && noforwards) {
-            MessageObject replyTo = getThreadMessage();
-            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, replyTo, getThreadMessage(), replyingQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
-                BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
+            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                boolean refusedType = !getMessageHelper().canSendMessagesAsCopy(messages);
+                BulletinFactory.of(this).createErrorBulletin(getString(refusedType ? R.string.RepeatAsCopyUnsupported : R.string.PleaseDownload), themeDelegate).show();
+            }
+            return;
+        }
+        // NagramX: a plain-tapped "Repost as Copy" forwards with drop_author today, which drops any
+        // reply the message had, because a genuine forward can't carry a reply header. When the whole
+        // selection can be re-sent as a copy and something in it really replies to a message, re-send it
+        // to keep the reply; otherwise fall through to the same forward as before, so polls, locations
+        // and un-cached media keep working untouched.
+        if (isRepeatAsCopy && getMessageHelper().shouldRepostAsCopyPreservingReply(messages)) {
+            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                forwardMessages(messages, isRepeatAsCopy, false, true, 0, 0);
             }
             return;
         }
