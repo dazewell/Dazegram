@@ -101,8 +101,7 @@ public final class MonetPatternHelper {
     // immutable record, write metadata, and only then retire the old file.
     public static boolean apply(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion) {
         if (pattern == null || pattern.document == null) {
-            clear();
-            return true;
+            return clear();
         }
         // Force the first-use prefs load to finish before we publish, so a
         // concurrent ensureLoaded() can never overwrite this record afterwards.
@@ -171,28 +170,45 @@ public final class MonetPatternHelper {
     }
 
     // Drop the pattern: publish the empty record, persist it, then retire the
-    // owned mask file. The composite null-checks the record, so a reload that was
-    // already in flight simply falls back to the flat colour.
-    public static void clear() {
+    // owned mask file. Returns false if the durable clear didn't reach disk, in
+    // which case the previous record and its mask are left intact (same guarantee
+    // as a failed apply). The composite null-checks the record, so a reload that
+    // was already in flight simply falls back to the flat colour.
+    public static boolean clear() {
         // Same ordering guarantee as apply(): finish any first-use load first, then
         // publish the empty state under the lock so it can't be undone by ensureLoaded().
         ensureLoaded();
         Record previous;
+        boolean committed;
         synchronized (MonetPatternHelper.class) {
             previous = record;
             record = null;
             loaded = true;
-            try {
-                // commit(), not apply(): the metadata write must be durable before
-                // retire() deletes the old mask, or a process death here could leave
-                // prefs pointing at a file that's already gone. It's the explicit
-                // Clear tap, already doing file IO, so the synchronous write is fine.
-                prefs().edit().remove(KEY_RECORD).commit();
-            } catch (Exception e) {
-                FileLog.e(e);
+            // commit(), not apply(): the metadata write must be durable before
+            // retire() deletes the old mask, or a process death here could leave
+            // prefs pointing at a file that's already gone. It's the explicit
+            // Clear tap, already doing file IO, so the synchronous write is fine.
+            committed = commitClear();
+            if (!committed) {
+                // clear didn't reach disk: roll the in-memory record back so memory
+                // and prefs agree, and keep the previous mask (don't retire below)
+                record = previous;
             }
         }
+        if (!committed) {
+            return false;
+        }
         retire(previous, null);
+        return true;
+    }
+
+    private static boolean commitClear() {
+        try {
+            return prefs().edit().remove(KEY_RECORD).commit();
+        } catch (Exception e) {
+            FileLog.e(e);
+            return false;
+        }
     }
 
     // Delete a mask file that the freshly published record no longer references.

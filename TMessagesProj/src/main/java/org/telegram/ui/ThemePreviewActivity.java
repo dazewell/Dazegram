@@ -2484,6 +2484,23 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             return;
         }
 
+        if (isMonetPatternPreview()) {
+            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override.
+            // Runs before any wallpaper file is written (mirrors the EmojiWallpaper early-return) so a blurred/baked file is never left behind.
+            // Only commit (clear override, reload, notify, close) when the mask was written; on failure keep the preview open so the previous working pattern survives.
+            if (!xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion)) {
+                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+                return;
+            }
+            Theme.getActiveTheme().setOverrideWallpaper(null);
+            Theme.reloadWallpaper(true);
+            if (delegate != null) {
+                delegate.didSetNewBackground(null);
+            }
+            finishFragment();
+            return;
+        }
+
         boolean done;
         boolean sameFile = false;
         Theme.ThemeInfo theme = Theme.getActiveTheme();
@@ -2630,21 +2647,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 FileLog.e(e);
                 done = false;
             }
-        }
-        if (isMonetPatternPreview()) {
-            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override.
-            // Only commit (clear override, reload, notify, close) when the mask was written; on failure keep the preview open so the previous working pattern survives.
-            if (!xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion)) {
-                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
-                return;
-            }
-            Theme.getActiveTheme().setOverrideWallpaper(null);
-            Theme.reloadWallpaper(true);
-            if (delegate != null) {
-                delegate.didSetNewBackground(null);
-            }
-            finishFragment();
-            return;
         }
         String slug;
         int rotation = 45;
