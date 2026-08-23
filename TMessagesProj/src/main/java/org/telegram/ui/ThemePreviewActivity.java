@@ -1697,10 +1697,9 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                                 lastSelectedPattern = selectedPattern;
                                 backgroundImage.setImageDrawable(null);
                                 selectedPattern = null;
-                                // NagramX: restore the plain colour the pattern was laid over, or apply
-                                // would persist the lifted live stop as the user's flat colour (the
-                                // mirror of the seed-time regression).
-                                syncMonetPatternBase(false);
+                                // NagramX: repaint back to the plain colour. The fields always held it
+                                // (nothing derived is ever written), so apply persists the user's colour.
+                                refreshMonetPatternPreview(true);
                                 isMotion = false;
                                 updateButtonState(false, true);
                                 animateMotionChange();
@@ -1952,6 +1951,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                                 currentIntensity = previousIntensity;
                                 intensitySeekBar.setProgress(currentIntensity);
                                 backgroundImage.getImageReceiver().setAlpha(currentIntensity);
+                                // NagramX: repaint the base for the restored pattern state. backgroundColor
+                                // was never a derived value, so Cancel is correct by construction -- there
+                                // is no lifted stop to undo, only the drawable to rebuild for the restored
+                                // selectedPattern via the shared transition path.
+                                refreshMonetPatternPreview(true);
                                 updateButtonState(false, true);
                                 updateSelectedPattern(true);
                             }
@@ -2387,6 +2391,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void updateIntensity() {
+        // NagramX: the Monet-pattern render owner sets alpha, sign, negative-rail bitmap and service
+        // colours from the live palette; the slider drag routes here so it cannot desync from them.
+        if (applyMonetPatternRender()) {
+            return;
+        }
         backgroundImage.getImageReceiver().setAlpha(Math.abs(currentIntensity));
         backgroundImage.invalidate();
         patternsListView.invalidateViews();
@@ -3099,11 +3108,10 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         backgroundImage.getImageReceiver().setCrossfadeDuration(300);
         backgroundImage.getImageReceiver().setImage(ImageLocation.getForDocument(wallPaper.document), imageFilter, null, null, null, wallPaper.document.size, "jpg", wallPaper, 1);
         backgroundImage.onNewImageSet();
-        boolean fromNoPattern = selectedPattern == null;
         selectedPattern = wallPaper;
-        // NagramX: route the no-pattern->pattern transition through the shared base sync, which snapshots
-        // the plain colour before the live/lifted stops are seeded over it so a later clear can restore.
-        syncMonetPatternBase(fromNoPattern);
+        // NagramX: repaint so the base switches to the live/lifted Monet stops. Nothing is stored -- the
+        // fields keep the user's plain colour, so a later clear or Cancel restores it by construction.
+        refreshMonetPatternPreview(false);
         isMotion = backgroundCheckBoxView[2].isChecked();
         updateButtonState(false, true);
     }
@@ -4290,6 +4298,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void updatePlayAnimationView(boolean animated) {
+        // NagramX: the Monet-pattern render owner decides the blend mode from the live palette, not from
+        // the plain gradient field this method reads; delegate so the two cannot disagree.
+        if (applyMonetPatternRender()) {
+            return;
+        }
         if (Build.VERSION.SDK_INT >= 29) {
             int color2 = 0;
             float intensity = 0;
@@ -4427,6 +4440,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         } else if (num == 3) {
             backgroundGradientColor3 = color;
         }
+        // NagramX: a Monet pattern's base/sign/blend are derived live, not held in these fields. The owner
+        // reads them as plain inputs and does the whole render; skip the field-based path below. Placed
+        // after the field write and before updatePlayAnimationView so the blend decision is made once.
+        if (applyMonetPatternRender()) {
+            return;
+        }
         updatePlayAnimationView(animated);
         if (backgroundCheckBoxView != null) {
             for (int a = 0; a < backgroundCheckBoxView.length; a++) {
@@ -4521,64 +4540,94 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 && selectedPattern != null;
     }
 
-    // NagramX: seed the four preview stops from ONE live-palette read, lifting a near-black palette so
-    // the pattern stays visible on AMOLED. Reuses MonetPatternHelper's single luminance decision (rail
-    // sign + lifted stop) so the preview cannot diverge from what the render path composites.
-    private void seedMonetPatternBackground() {
+    // NagramX: single owner of the Monet-pattern preview render. Every path that changes render state
+    // delegates here -- setBackgroundColor (colour), updateIntensity (the slider) and
+    // updatePlayAnimationView (blend mode) -- so the four stops, the intensity sign and the blend mode
+    // are decided once, from one read of the live palette, and can never disagree. The persisted fields
+    // stay the user's plain colour: nothing derived is written back, so no snapshot is needed and a
+    // stored sign can never desync across the shared light/dark record. Returns true when it handled the
+    // render (a Monet pattern is selected); false lets the caller run its normal non-Monet body.
+    private boolean applyMonetPatternRender() {
+        if (!isMonetPatternPreview()) {
+            return false;
+        }
         int live = Theme.getColor(Theme.key_chat_wallpaper);
-        currentIntensity = xyz.nextalone.nagram.helper.MonetPatternHelper.signedIntensity(live, currentIntensity);
         int stop = xyz.nextalone.nagram.helper.MonetPatternHelper.liftedStop(live);
-        setBackgroundColor(stop, 0, true, false);
-        setBackgroundColor(stop, 1, true, false);
-        setBackgroundColor(stop, 2, true, false);
-        setBackgroundColor(stop, 3, true, false);
+        float renderIntensity = xyz.nextalone.nagram.helper.MonetPatternHelper.signedIntensity(live, currentIntensity);
+
+        Drawable currentBackground = backgroundImage.getBackground();
+        MotionBackgroundDrawable motionBackgroundDrawable;
+        if (currentBackground instanceof MotionBackgroundDrawable) {
+            motionBackgroundDrawable = (MotionBackgroundDrawable) currentBackground;
+        } else {
+            motionBackgroundDrawable = new MotionBackgroundDrawable();
+            motionBackgroundDrawable.setParentView(backgroundImage);
+            if (rotatePreview) {
+                motionBackgroundDrawable.rotatePreview(false);
+            }
+        }
+        // Four equal stops: a flat one-colour backdrop the pattern mask draws over, matching the render
+        // path's degenerate gradient. setColors early-returns when the colours are unchanged, so a slider
+        // drag that does not move the palette does no bitmap work here.
+        motionBackgroundDrawable.setColors(stop, stop, stop, stop);
+        backgroundImage.setBackground(motionBackgroundDrawable);
+        patternColor = motionBackgroundDrawable.getPatternColor();
+        checkColor = 0x2D000000;
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            // Positive rail composites soft-light; the negative (near-black) rail hard-draws its own black
+            // backdrop, where soft-light would render the pattern invisible.
+            backgroundImage.getImageReceiver().setBlendMode(renderIntensity >= 0 ? BlendMode.SOFT_LIGHT : null);
+        }
+
+        if (!Theme.hasThemeKey(Theme.key_chat_serviceBackground) || backgroundImage.getBackground() instanceof MotionBackgroundDrawable) {
+            themeDelegate.applyChatServiceMessageColor(new int[]{checkColor, checkColor, checkColor, checkColor}, backgroundImage.getBackground(), backgroundImage.getBackground(), renderIntensity);
+        } else if (Theme.getCachedWallpaperNonBlocking() instanceof MotionBackgroundDrawable) {
+            int c = getThemedColor(Theme.key_chat_serviceBackground);
+            themeDelegate.applyChatServiceMessageColor(new int[]{c, c, c, c}, backgroundImage.getBackground(), backgroundImage.getBackground(), renderIntensity);
+        }
+
+        backgroundImage.getImageReceiver().setColorFilter(new PorterDuffColorFilter(patternColor, blendMode));
+        backgroundImage.getImageReceiver().setAlpha(Math.abs(renderIntensity));
+        if (renderIntensity < 0) {
+            backgroundImage.getImageReceiver().setGradientBitmap(motionBackgroundDrawable.getBitmap());
+        } else {
+            backgroundImage.getImageReceiver().setGradientBitmap(null);
+        }
+        if (intensitySeekBar != null) {
+            // The user sets a magnitude; the rail sign is derived from luminance, so a two-sided slider
+            // would imply a sign choice the user does not make. One-sided, magnitude only.
+            intensitySeekBar.setTwoSided(false);
+            intensitySeekBar.setProgress(currentIntensity);
+        }
+        // The play icons carry the theme's service-text colour, not a wallpaper value, but setBackgroundColor
+        // set them so the owner does too -- delegating must drop nothing the skipped body did.
+        if (backgroundPlayAnimationImageView != null) {
+            backgroundPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
+        }
+        if (messagesPlayAnimationImageView != null) {
+            messagesPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
+        }
+        backgroundImage.invalidate();
+        if (patternsListView != null) {
+            patternsListView.invalidateViews();
+        }
+        if (listView2 != null) {
+            listView2.invalidateViews();
+        }
+        // Covers the two button-container invalidations setBackgroundColor does at its tail and the
+        // checkbox redraw updateIntensity does, so the skipped bodies leave nothing stale.
+        invalidateBlur();
+        return true;
     }
 
-    // NagramX: the plain colour a Monet pattern is laid over, captured once before the first seed lifts
-    // it. null means none is held (no pattern seeded on this ColorWallpaper right now).
-    private int[] monetPlainBase;
-    private int monetPlainRotation;
-    private float monetPlainIntensity;
-
-    // NagramX: single owner of the base under a Monet pattern, called after every selectedPattern change
-    // on a Monet ColorWallpaper -- the select chokepoint (selectPattern, reached by both the tab toggle
-    // and the pattern list) and the one clear (the tab toggle). fromNoPattern marks a genuine
-    // no-pattern->pattern step, the only moment backgroundColor is guaranteed to still hold the plain
-    // (unlifted) base; it is captured there once and seeded over. Clearing puts that base back. Without
-    // the restore a removed pattern leaves the lifted stop in backgroundColor, and apply persists it as
-    // the user's flat colour -- the reverse-direction twin of the seed-time regression fixed last round.
-    // Non-Monet themes are left untouched: their base is a real user colour and upstream already keeps it
-    // across the transition, so changing that would be out of scope.
-    private void syncMonetPatternBase(boolean fromNoPattern) {
-        if (!(Theme.getActiveTheme().isMonet() && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)) {
-            return;
-        }
-        if (selectedPattern != null) {
-            if (fromNoPattern) {
-                // Capture the plain base once. A pattern->pattern switch (fromNoPattern false) keeps the
-                // original capture rather than snapshotting the already-lifted stops over it.
-                monetPlainBase = new int[]{backgroundColor, backgroundGradientColor1, backgroundGradientColor2, backgroundGradientColor3};
-                monetPlainRotation = backgroundRotation;
-                monetPlainIntensity = currentIntensity;
-            }
-            seedMonetPatternBackground();
-        } else {
-            int[] base = monetPlainBase;
-            if (base != null) {
-                currentIntensity = monetPlainIntensity;
-                backgroundRotation = monetPlainRotation;
-            } else {
-                // Pattern was already selected when the screen opened (or switched without ever passing
-                // through a captured plain state), so the plain colour under a Monet theme is the live
-                // palette colour, unlifted and positive.
-                base = new int[]{Theme.getColor(Theme.key_chat_wallpaper), 0, 0, 0};
-                currentIntensity = Math.abs(currentIntensity);
-            }
-            setBackgroundColor(base[0], 0, true, false);
-            setBackgroundColor(base[1], 1, true, false);
-            setBackgroundColor(base[2], 2, true, false);
-            setBackgroundColor(base[3], 3, true, false);
-            monetPlainBase = null;
+    // NagramX: repaint the preview after selectedPattern changes. Stateless -- it just re-runs the base
+    // build, which routes to the owner above for the pattern case and to setBackgroundColor's plain-colour
+    // block when cleared. A missed call is at most a stale preview frame, never persisted state, because
+    // nothing derived is ever written into the fields.
+    private void refreshMonetPatternPreview(boolean animated) {
+        if (Theme.getActiveTheme().isMonet() && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
+            setBackgroundColor(backgroundColor, 0, true, animated);
         }
     }
 
@@ -4597,20 +4646,15 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
                 WallpapersListActivity.ColorWallpaper wallPaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
                 backgroundRotation = wallPaper.gradientRotation;
-                if (isMonetPatternPreview()) {
-                    // NagramX: under Monet the colour beneath the pattern is the live palette, not the
-                    // swatch tapped in the list (that colour is discarded at render). Seed the preview
-                    // from the same live-derived stops the render path uses. A plain Monet colour (no
-                    // pattern) falls through to the upstream branch and keeps its picked colour.
-                    seedMonetPatternBackground();
-                } else {
-                    setBackgroundColor(wallPaper.color, 0, true, false);
-                    if (wallPaper.gradientColor1 != 0) {
-                        setBackgroundColor(wallPaper.gradientColor1, 1, true, false);
-                    }
-                    setBackgroundColor(wallPaper.gradientColor2, 2, true, false);
-                    setBackgroundColor(wallPaper.gradientColor3, 3, true, false);
+                // NagramX: always seed the fields from the ColorWallpaper's stored plain colours. For a
+                // Monet pattern setBackgroundColor derives the live/lifted render from them without ever
+                // overwriting them, so the base is never frozen and the fields keep the user's colour.
+                setBackgroundColor(wallPaper.color, 0, true, false);
+                if (wallPaper.gradientColor1 != 0) {
+                    setBackgroundColor(wallPaper.gradientColor1, 1, true, false);
                 }
+                setBackgroundColor(wallPaper.gradientColor2, 2, true, false);
+                setBackgroundColor(wallPaper.gradientColor3, 3, true, false);
                 if (selectedPattern != null) {
                     backgroundImage.setImage(ImageLocation.getForDocument(selectedPattern.document), imageFilter, null, null, "jpg", selectedPattern.document.size, 1, selectedPattern);
                 } else if (Theme.DEFAULT_BACKGROUND_SLUG.equals(wallPaper.slug)) {
