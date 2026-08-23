@@ -90,6 +90,27 @@ public final class MonetPatternHelper {
                 && !owp.isDefault() && !owp.isColor();
     }
 
+    // The single luminance decision. Below the threshold the positive soft-light rail renders the
+    // pattern invisible on a near-black backdrop, so the pattern goes on the negative mask rail
+    // instead. Both the render path (buildRenderSnapshot) and the preview path call these three so
+    // they can never disagree about a colour's rail, its lifted stop or its intensity sign.
+    public static boolean isNegativeRail(int bg) {
+        return Color.luminance(bg) < BLACK_RAIL_LUMINANCE;
+    }
+
+    // The gradient stop fed to the drawable: a near-black colour is lifted toward neutral so the
+    // pattern is visible over the negative rail's black backdrop; anything lighter is passed through.
+    public static int liftedStop(int bg) {
+        return isNegativeRail(bg) ? ColorUtils.blendARGB(bg, Color.WHITE, BLACK_RAIL_LIFT) : bg;
+    }
+
+    // Magnitude is always abs so a sign that may have leaked into a stored record from an older build
+    // cannot invert the pattern; the rail then picks the sign. >= 0 soft-light, < 0 the mask rail.
+    public static float signedIntensity(int bg, float magnitude) {
+        float m = Math.abs(magnitude);
+        return isNegativeRail(bg) ? -m : m;
+    }
+
     // Build a throwaway render-only OverrideWallpaperInfo from a SINGLE read of the live palette. The
     // persisted record is never mutated, so the sign computed here can never reach disk (a stored sign
     // desyncs in a shared light/dark model), and each loadWallpaper call hands its own snapshot to the
@@ -107,9 +128,7 @@ public final class MonetPatternHelper {
         snap.isMotion = source.isMotion;
         snap.rotation = source.rotation;
 
-        float magnitude = Math.abs(source.intensity);
-        boolean negativeRail = Color.luminance(bg) < BLACK_RAIL_LUMINANCE;
-        int stop = negativeRail ? ColorUtils.blendARGB(bg, Color.WHITE, BLACK_RAIL_LIFT) : bg;
+        int stop = liftedStop(bg);
 
         // Degenerate 4-equal-colour gradient: trips createBackgroundDrawable's gradient gate (which
         // wants gradientColor2 != 0) so it rebuilds the MotionBackgroundDrawable from the live palette
@@ -119,10 +138,7 @@ public final class MonetPatternHelper {
         snap.gradientColor1 = stop;
         snap.gradientColor2 = stop;
         snap.gradientColor3 = stop;
-        // Sign selects the rail in MotionBackgroundDrawable.setPatternBitmap: >= 0 soft-light,
-        // < 0 the black-backdrop mask rail. Magnitude is always taken as abs so a sign that may have
-        // leaked into the stored record from an older build cannot invert the pattern.
-        snap.intensity = negativeRail ? -magnitude : magnitude;
+        snap.intensity = signedIntensity(bg, source.intensity);
         return snap;
     }
 }
