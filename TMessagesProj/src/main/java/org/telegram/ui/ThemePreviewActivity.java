@@ -4440,13 +4440,10 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         } else if (num == 3) {
             backgroundGradientColor3 = color;
         }
-        // NagramX: a Monet pattern's base/sign/blend are derived live, not held in these fields. The owner
-        // reads them as plain inputs and does the whole render; skip the field-based path below. Placed
-        // after the field write and before updatePlayAnimationView so the blend decision is made once.
-        if (applyMonetPatternRender()) {
-            return;
-        }
-        updatePlayAnimationView(animated);
+        // NagramX: the swatch colours are the user's plain gradient stops, not a derived value, so they
+        // must refresh in both paths. Update them before the owner guard rather than after it -- the owner
+        // early-returns for the pattern case, and if this stayed below the guard a pattern render would
+        // leave the Colors-tab swatches holding a stale stop from before the change.
         if (backgroundCheckBoxView != null) {
             for (int a = 0; a < backgroundCheckBoxView.length; a++) {
                 if (backgroundCheckBoxView[a] != null) {
@@ -4454,6 +4451,13 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 }
             }
         }
+        // NagramX: a Monet pattern's base/sign/blend are derived live, not held in these fields. The owner
+        // reads them as plain inputs and does the whole render; skip the field-based path below. Placed
+        // after the field write and before updatePlayAnimationView so the blend decision is made once.
+        if (applyMonetPatternRender()) {
+            return;
+        }
+        updatePlayAnimationView(animated);
         if (backgroundGradientColor2 != 0) {
             if (intensitySeekBar != null && Theme.getActiveTheme().isDark()) {
                 intensitySeekBar.setTwoSided(true);
@@ -4609,6 +4613,27 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
         if (messagesPlayAnimationImageView != null) {
             messagesPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
+        }
+        // Four equal stops have no gradient to rotate, so the rotate control would sit there inert.
+        // updatePlayAnimationView, which normally reconciles it, is skipped for the pattern case, so hide
+        // and reset it here -- tag, scale, alpha, visibility and the three checkbox translations it shifts
+        // -- rather than leaving whatever a prior plain-gradient state set. A present-but-inert control is
+        // the same failure removed from the Colors tab. Guarded on the tag so it is a no-op once hidden.
+        if (backgroundPlayAnimationView != null && backgroundPlayAnimationView.getTag() != null) {
+            backgroundPlayAnimationView.setTag(null);
+            if (backgroundPlayViewAnimator != null) {
+                backgroundPlayViewAnimator.cancel();
+                backgroundPlayViewAnimator = null;
+            }
+            backgroundPlayAnimationView.setAlpha(0.0f);
+            backgroundPlayAnimationView.setScaleX(0.0f);
+            backgroundPlayAnimationView.setScaleY(0.0f);
+            backgroundPlayAnimationView.setVisibility(View.INVISIBLE);
+            if (backgroundCheckBoxView != null) {
+                if (backgroundCheckBoxView[0] != null) backgroundCheckBoxView[0].setTranslationX(0.0f);
+                if (backgroundCheckBoxView[1] != null) backgroundCheckBoxView[1].setTranslationX(0.0f);
+                if (backgroundCheckBoxView[2] != null) backgroundCheckBoxView[2].setTranslationX(0.0f);
+            }
         }
         backgroundImage.invalidate();
         if (patternsListView != null) {
