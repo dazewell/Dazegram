@@ -48073,8 +48073,8 @@ public class ChatActivity extends BaseFragment implements
         }
 
         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-        builder.setTitle(getString(isRepeatasCopy ? R.string.RepeatAsCopy : R.string.Repeat));
-        builder.setMessage(getString(isRepeatasCopy ? R.string.RepeatAsCopyConfirmText : R.string.repeatConfirmText));
+        builder.setTitle(getString(isLongClick || isRepeatasCopy ? R.string.RepeatAsCopy : R.string.Repeat));
+        builder.setMessage(getString(isLongClick || isRepeatasCopy ? R.string.RepeatAsCopyConfirmText : R.string.repeatConfirmText));
         builder.setPositiveButton(getString(R.string.OK), (dialogInterface, i) -> {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);
         });
