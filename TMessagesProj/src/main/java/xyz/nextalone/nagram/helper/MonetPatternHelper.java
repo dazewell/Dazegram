@@ -85,9 +85,17 @@ public final class MonetPatternHelper {
         initialized = true;
     }
 
+    // True only for a genuine masked pattern composited over a base colour. Upstream's own pattern test
+    // (createBackgroundDrawable, Theme.java:9587) is color != 0 && !isDefault() && !isColor(): a pattern
+    // carries a non-zero base colour, while every full-image override -- a gallery FileWallpaper (empty
+    // slug) and a non-pattern server wallpaper from Telegram's own collection (real slug) -- stores
+    // color == 0 and only its file. Without the color guard either image, if picked under a Monet theme,
+    // would run through buildRenderSnapshot as if it were a pattern and be misrendered. A non-empty-slug
+    // test can't separate them, since a server image has a real slug too; the base colour is what
+    // actually distinguishes a pattern from a full-bleed image (ThemePreviewActivity.java:2644-2689).
     public static boolean isMonetPattern(Theme.ThemeInfo themeInfo, Theme.OverrideWallpaperInfo owp) {
         return themeInfo != null && owp != null && themeInfo.isMonet()
-                && !owp.isDefault() && !owp.isColor();
+                && owp.color != 0 && !owp.isDefault() && !owp.isColor();
     }
 
     // The single luminance decision. Below the threshold the positive soft-light rail renders the
