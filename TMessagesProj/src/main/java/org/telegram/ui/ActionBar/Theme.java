@@ -9887,8 +9887,8 @@ public class Theme {
             if (rotation == -1) {
                 rotation = 45;
             }
-            if (gradientToColor1 == 0) {
-                // NagramX: composite the shared Monet pattern over the live flat colour
+            if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
+                // NagramX: composite the shared Monet pattern over the live flat colour (same flat test as createBackgroundDrawable)
                 Drawable monetPattern = xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
                 return monetPattern != null ? monetPattern : new ColorDrawable(backgroundColor);
             } else {

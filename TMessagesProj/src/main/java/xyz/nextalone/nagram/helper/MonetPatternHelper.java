@@ -40,7 +40,9 @@ public final class MonetPatternHelper {
 
         Record(long patternId, float intensity, boolean motion, String maskFileName) {
             this.patternId = patternId;
-            this.intensity = Math.abs(intensity);
+            // clamp to [0,1]: intensity is a flat-wallpaper fraction, and a bad
+            // persisted value must not overflow the composite's 0..255 alpha
+            this.intensity = Math.min(1f, Math.abs(intensity));
             this.motion = motion;
             this.maskFileName = maskFileName;
         }
