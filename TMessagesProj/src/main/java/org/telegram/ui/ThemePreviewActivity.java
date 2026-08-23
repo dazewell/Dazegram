@@ -126,6 +126,7 @@ import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.BackgroundGradientDrawable;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.ColorPicker;
 import org.telegram.ui.Components.ColoredImageSpan;
@@ -606,9 +607,10 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         dimAmount = dim;
     }
 
-    // NagramX: the live Monet-colour tile (tile 0) opened for pattern selection only
+    // NagramX: the live Monet-colour tile (tile 0) opened for pattern selection only. dialogId==0 excludes per-chat previews, which must never read or write the global record.
     private boolean isMonetPatternPreview() {
-        return currentWallpaper instanceof WallpapersListActivity.ColorWallpaper
+        return dialogId == 0
+                && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper
                 && ((WallpapersListActivity.ColorWallpaper) currentWallpaper).monetPattern;
     }
 
@@ -2630,8 +2632,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             }
         }
         if (isMonetPatternPreview()) {
-            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override
-            xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion);
+            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override.
+            // Only commit (clear override, reload, notify, close) when the mask was written; on failure keep the preview open so the previous working pattern survives.
+            if (!xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion)) {
+                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+                return;
+            }
             Theme.getActiveTheme().setOverrideWallpaper(null);
             Theme.reloadWallpaper(true);
             if (delegate != null) {
