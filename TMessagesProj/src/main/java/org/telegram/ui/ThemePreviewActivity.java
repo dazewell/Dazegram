@@ -4537,9 +4537,13 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     // Monet pattern follows the live palette, so this drives everything Monet-specific -- the live
     // seed, the mask save, the abs-intensity persist -- from one place. A Monet ColorWallpaper with no
     // pattern is a plain solid colour, which is out of scope and must keep upstream behaviour, so the
-    // predicate is false there and the Colors control stays fully editable.
+    // predicate is false there and the Colors control stays fully editable. dialogId == 0 keeps this to
+    // the global theme wallpaper: a per-chat wallpaper (dialogId != 0) saves through ChatThemeController
+    // with its own colours and intensity sign and is explicitly out of scope, so the shared-record logic
+    // (shared key, mask-only save, abs-intensity + live-base overwrite) must never reach it.
     private boolean isMonetPatternPreview() {
-        return Theme.getActiveTheme().isMonet()
+        return dialogId == 0
+                && Theme.getActiveTheme().isMonet()
                 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)
                 && selectedPattern != null;
     }
