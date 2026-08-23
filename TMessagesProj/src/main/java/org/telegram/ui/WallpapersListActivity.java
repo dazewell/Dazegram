@@ -98,6 +98,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
     private int resetSectionRow;
     private int resetRow;
     private int resetInfoRow;
+    private int monetInfoRow;
     private int galleryRow;
     private int galleryHintRow;
 
@@ -1386,10 +1387,14 @@ public class WallpapersListActivity extends BaseFragment implements Notification
             resetSectionRow = rowCount++;
             resetRow = rowCount++;
             resetInfoRow = rowCount++;
+            // NagramX: on a Monet theme one pattern is shared across all seven Monet variants, so
+            // spell that out with a footer next to the existing reset explanation rather than replacing it.
+            monetInfoRow = Theme.getActiveTheme().isMonet() ? rowCount++ : -1;
         } else {
             resetSectionRow = -1;
             resetRow = -1;
             resetInfoRow = -1;
+            monetInfoRow = -1;
         }
         if (listAdapter != null) {
             scrolling = true;
@@ -1873,6 +1878,8 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == resetInfoRow) {
                         cell.setText(LocaleController.getString(R.string.ResetChatBackgroundsInfo));
+                    } else if (position == monetInfoRow) {
+                        cell.setText(LocaleController.getString(R.string.MonetPatternSharedInfo));
                     } else if (position == galleryHintRow) {
                         cell.setText("Upload your own background for the channel.");
                     }
@@ -1953,7 +1960,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                 return 0;
             } else if (position == sectionRow || position == resetSectionRow) {
                 return 1;
-            } else if (position == resetInfoRow || position == galleryHintRow) {
+            } else if (position == resetInfoRow || position == galleryHintRow || position == monetInfoRow) {
                 return 3;
             } else {
                 return 2;
