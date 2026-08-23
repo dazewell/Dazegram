@@ -4596,9 +4596,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
         if (intensitySeekBar != null) {
             // The user sets a magnitude; the rail sign is derived from luminance, so a two-sided slider
-            // would imply a sign choice the user does not make. One-sided, magnitude only.
+            // would imply a sign choice the user does not make. One-sided, magnitude only. Feed abs so a
+            // stale negative (an old record, a value carried from two-sided use) can't clamp the thumb to
+            // the minimum while the render still draws the magnitude -- the display matches the render.
             intensitySeekBar.setTwoSided(false);
-            intensitySeekBar.setProgress(currentIntensity);
+            intensitySeekBar.setProgress(Math.abs(currentIntensity));
         }
         // The play icons carry the theme's service-text colour, not a wallpaper value, but setBackgroundColor
         // set them so the owner does too -- delegating must drop nothing the skipped body did.
