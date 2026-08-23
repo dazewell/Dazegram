@@ -73,17 +73,17 @@ git diff origin/dev...origin/<branch>
 An empty diff there means you're on the wrong ref: stop and say so rather than
 reviewing nothing and approving it.
 
-**Leave no files behind — read into context, never onto disk.** `git show
-<ref>:<path>` *prints* a file; read that output rather than redirecting it. A
-`> file`, a `tee`, or a scratch copy lands in whatever directory the review is
-standing in — and during an orchestrated review that is dazewell's main clone,
-not scratch space. This has already cost an evening: a craftsmanship pass dumped
-a 2.9 MB `ChatActivity.java` and a `MessageHelper.java` into the repo root, and
-they surfaced as a phantom **+53,384-line** change in his working tree with
-nothing to say where they came from, whether they were his, or whether they were
-safe to delete. Read-only means the review leaves **no trace**: no new files, no
-scratch dumps, no temp copies anywhere inside the checkout. If something
-genuinely has to go on disk, put it outside the repo.
+**Leave no files behind — read into context, never onto disk.**
+`git show <ref>:<path>` *prints* a file; read that output rather than
+redirecting it. A `> file`, a `tee`, or a scratch copy lands in whatever
+directory the review is standing in — and during an orchestrated review that is
+dazewell's main clone, not scratch space. This has already cost an evening: a
+craftsmanship pass dumped a 2.9 MB `ChatActivity.java` and a `MessageHelper.java`
+into the repo root, and they surfaced as a phantom **+53,384-line** change in his
+working tree with nothing to say where they came from, whether they were his, or
+whether they were safe to delete. Read-only means the review leaves **no trace**:
+no new files, no scratch dumps, no temp copies anywhere inside the checkout. If
+something genuinely has to go on disk, put it outside the repo.
 
 ## The diffstat is the first signal
 
