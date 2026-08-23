@@ -606,6 +606,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         dimAmount = dim;
     }
 
+    // NagramX: the live Monet-colour tile (tile 0) opened for pattern selection only
+    private boolean isMonetPatternPreview() {
+        return currentWallpaper instanceof WallpapersListActivity.ColorWallpaper
+                && ((WallpapersListActivity.ColorWallpaper) currentWallpaper).monetPattern;
+    }
+
     @SuppressLint("Recycle")
     @Override
     public View createView(Context context) {
@@ -1073,7 +1079,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         menu2.addItem(OPTION_PHOTO_EDIT, R.drawable.msg_header_draw);
                     }
                 }
-                if (dialogId == 0 && (BuildVars.DEBUG_PRIVATE_VERSION && Theme.getActiveTheme().getAccent(false) != null || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !Theme.DEFAULT_BACKGROUND_SLUG.equals(((WallpapersListActivity.ColorWallpaper) currentWallpaper).slug) || currentWallpaper instanceof TLRPC.TL_wallPaper)) {
+                if (dialogId == 0 && (BuildVars.DEBUG_PRIVATE_VERSION && Theme.getActiveTheme().getAccent(false) != null || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !Theme.DEFAULT_BACKGROUND_SLUG.equals(((WallpapersListActivity.ColorWallpaper) currentWallpaper).slug) && !isMonetPatternPreview() || currentWallpaper instanceof TLRPC.TL_wallPaper)) {
                     menu2.addItem(5, R.drawable.msg_header_share);
                 }
                 if (dialogId != 0 && shouldShowDayNightIcon) {
@@ -1729,8 +1735,16 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         }
                     });
                     if (a == 2) {
-                        backgroundCheckBoxView[a].setAlpha(0.0f);
-                        backgroundCheckBoxView[a].setVisibility(View.INVISIBLE);
+                        if (isMonetPatternPreview()) {
+                            // NagramX: Motion stays in the centered Pattern + Motion pair for the Monet tile
+                            backgroundCheckBoxView[a].setChecked(isMotion, false);
+                        } else {
+                            backgroundCheckBoxView[a].setAlpha(0.0f);
+                            backgroundCheckBoxView[a].setVisibility(View.INVISIBLE);
+                        }
+                    } else if (a == 0 && isMonetPatternPreview()) {
+                        // NagramX: no Colors tab for the live Monet-colour tile
+                        backgroundCheckBoxView[a].setVisibility(View.GONE);
                     }
                 }
             }
@@ -2513,7 +2527,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     FileLog.e(e);
                 }
             }
-        } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
+        } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !isMonetPatternPreview()) {
             if (selectedPattern != null) {
                 try {
                     WallpapersListActivity.ColorWallpaper wallPaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
@@ -2614,6 +2628,17 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                 FileLog.e(e);
                 done = false;
             }
+        }
+        if (isMonetPatternPreview()) {
+            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override
+            xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion);
+            Theme.getActiveTheme().setOverrideWallpaper(null);
+            Theme.reloadWallpaper(true);
+            if (delegate != null) {
+                delegate.didSetNewBackground(null);
+            }
+            finishFragment();
+            return;
         }
         String slug;
         int rotation = 45;
@@ -4000,6 +4025,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void updateMotionButton() {
+        if (isMonetPatternPreview()) {
+            // NagramX: Colors stays hidden; keep Motion in place and just track the checkbox state
+            backgroundCheckBoxView[2].setChecked(isMotion, true);
+            return;
+        }
         if (screenType == SCREEN_TYPE_ACCENT_COLOR || screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
             if (selectedPattern == null && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
                 backgroundCheckBoxView[2].setChecked(false, true);
