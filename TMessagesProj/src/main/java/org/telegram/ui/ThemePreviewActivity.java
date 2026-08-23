@@ -1674,9 +1674,18 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         }
                     }
                     backgroundButtonsContainer.addView(backgroundCheckBoxView[a], layoutParams);
+                    if (a == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && Theme.getActiveTheme().isMonet()) {
+                        // NagramX: the colour under a Monet pattern is the live palette, so editing it
+                        // here would let the user pick a colour that render discards. Keep the tab in
+                        // place to preserve the 3-tab index layout, but dim it and swallow its taps.
+                        backgroundCheckBoxView[a].setAlpha(0.5f);
+                    }
                     WallpaperCheckBoxView view = backgroundCheckBoxView[a];
                     backgroundCheckBoxView[a].setOnClickListener(v -> {
                         if (backgroundButtonsContainer.getAlpha() != 1.0f || patternViewAnimation != null) {
+                            return;
+                        }
+                        if (num == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && Theme.getActiveTheme().isMonet()) {
                             return;
                         }
                         if ((screenType == SCREEN_TYPE_ACCENT_COLOR || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && num == 2) {
@@ -2521,7 +2530,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     @SuppressLint("DrawAllocation")
                     Bitmap dst = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(), Bitmap.Config.ARGB_8888);
                     Canvas canvas = new Canvas(dst);
-                    if (backgroundGradientColor2 != 0) {
+                    // NagramX: for a Monet theme the colour under the pattern comes from the live
+                    // palette at render time, so save only the pattern's alpha mask (transparent
+                    // backdrop, PNG) instead of a colour+pattern JPEG composite that would freeze the
+                    // wrong colour and lose the alpha the live compositor needs.
+                    boolean monetMask = Theme.getActiveTheme().isMonet();
+                    if (monetMask || backgroundGradientColor2 != 0) {
 
                     } else if (backgroundGradientColor1 != 0) {
                         GradientDrawable gradientDrawable = new GradientDrawable(BackgroundGradientDrawable.getGradientOrientation(backgroundRotation), new int[]{backgroundColor, backgroundGradientColor1});
@@ -2536,7 +2550,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     canvas.drawBitmap(bitmap, 0, 0, paint);
 
                     FileOutputStream stream = new FileOutputStream(toFile);
-                    if (backgroundGradientColor2 != 0) {
+                    if (monetMask || backgroundGradientColor2 != 0) {
                         dst.compress(Bitmap.CompressFormat.PNG, 100, stream);
                     } else {
                         dst.compress(Bitmap.CompressFormat.JPEG, 87, stream);
@@ -2677,6 +2691,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             wallpaperInfo.intensity = dimAmount;
         } else {
             wallpaperInfo.intensity = currentIntensity;
+        }
+        if (Theme.getActiveTheme().isMonet()) {
+            // NagramX: a single record is shared across the seven Monet variants, so a stored sign
+            // would mean the opposite thing after a light/dark flip. Persist magnitude only; the rail
+            // sign is derived live from the palette's luminance at render time.
+            wallpaperInfo.intensity = Math.abs(wallpaperInfo.intensity);
         }
         if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
             WallpapersListActivity.ColorWallpaper colorWallpaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
@@ -4488,12 +4508,23 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
                 WallpapersListActivity.ColorWallpaper wallPaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
                 backgroundRotation = wallPaper.gradientRotation;
-                setBackgroundColor(wallPaper.color, 0, true, false);
-                if (wallPaper.gradientColor1 != 0) {
-                    setBackgroundColor(wallPaper.gradientColor1, 1, true, false);
+                if (Theme.getActiveTheme().isMonet()) {
+                    // NagramX: under Monet the colour beneath the pattern is the live palette, not the
+                    // swatch tapped in the list (that colour is discarded at render). Seed the preview
+                    // from the same live colour as a degenerate gradient so it matches what renders.
+                    int live = Theme.getColor(Theme.key_chat_wallpaper);
+                    setBackgroundColor(live, 0, true, false);
+                    setBackgroundColor(live, 1, true, false);
+                    setBackgroundColor(live, 2, true, false);
+                    setBackgroundColor(live, 3, true, false);
+                } else {
+                    setBackgroundColor(wallPaper.color, 0, true, false);
+                    if (wallPaper.gradientColor1 != 0) {
+                        setBackgroundColor(wallPaper.gradientColor1, 1, true, false);
+                    }
+                    setBackgroundColor(wallPaper.gradientColor2, 2, true, false);
+                    setBackgroundColor(wallPaper.gradientColor3, 3, true, false);
                 }
-                setBackgroundColor(wallPaper.gradientColor2, 2, true, false);
-                setBackgroundColor(wallPaper.gradientColor3, 3, true, false);
                 if (selectedPattern != null) {
                     backgroundImage.setImage(ImageLocation.getForDocument(selectedPattern.document), imageFilter, null, null, "jpg", selectedPattern.document.size, 1, selectedPattern);
                 } else if (Theme.DEFAULT_BACKGROUND_SLUG.equals(wallPaper.slug)) {
