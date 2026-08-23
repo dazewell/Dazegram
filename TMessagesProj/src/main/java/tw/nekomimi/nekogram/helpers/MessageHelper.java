@@ -1426,7 +1426,9 @@ public class MessageHelper extends BaseController {
         if (!header.quote || TextUtils.isEmpty(header.quote_text)) {
             return null;
         }
-        return ChatActivity.ReplyQuote.from(target, header.quote_offset, header.quote_offset + header.quote_text.length());
+        // quote_offset is only a hint and is 0 when its flag is unset, so locate the quote by its
+        // text (findQuoteStart) instead of trusting the raw offset, which would slice the wrong range.
+        return ChatActivity.ReplyQuote.from(target, header.quote_text, header.quote_offset);
     }
 
     // Decide once for the whole selection: reconstruct only when every message can be re-sent as a
