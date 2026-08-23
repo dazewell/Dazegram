@@ -58,9 +58,10 @@ public final class MonetPatternHelper {
 
     // Cache of the last composed full-screen bitmap, shared by the live chat
     // background and the tile-0 thumbnail (both pass the same live colour + record).
-    // Keyed by colour and record identity, so a palette change or a new/cleared
-    // pattern misses and rebuilds. Only the bitmap is cached; each caller wraps its
-    // own BitmapDrawable so no single drawable is shared across views.
+    // Keyed by colour, record identity and the composed dimensions, so a palette
+    // change, a new/cleared pattern, or a display-size change (e.g. rotation) misses
+    // and rebuilds. Only the bitmap is cached; each caller wraps its own
+    // BitmapDrawable so no single drawable is shared across views.
     private static volatile Bitmap cacheBitmap;
     private static volatile int cacheColor;
     private static volatile Record cacheRecord;
@@ -193,8 +194,11 @@ public final class MonetPatternHelper {
         if (r == null) {
             return null;
         }
+        int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
         Bitmap cached = cacheBitmap;
-        if (cached != null && !cached.isRecycled() && cacheColor == backgroundColor && cacheRecord == r) {
+        if (cached != null && !cached.isRecycled() && cacheColor == backgroundColor && cacheRecord == r
+                && cached.getWidth() == w && cached.getHeight() == h) {
             return new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), cached);
         }
         try {
@@ -206,8 +210,6 @@ public final class MonetPatternHelper {
             if (mask == null) {
                 return null;
             }
-            int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
-            int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
             Bitmap result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(result);
             canvas.drawColor(backgroundColor);
