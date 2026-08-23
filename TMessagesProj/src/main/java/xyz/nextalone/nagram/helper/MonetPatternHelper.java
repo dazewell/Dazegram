@@ -50,8 +50,6 @@ public final class MonetPatternHelper {
 
     private static final String PREFS_NAME = "monet_pattern";
     private static final String KEY_RECORD = "record";
-    private static final String MASK_NAME = "monet_pattern_mask.png";
-    private static final String MASK_TMP = "monet_pattern_mask.png.tmp";
 
     private static volatile Record record;
     private static volatile boolean loaded;
@@ -94,52 +92,64 @@ public final class MonetPatternHelper {
         return r != null && r.motion;
     }
 
-    // Persist a freshly chosen pattern. Order: build the mask, atomically move it
-    // into place, publish the immutable record, then write metadata — so no
-    // published record ever points at an incomplete or missing mask.
-    public static void apply(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion) {
+    // Persist a freshly chosen pattern. Returns true only when a complete mask is
+    // on disk and the new record is published + persisted; returns false on any
+    // failure, leaving the previously published record and its file untouched so a
+    // failed apply never destroys a working pattern. Order per successful apply:
+    // build the mask, write a temp file, atomically rename it to a UNIQUE final
+    // name (never overwriting the file the current record points at), publish the
+    // immutable record, write metadata, and only then retire the old file.
+    public static boolean apply(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion) {
         if (pattern == null || pattern.document == null) {
             clear();
-            return;
+            return true;
         }
+        File tmp = null;
         try {
             int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
             int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
             File doc = FileLoader.getInstance(account).getPathToAttach(pattern.document, true);
             Bitmap mask = SvgHelper.getBitmap(doc, w, h, false, SvgHelper.ScaleMode.ByWidth);
             if (mask == null) {
-                return;
+                return false;
             }
             File dir = ApplicationLoader.getFilesDirFixed();
-            File tmp = new File(dir, MASK_TMP);
-            File finalMask = new File(dir, MASK_NAME);
+            String finalName = "monet_pattern_mask_" + System.currentTimeMillis() + ".png";
+            tmp = new File(dir, finalName + ".tmp");
+            File finalMask = new File(dir, finalName);
+            boolean compressed;
             try (FileOutputStream stream = new FileOutputStream(tmp)) {
                 Bitmap argb = mask.copy(Bitmap.Config.ARGB_8888, false);
-                argb.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                compressed = argb.compress(Bitmap.CompressFormat.PNG, 100, stream);
                 argb.recycle();
             } finally {
                 mask.recycle();
             }
-            if (!tmp.renameTo(finalMask)) {
-                finalMask.delete();
-                if (!tmp.renameTo(finalMask)) {
-                    tmp.delete();
-                    return;
-                }
+            if (!compressed || !tmp.renameTo(finalMask)) {
+                tmp.delete();
+                return false;
             }
-            Record r = new Record(pattern.id, intensity, motion, MASK_NAME);
+            Record previous = record;
+            Record r = new Record(pattern.id, intensity, motion, finalName);
             record = r;
             loaded = true;
             persist(r);
+            retire(previous, r);
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            if (tmp != null) {
+                tmp.delete();
+            }
+            return false;
         }
     }
 
-    // Drop the pattern: publish the empty record first, persist it, then remove
-    // the owned mask file. The composite null-checks the record, so a reload that
-    // was already in flight simply falls back to the flat colour.
+    // Drop the pattern: publish the empty record first, persist it, then retire the
+    // owned mask file. The composite null-checks the record, so a reload that was
+    // already in flight simply falls back to the flat colour.
     public static void clear() {
+        Record previous = record;
         record = null;
         loaded = true;
         try {
@@ -147,10 +157,23 @@ public final class MonetPatternHelper {
         } catch (Exception e) {
             FileLog.e(e);
         }
+        retire(previous, null);
+    }
+
+    // Delete a mask file that the freshly published record no longer references.
+    // Called only after the new record is published + persisted, so at no point is
+    // the file the current record points at removed.
+    private static void retire(Record previous, Record current) {
+        if (previous == null || previous.maskFileName == null) {
+            return;
+        }
+        if (current != null && previous.maskFileName.equals(current.maskFileName)) {
+            return;
+        }
         try {
-            File mask = new File(ApplicationLoader.getFilesDirFixed(), MASK_NAME);
-            if (mask.exists()) {
-                mask.delete();
+            File old = new File(ApplicationLoader.getFilesDirFixed(), previous.maskFileName);
+            if (old.exists()) {
+                old.delete();
             }
         } catch (Exception e) {
             FileLog.e(e);
