@@ -1290,6 +1290,10 @@ public class Theme {
         private String getKey() {
             if (parentAccent != null) {
                 return parentTheme.name + "_" + parentAccent.id + "_owp";
+            } else if (parentTheme != null && parentTheme.isMonet()) {
+                // NagramX: all seven Monet-derived themes share one wallpaper record, so a pattern
+                // survives the day/night pointer swap and follows the regenerated palette.
+                return xyz.nextalone.nagram.helper.MonetPatternHelper.SHARED_OWP_KEY;
             } else {
                 return parentTheme.name + "_owp";
             }
@@ -1477,7 +1481,8 @@ public class Theme {
                     loadOverrideWallpaper(sharedPreferences, accent, name + "_" + accent.id + "_owp");
                 }
             } else {
-                loadOverrideWallpaper(sharedPreferences, null, name + "_owp");
+                // NagramX: Monet-derived themes read the one shared record (see MonetPatternHelper).
+                loadOverrideWallpaper(sharedPreferences, null, isMonet() ? xyz.nextalone.nagram.helper.MonetPatternHelper.SHARED_OWP_KEY : name + "_owp");
             }
         }
 
@@ -1535,6 +1540,8 @@ public class Theme {
             if (accent != null) {
                 accent.overrideWallpaper = info;
             }
+            // NagramX: keep the shared Monet record and the other six variants in step with this pick/clear.
+            xyz.nextalone.nagram.helper.MonetPatternHelper.onSetOverrideWallpaper(this, info);
         }
 
         public String getName() {
@@ -6238,6 +6245,11 @@ public class Theme {
     }
 
     public static void refreshThemeColors(boolean bg, boolean messages) {
+        // NagramX: republish the shared Monet wallpaper onto the now-active variant before
+        // reloadWallpaper (below) reads currentTheme.overrideWallpaper. Every theme-apply path ends
+        // in currentTheme = themeInfo; refreshThemeColors(), so this is the single chokepoint the
+        // day/night flip, the Monet palette refresh and a normal apply all funnel through.
+        xyz.nextalone.nagram.helper.MonetPatternHelper.onApplyMonetTheme(currentTheme);
         currentColors = currentColorsNoAccent.clone();
         shouldDrawGradientIcons = true;
         ThemeAccent accent = currentTheme.getAccent(false);
@@ -9464,7 +9476,13 @@ public class Theme {
             wallpaperMotion = false;
         }
         int intensity;
-        OverrideWallpaperInfo overrideWallpaper = currentTheme.overrideWallpaper;
+        OverrideWallpaperInfo savedWallpaper = currentTheme.overrideWallpaper;
+        // NagramX: composite a Monet pattern against the live palette without touching the saved
+        // record -- a throwaway snapshot carries the derived gradient stops and intensity sign as one
+        // unit, so nothing derived can be persisted and no concurrent load can tear the pair apart.
+        final OverrideWallpaperInfo overrideWallpaper = xyz.nextalone.nagram.helper.MonetPatternHelper.isMonetPattern(currentTheme, savedWallpaper)
+                ? xyz.nextalone.nagram.helper.MonetPatternHelper.buildRenderSnapshot(currentTheme, currentColors, savedWallpaper)
+                : savedWallpaper;
         if (overrideWallpaper != null) {
             intensity = (int) (overrideWallpaper.intensity * 100);
         } else {
