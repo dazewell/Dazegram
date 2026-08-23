@@ -104,6 +104,9 @@ public final class MonetPatternHelper {
             clear();
             return true;
         }
+        // Force the first-use prefs load to finish before we publish, so a
+        // concurrent ensureLoaded() can never overwrite this record afterwards.
+        ensureLoaded();
         File tmp = null;
         try {
             int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
@@ -129,11 +132,16 @@ public final class MonetPatternHelper {
                 tmp.delete();
                 return false;
             }
-            Record previous = record;
+            Record previous;
             Record r = new Record(pattern.id, intensity, motion, finalName);
-            record = r;
-            loaded = true;
-            persist(r);
+            // publish under the same lock ensureLoaded() uses, so the record/loaded
+            // writes are ordered against a first-use load happening on another thread
+            synchronized (MonetPatternHelper.class) {
+                previous = record;
+                record = r;
+                loaded = true;
+                persist(r);
+            }
             retire(previous, r);
             return true;
         } catch (Exception e) {
@@ -145,17 +153,23 @@ public final class MonetPatternHelper {
         }
     }
 
-    // Drop the pattern: publish the empty record first, persist it, then retire the
+    // Drop the pattern: publish the empty record, persist it, then retire the
     // owned mask file. The composite null-checks the record, so a reload that was
     // already in flight simply falls back to the flat colour.
     public static void clear() {
-        Record previous = record;
-        record = null;
-        loaded = true;
-        try {
-            prefs().edit().remove(KEY_RECORD).apply();
-        } catch (Exception e) {
-            FileLog.e(e);
+        // Same ordering guarantee as apply(): finish any first-use load first, then
+        // publish the empty state under the lock so it can't be undone by ensureLoaded().
+        ensureLoaded();
+        Record previous;
+        synchronized (MonetPatternHelper.class) {
+            previous = record;
+            record = null;
+            loaded = true;
+            try {
+                prefs().edit().remove(KEY_RECORD).apply();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
         }
         retire(previous, null);
     }
@@ -217,17 +231,26 @@ public final class MonetPatternHelper {
             if (mask == null) {
                 return null;
             }
-            Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(result);
-            canvas.drawColor(backgroundColor);
-            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
-            paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
-            paint.setAlpha((int) (255 * r.intensity));
-            canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
-            mask.recycle();
-            BitmapDrawable drawable = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
-            drawable.setFilterBitmap(true);
-            return drawable;
+            Bitmap result = null;
+            try {
+                result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                Canvas canvas = new Canvas(result);
+                canvas.drawColor(backgroundColor);
+                Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+                paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
+                paint.setAlpha((int) (255 * r.intensity));
+                canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
+                BitmapDrawable drawable = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
+                drawable.setFilterBitmap(true);
+                result = null; // ownership handed to the drawable; don't recycle below
+                return drawable;
+            } finally {
+                mask.recycle();
+                if (result != null) {
+                    // allocation or draw threw before the drawable took ownership
+                    result.recycle();
+                }
+            }
         } catch (Throwable e) {
             FileLog.e(e);
             return null;
