@@ -1323,6 +1323,7 @@ public class MessageHelper extends BaseController {
         }
         if (caption != null && (messageObject.type == 0 || messageObject.isAnimatedEmoji()) && !TextUtils.isEmpty(caption)) {
             SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(caption.toString(), targetDialogId, replyTo, replyToTopMsg, null, false, messageObject.messageOwner.entities, null, null, notify, scheduleDate, 0, null, false);
+            params.replyQuote = quote;
             params.sendMessageChatArguments = sendMessageChatArguments;
             params.payStars = payStars;
             params.monoForumPeer = monoForumPeerId;
