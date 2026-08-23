@@ -123,8 +123,14 @@ public final class MonetPatternHelper {
             boolean compressed;
             try (FileOutputStream stream = new FileOutputStream(tmp)) {
                 Bitmap argb = mask.copy(Bitmap.Config.ARGB_8888, false);
-                compressed = argb.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                argb.recycle();
+                if (argb == null) {
+                    // copy can fail under memory pressure; treat as a recoverable
+                    // apply failure rather than NPE-ing on compress()
+                    compressed = false;
+                } else {
+                    compressed = argb.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                    argb.recycle();
+                }
             } finally {
                 mask.recycle();
             }
@@ -133,6 +139,7 @@ public final class MonetPatternHelper {
                 return false;
             }
             Record previous;
+            boolean persisted;
             Record r = new Record(pattern.id, intensity, motion, finalName);
             // publish under the same lock ensureLoaded() uses, so the record/loaded
             // writes are ordered against a first-use load happening on another thread
@@ -140,7 +147,17 @@ public final class MonetPatternHelper {
                 previous = record;
                 record = r;
                 loaded = true;
-                persist(r);
+                persisted = persist(r);
+                if (!persisted) {
+                    // metadata didn't reach disk: roll back the in-memory publish so
+                    // memory and prefs stay in agreement on the previous record
+                    record = previous;
+                }
+            }
+            if (!persisted) {
+                // discard the orphan file and leave the previous record + mask intact
+                finalMask.delete();
+                return false;
             }
             retire(previous, r);
             return true;
@@ -198,7 +215,7 @@ public final class MonetPatternHelper {
         }
     }
 
-    private static void persist(Record r) {
+    private static boolean persist(Record r) {
         try {
             JSONObject o = new JSONObject();
             o.put("patternId", r.patternId);
@@ -209,9 +226,10 @@ public final class MonetPatternHelper {
             // this returns, so the new record must be durably on disk first — an async
             // write that hadn't flushed on process death would strand prefs on the old
             // (now deleted) file. Only fires on the explicit Apply tap.
-            prefs().edit().putString(KEY_RECORD, o.toString()).commit();
+            return prefs().edit().putString(KEY_RECORD, o.toString()).commit();
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
