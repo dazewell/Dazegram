@@ -153,6 +153,8 @@ Repost and Repost as Copy live in a message's menu and on the selection bar. Pla
 
 There's also a way to get the reply and the "Forwarded from" header at once, and it costs nothing: select the message together with the one it replies to, then use plain Repost. With both in the same batch the link between them survives the forward.
 
+One place the reply can't come along is a forum's aggregate "View as messages": there's no single topic to anchor a reply to there, so reposting a reply as a copy from that view sends it without the reply. Open the actual topic and repost from inside it to keep the reply.
+
 Secret chats are expected to keep the reply through this path as well, though that isn't verified.
 
 ### Pin or number several messages at once <!-- #bulk-actions -->
