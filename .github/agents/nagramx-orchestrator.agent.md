@@ -338,9 +338,16 @@ passed" is a claim; a green run pinned to the pull request's head commit is
 evidence. Work through all of it yourself.
 
 ```powershell
-$repo = 'dazewell/NagramX'; $pr = <n>; $branch = '<YYYY-MM-DD>_<slug>'
+$repo = 'dazewell/NagramX'; $pr = <n>
 gh pr view $pr --repo $repo --json url,isDraft,state,mergeable,headRefOid,statusCheckRollup
 $sha = gh pr view $pr --repo $repo --json headRefOid --jq .headRefOid
+
+# derive the branch from the PR itself — never type it. Branch tooling
+# kebab-cases the brief's <YYYY-MM-DD>_<slug> and flattens '_' to '-', so a
+# typed name drifts from what's actually on origin; gh run list and git log
+# below silently return empty against a name that doesn't exist, and an
+# absent run is never evidence that something was verified
+$branch = gh pr view $pr --repo $repo --json headRefName --jq .headRefName
 
 # the run that actually built the current head
 gh run list --repo $repo --branch $branch --limit 10 --json databaseId,headSha,status,conclusion,event |
@@ -350,10 +357,18 @@ gh run list --repo $repo --branch $branch --limit 10 --json databaseId,headSha,s
 (gh run view <databaseId> --repo $repo --json jobs | ConvertFrom-Json).jobs |
   Select-Object name, conclusion
 
-# commits MISSING their tag (--grep would hide exactly the ones you are hunting)
+# commits MISSING their tag (--grep would hide exactly the ones you are hunting).
+# Test per commit over its *full* message (%B), not per line — the tag is legal
+# in the subject or the body, and a naive '%s%n%b' format plus a line-by-line
+# filter would flood on every untagged body line instead of checking the commit
+# as a whole
 git fetch origin $branch dev
-git log origin/dev..origin/$branch --no-merges --format='%h %s' |
-  Where-Object { $_ -notmatch '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*' }
+git log origin/dev..origin/$branch --no-merges --format='%H' | ForEach-Object {
+  $full = (git log -1 --format='%B' $_) -join "`n"
+  if ($full -notmatch '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*') {
+    git log -1 --format='%h %s' $_
+  }
+}
 
 # the hard line, mechanically. it polices AI *attribution*, not vendor names:
 # human `Co-authored-by:` trailers are normal here and ride in with upstream

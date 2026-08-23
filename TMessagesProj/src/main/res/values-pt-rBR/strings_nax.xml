@@ -338,4 +338,7 @@
     <string name="ImportAyuDB">Importar banco de dados</string>
     <string name="ImportAyuDBAlert">O banco de dados de mensagens atual será substituído. O aplicativo será reiniciado após a importação.</string>
     <string name="DisableSwipeToNext">Desativar deslizar para o próximo</string>
+    <!-- Repost reply preservation #repost-reply -->
+    <string name="RepeatAsCopyUnsupported">Não é possível repostar isto como cópia</string>
+    <string name="RepeatAsCopyConfirmText">Tem certeza de que deseja repostar isto como cópia?</string>
 </resources>

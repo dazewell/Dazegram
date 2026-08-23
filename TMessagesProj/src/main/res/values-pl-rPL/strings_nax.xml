@@ -339,4 +339,7 @@
     <string name="ImportAyuDB">Importuj bazę danych</string>
     <string name="ImportAyuDBAlert">Obecna baza danych wiadomości zostanie zastąpiona. Po zaimportowaniu aplikacja uruchomi się ponownie.</string>
     <string name="DisableSwipeToNext">Wyłącz gest przechodzenia</string>
+    <!-- Repost reply preservation #repost-reply -->
+    <string name="RepeatAsCopyUnsupported">Nie można repostować tego jako kopii</string>
+    <string name="RepeatAsCopyConfirmText">Czy na pewno chcesz repostować to jako kopię?</string>
 </resources>

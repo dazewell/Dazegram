@@ -601,4 +601,7 @@
     <string name="PasscodePanicCodeUniqueHint">Your Panic Code must be different from your app passcode and every account passcode. If you\'re not sure it is, set it again.</string>
     <string name="ForceFontWeightFallback">Force Font Weight Fallback</string>
     <string name="MonetPatternSharedInfo">One pattern for Monet, Extera and Solid themes.</string>
+    <!-- Repost reply preservation #repost-reply -->
+    <string name="RepeatAsCopyUnsupported">Can\'t repost this as a copy</string>
+    <string name="RepeatAsCopyConfirmText">Are you sure you want to repost this as a copy?</string>
 </resources>

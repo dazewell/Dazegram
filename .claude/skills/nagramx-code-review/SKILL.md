@@ -73,6 +73,21 @@ git diff origin/dev...origin/<branch>
 An empty diff there means you're on the wrong ref: stop and say so rather than
 reviewing nothing and approving it.
 
+**Leave no files behind — read into context, never onto disk.**
+`git show <ref>:<path>` *prints* a file; read that output rather than writing it
+down. The rule is about the destination, not the mechanism: **nothing the review
+does may create a file inside the checkout** — not a `>` redirect, not a `tee`,
+not a scratch copy, not an editor save. A *relative* path resolves against
+whatever directory the review is standing in, and during an orchestrated review
+that is dazewell's main clone, not scratch space. This has already cost an
+evening: a craftsmanship pass dumped a 2.9 MB `ChatActivity.java` and a
+`MessageHelper.java` into the repo root, and they surfaced as a phantom
+**+53,384-line** change in his working tree with nothing to say where they came
+from, whether they were his, or whether they were safe to delete. Read-only means
+the review leaves **no trace**. If something genuinely has to go on disk, write
+it outside the repo — an absolute path to the session's own artifacts folder,
+never a relative one.
+
 ## The diffstat is the first signal
 
 Before reading a line, look at `git diff --stat`. A healthy NagramX change is a

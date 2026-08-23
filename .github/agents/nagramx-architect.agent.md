@@ -81,7 +81,14 @@ architecture. Compare against a recent comparable feature with
 ## Non-negotiable, even without the skill file
 
 - **Read-only.** Do not mutate the working tree, index or HEAD. No checkout, no
-  switch, no stash, no commit, no push. Inspection only.
+  switch, no stash, no commit, no push. Inspection only. **And leave no files
+  behind:** read the output of `git show <ref>:<path>` rather than writing it
+  down. The rule is about the destination, not the mechanism — nothing the
+  review does may create a file inside the checkout, whether by a `>` redirect,
+  a `tee`, a scratch copy or an editor save. A *relative* path resolves against
+  whatever directory you are standing in, which during an orchestrated review is
+  the main clone — where it later surfaces as a huge phantom diff nobody can
+  account for. Anything that genuinely must go on disk goes outside the repo.
 - **Do not trust the report.** A stated rationale ("kept it simple", "nothing
   reusable existed") is the implementer grading their own work. It never
   downgrades a finding. Verify against the diff.
