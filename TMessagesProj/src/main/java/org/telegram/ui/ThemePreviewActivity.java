@@ -324,6 +324,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
     private BlurButton applyButton1;
     private BlurButton applyButton2;
+    // NagramX: guards the async Monet-pattern Apply so a fast double-tap can't queue two writes and act on a detached fragment.
+    private boolean applyingMonetPattern;
 
     private String loadingFile = null;
     private File loadingFileObject = null;
@@ -2485,19 +2487,41 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
 
         if (isMonetPatternPreview()) {
-            // NagramX: persist the shared pattern record over the theme's live colour — no colour-baked wallpaper, no override.
+            // NagramX: persist the shared pattern over the theme's live colour off the UI thread (themeQueue).
             // Runs before any wallpaper file is written (mirrors the EmojiWallpaper early-return) so a blurred/baked file is never left behind.
-            // Only commit (clear override, reload, notify, close) when the mask was written; on failure keep the preview open so the previous working pattern survives.
-            if (!xyz.nextalone.nagram.helper.MonetPatternHelper.apply(currentAccount, selectedPattern, currentIntensity, isMotion)) {
-                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+            // In-flight guard: a fast second tap while the write is running is ignored, so we never queue two writes or act on a fragment the first callback already closed.
+            if (applyingMonetPattern) {
                 return;
             }
-            Theme.getActiveTheme().setOverrideWallpaper(null);
-            Theme.reloadWallpaper(true);
-            if (delegate != null) {
-                delegate.didSetNewBackground(null);
-            }
-            finishFragment();
+            applyingMonetPattern = true;
+            // Capture the theme the user is acting on now, on the UI thread. The async write can outlast a
+            // day/night flip or a theme switch, so clearing Theme.getActiveTheme() in the callback could wipe the
+            // override of an unrelated (possibly standard) theme. We only ever clear this captured Monet theme.
+            final Theme.ThemeInfo initiatingTheme = Theme.getActiveTheme();
+            xyz.nextalone.nagram.helper.MonetPatternHelper.applyAsync(currentAccount, selectedPattern, currentIntensity, isMotion, success -> {
+                applyingMonetPattern = false;
+                if (!success) {
+                    if (getParentActivity() != null) {
+                        BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+                    }
+                    return;
+                }
+                // The user explicitly pressed Apply, so the global effects run regardless of attachment;
+                // only the fragment-local navigation (delegate + close) is skipped once detached.
+                // Clear the override only on the captured theme, and only if it is still Monet, so a mid-write
+                // theme change can't strip a standard theme's wallpaper.
+                if (initiatingTheme != null && initiatingTheme.isMonet()) {
+                    initiatingTheme.setOverrideWallpaper(null);
+                }
+                Theme.reloadWallpaper(true);
+                if (getParentActivity() == null) {
+                    return;
+                }
+                if (delegate != null) {
+                    delegate.didSetNewBackground(null);
+                }
+                finishFragment();
+            });
             return;
         }
 

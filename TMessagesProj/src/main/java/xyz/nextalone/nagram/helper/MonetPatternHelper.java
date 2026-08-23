@@ -1,7 +1,5 @@
 package xyz.nextalone.nagram.helper;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -11,45 +9,62 @@ import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.util.AtomicFile;
 
-import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.SvgHelper;
+import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
-// NagramX: shared pattern for the live Monet-colour wallpaper tile (tile 0). One
-// immutable global record + one mask file; the live colour is re-read on every
-// wallpaper reload so the pattern rides on top of whatever Monet/Extera/Solid
-// variant and day/night mode is active.
+// NagramX: shared pattern for the live Monet-colour wallpaper tile (tile 0). Pattern
+// id, magnitude, motion and the mask all live in ONE android.util.AtomicFile
+// ("monet_pattern.bin": header + PNG payload). AtomicFile gives the crash-safe swap,
+// so there's no sidecar pointer to keep in step, no temp/rename of our own, nothing
+// to roll back. The live Monet colour is re-read on every wallpaper reload, so the
+// pattern rides on whatever Monet/Extera/Solid variant and day/night mode is active.
+// Global, not per-account.
 public final class MonetPatternHelper {
 
-    // Immutable value object. Published wholesale into a volatile field, never
-    // mutated field-by-field, so a single read on any thread is coherent.
+    // Immutable header tuple published wholesale into a volatile field — cheap UI
+    // state only (id, magnitude, motion); the mask is never carried here.
     public static final class Record {
         public final long patternId;
         public final float intensity; // magnitude only, always >= 0
         public final boolean motion;
-        public final String maskFileName;
 
-        Record(long patternId, float intensity, boolean motion, String maskFileName) {
+        Record(long patternId, float intensity, boolean motion) {
             this.patternId = patternId;
             // clamp to [0,1]: intensity is a flat-wallpaper fraction, and a bad
             // persisted value must not overflow the composite's 0..255 alpha
             this.intensity = Math.min(1f, Math.abs(intensity));
             this.motion = motion;
-            this.maskFileName = maskFileName;
         }
     }
 
-    private static final String PREFS_NAME = "monet_pattern";
-    private static final String KEY_RECORD = "record";
+    public interface ResultCallback {
+        void run(boolean success);
+    }
+
+    private static final String FILE_NAME = "monet_pattern.bin";
+    private static final int MAGIC = 0x4D4E5054; // 'MNPT'
+    private static final int VERSION = 1;
+    // Reserved patternId that marks a cleared record. Server pattern ids used here are
+    // always positive, so 0 can never collide with a real pattern. A tombstone is a
+    // valid, fully-written artifact (header, no PNG) that means "no pattern" — so Clear
+    // never has to delete backing files and can't half-remove AtomicFile's own .new/.bak.
+    private static final long TOMBSTONE_ID = 0;
 
     private static volatile Record record;
     private static volatile boolean loaded;
@@ -57,10 +72,46 @@ public final class MonetPatternHelper {
     private MonetPatternHelper() {
     }
 
-    private static SharedPreferences prefs() {
-        return ApplicationLoader.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    private static AtomicFile atomicFile() {
+        return new AtomicFile(new File(ApplicationLoader.getFilesDirFixed(), FILE_NAME));
     }
 
+    // Read+validate the header off a stream, leaving it at the PNG payload.
+    // DataInputStream passes these reads straight through (no readahead), so the
+    // caller keeps decoding the mask from the same stream. Null on bad magic/version.
+    private static Record parseHeader(InputStream is) throws IOException {
+        DataInputStream in = new DataInputStream(is);
+        if (in.readInt() != MAGIC) {
+            return null;
+        }
+        if (in.readInt() != VERSION) {
+            return null;
+        }
+        long patternId = in.readLong();
+        float intensity = in.readFloat();
+        boolean motion = in.readBoolean();
+        return new Record(patternId, intensity, motion);
+    }
+
+    // Header-only read that always closes the stream; for cheap UI state and verify.
+    private static Record readHeader(InputStream is) {
+        try {
+            return parseHeader(is);
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        } finally {
+            try {
+                is.close();
+            } catch (Exception ignore) {
+            }
+        }
+    }
+
+    // First-use load of the volatile header cache. openRead() rolls back any
+    // half-written artifact from a crash, so we see a complete tuple, a tombstone, or
+    // nothing. A tombstone (id == 0) means an explicit clear, so the cache stays null.
+    // Under the class monitor so apply/clear can't interleave with the open.
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -69,14 +120,14 @@ public final class MonetPatternHelper {
             if (loaded) {
                 return;
             }
-            try {
-                String json = prefs().getString(KEY_RECORD, null);
-                if (json != null) {
-                    JSONObject o = new JSONObject(json);
-                    record = new Record(o.getLong("patternId"), (float) o.getDouble("intensity"), o.getBoolean("motion"), o.getString("mask"));
+            AtomicFile af = atomicFile();
+            if (af.getBaseFile().exists()) {
+                try {
+                    Record r = readHeader(af.openRead());
+                    record = r != null && r.patternId != TOMBSTONE_ID ? r : null;
+                } catch (Throwable e) {
+                    FileLog.e(e);
                 }
-            } catch (Exception e) {
-                FileLog.e(e);
             }
             loaded = true;
         }
@@ -92,210 +143,236 @@ public final class MonetPatternHelper {
         return r != null && r.motion;
     }
 
-    // Persist a freshly chosen pattern. Returns true only when a complete mask is
-    // on disk and the new record is published + persisted; returns false on any
-    // failure, leaving the previously published record and its file untouched so a
-    // failed apply never destroys a working pattern. Order per successful apply:
-    // build the mask, write a temp file, atomically rename it to a UNIQUE final
-    // name (never overwriting the file the current record points at), publish the
-    // immutable record, write metadata, and only then retire the old file.
-    public static boolean apply(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion) {
-        if (pattern == null || pattern.document == null) {
-            return clear();
-        }
-        // Force the first-use prefs load to finish before we publish, so a
-        // concurrent ensureLoaded() can never overwrite this record afterwards.
-        ensureLoaded();
-        File tmp = null;
+    // Persist a chosen pattern (or clear when pattern is null) off the UI thread on
+    // themeQueue — the serial queue the wallpaper loader uses, so apply/clear stay
+    // ordered — then report success/failure back on the UI thread.
+    public static void applyAsync(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion, ResultCallback callback) {
+        Utilities.themeQueue.postRunnable(() -> {
+            boolean ok = pattern == null || pattern.document == null
+                    ? doClear()
+                    : doApply(account, pattern, intensity, motion);
+            AndroidUtilities.runOnUIThread(() -> callback.run(ok));
+        });
+    }
+
+    // Write header + optional PNG mask as one AtomicFile and confirm it landed. Apply
+    // passes the mask; tombstone Clear passes null (header only). startWrite() stages a
+    // new file and keeps the current one until finishWrite() atomically swaps it, so any
+    // failure leaves the previous artifact untouched. We fsync the payload ourselves via
+    // getFD().sync() before finishWrite (AtomicFile's own sync only logs), so a durability
+    // failure throws and fails the write instead of masquerading as success. finishWrite()
+    // is void and swallows a failed rename, so we verify by re-reading the base header and
+    // comparing the FULL tuple — accepting on patternId alone would treat a silently-failed
+    // reapply of the same pattern with new intensity/motion as success. Caller holds the
+    // class monitor.
+    private static boolean writeVerified(AtomicFile af, Record rec, Bitmap mask) {
+        FileOutputStream fos = null;
         try {
-            int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
-            int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
-            File doc = FileLoader.getInstance(account).getPathToAttach(pattern.document, true);
-            Bitmap mask = SvgHelper.getBitmap(doc, w, h, false, SvgHelper.ScaleMode.ByWidth);
-            if (mask == null) {
-                return false;
-            }
-            File dir = ApplicationLoader.getFilesDirFixed();
-            String finalName = "monet_pattern_mask_" + System.currentTimeMillis() + ".png";
-            tmp = new File(dir, finalName + ".tmp");
-            File finalMask = new File(dir, finalName);
-            boolean compressed;
-            try (FileOutputStream stream = new FileOutputStream(tmp)) {
+            fos = af.startWrite();
+            DataOutputStream out = new DataOutputStream(fos);
+            out.writeInt(MAGIC);
+            out.writeInt(VERSION);
+            out.writeLong(rec.patternId);
+            out.writeFloat(rec.intensity);
+            out.writeBoolean(rec.motion);
+            out.flush();
+            if (mask != null) {
                 Bitmap argb = mask.copy(Bitmap.Config.ARGB_8888, false);
-                if (argb == null) {
-                    // copy can fail under memory pressure; treat as a recoverable
-                    // apply failure rather than NPE-ing on compress()
-                    compressed = false;
-                } else {
-                    compressed = argb.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                // copy can fail under memory pressure and compress can return false;
+                // either way fail the staged write so the old artifact survives
+                boolean ok = argb != null && argb.compress(Bitmap.CompressFormat.PNG, 100, fos);
+                if (argb != null) {
                     argb.recycle();
                 }
-            } finally {
-                mask.recycle();
-            }
-            if (!compressed || !tmp.renameTo(finalMask)) {
-                tmp.delete();
-                return false;
-            }
-            Record previous;
-            boolean persisted;
-            Record r = new Record(pattern.id, intensity, motion, finalName);
-            // publish under the same lock ensureLoaded() uses, so the record/loaded
-            // writes are ordered against a first-use load happening on another thread
-            synchronized (MonetPatternHelper.class) {
-                previous = record;
-                record = r;
-                loaded = true;
-                persisted = persist(r);
-                if (!persisted) {
-                    // metadata didn't reach disk: roll back the in-memory publish so
-                    // memory and prefs stay in agreement on the previous record
-                    record = previous;
+                if (!ok) {
+                    af.failWrite(fos);
+                    return false;
                 }
             }
-            if (!persisted) {
-                // discard the orphan file and leave the previous record + mask intact
-                finalMask.delete();
+            fos.flush();
+            fos.getFD().sync(); // observable fsync: throws if the payload isn't durable
+            af.finishWrite(fos); // close + atomic swap
+        } catch (Throwable e) {
+            FileLog.e(e);
+            if (fos != null) {
+                try {
+                    af.failWrite(fos);
+                } catch (Throwable ignore) {
+                }
+            }
+            return false;
+        }
+        return headerMatches(af, rec);
+    }
+
+    // Read the base header straight off the file (bypassing openRead()'s rollback, which
+    // on older devices could restore a leftover backup over our fresh write) and confirm
+    // it equals the tuple we just wrote — id, exact magnitude bits, motion.
+    private static boolean headerMatches(AtomicFile af, Record rec) {
+        Record actual = readBaseHeader(af);
+        return actual != null
+                && actual.patternId == rec.patternId
+                && Float.floatToIntBits(actual.intensity) == Float.floatToIntBits(rec.intensity)
+                && actual.motion == rec.motion;
+    }
+
+    // Persist a freshly chosen pattern. Publishes only after the artifact is durably
+    // written and verified, so a failed write leaves the previous working pattern intact.
+    // Runs on themeQueue.
+    private static boolean doApply(int account, TLRPC.TL_wallPaper pattern, float intensity, boolean motion) {
+        ensureLoaded();
+        int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        File doc = FileLoader.getInstance(account).getPathToAttach(pattern.document, true);
+        Bitmap mask = SvgHelper.getBitmap(doc, w, h, false, SvgHelper.ScaleMode.ByWidth);
+        if (mask == null) {
+            return false;
+        }
+        Record rec = new Record(pattern.id, intensity, motion);
+        AtomicFile af = atomicFile();
+        try {
+            synchronized (MonetPatternHelper.class) {
+                if (!writeVerified(af, rec, mask)) {
+                    return false;
+                }
+                record = rec;
+                loaded = true;
+                return true;
+            }
+        } finally {
+            mask.recycle();
+        }
+    }
+
+    // Clear the pattern by writing a TOMBSTONE (id 0, header only) through the same
+    // AtomicFile transaction — never a delete. Process death then leaves either the old
+    // pattern or a valid tombstone, never a half-removed set of AtomicFile backing files.
+    // Publishes the empty record only after the tombstone is durably written and verified.
+    // Runs on themeQueue.
+    private static boolean doClear() {
+        ensureLoaded();
+        AtomicFile af = atomicFile();
+        Record tombstone = new Record(TOMBSTONE_ID, 0f, false);
+        synchronized (MonetPatternHelper.class) {
+            if (!writeVerified(af, tombstone, null)) {
                 return false;
             }
-            retire(previous, r);
-            return true;
-        } catch (Exception e) {
-            FileLog.e(e);
-            if (tmp != null) {
-                tmp.delete();
-            }
-            return false;
-        }
-    }
-
-    // Drop the pattern: publish the empty record, persist it, then retire the
-    // owned mask file. Returns false if the durable clear didn't reach disk, in
-    // which case the previous record and its mask are left intact (same guarantee
-    // as a failed apply). The composite null-checks the record, so a reload that
-    // was already in flight simply falls back to the flat colour.
-    public static boolean clear() {
-        // Same ordering guarantee as apply(): finish any first-use load first, then
-        // publish the empty state under the lock so it can't be undone by ensureLoaded().
-        ensureLoaded();
-        Record previous;
-        boolean committed;
-        synchronized (MonetPatternHelper.class) {
-            previous = record;
             record = null;
             loaded = true;
-            // commit(), not apply(): the metadata write must be durable before
-            // retire() deletes the old mask, or a process death here could leave
-            // prefs pointing at a file that's already gone. It's the explicit
-            // Clear tap, already doing file IO, so the synchronous write is fine.
-            committed = commitClear();
-            if (!committed) {
-                // clear didn't reach disk: roll the in-memory record back so memory
-                // and prefs agree, and keep the previous mask (don't retire below)
-                record = previous;
-            }
+            return true;
         }
-        if (!committed) {
-            return false;
-        }
-        retire(previous, null);
-        return true;
     }
 
-    private static boolean commitClear() {
+    // Header read straight off the base file, bypassing openRead()'s rollback. Only
+    // safe right after finishWrite() has put the complete content in the base file.
+    private static Record readBaseHeader(AtomicFile af) {
         try {
-            return prefs().edit().remove(KEY_RECORD).commit();
-        } catch (Exception e) {
+            return readHeader(new FileInputStream(af.getBaseFile()));
+        } catch (Throwable e) {
             FileLog.e(e);
-            return false;
+            return null;
         }
     }
 
-    // Delete a mask file that the freshly published record no longer references.
-    // Called only after the new record is published + persisted, so at no point is
-    // the file the current record points at removed.
-    private static void retire(Record previous, Record current) {
-        if (previous == null || previous.maskFileName == null) {
-            return;
-        }
-        if (current != null && previous.maskFileName.equals(current.maskFileName)) {
-            return;
-        }
-        try {
-            File old = new File(ApplicationLoader.getFilesDirFixed(), previous.maskFileName);
-            if (old.exists()) {
-                old.delete();
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
-
-    private static boolean persist(Record r) {
-        try {
-            JSONObject o = new JSONObject();
-            o.put("patternId", r.patternId);
-            o.put("intensity", r.intensity);
-            o.put("motion", r.motion);
-            o.put("mask", r.maskFileName);
-            // commit(), not apply(): the caller retires the previous mask right after
-            // this returns, so the new record must be durably on disk first — an async
-            // write that hadn't flushed on process death would strand prefs on the old
-            // (now deleted) file. Only fires on the explicit Apply tap.
-            return prefs().edit().putString(KEY_RECORD, o.toString()).commit();
-        } catch (Exception e) {
-            FileLog.e(e);
-            return false;
-        }
-    }
-
-    // Composite the shared pattern mask over the live flat Monet colour at the
-    // requested size. Returns null (fall back to the plain colour) whenever the
-    // theme isn't Monet, no pattern is set, or the mask can't be read. The record
-    // is read once into a local so a concurrent republish can't tear the snapshot.
-    // No bitmap is cached: the live-chat caller builds one per wallpaper reload
-    // (infrequent) and the tile-0 thumbnail caller asks for a small size, so there
-    // is no shared cross-thread state and no stale-dimension risk.
+    // Composite the shared pattern mask over the live flat Monet colour at the given
+    // size. Null (fall back to plain colour) when the theme isn't Monet, no pattern
+    // is set, or the mask can't be read. The intensity used for alpha and the mask
+    // bytes come from the SAME open descriptor, so an apply that swaps the file
+    // mid-render never pairs one tuple's metadata with another's mask. The monitor is
+    // held only around open + header read; the PNG is decoded lock-free from that
+    // descriptor (an open FD keeps reading the old inode even if the path is swapped).
     public static Drawable buildComposite(Theme.ThemeInfo theme, int backgroundColor, int width, int height) {
         if (theme == null || !theme.isMonet() || width <= 0 || height <= 0) {
             return null;
         }
-        Record r = getRecord();
-        if (r == null) {
+        if (getRecord() == null) {
             return null;
         }
+        int sampleSize = computeSampleSize(width);
+        FileInputStream fis = null;
+        Bitmap mask = null;
+        Bitmap result = null;
         try {
-            File maskFile = new File(ApplicationLoader.getFilesDirFixed(), r.maskFileName);
-            if (!maskFile.exists()) {
+            Record tuple;
+            AtomicFile af = atomicFile();
+            synchronized (MonetPatternHelper.class) {
+                if (!af.getBaseFile().exists()) {
+                    return null;
+                }
+                fis = af.openRead();
+                tuple = parseHeader(fis);
+            }
+            if (tuple == null || tuple.patternId == TOMBSTONE_ID) {
                 return null;
             }
-            Bitmap mask = BitmapFactory.decodeFile(maskFile.getAbsolutePath());
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inSampleSize = sampleSize;
+            mask = BitmapFactory.decodeStream(fis, null, opts);
             if (mask == null) {
                 return null;
             }
-            Bitmap result = null;
-            try {
-                result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(result);
-                canvas.drawColor(backgroundColor);
-                Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
-                paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
-                paint.setAlpha((int) (255 * r.intensity));
-                canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
-                BitmapDrawable drawable = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
-                drawable.setFilterBitmap(true);
-                result = null; // ownership handed to the drawable; don't recycle below
-                return drawable;
-            } finally {
-                mask.recycle();
-                if (result != null) {
-                    // allocation or draw threw before the drawable took ownership
-                    result.recycle();
-                }
-            }
+            result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(result);
+            canvas.drawColor(backgroundColor);
+            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+            paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
+            paint.setAlpha((int) (255 * tuple.intensity));
+            canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
+            BitmapDrawable drawable = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
+            drawable.setFilterBitmap(true);
+            result = null; // ownership handed to the drawable; don't recycle below
+            return drawable;
         } catch (Throwable e) {
             FileLog.e(e);
             return null;
+        } finally {
+            if (mask != null) {
+                mask.recycle();
+            }
+            if (result != null) {
+                result.recycle();
+            }
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (Exception ignore) {
+                }
+            }
+        }
+    }
+
+    // Largest power-of-two subsample that still leaves the decoded mask at least as
+    // wide as the target, so the tile-0 thumbnail never decodes the full-screen mask.
+    // The bounds-only pass reads no pixels.
+    private static int computeSampleSize(int targetWidth) {
+        FileInputStream fis = null;
+        try {
+            AtomicFile af = atomicFile();
+            synchronized (MonetPatternHelper.class) {
+                if (!af.getBaseFile().exists()) {
+                    return 1;
+                }
+                fis = af.openRead();
+                parseHeader(fis); // advance past the header to the PNG bounds
+            }
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            BitmapFactory.decodeStream(fis, null, opts);
+            int maskWidth = opts.outWidth;
+            int sample = 1;
+            while (maskWidth / (sample * 2) >= targetWidth) {
+                sample *= 2;
+            }
+            return sample;
+        } catch (Throwable e) {
+            return 1;
+        } finally {
+            if (fis != null) {
+                try {
+                    fis.close();
+                } catch (Exception ignore) {
+                }
+            }
         }
     }
 
