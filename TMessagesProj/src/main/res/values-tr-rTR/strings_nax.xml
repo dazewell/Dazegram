@@ -331,4 +331,7 @@
     <string name="TabletModeOn">Açık</string>
     <string name="TabletModeOff">Kapalı</string>
     <string name="HideDialogsSearchField">Arama Kutusunu Gizle</string>
+    <!-- Repost reply preservation #repost-reply -->
+    <string name="RepeatAsCopyUnsupported">Bu, kopya olarak yeniden gönderilemez</string>
+    <string name="RepeatAsCopyConfirmText">Bunu kopya olarak yeniden göndermek istediğinizden emin misiniz?</string>
 </resources>
