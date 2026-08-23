@@ -1375,7 +1375,7 @@ public class MessageHelper extends BaseController {
                     currentGroupId = groupId;
                     currentInvertMedia = invertMedia;
                     if (preserveOwnReply) {
-                        MessageObject ownReply = getOwnReply(messageObject);
+                        MessageObject ownReply = getPreservableOwnReply(messageObject, targetDialogId, replyToTopMsg);
                         currentReply = ownReply != null ? ownReply : replyToTopMsg;
                         currentQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
                     }
@@ -1393,7 +1393,7 @@ public class MessageHelper extends BaseController {
                 MessageObject messageReply = replyTo;
                 ChatActivity.ReplyQuote messageQuote = quote;
                 if (preserveOwnReply) {
-                    MessageObject ownReply = getOwnReply(messageObject);
+                    MessageObject ownReply = getPreservableOwnReply(messageObject, targetDialogId, replyToTopMsg);
                     messageReply = ownReply != null ? ownReply : replyToTopMsg;
                     messageQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
                 }
@@ -1417,6 +1417,29 @@ public class MessageHelper extends BaseController {
         return messageObject != null && messageObject.hasValidReplyMessageObject() ? messageObject.replyMessageObject : null;
     }
 
+    // The reply may only be carried into the copy when it can't produce a wrong or crashing send. The
+    // source has to be the destination dialog: a chat-scoped reply_to_msg_id resolved against another
+    // peer points at the wrong message (a mixed selection can hold migrated mergeDialogId messages).
+    // And a forum destination has to have a topic root to anchor to, because SendMessagesHelper
+    // dereferences the top message unconditionally for a forum, so a null anchor there crashes the
+    // send. When either fails, the copy is re-sent with no reply instead.
+    public MessageObject getPreservableOwnReply(MessageObject messageObject, long targetDialogId, MessageObject replyToTopMsg) {
+        if (messageObject == null || messageObject.getDialogId() != targetDialogId) {
+            return null;
+        }
+        if (replyToTopMsg == null && isForumDialog(targetDialogId)) {
+            return null;
+        }
+        return getOwnReply(messageObject);
+    }
+
+    private boolean isForumDialog(long targetDialogId) {
+        if (!DialogObject.isChatDialog(targetDialogId)) {
+            return false;
+        }
+        return ChatObject.isForum(getMessagesController().getChat(-targetDialogId));
+    }
+
     public ChatActivity.ReplyQuote getOwnReplyQuote(MessageObject messageObject) {
         MessageObject target = getOwnReply(messageObject);
         if (target == null || messageObject.messageOwner == null || messageObject.messageOwner.reply_to == null) {
@@ -1431,10 +1454,11 @@ public class MessageHelper extends BaseController {
         return ChatActivity.ReplyQuote.from(target, header.quote_text, header.quote_offset);
     }
 
-    // Decide once for the whole selection: reconstruct only when every message can be re-sent as a
-    // copy (cached media, a supported type) and at least one actually replies to something. Otherwise
-    // the caller forwards with drop_author exactly as before, so nothing that works today regresses.
-    public boolean shouldRepostAsCopyPreservingReply(ArrayList<MessageObject> messages) {
+    // Decide once for the whole selection: reconstruct only when every message shares the destination
+    // dialog (so no chat-scoped id resolves against the wrong peer), can be re-sent as a copy (cached
+    // media, a supported type), and at least one carries a preservable reply. Otherwise the caller
+    // forwards with drop_author exactly as before, so nothing that works today regresses.
+    public boolean shouldRepostAsCopyPreservingReply(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyToTopMsg) {
         if (messages == null || messages.isEmpty()) {
             return false;
         }
@@ -1447,12 +1471,15 @@ public class MessageHelper extends BaseController {
             if (messageObject == null || messageObject.messageOwner == null) {
                 return false;
             }
+            if (messageObject.getDialogId() != targetDialogId) {
+                return false;
+            }
             boolean needsFile = !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
                     (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
             if (needsFile && TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount))) {
                 return false;
             }
-            if (getOwnReply(messageObject) != null) {
+            if (getPreservableOwnReply(messageObject, targetDialogId, replyToTopMsg) != null) {
                 anyReply = true;
             }
         }

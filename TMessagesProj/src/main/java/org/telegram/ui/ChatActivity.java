@@ -48089,10 +48089,11 @@ public class ChatActivity extends BaseFragment implements
         }
         if (selectedObject != null && selectedObject.messageOwner != null && (isLongClick || (isThreadChat() && !isTopic) || noforwards)) {
             // NagramX: carry the source message's own reply (and its own quote, never the composer's
-            // staged one) into the copy, gated on hasValidReplyMessageObject() so a forum-topic anchor
-            // isn't turned into a reply to the "topic created" message. Fall back to the thread anchor
-            // when there is no real reply, so thread/topic posting still works.
-            MessageObject ownReply = getMessageHelper().getOwnReply(selectedObject);
+            // staged one) into the copy, gated so a forum-topic anchor isn't turned into a reply to
+            // the "topic created" message, so a different source dialog can't resolve an id against the
+            // wrong peer, and so a forum destination without a topic root can't crash the send. Fall
+            // back to the thread anchor when there is no preservable reply, so thread posting still works.
+            MessageObject ownReply = getMessageHelper().getPreservableOwnReply(selectedObject, dialog_id, getThreadMessage());
             MessageObject replyTo = ownReply != null ? ownReply : getThreadMessage();
             ReplyQuote sourceQuote = ownReply != null ? getMessageHelper().getOwnReplyQuote(selectedObject) : null;
             if (replyTo != null || noforwards) {
@@ -48115,7 +48116,7 @@ public class ChatActivity extends BaseFragment implements
         // selection can be re-sent as a copy and something in it really replies to a message, re-send it
         // to keep the reply; otherwise fall through to the same forward as before, so polls, locations
         // and un-cached media keep working untouched.
-        if (isRepeatAsCopy && getMessageHelper().shouldRepostAsCopyPreservingReply(messages)) {
+        if (isRepeatAsCopy && getMessageHelper().shouldRepostAsCopyPreservingReply(messages, dialog_id, getThreadMessage())) {
             if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
                 forwardMessages(messages, isRepeatAsCopy, false, true, 0, 0);
             }
