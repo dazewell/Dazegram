@@ -24,6 +24,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,13 +39,15 @@ import java.io.InputStream;
 public final class MonetPatternHelper {
 
     // Immutable header tuple published wholesale into a volatile field — cheap UI
-    // state only (id, magnitude, motion); the mask is never carried here.
+    // state only (generation, id, magnitude, motion); the mask is never carried here.
     public static final class Record {
+        public final long generation; // per-write nonce; distinguishes otherwise-identical writes
         public final long patternId;
         public final float intensity; // magnitude only, always >= 0
         public final boolean motion;
 
-        Record(long patternId, float intensity, boolean motion) {
+        Record(long generation, long patternId, float intensity, boolean motion) {
+            this.generation = generation;
             this.patternId = patternId;
             // clamp to [0,1]: intensity is a flat-wallpaper fraction, and a bad
             // persisted value must not overflow the composite's 0..255 alpha.
@@ -61,7 +64,9 @@ public final class MonetPatternHelper {
 
     private static final String FILE_NAME = "monet_pattern.bin";
     private static final int MAGIC = 0x4D4E5054; // 'MNPT'
-    private static final int VERSION = 1;
+    // v2 adds the generation nonce to the header; a v1 artifact from the unmerged
+    // branch fails the version check and falls back to flat colour (no migration).
+    private static final int VERSION = 2;
     // Reserved patternId that marks a cleared record. Server pattern ids used here are
     // always positive, so 0 can never collide with a real pattern. A tombstone is a
     // valid, fully-written artifact (header, no PNG) that means "no pattern" — so Clear
@@ -78,6 +83,18 @@ public final class MonetPatternHelper {
         return new AtomicFile(new File(ApplicationLoader.getFilesDirFixed(), FILE_NAME));
     }
 
+    // Fresh nonzero nonce stamped into every Apply and tombstone Clear. Utilities.random
+    // is the app's process-global SecureRandom, so a repeat across writes is
+    // cryptographically negligible; forcing nonzero keeps a zeroed/corrupt header region
+    // from ever matching a value we wrote, so a restored older artifact can't validate.
+    private static long newGeneration() {
+        long g;
+        do {
+            g = Utilities.random.nextLong();
+        } while (g == 0);
+        return g;
+    }
+
     // Read+validate the header off a stream, leaving it at the PNG payload.
     // DataInputStream passes these reads straight through (no readahead), so the
     // caller keeps decoding the mask from the same stream. Null on bad magic/version.
@@ -89,10 +106,11 @@ public final class MonetPatternHelper {
         if (in.readInt() != VERSION) {
             return null;
         }
+        long generation = in.readLong();
         long patternId = in.readLong();
         float intensity = in.readFloat();
         boolean motion = in.readBoolean();
-        return new Record(patternId, intensity, motion);
+        return new Record(generation, patternId, intensity, motion);
     }
 
     // Header-only read that always closes the stream; for cheap UI state and verify.
@@ -110,10 +128,30 @@ public final class MonetPatternHelper {
         }
     }
 
-    // First-use load of the volatile header cache. openRead() rolls back any
-    // half-written artifact from a crash, so we see a complete tuple, a tombstone, or
-    // nothing. A tombstone (id == 0) means an explicit clear, so the cache stays null.
-    // Under the class monitor so apply/clear can't interleave with the open.
+    // The one artifact-read path: always go through AtomicFile.openRead() so legacy
+    // (API 27-29) backup recovery runs — openRead restores a leftover <base>.bak over
+    // base before reading, which a direct FileInputStream(getBaseFile()) would skip. A
+    // genuinely absent artifact (no base, no backup) is the normal empty state, not an
+    // error, so FileNotFoundException maps to null without logging. Caller holds the monitor.
+    private static Record openReadHeader(AtomicFile af) {
+        InputStream is;
+        try {
+            is = af.openRead();
+        } catch (FileNotFoundException absent) {
+            return null;
+        } catch (Throwable e) {
+            FileLog.e(e);
+            return null;
+        }
+        return readHeader(is);
+    }
+
+    // First-use load of the volatile header cache via openRead(), so a crash's half-written
+    // artifact is rolled back and a legacy leftover backup is recovered — we see a complete
+    // tuple, a tombstone, or nothing. No getBaseFile().exists() pre-check: that would skip
+    // the backup recovery when a crash left only <base>.bak. A tombstone (id == 0) means an
+    // explicit clear, so the cache stays null. Under the class monitor so apply/clear can't
+    // interleave with the open.
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -122,15 +160,8 @@ public final class MonetPatternHelper {
             if (loaded) {
                 return;
             }
-            AtomicFile af = atomicFile();
-            if (af.getBaseFile().exists()) {
-                try {
-                    Record r = readHeader(af.openRead());
-                    record = r != null && r.patternId != TOMBSTONE_ID ? r : null;
-                } catch (Throwable e) {
-                    FileLog.e(e);
-                }
-            }
+            Record r = openReadHeader(atomicFile());
+            record = r != null && r.patternId != TOMBSTONE_ID ? r : null;
             loaded = true;
         }
     }
@@ -163,10 +194,11 @@ public final class MonetPatternHelper {
     // failure leaves the previous artifact untouched. We fsync the payload ourselves via
     // getFD().sync() before finishWrite (AtomicFile's own sync only logs), so a durability
     // failure throws and fails the write instead of masquerading as success. finishWrite()
-    // is void and swallows a failed rename, so we verify by re-reading the base header and
-    // comparing the FULL tuple — accepting on patternId alone would treat a silently-failed
-    // reapply of the same pattern with new intensity/motion as success. Caller holds the
-    // class monitor.
+    // is void and swallows a failed rename, so we verify by re-reading through openRead()
+    // (which also runs legacy backup recovery) and comparing the FULL tuple including the
+    // generation nonce — so a silently-failed rename that leaves an older artifact, even one
+    // with the same pattern/intensity/motion, is caught by its stale generation. Caller
+    // holds the class monitor, so this openRead can't race our own in-flight write.
     private static boolean writeVerified(AtomicFile af, Record rec, Bitmap mask) {
         FileOutputStream fos = null;
         try {
@@ -174,6 +206,7 @@ public final class MonetPatternHelper {
             DataOutputStream out = new DataOutputStream(fos);
             out.writeInt(MAGIC);
             out.writeInt(VERSION);
+            out.writeLong(rec.generation);
             out.writeLong(rec.patternId);
             out.writeFloat(rec.intensity);
             out.writeBoolean(rec.motion);
@@ -207,12 +240,14 @@ public final class MonetPatternHelper {
         return headerMatches(af, rec);
     }
 
-    // Read the base header straight off the file (bypassing openRead()'s rollback, which
-    // on older devices could restore a leftover backup over our fresh write) and confirm
-    // it equals the tuple we just wrote — id, exact magnitude bits, motion.
+    // Confirm the artifact readable through openRead() equals the tuple we just wrote —
+    // generation, id, exact magnitude bits, motion. Reading through openRead (not the raw
+    // base file) means any leftover legacy backup is recovered first, so if finishWrite
+    // silently failed to drop it, we validate against the artifact a real read would see.
     private static boolean headerMatches(AtomicFile af, Record rec) {
-        Record actual = readBaseHeader(af);
+        Record actual = openReadHeader(af);
         return actual != null
+                && actual.generation == rec.generation
                 && actual.patternId == rec.patternId
                 && Float.floatToIntBits(actual.intensity) == Float.floatToIntBits(rec.intensity)
                 && actual.motion == rec.motion;
@@ -230,7 +265,7 @@ public final class MonetPatternHelper {
         if (mask == null) {
             return false;
         }
-        Record rec = new Record(pattern.id, intensity, motion);
+        Record rec = new Record(newGeneration(), pattern.id, intensity, motion);
         AtomicFile af = atomicFile();
         try {
             synchronized (MonetPatternHelper.class) {
@@ -249,12 +284,13 @@ public final class MonetPatternHelper {
     // Clear the pattern by writing a TOMBSTONE (id 0, header only) through the same
     // AtomicFile transaction — never a delete. Process death then leaves either the old
     // pattern or a valid tombstone, never a half-removed set of AtomicFile backing files.
-    // Publishes the empty record only after the tombstone is durably written and verified.
-    // Runs on themeQueue.
+    // The tombstone carries its own fresh generation, so verification proves this exact
+    // clear survived any legacy backup recovery. Publishes the empty record only after the
+    // tombstone is durably written and verified. Runs on themeQueue.
     private static boolean doClear() {
         ensureLoaded();
         AtomicFile af = atomicFile();
-        Record tombstone = new Record(TOMBSTONE_ID, 0f, false);
+        Record tombstone = new Record(newGeneration(), TOMBSTONE_ID, 0f, false);
         synchronized (MonetPatternHelper.class) {
             if (!writeVerified(af, tombstone, null)) {
                 return false;
@@ -262,17 +298,6 @@ public final class MonetPatternHelper {
             record = null;
             loaded = true;
             return true;
-        }
-    }
-
-    // Header read straight off the base file, bypassing openRead()'s rollback. Only
-    // safe right after finishWrite() has put the complete content in the base file.
-    private static Record readBaseHeader(AtomicFile af) {
-        try {
-            return readHeader(new FileInputStream(af.getBaseFile()));
-        } catch (Throwable e) {
-            FileLog.e(e);
-            return null;
         }
     }
 
@@ -298,9 +323,8 @@ public final class MonetPatternHelper {
             Record tuple;
             AtomicFile af = atomicFile();
             synchronized (MonetPatternHelper.class) {
-                if (!af.getBaseFile().exists()) {
-                    return null;
-                }
+                // No exists() pre-check: openRead() runs legacy backup recovery, and any
+                // absent/corrupt artifact surfaces as an exception handled below.
                 fis = af.openRead();
                 tuple = parseHeader(fis);
             }
@@ -351,9 +375,8 @@ public final class MonetPatternHelper {
         try {
             AtomicFile af = atomicFile();
             synchronized (MonetPatternHelper.class) {
-                if (!af.getBaseFile().exists()) {
-                    return 1;
-                }
+                // openRead() so legacy backup recovery runs; a missing artifact throws and
+                // falls back to sample 1 below.
                 fis = af.openRead();
                 parseHeader(fis); // advance past the header to the PNG bounds
             }
