@@ -1674,19 +1674,9 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         }
                     }
                     backgroundButtonsContainer.addView(backgroundCheckBoxView[a], layoutParams);
-                    if (a == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)) {
-                        // NagramX: the colour under a Monet pattern is the live palette, so editing it
-                        // here would let the user pick a colour that render discards. Keep the tab in
-                        // place to preserve the 3-tab index layout, but dim it and swallow its taps.
-                        // Reset to full alpha otherwise so a reused view is never left dimmed.
-                        backgroundCheckBoxView[a].setAlpha(Theme.getActiveTheme().isMonet() ? 0.5f : 1.0f);
-                    }
                     WallpaperCheckBoxView view = backgroundCheckBoxView[a];
                     backgroundCheckBoxView[a].setOnClickListener(v -> {
                         if (backgroundButtonsContainer.getAlpha() != 1.0f || patternViewAnimation != null) {
-                            return;
-                        }
-                        if (num == 0 && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && Theme.getActiveTheme().isMonet()) {
                             return;
                         }
                         if ((screenType == SCREEN_TYPE_ACCENT_COLOR || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && num == 2) {
@@ -2535,7 +2525,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     // palette at render time, so save only the pattern's alpha mask (transparent
                     // backdrop, PNG) instead of a colour+pattern JPEG composite that would freeze the
                     // wrong colour and lose the alpha the live compositor needs.
-                    boolean monetMask = Theme.getActiveTheme().isMonet();
+                    boolean monetMask = isMonetPatternPreview();
                     if (monetMask || backgroundGradientColor2 != 0) {
 
                     } else if (backgroundGradientColor1 != 0) {
@@ -2693,11 +2683,21 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         } else {
             wallpaperInfo.intensity = currentIntensity;
         }
-        if (Theme.getActiveTheme().isMonet()) {
+        if (isMonetPatternPreview()) {
             // NagramX: a single record is shared across the seven Monet variants, so a stored sign
             // would mean the opposite thing after a light/dark flip. Persist magnitude only; the rail
             // sign is derived live from the palette's luminance at render time.
             wallpaperInfo.intensity = Math.abs(wallpaperInfo.intensity);
+            // NagramX: the seeded stops above are the live-derived (and, on AMOLED, lifted) base the
+            // preview drew. Those are render inputs, not a user colour choice -- persisting a lifted
+            // stop here would read back later as if the user picked it. Store the raw live palette
+            // colour instead; the render path re-derives lift and sign every load, so these fields
+            // are only a harmless fallback.
+            int liveBase = Theme.getColor(Theme.key_chat_wallpaper);
+            wallpaperInfo.color = liveBase;
+            wallpaperInfo.gradientColor1 = 0;
+            wallpaperInfo.gradientColor2 = 0;
+            wallpaperInfo.gradientColor3 = 0;
         }
         if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
             WallpapersListActivity.ColorWallpaper colorWallpaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
@@ -3088,6 +3088,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         backgroundImage.getImageReceiver().setImage(ImageLocation.getForDocument(wallPaper.document), imageFilter, null, null, null, wallPaper.document.size, "jpg", wallPaper, 1);
         backgroundImage.onNewImageSet();
         selectedPattern = wallPaper;
+        if (isMonetPatternPreview()) {
+            // NagramX: the base under a Monet pattern is the live palette, so applying a pattern to a
+            // plain colour must switch the frozen base to the live-derived stops (selectPattern does
+            // not otherwise re-seed the background).
+            seedMonetPatternBackground();
+        }
         isMotion = backgroundCheckBoxView[2].isChecked();
         updateButtonState(false, true);
     }
@@ -4494,6 +4500,30 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
     }
 
+    // NagramX: true only while a Monet-derived theme has a pattern selected. The base colour under a
+    // Monet pattern follows the live palette, so this drives everything Monet-specific -- the live
+    // seed, the mask save, the abs-intensity persist -- from one place. A Monet ColorWallpaper with no
+    // pattern is a plain solid colour, which is out of scope and must keep upstream behaviour, so the
+    // predicate is false there and the Colors control stays fully editable.
+    private boolean isMonetPatternPreview() {
+        return Theme.getActiveTheme().isMonet()
+                && (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)
+                && selectedPattern != null;
+    }
+
+    // NagramX: seed the four preview stops from ONE live-palette read, lifting a near-black palette so
+    // the pattern stays visible on AMOLED. Reuses MonetPatternHelper's single luminance decision (rail
+    // sign + lifted stop) so the preview cannot diverge from what the render path composites.
+    private void seedMonetPatternBackground() {
+        int live = Theme.getColor(Theme.key_chat_wallpaper);
+        currentIntensity = xyz.nextalone.nagram.helper.MonetPatternHelper.signedIntensity(live, currentIntensity);
+        int stop = xyz.nextalone.nagram.helper.MonetPatternHelper.liftedStop(live);
+        setBackgroundColor(stop, 0, true, false);
+        setBackgroundColor(stop, 1, true, false);
+        setBackgroundColor(stop, 2, true, false);
+        setBackgroundColor(stop, 3, true, false);
+    }
+
     private void setCurrentImage(boolean setThumb) {
         if (screenType == SCREEN_TYPE_PREVIEW && accent == null) {
             backgroundImage.setBackground(Theme.getCachedWallpaper());
@@ -4509,15 +4539,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
                 WallpapersListActivity.ColorWallpaper wallPaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
                 backgroundRotation = wallPaper.gradientRotation;
-                if (Theme.getActiveTheme().isMonet()) {
+                if (isMonetPatternPreview()) {
                     // NagramX: under Monet the colour beneath the pattern is the live palette, not the
                     // swatch tapped in the list (that colour is discarded at render). Seed the preview
-                    // from the same live colour as a degenerate gradient so it matches what renders.
-                    int live = Theme.getColor(Theme.key_chat_wallpaper);
-                    setBackgroundColor(live, 0, true, false);
-                    setBackgroundColor(live, 1, true, false);
-                    setBackgroundColor(live, 2, true, false);
-                    setBackgroundColor(live, 3, true, false);
+                    // from the same live-derived stops the render path uses. A plain Monet colour (no
+                    // pattern) falls through to the upstream branch and keeps its picked colour.
+                    seedMonetPatternBackground();
                 } else {
                     setBackgroundColor(wallPaper.color, 0, true, false);
                     if (wallPaper.gradientColor1 != 0) {
