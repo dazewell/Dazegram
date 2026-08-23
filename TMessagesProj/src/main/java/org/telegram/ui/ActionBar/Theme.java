@@ -9889,7 +9889,9 @@ public class Theme {
             }
             if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
                 // NagramX: composite the shared Monet pattern over the live flat colour (same flat test as createBackgroundDrawable)
-                Drawable monetPattern = xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
+                Drawable monetPattern = thumb
+                        ? xyz.nextalone.nagram.helper.MonetPatternHelper.buildThumbComposite(currentTheme, backgroundColor)
+                        : xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
                 return monetPattern != null ? monetPattern : new ColorDrawable(backgroundColor);
             } else {
                 ThemeAccent accent = currentTheme.getAccent(false);

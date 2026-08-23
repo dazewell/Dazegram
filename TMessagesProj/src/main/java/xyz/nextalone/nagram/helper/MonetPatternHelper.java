@@ -56,16 +56,6 @@ public final class MonetPatternHelper {
     private static volatile Record record;
     private static volatile boolean loaded;
 
-    // Cache of the last composed full-screen bitmap, shared by the live chat
-    // background and the tile-0 thumbnail (both pass the same live colour + record).
-    // Keyed by colour, record identity and the composed dimensions, so a palette
-    // change, a new/cleared pattern, or a display-size change (e.g. rotation) misses
-    // and rebuilds. Only the bitmap is cached; each caller wraps its own
-    // BitmapDrawable so no single drawable is shared across views.
-    private static volatile Bitmap cacheBitmap;
-    private static volatile int cacheColor;
-    private static volatile Record cacheRecord;
-
     private MonetPatternHelper() {
     }
 
@@ -140,7 +130,6 @@ public final class MonetPatternHelper {
             Record r = new Record(pattern.id, intensity, motion, MASK_NAME);
             record = r;
             loaded = true;
-            cacheBitmap = null;
             persist(r);
         } catch (Exception e) {
             FileLog.e(e);
@@ -153,7 +142,6 @@ public final class MonetPatternHelper {
     public static void clear() {
         record = null;
         loaded = true;
-        cacheBitmap = null;
         try {
             prefs().edit().remove(KEY_RECORD).apply();
         } catch (Exception e) {
@@ -182,24 +170,20 @@ public final class MonetPatternHelper {
         }
     }
 
-    // Composite the shared pattern mask over the live flat Monet colour. Returns
-    // null (fall back to the plain colour) whenever the theme isn't Monet, no
-    // pattern is set, or the mask can't be read. The record is read once into a
-    // local so a concurrent republish can't tear the snapshot.
-    public static Drawable buildComposite(Theme.ThemeInfo theme, int backgroundColor) {
-        if (theme == null || !theme.isMonet()) {
+    // Composite the shared pattern mask over the live flat Monet colour at the
+    // requested size. Returns null (fall back to the plain colour) whenever the
+    // theme isn't Monet, no pattern is set, or the mask can't be read. The record
+    // is read once into a local so a concurrent republish can't tear the snapshot.
+    // No bitmap is cached: the live-chat caller builds one per wallpaper reload
+    // (infrequent) and the tile-0 thumbnail caller asks for a small size, so there
+    // is no shared cross-thread state and no stale-dimension risk.
+    public static Drawable buildComposite(Theme.ThemeInfo theme, int backgroundColor, int width, int height) {
+        if (theme == null || !theme.isMonet() || width <= 0 || height <= 0) {
             return null;
         }
         Record r = getRecord();
         if (r == null) {
             return null;
-        }
-        int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
-        int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
-        Bitmap cached = cacheBitmap;
-        if (cached != null && !cached.isRecycled() && cacheColor == backgroundColor && cacheRecord == r
-                && cached.getWidth() == w && cached.getHeight() == h) {
-            return new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), cached);
         }
         try {
             File maskFile = new File(ApplicationLoader.getFilesDirFixed(), r.maskFileName);
@@ -210,21 +194,41 @@ public final class MonetPatternHelper {
             if (mask == null) {
                 return null;
             }
-            Bitmap result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(result);
             canvas.drawColor(backgroundColor);
             Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
             paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
-            paint.setAlpha((int) (255 * Math.abs(r.intensity)));
-            canvas.drawBitmap(mask, null, new Rect(0, 0, w, h), paint);
+            paint.setAlpha((int) (255 * r.intensity));
+            canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
             mask.recycle();
-            cacheBitmap = result;
-            cacheColor = backgroundColor;
-            cacheRecord = r;
-            return new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
+            BitmapDrawable drawable = new BitmapDrawable(ApplicationLoader.applicationContext.getResources(), result);
+            drawable.setFilterBitmap(true);
+            return drawable;
         } catch (Throwable e) {
             FileLog.e(e);
             return null;
         }
+    }
+
+    // Full-screen live-chat composite, built on wallpaper reload.
+    public static Drawable buildComposite(Theme.ThemeInfo theme, int backgroundColor) {
+        int w = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        int h = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        return buildComposite(theme, backgroundColor, w, h);
+    }
+
+    // Small composite for the wallpaper-list tile-0 thumbnail: keeps the screen
+    // aspect ratio but caps the width so binding the cell doesn't allocate a
+    // full-screen bitmap.
+    public static Drawable buildThumbComposite(Theme.ThemeInfo theme, int backgroundColor) {
+        int dispW = Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        int dispH = Math.max(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y);
+        if (dispW <= 0 || dispH <= 0) {
+            return null;
+        }
+        int w = AndroidUtilities.dp(180);
+        int h = (int) ((long) w * dispH / dispW);
+        return buildComposite(theme, backgroundColor, w, h);
     }
 }
