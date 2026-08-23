@@ -3093,6 +3093,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
         backgroundImage = backgroundImages[0];
         backgroundImage.setBackground(backgroundImages[1].getBackground());
+        // NagramX: the pattern tint is receiver-local, so restore it on the buffer just swapped in.
+        backgroundImage.getImageReceiver().setColorFilter(new PorterDuffColorFilter(patternColor, blendMode));
         updateIntensity();
         backgroundImages[1].setVisibility(View.VISIBLE);
         backgroundImages[1].setAlpha(1f);
@@ -4487,12 +4489,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             backgroundImage.setBackgroundColor(backgroundColor);
             patternColor = checkColor = AndroidUtilities.getPatternColor(backgroundColor);
         }
-        if (!Theme.hasThemeKey(Theme.key_chat_serviceBackground) || backgroundImage.getBackground() instanceof MotionBackgroundDrawable) {
-            themeDelegate.applyChatServiceMessageColor(new int[]{checkColor, checkColor, checkColor, checkColor}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
-        } else if (Theme.getCachedWallpaperNonBlocking() instanceof MotionBackgroundDrawable) {
-            int c = getThemedColor(Theme.key_chat_serviceBackground);
-            themeDelegate.applyChatServiceMessageColor(new int[]{c, c, c, c}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
-        }
+        themeDelegate.applyChatServiceMessageColor(new int[]{checkColor, checkColor, checkColor, checkColor}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
         if (backgroundPlayAnimationImageView != null) {
             backgroundPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
         }
