@@ -1679,6 +1679,14 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         if (backgroundButtonsContainer.getAlpha() != 1.0f || patternViewAnimation != null) {
                             return;
                         }
+                        // NagramX: Colors[0] and Motion[2] overlap and updateMotionButton swaps them with
+                        // an untracked 200ms animator; an alpha-0 View still receives touches, so a fast
+                        // tap could open Colors while a Monet pattern is selected and expose a colour
+                        // control Monet discards. Scoped to isMonetPatternPreview() (pattern selected), so
+                        // plain colours (selectedPattern == null) and non-Monet themes are untouched.
+                        if (num == 0 && isMonetPatternPreview()) {
+                            return;
+                        }
                         if ((screenType == SCREEN_TYPE_ACCENT_COLOR || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) && num == 2) {
                             view.setChecked(!view.isChecked(), true);
                             isMotion = view.isChecked();
@@ -1689,6 +1697,10 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                                 lastSelectedPattern = selectedPattern;
                                 backgroundImage.setImageDrawable(null);
                                 selectedPattern = null;
+                                // NagramX: restore the plain colour the pattern was laid over, or apply
+                                // would persist the lifted live stop as the user's flat colour (the
+                                // mirror of the seed-time regression).
+                                syncMonetPatternBase(false);
                                 isMotion = false;
                                 updateButtonState(false, true);
                                 animateMotionChange();
@@ -3087,13 +3099,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         backgroundImage.getImageReceiver().setCrossfadeDuration(300);
         backgroundImage.getImageReceiver().setImage(ImageLocation.getForDocument(wallPaper.document), imageFilter, null, null, null, wallPaper.document.size, "jpg", wallPaper, 1);
         backgroundImage.onNewImageSet();
+        boolean fromNoPattern = selectedPattern == null;
         selectedPattern = wallPaper;
-        if (isMonetPatternPreview()) {
-            // NagramX: the base under a Monet pattern is the live palette, so applying a pattern to a
-            // plain colour must switch the frozen base to the live-derived stops (selectPattern does
-            // not otherwise re-seed the background).
-            seedMonetPatternBackground();
-        }
+        // NagramX: route the no-pattern->pattern transition through the shared base sync, which snapshots
+        // the plain colour before the live/lifted stops are seeded over it so a later clear can restore.
+        syncMonetPatternBase(fromNoPattern);
         isMotion = backgroundCheckBoxView[2].isChecked();
         updateButtonState(false, true);
     }
@@ -4522,6 +4532,54 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         setBackgroundColor(stop, 1, true, false);
         setBackgroundColor(stop, 2, true, false);
         setBackgroundColor(stop, 3, true, false);
+    }
+
+    // NagramX: the plain colour a Monet pattern is laid over, captured once before the first seed lifts
+    // it. null means none is held (no pattern seeded on this ColorWallpaper right now).
+    private int[] monetPlainBase;
+    private int monetPlainRotation;
+    private float monetPlainIntensity;
+
+    // NagramX: single owner of the base under a Monet pattern, called after every selectedPattern change
+    // on a Monet ColorWallpaper -- the select chokepoint (selectPattern, reached by both the tab toggle
+    // and the pattern list) and the one clear (the tab toggle). fromNoPattern marks a genuine
+    // no-pattern->pattern step, the only moment backgroundColor is guaranteed to still hold the plain
+    // (unlifted) base; it is captured there once and seeded over. Clearing puts that base back. Without
+    // the restore a removed pattern leaves the lifted stop in backgroundColor, and apply persists it as
+    // the user's flat colour -- the reverse-direction twin of the seed-time regression fixed last round.
+    // Non-Monet themes are left untouched: their base is a real user colour and upstream already keeps it
+    // across the transition, so changing that would be out of scope.
+    private void syncMonetPatternBase(boolean fromNoPattern) {
+        if (!(Theme.getActiveTheme().isMonet() && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper)) {
+            return;
+        }
+        if (selectedPattern != null) {
+            if (fromNoPattern) {
+                // Capture the plain base once. A pattern->pattern switch (fromNoPattern false) keeps the
+                // original capture rather than snapshotting the already-lifted stops over it.
+                monetPlainBase = new int[]{backgroundColor, backgroundGradientColor1, backgroundGradientColor2, backgroundGradientColor3};
+                monetPlainRotation = backgroundRotation;
+                monetPlainIntensity = currentIntensity;
+            }
+            seedMonetPatternBackground();
+        } else {
+            int[] base = monetPlainBase;
+            if (base != null) {
+                currentIntensity = monetPlainIntensity;
+                backgroundRotation = monetPlainRotation;
+            } else {
+                // Pattern was already selected when the screen opened (or switched without ever passing
+                // through a captured plain state), so the plain colour under a Monet theme is the live
+                // palette colour, unlifted and positive.
+                base = new int[]{Theme.getColor(Theme.key_chat_wallpaper), 0, 0, 0};
+                currentIntensity = Math.abs(currentIntensity);
+            }
+            setBackgroundColor(base[0], 0, true, false);
+            setBackgroundColor(base[1], 1, true, false);
+            setBackgroundColor(base[2], 2, true, false);
+            setBackgroundColor(base[3], 3, true, false);
+            monetPlainBase = null;
+        }
     }
 
     private void setCurrentImage(boolean setThumb) {
