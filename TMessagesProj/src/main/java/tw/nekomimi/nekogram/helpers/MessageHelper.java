@@ -1334,7 +1334,7 @@ public class MessageHelper extends BaseController {
     }
 
 
-    public boolean sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+    public boolean sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean preserveOwnReply, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
         if (messages == null || messages.isEmpty()) {
             return false;
         }
@@ -1353,6 +1353,10 @@ public class MessageHelper extends BaseController {
         long currentGroupId = 0;
         boolean currentInvertMedia = false;
         ArrayList<SendMessagesHelper.SendingMediaInfo> media = null;
+        // When preserving the source's own reply, replyTo/quote are resolved per message (and per
+        // album, whose members share one reply target) below; otherwise they stay the passed values.
+        MessageObject currentReply = replyTo;
+        ChatActivity.ReplyQuote currentQuote = quote;
 
         for (int i = 0; i < messages.size(); i++) {
             MessageObject messageObject = messages.get(i);
@@ -1362,7 +1366,7 @@ public class MessageHelper extends BaseController {
                 long groupId = messageObject.getGroupIdForUse();
                 boolean invertMedia = messageObject.messageOwner.invert_media;
                 if (media != null && (groupId == 0 || groupId != currentGroupId || invertMedia != currentInvertMedia)) {
-                    flushSendingMedia(media, targetDialogId, replyTo, replyToTopMsg, quote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
                     sentAny = true;
                     media = null;
                 }
@@ -1370,27 +1374,87 @@ public class MessageHelper extends BaseController {
                     media = new ArrayList<>();
                     currentGroupId = groupId;
                     currentInvertMedia = invertMedia;
+                    if (preserveOwnReply) {
+                        MessageObject ownReply = getOwnReply(messageObject);
+                        currentReply = ownReply != null ? ownReply : replyToTopMsg;
+                        currentQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
+                    }
                 }
                 CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, null, null);
                 ArrayList<TLRPC.MessageEntity> entities = caption != null ? messageObject.messageOwner.entities : null;
                 media.add(createSendingMediaInfo(messageObject, path, caption, entities));
             } else {
                 if (media != null) {
-                    flushSendingMedia(media, targetDialogId, replyTo, replyToTopMsg, quote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
                     sentAny = true;
                     media = null;
                     currentGroupId = 0;
                 }
-                if (sendMessageAsCopy(messageObject, null, targetDialogId, replyTo, replyToTopMsg, quote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams)) {
+                MessageObject messageReply = replyTo;
+                ChatActivity.ReplyQuote messageQuote = quote;
+                if (preserveOwnReply) {
+                    MessageObject ownReply = getOwnReply(messageObject);
+                    messageReply = ownReply != null ? ownReply : replyToTopMsg;
+                    messageQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
+                }
+                if (sendMessageAsCopy(messageObject, null, targetDialogId, messageReply, replyToTopMsg, messageQuote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams)) {
                     sentAny = true;
                 }
             }
         }
         if (media != null) {
-            flushSendingMedia(media, targetDialogId, replyTo, replyToTopMsg, quote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+            flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
             sentAny = true;
         }
         return sentAny;
+    }
+
+    // NagramX: a genuine messages.forwardMessages can't carry a reply header, so "Repost as Copy"
+    // re-sends the message instead when it can do better. These helpers pull the reply the source
+    // message itself points at, gated so a forum-topic anchor (which carries a full reply_to whose
+    // target is the "topic created" message) is not treated as a real reply.
+    public MessageObject getOwnReply(MessageObject messageObject) {
+        return messageObject != null && messageObject.hasValidReplyMessageObject() ? messageObject.replyMessageObject : null;
+    }
+
+    public ChatActivity.ReplyQuote getOwnReplyQuote(MessageObject messageObject) {
+        MessageObject target = getOwnReply(messageObject);
+        if (target == null || messageObject.messageOwner == null || messageObject.messageOwner.reply_to == null) {
+            return null;
+        }
+        TLRPC.MessageReplyHeader header = messageObject.messageOwner.reply_to;
+        if (!header.quote || TextUtils.isEmpty(header.quote_text)) {
+            return null;
+        }
+        return ChatActivity.ReplyQuote.from(target, header.quote_offset, header.quote_offset + header.quote_text.length());
+    }
+
+    // Decide once for the whole selection: reconstruct only when every message can be re-sent as a
+    // copy (cached media, a supported type) and at least one actually replies to something. Otherwise
+    // the caller forwards with drop_author exactly as before, so nothing that works today regresses.
+    public boolean shouldRepostAsCopyPreservingReply(ArrayList<MessageObject> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return false;
+        }
+        if (!canSendMessagesAsCopy(messages)) {
+            return false;
+        }
+        boolean anyReply = false;
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (messageObject == null || messageObject.messageOwner == null) {
+                return false;
+            }
+            boolean needsFile = !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
+                    (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
+            if (needsFile && TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount))) {
+                return false;
+            }
+            if (getOwnReply(messageObject) != null) {
+                anyReply = true;
+            }
+        }
+        return anyReply;
     }
 
     public boolean canSendMessageAsCopy(MessageObject messageObject, MessageObject.GroupedMessages messageGroup) {
