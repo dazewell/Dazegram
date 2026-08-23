@@ -166,7 +166,11 @@ public final class MonetPatternHelper {
             record = null;
             loaded = true;
             try {
-                prefs().edit().remove(KEY_RECORD).apply();
+                // commit(), not apply(): the metadata write must be durable before
+                // retire() deletes the old mask, or a process death here could leave
+                // prefs pointing at a file that's already gone. It's the explicit
+                // Clear tap, already doing file IO, so the synchronous write is fine.
+                prefs().edit().remove(KEY_RECORD).commit();
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -201,7 +205,11 @@ public final class MonetPatternHelper {
             o.put("intensity", r.intensity);
             o.put("motion", r.motion);
             o.put("mask", r.maskFileName);
-            prefs().edit().putString(KEY_RECORD, o.toString()).apply();
+            // commit(), not apply(): the caller retires the previous mask right after
+            // this returns, so the new record must be durably on disk first — an async
+            // write that hadn't flushed on process death would strand prefs on the old
+            // (now deleted) file. Only fires on the explicit Apply tap.
+            prefs().edit().putString(KEY_RECORD, o.toString()).commit();
         } catch (Exception e) {
             FileLog.e(e);
         }
