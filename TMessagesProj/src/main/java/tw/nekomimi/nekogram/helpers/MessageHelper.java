@@ -1442,16 +1442,45 @@ public class MessageHelper extends BaseController {
 
     public ChatActivity.ReplyQuote getOwnReplyQuote(MessageObject messageObject) {
         MessageObject target = getOwnReply(messageObject);
-        if (target == null || messageObject.messageOwner == null || messageObject.messageOwner.reply_to == null) {
+        if (target == null || target.messageOwner == null || target.messageOwner.message == null
+                || messageObject.messageOwner == null || messageObject.messageOwner.reply_to == null) {
             return null;
         }
         TLRPC.MessageReplyHeader header = messageObject.messageOwner.reply_to;
         if (!header.quote || TextUtils.isEmpty(header.quote_text)) {
             return null;
         }
-        // quote_offset is only a hint and is 0 when its flag is unset, so locate the quote by its
-        // text (findQuoteStart) instead of trusting the raw offset, which would slice the wrong range.
-        return ChatActivity.ReplyQuote.from(target, header.quote_text, header.quote_offset);
+        // The server header already carries the quote the user made, so preserve it verbatim rather
+        // than re-deriving from the target text. quote_offset is trusted only when its flag is set and
+        // it still lands on the quote; otherwise the text has to occur exactly once, or the quote is
+        // dropped to a plain reply so a duplicate occurrence can never carry the wrong formatting.
+        String fulltext = target.messageOwner.message;
+        String quoteText = header.quote_text;
+        int start = -1;
+        boolean hasOffset = (header.flags & 1024) != 0;
+        if (hasOffset && header.quote_offset >= 0 && header.quote_offset + quoteText.length() <= fulltext.length()
+                && fulltext.startsWith(quoteText, header.quote_offset)) {
+            start = header.quote_offset;
+        } else {
+            int first = fulltext.indexOf(quoteText);
+            if (first >= 0 && fulltext.indexOf(quoteText, first + 1) < 0) {
+                start = first;
+            }
+        }
+        if (start < 0) {
+            return null;
+        }
+        ChatActivity.ReplyQuote quote = ChatActivity.ReplyQuote.from(target, start, start + quoteText.length());
+        if (quote == null || !quote.isValid()) {
+            return null;
+        }
+        // Carry the header's own text/entities (the list cloned so the send path never shares the
+        // source message's list) and its offset, instead of the entities update() re-derived from the
+        // current target text, which can differ if the target was edited after the quote was made.
+        quote.text = quoteText;
+        quote.entities = header.quote_entities != null ? new ArrayList<>(header.quote_entities) : null;
+        quote.start = start;
+        return quote;
     }
 
     // Decide once for the whole selection: reconstruct only when every message shares the destination
