@@ -15807,7 +15807,10 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         boolean toCurrentDialog = did == dialog_id;
-        if (!getMessageHelper().sendMessagesAsCopy(messages, did, null, toCurrentDialog ? getThreadMessage() : null, null, hideCaption, notify, scheduleDate, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null)) {
+        // NagramX: reposting into the current dialog can keep the source's own reply (resolved per
+        // message inside sendMessagesAsCopy); a scheduled message sent to another dialog can't, since
+        // its reply target doesn't exist there, so only preserve the reply when it stays in this chat.
+        if (!getMessageHelper().sendMessagesAsCopy(messages, did, null, toCurrentDialog ? getThreadMessage() : null, null, toCurrentDialog, hideCaption, notify, scheduleDate, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null)) {
             waitingForSendingMessageLoad = false;
             forwardAsCopyFailed = true;
             // the picker fragment on top of us is still closing, and its own bulletin would replace this one
