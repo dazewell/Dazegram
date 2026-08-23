@@ -47,8 +47,10 @@ public final class MonetPatternHelper {
         Record(long patternId, float intensity, boolean motion) {
             this.patternId = patternId;
             // clamp to [0,1]: intensity is a flat-wallpaper fraction, and a bad
-            // persisted value must not overflow the composite's 0..255 alpha
-            this.intensity = Math.min(1f, Math.abs(intensity));
+            // persisted value must not overflow the composite's 0..255 alpha.
+            // A corrupt artifact can decode to NaN/Infinity, which slip past
+            // abs()/min(), so map any non-finite value to 0 (no pattern tint).
+            this.intensity = Float.isFinite(intensity) ? Math.min(1f, Math.abs(intensity)) : 0f;
             this.motion = motion;
         }
     }
