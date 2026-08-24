@@ -136,7 +136,7 @@ Bypass (`--no-verify`) only in a genuine emergency.
 
 Remotes (as configured in this clone):
 - `origin` → `dazewell/Dazegram` (personal fork; the repo was renamed from
-  `dazewell/Dazegram` — the old name still redirects but is not something to build
+  `dazewell/NagramX` — the old name still redirects but is not something to build
   on, so every command and URL uses `dazewell/Dazegram`)
 - `nagram` → `NextAlone/Nagram` (the **live upstream parent**)
 - `source` → `risin42/NagramX` (the **former** base fork, now archived — kept for

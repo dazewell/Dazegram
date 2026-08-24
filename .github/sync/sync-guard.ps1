@@ -322,6 +322,7 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-SignerBlobs' (Test-SignerBlobs $pins['KEYSTORE_BLOB'] $pins['SIGNING_GRADLE_BLOB'] $pins) ([ref]$log)) -and $ok
 
     # Guard 3/4 ancestry
+    $ok = (Assert-Fails  'Test-Ancestry(anchor)'   (Test-Ancestry $false @('OLD') 'OLD' @('SNAP') 'SNAP' $false) ([ref]$log)) -and $ok
     $ok = (Assert-Fails  'Test-Ancestry(2parents)' (Test-Ancestry $true @('x','y') 'OLD' @('SNAP') 'SNAP' $false) ([ref]$log)) -and $ok
     $ok = (Assert-Fails  'Test-Ancestry(imported)' (Test-Ancestry $true @('OLD') 'OLD' @('SNAP','OTHER') 'SNAP' $false) ([ref]$log)) -and $ok
     $ok = (Assert-Fails  'Test-Ancestry(srcanc)'   (Test-Ancestry $true @('OLD') 'OLD' @('SNAP') 'SNAP' $true) ([ref]$log)) -and $ok

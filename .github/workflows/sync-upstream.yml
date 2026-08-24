@@ -238,13 +238,13 @@ jobs:
             --force-with-lease=refs/heads/nbase:"$OLD_NBASE" \
             origin "$NEW_DEV:refs/heads/dev" "$NEW_SNAP:refs/heads/nbase"
 
-      - name: Verify remote refs and that staging was triggered
+      - name: Verify remote refs landed (the push to dev triggers staging)
         run: |
           set -e
           git fetch origin dev nbase
           [ "$(git rev-parse origin/dev)"   = "${{ steps.merge.outputs.new_dev }}" ]     || { echo "::error::dev did not land"; exit 1; }
           [ "$(git rev-parse origin/nbase)" = "${{ steps.snapshot.outputs.new_snap }}" ] || { echo "::error::nbase did not land"; exit 1; }
-          echo "dev and nbase updated atomically. The push to dev triggers staging.yml (dual APK + Telegram upload)."
+          echo "dev and nbase updated atomically. The push to dev triggers staging.yml (dual APK + Telegram upload); this step confirms the refs, not the downstream run."
 
       - name: Notify on any failure (push nothing)
         if: failure()

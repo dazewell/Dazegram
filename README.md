@@ -30,7 +30,7 @@ Both builds are signed with my certificate:
 1. Clone the repository with its submodules:
 
     ```bash
-    git clone --recursive --shallow-submodules https://github.com/dazewell/Dazegram.git NagramX
+    git clone --recursive --shallow-submodules https://github.com/dazewell/Dazegram.git Dazegram
     ```
 
     If you already cloned the repository without submodules, run:
