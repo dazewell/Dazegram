@@ -111,8 +111,9 @@ re-run any of your gates; it is a pure supervisor. So:
   child orchestrator never commits — its branch is `coord-<slug>`, which is not
   a change branch and is never pushed. Even a trivial edit inside your unit goes
   to an implementer session.
-- **Your branch is `coord-<slug>`, renamed as your very first action** — before
-  reading or writing any file — using `rename_branch`, exactly as an implementer
+- **Your branch is `coord-<slug>`, renamed as your first mutating action** —
+  after the required source-of-truth reads but before you write any repository
+  file or dispatch work — using `rename_branch`, exactly as an implementer
   renames to its dated branch first. It is ephemeral, never pushed, never
   committed to (see the `coord-<slug>` section in `nagramx-branch-flow`).
 - **Default to being exactly one child-orchestrator layer deep.** Delegating to
@@ -399,9 +400,17 @@ process or hold a native handle without ever changing Git, so a zero-diff
 session is not automatically safe to archive. Once zero diff is confirmed, run
 the process-lifecycle pre-archive checklist against it — ledger, exact-identity
 checks, and the worktree-filtered residual sweep — exactly as you would for any
-app-managed child (see the recursive rules in the process-lifecycle skill). Only
-when that checklist passes clean do you archive the session and report the
-dispatch failure. **If it has already produced a diff** — a mis-dispatched
+app-managed child (see the recursive rules in the process-lifecycle skill).
+**The ledger for a pre-work archive comes from you, not from the child:** a
+session caught before `RUNNING` never sent a `CLOSED` carrying its own ledger,
+and the "a missing ledger is rejected" rule is about a *completed* child that
+owed one in `CLOSED`, not about a session that never reached `RUNNING`. For
+these pre-work paths you establish the ledger yourself — a zero-diff session
+that never reported one has no processes it recorded, so a clean worktree-
+filtered residual sweep *is* the evidence for an empty ledger (`Processes:
+<none>`), and that empty ledger is a valid checklist input, not a violation of
+it. Only when that checklist passes clean do you archive the session and report
+the dispatch failure. **If it has already produced a diff** — a mis-dispatched
 generic agent can start work before any `RUNNING` — do **not** archive it: that
 would discard real work. Leave it intact, report the exact
 `Id`/`Name`/`Path`/`StartTime` and the diff, and hand the recovery to dazewell.
@@ -424,7 +433,7 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
 | `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
-| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason | Surface the reason upward. Then **you own the cleanup**, because the child has no archival path: `get_session` to confirm zero diff, run the process-lifecycle pre-archive checklist (ledger, identity, residual sweep), and archive the stopped session. If a pre-`RUNNING` abort unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason | Surface the reason upward. Then **you own the cleanup**, because the child has no archival path: `get_session` to confirm zero diff, run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If a pre-`RUNNING` abort unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
 | `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
 | **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first. If it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |

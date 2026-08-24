@@ -229,13 +229,14 @@ coord-orchestrator-hierarchy          coord-chatlock
   session's own housekeeping so the session has a branch that isn't `dev`. The
   child orchestrator renames its auto-generated session branch to `coord-<slug>`
   as its **very first action**, exactly as an implementer renames to its dated
-  branch first — see the orchestrator agent file. Because it lives only in the
-  coordinator's own worktree and is never pushed, it goes away with the session
-  when `archive_session` removes that worktree; a `coord-<slug>` ref left behind
-  is a disposable local ref, not a change branch. Because the child's rename to
-  `coord-<slug>` is one-shot and would collide with such a leftover, **clearing a
-  stale `coord-<slug>` ref is the dispatching parent's job, done before it calls
-  `create_session`** (see "Dispatching a child orchestrator" in
+  branch first — see the orchestrator agent file. It lives only in the
+  coordinator's own worktree and is never pushed, so `archive_session` removes
+  the worktree — but that does **not** delete the local `coord-<slug>` branch
+  ref, which can survive the worktree and must be cleared before the slug is
+  reused. Because the child's rename to `coord-<slug>` is one-shot and would
+  collide with such a leftover, **clearing a stale `coord-<slug>` ref is the
+  dispatching parent's job, done before it calls `create_session`** (see
+  "Dispatching a child orchestrator" in
   `.github/agents/nagramx-orchestrator.agent.md`) — the child has no pre-rename
   window to clean up after itself. Deleting a stale one is not a history rewrite
   and does not touch the no-force-push rule.
