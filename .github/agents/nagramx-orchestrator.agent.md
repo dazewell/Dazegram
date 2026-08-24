@@ -957,6 +957,18 @@ outside the app's session tooling — not for a child session's worktree.) The
 branch is on `origin`, so a later fix cuts a fresh branch on the same slug —
 you are not losing anything by archiving once it is actually safe to.
 
+**After `archive_session` succeeds:** If the child's process ledger records an
+isolated `GRADLE_USER_HOME` in the `owned_resource` field, clean it up (see
+step 7 of the pre-archive checklist in `.claude/skills/nagramx-process-lifecycle/SKILL.md`
+for the full contract). The directory contains regenerable cache and daemon
+registry and is ~2.8 GB per session — leaving it orphaned grows storage until
+manual cleanup. Follow the rule's verification and deletion checks exactly:
+confirm the path is child-owned and outside the removed worktree, run an
+exact-path process-use check, and delete only the literal resolved path if the
+check clears. Do not stop shared Gradle daemons to force the deletion to pass.
+Sessions using `--no-daemon`, a shared home, or never recording an isolated
+`GRADLE_USER_HOME` owe no cleanup.
+
 ## Matching process to the request
 
 Over-process is a real failure, not a safe default. A one-line CI fix does not

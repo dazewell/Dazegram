@@ -334,6 +334,8 @@ Assumptions:   <anything you decided that was not in the brief>
 Not done:      <anything deliberately left out, and why>
 ```
 
+**Process ledger note:** If you started Gradle with a session-specific `GRADLE_USER_HOME` (an isolated cache directory outside the worktree for daemon isolation), **record that path in the `owned_resource` field** of the gradle-daemon ledger row. The orchestrator uses this record to clean up the cache after the session is archived, preventing ~2.8 GB of regenerable cache from orphaning per session. The `owned_resource` field is specifically for this — a shared/ambient resource uses `n/a`. See `.claude/skills/nagramx-process-lifecycle/SKILL.md` rule 8 and post-archive step 7 for the full contract.
+
 Flag assumptions rather than burying them, never report a gate as passed when
 it was skipped, and never omit the process ledger line — a missing ledger
 reads as "assume something is still running" to whoever archives this
