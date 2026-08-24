@@ -265,9 +265,9 @@ or, one block per item:
   started by: <this session/branch — so a later reader knows who owns it>
   identity:   <tool-native handle or async-shell session id>
               OR <PID>, <image name>, <start time>, <path/cwd>
-  owned resource: <recorded port / emulator serial, if this item involved a
-              daemon you own> | n/a — used the shared/ambient resource and
-              did not stop it (rule 8)
+  owned resource: <recorded daemon-specific resource (adb port, emulator
+              serial) if this item is a daemon> | n/a — used the shared/ambient
+              resource and did not stop it (rule 8)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
@@ -281,10 +281,12 @@ Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 ```
 
 Use this field to record an isolated Gradle cache directory you created
-for daemon isolation. Omit this field only if you used `--no-daemon`
-throughout, a shared/default Gradle home, or no Gradle build at all. When a
-gradle-daemon row exists in the process ledger **and** you created an isolated
-home, the `owned resource` value in that row should agree with this path.
+for daemon isolation — it is distinct from the `owned resource` field, which
+records daemon-specific items like adb ports or emulator serials.
+Omit this field only if you used a shared/default Gradle home or no Gradle
+build at all. When a gradle-daemon process row exists in the process ledger
+**and** you created an isolated home, the `owned resource` value in that
+gradle-daemon row should record the same cache path for consistency.
 
 
 **Tool-managed async/background shells go in this ledger too** — record their

@@ -335,7 +335,7 @@ Assumptions:   <anything you decided that was not in the brief>
 Not done:      <anything deliberately left out, and why>
 ```
 
-**Cache cleanup field:** Include `Isolated GRADLE_USER_HOME` whenever you started a Gradle build with a session-specific `GRADLE_USER_HOME` for daemon isolation — record its absolute path here. Use `<none>` only if you used `--no-daemon`, a shared/default home, or no Gradle at all. Cleanup applies regardless of daemon mode (`--no-daemon` stops the single-use daemon but the ~2.8 GB cache remains). See `.claude/skills/nagramx-process-lifecycle/SKILL.md` rule 8 and post-archive step 7 for the full contract.
+**Cache cleanup field:** Include `Isolated GRADLE_USER_HOME` whenever you started a Gradle build with a session-specific `GRADLE_USER_HOME` for daemon isolation — record its absolute path here. Use `<none>` only if you used a shared/default Gradle home or no Gradle build at all. (Even `--no-daemon` creates the ~2.8 GB isolated cache, which must be cleaned up regardless of daemon mode). See `.claude/skills/nagramx-process-lifecycle/SKILL.md` rule 8 and post-archive step 7 for the full contract.
 
 Flag assumptions rather than burying them, never report a gate as passed when
 it was skipped, and never omit the process ledger line — a missing ledger

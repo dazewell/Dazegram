@@ -959,7 +959,7 @@ you are not losing anything by archiving once it is actually safe to.
 
 **After `archive_session` succeeds:** Check the child's handback for the
 `Isolated GRADLE_USER_HOME` field. If it records a path (not `<none>`), clean
-it up (see step 7 of the pre-archive checklist in `.claude/skills/nagramx-process-lifecycle/SKILL.md`
+it up (see step 7 of the post-archive cleanup in `.claude/skills/nagramx-process-lifecycle/SKILL.md`
 for the full contract). The directory contains regenerable cache and daemon
 registry and is ~2.8 GB per session — leaving it orphaned grows storage until
 manual cleanup. Follow the rule's verification and deletion checks exactly:
