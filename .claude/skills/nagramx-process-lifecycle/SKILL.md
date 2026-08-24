@@ -333,6 +333,25 @@ and it archives **only its own direct children** — never a grandchild.
   malformed report and a **hard block**, same as a missing implementer ledger.
   This accounting rides in the control message itself — **do not** add a ledger
   `kind:` for it; the ledger stays about OS processes only.
+- **The per-direct-child archive results are a structured record, not free
+  prose**, so the parent can mechanically match them against the direct-child
+  rule rather than reading intent out of a sentence. One record per direct
+  child, each stating at minimum:
+  - **session id** — the exact id this child recorded when it made the
+    `create_session` / `open_*_session` / `fork_session` call, so the parent can
+    confirm it is a genuine *direct* child and not a grandchild seen second-hand.
+  - **kind** — `leaf implementer` or `child orchestrator`, since the two close
+    by different paths (a leaf via handback→verify→archive, a child orchestrator
+    only after its own `CLOSED`).
+  - **archive outcome** — `archived`, or `BLOCKED_ARCHIVE` with the reason (in
+    which case this orchestrator owes `BLOCKED_ARCHIVE` upward too, never
+    `CLOSED`).
+  - **lifecycle-check evidence that passed** — `ledger clean` and `sweep clean`
+    for that child, the concrete evidence the pre-archive checklist below
+    produced, not a bare assertion that it closed.
+  A `CLOSED` whose per-direct-child records omit any of these, or that asserts
+  closure without the matching evidence, is malformed and a **hard block**, the
+  same as a missing ledger.
 - **The residual sweep below is structurally blind to a live grandchild.** The
   worktree-filtered `Get-CimInstance Win32_Process` query matches only processes
   naming *this child's* worktree path; a live grandchild's processes name the
