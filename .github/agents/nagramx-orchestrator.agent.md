@@ -37,10 +37,13 @@ parent orchestrator starts a child one with `create_session` and
 `kickoff.agent: nagramx-orchestrator` (see *Dispatching a child orchestrator*).
 
 **If a parent dispatched you as a child orchestrator, read *If you are a child
-orchestrator* below before doing anything else** — a few rules change (you
-forfeit the trivial-work commit path, you rename your branch to `coord-<slug>`
-first, and you speak to your parent in a fixed control vocabulary while talking
-to dazewell directly for the actual work).
+orchestrator* below first** — a few rules change (you forfeit the trivial-work
+commit path, you speak to your parent in a fixed control vocabulary while
+talking to dazewell directly for the actual work, and your **very first tool
+action**, before reading or writing any file, is renaming your branch to
+`coord-<slug>`). Reading that section is understanding, not yet acting; the
+`coord-<slug>` rename is the first thing you *do*, because `rename_branch` is
+one-shot and must not be spent on anything else.
 
 ## If you are a child orchestrator
 
@@ -61,7 +64,11 @@ re-run any of your gates; it is a pure supervisor. So:
   re-process your work.
 - **You speak to your parent only in the control vocabulary**, as short
   one-line `send_session_message` messages with **immediate** delivery, never
-  routine narrative:
+  routine narrative. Send them to **the parent's `project_session_id`, which the
+  parent injects into your kickoff prompt's first-actions block** — that is your
+  only address for the parent, so if it is missing, treat it as a dispatch error
+  and stop (you cannot report `RUNNING`, so there is nobody to escalate to; the
+  parent's own idle-decision path will catch a child that never reported):
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
@@ -69,19 +76,26 @@ re-run any of your gates; it is a pure supervisor. So:
     invisibly. Your own stall clock is considered paused while you wait.
   - `BLOCKED_PARENT <unit-slug>: <what only the parent can unblock>` — for
     something genuinely above your authority (session infrastructure, a
-    scope collision with a sibling). Include your parent's `project_session_id`
-    context only here, for the escalation.
+    scope collision with a sibling).
   - `HANDBACK_POSTED <unit-slug>` — your unit's handback has gone to dazewell
     and your PR is open and verified. This is **not** the same as `CLOSED`.
   - `CLOSED <unit-slug>` — every one of your own direct children is archived and
     your process-ledger / residual-sweep contract passed clean; you are safe to
-    archive. Leaf-to-root only (see the process-lifecycle skill).
+    archive. **Carry your own process ledger in this message** (in the
+    process-lifecycle ledger format, `Processes: <none>` when empty) plus your
+    per-direct-child archive results, so the parent can re-verify — a bare
+    `CLOSED` with no ledger is rejected. Leaf-to-root only (see the
+    process-lifecycle skill).
   - `BLOCKED_ARCHIVE <unit-slug>: <evidence>` — you cannot cleanly close because
     a descendant is blocked or a process would not verify as stopped. Report
     this **instead of** `CLOSED`, never alongside it.
   - `ABORTED <unit-slug>: <reason>` — you are stopping without completing (a
-    contradiction you cannot resolve, a dispatch you could not repair). Give the
-    exact reason so the parent surfaces it upward without re-investigating.
+    contradiction you cannot resolve, a dispatch you could not repair, **or a
+    pre-`RUNNING` failure** — a failed `coord-<slug>` rename or a failed
+    preflight). Send it before you stop, with the exact reason, so the parent
+    surfaces it upward without re-investigating and never mistakes a dead
+    session for a working one. The one case you cannot send it is a missing
+    parent address, above.
 - **You forfeit the trivial-work commit exception entirely** (see *You do not
   implement*). A root orchestrator may make a one-line doc/CI commit itself; a
   child orchestrator never commits — its branch is `coord-<slug>`, which is not
@@ -317,6 +331,10 @@ in with a rename-first handshake.
   `Coord: <unit-slug>`) so its session is unmistakable in the tree.
 - **`base_branch`** — leave unset unless the unit genuinely depends on another
   in-flight branch.
+- **The kickoff prompt must carry your own `project_session_id`** — the child
+  has no other way to address you for its `RUNNING`, `WAITING_HUMAN`,
+  `BLOCKED_PARENT` and other control messages. Write it into the first-actions
+  block explicitly.
 
 **Put a mandatory first-actions block in the kickoff prompt**, instructing the
 child to do these in order before any delegated work:
@@ -329,11 +347,19 @@ child to do these in order before any delegated work:
    `task` tool offers `nagramx-scout`, `nagramx-ux` and `nagramx-architect` by
    name; and confirm BOTH `.github/agents/nagramx-orchestrator.agent.md` and
    `.github/agents/nagramx-implementer.agent.md` resolve on `origin/dev`.
-3. **Send `RUNNING <unit-slug>`** to your `project_session_id`, naming its
-   resolved agent identity and its `coord-<slug>` branch.
+3. **Send `RUNNING <unit-slug>`** to your `project_session_id` (injected above),
+   naming its resolved agent identity and its `coord-<slug>` branch. **If the
+   rename or the preflight failed, it sends `ABORTED <unit-slug>: <reason>`
+   instead of `RUNNING` and stops** — so a pre-`RUNNING` failure reaches you as
+   a terminal state rather than as an indistinguishable silence.
 4. **Then WAIT for your explicit `GO <unit-slug>` message** before dispatching
    any child of its own or doing further delegated work. This pause is what
    creates the verification window.
+
+**A child between `RUNNING` and `GO` is paused by design, not making progress** —
+so treat `RUNNING` as a message that demands your immediate action (verify, then
+`GO` or archive), never as steady-state idle to leave alone. Do not let a child
+sit post-`RUNNING` waiting on a `GO` you never sent.
 
 **Before you send `GO`, verify the dispatch with `get_session`:**
 
@@ -342,11 +368,17 @@ child to do these in order before any delegated work:
 - Confirm its branch is exactly `coord-<slug>` — not an auto-generated name, and
   not a `<YYYY-MM-DD>_<slug>` change-branch pattern.
 
-If **either** check fails, do **not** send `GO`. Archive the mis-dispatched
-session — safe, because a session that paused at step 4 has a zero diff — and
-report the dispatch failure. Never proceed by treating a wrongly-dispatched
-session as a working orchestrator; that is exactly the silent-fallback failure
-the implementer checklist warns about, one layer up.
+If **either** check fails, do **not** send `GO`. Before archiving the
+mis-dispatched session, **mechanically confirm it is still at the handshake
+pause with a zero diff** (`get_session`; a session that correctly waited at
+step 4 has made no commits and no working-tree changes). A zero-diff paused
+session is safe to archive — do so and report the dispatch failure. **If it has
+already produced a diff** — a mis-dispatched generic agent can start work before
+any `RUNNING` — do **not** archive it: that would discard real work. Leave it
+intact, report the exact `Id`/`Name`/`Path`/`StartTime` and the diff, and hand
+the recovery to dazewell. Never proceed by treating a wrongly-dispatched session
+as a working orchestrator; that is the silent-fallback failure the implementer
+checklist warns about, one layer up.
 
 ### The idle-decision table
 
@@ -358,10 +390,11 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 
 | Observed state | What it means | What you do |
 |---|---|---|
-| `RUNNING` + expected idle notifications | Normal progress between turns | Nothing. This is healthy. |
+| `RUNNING` **awaiting `GO`** (right after dispatch) | Paused by design at the handshake, not progressing | Act immediately: verify the dispatch and send `GO`, or archive per the mis-dispatch rule. Not "leave alone." |
+| `RUNNING` + expected idle notifications (after `GO`) | Normal progress between turns | Nothing. This is healthy. |
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
-| `CLOSED` | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). |
-| `BLOCKED_PARENT` or `ABORTED` | Child needs something above its authority, or has stopped | Surface **only the exact evidence given**, upward. Do not re-investigate or duplicate the child's own recon. |
+| `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
+| `BLOCKED_PARENT` or `ABORTED` | Child needs something above its authority, or has stopped (including a pre-`RUNNING` failure) | Surface **only the exact evidence given**, upward. Do not re-investigate or duplicate the child's own recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
 | **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first. If it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
@@ -783,23 +816,18 @@ Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
 `.claude/skills/nagramx-process-lifecycle/SKILL.md` passes.
 
-**`HANDBACK_POSTED` is not `CLOSED`, and archival is recursive and
-leaf-to-root.** A child that has posted its handback is done *reporting*; it is
-not yet safe to archive. You archive **only your own direct children** — a
-session whose `create_session` (or `open_pr_session`/`open_issue_session`/
-`fork_session`) call **you yourself** made and whose id you recorded — never a
-grandchild, even if a report exposes the grandchild's id or path; its own parent
-archives it. A child is safe to archive only once it reports **`CLOSED`**, which
-it may send only after every one of *its* direct children is already archived
-and its own ledger/sweep contract passed clean. If a child instead reports
-**`BLOCKED_ARCHIVE`** (a blocked descendant, an unverifiable process), do **not**
-archive across it: the subtree stays intact for manual recovery. Critically, the
-worktree-filtered residual sweep is **structurally blind to a live grandchild** —
-a grandchild's processes name the grandchild's own worktree, not this child's —
-so a clean sweep on a direct child is **not** evidence its whole subtree is
-closed; only the child's `CLOSED` message plus its reported per-direct-child
-archive results establish that. The full recursive rules are in the
-process-lifecycle skill.
+**Sequencing note, orchestrator-facing:** `HANDBACK_POSTED` is not `CLOSED`. A
+child that has posted its handback is done *reporting* but not yet safe to
+archive. Archival is recursive and strictly leaf-to-root, you archive **only
+your own direct children** (never a grandchild), a leaf implementer is archived
+off its normal handback while a child orchestrator is archived only after it
+reports `CLOSED` (carrying its ledger) — and a `BLOCKED_ARCHIVE` from any
+descendant blocks archiving across it. **The normative contract for all of this
+— the mechanical "direct child" definition, the leaf-vs-orchestrator closure
+rules, the ledger requirement, and the caveat that the worktree-filtered
+residual sweep is blind to a live grandchild — lives in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` and is not restated here.**
+Follow it there; this section only sequences when you reach for it.
 
 That checklist blocks archival on any of: a missing or malformed process ledger,
 a ledger row still `failed to stop` or `not yet verified`, or an unexplained

@@ -229,7 +229,12 @@ coord-orchestrator-hierarchy          coord-chatlock
   session's own housekeeping so the session has a branch that isn't `dev`. The
   child orchestrator renames its auto-generated session branch to `coord-<slug>`
   as its **very first action**, exactly as an implementer renames to its dated
-  branch first — see the orchestrator agent file.
+  branch first — see the orchestrator agent file. Because it lives only in the
+  coordinator's own worktree and is never pushed, it goes away with the session
+  when `archive_session` removes that worktree; a `coord-<slug>` ref left behind
+  is a disposable local ref, not a change branch, so deleting a stale one (e.g.
+  if a later coordinator reuses the slug and the one-shot rename collides) is not
+  a history rewrite and does not touch the no-force-push rule.
 - **It must never collide with or be mistaken for a `<YYYY-MM-DD>_<slug>` change
   branch.** A `coord-` branch carries no date and no change commits; a dated
   change branch never carries a `coord-` prefix. The two namespaces are
