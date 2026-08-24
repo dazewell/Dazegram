@@ -5253,7 +5253,7 @@ public class ChatActivity extends BaseFragment implements
 
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
-        actionBar.setupGlass(glassBackgroundDrawableFactory, blurredBackgroundColorProvider, ChatObject.isForum(currentChat));
+        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(themeDelegate), ChatObject.isForum(currentChat));
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
