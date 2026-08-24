@@ -4,5 +4,5 @@
     android:accountType="@string/account_type"
     android:icon="@mipmap/ic_launcher_nagram_blue_round"
     android:smallIcon="@mipmap/ic_launcher_nagram_blue_round"
-    android:label="@string/AppName"
+    android:label="@string/NagramX"
     android:accountPreferences="@xml/auth_menu"/>
