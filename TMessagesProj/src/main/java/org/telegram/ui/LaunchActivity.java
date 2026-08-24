@@ -6111,9 +6111,12 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
        if (!force && !BuildVars.CHECK_UPDATES) {
            return;
        }*/
-       // NagramX: gate above progress.init() below so a caller-supplied Progress is never left
-       // spinning; a force tap gets an honest bulletin instead of a false "up to date".
-       if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() == tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF) {
+       // NagramX: the inherited metadata channel is disabled fork-wide (its upstream owner is
+       // gone), so no update check can run for any channel setting. Gated above progress.init()
+       // below so a caller-supplied Progress is never left spinning; a force tap gets an honest
+       // "unavailable" bulletin instead of a false "up to date". if(true) keeps the following
+       // upstream branches reachable per JLS 14.21 rather than a bare return.
+       if (true) {
            if (force) {
                BaseFragment fragment = getLastFragment();
                if (fragment != null) {
@@ -7200,10 +7203,11 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
                 MediaController.getInstance().seekToProgress(messageObject, messageObject.audioProgress);
             }
         }
-        // NagramX: while updates are off, drop any persisted pending update on the main thread
-        // before the branch below can raise BlockingUpdateView (which has no in-UI dismissal).
-        // Kept out of the ToS else-if so a pending ToS can't skip the purge.
-        if (xyz.nextalone.nagram.NaConfig.INSTANCE.getAutoUpdateChannel().Int() == tw.nekomimi.nekogram.helpers.remote.UpdateHelper.UPDATE_OFF && SharedConfig.pendingAppUpdate != null) {
+        // NagramX: a pending update can no longer be validated or refreshed by anything now the
+        // metadata channel is disabled, so it must not be allowed to raise BlockingUpdateView
+        // (which has no in-UI dismissal). Purge unconditionally on the main thread before the
+        // branch below can raise it; kept out of the ToS else-if so a pending ToS can't skip it.
+        if (SharedConfig.pendingAppUpdate != null) {
             tw.nekomimi.nekogram.helpers.remote.UpdateHelper.cleanAppUpdate();
         }
         if (UserConfig.getInstance(UserConfig.selectedAccount).unacceptedTermsOfService != null) {

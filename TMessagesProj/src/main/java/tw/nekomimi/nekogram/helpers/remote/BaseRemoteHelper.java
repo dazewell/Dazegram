@@ -22,6 +22,13 @@ public abstract class BaseRemoteHelper {
     public static final long CHANNEL_METADATA_ID = 2477822904L;
     public static final String CHANNEL_METADATA_NAME = "nagramx_remote_metadata";
 
+    // NagramX: the metadata channel belongs to the abandoned upstream (risin42), so nothing
+    // loads from it anymore. Suppressed here rather than at the call sites so no future caller
+    // can reopen it; a blocked call reports an empty result so cached data and callbacks are
+    // unaffected. The request code below is kept as the reference implementation for a
+    // fork-owned source: re-enabling means changing CHANNEL_METADATA_* and dropping this guard.
+    private static final boolean REMOTE_METADATA_DISABLED = true;
+
     protected static final SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("nekoremoteconfig", Activity.MODE_PRIVATE);
 
     protected MessagesController getMessagesController() {
@@ -87,6 +94,12 @@ public abstract class BaseRemoteHelper {
     }
 
     private void load(boolean forceRefreshAccessHash, Delegate delegate) {
+        if (REMOTE_METADATA_DISABLED) {
+            if (delegate != null) {
+                delegate.onTLResponse(null, null);
+            }
+            return;
+        }
         var tag = "#" + getTag();
         TLRPC.TL_messages_search req = new TLRPC.TL_messages_search();
         req.limit = 10;
