@@ -23,12 +23,14 @@ import xyz.nextalone.nagram.NaConfig;
 
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class MonetHelper {
-    private static final float DARK_NAME_SOFTEN_RATIO = 0.35f;
+    private static final float DARK_NAME_SOFTEN_RATIO = 0.40f;
     // NagramX: how strongly the 7-hue sender identity palette (monetAvatarName*) is pulled
     // toward the accent's HCT chroma/tone so it reads as part of the active Monet palette
-    // instead of a fixed brand color; hue is left to the existing Blend.harmonize rotation
-    // below so per-sender identity stays distinguishable.
-    private static final double IDENTITY_CHROMA_TONE_PULL_RATIO = 0.75;
+    // instead of a fixed brand color; this step does not intentionally retarget hue, leaving
+    // hue to the existing Blend.harmonize rotation below so per-sender identity stays
+    // distinguishable (Hct.from()'s gamut mapping and the dark-text softening below can still
+    // shift the realized hue slightly - see pullIdentityTowardAccent()).
+    private static final double IDENTITY_CHROMA_TONE_PULL_RATIO = 0.80;
     private static final HashMap<String, Integer> ids = new HashMap<>() {{
         put("a1_0", android.R.color.system_accent1_0);
         put("a1_10", android.R.color.system_accent1_10);
@@ -224,16 +226,20 @@ public class MonetHelper {
     // NagramX: Blend.harmonize only rotates hue toward the accent; the 7-hue identity palette
     // otherwise keeps its fixed, hardcoded chroma/tone, which is why e.g. the Blue slot still
     // reads as a bright designer blue against a muted red/brown Monet palette. This pulls
-    // chroma and tone toward the accent's HCT chroma/tone (hue is untouched - Blend.harmonize
-    // above already handled hue) so each identity color reads as belonging to the active
-    // palette while the 7 hues stay distinguishable from each other. A chroma floor (relative
-    // to the pre-pull chroma) keeps a low-chroma/near-grey accent from collapsing all 7 hues
-    // into indistinguishable greys.
+    // chroma and tone toward the accent's HCT chroma/tone (this step does not intentionally
+    // retarget hue - Blend.harmonize above already handled that) so each identity color reads
+    // as belonging to the active palette while the 7 hues stay distinguishable from each other.
+    // Hct.from() below still gamut-maps the requested chroma/tone, so the realized chroma can
+    // come out lower than requested for some hue/tone combinations, and softenColorForDarkText's
+    // later RGB blend can shift the realized hue slightly - neither is guaranteed byte-exact,
+    // only aimed for. A chroma floor (relative to the pre-pull chroma) keeps a low-chroma/
+    // near-grey accent from collapsing all 7 hues into indistinguishable greys.
     private static int pullIdentityTowardAccent(int harmonizedColor, int accentColor) {
         Hct designHct = Hct.fromInt(harmonizedColor);
         Hct accentHct = Hct.fromInt(accentColor);
-        // floor: never lose more than 60% of the pre-pull chroma, so a low-chroma/near-grey
-        // accent still leaves each of the 7 hues visibly separated instead of collapsing to grey
+        // floor: request at least 40% of the pre-pull chroma (Hct.from()'s gamut mapping can
+        // still realize less), so a low-chroma/near-grey accent still leaves each of the 7 hues
+        // visibly separated instead of collapsing to grey
         double floorChroma = designHct.getChroma() * 0.4;
         double pulledChroma = designHct.getChroma()
                 + (accentHct.getChroma() - designHct.getChroma()) * IDENTITY_CHROMA_TONE_PULL_RATIO;
