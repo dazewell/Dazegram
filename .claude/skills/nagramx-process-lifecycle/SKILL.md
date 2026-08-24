@@ -295,10 +295,109 @@ checklist passes**, run from the main clone, not from inside the child's
 worktree (a check run from inside the very directory being verified can itself
 hold it open).
 
-1. Read the implementer's process ledger from its report. A missing ledger,
-   a malformed row, a `stop result: failed to stop`, or an unverified row is a
-   **hard block** — do not archive, and treat every such item as "assume still
-   running."
+**Under nested orchestrators this gate is recursive and runs strictly
+leaf-to-root.** An orchestrator may itself be a child of another orchestrator,
+and it archives **only its own direct children** — never a grandchild.
+
+- **"Direct child" is mechanical, not just semantic:** a direct child is a
+  session whose `create_session` (or `open_pr_session` / `open_issue_session` /
+  `fork_session`) call **this orchestrator itself** made and whose returned
+  session id it recorded. If you can see a grandchild's id or worktree path only
+  because it appeared in a child's report, that grandchild is **not** yours to
+  archive; its own parent (your direct child) archives it. An orchestrator that
+  reaches past a child to archive a grandchild directly is a protocol violation.
+- **A direct child is one of two kinds, and they close differently.** A **leaf
+  implementer** has no `CLOSED` state: it posts its handback (PR + process
+  ledger), the parent runs the checklist below against that ledger, and the
+  parent archives it — the ordinary one-level path, unchanged by nesting. A
+  **child orchestrator** owns a subtree, so it closes *its* subtree first and
+  only then reports `CLOSED` upward. Do not require a `CLOSED` message from a
+  leaf implementer — it will never send one, and blocking on it would deadlock
+  its archival.
+- **Closure propagates upward as control messages, leaf-to-root — for the
+  orchestrator layers.** A **child orchestrator** reports `CLOSED` to its parent
+  **only** once *every* one of its own direct children is already archived (each
+  leaf implementer via the normal handback→verify→archive path above, and each
+  child orchestrator only after *it* reported `CLOSED` first) **and** its own
+  ledger / residual-sweep contract below passes clean. If it still holds any
+  descendant it could not safely archive — a blocked process, an unverified row,
+  a grandchild that reported `BLOCKED_ARCHIVE` — it reports **`BLOCKED_ARCHIVE`**
+  upward, never `CLOSED`. An ancestor must never archive across (skip past) a
+  descendant reporting `BLOCKED_ARCHIVE`, and a `CLOSED` at a higher level must
+  never paper over an unresolved `BLOCKED_ARCHIVE` below it.
+- **A child orchestrator's `CLOSED` carries its own process ledger** (in the
+  ledger format above, empty as `Processes: <none>`) plus its per-direct-child
+  archive results, so the parent can run this same checklist against it and
+  independently re-verify — exactly as it does against a leaf implementer's
+  handback ledger. `CLOSED` is not accepted bare: a `CLOSED` with no ledger is a
+  malformed report and a **hard block**, same as a missing implementer ledger.
+  This accounting rides in the control message itself — **do not** add a ledger
+  `kind:` for it; the ledger stays about OS processes only.
+- **The per-direct-child archive results are a structured record, not free
+  prose**, so the parent can mechanically match them against the direct-child
+  rule rather than reading intent out of a sentence. One record per direct
+  child, each stating at minimum:
+  - **session id** — the exact id this child recorded when it made the
+    `create_session` / `open_*_session` / `fork_session` call. This child made
+    that call, so it — not the parent — is what establishes the session is a
+    genuine *direct* child and not a grandchild seen second-hand; the id rides up
+    as the auditable record of that fact, not as something the parent
+    independently re-derives. The parent cannot mechanically prove provenance
+    here: it never made the call and has no registry of another session's
+    children to check the id against, so it takes this record on the child's
+    word — exactly as the whole leaf-to-root contract does. What the parent *does*
+    check mechanically is its **own** direct child (the session it created and
+    recorded): that this child is accounted for, its ledger is clean, and its
+    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived. This is the same trust
+    the rest of the pipeline places in a leaf implementer's claims: Phase 4's
+    "every claim is unverified until you check it" governs the child
+    orchestrator's **own** verification of **its** subtree, not a re-verification
+    the parent performs on the child's behalf. There is no session-provenance
+    registry in this environment to cross-check an id against, so a fabricated or
+    stale record is a trust violation the protocol cannot mechanically detect —
+    the same class of limitation as trusting any subordinate's report.
+  - **kind** — `leaf implementer` or `child orchestrator`, since the two close
+    by different paths (a leaf via handback→verify→archive, a child orchestrator
+    only after its own `CLOSED`).
+  - **archive outcome** — `archived`, or `BLOCKED_ARCHIVE` with the reason (in
+    which case this orchestrator owes `BLOCKED_ARCHIVE` upward too, never
+    `CLOSED`).
+  - **lifecycle-check evidence that passed** — `ledger clean` and `sweep clean`
+    for that child, the concrete evidence the pre-archive checklist below
+    produced, not a bare assertion that it closed.
+  A `CLOSED` whose per-direct-child records omit any of these, or that asserts
+  closure without the matching evidence, is malformed and a **hard block**, the
+  same as a missing ledger.
+- **The residual sweep below is structurally blind to a live grandchild.** The
+  worktree-filtered `Get-CimInstance Win32_Process` query matches only processes
+  naming *this child's* worktree path; a live grandchild's processes name the
+  **grandchild's own** worktree, so they never appear in this child's sweep. A
+  clean sweep on a direct child is therefore **not** evidence that its whole
+  subtree is closed. Subtree closure is established **only** by that child's own
+  `CLOSED` message plus its reported per-direct-child archive results — never by
+  the sweep alone. Because the parent can neither see nor re-verify a grandchild
+  — it never created it and the sweep is blind to it — grandchild safety is
+  **not** the parent's to establish; it is the child's, and the child is barred
+  from ever sending `CLOSED` while it still holds an unarchived descendant (it
+  owes `BLOCKED_ARCHIVE` instead, which an ancestor must never archive across). A
+  truthful `CLOSED` is thus the parent's only evidence a grandchild closed, and
+  it is the protocol's honesty rule — the `BLOCKED_ARCHIVE`-not-`CLOSED`
+  obligation, not a parent-side registry the tools can't provide — that prevents
+  the orphan the sweep-blindness would otherwise allow.
+
+1. Read the direct child's process ledger from its report — a leaf implementer's
+   handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
+   message. A missing ledger, a malformed row, a `stop result: failed to stop`,
+   or an unverified row is a **hard block** — do not archive, and treat every
+   such item as "assume still running." This "missing ledger blocks" rule
+   applies strictly to a session that **reached `RUNNING`** and so owed a
+   self-reported ledger. A session that **never reached `RUNNING`** owes none:
+   the pre-`RUNNING` / mis-dispatch cleanup paths in the orchestrator agent file
+   establish its ledger from the outside instead — a clean worktree-filtered
+   sweep on a zero-diff session that never reported *is* the `Processes: <none>`
+   evidence, a valid input to this checklist rather than a violation of this
+   rule. The strict block still governs every session that did reach `RUNNING`
+   and therefore did owe a ledger of its own.
 2. Stop any tool-managed background shell you dispatched for that session
    through its own returned handle/session id — never by searching for a PID.
 3. **Re-verify every OS-level identity yourself, including rows the ledger

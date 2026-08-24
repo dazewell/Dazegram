@@ -221,7 +221,11 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
         } else {
             emojiPacksStartRow = -1;
             emojiPacksEndRow = -1;
-            placeHolderRow = addRow();
+            // NagramX: no fetch will ever complete now the metadata channel is disabled, so an
+            // empty cache would leave a FlickerLoadingView shimmering forever. Skip the placeholder
+            // row instead; DiffCallback.put tolerates -1. The section itself stays visible because
+            // getEmojiPacksInfo also drives selection of already-installed packs.
+            placeHolderRow = -1;
         }
         emojiPack2Row = addRow();
     }
