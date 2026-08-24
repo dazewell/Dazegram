@@ -851,6 +851,14 @@ public class EmojiHelper extends BaseRemoteHelper implements NotificationCenter.
                     }
                     int reason = (Integer) args[1];
                     if (reason == 0) {
+                        // NagramX: with the metadata channel disabled this reload always returns
+                        // an empty result without touching emojiPacksInfo, so getEmojiPackInfo
+                        // below still finds the previously cached pack and the id comparison
+                        // passes against itself — this block still re-issues one downloadPack
+                        // call with the same stale file reference, it is not a no-op. Harmless in
+                        // practice: a second failure here early-returns via params[1] above, and
+                        // isEmojiPackDownloading asks FileLoader rather than this map, so there is
+                        // no stuck spinner either way.
                         EmojiHelper.getInstance().load((res, error) -> AndroidUtilities.runOnUIThread(() -> {
                             EmojiPackInfo newPack = EmojiHelper.getInstance().getEmojiPackInfo(pack.getPackId());
                             if (newPack == null) {

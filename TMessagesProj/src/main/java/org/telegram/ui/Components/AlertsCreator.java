@@ -887,7 +887,7 @@ public class AlertsCreator {
         final AlertDialog[] dialog = new AlertDialog[1];
 
         final AlertDialog.Builder builder = new AlertDialog.Builder(context, resourcesProvider);
-        builder.setTitle(title == null ? LocaleController.getString(R.string.AppName) : title);
+        builder.setTitle(title == null ? LocaleController.getString(R.string.NagramX) : title);
         builder.setMessage(info);
 
         EditTextBoldCursor editText = new EditTextBoldCursor(context);

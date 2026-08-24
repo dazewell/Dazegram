@@ -104,7 +104,8 @@ android {
         versionCode verCode
 
         // app display name per package variant
-        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'Dazegram X'
+        // NagramX: kept in sync by hand with the customTitle default in NaConfig.kt (search that file for "NagramX:")
+        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'DazegramX'
 
         // account type and contact mime types must track applicationId so the two package variants don't collide
         resValue 'string', 'account_type', APP_PACKAGE
@@ -205,8 +206,15 @@ android {
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
-    // NagramX: default app-icon glyph differs per package variant (Official = D, Unofficial = N).
-    // Each dir holds the same ic_launcher_nagram_blue_foreground/_monochrome names, so only one may be on the path at a time.
+    // NagramX: default app-icon glyph differs per package variant - Official draws the shared monoline "D"
+    // shape, Unofficial draws the same shape plus one added diagonal chord as its distinguisher.
+    // Each dir holds the same 10 resource names (9 launcher foregrounds + the shared monochrome), so only one
+    // may be on the path at a time - two dirs on the path is a duplicate-resource build failure, not an override.
+    // Trap: a same-name file under a DIFFERENT resource qualifier (e.g. drawable-v24/ vs drawable/) does NOT
+    // collide with these entries - it silently wins at runtime. Keep overrides in the same qualifier dir as the
+    // resource they replace, and delete the src/main/res original in the same commit. Two of the ten live under
+    // drawable-v24/ for exactly this reason - ic_launcher_nagram_foreground (Default) and
+    // ic_launcher_nagram_colorful_foreground (Colorful); the other eight are unqualified.
     sourceSets.main.res.srcDirs += APP_PACKAGE.endsWith('.beta') ? 'src/iconOfficial/res' : 'src/iconUnofficial/res'
 
     namespace = 'org.telegram.messenger'
@@ -215,7 +223,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            String gramName = APP_PACKAGE.endsWith('.beta') ? 'NagramX-Official' : 'NagramX-Unofficial'
+            String gramName = APP_PACKAGE.endsWith('.beta') ? 'Dazegram-Official' : 'DazegramX-Unofficial'
             // commit hash goes right after the package label so it's easy to spot in the filename
             String prefix = commitId?.take(7) ? "${gramName}-${commitId.take(7)}" : gramName
             // version part uses the bare APP_VERSION_NAME (not verName) so the hash isn't repeated

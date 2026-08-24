@@ -35,10 +35,10 @@ public class LauncherIconController {
 
     public enum LauncherIcon {
         DEFAULT("DefaultIcon", R.mipmap.ic_launcher_nagram, R.mipmap.icon_background_nagram, R.string.AppIconDefault),
-        GOOGLE("GoogleIcon", R.mipmap.icon_background_google, R.mipmap.icon_foreground_google, R.string.AppIconGoogle),
-        COLORFUL("ColorfulIcon", R.mipmap.icon_background_colorful, R.mipmap.icon_foreground_colorful, R.string.AppIconColorful),
-        DARKGREEN("DarkGreenIcon", R.mipmap.icon_background_darkgreen, R.mipmap.icon_foreground_darkgreen, R.string.AppIconDarkGreen),
-        NEON("NeonIcon", R.mipmap.icon_background_neon, R.mipmap.icon_foreground_neon, R.string.AppIconNeon),
+        GOOGLE("GoogleIcon", R.drawable.ic_launcher_nagram_google_background, R.drawable.ic_launcher_nagram_google_foreground, R.string.AppIconGoogle),
+        COLORFUL("ColorfulIcon", R.drawable.ic_launcher_nagram_colorful_background, R.drawable.ic_launcher_nagram_colorful_foreground, R.string.AppIconColorful),
+        DARKGREEN("DarkGreenIcon", R.drawable.ic_launcher_nagram_darkgreen_background, R.drawable.ic_launcher_nagram_darkgreen_foreground, R.string.AppIconDarkGreen),
+        NEON("NeonIcon", R.drawable.ic_launcher_nagram_neon_background, R.drawable.ic_launcher_nagram_neon_foreground, R.string.AppIconNeon),
         NIELLO("NielloIcon", R.drawable.ic_launcher_nagram_round_niello_background, R.drawable.ic_launcher_nagram_round_niello_foreground, R.string.AppIconNiello),
         BLUE("BlueIcon", R.color.nagram_block_round_background, R.drawable.ic_launcher_nagram_blue_foreground, R.string.AppIconBlue),
         DARKBLUE("DarkBlueIcon", R.color.nagram_dark_blue_background, R.drawable.ic_launcher_nagram_dark_blue_foreground, R.string.AppIconDarkBlue),

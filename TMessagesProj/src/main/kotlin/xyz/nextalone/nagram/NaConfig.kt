@@ -6,6 +6,7 @@ import android.util.Base64
 import androidx.core.content.edit
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
+import org.telegram.messenger.BuildConfig
 import org.telegram.messenger.BuildVars
 import org.telegram.messenger.FileLog
 import org.telegram.messenger.SharedConfig
@@ -207,7 +208,8 @@ object NaConfig {
         addConfig(
             "CustomTitle",
             ConfigItem.configTypeString,
-            "Nagram X"
+            // NagramX: kept in sync by hand with the resValue 'NagramX' default in TMessagesProj/build.gradle
+            if (BuildConfig.APPLICATION_ID.endsWith(".beta")) "Dazegram" else "DazegramX"
         )
     val dateOfForwardedMsg =
         addConfig(

@@ -72,6 +72,6 @@ final class EventScheduleNotifier {
             TLRPC.Chat chat = controller.getChat(-dialogId);
             if (chat != null) return chat.title;
         }
-        return LocaleController.getString(R.string.AppName);
+        return LocaleController.getString(R.string.NagramX);
     }
 }

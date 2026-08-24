@@ -103,6 +103,18 @@ the pre-archive verification side (below) for every child session it archives.
      `%LOCALAPPDATA%\kotlin\daemon`). It is shared and it outlives the build
      that started it by design, so it is **not** a leak and **not** yours to
      stop. It survives `gradlew --stop`. Leave it alone; it idles out.
+   - **Isolated `GRADLE_USER_HOME` cache directory.** If you started a Gradle
+     build with a session-specific `GRADLE_USER_HOME` outside the worktree
+     for daemon isolation, the cache and daemon registry inside it are yours
+     to remove, but **only after** the session is archived. The cache is not
+     safe to delete while the session is running or while `archive_session`
+     may still reference it. Deletion happens in the orchestrator; record the
+     absolute path in your handback's `Isolated GRADLE_USER_HOME` field so
+     the orchestrator can clean it up after archive succeeds (see
+     step 8 of the lifecycle checklist for the exact validation and deletion
+     contract). Cleanup applies whenever an isolated home was used, regardless
+     of daemon mode (`--no-daemon` stops the single-use daemon but the ~2.8 GB
+     cache remains).
 9. **Keep long-running processes' working directory and logs outside the
    session worktree.** Start them with a working directory such as `$env:TEMP`
    and redirect any log output there too, not into the worktree. A process
@@ -254,14 +266,31 @@ or, one block per item:
   started by: <this session/branch — so a later reader knows who owns it>
   identity:   <tool-native handle or async-shell session id>
               OR <PID>, <image name>, <start time>, <path/cwd>
-  owned resource: <recorded port / emulator serial / isolated GRADLE_USER_HOME
-              path, if this item involved a daemon you own> | n/a — used the
-              shared/ambient resource and did not stop it (rule 8)
+  owned resource: <daemon-specific resource: adb port, emulator serial, or for
+              a gradle-daemon row, the isolated GRADLE_USER_HOME cache path when
+              used for daemon isolation> | n/a — used the shared/ambient resource
+              and did not stop it (rule 8)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
               yet verified
 ```
+
+**Separate from the process ledger**, include this mandatory cache cleanup field in your handback:
+
+```
+Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
+```
+
+Always include this field: report the absolute cache path if you used an
+isolated `GRADLE_USER_HOME` for any build (regardless of daemon mode), or
+report `<none>` if you used a shared/default Gradle home or no Gradle build.
+This field is distinct from the `owned resource` field in the process ledger for
+non-Gradle processes (which records items like adb ports or emulator serials).
+When a gradle-daemon process row exists in the ledger **and** you used an
+isolated home, the `owned resource` value in that row should record the same
+cache path for consistency with this field.
+
 
 **Tool-managed async/background shells go in this ledger too** — record their
 returned handle/session id under `identity` and their `stop result` from
@@ -295,10 +324,109 @@ checklist passes**, run from the main clone, not from inside the child's
 worktree (a check run from inside the very directory being verified can itself
 hold it open).
 
-1. Read the implementer's process ledger from its report. A missing ledger,
-   a malformed row, a `stop result: failed to stop`, or an unverified row is a
-   **hard block** — do not archive, and treat every such item as "assume still
-   running."
+**Under nested orchestrators this gate is recursive and runs strictly
+leaf-to-root.** An orchestrator may itself be a child of another orchestrator,
+and it archives **only its own direct children** — never a grandchild.
+
+- **"Direct child" is mechanical, not just semantic:** a direct child is a
+  session whose `create_session` (or `open_pr_session` / `open_issue_session` /
+  `fork_session`) call **this orchestrator itself** made and whose returned
+  session id it recorded. If you can see a grandchild's id or worktree path only
+  because it appeared in a child's report, that grandchild is **not** yours to
+  archive; its own parent (your direct child) archives it. An orchestrator that
+  reaches past a child to archive a grandchild directly is a protocol violation.
+- **A direct child is one of two kinds, and they close differently.** A **leaf
+  implementer** has no `CLOSED` state: it posts its handback (PR + process
+  ledger), the parent runs the checklist below against that ledger, and the
+  parent archives it — the ordinary one-level path, unchanged by nesting. A
+  **child orchestrator** owns a subtree, so it closes *its* subtree first and
+  only then reports `CLOSED` upward. Do not require a `CLOSED` message from a
+  leaf implementer — it will never send one, and blocking on it would deadlock
+  its archival.
+- **Closure propagates upward as control messages, leaf-to-root — for the
+  orchestrator layers.** A **child orchestrator** reports `CLOSED` to its parent
+  **only** once *every* one of its own direct children is already archived (each
+  leaf implementer via the normal handback→verify→archive path above, and each
+  child orchestrator only after *it* reported `CLOSED` first) **and** its own
+  ledger / residual-sweep contract below passes clean. If it still holds any
+  descendant it could not safely archive — a blocked process, an unverified row,
+  a grandchild that reported `BLOCKED_ARCHIVE` — it reports **`BLOCKED_ARCHIVE`**
+  upward, never `CLOSED`. An ancestor must never archive across (skip past) a
+  descendant reporting `BLOCKED_ARCHIVE`, and a `CLOSED` at a higher level must
+  never paper over an unresolved `BLOCKED_ARCHIVE` below it.
+- **A child orchestrator's `CLOSED` carries its own process ledger** (in the
+  ledger format above, empty as `Processes: <none>`) plus its per-direct-child
+  archive results, so the parent can run this same checklist against it and
+  independently re-verify — exactly as it does against a leaf implementer's
+  handback ledger. `CLOSED` is not accepted bare: a `CLOSED` with no ledger is a
+  malformed report and a **hard block**, same as a missing implementer ledger.
+  This accounting rides in the control message itself — **do not** add a ledger
+  `kind:` for it; the ledger stays about OS processes only.
+- **The per-direct-child archive results are a structured record, not free
+  prose**, so the parent can mechanically match them against the direct-child
+  rule rather than reading intent out of a sentence. One record per direct
+  child, each stating at minimum:
+  - **session id** — the exact id this child recorded when it made the
+    `create_session` / `open_*_session` / `fork_session` call. This child made
+    that call, so it — not the parent — is what establishes the session is a
+    genuine *direct* child and not a grandchild seen second-hand; the id rides up
+    as the auditable record of that fact, not as something the parent
+    independently re-derives. The parent cannot mechanically prove provenance
+    here: it never made the call and has no registry of another session's
+    children to check the id against, so it takes this record on the child's
+    word — exactly as the whole leaf-to-root contract does. What the parent *does*
+    check mechanically is its **own** direct child (the session it created and
+    recorded): that this child is accounted for, its ledger is clean, and its
+    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived. This is the same trust
+    the rest of the pipeline places in a leaf implementer's claims: Phase 4's
+    "every claim is unverified until you check it" governs the child
+    orchestrator's **own** verification of **its** subtree, not a re-verification
+    the parent performs on the child's behalf. There is no session-provenance
+    registry in this environment to cross-check an id against, so a fabricated or
+    stale record is a trust violation the protocol cannot mechanically detect —
+    the same class of limitation as trusting any subordinate's report.
+  - **kind** — `leaf implementer` or `child orchestrator`, since the two close
+    by different paths (a leaf via handback→verify→archive, a child orchestrator
+    only after its own `CLOSED`).
+  - **archive outcome** — `archived`, or `BLOCKED_ARCHIVE` with the reason (in
+    which case this orchestrator owes `BLOCKED_ARCHIVE` upward too, never
+    `CLOSED`).
+  - **lifecycle-check evidence that passed** — `ledger clean` and `sweep clean`
+    for that child, the concrete evidence the pre-archive checklist below
+    produced, not a bare assertion that it closed.
+  A `CLOSED` whose per-direct-child records omit any of these, or that asserts
+  closure without the matching evidence, is malformed and a **hard block**, the
+  same as a missing ledger.
+- **The residual sweep below is structurally blind to a live grandchild.** The
+  worktree-filtered `Get-CimInstance Win32_Process` query matches only processes
+  naming *this child's* worktree path; a live grandchild's processes name the
+  **grandchild's own** worktree, so they never appear in this child's sweep. A
+  clean sweep on a direct child is therefore **not** evidence that its whole
+  subtree is closed. Subtree closure is established **only** by that child's own
+  `CLOSED` message plus its reported per-direct-child archive results — never by
+  the sweep alone. Because the parent can neither see nor re-verify a grandchild
+  — it never created it and the sweep is blind to it — grandchild safety is
+  **not** the parent's to establish; it is the child's, and the child is barred
+  from ever sending `CLOSED` while it still holds an unarchived descendant (it
+  owes `BLOCKED_ARCHIVE` instead, which an ancestor must never archive across). A
+  truthful `CLOSED` is thus the parent's only evidence a grandchild closed, and
+  it is the protocol's honesty rule — the `BLOCKED_ARCHIVE`-not-`CLOSED`
+  obligation, not a parent-side registry the tools can't provide — that prevents
+  the orphan the sweep-blindness would otherwise allow.
+
+1. Read the direct child's process ledger from its report — a leaf implementer's
+   handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
+   message. A missing ledger, a malformed row, a `stop result: failed to stop`,
+   or an unverified row is a **hard block** — do not archive, and treat every
+   such item as "assume still running." This "missing ledger blocks" rule
+   applies strictly to a session that **reached `RUNNING`** and so owed a
+   self-reported ledger. A session that **never reached `RUNNING`** owes none:
+   the pre-`RUNNING` / mis-dispatch cleanup paths in the orchestrator agent file
+   establish its ledger from the outside instead — a clean worktree-filtered
+   sweep on a zero-diff session that never reported *is* the `Processes: <none>`
+   evidence, a valid input to this checklist rather than a violation of this
+   rule. The strict block still governs every session that did reach `RUNNING`
+   and therefore did owe a ledger of its own.
 2. Stop any tool-managed background shell you dispatched for that session
    through its own returned handle/session id — never by searching for a PID.
 3. **Re-verify every OS-level identity yourself, including rows the ledger
@@ -376,6 +504,29 @@ hold it open).
    Report the exact `Id`, `Name`, `Path`, `StartTime`, and command line
    (where available) and leave the session (or worktree) intact for manual
    recovery.
+8. **Post-archive cache cleanup for isolated `GRADLE_USER_HOME` only.** After
+   `archive_session` succeeds for a child that recorded an isolated
+   `GRADLE_USER_HOME` in its handback (the mandatory `Isolated GRADLE_USER_HOME`
+   field, separate from the process ledger), and **only then**, clean up that
+   session-specific cache directory:
+   - Confirm the path from the child's handback is child-owned (recorded by that
+     session, not another), outside the removed worktree, and not the
+     shared/default `%USERPROFILE%\.gradle` or another active session's home.
+   - Run an exact-path process-use check against that directory to confirm no
+     live process is reading it (exclude the probe's own process from the match
+     to avoid false positives). If any unexplained process references it, **do
+     not delete** — report the finding and leave the cache for manual
+     recovery.
+   - Delete only the resolved literal directory path (the exact path from the
+     handback), without wildcards, globs, or broad-root variables. Never use
+     `Remove-Item -Recurse` blindly; use a tool that confirms the deletion or
+     reports exact-path evidence when it fails.
+   - **Do not** stop shared Gradle or Kotlin daemons to make the deletion pass
+     — if a daemon blocks it, leave the cache intact and report the block.
+   - If cache deletion fails, report the exact path and error; do not retry
+     destructively.
+   - If the child's handback reads `Isolated GRADLE_USER_HOME: <none>`, no
+     cache cleanup is needed.
 
 ## Coverage
 

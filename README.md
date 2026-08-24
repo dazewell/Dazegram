@@ -1,4 +1,4 @@
-# Nagram X
+# Dazegram
 [![Crowdin](https://badges.crowdin.net/NagramX/localized.svg)](https://crowdin.com/project/NagramX)  
 A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional features.
 
@@ -7,16 +7,15 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 ## Download
 
 Latest versions are available through:
-* [Telegram Channel](https://t.me/NagramX) (Latest Beta)
-* [GitHub Actions](https://github.com/risin42/NagramX/actions/workflows/staging.yml) (CI Artifacts)
-* [GitHub Releases](https://github.com/risin42/NagramX/releases) (Latest Stable)
+* [GitHub Actions](https://github.com/dazewell/NagramX/actions/workflows/staging.yml) (CI Artifacts)
+* [GitHub Releases](https://github.com/dazewell/NagramX/releases) (Latest Stable)
 
 ## Package names
 
 I ship two builds, and each one deliberately borrows another app's package name:
 
 * **Dazegram** — `org.telegram.messenger.beta` (Telegram Beta's package)
-* **Dazegram X** — `nekox.messenger` (NekoX's package)
+* **DazegramX** — `nekox.messenger` (NekoX's package)
 
 This is on purpose. Icon packs already ship custom icons for Telegram Beta and NekoX, so by parasiting on their package names my builds get themed icons out of the box instead of waiting for any pack to add me. The catch is that you can't keep the app I'm borrowing from installed at the same time, since Android won't allow two apps to share one package name.
 
@@ -31,7 +30,7 @@ Both builds are signed with my certificate:
 1. Clone the repository with its submodules:
 
     ```bash
-    git clone --recursive --shallow-submodules https://github.com/risin42/NagramX.git NagramX
+    git clone --recursive --shallow-submodules https://github.com/dazewell/NagramX.git NagramX
     ```
 
     If you already cloned the repository without submodules, run:

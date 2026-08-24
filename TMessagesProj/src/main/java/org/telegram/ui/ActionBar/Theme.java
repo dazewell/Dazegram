@@ -1399,6 +1399,18 @@ public class Theme {
         private final static int MONET_DARK = 2;
         private final static int MONET_AMOLED = 3;
 
+        // NagramX: which built-in dynamic palette this is, distinct from monetKind's
+        // light/dark/amoled shade. Only used to decide whether the built-in Monet pattern
+        // composite should suppress the wallpaper-sampled service gradient in favour of this
+        // theme's own flat warm service tokens (see MonetPatternHelper.buildComposite and
+        // Theme.applyChatServiceMessageColor) — not persisted, since built-ins set it in-memory
+        // at registration below and user/remote themes have no equivalent to set it from.
+        private int monetFamily = MONET_FAMILY_BASE;
+
+        private final static int MONET_FAMILY_BASE = 0;
+        private final static int MONET_FAMILY_EXTERA = 1;
+        private final static int MONET_FAMILY_SOLID = 2;
+
         ThemeInfo() {
 
         }
@@ -1406,6 +1418,7 @@ public class Theme {
         public ThemeInfo(ThemeInfo other) {
             this.name = other.name;
             this.monetKind = other.monetKind; // NagramX: isMonet*() reads this, not name, so a copy must carry it over
+            this.monetFamily = other.monetFamily; // NagramX: isExteraOrSolidFamily() reads this, so a copy must carry it over too
             this.isDark = other.isDark; // NagramX: Extera Light/Dark only get isDark from this preset, not the name-based fallback in isDark()
             this.pathToFile = other.pathToFile;
             this.pathToWallpaper = other.pathToWallpaper;
@@ -1678,6 +1691,12 @@ public class Theme {
 
         public boolean isMonetNight() {
             return isMonetDark() || isMonetAmoled();
+        }
+
+        // NagramX: true for the built-in Extera or Solid registrations specifically (not
+        // base Monet, not a user/remote theme). See monetFamily's declaration above.
+        public boolean isExteraOrSolidFamily() {
+            return monetFamily == MONET_FAMILY_EXTERA || monetFamily == MONET_FAMILY_SOLID;
         }
 
         public boolean isDay() {
@@ -4128,6 +4147,7 @@ public class Theme {
             themeInfo.previewOutColor = MonetHelper.getColor("a1_600");
             themeInfo.sortIndex = 9;
             themeInfo.monetKind = ThemeInfo.MONET_LIGHT;
+            themeInfo.monetFamily = ThemeInfo.MONET_FAMILY_EXTERA;
             themeInfo.isDark = ThemeInfo.LIGHT;
             themes.add(themeInfo);
             themesDict.put("Extera Light", themeInfo);
@@ -4140,6 +4160,7 @@ public class Theme {
             themeInfo.previewOutColor = MonetHelper.getColor("a1_200");
             themeInfo.sortIndex = 10;
             themeInfo.monetKind = ThemeInfo.MONET_DARK;
+            themeInfo.monetFamily = ThemeInfo.MONET_FAMILY_EXTERA;
             themeInfo.isDark = ThemeInfo.DARK;
             themes.add(themeInfo);
             themesDict.put("Extera Dark", themeInfo);
@@ -4152,6 +4173,7 @@ public class Theme {
             themeInfo.previewOutColor = MonetHelper.getColor("a1_600");
             themeInfo.sortIndex = 11;
             themeInfo.monetKind = ThemeInfo.MONET_LIGHT;
+            themeInfo.monetFamily = ThemeInfo.MONET_FAMILY_SOLID;
             themeInfo.isDark = ThemeInfo.LIGHT;
             themes.add(themeInfo);
             themesDict.put("Solid Light", themeInfo);
@@ -4164,6 +4186,7 @@ public class Theme {
             themeInfo.previewOutColor = MonetHelper.getColor("a1_200");
             themeInfo.sortIndex = 12;
             themeInfo.monetKind = ThemeInfo.MONET_DARK;
+            themeInfo.monetFamily = ThemeInfo.MONET_FAMILY_SOLID;
             themeInfo.isDark = ThemeInfo.DARK;
             themes.add(themeInfo);
             themesDict.put("Solid Dark", themeInfo);
@@ -8843,6 +8866,14 @@ public class Theme {
         }
         Drawable drawable = wallpaperOverride != null ? wallpaperOverride : currentWallpaper;
         boolean drawServiceGradient = (drawable instanceof MotionBackgroundDrawable || drawable instanceof BitmapDrawable) && SharedConfig.getDevicePerformanceClass() != SharedConfig.PERFORMANCE_CLASS_LOW && LiteMode.isEnabled(LiteMode.FLAG_CHAT_BACKGROUND);
+        // NagramX: Extera/Solid Dark's built-in Monet pattern composite marks itself so this
+        // one wallpaper source can opt out of the sampled-and-saturated service gradient in
+        // favour of its own flat warm service tokens below — custom per-chat colors still win,
+        // and every other BitmapDrawable/MotionBackgroundDrawable wallpaper is untouched.
+        if (drawServiceGradient && custom == null && drawable instanceof xyz.nextalone.nagram.helper.MonetPatternHelper.MonetPatternDrawable
+                && ((xyz.nextalone.nagram.helper.MonetPatternHelper.MonetPatternDrawable) drawable).suppressServiceGradient) {
+            drawServiceGradient = false;
+        }
         if (drawServiceGradient) {
             Bitmap newBitmap = null;
             if (drawable instanceof MotionBackgroundDrawable) {
@@ -8891,6 +8922,7 @@ public class Theme {
             setDrawableColorByKey(chat_msgStickerRepliesDrawable, key_chat_serviceText);
             chat_actionTextPaint.setColor(getColor(key_chat_serviceText));
             chat_actionTextPaint2.setColor(getColor(key_chat_serviceText));
+            chat_actionTextPaint3.setColor(getColor(key_chat_serviceText)); // NagramX: refresh alongside the other action paints so a prior sampled-gradient's white doesn't linger once this theme falls back to the flat branch
             chat_actionTextPaint.linkColor = getColor(key_chat_serviceLink);
             chat_unlockExtendedMediaTextPaint.setColor(getColor(key_chat_serviceText));
             setDrawableColorByKey(chat_commentStickerDrawable, key_chat_serviceIcon);

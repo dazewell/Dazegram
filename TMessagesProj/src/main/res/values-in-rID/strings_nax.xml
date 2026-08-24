@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="XChannel">Saluran Nagram X</string>
     <string name="EnableSaveDeletedMessages">Simpan Pesan yang Dihapus</string>
     <string name="DeletedMessage">dihapus</string>
     <string name="EnableSaveEditsHistory">Simpan Riwayat Suntingan</string>

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- NagramX (app display name) is generated per package variant via resValue in build.gradle -->
+    <string name="Acknowledgments">Acknowledgments</string>
     <string name="VideoMessagesPlayAll">Play all video messages</string>
     <string name="AccDescrZoomControl">Zoom</string>
     <string name="VideoMessagesResetZoomOnSwitch">Reset zoom when switching cameras</string>
@@ -30,7 +31,6 @@
     <string name="ChatLockEnable">Require Password</string>
     <string name="ChatLockDisable">Don\'t Require Password</string>
     <string name="ChatLockEnabledHint">This chat will now ask for your passcode before it opens.</string>
-    <string name="XChannel">Nagram X Channel</string>
     <string name="EnableSaveDeletedMessages">Save Deleted Messages</string>
     <string name="DeletedMessage">deleted</string>
     <string name="EnableSaveEditsHistory">Save Edits History</string>
@@ -281,7 +281,7 @@
     <string name="AutoCheckUpdateRelease">Release</string>
     <string name="AutoCheckUpdateBeta">Beta</string>
     <string name="YourVersionIsLatestNax">Your version is up to date.</string>
-    <string name="UpdateChecksOffNax">Update checks are off. Turn them on from Update Channel in Settings.</string>
+    <string name="UpdateChecksOffNax">Update checks are unavailable.</string>
     <string name="PremiumElements">Premium Elements</string>
     <string name="PremiumItemBoosts">Boost Counter</string>
     <string name="PremiumItemStickerEffects">Sticker Effects</string>

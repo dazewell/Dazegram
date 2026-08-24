@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="XChannel">Nagram X 채널</string>
     <string name="EnableSaveDeletedMessages">삭제된 메시지 저장</string>
     <string name="DeletedMessage">삭제됨</string>
     <string name="EnableSaveEditsHistory">수정 기록 저장</string>

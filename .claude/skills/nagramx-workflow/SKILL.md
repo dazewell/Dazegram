@@ -250,7 +250,9 @@ code are not.
    from model families different from the implementer, the architect, and each
    other, and
    how a split verdict is adjudicated. Whoever drives the change dispatches them;
-   in the Copilot roster that is the orchestrator (Phase 4).
+   in the Copilot roster that is the nearest owning orchestrator for that unit
+   (Phase 4) — under nested orchestrators that is the child orchestrator that
+   owns the unit, not necessarily the root.
 
    **What triggers these is what happened, not just up-front size.**
    They're proportional — a one-line chore doesn't earn them — but reserve them
@@ -525,8 +527,8 @@ The staging pipeline (`.github/workflows/staging.yml`) builds **two** APKs
 from one source via a matrix, overriding the gradle property `APP_PACKAGE`
 with `-PAPP_PACKAGE=`:
 
-- `nekox.messenger` → **Unofficial** (`NagramX-Unofficial-…`)
-- `org.telegram.messenger.beta` → **Official** (`NagramX-Official-…`)
+- `nekox.messenger` → **Unofficial** (`DazegramX-Unofficial-…`)
+- `org.telegram.messenger.beta` → **Official** (`Dazegram-Official-…`)
 
 Default/local builds are single-package
 (`APP_PACKAGE=nekox.messenger` in `gradle.properties`); the label/filename

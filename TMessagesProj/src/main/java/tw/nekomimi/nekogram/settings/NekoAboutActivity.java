@@ -8,7 +8,6 @@ import android.view.View;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.ui.Cells.TextSettingsCell;
@@ -17,23 +16,19 @@ import tw.nekomimi.nekogram.DatacenterActivity;
 
 public class NekoAboutActivity extends BaseNekoSettingsActivity {
 
-    private int xChannelRow;
-    private int channelRow;
-    private int channelTipsRow;
     private int sourceCodeRow;
     private int translationRow;
     private int datacenterStatusRow;
+    private int acknowledgmentsRow;
 
     @Override
     protected void updateRows() {
         super.updateRows();
 
-        xChannelRow = addRow();
-        channelRow = addRow();
-        channelTipsRow = addRow();
         sourceCodeRow = addRow();
         translationRow = addRow();
         datacenterStatusRow = addRow();
+        acknowledgmentsRow = addRow();
     }
 
     @Override
@@ -43,18 +38,15 @@ public class NekoAboutActivity extends BaseNekoSettingsActivity {
 
     @Override
     protected void onItemClick(View view, int position, float x, float y) {
-        if (position == xChannelRow) {
-            MessagesController.getInstance(currentAccount).openByUserName("NagramX", NekoAboutActivity.this, 1);
-        } else if (position == channelRow) {
-            MessagesController.getInstance(currentAccount).openByUserName("nagram_channel", NekoAboutActivity.this, 1);
-        } else if (position == channelTipsRow) {
-            MessagesController.getInstance(currentAccount).openByUserName("NagramTips", NekoAboutActivity.this, 1);
-        } else if (position == translationRow) {
+        if (position == translationRow) {
             Browser.openUrl(getParentActivity(), "https://crowdin.com/project/NagramX");
         } else if (position == sourceCodeRow) {
-            Browser.openUrl(getParentActivity(), "https://github.com/risin42/NagramX");
+            Browser.openUrl(getParentActivity(), "https://github.com/dazewell/NagramX");
         } else if (position == datacenterStatusRow) {
             presentFragment(new DatacenterActivity(0));
+        } else if (position == acknowledgmentsRow) {
+            // NagramX: credits the upstream project this fork is built on, not this app itself
+            Browser.openUrl(getParentActivity(), "https://github.com/risin42/NagramX");
         }
     }
 
@@ -73,18 +65,14 @@ public class NekoAboutActivity extends BaseNekoSettingsActivity {
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position, boolean partial) {
             if (holder.getItemViewType() == TYPE_SETTINGS) {
                 TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
-                if (position == xChannelRow) {
-                    textCell.setTextAndValue(getString(R.string.XChannel), "@NagramX", true);
-                } else if (position == channelRow) {
-                    textCell.setTextAndValue(getString(R.string.OfficialChannel), "@nagram_channel", true);
-                } else if (position == channelTipsRow) {
-                    textCell.setTextAndValue(getString(R.string.TipsChannel), "@" + "NagramTips", true);
-                } else if (position == sourceCodeRow) {
+                if (position == sourceCodeRow) {
                     textCell.setTextAndValue(getString(R.string.SourceCode), "Github", true);
                 } else if (position == translationRow) {
                     textCell.setTextAndValue(getString(R.string.TransSite), "Crowdin", true);
                 } else if (position == datacenterStatusRow) {
-                    textCell.setText(getString(R.string.DatacenterStatus), false);
+                    textCell.setText(getString(R.string.DatacenterStatus), true);
+                } else if (position == acknowledgmentsRow) {
+                    textCell.setTextAndValue(getString(R.string.Acknowledgments), "NagramX", false);
                 }
             }
         }

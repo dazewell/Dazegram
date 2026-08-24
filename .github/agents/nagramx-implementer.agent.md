@@ -328,11 +328,22 @@ Staging build: <conclusion, and whether the APK was uploaded>
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md
+Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 What changed:  <bullets — one per user-visible behaviour, plus the hook points touched>
 Reused:        <what existing components you reused, or why nothing fit>
 Assumptions:   <anything you decided that was not in the brief>
 Not done:      <anything deliberately left out, and why>
 ```
+
+**Cache cleanup field:** Always include `Isolated GRADLE_USER_HOME` in your
+handback. Report the absolute path if you started a Gradle build with a
+session-specific `GRADLE_USER_HOME` for daemon isolation. Report `<none>` if
+you used a shared/default Gradle home or no Gradle build at all. (Even
+`--no-daemon` creates the ~2.8 GB isolated cache, which must be cleaned up
+regardless of daemon mode). When a gradle-daemon process row exists in the
+ledger and you used an isolated home, ensure its `owned resource` field records
+the same cache path for consistency. See `.claude/skills/nagramx-process-lifecycle/SKILL.md`
+rule 8 and step 8 (post-archive cache cleanup) for the full contract.
 
 Flag assumptions rather than burying them, never report a gate as passed when
 it was skipped, and never omit the process ledger line — a missing ledger
