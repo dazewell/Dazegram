@@ -118,11 +118,12 @@ jobs:
           $badFile = Join-Path $env:RUNNER_TEMP 'gc-bad.bin'
           Set-Content -LiteralPath $badFile -Value ("tampered " + [guid]::NewGuid()) -NoNewline
           $badBlob = (git hash-object -w -- $badFile).Trim()
+          $ksPath = Pin 'KEYSTORE_PATH'
           $idx = Join-Path $env:RUNNER_TEMP 'gc.idx'
           Remove-Item -LiteralPath $idx -ErrorAction SilentlyContinue
           $env:GIT_INDEX_FILE = $idx
           git read-tree $clean
-          git update-index --cacheinfo "100644,$badBlob,TMessagesProj/release.keystore"
+          git update-index --cacheinfo "100644,$badBlob,$ksPath"
           $badTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
           $bad = (git commit-tree $badTree -p $head -p $snap -m "guard-check tampered candidate #infra").Trim()
