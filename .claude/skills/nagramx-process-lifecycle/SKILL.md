@@ -338,8 +338,17 @@ and it archives **only its own direct children** — never a grandchild.
   rule rather than reading intent out of a sentence. One record per direct
   child, each stating at minimum:
   - **session id** — the exact id this child recorded when it made the
-    `create_session` / `open_*_session` / `fork_session` call, so the parent can
-    confirm it is a genuine *direct* child and not a grandchild seen second-hand.
+    `create_session` / `open_*_session` / `fork_session` call. This child made
+    that call, so it — not the parent — is what establishes the session is a
+    genuine *direct* child and not a grandchild seen second-hand; the id rides up
+    as the auditable record of that fact, not as something the parent
+    independently re-derives. The parent cannot mechanically prove provenance
+    here: it never made the call and has no registry of another session's
+    children to check the id against, so it takes this record on the child's
+    word — exactly as the whole leaf-to-root contract does. What the parent *does*
+    check mechanically is its **own** direct child (the session it created and
+    recorded): that this child is accounted for, its ledger is clean, and its
+    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived.
   - **kind** — `leaf implementer` or `child orchestrator`, since the two close
     by different paths (a leaf via handback→verify→archive, a child orchestrator
     only after its own `CLOSED`).
@@ -359,7 +368,15 @@ and it archives **only its own direct children** — never a grandchild.
   clean sweep on a direct child is therefore **not** evidence that its whole
   subtree is closed. Subtree closure is established **only** by that child's own
   `CLOSED` message plus its reported per-direct-child archive results — never by
-  the sweep alone.
+  the sweep alone. Because the parent can neither see nor re-verify a grandchild
+  — it never created it and the sweep is blind to it — grandchild safety is
+  **not** the parent's to establish; it is the child's, and the child is barred
+  from ever sending `CLOSED` while it still holds an unarchived descendant (it
+  owes `BLOCKED_ARCHIVE` instead, which an ancestor must never archive across). A
+  truthful `CLOSED` is thus the parent's only evidence a grandchild closed, and
+  it is the protocol's honesty rule — the `BLOCKED_ARCHIVE`-not-`CLOSED`
+  obligation, not a parent-side registry the tools can't provide — that prevents
+  the orphan the sweep-blindness would otherwise allow.
 
 1. Read the direct child's process ledger from its report — a leaf implementer's
    handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
