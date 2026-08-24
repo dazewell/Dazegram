@@ -157,9 +157,16 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider topPanelChatActivity(Theme.ResourcesProvider resourcesProvider) {
+        return topPanelChatActivity(UserConfig.selectedAccount, resourcesProvider);
+    }
+
+    // NagramX: account-aware overload so bubble chats (which run under a
+    // notification's account, not the globally selected one) evaluate blur
+    // eligibility against the right account's config.
+    public static BlurredBackgroundProvider topPanelChatActivity(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
                 .setBackgroundColor((r, isDark) -> {
-                    if (!checkBlurEnabled(resourcesProvider)) {
+                    if (!checkBlurEnabled(currentAccount, resourcesProvider)) {
                         return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                     }
@@ -177,9 +184,15 @@ public class BlurredBackgroundProviderImpl {
     }
 
     public static BlurredBackgroundProvider topPanelChatActivityTags(Theme.ResourcesProvider resourcesProvider) {
+        return topPanelChatActivityTags(UserConfig.selectedAccount, resourcesProvider);
+    }
+
+    // NagramX: same account-aware fix as topPanelChatActivity, for the
+    // hashtag/tag search strip that shares its blur-eligibility check.
+    public static BlurredBackgroundProvider topPanelChatActivityTags(int currentAccount, Theme.ResourcesProvider resourcesProvider) {
         return new BlurredBackgroundProviderBuilder(resourcesProvider)
             .setBackgroundColor((r, isDark) -> {
-                if (!checkBlurEnabled(resourcesProvider)) {
+                if (!checkBlurEnabled(currentAccount, resourcesProvider)) {
                     return ColorUtils.setAlphaComponent(Theme.getColor(isDark ?
                             Theme.key_actionBarDefault : Theme.key_chat_topPanelBackground, r), 255);
                 }

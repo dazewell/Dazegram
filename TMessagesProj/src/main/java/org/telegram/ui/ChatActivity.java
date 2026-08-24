@@ -5253,7 +5253,7 @@ public class ChatActivity extends BaseFragment implements
 
         contentView.setOccupyStatusBar(!inBubbleMode && !isInsideContainer && !inPreviewMode);
 
-        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(themeDelegate), ChatObject.isForum(currentChat));
+        actionBar.setupGlass(glassBackgroundDrawableFactory, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate), ChatObject.isForum(currentChat));
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
@@ -8478,7 +8478,7 @@ public class ChatActivity extends BaseFragment implements
             hashtagSearchTabs.setTabs(searchViewPager.createTabsView(true, ViewPagerFixed.SELECTOR_TYPE_BUBBLE_STYLE));
             hashtagSearchTabs.setPadding(0, dp(7.66f), 0, dp(7.66f));
             hashtagSearchTabs.setBackground(glassBackgroundDrawableFactory.create(hashtagSearchTabs)
-                .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(resourceProvider))
+                .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, resourceProvider))
                 .setRadius(dp(18)).setPadding(dp(7f)));
 
             contentView.addView(hashtagSearchTabs, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 50, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(5), 0, 0));
@@ -9715,14 +9715,14 @@ public class ChatActivity extends BaseFragment implements
             actionBarSearchTags.setVisibility(View.GONE);
             actionBarSearchTags.setBlurredFactory(
                 glassBackgroundDrawableFactory,
-                BlurredBackgroundProviderImpl.topPanelChatActivityTags(resourceProvider)
+                BlurredBackgroundProviderImpl.topPanelChatActivityTags(currentAccount, resourceProvider)
             );
             contentView.addView(actionBarSearchTags, LayoutHelper.createFrameMarginPx(LayoutHelper.MATCH_PARENT, 38, Gravity.FILL_HORIZONTAL | Gravity.TOP, 0, -dp(3), 0, 0));
         }
 
         checkUi_topPanelLayoutWidth();
         topPanelLayout.setBlurredBackground(glassBackgroundDrawableFactory.create(topPanelLayout)
-            .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(themeDelegate))
+            .setColorProvider(BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate))
             .setRadius(dp(18))
             .setPadding(dp(7)));
 
@@ -10976,8 +10976,8 @@ public class ChatActivity extends BaseFragment implements
             checkUi_topFade();
         });
 
-        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(themeDelegate)));
-        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(themeDelegate)));
+        topicsTabs.setSideMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate)));
+        topicsTabs.setTopMenuBackgroundDrawable(glassBackgroundDrawableFactory.create(topicsTabs, BlurredBackgroundProviderImpl.topPanelChatActivity(currentAccount, themeDelegate)));
 
         int index = 8;
         topicsTabs.setCurrentTopic(getTopicId());
