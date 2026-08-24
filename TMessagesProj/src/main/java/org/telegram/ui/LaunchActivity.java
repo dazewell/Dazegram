@@ -6115,7 +6115,9 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
        // gone), so no update check can run for any channel setting. Gated above progress.init()
        // below so a caller-supplied Progress is never left spinning; a force tap gets an honest
        // "unavailable" bulletin instead of a false "up to date". if(true) keeps the following
-       // upstream branches reachable per JLS 14.21 rather than a bare return.
+       // upstream branches reachable per JLS 14.21 rather than a bare return. This gate is
+       // independent of BaseRemoteHelper.REMOTE_METADATA_DISABLED, the master switch for the
+       // channel itself — re-enabling that alone does not bring update checks back.
        if (true) {
            if (force) {
                BaseFragment fragment = getLastFragment();
@@ -7207,6 +7209,8 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
         // metadata channel is disabled, so it must not be allowed to raise BlockingUpdateView
         // (which has no in-UI dismissal). Purge unconditionally on the main thread before the
         // branch below can raise it; kept out of the ToS else-if so a pending ToS can't skip it.
+        // Independent of BaseRemoteHelper.REMOTE_METADATA_DISABLED, the master switch for the
+        // channel itself — re-enabling that alone does not bring this purge's rationale back.
         if (SharedConfig.pendingAppUpdate != null) {
             tw.nekomimi.nekogram.helpers.remote.UpdateHelper.cleanAppUpdate();
         }

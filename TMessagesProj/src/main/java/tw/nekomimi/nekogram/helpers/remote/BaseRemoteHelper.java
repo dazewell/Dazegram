@@ -26,7 +26,20 @@ public abstract class BaseRemoteHelper {
     // loads from it anymore. Suppressed here rather than at the call sites so no future caller
     // can reopen it; a blocked call reports an empty result so cached data and callbacks are
     // unaffected. The request code below is kept as the reference implementation for a
-    // fork-owned source: re-enabling means changing CHANNEL_METADATA_* and dropping this guard.
+    // fork-owned source: re-enabling means changing CHANNEL_METADATA_* and dropping this guard —
+    // that restores the network fetch for all three load() consumers here: emoji packs
+    // (EmojiHelper), link-preview rewrite rules (PagePreviewRulesHelper), and update metadata
+    // (UpdateHelper.checkNewVersionAvailable). Dropping the guard is not enough to bring back
+    // visible update checks, though: LaunchActivity.checkAppUpdate never reaches
+    // UpdateHelper.checkNewVersionAvailable at all, because it's gated independently at five
+    // further sites this boolean does not touch, so all five need to be reverted by hand too.
+    // The two LaunchActivity gates carry a short back-reference to this flag; the other three do
+    // not, so start from this list rather than expecting to find a trail from them:
+    //   - LaunchActivity.checkAppUpdate's own if (true) gate (~L6119)
+    //   - LaunchActivity's unconditional pending-update purge on resume (~L7210)
+    //   - SettingsActivity's Update Channel picker label (~L1521) and setEnabled(false) (~L1556)
+    //   - ProfileActivity's copy of the same picker (~L4823 / ~L4858)
+    //   - the reworded UpdateChecksOffNax string (strings_nax.xml ~L284)
     private static final boolean REMOTE_METADATA_DISABLED = true;
 
     protected static final SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("nekoremoteconfig", Activity.MODE_PRIVATE);
