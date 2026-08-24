@@ -28,9 +28,10 @@ public abstract class BaseRemoteHelper {
     // unaffected. The request code below is kept as the reference implementation for a
     // fork-owned source: re-enabling means changing CHANNEL_METADATA_* and dropping this guard —
     // but that only brings back the two uses that route through load() here, emoji packs
-    // (EmojiHelper) and link-preview rewrite rules (PagePreviewRulesHelper). Update checks are gated
-    // independently at five further sites this boolean does not reach, and none of them points
-    // back here, so all five need to be reverted by hand as well:
+    // (EmojiHelper) and link-preview rewrite rules (PagePreviewRulesHelper). Update checks are
+    // gated independently at five further sites, so all five need to be reverted by hand too.
+    // The two LaunchActivity gates carry a short back-reference to this flag; the other three do
+    // not, so start from this list rather than expecting to find a trail from them:
     //   - LaunchActivity.checkAppUpdate's own if (true) gate (~L6119)
     //   - LaunchActivity's unconditional pending-update purge on resume (~L7210)
     //   - SettingsActivity's Update Channel picker label (~L1521) and setEnabled(false) (~L1556)
