@@ -273,10 +273,6 @@ jobs:
             $env:JAVA_TOOL_OPTIONS = $null
             Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue
           }
-          } finally {
-            $env:KS_STOREPASS = $null
-            Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue
-          }
 
       - name: Atomic append-only push of dev + nbase
         id: push
