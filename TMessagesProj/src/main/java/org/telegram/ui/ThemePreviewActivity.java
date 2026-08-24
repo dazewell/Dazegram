@@ -4115,7 +4115,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void showPatternsView(int num, boolean show, boolean animated) {
-        boolean showMotion = show && num == 1 && selectedPattern != null;
+        // NagramX: the Monet tile has no Colors pill, so Motion owns that slot in every open/close state
+        boolean showMotion = isMonetPatternPreview() || show && num == 1 && selectedPattern != null;
         if (show) {
             if (num == 0) {
                 if (screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
@@ -4203,8 +4204,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             } else {
                 animators.add(ObjectAnimator.ofFloat(listView2, View.TRANSLATION_Y, 0));
                 animators.add(ObjectAnimator.ofFloat(patternLayout[num], View.TRANSLATION_Y, patternLayout[num].getMeasuredHeight()));
-                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[0], View.ALPHA, 1.0f));
-                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[2], View.ALPHA, 0.0f));
+                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[0], View.ALPHA, showMotion ? 0.0f : 1.0f));
+                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[2], View.ALPHA, showMotion ? 1.0f : 0.0f));
                 animators.add(ObjectAnimator.ofFloat(backgroundImage, View.ALPHA, 1.0f));
             }
             patternViewAnimation.playTogether(animators);
