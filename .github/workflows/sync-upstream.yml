@@ -103,12 +103,14 @@ jobs:
           NAGRAM_BRANCH=$(need NAGRAM_BRANCH)
           KEYSTORE_PATH=$(need KEYSTORE_PATH)
           CERT_SHA=$(need KEYSTORE_CERT_SHA256)
+          SUBJECT_CN=$(need KEYSTORE_SUBJECT_CN)
           {
             echo "anchor_src=$ANCHOR_SRC"
             echo "nagram_repo=$NAGRAM_REPO"
             echo "nagram_branch=$NAGRAM_BRANCH"
             echo "keystore_path=$KEYSTORE_PATH"
             echo "cert_sha=$CERT_SHA"
+            echo "subject_cn=$SUBJECT_CN"
           } >> "$GITHUB_OUTPUT"
 
       - name: nbase must exist (deletion protection; no auto-bootstrap)
@@ -232,7 +234,16 @@ jobs:
               Write-Host "::error::signer cert SHA-256 $hash != pinned $pin — wrong signing key. Push nothing."
               exit 1
             }
-            Write-Host "signer certificate identity confirmed."
+            # Identity, not just bytes: the exported cert must carry the pinned
+            # subject CN. -printcert prints "Owner: CN=..., ..." — public metadata,
+            # no secret. keytool -list would need the store password on the cmdline.
+            $owner = (& keytool -printcert -file $der | Select-String -Pattern '^Owner:') -join ' '
+            $cn = '${{ steps.pins.outputs.subject_cn }}'
+            if ($owner -notmatch [regex]::Escape("CN=$cn")) {
+              Write-Host "::error::signer subject '$owner' does not carry CN=$cn — wrong signer. Push nothing."
+              exit 1
+            }
+            Write-Host "signer certificate identity confirmed (SHA-256 + CN=$cn)."
           } finally {
             $env:KS_STOREPASS = $null
             Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue
@@ -262,6 +273,11 @@ jobs:
             --force-with-lease=refs/heads/nbase:"$OLD_NBASE" \
             origin "$NEW_DEV:refs/heads/dev" "$NEW_SNAP:refs/heads/nbase"
 
+          # Record that the push actually completed. A failure in a LATER step must
+          # not tell the operator "nothing pushed" — the refs have already moved.
+          echo "pushed=1" >> "$GITHUB_OUTPUT"
+          echo "pushed atomically: dev -> $NEW_DEV, nbase -> $NEW_SNAP"
+
       - name: Verify remote refs landed (the push to dev triggers staging)
         run: |
           set -e
@@ -270,7 +286,7 @@ jobs:
           [ "$(git rev-parse origin/nbase)" = "${{ steps.snapshot.outputs.new_snap }}" ] || { echo "::error::nbase did not land"; exit 1; }
           echo "dev and nbase updated atomically. The push to dev triggers staging.yml (dual APK + Telegram upload); this step confirms the refs, not the downstream run."
 
-      - name: Notify on any failure (push nothing)
+      - name: Notify on any failure
         if: failure()
         env:
           HELPER_BOT_TOKEN: ${{ secrets.HELPER_BOT_TOKEN }}
@@ -279,19 +295,32 @@ jobs:
           PRE: ${{ steps.refs.outputs.pre }}
           ANCHOR: ${{ steps.pins.outputs.anchor_src }}
           NEW_SRC: ${{ steps.refs.outputs.new_src }}
+          NEW_DEV: ${{ steps.merge.outputs.new_dev }}
+          NEW_SNAP: ${{ steps.snapshot.outputs.new_snap }}
           CONFLICT: ${{ steps.merge.outputs.conflict }}
+          PUSHED: ${{ steps.push.outputs.pushed }}
         run: |
           if [ -z "$HELPER_BOT_TOKEN" ] || [ -z "$HELPER_BOT_TARGET" ]; then
             echo "Telegram secrets unset; skipping notification."; exit 0
           fi
-          REASON="guard/topology/token/atomic-push"
-          [ -n "$CONFLICT" ] && REASON="merge conflict"
-          TEXT="⚠️ Dazegram sync blocked (${REASON}). Nothing pushed.
+          if [ "$PUSHED" = "1" ]; then
+            # The atomic push already succeeded; this failure is post-push (e.g. the
+            # verify step). Never say "nothing pushed" — the refs have moved.
+            TEXT="⚠️ Dazegram sync: the atomic push SUCCEEDED but a post-push step failed. The refs have ALREADY advanced — do NOT re-run as if nothing happened.
+          dev  is now: ${NEW_DEV:-unknown}
+          nbase is now: ${NEW_SNAP:-unknown}
+          Verify with: git fetch origin dev nbase && git rev-parse origin/dev origin/nbase
+          run: ${RUN_URL}"
+          else
+            REASON="guard/topology/token/atomic-push"
+            [ -n "$CONFLICT" ] && REASON="merge conflict"
+            TEXT="⚠️ Dazegram sync blocked (${REASON}). Nothing pushed.
           PRE: ${PRE:-unknown}
           anchor: ${ANCHOR:-unknown}
           source: ${NEW_SRC:-unresolved}
           run: ${RUN_URL}
           Finish the reconciliation on the PC."
+          fi
           curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
             --data-urlencode "text=${TEXT}" >/dev/null

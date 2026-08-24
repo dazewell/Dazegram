@@ -1,17 +1,24 @@
 name: Sync guard check
 
-# Always-on required check for the sync guard. It runs on EVERY push and PR with
-# no paths filter, on purpose. Two things it proves on every commit:
+# Always-on required check for the sync guard. Runs on EVERY push and PR with no
+# paths filter, on purpose. It proves, on every commit:
 #
-#   1. The guard's self-test still passes — every validator can still both reject
-#      a bad input and accept a good one. A guard that silently stopped
-#      discriminating would fail here.
-#   2. sync-upstream.yml still actually invokes the guard. A guard that is present
-#      but no longer wired into the sync is worthless; this catches that.
+#   1. The guard self-tests — every validator can still both reject a bad input
+#      and accept a good one — AND its manifests load and validate, AND every
+#      protected pin still matches the current tree (a protected file changed
+#      without repinning fails here, at PR time, instead of blocking every future
+#      sync on drift).
+#   2. sync-upstream.yml still invokes the guard, as an ACTIVE (uncommented) step,
+#      BEFORE the push. A text search would pass on a commented-out call; this
+#      inspects structure, so commenting the invocation out fails the check.
+#   3. The full real-candidate path runs against the live manifests: a known-clean
+#      candidate passes and a tampered one blocks. Exercising real Git extraction
+#      is what catches a stale pin or an empty manifest that -SelfTestOnly alone
+#      would miss.
 #
-# There is deliberately no `paths-ignore`. This repo was bitten by commit-tag.yml
-# sitting disabled for weeks while every PR reported green — an absent or skipped
-# check is indistinguishable from a passing one, so this one never skips.
+# No `paths-ignore`: this repo was bitten by commit-tag.yml sitting disabled for
+# weeks while every PR reported green — an absent or skipped check is
+# indistinguishable from a passing one.
 
 on:
   push:
@@ -22,48 +29,101 @@ permissions:
 
 jobs:
   guard-check:
-    name: Guard self-test + wiring
+    name: Guard self-test, wiring, and real fixture
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Guard self-test (must prove it can fail before it is trusted)
+      - name: Self-test + manifest load + protected pins vs HEAD
         shell: pwsh
         run: |
-          if (-not (Test-Path ./.github/sync/sync-guard.ps1)) {
-            Write-Host '::error::sync-guard.ps1 is missing'; exit 1
-          }
-          ./.github/sync/sync-guard.ps1 -SelfTestOnly
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::guard self-test failed (exit $LASTEXITCODE)"; exit 1
-          }
+          if (-not (Test-Path ./.github/sync/sync-guard.ps1)) { Write-Host '::error::sync-guard.ps1 is missing'; exit 1 }
+          ./.github/sync/sync-guard.ps1 -SelfTestOnly -CheckPinsAgainst HEAD
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::guard self-test / pin check failed (exit $LASTEXITCODE)"; exit 1 }
 
-      - name: sync-upstream.yml still invokes the guard
+      - name: sync-upstream.yml invokes the guard, uncommented, before the push
         shell: pwsh
         run: |
           $wf = './.github/workflows/sync-upstream.yml'
           if (-not (Test-Path $wf)) { Write-Host '::error::sync-upstream.yml is missing'; exit 1 }
-          $text = Get-Content $wf -Raw
-          if ($text -notmatch 'sync-guard\.ps1') {
-            Write-Host '::error::sync-upstream.yml no longer invokes sync-guard.ps1 — the guard is disconnected'
-            exit 1
+          $lines = Get-Content $wf
+          # Skip full-line comments, so a commented-out invocation is NOT counted.
+          $guardLine = -1; $pushLine = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            $t = $lines[$i].TrimStart()
+            if ($t.StartsWith('#')) { continue }
+            if ($guardLine -lt 0 -and $t -match 'sync-guard\.ps1') { $guardLine = $i }
+            if ($pushLine  -lt 0 -and $t -match 'git push --atomic') { $pushLine = $i }
           }
-          # The guard must still receive the candidate it is meant to judge.
+          if ($guardLine -lt 0) { Write-Host '::error::no ACTIVE sync-guard.ps1 invocation in sync-upstream.yml (commented out?)'; exit 1 }
+          if ($pushLine  -lt 0) { Write-Host '::error::no ACTIVE atomic push in sync-upstream.yml'; exit 1 }
+          if ($guardLine -ge $pushLine) { Write-Host '::error::the guard is invoked AFTER the push, not before'; exit 1 }
+          # The guard must still receive its candidate, and the dispatch must stay
+          # input-less (no branch selector, no bypass flag). Search active text only.
+          $active = (($lines | Where-Object { -not $_.TrimStart().StartsWith('#') }) -join "`n")
           foreach ($p in '-PreRef', '-OldNbase', '-NewSnapshot', '-NewSrc', '-NewDev') {
-            if ($text -notmatch [regex]::Escape($p)) {
-              Write-Host "::error::sync-upstream.yml no longer passes $p to the guard"
-              exit 1
-            }
+            if ($active -notmatch [regex]::Escape($p)) { Write-Host "::error::guard no longer receives $p"; exit 1 }
           }
-          # And it must never grow a dispatch input — not a branch selector, not a
-          # bypass flag. workflow_dispatch must stay input-less.
-          if ($text -notmatch 'workflow_dispatch:\s*\{\s*\}') {
-            Write-Host '::error::sync-upstream.yml workflow_dispatch is no longer input-less ({}) — a branch or bypass input may have been added'
-            exit 1
+          if ($active -notmatch 'workflow_dispatch:\s*\{\s*\}') { Write-Host '::error::workflow_dispatch is no longer input-less'; exit 1 }
+          if ($active -match '(?m)^\s*inputs:') { Write-Host '::error::sync-upstream.yml declares workflow inputs; none are allowed'; exit 1 }
+          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch.'
+
+      - name: Full real-candidate fixture (clean passes, tampered blocks)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git config user.email 'guard-check@dazegram.local'
+          git config user.name  'guard-check'
+          $env:GIT_AUTHOR_NAME='guard-check'; $env:GIT_AUTHOR_EMAIL='guard-check@dazegram.local'
+          $env:GIT_COMMITTER_NAME='guard-check'; $env:GIT_COMMITTER_EMAIL='guard-check@dazegram.local'
+
+          function Pin($k) { (((Get-Content .github/sync/pins.env | Select-String "^$k=") -split '=', 2)[1]).Trim() }
+          $anchor = Pin 'ANCHOR_SRC'
+          $nagram = Pin 'NAGRAM_REPO'
+
+          git fetch --no-tags origin nbase
+          $oldNbase = (git rev-parse origin/nbase).Trim()
+
+          # Fetch the anchor commit (its tree is the clean snapshot tree). Retry for
+          # transient network; a real fixture needs a real ancestor of the anchor.
+          git remote add nagram $nagram 2>$null; git remote set-url nagram $nagram
+          $fetched = $false
+          for ($i = 0; $i -lt 3 -and -not $fetched; $i++) {
+            git fetch --no-tags nagram $anchor
+            if ($LASTEXITCODE -eq 0) { $fetched = $true } else { Start-Sleep 5 }
           }
-          if ($text -match '(?im)^\s*inputs:') {
-            Write-Host '::error::sync-upstream.yml declares workflow inputs; none are allowed (no branch input, no skip-guard input)'
-            exit 1
-          }
-          Write-Host 'guard wiring intact.'
+          if (-not $fetched) { Write-Host '::error::could not fetch the anchor commit from Nagram'; exit 1 }
+
+          $head    = (git rev-parse HEAD).Trim()
+          $srcTree = (git rev-parse "$anchor^{tree}").Trim()
+          $snap    = (git commit-tree $srcTree -p $oldNbase -m "guard-check snapshot #infra").Trim()
+
+          # Clean candidate: 3-way merge via plumbing (no branch switching).
+          $mtOut = git merge-tree --write-tree $head $snap
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::fixture clean merge conflicted unexpectedly'; Write-Host $mtOut; exit 1 }
+          $cleanTree = ($mtOut -split "`n")[0].Trim()
+          $clean = (git commit-tree $cleanTree -p $head -p $snap -m "guard-check clean candidate #infra").Trim()
+
+          Write-Host '--- running guard on KNOWN-CLEAN candidate (expect exit 0) ---'
+          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $clean
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::guard BLOCKED a known-clean candidate (exit $LASTEXITCODE)"; exit 1 }
+
+          # Tampered candidate: swap the keystore blob for a throwaway blob.
+          $badBlob = ('tampered ' + [guid]::NewGuid()) | git hash-object -w --stdin
+          $idx = Join-Path $env:RUNNER_TEMP 'gc.idx'
+          Remove-Item -LiteralPath $idx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $idx
+          git read-tree $clean
+          git update-index --cacheinfo 100644,$badBlob,TMessagesProj/release.keystore
+          $badTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $bad = (git commit-tree $badTree -p $head -p $snap -m "guard-check tampered candidate #infra").Trim()
+
+          Write-Host '--- running guard on TAMPERED candidate (expect exit 1) ---'
+          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $bad
+          if ($LASTEXITCODE -eq 0) { Write-Host '::error::guard PASSED a tampered candidate (keystore swapped)'; exit 1 }
+
+          Write-Host 'fixture OK: clean candidate passed, tampered candidate blocked, against the live manifests.'
