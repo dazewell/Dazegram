@@ -280,13 +280,15 @@ or, one block per item:
 Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 ```
 
-Use this field to record an isolated Gradle cache directory you created
+Use this mandatory field to record an isolated Gradle cache directory you created
 for daemon isolation — it is distinct from the `owned resource` field, which
-records daemon-specific items like adb ports or emulator serials.
-Omit this field only if you used a shared/default Gradle home or no Gradle
-build at all. When a gradle-daemon process row exists in the process ledger
-**and** you created an isolated home, the `owned resource` value in that
-gradle-daemon row should record the same cache path for consistency.
+records daemon-specific items like adb ports or emulator serials. Report the
+absolute cache path if you used an isolated `GRADLE_USER_HOME` for any build
+(regardless of daemon mode). Report `<none>` only if you used a shared/default
+Gradle home or no Gradle build at all. When a gradle-daemon process row exists
+in the process ledger **and** you used an isolated home, the `owned resource`
+value in that gradle-daemon row should record the same cache path for
+consistency.
 
 
 **Tool-managed async/background shells go in this ledger too** — record their
