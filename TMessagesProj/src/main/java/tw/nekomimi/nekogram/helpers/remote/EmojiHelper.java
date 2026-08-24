@@ -851,6 +851,10 @@ public class EmojiHelper extends BaseRemoteHelper implements NotificationCenter.
                     }
                     int reason = (Integer) args[1];
                     if (reason == 0) {
+                        // NagramX: with the metadata channel disabled this reload always returns an
+                        // empty result, so the file_reference retry is now a no-op. Accepted: there
+                        // is no other refresh path (FileRefController has no EmojiPackInfo branch),
+                        // and re-enabling polling to restore it is not on the table.
                         EmojiHelper.getInstance().load((res, error) -> AndroidUtilities.runOnUIThread(() -> {
                             EmojiPackInfo newPack = EmojiHelper.getInstance().getEmojiPackInfo(pack.getPackId());
                             if (newPack == null) {
