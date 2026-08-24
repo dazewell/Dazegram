@@ -204,6 +204,41 @@ hyphens inside the slug. Both forms are valid and equal:
   are untouched, so this doesn't conflict with the no-force-push rule. If a PR
   is already open on the old name, just retarget/reopen it on the new branch.)
 
+## The `coord-<slug>` coordinator branch (the one exception to the dated form)
+
+A **child orchestrator** — an orchestrator dispatched as a session by another
+orchestrator to own a whole unit of work — is not a change branch and does not
+follow `<YYYY-MM-DD>_<slug>`. It writes no code and produces no commits of its
+own; its session exists only to coordinate specialists and grandchild sessions.
+Its branch is named **`coord-<slug>`** and nothing else:
+
+```
+coord-orchestrator-hierarchy          coord-chatlock
+```
+
+- **The leading `coord-` marker is reserved and must never be dropped or
+  truncated.** Unlike the `_`/`-` separator flexibility that change branches
+  enjoy, `coord-` is load-bearing: it is the one signal that tells a parent's
+  dispatch-verification step (see the "Dispatching a child orchestrator"
+  subsection in `.github/agents/nagramx-orchestrator.agent.md`) that the session
+  it just created is a coordinator on the branch it expected, not a
+  mis-dispatched change session. A coordinator branch missing its `coord-`
+  prefix is a dispatch failure, not a name to tidy up.
+- **It is ephemeral and local-only.** It is never pushed to `origin`, never
+  committed to, and never opened as a PR. It exists purely for the coordinator
+  session's own housekeeping so the session has a branch that isn't `dev`. The
+  child orchestrator renames its auto-generated session branch to `coord-<slug>`
+  as its **very first action**, exactly as an implementer renames to its dated
+  branch first — see the orchestrator agent file.
+- **It must never collide with or be mistaken for a `<YYYY-MM-DD>_<slug>` change
+  branch.** A `coord-` branch carries no date and no change commits; a dated
+  change branch never carries a `coord-` prefix. The two namespaces are
+  disjoint on purpose: a name is either one or the other, never ambiguous
+  between them. The actual code for a delegated unit still lands on ordinary
+  dated `<YYYY-MM-DD>_<slug>` change branches — those are cut by the
+  implementer sessions the child orchestrator dispatches, not by the
+  coordinator branch itself.
+
 ## Do I keep feature branches updated? (no — and usually don't keep them at all)
 
 You don't rebase or "catch up" a change branch. It's cut from `dev`, carries its

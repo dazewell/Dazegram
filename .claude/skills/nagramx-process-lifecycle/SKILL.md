@@ -295,6 +295,39 @@ checklist passes**, run from the main clone, not from inside the child's
 worktree (a check run from inside the very directory being verified can itself
 hold it open).
 
+**Under nested orchestrators this gate is recursive and runs strictly
+leaf-to-root.** An orchestrator may itself be a child of another orchestrator,
+and it archives **only its own direct children** — never a grandchild.
+
+- **"Direct child" is mechanical, not just semantic:** a direct child is a
+  session whose `create_session` (or `open_pr_session` / `open_issue_session` /
+  `fork_session`) call **this orchestrator itself** made and whose returned
+  session id it recorded. If you can see a grandchild's id or worktree path only
+  because it appeared in a child's report, that grandchild is **not** yours to
+  archive; its own parent (your direct child) archives it. An orchestrator that
+  reaches past a child to archive a grandchild directly is a protocol violation.
+- **Closure propagates upward as control messages, leaf-to-root.** A child
+  reports `CLOSED` to its parent **only** once *every* one of its own direct
+  children has already been archived (which required each of *them* to have
+  reported `CLOSED` for their subtree first) **and** its own ledger /
+  residual-sweep contract below passes clean. If a child still holds any
+  descendant it could not safely archive — a blocked process, an unverified
+  row, a grandchild that reported `BLOCKED_ARCHIVE` — it reports
+  **`BLOCKED_ARCHIVE`** upward, never `CLOSED`. An ancestor must never archive
+  across (skip past) a descendant reporting `BLOCKED_ARCHIVE`, and a `CLOSED`
+  at a higher level must never paper over an unresolved `BLOCKED_ARCHIVE`
+  below it. This direct-child accounting rides in the `CLOSED` / `BLOCKED_ARCHIVE`
+  control message itself — **do not** add a ledger `kind:` for it; the process
+  ledger stays about OS processes only.
+- **The residual sweep below is structurally blind to a live grandchild.** The
+  worktree-filtered `Get-CimInstance Win32_Process` query matches only processes
+  naming *this child's* worktree path; a live grandchild's processes name the
+  **grandchild's own** worktree, so they never appear in this child's sweep. A
+  clean sweep on a direct child is therefore **not** evidence that its whole
+  subtree is closed. Subtree closure is established **only** by that child's own
+  `CLOSED` message plus its reported per-direct-child archive results — never by
+  the sweep alone.
+
 1. Read the implementer's process ledger from its report. A missing ledger,
    a malformed row, a `stop result: failed to stop`, or an unverified row is a
    **hard block** — do not archive, and treat every such item as "assume still
