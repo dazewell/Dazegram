@@ -230,6 +230,26 @@ jobs:
             # Pass the store password via a child-process env var — never on the
             # command line, never via GITHUB_ENV, no set -x. keytool reads it from env.
             $env:KS_STOREPASS = $kv['KEYSTORE_PASS']
+            # Force keytool to English so the "Entry type:" / "Owner:" labels are
+            # deterministic — a localised runner would otherwise never match them,
+            # a parse that can never match is a check that can never fail. Set via
+            # JAVA_TOOL_OPTIONS (the -J flag mangles under pwsh arg parsing).
+            $env:JAVA_TOOL_OPTIONS = '-Duser.language=en -Duser.country=US'
+            # The alias must resolve to a signing-capable key, not merely a
+            # certificate. A trustedCertEntry holds the pinned cert with NO private
+            # key: exportcert + SHA-256 + CN would all pass, yet it cannot sign.
+            # Require the entry type to be PrivateKeyEntry. Match the "Entry type:"
+            # line strictly (a substring search of the whole blob could match a
+            # future format change vacuously), and NEVER print the -list output —
+            # it carries "Alias name: <alias>", which must not be disclosed.
+            $listOut = (& keytool -list -v -keystore $ks -alias $alias -storepass:env KS_STOREPASS 2>&1 | Out-String -Width 8192)
+            if ($LASTEXITCODE -ne 0) { Write-Host '::error::keytool -list of the signing alias failed'; exit 1 }
+            $entryType = ''
+            foreach ($ln in ($listOut -split "`n")) { if ($ln -match '^\s*Entry type:\s*(\S+)') { $entryType = $Matches[1]; break } }
+            if ($entryType -ne 'PrivateKeyEntry') {
+              Write-Host "::error::signer alias entry type is '$entryType', not PrivateKeyEntry — a certificate-only entry passes exportcert but has no private key and cannot sign. Push nothing."
+              exit 1
+            }
             & keytool -exportcert -keystore $ks -alias $alias -storepass:env KS_STOREPASS -file $der
             if ($LASTEXITCODE -ne 0) { Write-Host '::error::keytool exportcert failed'; exit 1 }
             $hash = (Get-FileHash -Algorithm SHA256 $der).Hash.ToLowerInvariant()
@@ -240,14 +260,19 @@ jobs:
             }
             # Identity, not just bytes: the exported cert must carry the pinned
             # subject CN. -printcert prints "Owner: CN=..., ..." — public metadata,
-            # no secret. keytool -list would need the store password on the cmdline.
+            # no secret.
             $owner = (& keytool -printcert -file $der | Select-String -Pattern '^Owner:') -join ' '
             $cn = '${{ steps.pins.outputs.subject_cn }}'
             if ($owner -notmatch [regex]::Escape("CN=$cn")) {
               Write-Host "::error::signer subject '$owner' does not carry CN=$cn — wrong signer. Push nothing."
               exit 1
             }
-            Write-Host "signer certificate identity confirmed (SHA-256 + CN=$cn)."
+            Write-Host "signer identity confirmed (PrivateKeyEntry + SHA-256 + CN=$cn)."
+          } finally {
+            $env:KS_STOREPASS = $null
+            $env:JAVA_TOOL_OPTIONS = $null
+            Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue
+          }
           } finally {
             $env:KS_STOREPASS = $null
             Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue

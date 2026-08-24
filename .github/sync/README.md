@@ -117,24 +117,43 @@ push is justified only because an ordinary 3-way merge preserves `dev`'s delta
 when there is no conflict and no unclassified delta — and a real upstream bump
 almost always trips the new-path or conflict guard first, which is the point.
 
-## Signer identity — why there is no alias pin
+## Signer identity — certificate, subject, and key-entry type
 
-The signer is proven on the runner by exporting the certificate the configured
-alias resolves to and checking it against two pins: the DER SHA-256
-(`4056b5df…`) and the subject `CN=Dmitriy Babenko`. There is deliberately **no
-pinned alias label**, and adding one later would close no gap. The cases are
-exhaustive:
+The signer is proven on the runner in three parts, all against the keystore blob
+the guard already pinned, with the store password only ever on `-storepass:env`
+and keytool forced to English (`JAVA_TOOL_OPTIONS=-Duser.language=en …`) so its
+labels are deterministic:
 
-- alias absent → blocked (the non-empty `ALIAS_NAME` check).
+- the alias resolves to a **`PrivateKeyEntry`** (`keytool -list -v`) — an entry
+  that actually holds a private key and can sign;
+- the exported certificate's DER SHA-256 == `4056b5df…`;
+- its subject carries `CN=Dmitriy Babenko`.
+
+An earlier version of this note claimed the SHA-256 + subject check *subsumed* any
+alias/entry check and that no third check was needed. **That was wrong**, and the
+counter-example is exactly why the entry-type gate exists: an alias can be a
+**`trustedCertEntry`** holding precisely the pinned certificate but **no private
+key**. `keytool -exportcert` succeeds, the SHA-256 matches, the subject matches —
+and that alias cannot sign a thing. Certificate *selection* is not the same as
+selecting a signing-capable *key*, so all three checks are load-bearing; none is
+redundant.
+
+The cases:
+
+- alias absent → blocked (non-empty `ALIAS_NAME`).
+- alias present, entry not `PrivateKeyEntry` (e.g. `trustedCertEntry`) → blocked
+  (can't sign).
 - alias present, certificate ≠ the pinned SHA-256 → blocked.
 - alias present, subject ≠ `CN=Dmitriy Babenko` → blocked.
-- alias present, certificate == the pinned SHA-256 → the same cryptographic
-  signing identity; nothing is left for an alias comparison to catch.
+- alias present, `PrivateKeyEntry`, cert == pin, subject == pin → the expected
+  signing key. Push.
 
-An alias is a *label pointing at* a key; the certificate hash constrains the
-signing **identity itself**, so the SHA-256 + subject check strictly subsumes a
-label comparison. **Do not add an alias pin later believing it closes a gap — it
-closes none, and it would place a secret-adjacent label in a committed file.**
+No alias **label** is pinned: a label adds no case the three checks above don't
+already cover, and pinning it would put a secret-adjacent string in a committed
+file. What's constrained is the signing *capability* and *identity*, not the name
+pointing at them. Parsing discipline: the `keytool -list` output is captured and
+never printed (it carries `Alias name: <alias>`), and the `Entry type:` line is
+matched specifically rather than blob-searched for the string.
 
 ## Known future block cause: the `generated with` token
 
