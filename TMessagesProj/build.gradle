@@ -104,7 +104,8 @@ android {
         versionCode verCode
 
         // app display name per package variant
-        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'Dazegram X'
+        // NagramX: kept in sync by hand with the customTitle default in NaConfig.kt (search that file for "NagramX:")
+        resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'DazegramX'
 
         // account type and contact mime types must track applicationId so the two package variants don't collide
         resValue 'string', 'account_type', APP_PACKAGE
@@ -215,7 +216,7 @@ android {
 androidComponents {
     onVariants(selector().all()) { variant ->
         variant.outputs.forEach { output ->
-            String gramName = APP_PACKAGE.endsWith('.beta') ? 'NagramX-Official' : 'NagramX-Unofficial'
+            String gramName = APP_PACKAGE.endsWith('.beta') ? 'Dazegram-Official' : 'DazegramX-Unofficial'
             // commit hash goes right after the package label so it's easy to spot in the filename
             String prefix = commitId?.take(7) ? "${gramName}-${commitId.take(7)}" : gramName
             // version part uses the bare APP_VERSION_NAME (not verName) so the hash isn't repeated
