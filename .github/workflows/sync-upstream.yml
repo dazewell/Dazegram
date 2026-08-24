@@ -89,13 +89,26 @@ jobs:
         run: |
           set -e
           P=.github/sync/pins.env
-          get() { grep -E "^$1=" "$P" | head -n1 | cut -d= -f2-; }
+          # Fail hard on a missing/empty key: assigning the command substitution to
+          # a plain variable propagates the `return 1` exit status, so `set -e`
+          # aborts here rather than letting the job proceed on an empty ref/pin.
+          need() {
+            local v
+            v=$(grep -E "^$1=" "$P" | head -n1 | cut -d= -f2-)
+            [ -n "$v" ] || { echo "::error::pins.env missing/empty key: $1" >&2; return 1; }
+            printf '%s' "$v"
+          }
+          ANCHOR_SRC=$(need ANCHOR_SRC)
+          NAGRAM_REPO=$(need NAGRAM_REPO)
+          NAGRAM_BRANCH=$(need NAGRAM_BRANCH)
+          KEYSTORE_PATH=$(need KEYSTORE_PATH)
+          CERT_SHA=$(need KEYSTORE_CERT_SHA256)
           {
-            echo "anchor_src=$(get ANCHOR_SRC)"
-            echo "nagram_repo=$(get NAGRAM_REPO)"
-            echo "nagram_branch=$(get NAGRAM_BRANCH)"
-            echo "keystore_path=$(get KEYSTORE_PATH)"
-            echo "cert_sha=$(get KEYSTORE_CERT_SHA256)"
+            echo "anchor_src=$ANCHOR_SRC"
+            echo "nagram_repo=$NAGRAM_REPO"
+            echo "nagram_branch=$NAGRAM_BRANCH"
+            echo "keystore_path=$KEYSTORE_PATH"
+            echo "cert_sha=$CERT_SHA"
           } >> "$GITHUB_OUTPUT"
 
       - name: nbase must exist (deletion protection; no auto-bootstrap)
@@ -196,23 +209,34 @@ jobs:
           foreach ($l in ($props -split "`n")) { if ($l -match '^\s*([^#=]+?)\s*=\s*(.*?)\s*$') { $kv[$Matches[1]] = $Matches[2] } }
           $alias = $kv['ALIAS_NAME']
           if (-not $kv['KEYSTORE_PASS'] -or -not $alias) { Write-Host '::error::signing props missing'; exit 1 }
-          # Materialise the candidate keystore only (its blob is already pinned by the guard).
-          git cat-file blob "${{ steps.merge.outputs.new_dev }}:${{ steps.pins.outputs.keystore_path }}" > release.keystore
-          # Pass the store password via a child-process env var — never on the command
-          # line, never via GITHUB_ENV, no set -x. keytool reads it from the env.
-          $env:KS_STOREPASS = $kv['KEYSTORE_PASS']
-          $der = "$env:RUNNER_TEMP/cert.der"
-          & keytool -exportcert -keystore release.keystore -alias $alias -storepass:env KS_STOREPASS -file $der
-          if ($LASTEXITCODE -ne 0) { Write-Host '::error::keytool exportcert failed'; exit 1 }
-          $env:KS_STOREPASS = $null
-          $hash = (Get-FileHash -Algorithm SHA256 $der).Hash.ToLowerInvariant()
-          Remove-Item release.keystore, $der -ErrorAction SilentlyContinue
-          $pin = '${{ steps.pins.outputs.cert_sha }}'
-          if ($hash -ne $pin) {
-            Write-Host "::error::signer cert SHA-256 $hash != pinned $pin — wrong signing key. Push nothing."
-            exit 1
+          # Keystore and DER live under RUNNER_TEMP and are removed in finally, so
+          # nothing signing-related is left in the workspace on any exit path.
+          $ks  = Join-Path $env:RUNNER_TEMP 'candidate.keystore'
+          $der = Join-Path $env:RUNNER_TEMP 'cert.der'
+          try {
+            # Extract the pinned keystore blob as raw bytes. A pwsh `>` redirect
+            # re-encodes as text and would corrupt the binary, so shell out to bash
+            # for a byte-accurate redirect, and check git's exit code explicitly
+            # (pwsh does not throw on a native-command failure).
+            $spec = "${{ steps.merge.outputs.new_dev }}:${{ steps.pins.outputs.keystore_path }}"
+            bash -c "git cat-file blob '$spec' > '$ks'"
+            if ($LASTEXITCODE -ne 0) { Write-Host '::error::git cat-file of the keystore failed'; exit 1 }
+            # Pass the store password via a child-process env var — never on the
+            # command line, never via GITHUB_ENV, no set -x. keytool reads it from env.
+            $env:KS_STOREPASS = $kv['KEYSTORE_PASS']
+            & keytool -exportcert -keystore $ks -alias $alias -storepass:env KS_STOREPASS -file $der
+            if ($LASTEXITCODE -ne 0) { Write-Host '::error::keytool exportcert failed'; exit 1 }
+            $hash = (Get-FileHash -Algorithm SHA256 $der).Hash.ToLowerInvariant()
+            $pin = '${{ steps.pins.outputs.cert_sha }}'
+            if ($hash -ne $pin) {
+              Write-Host "::error::signer cert SHA-256 $hash != pinned $pin — wrong signing key. Push nothing."
+              exit 1
+            }
+            Write-Host "signer certificate identity confirmed."
+          } finally {
+            $env:KS_STOREPASS = $null
+            Remove-Item -LiteralPath $ks, $der -ErrorAction SilentlyContinue
           }
-          Write-Host "signer certificate identity confirmed."
 
       - name: Atomic append-only push of dev + nbase
         id: push

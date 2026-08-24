@@ -444,6 +444,36 @@ function Invoke-RealGuard([hashtable]$pins, $protectedRows, $manifestRows) {
 
 $pins = Read-Pins $PinsFile
 
+# A missing or empty pin would silently coerce inside a validator ([int]$null is
+# 0, an empty string compares unequal to every real blob), turning a pinned
+# invariant into one that quietly passes. Refuse to run unless every pin the
+# validators read is present and non-empty, and every numeric pin is a number.
+$requiredPins = @(
+    'ANCHOR_SRC', 'OLD_NBASE', 'OLD_NBASE_TREE', 'NAGRAM_REPO', 'NAGRAM_BRANCH',
+    'KEYSTORE_PATH', 'KEYSTORE_BLOB', 'KEYSTORE_CERT_SHA256',
+    'SIGNING_GRADLE_PATH', 'SIGNING_GRADLE_BLOB',
+    'GITMODULES_BLOB', 'BORINGSSL_PATH', 'BORINGSSL_MODE', 'BORINGSSL_TYPE',
+    'NEKOMIMI_PATH', 'NEKOMIMI_MIN', 'RADOLYN_PATH', 'RADOLYN_EXACT',
+    'STRINGS_NAX_PATH', 'STRINGS_NAX_MIN', 'NACONFIG_PATH', 'NACONFIG_ADDCONFIG_MIN',
+    'AYU_DB_PATH', 'AYU_DATA_PATH', 'AYU_VERSION', 'AYU_MIN_VERSION', 'AYU_ENTITIES',
+    'SELF_PROTECT'
+)
+$numericPins = @('NEKOMIMI_MIN', 'RADOLYN_EXACT', 'STRINGS_NAX_MIN', 'NACONFIG_ADDCONFIG_MIN',
+    'AYU_VERSION', 'AYU_MIN_VERSION', 'AYU_ENTITIES')
+$pinProblems = @()
+foreach ($k in $requiredPins) {
+    if (-not $pins.ContainsKey($k) -or [string]::IsNullOrWhiteSpace($pins[$k])) { $pinProblems += "missing/empty: $k" }
+}
+foreach ($k in $numericPins) {
+    if ($pins.ContainsKey($k) -and $pins[$k] -notmatch '^\d+$') { $pinProblems += "not numeric: $k = '$($pins[$k])'" }
+}
+if ($pinProblems.Count) {
+    Write-Host 'PINS INCOMPLETE — an unpinned invariant would silently coerce to a passing check:'
+    $pinProblems | ForEach-Object { Write-Host "  - $_" }
+    Write-Host 'Refusing to run. No push.'
+    exit 2
+}
+
 Write-Host '=== guard self-test (must prove it can fail before any pass is trusted) ==='
 $st = Invoke-SelfTest $pins
 Write-Host $st.Log
