@@ -77,8 +77,13 @@ re-run any of your gates; it is a pure supervisor. So:
   `project_session_id`, which the
   parent injects into your kickoff prompt's first-actions block** — that is your
   only address for the parent, so if it is missing, treat it as a dispatch error
-  and stop (you cannot report `RUNNING`, so there is nobody to escalate to; the
-  parent's own idle-decision path will catch a child that never reported):
+  and stop (you cannot report `RUNNING`, and with no address you cannot even
+  report `ABORTED`). Stopping here is safe and does not orphan your session: you
+  have done no work, and the parent recovers a never-reported, zero-diff child
+  through the **same pre-`RUNNING` cleanup path** it uses for a pre-`RUNNING`
+  `ABORTED` — mechanically confirm zero diff, run the lifecycle pre-archive
+  checklist, then archive (see the mis-dispatch / pre-`RUNNING` archive path and
+  the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
@@ -323,16 +328,28 @@ because an autopilot child starts work the instant it receives its kickoff and
 there is otherwise no window to verify it came up correctly. Build that window
 in with a rename-first handshake.
 
-**Before you dispatch, clear any stale `coord-<slug>` ref.** The child's first
-action is a one-shot `rename_branch` to `coord-<slug>`, and that rename fails if
-a ref of that exact name already exists — an earlier coordinator on the same
-slug can leave one behind, since `archive_session` is not guaranteed to delete
-it. The child cannot clean this up itself (it has no pre-rename window to do so),
-so **you** must: before the `create_session` call, check for a local
-`coord-<slug>` ref and delete it if present (it is a disposable local-only ref,
-never pushed and never committed to — deleting a stale one is not a history
-rewrite; see the `coord-<slug>` section in `nagramx-branch-flow`). Skipping this
-makes a slug-reuse dispatch abort deterministically at the child's first action.
+**Before you dispatch, clear any stale `coord-<slug>` ref — but confirm it is
+actually stale before you touch it.** The child's first mutating action is a
+one-shot `rename_branch` to `coord-<slug>`, and that rename fails if a ref of
+that exact name already exists — an earlier coordinator on the same slug can
+leave one behind, since `archive_session` is not guaranteed to delete it. The
+child cannot clean this up itself (it has no pre-rename window), so **you** must
+resolve it before the `create_session` call. **Do not blind-delete a ref just
+because its name matches the slug** — a `git branch -D` is unsafe here on two
+counts: the ref could be checked out in another live worktree (the delete then
+fails, which deterministically fails the new child's rename anyway), or it could
+carry real, uncommitted or unmerged work. Verify it is safely disposable first:
+(a) no live session or worktree currently owns or has it checked out, and (b) it
+carries **no commits ahead of its base** — a coordinator branch is commitless by
+contract, so any commits mean this is not a spent `coord-<slug>` leftover and may
+hold work. Only a ref that passes **both** checks is a disposable local-only
+leftover you may delete (deleting one that qualifies is not a history rewrite;
+see the `coord-<slug>` section in `nagramx-branch-flow`). If it fails either
+check, **do not delete it** — abort the slug reuse instead: pick a different slug
+or investigate why a live or non-empty `coord-<slug>` exists. Skipping the
+cleanup makes a slug-reuse dispatch abort deterministically at the child's first
+action; blind-deleting risks destroying an active coordinator's branch or
+unmerged work.
 
 **Set these on the `create_session` call:**
 
@@ -413,7 +430,12 @@ that never reported one has no processes it recorded, so a clean worktree-
 filtered residual sweep *is* the evidence for an empty ledger (`Processes:
 <none>`), and that empty ledger is a valid checklist input, not a violation of
 it. Only when that checklist passes clean do you archive the session and report
-the dispatch failure. **If it has already produced a diff** — a mis-dispatched
+the dispatch failure. **The same path recovers a correctly-dispatched child that
+simply never reported** — for instance one whose kickoff was missing your
+`project_session_id`, so it stopped after preflight unable to send even
+`ABORTED`: confirm zero diff the same way (`git -C <path> status` /
+`git -C <path> diff HEAD`), run the checklist, and archive. It is a no-work
+session, not an orphan. **If it has already produced a diff** — a mis-dispatched
 generic agent can start work before any `RUNNING` — do **not** archive it: that
 would discard real work. Leave it intact, report the exact
 `Id`/`Name`/`Path`/`StartTime` and the diff, and hand the recovery to dazewell.
@@ -436,10 +458,10 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
 | `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
-| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason | Surface the reason upward. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` to confirm zero diff (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If a pre-`RUNNING` abort unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` to confirm zero diff (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
 | `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
-| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first. If it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
+| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status` / `git -C <path> diff HEAD` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
 Never take over a delegated unit yourself, and never archive a live-but-
 unresponsive child. The single-probe-then-escalate path above is the only time
@@ -636,7 +658,15 @@ addition to green code may not be worth its build at all.
 
 *(For units you own directly. A unit you delegated to a child orchestrator has
 its own Phase 4 owned entirely by that child — see "Delegating a unit to a child
-orchestrator" above; do not re-verify its evidence yourself.)*
+orchestrator" above; do not re-run its **product/build/review** gates yourself:
+the hard-line greps, the `#slug` tag check, architect round 2, and the PR review
+threads are the child's to run and yours to leave alone. **This non-duplication
+carve-out does not extend to the process-lifecycle pre-archive check.** That one
+you always run yourself, on every direct child orchestrator, before you archive
+it — the `CLOSED`-ledger / residual-sweep contract in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` — regardless of the ownership
+transfer, because archiving a child is *your* action and its safety is never
+delegated. See the archive rules in Phase 5.)*
 
 **Every claim a child makes is unverified until you check it.** "The build
 passed" is a claim; a green run pinned to the pull request's head commit is
