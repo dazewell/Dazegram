@@ -446,8 +446,13 @@ $pins = Read-Pins $PinsFile
 
 # A missing or empty pin would silently coerce inside a validator ([int]$null is
 # 0, an empty string compares unequal to every real blob), turning a pinned
-# invariant into one that quietly passes. Refuse to run unless every pin the
-# validators read is present and non-empty, and every numeric pin is a number.
+# invariant into one that quietly passes. Refuse to run unless every pin the sync
+# requires is present and non-empty, and every numeric pin is a number. Most of
+# these are read by the validators below; a few (NAGRAM_REPO, NAGRAM_BRANCH,
+# OLD_NBASE, OLD_NBASE_TREE) are consumed by the sync workflow rather than by this
+# script, and are checked here too so a missing key fails at the guard instead of
+# part-way through a run. So the list is "pins the sync requires present", not
+# "pins this script reads".
 $requiredPins = @(
     'ANCHOR_SRC', 'OLD_NBASE', 'OLD_NBASE_TREE', 'NAGRAM_REPO', 'NAGRAM_BRANCH',
     'KEYSTORE_PATH', 'KEYSTORE_BLOB', 'KEYSTORE_CERT_SHA256',

@@ -42,6 +42,15 @@ tree = a newer Nagram tree) 3-way-merges into `dev` against the 12.10.0 base, so
 `nbase`. The anchor does **not** change the direct `nagram/dev` merge base — that
 stays `b206febda45b…` with its 503 conflicts.
 
+Why `-s ours` is the right strategy here, not a shortcut: `dev` and Nagram's tip
+are both Telegram 12.10.0 plus different fork layers, so there is nothing upstream
+to import. An ordinary 3-way merge of the two conflicts on 503 paths; resolving
+every one of those conflicts lands on a tree byte-identical to `dev` — which was
+verified against the full-reconciliation branch before that branch was deleted.
+`-s ours` records that same result directly. It *asserts* the outcome rather than
+re-deriving it, which is only sound because the two trees carry no upstream delta
+to merge; do not reuse `-s ours` for a sync that actually has a delta.
+
 ## Steady-state sync (`sync-upstream.yml`)
 
 Every routine sync, on `workflow_dispatch` (no inputs):
