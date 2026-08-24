@@ -416,9 +416,17 @@ If **either** check fails, do **not** send `GO`. Before archiving the
 mis-dispatched session, **mechanically confirm it is still at the handshake
 pause with a zero diff**. `get_session` gives you the child's worktree path but
 returns session *metadata* (agent, state, id, path), not git status — so
-establish the zero diff against that path with `git -C <path> status` and
-`git -C <path> diff HEAD`: a session that correctly waited at step 4 has made no
-commits and no working-tree changes. Zero diff is a
+establish the zero diff against that path with **all three** of `git -C <path>
+status` (working tree and index clean), `git -C <path> diff HEAD` (no uncommitted
+changes), and `git -C <path> log <base>..HEAD --oneline` (no commits ahead of the
+branch it was cut from — `dev` for a normally-dispatched child): a session that
+correctly waited at step 4 has made no commits and no working-tree changes. All
+three are required **together** — `status` and `diff HEAD` prove only that the
+working tree and index are clean, not that the session made no commits, so a
+fallback that quietly committed real work would pass both while
+`git log <base>..HEAD` still listed those commits; any one of the three showing
+content means real work exists, so leave the session intact for manual recovery
+rather than archiving it. Zero diff is a
 **necessary but not sufficient** condition: a generic fallback can start a
 process — including one launched from `$env:TEMP`, the documented safe working
 directory — hold a native handle, or even spawn its own child session and
@@ -448,8 +456,9 @@ it. Only when that checklist passes clean do you archive the session and report
 the dispatch failure. **The same path recovers a correctly-dispatched child that
 simply never reported** — for instance one whose kickoff was missing your
 `project_session_id`, so it stopped after preflight unable to send even
-`ABORTED`: confirm zero diff the same way (`git -C <path> status` /
-`git -C <path> diff HEAD`), run the checklist, and archive. It is a no-work
+`ABORTED`: confirm zero diff the same way — `git -C <path> status`,
+`git -C <path> diff HEAD`, **and** `git -C <path> log <base>..HEAD --oneline` all
+clean (including no commits ahead of base) — run the checklist, and archive. It is a no-work
 session, not an orphan. **If it has already produced a diff** — a mis-dispatched
 generic agent can start work before any `RUNNING` — do **not** archive it: that
 would discard real work. Leave it intact, report the exact
@@ -473,10 +482,10 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
 | `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
-| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` to confirm zero diff (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` + `git -C <path> log <base>..HEAD --oneline` to confirm zero diff — all three clean, including no commits ahead of base (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
 | `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
-| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status` / `git -C <path> diff HEAD` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
+| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status`, `git -C <path> diff HEAD`, and `git -C <path> log <base>..HEAD --oneline` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** (all three clean, no commits ahead of base) — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
 Never take over a delegated unit yourself, and never archive a live-but-
 unresponsive child. The single-probe-then-escalate path above is the only time
