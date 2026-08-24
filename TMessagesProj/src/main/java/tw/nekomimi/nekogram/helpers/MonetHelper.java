@@ -9,6 +9,7 @@ import androidx.annotation.RequiresApi;
 import androidx.core.graphics.ColorUtils;
 
 import com.google.android.material.color.utilities.Blend;
+import com.google.android.material.color.utilities.Hct;
 
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.FileLog;
@@ -22,7 +23,12 @@ import xyz.nextalone.nagram.NaConfig;
 
 @RequiresApi(api = Build.VERSION_CODES.S)
 public class MonetHelper {
-    private static final float DARK_NAME_SOFTEN_RATIO = 0.22f;
+    private static final float DARK_NAME_SOFTEN_RATIO = 0.35f;
+    // NagramX: how strongly the 7-hue sender identity palette (monetAvatarName*) is pulled
+    // toward the accent's HCT chroma/tone so it reads as part of the active Monet palette
+    // instead of a fixed brand color; hue is left to the existing Blend.harmonize rotation
+    // below so per-sender identity stays distinguishable.
+    private static final double IDENTITY_CHROMA_TONE_PULL_RATIO = 0.75;
     private static final HashMap<String, Integer> ids = new HashMap<>() {{
         put("a1_0", android.R.color.system_accent1_0);
         put("a1_10", android.R.color.system_accent1_10);
@@ -194,6 +200,9 @@ public class MonetHelper {
         Integer baseColor = harmonizedBaseColors.get(color);
         if (baseColor != null) {
             int harmonizedColor = getHarmonizedColor(baseColor);
+            if (color.startsWith("monetAvatarName")) {
+                harmonizedColor = pullIdentityTowardAccent(harmonizedColor, resolveColor("a1_600"));
+            }
             if (color.startsWith("monetAvatarNameDark")) {
                 return softenColorForDarkText(harmonizedColor);
             }
@@ -210,6 +219,28 @@ public class MonetHelper {
 
     public static int harmonizeColor(int baseColor) {
         return getHarmonizedColor(baseColor);
+    }
+
+    // NagramX: Blend.harmonize only rotates hue toward the accent; the 7-hue identity palette
+    // otherwise keeps its fixed, hardcoded chroma/tone, which is why e.g. the Blue slot still
+    // reads as a bright designer blue against a muted red/brown Monet palette. This pulls
+    // chroma and tone toward the accent's HCT chroma/tone (hue is untouched - Blend.harmonize
+    // above already handled hue) so each identity color reads as belonging to the active
+    // palette while the 7 hues stay distinguishable from each other. A chroma floor (relative
+    // to the pre-pull chroma) keeps a low-chroma/near-grey accent from collapsing all 7 hues
+    // into indistinguishable greys.
+    private static int pullIdentityTowardAccent(int harmonizedColor, int accentColor) {
+        Hct designHct = Hct.fromInt(harmonizedColor);
+        Hct accentHct = Hct.fromInt(accentColor);
+        // floor: never lose more than 60% of the pre-pull chroma, so a low-chroma/near-grey
+        // accent still leaves each of the 7 hues visibly separated instead of collapsing to grey
+        double floorChroma = designHct.getChroma() * 0.4;
+        double pulledChroma = designHct.getChroma()
+                + (accentHct.getChroma() - designHct.getChroma()) * IDENTITY_CHROMA_TONE_PULL_RATIO;
+        double pulledTone = designHct.getTone()
+                + (accentHct.getTone() - designHct.getTone()) * IDENTITY_CHROMA_TONE_PULL_RATIO;
+        pulledChroma = Math.max(pulledChroma, floorChroma);
+        return Hct.from(designHct.getHue(), pulledChroma, pulledTone).toInt();
     }
 
     private static int softenColorForDarkText(int color) {
