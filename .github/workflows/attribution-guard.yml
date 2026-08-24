@@ -52,9 +52,18 @@ jobs:
           # PR working tree: actions/checkout on a pull_request event defaults
           # to the head/merge ref, so a PR that edits or guts the guard's own
           # detection logic would otherwise get to grade its own homework.
-          # Fall back to the working-tree copy only for the one PR that
-          # introduces the script in the first place, where the base ref has
-          # no earlier trusted copy to pull.
+          #
+          # Fail closed if the base COMMIT itself can't be verified locally
+          # (a fetch failure, an unreachable base SHA) -- that must not be
+          # treated the same as the one legitimate case where the base commit
+          # exists but simply predates the script (the PR that introduces it).
+          # Conflating the two would let a PR whose base fetch silently fails
+          # fall back to running its own, potentially-tampered copy: exactly
+          # the bypass this trusted-ref fetch exists to close.
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::cannot verify base commit $BASE_SHA locally; failing closed" >&2
+            exit 1
+          fi
           if git cat-file -e "$BASE_SHA:Tools/scripts/attribution_guard.py" 2>/dev/null; then
             git show "$BASE_SHA:Tools/scripts/attribution_guard.py" > /tmp/attribution_guard.py
             SCRIPT=/tmp/attribution_guard.py
