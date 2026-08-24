@@ -274,21 +274,20 @@ or, one block per item:
               yet verified
 ```
 
-**Separate from the process ledger**, include a mandatory cache cleanup field in your handback:
+**Separate from the process ledger**, include this mandatory cache cleanup field in your handback:
 
 ```
 Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 ```
 
-Use this mandatory field to record an isolated Gradle cache directory you created
-for daemon isolation — it is distinct from the `owned resource` field, which
-records daemon-specific items like adb ports or emulator serials. Report the
-absolute cache path if you used an isolated `GRADLE_USER_HOME` for any build
-(regardless of daemon mode). Report `<none>` only if you used a shared/default
-Gradle home or no Gradle build at all. When a gradle-daemon process row exists
-in the process ledger **and** you used an isolated home, the `owned resource`
-value in that gradle-daemon row should record the same cache path for
-consistency.
+Always include this field: report the absolute cache path if you used an
+isolated `GRADLE_USER_HOME` for any build (regardless of daemon mode), or
+report `<none>` if you used a shared/default Gradle home or no Gradle build.
+This field is distinct from the `owned resource` field in the process ledger,
+which records daemon-specific items like adb ports or emulator serials. When a
+gradle-daemon process row exists in the ledger **and** you used an isolated
+home, the `owned resource` value in that row should record the same cache path
+for consistency.
 
 
 **Tool-managed async/background shells go in this ledger too** — record their
