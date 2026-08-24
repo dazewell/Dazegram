@@ -750,7 +750,7 @@ $reviews = gh api "repos/$repo/pulls/$pr/reviews" | ConvertFrom-Json
 
 # graphql takes real variables; backslash-escaped quotes do not survive this shell
 $q = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{isResolved path line}}}}}'
-$t = gh api graphql -f query=$q -F o=dazewell -F n=NagramX -F p=$pr | ConvertFrom-Json
+$t = gh api graphql -f query=$q -F o=dazewell -F n=Dazegram -F p=$pr | ConvertFrom-Json
 $t.data.repository.pullRequest.reviewThreads.nodes | Select-Object isResolved, path, line
 ```
 

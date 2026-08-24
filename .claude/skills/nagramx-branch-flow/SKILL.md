@@ -19,10 +19,13 @@ branches are short-lived scaffolding you delete after merging.
 
 **Two long-lived branches:**
 - `dev` — the trunk. Everything lands here (via a PR merged with a **merge
-  commit**). Upstreams merge *forward* into it. It holds unique history that
-  exists nowhere else, so it is **never rebuilt and never force-pushed**.
-- `base` — a mirror of the base fork (`source/dev`), **fast-forward only**.
-  Merged forward into `dev` on every sync.
+  commit**). Upstream merges *forward* into it through a guarded snapshot (see
+  The topology and Automation). It holds unique history that exists nowhere
+  else, so it is **never rebuilt and never force-pushed**.
+- `nbase` — the upstream anchor: a chain of locally-authored snapshot commits
+  carrying Nagram's trees, **append-only** and an ancestor of `dev`. Each new
+  snapshot is merged forward into `dev` by the guarded sync. Never force-pushed,
+  never deleted.
 
 **Short-lived per change:**
 - `<YYYY-MM-DD>_<slug>` (the date you start it, e.g. `2026-07-07_chatlock`) —
@@ -93,16 +96,16 @@ You pay the "clean range" cost only for the features that earn it.
 
 ```mermaid
 gitGraph
-  commit id: "upstream"
-  branch base
-  commit id: "base = source/dev (ff-only)"
+  commit id: "12.10.0 base"
+  branch nbase
+  commit id: "Nagram snapshot"
   checkout main
   commit id: "dev trunk"
   branch 2026-07-07_chatlock
   commit id: "add chat lock #chatlock"
   checkout main
   merge 2026-07-07_chatlock tag: "PR merge -> staging build"
-  commit id: "merge base (upstream sync)"
+  merge nbase tag: "guarded snapshot sync"
   commit id: "fix edge case #chatlock"
 ```
 
@@ -297,9 +300,7 @@ worktree once its branch has landed and been deleted (*Land a change*).
 
 ### Start a change (plain — simpler / one-shot work)
 ```powershell
-git fetch source dev
-git switch base; git merge --ff-only source/dev        # keep the mirror current
-git switch dev;  git merge --no-edit base               # bring upstream into the trunk
+git switch dev; git pull --ff-only origin dev          # trunk already carries upstream via the guarded sync
 git switch -c <YYYY-MM-DD>_<slug> dev                   # cut the change branch from the trunk; DATE PREFIX REQUIRED (e.g. 2026-08-05_video-cc)
 git config core.hooksPath .githooks                     # once per clone, if not set
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
@@ -310,9 +311,7 @@ the code — it rides in with the feature (see `nagramx-workflow` step 6).
 
 ### Start a change in a worktree (iterative feature work — the default for features)
 ```powershell
-git fetch source dev
-git switch base; git merge --ff-only source/dev        # keep the mirror current
-git switch dev;  git merge --no-edit base               # bring upstream into the trunk
+git switch dev; git pull --ff-only origin dev          # trunk already carries upstream via the guarded sync
 git worktree add -b <YYYY-MM-DD>_<slug> ..\NagramX-<slug> dev   # sibling folder on a fresh branch cut from dev; DATE PREFIX REQUIRED
 cd ..\NagramX-<slug>                                    # work here; the main clone stays on dev
 # ...nagramx-workflow steps: design review, hooks, compile, code review...
@@ -422,31 +421,34 @@ PR it into `dev`, merge, delete. Now `git log --grep '#<slug>'` shows the featur
 and its later fix together. If the fix is user-visible, update the `FEATURES.md`
 entry in the same branch.
 
-### Sync onto a new upstream (manual / from PC)
+### Sync onto a new upstream (trigger the guarded automation; PC only if it blocks)
+The routine path is the guarded workflow, not a manual merge — it builds a
+snapshot on `nbase`, 3-way merges it into `dev`, runs `sync-guard.ps1`, and
+pushes `dev`+`nbase` atomically only if the guard is clean (see Automation).
+Trigger it from the phone, or:
 ```powershell
-git fetch source dev
-git switch base; git merge --ff-only source/dev; git push origin base
-git switch dev;  git merge --no-edit base                # upstream into the trunk
-git push origin dev                                      # triggers staging build
+gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 ```
-If the merge conflicts, it's a landed feature's hook colliding with new upstream
-code. Resolve it **in this `dev` merge commit** and push — never rewrite `dev`'s
-history. This is the same thing the phone-triggered automation does; it just
-bails to the PC when the merge isn't clean.
+If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
+a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
+the PC by hand, resolving into the `dev` merge commit, then advance the anchor in
+`.github/sync/pins.env` in the same change. **Never** fast-forward the archived
+`source`/`base` into `dev`: that path is retired and bypasses the guard entirely.
 
-### Propose a feature to the base fork (the only place rewriting/force happens)
-Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive.
+### Propose a feature upstream (the only place rewriting/force happens)
+Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
+now `NextAlone/Nagram` (`nagram`), not the archived base fork.
 ```powershell
-git fetch source dev
+git fetch nagram dev
 git switch -c <YYYY-MM-DD>_<slug>-pr <YYYY-MM-DD>_<slug>   # throwaway copy
-git rebase --onto source/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine upstream
-git checkout source/dev -- FEATURES.md                    # drop the fork-only doc hunk
-git rebase -i source/dev                                  # squash to one clean commit
+git rebase --onto nagram/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine upstream
+git checkout nagram/dev -- FEATURES.md                    # drop the fork-only doc hunk
+git rebase -i nagram/dev                                  # squash to one clean commit
 git push origin <YYYY-MM-DD>_<slug>-pr
-gh pr create --repo risin42/NagramX --base dev --head dazewell:<YYYY-MM-DD>_<slug>-pr
+gh pr create --repo NextAlone/Nagram --base dev --head dazewell:<YYYY-MM-DD>_<slug>-pr
 ```
 Delete the `-pr` branch after the PR merges. The one file to strip is
-`FEATURES.md` (dazewell's catalog, which the base fork doesn't have); everything
+`FEATURES.md` (dazewell's catalog, which upstream doesn't have); everything
 else in the range is just the feature.
 
 ## Automation
