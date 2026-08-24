@@ -228,8 +228,10 @@ coord-orchestrator-hierarchy          coord-chatlock
   committed to, and never opened as a PR. It exists purely for the coordinator
   session's own housekeeping so the session has a branch that isn't `dev`. The
   child orchestrator renames its auto-generated session branch to `coord-<slug>`
-  as its **very first action**, exactly as an implementer renames to its dated
-  branch first — see the orchestrator agent file. It lives only in the
+  as its **first action that changes branch state** (reads of the source-of-truth
+  docs come before it; it is the first thing the child *mutates*), exactly as an
+  implementer renames to its dated branch first — see the orchestrator agent
+  file. It lives only in the
   coordinator's own worktree and is never pushed, so `archive_session` removes
   the worktree — but that does **not** delete the local `coord-<slug>` branch
   ref, which can survive the worktree and must be cleared before the slug is
