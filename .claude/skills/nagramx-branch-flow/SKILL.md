@@ -232,9 +232,13 @@ coord-orchestrator-hierarchy          coord-chatlock
   branch first — see the orchestrator agent file. Because it lives only in the
   coordinator's own worktree and is never pushed, it goes away with the session
   when `archive_session` removes that worktree; a `coord-<slug>` ref left behind
-  is a disposable local ref, not a change branch, so deleting a stale one (e.g.
-  if a later coordinator reuses the slug and the one-shot rename collides) is not
-  a history rewrite and does not touch the no-force-push rule.
+  is a disposable local ref, not a change branch. Because the child's rename to
+  `coord-<slug>` is one-shot and would collide with such a leftover, **clearing a
+  stale `coord-<slug>` ref is the dispatching parent's job, done before it calls
+  `create_session`** (see "Dispatching a child orchestrator" in
+  `.github/agents/nagramx-orchestrator.agent.md`) — the child has no pre-rename
+  window to clean up after itself. Deleting a stale one is not a history rewrite
+  and does not touch the no-force-push rule.
 - **It must never collide with or be mistaken for a `<YYYY-MM-DD>_<slug>` change
   branch.** A `coord-` branch carries no date and no change commits; a dated
   change branch never carries a `coord-` prefix. The two namespaces are

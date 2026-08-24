@@ -40,10 +40,14 @@ parent orchestrator starts a child one with `create_session` and
 orchestrator* below first** — a few rules change (you forfeit the trivial-work
 commit path, you speak to your parent in a fixed control vocabulary while
 talking to dazewell directly for the actual work, and your **very first tool
-action**, before reading or writing any file, is renaming your branch to
-`coord-<slug>`). Reading that section is understanding, not yet acting; the
-`coord-<slug>` rename is the first thing you *do*, because `rename_branch` is
-one-shot and must not be spent on anything else.
+action that changes branch state**, before you edit any file or dispatch any
+work, is renaming your branch to `coord-<slug>`). You still **read** the
+source-of-truth docs first — this section, `nagramx-workflow`,
+`nagramx-branch-flow`, `nagramx-process-lifecycle` and `CLAUDE.md`; reading is
+understanding, not a file edit and not branch state, so it satisfies the
+"read these first" rule without breaking the rename-first handshake. The
+`coord-<slug>` rename is the first thing you *mutate*, because `rename_branch`
+is one-shot and must not be spent on anything else.
 
 ## If you are a child orchestrator
 
@@ -62,9 +66,15 @@ re-run any of your gates; it is a pure supervisor. So:
   coordinator is speaking. **You do not route clarifications or handback through
   your parent** — that was the rejected design, because it makes the parent
   re-process your work.
-- **You speak to your parent only in the control vocabulary**, as short
-  one-line `send_session_message` messages with **immediate** delivery, never
-  routine narrative. Send them to **the parent's `project_session_id`, which the
+- **You speak to your parent only in the control vocabulary**, as
+  `send_session_message` messages with **immediate** delivery, never routine
+  narrative. Most are a single line; the exception is any message that must
+  carry evidence — `CLOSED` (its process ledger plus per-direct-child archive
+  results), and `BLOCKED_ARCHIVE` / `ABORTED` (their reason or evidence) — which
+  run as many lines as the payload needs, in the structured form each defines
+  below. The one-line rule is about keeping the parent from re-processing
+  narrative, not about truncating required evidence. Send them to **the parent's
+  `project_session_id`, which the
   parent injects into your kickoff prompt's first-actions block** — that is your
   only address for the parent, so if it is missing, treat it as a dispatch error
   and stop (you cannot report `RUNNING`, so there is nobody to escalate to; the
@@ -312,6 +322,17 @@ because an autopilot child starts work the instant it receives its kickoff and
 there is otherwise no window to verify it came up correctly. Build that window
 in with a rename-first handshake.
 
+**Before you dispatch, clear any stale `coord-<slug>` ref.** The child's first
+action is a one-shot `rename_branch` to `coord-<slug>`, and that rename fails if
+a ref of that exact name already exists — an earlier coordinator on the same
+slug can leave one behind, since `archive_session` is not guaranteed to delete
+it. The child cannot clean this up itself (it has no pre-rename window to do so),
+so **you** must: before the `create_session` call, check for a local
+`coord-<slug>` ref and delete it if present (it is a disposable local-only ref,
+never pushed and never committed to — deleting a stale one is not a history
+rewrite; see the `coord-<slug>` section in `nagramx-branch-flow`). Skipping this
+makes a slug-reuse dispatch abort deterministically at the child's first action.
+
 **Set these on the `create_session` call:**
 
 - **`kickoff.agent: nagramx-orchestrator`** — so the child is a real
@@ -339,10 +360,11 @@ in with a rename-first handshake.
 **Put a mandatory first-actions block in the kickoff prompt**, instructing the
 child to do these in order before any delegated work:
 
-1. **Immediately call `rename_branch` with `coord-<slug>`** — its very first
-   action, before touching any file, exactly as an implementer renames to its
-   dated branch first. `rename_branch` is one-shot, so this cannot be a
-   follow-up message.
+1. **Immediately call `rename_branch` with `coord-<slug>`** — its first action
+   that changes branch state, before it edits any file or dispatches any work,
+   exactly as an implementer renames to its dated branch first. Reading the
+   source-of-truth skills first is expected and does not count against this.
+   `rename_branch` is one-shot, so this cannot be a follow-up message.
 2. **Run its own preflight** — confirm it holds `create_session`; confirm its
    `task` tool offers `nagramx-scout`, `nagramx-ux` and `nagramx-architect` by
    name; and confirm BOTH `.github/agents/nagramx-orchestrator.agent.md` and
@@ -371,14 +393,21 @@ sit post-`RUNNING` waiting on a `GO` you never sent.
 If **either** check fails, do **not** send `GO`. Before archiving the
 mis-dispatched session, **mechanically confirm it is still at the handshake
 pause with a zero diff** (`get_session`; a session that correctly waited at
-step 4 has made no commits and no working-tree changes). A zero-diff paused
-session is safe to archive — do so and report the dispatch failure. **If it has
-already produced a diff** — a mis-dispatched generic agent can start work before
-any `RUNNING` — do **not** archive it: that would discard real work. Leave it
-intact, report the exact `Id`/`Name`/`Path`/`StartTime` and the diff, and hand
-the recovery to dazewell. Never proceed by treating a wrongly-dispatched session
-as a working orchestrator; that is the silent-fallback failure the implementer
-checklist warns about, one layer up.
+step 4 has made no commits and no working-tree changes). Zero diff is a
+**necessary but not sufficient** condition: a generic fallback can start a
+process or hold a native handle without ever changing Git, so a zero-diff
+session is not automatically safe to archive. Once zero diff is confirmed, run
+the process-lifecycle pre-archive checklist against it — ledger, exact-identity
+checks, and the worktree-filtered residual sweep — exactly as you would for any
+app-managed child (see the recursive rules in the process-lifecycle skill). Only
+when that checklist passes clean do you archive the session and report the
+dispatch failure. **If it has already produced a diff** — a mis-dispatched
+generic agent can start work before any `RUNNING` — do **not** archive it: that
+would discard real work. Leave it intact, report the exact
+`Id`/`Name`/`Path`/`StartTime` and the diff, and hand the recovery to dazewell.
+Never proceed by treating a wrongly-dispatched session as a working
+orchestrator; that is the silent-fallback failure the implementer checklist
+warns about, one layer up.
 
 ### The idle-decision table
 
@@ -394,7 +423,9 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `RUNNING` + expected idle notifications (after `GO`) | Normal progress between turns | Nothing. This is healthy. |
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
-| `BLOCKED_PARENT` or `ABORTED` | Child needs something above its authority, or has stopped (including a pre-`RUNNING` failure) | Surface **only the exact evidence given**, upward. Do not re-investigate or duplicate the child's own recon. |
+| `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason | Surface the reason upward. Then **you own the cleanup**, because the child has no archival path: `get_session` to confirm zero diff, run the process-lifecycle pre-archive checklist (ledger, identity, residual sweep), and archive the stopped session. If a pre-`RUNNING` abort unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
 | **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first. If it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
