@@ -109,7 +109,8 @@ jobs:
 
           Write-Host '--- running guard on KNOWN-CLEAN candidate (expect exit 0) ---'
           ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $clean
-          if ($LASTEXITCODE -ne 0) { Write-Host "::error::guard BLOCKED a known-clean candidate (exit $LASTEXITCODE)"; exit 1 }
+          $cleanExit = $LASTEXITCODE
+          if ($cleanExit -ne 0) { Write-Host "::error::guard BLOCKED a known-clean candidate (exit $cleanExit)"; exit 1 }
 
           # Tampered candidate: swap the keystore blob for a throwaway blob. Build
           # the blob from a temp file — a pwsh stdin pipe to `git hash-object` does
@@ -128,6 +129,9 @@ jobs:
 
           Write-Host '--- running guard on TAMPERED candidate (expect exit 1) ---'
           ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $bad
-          if ($LASTEXITCODE -eq 0) { Write-Host '::error::guard PASSED a tampered candidate (keystore swapped)'; exit 1 }
+          $badExit = $LASTEXITCODE
+          if ($badExit -eq 0) { Write-Host '::error::guard PASSED a tampered candidate (keystore swapped)'; exit 1 }
 
           Write-Host 'fixture OK: clean candidate passed, tampered candidate blocked, against the live manifests.'
+          # The tampered run intentionally left $LASTEXITCODE=1; end the step green.
+          exit 0
