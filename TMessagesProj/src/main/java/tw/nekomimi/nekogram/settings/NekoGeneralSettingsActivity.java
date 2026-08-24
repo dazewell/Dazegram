@@ -86,7 +86,8 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
     // General
     private final AbstractConfigCell headerGeneral = cellGroup.appendCell(new ConfigCellHeader(getString(R.string.General)));
     private final AbstractConfigCell customTitleRow = cellGroup.appendCell(new ConfigCellTextInput(null, NaConfig.INSTANCE.getCustomTitle(),
-        getString(R.string.CustomTitleHint), null,
+        // NagramX: CustomTitleHint's translations all embed the literal "Nagram X" untranslated; swap in the current brand name at render time instead of touching 15 locale files
+        getString(R.string.CustomTitleHint).replace("Nagram X", getString(R.string.NagramX)), null,
         (input) -> input.isEmpty() ? (String) NaConfig.INSTANCE.getCustomTitle().defaultValue : input));
     private final AbstractConfigCell folderNameAsTitleRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getFolderNameAsTitle()));
     private final AbstractConfigCell customTitleUserNameRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getCustomTitleUserName()));
@@ -403,14 +404,15 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
 
         String txt;
         long num = UnifiedPushService.getNumOfReceivedNotifications();
+        // NagramX: UnifiedPush* strings embed the literal "Nagram X" untranslated in every locale; fix up at render time like CustomTitleHint above
         if (num == 0) {
-            txt = getString(R.string.UnifiedPushNeverReceivedNotifications);
+            txt = getString(R.string.UnifiedPushNeverReceivedNotifications).replace("Nagram X", getString(R.string.NagramX));
         } else {
             txt = LocaleController.formatString(
                     R.string.UnifiedPushLastReceivedNotification,
                     (SystemClock.elapsedRealtime() - UnifiedPushService.getLastReceivedNotification()) / 1000,
                     num
-            );
+            ).replace("Nagram X", getString(R.string.NagramX));
         }
         txt += "\n\n" + LocaleController.formatString(R.string.UnifiedPushCurrentEndpoint, SharedConfig.pushString);
 
