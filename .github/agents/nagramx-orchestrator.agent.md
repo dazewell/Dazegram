@@ -339,7 +339,11 @@ because its name matches the slug** — a `git branch -D` is unsafe here on two
 counts: the ref could be checked out in another live worktree (the delete then
 fails, which deterministically fails the new child's rename anyway), or it could
 carry real, uncommitted or unmerged work. Verify it is safely disposable first:
-(a) no live session or worktree currently owns or has it checked out, and (b) it
+(a) no live session or worktree currently owns or has it checked out — enumerate
+the current sessions with `list_sessions_and_chats` (or `get_session` against any
+candidate id you already hold) and confirm none reports that `coord-<slug>`
+branch as its checked-out branch, which also closes the race where two concurrent
+parents pick the same slug — and (b) it
 carries **no commits ahead of its base** — a coordinator branch is commitless by
 contract, so any commits mean this is not a spent `coord-<slug>` leftover and may
 hold work. Only a ref that passes **both** checks is a disposable local-only
@@ -416,8 +420,19 @@ establish the zero diff against that path with `git -C <path> status` and
 `git -C <path> diff HEAD`: a session that correctly waited at step 4 has made no
 commits and no working-tree changes. Zero diff is a
 **necessary but not sufficient** condition: a generic fallback can start a
-process or hold a native handle without ever changing Git, so a zero-diff
-session is not automatically safe to archive. Once zero diff is confirmed, run
+process — including one launched from `$env:TEMP`, the documented safe working
+directory — hold a native handle, or even spawn its own child session and
+worktree, all without ever touching this worktree's Git, and the worktree-
+filtered residual sweep is by construction blind to a process or descendant that
+names a different path. So a zero-diff session is not automatically safe to
+archive. **This residual risk is real but structurally bounded:** the check runs
+within seconds-to-minutes of dispatch, before a mis-dispatched fallback has had
+any real working window, and no tool in this environment enumerates a session's
+descendants or an arbitrary process's ownership beyond worktree-path matching —
+so treat a zero-diff, clean-sweep result as *sufficient given that bound*, not as
+an absolute guarantee, and escalate immediately for manual recovery if any later
+signal (a stray notification, an unexplained resource, a descendant surfacing in
+`list_sessions_and_chats`) contradicts it. Once zero diff is confirmed, run
 the process-lifecycle pre-archive checklist against it — ledger, exact-identity
 checks, and the worktree-filtered residual sweep — exactly as you would for any
 app-managed child (see the recursive rules in the process-lifecycle skill).

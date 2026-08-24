@@ -348,7 +348,14 @@ and it archives **only its own direct children** — never a grandchild.
     word — exactly as the whole leaf-to-root contract does. What the parent *does*
     check mechanically is its **own** direct child (the session it created and
     recorded): that this child is accounted for, its ledger is clean, and its
-    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived.
+    `CLOSED` — not `BLOCKED_ARCHIVE` — actually arrived. This is the same trust
+    the rest of the pipeline places in a leaf implementer's claims: Phase 4's
+    "every claim is unverified until you check it" governs the child
+    orchestrator's **own** verification of **its** subtree, not a re-verification
+    the parent performs on the child's behalf. There is no session-provenance
+    registry in this environment to cross-check an id against, so a fabricated or
+    stale record is a trust violation the protocol cannot mechanically detect —
+    the same class of limitation as trusting any subordinate's report.
   - **kind** — `leaf implementer` or `child orchestrator`, since the two close
     by different paths (a leaf via handback→verify→archive, a child orchestrator
     only after its own `CLOSED`).
@@ -382,7 +389,15 @@ and it archives **only its own direct children** — never a grandchild.
    handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
    message. A missing ledger, a malformed row, a `stop result: failed to stop`,
    or an unverified row is a **hard block** — do not archive, and treat every
-   such item as "assume still running."
+   such item as "assume still running." This "missing ledger blocks" rule
+   applies strictly to a session that **reached `RUNNING`** and so owed a
+   self-reported ledger. A session that **never reached `RUNNING`** owes none:
+   the pre-`RUNNING` / mis-dispatch cleanup paths in the orchestrator agent file
+   establish its ledger from the outside instead — a clean worktree-filtered
+   sweep on a zero-diff session that never reported *is* the `Processes: <none>`
+   evidence, a valid input to this checklist rather than a violation of this
+   rule. The strict block still governs every session that did reach `RUNNING`
+   and therefore did owe a ledger of its own.
 2. Stop any tool-managed background shell you dispatched for that session
    through its own returned handle/session id — never by searching for a PID.
 3. **Re-verify every OS-level identity yourself, including rows the ledger
