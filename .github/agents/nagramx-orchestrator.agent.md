@@ -697,7 +697,7 @@ passed" is a claim; a green run pinned to the pull request's head commit is
 evidence. Work through all of it yourself.
 
 ```powershell
-$repo = 'dazewell/NagramX'; $pr = <n>
+$repo = 'dazewell/Dazegram'; $pr = <n>
 gh pr view $pr --repo $repo --json url,isDraft,state,mergeable,headRefOid,statusCheckRollup
 $sha = gh pr view $pr --repo $repo --json headRefOid --jq .headRefOid
 
