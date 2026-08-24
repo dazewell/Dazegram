@@ -265,9 +265,10 @@ or, one block per item:
   started by: <this session/branch — so a later reader knows who owns it>
   identity:   <tool-native handle or async-shell session id>
               OR <PID>, <image name>, <start time>, <path/cwd>
-  owned resource: <daemon-specific resource: adb port, emulator serial, or
-              for a gradle-daemon row, the isolated GRADLE_USER_HOME path> | n/a
-              — used the shared/ambient resource and did not stop it (rule 8)
+  owned resource: <daemon-specific resource: adb port, emulator serial, or for
+              a gradle-daemon row, the isolated GRADLE_USER_HOME cache path when
+              used for daemon isolation> | n/a — used the shared/ambient resource
+              and did not stop it (rule 8)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
@@ -283,11 +284,11 @@ Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 Always include this field: report the absolute cache path if you used an
 isolated `GRADLE_USER_HOME` for any build (regardless of daemon mode), or
 report `<none>` if you used a shared/default Gradle home or no Gradle build.
-This field is distinct from the `owned resource` field in the process ledger,
-which records daemon-specific items like adb ports or emulator serials. When a
-gradle-daemon process row exists in the ledger **and** you used an isolated
-home, the `owned resource` value in that row should record the same cache path
-for consistency.
+This field is distinct from the `owned resource` field in the process ledger for
+non-Gradle processes (which records items like adb ports or emulator serials).
+When a gradle-daemon process row exists in the ledger **and** you used an
+isolated home, the `owned resource` value in that row should record the same
+cache path for consistency with this field.
 
 
 **Tool-managed async/background shells go in this ledger too** — record their
@@ -496,7 +497,13 @@ and it archives **only its own direct children** — never a grandchild.
      this way is reconciled from the main clone with `git worktree prune`;
      that prune recovery path is for this manually managed case only, never
      a substitute for `archive_session` on an app-managed child.
-7. **Post-archive cache cleanup for isolated `GRADLE_USER_HOME` only.** After
+7. Archive only after 1–6 all pass clean. If a missing ledger, a remaining or
+   unverified process, an unexplained residual-sweep/handle result, or a
+   removal/`archive_session` failure blocks any step: **do not archive.**
+   Report the exact `Id`, `Name`, `Path`, `StartTime`, and command line
+   (where available) and leave the session (or worktree) intact for manual
+   recovery.
+8. **Post-archive cache cleanup for isolated `GRADLE_USER_HOME` only.** After
    `archive_session` succeeds for a child that recorded an isolated
    `GRADLE_USER_HOME` in its handback (the mandatory `Isolated GRADLE_USER_HOME`
    field, separate from the process ledger), and **only then**, clean up that
@@ -519,12 +526,6 @@ and it archives **only its own direct children** — never a grandchild.
      destructively.
    - If the child's handback reads `Isolated GRADLE_USER_HOME: <none>`, no
      cache cleanup is needed.
-8. Archive only after 1–6 all pass clean. If a missing ledger, a remaining or
-   unverified process, an unexplained residual-sweep/handle result, or a
-   removal/`archive_session` failure blocks any step: **do not archive.**
-   Report the exact `Id`, `Name`, `Path`, `StartTime`, and command line
-   (where available) and leave the session (or worktree) intact for manual
-   recovery.
 
 ## Coverage
 

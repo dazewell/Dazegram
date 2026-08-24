@@ -959,14 +959,15 @@ you are not losing anything by archiving once it is actually safe to.
 
 **After `archive_session` succeeds:** Check the child's handback for the
 `Isolated GRADLE_USER_HOME` field. If it records a path (not `<none>`), clean
-it up (see step 7 of the post-archive cleanup in `.claude/skills/nagramx-process-lifecycle/SKILL.md`
-for the full contract). The directory contains regenerable cache and daemon
-registry and is ~2.8 GB per session — leaving it orphaned grows storage until
-manual cleanup. Follow the rule's verification and deletion checks exactly:
-confirm the path is child-owned and outside the removed worktree, run an
-exact-path process-use check, and delete only the literal resolved path if the
-check clears. Do not stop shared Gradle daemons to force the deletion to pass.
-If the handback reads `Isolated GRADLE_USER_HOME: <none>`, no cleanup is needed.
+it up (see step 8 of the lifecycle checklist in
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` for the full contract).
+The directory contains regenerable cache and daemon registry and is ~2.8 GB per
+session — leaving it orphaned grows storage until manual cleanup. Follow the
+rule's verification and deletion checks exactly: confirm the path is
+child-owned and outside the removed worktree, run an exact-path process-use
+check, and delete only the literal resolved path if the check clears. Do not
+stop shared Gradle daemons to force the deletion to pass. If the handback reads
+`Isolated GRADLE_USER_HOME: <none>`, no cleanup is needed.
 
 ## Matching process to the request
 
