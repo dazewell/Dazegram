@@ -47,4 +47,18 @@ jobs:
           # a missing base fails on a real "cannot resolve", not a silent
           # empty range. The guard itself fails closed either way.
           git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" || true
-          python Tools/scripts/attribution_guard.py --base "$BASE_SHA" --head "$HEAD_SHA"
+
+          # Run the guard code from the trusted BASE ref, not the checked-out
+          # PR working tree: actions/checkout on a pull_request event defaults
+          # to the head/merge ref, so a PR that edits or guts the guard's own
+          # detection logic would otherwise get to grade its own homework.
+          # Fall back to the working-tree copy only for the one PR that
+          # introduces the script in the first place, where the base ref has
+          # no earlier trusted copy to pull.
+          if git cat-file -e "$BASE_SHA:Tools/scripts/attribution_guard.py" 2>/dev/null; then
+            git show "$BASE_SHA:Tools/scripts/attribution_guard.py" > /tmp/attribution_guard.py
+            SCRIPT=/tmp/attribution_guard.py
+          else
+            SCRIPT=Tools/scripts/attribution_guard.py
+          fi
+          python "$SCRIPT" --base "$BASE_SHA" --head "$HEAD_SHA"

@@ -270,6 +270,7 @@ def iter_commit_records(base_sha: str, head_sha: str):
         sha, parents, an, ae, cn, ce, body = parts
         yield {
             "sha": sha,
+            "parents": parents,
             "is_merge": len(parents.split()) > 1,
             "an": an,
             "ae": ae,
@@ -280,10 +281,22 @@ def iter_commit_records(base_sha: str, head_sha: str):
         }
 
 
-def check_source_diff(sha: str, subject: str) -> list[Violation]:
-    result = run_git(["show", "--no-color", "--unified=0", "--format=", sha, "--", *SOURCE_EXTENSIONS])
+def check_source_diff(sha: str, subject: str, parents: str) -> list[Violation]:
+    # A merge commit's diff is ambiguous against ALL parents (git show's
+    # default "combined diff" for merges is unreliable to line-scan), but its
+    # diff against the FIRST parent is exactly what the addition would look
+    # like if a contributor resolved a conflict by hand and typed something
+    # in -- that's real added content in the range, not noise, so merges are
+    # scanned too rather than skipped outright.
+    parent_list = parents.split()
+    if parent_list:
+        diff_args = ["diff", "--no-color", "--unified=0", parent_list[0], sha]
+    else:
+        # Root commit (no parent): everything in it is "added".
+        diff_args = ["show", "--no-color", "--unified=0", "--format=", sha]
+    result = run_git([*diff_args, "--", *SOURCE_EXTENSIONS])
     if result.returncode != 0:
-        raise RuntimeError(f"git show failed for {sha}: {result.stderr.strip()}")
+        raise RuntimeError(f"git diff failed for {sha}: {result.stderr.strip()}")
 
     violations: list[Violation] = []
     current_file: str | None = None
@@ -324,8 +337,7 @@ def scan_range(base_sha: str, head_sha: str) -> list[Violation]:
         ):
             violations.extend(check_identity(sha, subject, field_name, value))
         violations.extend(check_message(sha, subject, record["body"]))
-        if not record["is_merge"]:
-            violations.extend(check_source_diff(sha, subject))
+        violations.extend(check_source_diff(sha, subject, record["parents"]))
     return violations
 
 
