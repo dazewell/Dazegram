@@ -27,9 +27,12 @@ public abstract class BaseRemoteHelper {
     // can reopen it; a blocked call reports an empty result so cached data and callbacks are
     // unaffected. The request code below is kept as the reference implementation for a
     // fork-owned source: re-enabling means changing CHANNEL_METADATA_* and dropping this guard —
-    // but that only brings back the two uses that route through load() here, emoji packs
-    // (EmojiHelper) and link-preview rewrite rules (PagePreviewRulesHelper). Update checks are
-    // gated independently at five further sites, so all five need to be reverted by hand too.
+    // that restores the network fetch for all three load() consumers here: emoji packs
+    // (EmojiHelper), link-preview rewrite rules (PagePreviewRulesHelper), and update metadata
+    // (UpdateHelper.checkNewVersionAvailable). Dropping the guard is not enough to bring back
+    // visible update checks, though: LaunchActivity.checkAppUpdate never reaches
+    // UpdateHelper.checkNewVersionAvailable at all, because it's gated independently at five
+    // further sites this boolean does not touch, so all five need to be reverted by hand too.
     // The two LaunchActivity gates carry a short back-reference to this flag; the other three do
     // not, so start from this list rather than expecting to find a trail from them:
     //   - LaunchActivity.checkAppUpdate's own if (true) gate (~L6119)
