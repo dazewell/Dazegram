@@ -110,10 +110,11 @@ the pre-archive verification side (below) for every child session it archives.
      safe to delete while the session is running or while `archive_session`
      may still reference it. Deletion happens in the orchestrator; record the
      absolute path in your handback's `Isolated GRADLE_USER_HOME` field so
-     the orchestrator can clean it up after archive succeeds (see post-archive
-     step 7 for the exact validation and deletion contract). Cleanup applies
-     whenever an isolated home was used, regardless of daemon mode
-     (`--no-daemon` stops the single-use daemon but the ~2.8 GB cache remains).
+     the orchestrator can clean it up after archive succeeds (see
+     step 8 of the lifecycle checklist for the exact validation and deletion
+     contract). Cleanup applies whenever an isolated home was used, regardless
+     of daemon mode (`--no-daemon` stops the single-use daemon but the ~2.8 GB
+     cache remains).
 9. **Keep long-running processes' working directory and logs outside the
    session worktree.** Start them with a working directory such as `$env:TEMP`
    and redirect any log output there too, not into the worktree. A process
