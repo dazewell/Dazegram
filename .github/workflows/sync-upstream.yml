@@ -1,92 +1,273 @@
 name: Sync upstream
 
-# Merge-forward sync onto the base fork (risin42/NagramX), never a rebase.
-# base is fast-forwarded from the base fork, then dev merges base. If the merge
-# conflicts the sync aborts, pushes nothing, and pings Telegram so it can be
-# finished on the PC. A clean sync pushes dev, which triggers staging.yml
-# (dual APK + Telegram upload).
+# Snapshot-mediated nbase sync onto dev.
+#
+# The old mechanism merged the archived risin42 base fork directly. That parent
+# is gone; the live parent is NextAlone/Nagram. We never merge Nagram's history
+# into dev — that would import its commits, authors and messages and re-open the
+# 503-conflict merge-base. Instead:
+#
+#   1. take Nagram/dev's TREE at a resolved SHA,
+#   2. wrap it in one locally-authored snapshot commit whose only parent is the
+#      current nbase (this is the new nbase),
+#   3. 3-way merge that snapshot into dev.
+#
+# Because nbase is an ancestor of dev (the anchor commit made it one), the merge
+# base is the previous snapshot and dev gets exactly Nagram's upstream delta and
+# nothing else. A locally-authored snapshot imports no upstream message/author.
+#
+# Nothing is pushed until sync-guard.ps1 — run from the trusted dev checkout, not
+# from the incoming candidate — classifies every tree delta and passes. Any new
+# path, protected-blob change, signing/workflow/schema/layer change or ANY
+# unclassified delta blocks the run: it pushes nothing and pings Telegram so the
+# reconciliation is finished on the PC. There is deliberately no branch input and
+# no bypass input.
+#
+# The first steady-state run is EXPECTED to block (Nagram's tip adds BRANDING.md,
+# an unreviewed new path). That block is the mechanism working, not a failure.
 
 on:
-  workflow_dispatch:
-    inputs:
-      base_branch:
-        description: 'Base-fork branch to sync onto'
-        required: false
-        default: 'dev'
+  workflow_dispatch: {}
 
+# The job token stays read-only. All writing is done by SYNC_TOKEN, which is the
+# only credential allowed to push .github/workflows and to trigger staging.yml.
 permissions:
-  contents: write
-  actions: write
+  contents: read
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
 
 jobs:
   sync:
-    name: Merge-forward dev onto base fork
+    name: Snapshot-merge Nagram onto dev
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout dev
+      - name: Require SYNC_TOKEN (no GITHUB_TOKEN fallback)
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          if [ -z "$SYNC_TOKEN" ]; then
+            echo "::error::SYNC_TOKEN is unset. This sync must not fall back to GITHUB_TOKEN:"
+            echo "::error::the default token cannot push .github/workflows/ and its push would"
+            echo "::error::skip the staging trigger, producing a sync that silently bypasses the"
+            echo "::error::build signal. Set SYNC_TOKEN (a PAT with contents:write + workflow)."
+            exit 1
+          fi
+
+      - name: Checkout dev (the trusted PRE)
         uses: actions/checkout@v4
         with:
           ref: dev
           fetch-depth: 0
-          # PAT with `workflow` scope: the base fork ships .github/workflows
-          # files, and the default GITHUB_TOKEN is refused when a push
-          # creates/updates a workflow file. Falls back to GITHUB_TOKEN so a
-          # clone with no workflow changes upstream still works.
-          token: ${{ secrets.SYNC_TOKEN || secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+          token: ${{ secrets.SYNC_TOKEN }}
 
-      - name: Configure git identity
+      - name: Configure local git identity
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "dazegram-sync"
+          git config user.email "sync@dazegram.local"
 
-      - name: Add base-fork remote
+      - name: Verify SYNC_TOKEN can push dev (safe controlled probe)
+        id: tokentest
         run: |
-          git remote add source https://github.com/risin42/NagramX.git \
-            || git remote set-url source https://github.com/risin42/NagramX.git
-
-      - name: Fetch base fork
-        run: git fetch source ${{ github.event.inputs.base_branch }}
-
-      - name: Fast-forward base
-        run: |
-          BR="${{ github.event.inputs.base_branch }}"
-          if git ls-remote --exit-code --heads origin base >/dev/null 2>&1; then
-            git fetch origin base
-            git switch -C base FETCH_HEAD
-            git merge --ff-only "source/$BR"
-          else
-            git switch -C base "source/$BR"
-          fi
-          git push origin base
-
-      - name: Merge-forward dev (conflict-guarded)
-        id: merge
-        run: |
-          git switch dev
+          set -e
           PRE=$(git rev-parse HEAD)
-          echo "pre=$PRE" >> "$GITHUB_OUTPUT"
-          if ! git merge --no-edit base; then
-            git merge --abort || true
-            git reset --hard "$PRE"
-            echo "conflict=base" >> "$GITHUB_OUTPUT"
+          # A no-op dry-run push to dev exercises auth + push permission without
+          # writing anything. The full workflow-file push permission is only
+          # provable by the real atomic push below, which fails explicitly (not
+          # silently) if the token lacks `workflow` scope.
+          if ! git push --dry-run origin "$PRE:refs/heads/dev"; then
+            echo "::error::SYNC_TOKEN cannot push dev. Its scope is insufficient for this sync."
             exit 1
           fi
+          echo "ok=1" >> "$GITHUB_OUTPUT"
 
-      - name: Push dev (clean only)
-        run: git push origin dev
+      - name: Load pins from the trusted PRE
+        id: pins
+        run: |
+          set -e
+          P=.github/sync/pins.env
+          get() { grep -E "^$1=" "$P" | head -n1 | cut -d= -f2-; }
+          {
+            echo "anchor_src=$(get ANCHOR_SRC)"
+            echo "nagram_repo=$(get NAGRAM_REPO)"
+            echo "nagram_branch=$(get NAGRAM_BRANCH)"
+            echo "keystore_path=$(get KEYSTORE_PATH)"
+            echo "cert_sha=$(get KEYSTORE_CERT_SHA256)"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Notify conflict
-        if: failure() && steps.merge.outputs.conflict != ''
+      - name: nbase must exist (deletion protection; no auto-bootstrap)
+        run: |
+          set -e
+          if ! git ls-remote --exit-code --heads origin nbase >/dev/null 2>&1; then
+            echo "::error::origin/nbase is absent. This is the steady-state path and it"
+            echo "::error::refuses to bootstrap automatically — a missing nbase is a protected"
+            echo "::error::deletion incident, not a routine sync. Restore nbase on the PC."
+            exit 1
+          fi
+          git fetch origin nbase
+
+      - name: Fetch Nagram source (hardcoded repo + branch)
+        run: |
+          set -e
+          git remote add nagram "${{ steps.pins.outputs.nagram_repo }}" \
+            || git remote set-url nagram "${{ steps.pins.outputs.nagram_repo }}"
+          git fetch --no-tags nagram "${{ steps.pins.outputs.nagram_branch }}"
+
+      - name: Resolve and record source + refs
+        id: refs
+        run: |
+          set -e
+          PRE=$(git rev-parse origin/dev)
+          OLD_NBASE=$(git rev-parse origin/nbase)
+          NEW_SRC=$(git rev-parse nagram/${{ steps.pins.outputs.nagram_branch }})
+          SRC_TREE=$(git rev-parse "${NEW_SRC}^{tree}")
+          echo "PRE=$PRE"
+          echo "OLD_NBASE=$OLD_NBASE"
+          echo "NEW_SRC=$NEW_SRC  SRC_TREE=$SRC_TREE"
+          {
+            echo "pre=$PRE"
+            echo "old_nbase=$OLD_NBASE"
+            echo "new_src=$NEW_SRC"
+            echo "src_tree=$SRC_TREE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build synthetic snapshot (local author, no upstream import)
+        id: snapshot
+        env:
+          GIT_AUTHOR_NAME: dazegram-sync
+          GIT_AUTHOR_EMAIL: sync@dazegram.local
+          GIT_COMMITTER_NAME: dazegram-sync
+          GIT_COMMITTER_EMAIL: sync@dazegram.local
+        run: |
+          set -e
+          SHORT=$(git rev-parse --short "${{ steps.refs.outputs.new_src }}")
+          NEW_SNAP=$(git commit-tree "${{ steps.refs.outputs.src_tree }}" \
+            -p "${{ steps.refs.outputs.old_nbase }}" \
+            -m "snapshot Nagram ${SHORT} as nbase anchor #infra")
+          echo "new_snap=$NEW_SNAP" >> "$GITHUB_OUTPUT"
+          echo "snapshot=$NEW_SNAP"
+
+      - name: Build merge candidate (conflict-guarded, never auto-resolved)
+        id: merge
+        run: |
+          set -e
+          git switch -c _sync_candidate "${{ steps.refs.outputs.pre }}"
+          if ! git merge --no-edit --no-ff "${{ steps.snapshot.outputs.new_snap }}"; then
+            git merge --abort || true
+            git switch dev
+            echo "::error::3-way merge of the snapshot into dev conflicts. Never auto-resolved."
+            echo "conflict=1" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          NEW_DEV=$(git rev-parse HEAD)
+          git switch dev
+          echo "new_dev=$NEW_DEV" >> "$GITHUB_OUTPUT"
+          echo "candidate=$NEW_DEV"
+
+      - name: Run the guard (from the trusted PRE checkout)
+        id: guard
+        shell: pwsh
+        run: |
+          # dev is checked out here, so .github/sync/sync-guard.ps1 is the PRE copy.
+          ./.github/sync/sync-guard.ps1 `
+            -PreRef      '${{ steps.refs.outputs.pre }}' `
+            -OldNbase    '${{ steps.refs.outputs.old_nbase }}' `
+            -NewSnapshot '${{ steps.snapshot.outputs.new_snap }}' `
+            -NewSrc      '${{ steps.refs.outputs.new_src }}' `
+            -NewDev      '${{ steps.merge.outputs.new_dev }}'
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::guard blocked the candidate (exit $LASTEXITCODE). Pushing nothing."
+            exit $LASTEXITCODE
+          }
+
+      - name: Prove signer certificate identity (guard 13, in-memory password)
+        shell: pwsh
+        env:
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCAL_PROPERTIES) { Write-Host '::error::LOCAL_PROPERTIES unset'; exit 1 }
+          # Decode the properties in memory; never write them to disk or the log.
+          $props = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:LOCAL_PROPERTIES))
+          $kv = @{}
+          foreach ($l in ($props -split "`n")) { if ($l -match '^\s*([^#=]+?)\s*=\s*(.*?)\s*$') { $kv[$Matches[1]] = $Matches[2] } }
+          $alias = $kv['ALIAS_NAME']
+          if (-not $kv['KEYSTORE_PASS'] -or -not $alias) { Write-Host '::error::signing props missing'; exit 1 }
+          # Materialise the candidate keystore only (its blob is already pinned by the guard).
+          git cat-file blob "${{ steps.merge.outputs.new_dev }}:${{ steps.pins.outputs.keystore_path }}" > release.keystore
+          # Pass the store password via a child-process env var — never on the command
+          # line, never via GITHUB_ENV, no set -x. keytool reads it from the env.
+          $env:KS_STOREPASS = $kv['KEYSTORE_PASS']
+          $der = "$env:RUNNER_TEMP/cert.der"
+          & keytool -exportcert -keystore release.keystore -alias $alias -storepass:env KS_STOREPASS -file $der
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::keytool exportcert failed'; exit 1 }
+          $env:KS_STOREPASS = $null
+          $hash = (Get-FileHash -Algorithm SHA256 $der).Hash.ToLowerInvariant()
+          Remove-Item release.keystore, $der -ErrorAction SilentlyContinue
+          $pin = '${{ steps.pins.outputs.cert_sha }}'
+          if ($hash -ne $pin) {
+            Write-Host "::error::signer cert SHA-256 $hash != pinned $pin — wrong signing key. Push nothing."
+            exit 1
+          }
+          Write-Host "signer certificate identity confirmed."
+
+      - name: Atomic append-only push of dev + nbase
+        id: push
+        run: |
+          set -e
+          PRE=${{ steps.refs.outputs.pre }}
+          OLD_NBASE=${{ steps.refs.outputs.old_nbase }}
+          NEW_DEV=${{ steps.merge.outputs.new_dev }}
+          NEW_SNAP=${{ steps.snapshot.outputs.new_snap }}
+
+          # Re-read both remote refs and re-assert the leases + append-only shape
+          # immediately before pushing (guard 15).
+          git fetch origin dev nbase
+          [ "$(git rev-parse origin/dev)"   = "$PRE" ]       || { echo "::error::dev moved under us"; exit 1; }
+          [ "$(git rev-parse origin/nbase)" = "$OLD_NBASE" ] || { echo "::error::nbase moved under us"; exit 1; }
+          git merge-base --is-ancestor "$PRE" "$NEW_DEV"        || { echo "::error::new dev is not a descendant of PRE (not append-only)"; exit 1; }
+          git merge-base --is-ancestor "$OLD_NBASE" "$NEW_SNAP" || { echo "::error::new nbase is not a descendant of old nbase"; exit 1; }
+
+          # Both refs move together or neither does. There is no sequential
+          # fallback: a partial update would leave the tree without its anchor.
+          git push --atomic \
+            --force-with-lease=refs/heads/dev:"$PRE" \
+            --force-with-lease=refs/heads/nbase:"$OLD_NBASE" \
+            origin "$NEW_DEV:refs/heads/dev" "$NEW_SNAP:refs/heads/nbase"
+
+      - name: Verify remote refs and that staging was triggered
+        run: |
+          set -e
+          git fetch origin dev nbase
+          [ "$(git rev-parse origin/dev)"   = "${{ steps.merge.outputs.new_dev }}" ]     || { echo "::error::dev did not land"; exit 1; }
+          [ "$(git rev-parse origin/nbase)" = "${{ steps.snapshot.outputs.new_snap }}" ] || { echo "::error::nbase did not land"; exit 1; }
+          echo "dev and nbase updated atomically. The push to dev triggers staging.yml (dual APK + Telegram upload)."
+
+      - name: Notify on any failure (push nothing)
+        if: failure()
         env:
           HELPER_BOT_TOKEN: ${{ secrets.HELPER_BOT_TOKEN }}
           HELPER_BOT_TARGET: ${{ secrets.HELPER_BOT_TARGET }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PRE: ${{ steps.refs.outputs.pre }}
+          ANCHOR: ${{ steps.pins.outputs.anchor_src }}
+          NEW_SRC: ${{ steps.refs.outputs.new_src }}
+          CONFLICT: ${{ steps.merge.outputs.conflict }}
         run: |
           if [ -z "$HELPER_BOT_TOKEN" ] || [ -z "$HELPER_BOT_TARGET" ]; then
-            echo "Telegram secrets unset; skipping notification."
-            exit 0
+            echo "Telegram secrets unset; skipping notification."; exit 0
           fi
+          REASON="guard/topology/token/atomic-push"
+          [ -n "$CONFLICT" ] && REASON="merge conflict"
+          TEXT="⚠️ Dazegram sync blocked (${REASON}). Nothing pushed.
+          PRE: ${PRE:-unknown}
+          anchor: ${ANCHOR:-unknown}
+          source: ${NEW_SRC:-unresolved}
+          run: ${RUN_URL}
+          Finish the reconciliation on the PC."
           curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
-            --data-urlencode "text=⚠️ NagramX sync blocked: ${{ steps.merge.outputs.conflict }} conflicts with the base fork. Needs the PC." \
-            >/dev/null
+            --data-urlencode "text=${TEXT}" >/dev/null

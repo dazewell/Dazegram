@@ -1,0 +1,69 @@
+name: Sync guard check
+
+# Always-on required check for the sync guard. It runs on EVERY push and PR with
+# no paths filter, on purpose. Two things it proves on every commit:
+#
+#   1. The guard's self-test still passes — every validator can still both reject
+#      a bad input and accept a good one. A guard that silently stopped
+#      discriminating would fail here.
+#   2. sync-upstream.yml still actually invokes the guard. A guard that is present
+#      but no longer wired into the sync is worthless; this catches that.
+#
+# There is deliberately no `paths-ignore`. This repo was bitten by commit-tag.yml
+# sitting disabled for weeks while every PR reported green — an absent or skipped
+# check is indistinguishable from a passing one, so this one never skips.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guard-check:
+    name: Guard self-test + wiring
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard self-test (must prove it can fail before it is trusted)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ./.github/sync/sync-guard.ps1)) {
+            Write-Host '::error::sync-guard.ps1 is missing'; exit 1
+          }
+          ./.github/sync/sync-guard.ps1 -SelfTestOnly
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::guard self-test failed (exit $LASTEXITCODE)"; exit 1
+          }
+
+      - name: sync-upstream.yml still invokes the guard
+        shell: pwsh
+        run: |
+          $wf = './.github/workflows/sync-upstream.yml'
+          if (-not (Test-Path $wf)) { Write-Host '::error::sync-upstream.yml is missing'; exit 1 }
+          $text = Get-Content $wf -Raw
+          if ($text -notmatch 'sync-guard\.ps1') {
+            Write-Host '::error::sync-upstream.yml no longer invokes sync-guard.ps1 — the guard is disconnected'
+            exit 1
+          }
+          # The guard must still receive the candidate it is meant to judge.
+          foreach ($p in '-PreRef', '-OldNbase', '-NewSnapshot', '-NewSrc', '-NewDev') {
+            if ($text -notmatch [regex]::Escape($p)) {
+              Write-Host "::error::sync-upstream.yml no longer passes $p to the guard"
+              exit 1
+            }
+          }
+          # And it must never grow a dispatch input — not a branch selector, not a
+          # bypass flag. workflow_dispatch must stay input-less.
+          if ($text -notmatch 'workflow_dispatch:\s*\{\s*\}') {
+            Write-Host '::error::sync-upstream.yml workflow_dispatch is no longer input-less ({}) — a branch or bypass input may have been added'
+            exit 1
+          }
+          if ($text -match '(?im)^\s*inputs:') {
+            Write-Host '::error::sync-upstream.yml declares workflow inputs; none are allowed (no branch input, no skip-guard input)'
+            exit 1
+          }
+          Write-Host 'guard wiring intact.'
