@@ -25,6 +25,7 @@ import org.telegram.messenger.MediaController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
+import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -91,7 +92,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (onBackPressed()) {
+                    if (onBackPressed(true)) {
                         finishFragment();
                     }
                 } else if (id == menu_delete || id == menu_share) {
@@ -235,7 +236,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
     }
 
     @Override
-    public void didSelectFiles(ArrayList<String> files, String caption, ArrayList<MessageObject> fMessages, boolean notify, int scheduleDate, long effectId, boolean invertMedia) {
+    public void didSelectFiles(ArrayList<String> files, String caption, ArrayList<TLRPC.MessageEntity> captionEntities, ArrayList<MessageObject> fmessages, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia, long payStars) {
         ArrayList<File> filesToUpload = new ArrayList<>();
         for (String file : files) {
             File f = new File(file);
@@ -398,12 +399,12 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (listAdapter.hasSelected()) {
-            listAdapter.clearSelected();
+            if (invoked) listAdapter.clearSelected();
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
     private class ListAdapter extends BaseListAdapter {
@@ -414,7 +415,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
         }
 
         @Override
-        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position, boolean partial) {
+        public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position, boolean partial, boolean divider) {
             switch (holder.getItemViewType()) {
                 case TYPE_CHECK: {
                     TextCheckCell textCheckCell = (TextCheckCell) holder.itemView;
@@ -422,7 +423,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
                         if (partial) {
                             textCheckCell.setChecked(NekoConfig.useSystemEmoji.Bool());
                         } else {
-                            textCheckCell.setTextAndCheck(LocaleController.getString(R.string.EmojiUseDefault), NekoConfig.useSystemEmoji.Bool(), false);
+                            textCheckCell.setTextAndCheck(LocaleController.getString(R.string.EmojiUseDefault), NekoConfig.useSystemEmoji.Bool(), divider);
                         }
                     }
                     break;
@@ -460,7 +461,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
                     emojiPackSetCell.setSelected(selectedItems.get(position, false), partial);
                     if (emojiPackInfo != null) {
                         emojiPackSetCell.setChecked(!hasSelected() && emojiPackInfo.getPackId().equals(EmojiHelper.getInstance().getSelectedEmojiPackId()) && !NekoConfig.useSystemEmoji.Bool(), partial);
-                        emojiPackSetCell.setData(emojiPackInfo, partial, position != emojiPacksEndRow - 1);
+                        emojiPackSetCell.setData(emojiPackInfo, partial, divider);
                     }
                     break;
                 }
@@ -472,7 +473,7 @@ public class NekoEmojiSettingsActivity extends BaseNekoSettingsActivity implemen
                         drawable1.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_switchTrackChecked), PorterDuff.Mode.MULTIPLY));
                         drawable2.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_checkboxCheck), PorterDuff.Mode.MULTIPLY));
                         CombinedDrawable combinedDrawable = new CombinedDrawable(drawable1, drawable2);
-                        creationTextCell.setTextAndIcon(LocaleController.getString("AddEmojiSet", R.string.AddEmojiSet), combinedDrawable, false);
+                        creationTextCell.setTextAndIcon(LocaleController.getString("AddEmojiSet", R.string.AddEmojiSet), combinedDrawable, divider);
                     }
                     break;
                 }

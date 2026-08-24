@@ -16,10 +16,8 @@ import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
-import android.view.View;
 import android.view.accessibility.AccessibilityNodeInfo;
-import android.widget.LinearLayout;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import androidx.core.view.ViewCompat;
@@ -33,7 +31,7 @@ import org.telegram.ui.Components.LayoutHelper;
 
 import java.util.ArrayList;
 
-public class HeaderCell extends LinearLayout {
+public class HeaderCell extends FrameLayout {
 
     public int id;
 
@@ -42,25 +40,25 @@ public class HeaderCell extends LinearLayout {
 
     private TextView textView;
     private AnimatedTextView animatedTextView;
-    private TextView textView2;
+    private SimpleTextView textView2;
     private int height = 40;
     private final Theme.ResourcesProvider resourcesProvider;
-    private boolean animated;
+    private final boolean animated;
 
     public HeaderCell(Context context) {
-        this(context, Theme.key_windowBackgroundWhiteBlueHeader, 21, 15, false, null);
+        this(context, Theme.key_windowBackgroundWhiteBlueHeader, 18, 7, false, null);
     }
 
     public HeaderCell(Context context, Theme.ResourcesProvider resourcesProvider) {
-        this(context, Theme.key_windowBackgroundWhiteBlueHeader, 21, 15, false, resourcesProvider);
+        this(context, Theme.key_windowBackgroundWhiteBlueHeader, 18, 7, false, resourcesProvider);
     }
 
     public HeaderCell(Context context, int padding) {
-        this(context, Theme.key_windowBackgroundWhiteBlueHeader, padding, 15, false, null);
+        this(context, Theme.key_windowBackgroundWhiteBlueHeader, padding, 7, false, null);
     }
 
     public HeaderCell(Context context, int padding, Theme.ResourcesProvider resourcesProvider) {
-        this(context, Theme.key_windowBackgroundWhiteBlueHeader, padding, 15, false, resourcesProvider);
+        this(context, Theme.key_windowBackgroundWhiteBlueHeader, padding, 7, false, resourcesProvider);
     }
 
     public HeaderCell(Context context, int textColorKey, int padding, int topMargin, boolean text2) {
@@ -82,57 +80,43 @@ public class HeaderCell extends LinearLayout {
         this.bottomMargin = bottomMargin;
         this.animated = animated;
 
-        setOrientation(LinearLayout.VERTICAL);
-        setPadding(AndroidUtilities.dp(padding), AndroidUtilities.dp(topMargin), AndroidUtilities.dp(padding), 0);
-
         if (animated) {
             animatedTextView = new AnimatedTextView(getContext());
-            animatedTextView.setTextSize(AndroidUtilities.dp(15));
+            animatedTextView.setTextSize(AndroidUtilities.dp(14));
             animatedTextView.setTypeface(AndroidUtilities.bold());
             animatedTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
             animatedTextView.setTextColor(getThemedColor(textColorKey));
             animatedTextView.setTag(textColorKey);
             animatedTextView.getDrawable().setHacks(true, true, false);
-//            addView(animatedTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, height - topMargin, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, padding, topMargin, padding, text2 ? 0 : bottomMargin));
-            addView(animatedTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, height - topMargin));
+            addView(animatedTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, height - topMargin, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, padding, topMargin, padding, text2 ? 0 : bottomMargin));
         } else {
             textView = new TextView(getContext());
-            textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
             textView.setTypeface(AndroidUtilities.bold());
             textView.setEllipsize(TextUtils.TruncateAt.END);
             textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
             textView.setMinHeight(AndroidUtilities.dp(height - topMargin));
             textView.setTextColor(getThemedColor(textColorKey));
             textView.setTag(textColorKey);
-//            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, padding, topMargin, padding, text2 ? 0 : bottomMargin));
-            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+            addView(textView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, padding, topMargin, padding, text2 ? 0 : bottomMargin));
         }
 
-        textView2 = new TextView(getContext());
-        textView2.setTextSize(13);
-        textView2.setMovementMethod(new AndroidUtilities.LinkMovementMethodMy());
-        textView2.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-        addView(textView2, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, bottomMargin));
-
-        if (!text2) textView2.setVisibility(View.GONE);
+        if (text2) {
+            textView2 = new SimpleTextView(getContext());
+            textView2.setTextSize(13);
+            textView2.setGravity((LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP);
+            addView(textView2, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, padding, 21, padding, bottomMargin));
+        }
 
         ViewCompat.setAccessibilityHeading(this, true);
     }
 
-    // NekoX: BottomSheet BigTitle, move big title from constructor to here
-    public HeaderCell setBigTitle(boolean enabled) {
-        if (enabled) {
-            textView.setTypeface(AndroidUtilities.getTypeface("fonts/mw_bold.ttf"));
-        } else {
-            textView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
-        }
-        return this;
+    public void setOnWidthUpdateListener(Runnable listener) {
+        animatedTextView.setOnWidthUpdatedListener(listener);
     }
 
-    @Override
-    public void setLayoutParams(ViewGroup.LayoutParams params) {
-        params.width = -1;
-        super.setLayoutParams(params);
+    public float getAnimatedWidth() {
+        return animatedTextView.getDrawable().getCurrentWidth();
     }
 
     public void setHeight(int value) {
@@ -152,6 +136,15 @@ public class HeaderCell extends LinearLayout {
         ((LayoutParams) textView.getLayoutParams()).bottomMargin = AndroidUtilities.dp(bottomMargin);
         if (textView2 != null) {
             ((LayoutParams) textView2.getLayoutParams()).bottomMargin = AndroidUtilities.dp(bottomMargin);
+        }
+    }
+
+    public void setEnabled(boolean value, boolean animated) {
+        super.setEnabled(value);
+        if (animated) {
+            textView.animate().alpha(value ? 1.0f : 0.5f).start();
+        } else {
+            textView.setAlpha(value ? 1.0f : 0.5f);
         }
     }
 
@@ -177,7 +170,12 @@ public class HeaderCell extends LinearLayout {
     }
 
     public void setTextColor(int color) {
-        textView.setTextColor(color);
+        if (textView != null) {
+            textView.setTextColor(color);
+        }
+        if (animatedTextView != null) {
+            animatedTextView.setTextColor(color);
+        }
     }
 
     public void setText(CharSequence text) {
@@ -195,17 +193,41 @@ public class HeaderCell extends LinearLayout {
     }
 
     public void setText2(CharSequence text) {
-        if (textView2.getVisibility() != View.VISIBLE) {
-            textView2.setVisibility(View.VISIBLE);
+        if (textView2 == null) {
+            return;
         }
         textView2.setText(text);
+    }
+
+    public void setText2Long(CharSequence text) {
+        if (textView2 == null) {
+            return;
+        }
+
+        FrameLayout.LayoutParams textLayoutParams = (FrameLayout.LayoutParams) textView.getLayoutParams();
+        textLayoutParams.height = AndroidUtilities.dp(height);
+        textLayoutParams.gravity = (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP;
+        textView.setLayoutParams(textLayoutParams);
+        textView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL);
+
+        int textColorKey = (int) textView.getTag();
+
+        FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) textView2.getLayoutParams();
+        layoutParams.topMargin = AndroidUtilities.dp(height) + AndroidUtilities.dp(10);
+        layoutParams.gravity = (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP;
+        textView2.setLayoutParams(layoutParams);
+        textView2.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
+        textView2.setMaxLines(Integer.MAX_VALUE);
+        textView2.setText(text);
+        textView2.setTextColor(getThemedColor(textColorKey));
+        textView2.setTag(textColorKey);
     }
 
     public TextView getTextView() {
         return textView;
     }
 
-    public TextView getTextView2() {
+    public SimpleTextView getTextView2() {
         return textView2;
     }
 
@@ -214,7 +236,7 @@ public class HeaderCell extends LinearLayout {
         super.onInitializeAccessibilityNodeInfo(info);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             info.setHeading(true);
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+        } else {
             AccessibilityNodeInfo.CollectionItemInfo collection = info.getCollectionItemInfo();
             if (collection != null) {
                 info.setCollectionItemInfo(AccessibilityNodeInfo.CollectionItemInfo.obtain(collection.getRowIndex(), collection.getRowSpan(), collection.getColumnIndex(), collection.getColumnSpan(), true));
@@ -225,5 +247,14 @@ public class HeaderCell extends LinearLayout {
 
     private int getThemedColor(int key) {
         return Theme.getColor(key, resourcesProvider);
+    }
+
+    public HeaderCell setBigTitle(boolean enabled) {
+        if (enabled) {
+            textView.setTypeface(AndroidUtilities.getTypeface("fonts/mw_bold.ttf"));
+        } else {
+            textView.setTypeface(AndroidUtilities.getTypeface("fonts/rmedium.ttf"));
+        }
+        return this;
     }
 }

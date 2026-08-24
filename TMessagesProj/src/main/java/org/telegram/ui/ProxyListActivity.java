@@ -8,6 +8,8 @@
 
 package org.telegram.ui;
 
+import static org.telegram.messenger.LocaleController.getString;
+
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -16,6 +18,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -30,6 +33,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.ItemTouchHelper;
@@ -44,6 +48,7 @@ import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.ProxyRotationController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
+import org.telegram.messenger.SvgHelper;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -62,9 +67,11 @@ import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberTextView;
+import org.telegram.ui.Components.QRCodeBottomSheet;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SlideChooseView;
 
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -88,13 +95,16 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     private boolean useProxyForCalls;
 
     private int rowCount;
+    @Keep
     private int useProxyRow;
     private int useProxyShadowRow;
     private int connectionsHeaderRow;
     private int proxyStartRow;
     private int proxyEndRow;
+    @Keep
     private int proxyAddRow;
     private int proxyShadowRow;
+    @Keep
     private int callsRow;
     private int rotationRow;
     private int rotationTimeoutRow;
@@ -118,6 +128,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
 
         private TextView textView;
         private TextView valueTextView;
+        private ImageView shareImageView;
         private ImageView checkImageView;
         private SharedConfig.ProxyInfo currentInfo;
         private Drawable checkDrawable;
@@ -152,11 +163,73 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
             valueTextView.setPadding(0, 0, 0, 0);
             addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, (LocaleController.isRTL ? 56 : 21), 35, (LocaleController.isRTL ? 21 : 56), 0));
 
+            shareImageView = new ImageView(context);
+            shareImageView.setImageResource(R.drawable.msg_share);
+            shareImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), PorterDuff.Mode.MULTIPLY));
+            shareImageView.setScaleType(ImageView.ScaleType.CENTER);
+            shareImageView.setContentDescription(LocaleController.getString(R.string.ShareFile));
+            if (LocaleController.isRTL) {
+                addView(shareImageView, LayoutHelper.createFrame(48, 48, Gravity.LEFT | Gravity.TOP, 8, 8 + 48, 8, 0));
+            } else {
+                addView(shareImageView, LayoutHelper.createFrame(48, 48, Gravity.RIGHT | Gravity.TOP, 8, 8, 8 + 48, 0));
+            }
+            shareImageView.setOnClickListener(v -> {
+                StringBuilder params = new StringBuilder();
+                String address = currentInfo.address;
+                String password = currentInfo.password;
+                String user = currentInfo.username;
+                String port = "" + currentInfo.port;
+                String secret = currentInfo.secret;
+                String url;
+                try {
+                    if (!TextUtils.isEmpty(address)) {
+                        params.append("server=").append(URLEncoder.encode(address, "UTF-8"));
+                    }
+                    if (!TextUtils.isEmpty(port)) {
+                        if (params.length() != 0) {
+                            params.append("&");
+                        }
+                        params.append("port=").append(URLEncoder.encode(port, "UTF-8"));
+                    }
+                    if (!TextUtils.isEmpty(currentInfo.secret)) {
+                        url = "https://t.me/proxy?";
+                        if (params.length() != 0) {
+                            params.append("&");
+                        }
+                        params.append("secret=").append(URLEncoder.encode(secret, "UTF-8"));
+                    } else {
+                        url = "https://t.me/socks?";
+                        if (!TextUtils.isEmpty(user)) {
+                            if (params.length() != 0) {
+                                params.append("&");
+                            }
+                            params.append("user=").append(URLEncoder.encode(user, "UTF-8"));
+                        }
+                        if (!TextUtils.isEmpty(password)) {
+                            if (params.length() != 0) {
+                                params.append("&");
+                            }
+                            params.append("pass=").append(URLEncoder.encode(password, "UTF-8"));
+                        }
+                    }
+                } catch (Exception ignore) {
+                    return;
+                }
+                if (params.length() == 0) {
+                    return;
+                }
+                String link = url + params;
+                QRCodeBottomSheet alert = new QRCodeBottomSheet(context, LocaleController.getString(R.string.ShareQrCode), link,
+                    LocaleController.getString(R.string.QRCodeLinkHelpProxy), true);
+                Bitmap icon = SvgHelper.getBitmap(AndroidUtilities.readRes(R.raw.qr_dog), AndroidUtilities.dp(60), AndroidUtilities.dp(60), false);
+                alert.setCenterImage(icon);
+                showDialog(alert);
+            });
             checkImageView = new ImageView(context);
             checkImageView.setImageResource(R.drawable.msg_info);
             checkImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText3), PorterDuff.Mode.MULTIPLY));
             checkImageView.setScaleType(ImageView.ScaleType.CENTER);
-            checkImageView.setContentDescription(LocaleController.getString(R.string.Edit));
+            checkImageView.setContentDescription(getString(R.string.Edit));
             addView(checkImageView, LayoutHelper.createFrame(48, 48, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, 8, 8, 8, 0));
             checkImageView.setOnClickListener(v -> presentFragment(new ProxySettingsActivity(currentInfo)));
 
@@ -185,30 +258,30 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 if (currentConnectionState == ConnectionsManager.ConnectionStateConnected || currentConnectionState == ConnectionsManager.ConnectionStateUpdating) {
                     colorKey = Theme.key_windowBackgroundWhiteBlueText6;
                     if (currentInfo.ping != 0) {
-                        valueTextView.setText(LocaleController.getString(R.string.Connected) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping));
+                        valueTextView.setText(getString(R.string.Connected) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping));
                     } else {
-                        valueTextView.setText(LocaleController.getString(R.string.Connected));
+                        valueTextView.setText(getString(R.string.Connected));
                     }
                     if (!currentInfo.checking && !currentInfo.available) {
                         currentInfo.availableCheckTime = 0;
                     }
                 } else {
                     colorKey = Theme.key_windowBackgroundWhiteGrayText2;
-                    valueTextView.setText(LocaleController.getString(R.string.Connecting));
+                    valueTextView.setText(getString(R.string.Connecting));
                 }
             } else {
                 if (currentInfo.checking) {
-                    valueTextView.setText(LocaleController.getString(R.string.Checking));
+                    valueTextView.setText(getString(R.string.Checking));
                     colorKey = Theme.key_windowBackgroundWhiteGrayText2;
                 } else if (currentInfo.available) {
                     if (currentInfo.ping != 0) {
-                        valueTextView.setText(LocaleController.getString(R.string.Available) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping));
+                        valueTextView.setText(getString(R.string.Available) + ", " + LocaleController.formatString("Ping", R.string.Ping, currentInfo.ping));
                     } else {
-                        valueTextView.setText(LocaleController.getString(R.string.Available));
+                        valueTextView.setText(getString(R.string.Available));
                     }
                     colorKey = Theme.key_windowBackgroundWhiteGreenText;
                 } else {
-                    valueTextView.setText(LocaleController.getString(R.string.Unavailable));
+                    valueTextView.setText(getString(R.string.Unavailable));
                     colorKey = Theme.key_text_RedRegular;
                 }
             }
@@ -232,11 +305,16 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 textView.setTranslationX(x);
                 valueTextView.setTranslationX(x);
                 checkImageView.setTranslationX(x);
+                shareImageView.setTranslationX(x);
                 checkBox.setTranslationX((LocaleController.isRTL ? AndroidUtilities.dp(32) : -AndroidUtilities.dp(32)) + x);
                 checkImageView.setVisibility(enabled ? GONE : VISIBLE);
                 checkImageView.setAlpha(1f);
                 checkImageView.setScaleX(1f);
                 checkImageView.setScaleY(1f);
+                shareImageView.setVisibility(enabled ? GONE : VISIBLE);
+                shareImageView.setAlpha(1f);
+                shareImageView.setScaleX(1f);
+                shareImageView.setScaleY(1f);
                 checkBox.setVisibility(enabled ? VISIBLE : GONE);
                 checkBox.setAlpha(1f);
                 checkBox.setScaleX(1f);
@@ -250,6 +328,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     textView.setTranslationX(x);
                     valueTextView.setTranslationX(x);
                     checkImageView.setTranslationX(x);
+                    shareImageView.setTranslationX(x);
                     checkBox.setTranslationX((LocaleController.isRTL ? AndroidUtilities.dp(32) : -AndroidUtilities.dp(32)) + x);
 
                     float scale = 0.5f + val * 0.5f;
@@ -261,6 +340,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     checkImageView.setScaleX(scale);
                     checkImageView.setScaleY(scale);
                     checkImageView.setAlpha(1f - val);
+                    shareImageView.setScaleX(scale);
+                    shareImageView.setScaleY(scale);
+                    shareImageView.setAlpha(1f - val);
                 });
                 animator.addListener(new AnimatorListenerAdapter() {
                     @Override
@@ -271,6 +353,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         } else {
                             checkImageView.setAlpha(0f);
                             checkImageView.setVisibility(VISIBLE);
+                            shareImageView.setAlpha(0f);
+                            shareImageView.setVisibility(VISIBLE);
                         }
                     }
 
@@ -278,6 +362,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     public void onAnimationEnd(Animator animation) {
                         if (enabled) {
                             checkImageView.setVisibility(GONE);
+                            shareImageView.setVisibility(GONE);
                         } else {
                             checkBox.setVisibility(GONE);
                         }
@@ -370,8 +455,8 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     public View createView(Context context) {
         actionBar.setBackButtonDrawable(new BackDrawable(false));
         actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.getString(R.string.ProxySettings));
-        if (AndroidUtilities.isTablet()) {
+        actionBar.setTitle(getString(R.string.ProxySettings));
+        if (parentLayout != null && parentLayout.isLayersLayout()) {
             actionBar.setOccupyStatusBar(false);
         }
         actionBar.setAllowOverlayTitle(false);
@@ -445,13 +530,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
-        listView = new RecyclerListView(context) {
-            @Override
-            protected void dispatchDraw(Canvas canvas) {
-                drawSectionBackground(canvas, proxyStartRow, proxyEndRow, Theme.getColor(Theme.key_windowBackgroundWhite));
-                super.dispatchDraw(canvas);
-            }
-        };
+        listView = new RecyclerListView(context);
+        listView.setSections();
+        actionBar.setAdaptiveBackground(listView);
         ((DefaultItemAnimator) listView.getItemAnimator()).setDelayAnimations(false);
         ((DefaultItemAnimator) listView.getItemAnimator()).setTranslationInterpolator(CubicBezierInterpolator.DEFAULT);
         listView.setVerticalScrollBarEnabled(false);
@@ -564,10 +645,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                 presentFragment(new ProxySettingsActivity());
             } else if (position == deleteAllRow) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                builder.setMessage(LocaleController.getString(R.string.DeleteAllProxiesConfirm));
-                builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-                builder.setTitle(LocaleController.getString(R.string.DeleteProxyTitle));
-                builder.setPositiveButton(LocaleController.getString(R.string.Delete), (dialog, which) -> {
+                builder.setMessage(getString(R.string.DeleteAllProxiesConfirm));
+                builder.setNegativeButton(getString(R.string.Cancel), null);
+                builder.setTitle(getString(R.string.DeleteProxyTitle));
+                builder.setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
                     for (SharedConfig.ProxyInfo info : proxyList) {
                         SharedConfig.deleteProxy(info);
                     }
@@ -608,7 +689,9 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         selectedCountTextView.setOnTouchListener((v, event) -> true);
 
         shareMenuItem = actionMode.addItemWithWidth(MENU_SHARE, R.drawable.msg_share, AndroidUtilities.dp(54));
+        shareMenuItem.setContentDescription(getString(R.string.StickersShare));
         deleteMenuItem = actionMode.addItemWithWidth(MENU_DELETE, R.drawable.msg_delete, AndroidUtilities.dp(54));
+        deleteMenuItem.setContentDescription(getString(R.string.Delete));
 
         actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
             @Override
@@ -623,10 +706,10 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         break;
                     case MENU_DELETE:
                         AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-                        builder.setMessage(LocaleController.getString(selectedItems.size() > 1 ? R.string.DeleteProxyMultiConfirm : R.string.DeleteProxyConfirm));
-                        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
-                        builder.setTitle(LocaleController.getString(R.string.DeleteProxyTitle));
-                        builder.setPositiveButton(LocaleController.getString(R.string.Delete), (dialog, which) -> {
+                        builder.setMessage(getString(selectedItems.size() > 1 ? R.string.DeleteProxyMultiConfirm : R.string.DeleteProxyConfirm));
+                        builder.setNegativeButton(getString(R.string.Cancel), null);
+                        builder.setTitle(getString(R.string.DeleteProxyTitle));
+                        builder.setPositiveButton(getString(R.string.Delete), (dialog, which) -> {
                             for (SharedConfig.ProxyInfo info : selectedItems) {
                                 SharedConfig.deleteProxy(info);
                             }
@@ -665,7 +748,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                         Intent shareIntent = new Intent(Intent.ACTION_SEND);
                         shareIntent.setType("text/plain");
                         shareIntent.putExtra(Intent.EXTRA_TEXT, links.toString());
-                        Intent chooserIntent = Intent.createChooser(shareIntent, LocaleController.getString(selectedItems.size() > 1 ? R.string.ShareLinks : R.string.ShareLink));
+                        Intent chooserIntent = Intent.createChooser(shareIntent, getString(selectedItems.size() > 1 ? R.string.ShareLinks : R.string.ShareLink));
                         chooserIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         context.startActivity(chooserIntent);
 
@@ -681,12 +764,12 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (!selectedItems.isEmpty()) {
-            listAdapter.clearSelected();
+            if (invoked) listAdapter.clearSelected();
             return false;
         }
-        return true;
+        return super.onBackPressed(invoked);
     }
 
     private void updateRows(boolean notify) {
@@ -954,50 +1037,43 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
             switch (holder.getItemViewType()) {
                 case VIEW_TYPE_SHADOW: {
-                    if (position == proxyShadowRow && callsRow == -1) {
-                        holder.itemView.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
-                    } else {
-                        holder.itemView.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-                    }
                     break;
                 }
                 case VIEW_TYPE_TEXT_SETTING: {
                     TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
                     textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                     if (position == proxyAddRow) {
-                        textCell.setText(LocaleController.getString(R.string.AddProxy), deleteAllRow != -1);
+                        textCell.setText(getString(R.string.AddProxy), deleteAllRow != -1);
                     } else if (position == deleteAllRow) {
                         textCell.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
-                        textCell.setText(LocaleController.getString(R.string.DeleteAllProxies), false);
+                        textCell.setText(getString(R.string.DeleteAllProxies), false);
                     }
                     break;
                 }
                 case VIEW_TYPE_HEADER: {
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
                     if (position == connectionsHeaderRow) {
-                        headerCell.setText(LocaleController.getString(R.string.ProxyConnections));
+                        headerCell.setText(getString(R.string.ProxyConnections));
                     }
                     break;
                 }
                 case VIEW_TYPE_TEXT_CHECK: {
                     TextCheckCell checkCell = (TextCheckCell) holder.itemView;
                     if (position == useProxyRow) {
-                        checkCell.setTextAndCheck(LocaleController.getString(R.string.UseProxySettings), useProxySettings, rotationRow != -1);
+                        checkCell.setTextAndCheck(getString(R.string.UseProxySettings), useProxySettings, rotationRow != -1);
                     } else if (position == callsRow) {
-                        checkCell.setTextAndCheck(LocaleController.getString(R.string.UseProxyForCalls), useProxyForCalls, false);
+                        checkCell.setTextAndCheck(getString(R.string.UseProxyForCalls), useProxyForCalls, false);
                     } else if (position == rotationRow) {
-                        checkCell.setTextAndCheck(LocaleController.getString(R.string.UseProxyRotation), SharedConfig.proxyRotationEnabled, true);
+                        checkCell.setTextAndCheck(getString(R.string.UseProxyRotation), SharedConfig.proxyRotationEnabled, true);
                     }
                     break;
                 }
                 case VIEW_TYPE_INFO: {
                     TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == callsDetailRow) {
-                        cell.setText(LocaleController.getString(R.string.UseProxyForCallsInfo));
-                        cell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+                        cell.setText(getString(R.string.UseProxyForCallsInfo));
                     } else if (position == rotationTimeoutInfoRow) {
-                        cell.setText(LocaleController.getString(R.string.ProxyRotationTimeoutInfo));
-                        cell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
+                        cell.setText(getString(R.string.ProxyRotationTimeoutInfo));
                     }
                     break;
                 }
@@ -1097,7 +1173,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
                     break;
                 case VIEW_TYPE_INFO:
                     view = new TextInfoPrivacyCell(mContext);
-                    view.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
                     break;
                 case VIEW_TYPE_SLIDE_CHOOSER:
                     view = new SlideChooseView(mContext);
@@ -1170,7 +1245,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{TextSettingsCell.class, TextCheckCell.class, HeaderCell.class, TextDetailProxyCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
 
-        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
+//        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
@@ -1179,8 +1254,6 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_SELECTOR, null, null, null, null, Theme.key_listSelector));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{View.class}, Theme.dividerPaint, null, null, Theme.key_divider));
-
-        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUNDFILTER, new Class[]{ShadowSectionCell.class}, null, null, null, Theme.key_windowBackgroundGrayShadow));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSettingsCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSettingsCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteValueText));
@@ -1191,6 +1264,7 @@ public class ProxyListActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_TEXTCOLOR | ThemeDescription.FLAG_CHECKTAG | ThemeDescription.FLAG_IMAGECOLOR, new Class[]{TextDetailProxyCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteGreenText));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_TEXTCOLOR | ThemeDescription.FLAG_CHECKTAG | ThemeDescription.FLAG_IMAGECOLOR, new Class[]{TextDetailProxyCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_text_RedRegular));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_IMAGECOLOR, new Class[]{TextDetailProxyCell.class}, new String[]{"checkImageView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText3));
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_IMAGECOLOR, new Class[]{TextDetailProxyCell.class}, new String[]{"shareImageView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText3));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
 

@@ -3,7 +3,6 @@ package org.telegram.ui.Business;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.PorterDuff;
@@ -21,15 +20,11 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.inputmethod.EditorInfo;
 import android.widget.FrameLayout;
-import android.widget.LinearLayout;
 
 import androidx.annotation.NonNull;
 
-import org.checkerframework.checker.units.qual.A;
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.FileLog;
@@ -39,23 +34,20 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SvgHelper;
-import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.WebFile;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.tgnet.tl.TL_stories;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.AnimatedColor;
 import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.AvatarDrawable;
 import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.BulletinFactory;
-import org.telegram.ui.Components.ChatAttachAlert;
 import org.telegram.ui.Components.ChatAttachAlertLocationLayout;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.ClipRoundedDrawable;
@@ -63,12 +55,9 @@ import org.telegram.ui.Components.CrossfadeDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
-import org.telegram.ui.Components.LoadingDrawable;
-import org.telegram.ui.Components.Paint.Views.LocationView;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
-import org.telegram.ui.Stories.recorder.PaintView;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,7 +89,7 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (onBackPressed()) {
+                    if (onBackPressed(true)) {
                         finishFragment();
                     }
                 } else if (id == done_button) {
@@ -200,11 +189,6 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
             ignoreEditText = false;
         }
 
-//        mapLoadingDrawable = new LoadingDrawable(resourceProvider);
-//        mapLoadingDrawable.setColors(
-//            Theme.multAlpha(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), .025f),
-//            Theme.multAlpha(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), Theme.isCurrentThemeDark() ? .25f : .12f)
-//        );
         mapPreview = new BackupImageView(context) {
             @Override
             protected ImageReceiver createImageReciever() {
@@ -264,7 +248,10 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
         updateMapPreview();
 
         listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, null);
+        listView.setSections();
+        listView.adapter.setApplyBackground(false);
         contentView.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        actionBar.setAdaptiveBackground(listView, true);
 
         setValue();
 
@@ -398,7 +385,7 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
 
         doneButtonDrawable.animateToProgress(1f);
         TLRPC.UserFull userFull = getMessagesController().getUserFull(getUserConfig().getClientUserId());
-        TLRPC.TL_account_updateBusinessLocation req = new TLRPC.TL_account_updateBusinessLocation();
+        TL_account.updateBusinessLocation req = new TL_account.updateBusinessLocation();
         if (!empty) {
             if (geo != null) {
                 req.flags |= 2;
@@ -442,18 +429,20 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         final boolean empty = geo == null && TextUtils.isEmpty(address);
         if (hasChanges() && !empty) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-            builder.setTitle(LocaleController.getString(R.string.UnsavedChanges));
-            builder.setMessage(LocaleController.getString(R.string.BusinessLocationUnsavedChanges));
-            builder.setPositiveButton(LocaleController.getString(R.string.ApplyTheme), (dialogInterface, i) -> processDone());
-            builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> finishFragment());
-            showDialog(builder.create());
+            if (invoked) {
+                final AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                builder.setTitle(LocaleController.getString(R.string.UnsavedChanges));
+                builder.setMessage(LocaleController.getString(R.string.BusinessLocationUnsavedChanges));
+                builder.setPositiveButton(LocaleController.getString(R.string.ApplyTheme), (dialogInterface, i) -> processDone());
+                builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> finishFragment());
+                showDialog(builder.create());
+            }
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
     @Override
@@ -466,7 +455,7 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
     private final int BUTTON_CLEAR = 2;
 
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asTopView(getString(R.string.BusinessLocationInfo), R.raw.biz_map));
+        items.add(UItem.asTopView(getString(R.string.BusinessLocation), getString(R.string.BusinessLocationInfo), R.raw.biz_map));
         items.add(UItem.asCustom(editTextContainer));
         items.add(UItem.asShadow(null));
         items.add(UItem.asCheck(BUTTON_MAP, getString(R.string.BusinessLocationMap)).setChecked(geo != null));
@@ -496,7 +485,7 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
             builder.setPositiveButton(LocaleController.getString(R.string.Remove), (di, w) -> {
                 doneButtonDrawable.animateToProgress(1f);
                 TLRPC.UserFull userFull = getMessagesController().getUserFull(getUserConfig().getClientUserId());
-                TLRPC.TL_account_updateBusinessLocation req = new TLRPC.TL_account_updateBusinessLocation();
+                TL_account.updateBusinessLocation req = new TL_account.updateBusinessLocation();
                 if (userFull != null) {
                     userFull.business_location = null;
                     userFull.flags2 &=~ 2;
@@ -525,7 +514,7 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
             initialLocation.geo_point = geo;
             fragment.setInitialLocation(initialLocation);
         }
-        fragment.setDelegate((location, live, notify, scheduleDate) -> {
+        fragment.setDelegate((location, live, notify, scheduleDate, payStars) -> {
             geo = location.geo;
             if (TextUtils.isEmpty(address) && !TextUtils.isEmpty(fragment.getAddressName()) || mapAddress) {
                 mapAddress = true;
@@ -572,4 +561,13 @@ public class LocationActivity extends BaseFragment implements NotificationCenter
         }
     }
 
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        listView.setPadding(0, 0, 0, bottom);
+        listView.setClipToPadding(false);
+    }
 }

@@ -135,7 +135,7 @@ public class CountrySelectActivity extends BaseFragment {
         });
 
         ActionBarMenu menu = actionBar.createMenu();
-        ActionBarMenuItem item = menu.addItem(0, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+        ActionBarMenuItem item = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
             @Override
             public void onSearchExpand() {
                 searching = true;
@@ -392,7 +392,7 @@ public class CountrySelectActivity extends BaseFragment {
                 ArrayList<Country> arr = countries.get(sortedCountries.get(section));
                 Country c = arr.get(position);
                 TextSettingsCell settingsCell = (TextSettingsCell) holder.itemView;
-                settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), AndroidUtilities.dp(20), false), needPhoneCode ? "+" + c.code : null, false);
+                settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), false), needPhoneCode ? "+" + c.code : null, false);
             }
         }
 
@@ -424,7 +424,6 @@ public class CountrySelectActivity extends BaseFragment {
         private Timer searchTimer;
         private ArrayList<Country> searchResult;
         private List<Country> countryList = new ArrayList<>();
-        private Map<Country, List<String>> countrySearchMap = new HashMap<>();
 
         public CountrySearchAdapter(Context context, HashMap<String, ArrayList<Country>> countries) {
             mContext = context;
@@ -432,11 +431,6 @@ public class CountrySelectActivity extends BaseFragment {
             for (List<Country> list : countries.values()) {
                 for (Country country : list) {
                     countryList.add(country);
-                    List<String> keys = new ArrayList<>(Arrays.asList(country.name.split(" ")));
-                    if (country.defaultName != null) {
-                        keys.addAll(Arrays.asList(country.defaultName.split(" ")));
-                    }
-                    countrySearchMap.put(country, keys);
                 }
             }
         }
@@ -470,19 +464,28 @@ public class CountrySelectActivity extends BaseFragment {
 
         private void processSearch(final String query) {
             Utilities.searchQueue.postRunnable(() -> {
-
-                String q = query.trim().toLowerCase();
+                final String q = query.trim().toLowerCase();
                 if (q.length() == 0) {
                     updateSearchResults(new ArrayList<>());
                     return;
                 }
-                ArrayList<Country> resultArray = new ArrayList<>();
+                final String tq = AndroidUtilities.translitSafe(q);
+                final ArrayList<Country> resultArray = new ArrayList<>();
                 for (Country country : countryList) {
-                    for (String key : countrySearchMap.get(country)) {
-                        if (key.toLowerCase().startsWith(q)) {
-                            resultArray.add(country);
-                            break;
-                        }
+                    final String a = (country.name == null ? "" : country.name).toLowerCase();
+                    final String at = AndroidUtilities.translitSafe(country.name).toLowerCase();
+                    final String b = (country.defaultName == null ? "" : country.defaultName).toLowerCase();
+                    final String bt = AndroidUtilities.translitSafe(country.defaultName).toLowerCase();
+                    final String code = (country.code == null ? "" : country.code);
+                    final String plusCode = TextUtils.isEmpty(code) ? "" : "+" + code;
+                    if (
+                        a.startsWith(q) || a.contains(" " + q) ||
+                        at.startsWith(tq) || at.contains(" " + tq) ||
+                        b.startsWith(q) || b.contains(" " + q) ||
+                        bt.startsWith(tq) || bt.contains(" " + tq) ||
+                        code.startsWith(q) || plusCode.startsWith(q)
+                    ) {
+                        resultArray.add(country);
                     }
                 }
                 updateSearchResults(resultArray);
@@ -532,7 +535,7 @@ public class CountrySelectActivity extends BaseFragment {
         public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
             Country c = searchResult.get(position);
             TextSettingsCell settingsCell = (TextSettingsCell) holder.itemView;
-            settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), AndroidUtilities.dp(20), false), needPhoneCode ? "+" + c.code : null, false);
+            settingsCell.setTextAndValue(Emoji.replaceEmoji(getCountryNameWithFlag(c), settingsCell.getTextView().getPaint().getFontMetricsInt(), false), needPhoneCode ? "+" + c.code : null, false);
         }
 
         @Override

@@ -8,7 +8,6 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.animation.ValueAnimator;
-import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
@@ -95,7 +94,6 @@ import org.telegram.ui.Components.URLSpanNoUnderline;
 
 import java.util.ArrayList;
 
-@TargetApi(18)
 public class CameraScanActivity extends BaseFragment {
 
     private TextView titleTextView;
@@ -239,8 +237,8 @@ public class CameraScanActivity extends BaseFragment {
             }
         };
         bottomSheet.setUseLightStatusBar(false);
-        AndroidUtilities.setLightNavigationBar(bottomSheet.getWindow(), false);
-        AndroidUtilities.setNavigationBarColor(bottomSheet.getWindow(), 0xff000000, false);
+        AndroidUtilities.setLightNavigationBar(parentFragment.getParentActivity(), false);
+        AndroidUtilities.setNavigationBarColor(parentFragment.getParentActivity(), 0xff000000, false);
         bottomSheet.setUseLightStatusBar(false);
         bottomSheet.getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         bottomSheet.show();
@@ -305,8 +303,8 @@ public class CameraScanActivity extends BaseFragment {
             }
         };
         bottomSheet.setUseLightStatusBar(false);
-        AndroidUtilities.setLightNavigationBar(bottomSheet.getWindow(), false);
-        AndroidUtilities.setNavigationBarColor(bottomSheet.getWindow(), 0xff000000, false);
+        AndroidUtilities.setLightNavigationBar(bottomSheet, false);
+        AndroidUtilities.setNavigationBarColor(bottomSheet, 0xff000000, false);
         bottomSheet.setUseLightStatusBar(false);
         bottomSheet.getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         bottomSheet.show();
@@ -344,9 +342,7 @@ public class CameraScanActivity extends BaseFragment {
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         destroy(false, null);
-        if (getParentActivity() != null) {
-            getParentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        }
+        AndroidUtilities.unlockOrientation(getParentActivity());
         /*if (visionQrReader != null) {
             visionQrReader.release();
         }*/
@@ -838,9 +834,7 @@ public class CameraScanActivity extends BaseFragment {
             });
         }
 
-        if (getParentActivity() != null) {
-            getParentActivity().setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-        }
+        AndroidUtilities.lockOrientation(getParentActivity(), ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         fragmentView.setKeepScreenOn(true);
 
         return fragmentView;
@@ -887,7 +881,7 @@ public class CameraScanActivity extends BaseFragment {
     }
 
     private void initCameraView() {
-        if (fragmentView == null) {
+        if (fragmentView == null || !CameraView.isCameraAllowed()) {
             return;
         }
         CameraController.getInstance().initCamera(null);
@@ -1010,9 +1004,9 @@ public class CameraScanActivity extends BaseFragment {
         if (normalBounds == null) {
             normalBounds = new RectF();
         }
-        int width = Math.max(AndroidUtilities.displaySize.x, fragmentView.getWidth()),
-                height = Math.max(AndroidUtilities.displaySize.y, fragmentView.getHeight()),
-                side = (int) (Math.min(width, height) / 1.5f);
+        int width = fragmentView.getWidth(),
+            height = fragmentView.getHeight(),
+            side = (int) (Math.min(width, height) / 1.5f);
         normalBounds.set(
                 (width - side) / 2f / (float) width,
                 (height - side) / 2f / (float) height,
@@ -1080,7 +1074,7 @@ public class CameraScanActivity extends BaseFragment {
         backgroundHandlerThread.quitSafely();
     }
 
-    private Runnable requestShot = new Runnable() {
+    private final Runnable requestShot = new Runnable() {
         @Override
         public void run() {
             if (cameraView != null && !recognized && cameraView.getCameraSession() != null) {

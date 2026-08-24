@@ -1,26 +1,21 @@
 package tw.nekomimi.nekogram.transtale.source
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.telegram.messenger.LocaleController
-import org.telegram.messenger.R
-import tw.nekomimi.nekogram.transtale.Translator
-import tw.nekomimi.nekogram.transtale.deepl.DeepLTranslatorRaw
+import xyz.nextalone.nagram.NaConfig
 
-object DeepLTranslator : Translator {
+/**
+ * Official DeepL Pro API translator (https://api.deepl.com).
+ *
+ * Uses the API key stored in [NaConfig.deepLApiKey]. The key must be a DeepL
+ * Pro authentication key (the Free plan uses [DeepLFreeTranslator] instead).
+ */
+object DeepLTranslator : DeepLOfficialTranslatorBase() {
 
-    val targetLanguages = listOf("DE", "EN", "ES", "FR", "IT", "JA", "NL", "PL", "PT", "RU", "ZH")
+    override val logTag: String = "DeepL"
 
-    val client = DeepLTranslatorRaw()
+    override val baseUrl: String = "https://api.deepl.com"
 
-    override suspend fun doTranslate(from: String, to: String, query: String): String {
+    override val displayName: String = "DeepL"
 
-        if (to !in targetLanguages) {
-
-            throw UnsupportedOperationException(LocaleController.getString(R.string.TranslateApiUnsupported))
-
-        }
-
-        return withContext(Dispatchers.IO) { client.translate(query, "auto", to) }
-    }
+    override val apiKey: String?
+        get() = NaConfig.deepLApiKey.String()
 }

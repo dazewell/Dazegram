@@ -39,6 +39,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BillingController;
+import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessagesController;
@@ -50,6 +51,7 @@ import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -145,7 +147,9 @@ public class InviteLinkBottomSheet extends BottomSheet {
         this.chatId = chatId;
         this.permanent = permanent;
         this.isChannel = isChannel;
-        fixNavigationBar(getThemedColor(Theme.key_graySection));
+        setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
+        fixNavigationBar(getThemedColor(Theme.key_windowBackgroundGray));
+        behindKeyboardColorKey = -1;
 
         if (this.users == null) {
             this.users = new HashMap<>();
@@ -175,11 +179,9 @@ public class InviteLinkBottomSheet extends BottomSheet {
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 int height = MeasureSpec.getSize(heightMeasureSpec);
-                if (Build.VERSION.SDK_INT >= 21) {
-                    ignoreLayout = true;
-                    setPadding(backgroundPaddingLeft, AndroidUtilities.statusBarHeight, backgroundPaddingLeft, 0);
-                    ignoreLayout = false;
-                }
+                ignoreLayout = true;
+                setPadding(backgroundPaddingLeft, AndroidUtilities.statusBarHeight, backgroundPaddingLeft, 0);
+                ignoreLayout = false;
                 super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY));
                 fullHeight = true;
             }
@@ -204,24 +206,22 @@ public class InviteLinkBottomSheet extends BottomSheet {
                 int height = getMeasuredHeight() + dp(36) + backgroundPaddingTop;
                 int statusBarHeight = 0;
                 float radProgress = 1.0f;
-                if (Build.VERSION.SDK_INT >= 21) {
-                    top += AndroidUtilities.statusBarHeight;
-                    height -= AndroidUtilities.statusBarHeight;
+                top += AndroidUtilities.statusBarHeight;
+                height -= AndroidUtilities.statusBarHeight;
 
-                    if (fullHeight) {
-                        if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight * 2) {
-                            int diff = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight * 2 - top - backgroundPaddingTop);
-                            top -= diff;
-                            height += diff;
-                            radProgress = 1.0f - Math.min(1.0f, (diff * 2) / (float) AndroidUtilities.statusBarHeight);
-                        }
-                        if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight) {
-                            statusBarHeight = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight - top - backgroundPaddingTop);
-                        }
+                if (fullHeight) {
+                    if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight * 2) {
+                        int diff = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight * 2 - top - backgroundPaddingTop);
+                        top -= diff;
+                        height += diff;
+                        radProgress = 1.0f - Math.min(1.0f, (diff * 2) / (float) AndroidUtilities.statusBarHeight);
+                    }
+                    if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight) {
+                        statusBarHeight = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight - top - backgroundPaddingTop);
                     }
                 }
 
-                shadowDrawable.setBounds(0, top, getMeasuredWidth(), height);
+                shadowDrawable.setBounds(0, top, getMeasuredWidth(), height + dp(10) + AndroidUtilities.navigationBarHeight);
                 shadowDrawable.draw(canvas);
 
                 if (radProgress != 1.0f) {
@@ -295,6 +295,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
                 super.onMeasure(widthSpec, heightSpec);
             }
         };
+        listView.setSections();
         listView.setTag(14);
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext(), LinearLayoutManager.VERTICAL, false);
         listView.setLayoutManager(layoutManager);
@@ -409,7 +410,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         }
         if (!TextUtils.isEmpty(invite.title)) {
             SpannableStringBuilder builder = new SpannableStringBuilder(invite.title);
-            Emoji.replaceEmoji(builder, titleTextView.getPaint().getFontMetricsInt(), (int) titleTextView.getPaint().getTextSize(), false);
+            Emoji.replaceEmoji(builder, titleTextView.getPaint().getFontMetricsInt(), false);
             titleTextView.setText(builder);
         }
 
@@ -436,7 +437,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
         }
         listView.setGlowColor(Theme.getColor(Theme.key_dialogScrollGlow));
         shadow.setBackgroundColor(Theme.getColor(Theme.key_dialogShadowLine));
-        setBackgroundColor(Theme.getColor(Theme.key_dialogBackground));
+        setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
 
         int count = listView.getHiddenChildCount();
@@ -470,28 +471,9 @@ public class InviteLinkBottomSheet extends BottomSheet {
         } else if (view instanceof LinkActionView) {
             ((LinkActionView) view).updateColors();
         } else if (view instanceof TextInfoPrivacyCell) {
-            CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)), Theme.getThemedDrawableByKey(view.getContext(), R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-            combinedDrawable.setFullsize(true);
-            view.setBackground(combinedDrawable);
             ((TextInfoPrivacyCell) view).setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText4));
         } else if (view instanceof UserCell) {
             ((UserCell) view).update(0);
-        }
-        RecyclerView.ViewHolder holder = listView.getChildViewHolder(view);
-        if (holder != null) {
-            if (holder.getItemViewType() == 7) {
-                Drawable shadowDrawable = Theme.getThemedDrawableByKey(view.getContext(), R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow);
-                Drawable background = new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray));
-                CombinedDrawable combinedDrawable = new CombinedDrawable(background, shadowDrawable, 0, 0);
-                combinedDrawable.setFullsize(true);
-                view.setBackgroundDrawable(combinedDrawable);
-            } else if (holder.getItemViewType() == 2) {
-                Drawable shadowDrawable = Theme.getThemedDrawableByKey(view.getContext(), R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow);
-                Drawable background = new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray));
-                CombinedDrawable combinedDrawable = new CombinedDrawable(background, shadowDrawable, 0, 0);
-                combinedDrawable.setFullsize(true);
-                view.setBackgroundDrawable(combinedDrawable);
-            }
         }
     }
 
@@ -499,15 +481,13 @@ public class InviteLinkBottomSheet extends BottomSheet {
         TLRPC.TL_users_getUsers req = new TLRPC.TL_users_getUsers();
         req.id.add(MessagesController.getInstance(UserConfig.selectedAccount).getInputUser(invite.admin_id));
         ConnectionsManager.getInstance(UserConfig.selectedAccount).sendRequest(req, (response, error) -> {
-            AndroidUtilities.runOnUIThread(new Runnable() {
-                @Override
-                public void run() {
-                    if (error == null) {
-                        TLRPC.Vector vector = (TLRPC.Vector) response;
-                        TLRPC.User user = (TLRPC.User) vector.objects.get(0);
-                        users.put(invite.admin_id, user);
-                        adapter.notifyDataSetChanged();
-                    }
+            AndroidUtilities.runOnUIThread(() -> {
+                if (response instanceof Vector) {
+                    Vector<TLRPC.User> vector = (Vector<TLRPC.User>) response;
+                    if (vector.objects.isEmpty()) return;
+                    TLRPC.User user = vector.objects.get(0);
+                    users.put(invite.admin_id, user);
+                    adapter.notifyDataSetChanged();
                 }
             });
         });
@@ -748,9 +728,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     break;
                 case 4:
                     view = new TimerPrivacyCell(context);
-                    CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)), Theme.getThemedDrawableByKey(context, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-                    combinedDrawable.setFullsize(true);
-                    view.setBackground(combinedDrawable);
                     break;
                 case 5:
                     FlickerLoadingView flickerLoadingView = new FlickerLoadingView(context);
@@ -770,11 +747,6 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     break;
                 case 7:
                     view = new ShadowSectionCell(context, 12);
-                    Drawable shadowDrawable = Theme.getThemedDrawableByKey(context, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow);
-                    Drawable background = new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray));
-                    combinedDrawable = new CombinedDrawable(background, shadowDrawable, 0, 0);
-                    combinedDrawable.setFullsize(true);
-                    view.setBackgroundDrawable(combinedDrawable);
                     break;
                 case 8:
                     view = new EmptyHintRow(context);
@@ -822,6 +794,7 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     TLRPC.User user;
                     String role = null;
                     String status = null;
+                    final boolean isAdmin, isOwner, canEditAdmin;
                     TLRPC.ChatParticipant part = null;
                     TLRPC.TL_chatInviteImporter invitedUser = null;
                     long userId;
@@ -861,29 +834,46 @@ public class InviteLinkBottomSheet extends BottomSheet {
                     }
                     if (position == creatorRow && part != null) {
                         if (part instanceof TLRPC.TL_chatChannelParticipant) {
-                            TLRPC.ChannelParticipant channelParticipant = ((TLRPC.TL_chatChannelParticipant) part).channelParticipant;
-                            if (!TextUtils.isEmpty(channelParticipant.rank)) {
-                                role = channelParticipant.rank;
+                            final TLRPC.ChannelParticipant channelParticipant = ((TLRPC.TL_chatChannelParticipant) part).channelParticipant;
+                            role = channelParticipant.rank;
+                            if (channelParticipant instanceof TLRPC.TL_channelParticipantCreator) {
+                                if (TextUtils.isEmpty(role)) role = getString("ChannelCreator", R.string.ChannelCreator);
+                                isOwner = true;
+                                isAdmin = true;
+                                canEditAdmin = false;
+                            } else if (channelParticipant instanceof TLRPC.TL_channelParticipantAdmin) {
+                                if (TextUtils.isEmpty(role)) role = getString("ChannelAdmin", R.string.ChannelAdmin);
+                                isOwner = false;
+                                isAdmin = true;
+                                canEditAdmin = channelParticipant.promoted_by == UserConfig.getInstance(currentAccount).getClientUserId();
                             } else {
-                                if (channelParticipant instanceof TLRPC.TL_channelParticipantCreator) {
-                                    role = LocaleController.getString(R.string.ChannelCreator);
-                                } else if (channelParticipant instanceof TLRPC.TL_channelParticipantAdmin) {
-                                    role = LocaleController.getString(R.string.ChannelAdmin);
-                                } else {
-                                    role = null;
-                                }
+                                isAdmin = isOwner = canEditAdmin = false;
                             }
                         } else {
+                            role = part.rank;
                             if (part instanceof TLRPC.TL_chatParticipantCreator) {
-                                role = LocaleController.getString(R.string.ChannelCreator);
+                                if (TextUtils.isEmpty(role)) role = getString("ChannelCreator", R.string.ChannelCreator);
+                                isOwner = true;
+                                isAdmin = true;
+                                canEditAdmin = false;
                             } else if (part instanceof TLRPC.TL_chatParticipantAdmin) {
-                                role = LocaleController.getString(R.string.ChannelAdmin);
+                                if (TextUtils.isEmpty(role)) role = getString("ChannelAdmin", R.string.ChannelAdmin);
+                                isOwner = false;
+                                isAdmin = true;
+                                canEditAdmin = part.inviter_id == UserConfig.getInstance(currentAccount).getClientUserId();
                             } else {
-                                role = null;
+                                isAdmin = isOwner = canEditAdmin = false;
                             }
                         }
+                    } else {
+                        isAdmin = isOwner = canEditAdmin = false;
                     }
-                    userCell.setAdminRole(role);
+                    final String finalRole = role;
+                    final TLRPC.User finalUser = user;
+                    final boolean showAddTag = UserObject.isUserSelf(user) && ChatObject.canManageMyTag(MessagesController.getInstance(currentAccount).getChat(chatId));
+                    userCell.setAdminRole(role, isAdmin, isOwner, showAddTag, v -> {
+                        TagEditCell.showInfoSheet(getContext(), currentAccount, -chatId, finalUser, finalRole, isAdmin, isOwner, canEditAdmin, resourcesProvider);
+                    });
                     userCell.setData(user, null, status, 0, false);
                     if (position != creatorRow && invite.subscription_pricing != null && invitedUser != null) {
                         userCell.setRevenue(invite.subscription_pricing, invitedUser.date);

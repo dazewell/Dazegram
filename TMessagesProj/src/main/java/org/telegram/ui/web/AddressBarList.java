@@ -61,15 +61,14 @@ import org.telegram.ui.Components.CheckBox2;
 import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.FlickerLoadingView;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.ScaleStateListAnimator;
 import org.telegram.ui.Components.Text;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
-import org.telegram.ui.Stars.StarsIntroActivity;
 import org.telegram.ui.WrappedResourceProvider;
 
-import java.net.IDN;
 import java.net.URLDecoder;
 import java.text.BreakIterator;
 import java.util.ArrayList;
@@ -164,6 +163,7 @@ public class AddressBarList extends FrameLayout {
 
         setColors(Theme.getColor(Theme.key_iv_background), AndroidUtilities.computePerceivedBrightness(Theme.getColor(Theme.key_iv_background)) >= .721f ? Color.BLACK : Color.WHITE);
         setOpenProgress(0f);
+        setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
     }
 
     private void clearRecentSearches(View view) {
@@ -289,6 +289,12 @@ public class AddressBarList extends FrameLayout {
 //                child.setAlpha(alpha);
 //                child.setTranslationY(-dp(Math.min(48, 8 + 6 * i)) * (1 - alpha));
 //            }
+            int desired = progress <= 0.0001f
+                ? IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                : IMPORTANT_FOR_ACCESSIBILITY_AUTO;
+            if (getImportantForAccessibility() != desired) {
+                setImportantForAccessibility(desired);
+            }
             invalidate();
         }
     }
@@ -597,12 +603,12 @@ public class AddressBarList extends FrameLayout {
         public static class Factory extends UItem.UItemFactory<Address2View> {
             static { setup(new Factory()); }
             @Override
-            public Address2View createView(Context context, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
+            public Address2View createView(Context context, RecyclerListView listView, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
                 return new Address2View(context);
             }
 
             @Override
-            public void bindView(View view, UItem item, boolean divider) {
+            public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
                 Address2View cell = (Address2View) view;
                 if (item.object == null) {
                     cell.setAsShowMore((AddressBarList) item.object2);
@@ -902,12 +908,12 @@ public class AddressBarList extends FrameLayout {
         public static class Factory extends UItem.UItemFactory<BookmarkView> {
             static { setup(new Factory()); }
             @Override
-            public BookmarkView createView(Context context, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
+            public BookmarkView createView(Context context, RecyclerListView listView, int currentAccount, int classGuid, Theme.ResourcesProvider resourcesProvider) {
                 return new BookmarkView(context, resourcesProvider);
             }
 
             @Override
-            public void bindView(View view, UItem item, boolean divider) {
+            public void bindView(View view, UItem item, boolean divider, UniversalAdapter adapter, UniversalRecyclerView listView) {
                 BookmarkView cell = (BookmarkView) view;
                 if (item.object2 instanceof MessageObject) {
                     cell.set((MessageObject) (item.object2), item.accent, item.subtext == null ? null : item.subtext.toString(), item.checked, divider);

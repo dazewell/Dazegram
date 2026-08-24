@@ -1,5 +1,6 @@
 package tw.nekomimi.nekogram;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
@@ -26,7 +27,6 @@ import java.util.regex.Pattern;
 
 import cn.hutool.core.util.ArrayUtil;
 import cn.hutool.core.util.StrUtil;
-import tw.nekomimi.nekogram.database.NitritesKt;
 import xyz.nextalone.nagram.NaConfig;
 
 public class NekoXConfig {
@@ -51,6 +51,9 @@ public class NekoXConfig {
             782954985, // MaiTungTM
             5412523572L, //blxueya
             676660002, // mrwangzhe
+            1068402676, // Kitsune
+            6244360706L, // Sevtinge
+            5382987111L,  // miaoqiqi
     };
 
     public static final int TITLE_TYPE_TEXT = 0;
@@ -63,15 +66,9 @@ public class NekoXConfig {
     private static Typeface systemEmojiTypeface;
 
 
-    public static SharedPreferences preferences = NitritesKt.openMainSharedPreference("nekox_config");
-
-    public static boolean developerMode = preferences.getBoolean("developer_mode", true);
+    public static SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("nekox_config", Context.MODE_PRIVATE);
 
     public static boolean disableFlagSecure = NaConfig.INSTANCE.getDisableFlagSecure().Bool();
-    public static boolean disableScreenshotDetection = preferences.getBoolean("disable_screenshot_detection", false);
-
-    public static boolean disableStatusUpdate = preferences.getBoolean("disable_status_update", false);
-    public static boolean keepOnlineStatus = preferences.getBoolean("keepOnlineStatus", false);
 
     public static int autoUpdateReleaseChannel = preferences.getInt("autoUpdateReleaseChannel", 2);
 //    public static String ignoredUpdateTag = preferences.getString("ignoredUpdateTag", "");
@@ -81,32 +78,11 @@ public class NekoXConfig {
     public static int customAppId = preferences.getInt("custom_app_id", 0);
     public static String customAppHash = preferences.getString("custom_app_hash", "");
 
-    public static void toggleDeveloperMode() {
-        preferences.edit().putBoolean("developer_mode", developerMode = !developerMode).apply();
-        if (!developerMode) {
-            preferences.edit()
-                    .putBoolean("disable_flag_secure", disableFlagSecure = false)
-                    .putBoolean("disable_screenshot_detection", disableScreenshotDetection = false)
-                    .putBoolean("disable_status_update", disableStatusUpdate = false)
-                    .apply();
-        }
-    }
-
-    public static void toggleDisableFlagSecure() {
-//        preferences.edit().putBoolean("disable_flag_secure", disableFlagSecure = !disableFlagSecure).apply();
-
-        disableFlagSecure = !disableFlagSecure;
-        NaConfig.INSTANCE.getDisableFlagSecure().toggleConfigBool();
-    }
-
-    public static void toggleDisableScreenshotDetection() {
-        preferences.edit().putBoolean("disable_screenshot_detection", disableScreenshotDetection = !disableScreenshotDetection).apply();
-    }
-
     private static Boolean hasDeveloper = null;
-    
+
     public static int currentAppId() {
         switch (customApi) {
+            case -1:
             case 0:
                 return BuildConfig.APP_ID;
             case 1:
@@ -120,6 +96,7 @@ public class NekoXConfig {
     
     public static String currentAppHash() {
         switch (customApi) {
+            case -1:
             case 0:
                 return BuildConfig.APP_HASH;
             case 1:
@@ -137,16 +114,6 @@ public class NekoXConfig {
                 .putInt("custom_app_id", customAppId)
                 .putString("custom_app_hash", customAppHash)
                 .apply();
-    }
-
-    public static void toggleDisableStatusUpdate() {
-        preferences.edit().putBoolean("disable_status_update", disableStatusUpdate = !disableStatusUpdate).apply();
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.updateUserStatus, (Object) null);
-    }
-
-    public static void toggleKeepOnlineStatus() {
-        preferences.edit().putBoolean("keepOnlineStatus", keepOnlineStatus = !keepOnlineStatus).apply();
-        NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.updateUserStatus, (Object) null);
     }
 
     public static void setAutoUpdateReleaseChannel(int channel) {

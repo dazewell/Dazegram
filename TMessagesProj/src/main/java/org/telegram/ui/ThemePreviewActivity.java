@@ -15,7 +15,6 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
-import android.animation.StateListAnimator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -34,7 +33,6 @@ import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
-import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
@@ -60,7 +58,6 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.EditText;
@@ -108,6 +105,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
@@ -131,9 +129,9 @@ import org.telegram.ui.Components.BackupImageView;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.ColorPicker;
 import org.telegram.ui.Components.ColoredImageSpan;
-import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Easings;
+import org.telegram.ui.Components.FragmentFloatingButton;
 import org.telegram.ui.Components.GestureDetector2;
 import org.telegram.ui.Components.HintView;
 import org.telegram.ui.Components.LayoutHelper;
@@ -219,10 +217,10 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     private long watchForKeyboardEndTime;
     private ViewTreeObserver.OnGlobalLayoutListener onGlobalLayoutListener;
 
-    Theme.MessageDrawable msgOutDrawable = new MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, true, false);
-    Theme.MessageDrawable msgOutDrawableSelected = new MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, true, true);
-    Theme.MessageDrawable msgOutMediaDrawable = new MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, true, false);
-    Theme.MessageDrawable msgOutMediaDrawableSelected = new MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, true, true);
+    org.telegram.ui.ActionBar.MessageDrawable msgOutDrawable = new MessageDrawable(org.telegram.ui.ActionBar.MessageDrawable.TYPE_TEXT, true, false);
+    org.telegram.ui.ActionBar.MessageDrawable msgOutDrawableSelected = new MessageDrawable(org.telegram.ui.ActionBar.MessageDrawable.TYPE_TEXT, true, true);
+    org.telegram.ui.ActionBar.MessageDrawable msgOutMediaDrawable = new MessageDrawable(org.telegram.ui.ActionBar.MessageDrawable.TYPE_MEDIA, true, false);
+    org.telegram.ui.ActionBar.MessageDrawable msgOutMediaDrawableSelected = new MessageDrawable(org.telegram.ui.ActionBar.MessageDrawable.TYPE_MEDIA, true, true);
 
     private ColorPicker colorPicker;
     private int lastPickedColor;
@@ -254,7 +252,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     private FrameLayout page1;
     private RecyclerListView listView;
     private DialogsAdapter dialogsAdapter;
-    private ImageView floatingButton;
+    private FragmentFloatingButton floatingButton;
     MessageObject serverWallpaper;
 
     private boolean wasScroll;
@@ -622,7 +620,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         if (shouldShowBrightnessControll) {
             progressToDarkTheme = onSwitchDayNightDelegate.isDark() ? 1f : 0;
         }
-        if (AndroidUtilities.isTablet()) {
+        if (parentLayout != null && parentLayout.isLayersLayout()) {
             actionBar.setOccupyStatusBar(false);
         }
         page1 = new FrameLayout(context);
@@ -651,7 +649,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
 
         ActionBarMenu menu = actionBar.createMenu();
-        final ActionBarMenuItem item = menu.addItem(0, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+        final ActionBarMenuItem item = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
             @Override
             public void onSearchExpand() {
 
@@ -722,34 +720,9 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         });
         page1.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.LEFT | Gravity.TOP));
 
-        floatingButton = new ImageView(context);
-        floatingButton.setScaleType(ImageView.ScaleType.CENTER);
-
-        Drawable drawable = Theme.createSimpleSelectorCircleDrawable(dp(56), getThemedColor(Theme.key_chats_actionBackground), getThemedColor(Theme.key_chats_actionPressedBackground));
-        if (Build.VERSION.SDK_INT < 21) {
-            Drawable shadowDrawable = context.getResources().getDrawable(R.drawable.floating_shadow).mutate();
-            shadowDrawable.setColorFilter(new PorterDuffColorFilter(0xff000000, PorterDuff.Mode.SRC_IN));
-            CombinedDrawable combinedDrawable = new CombinedDrawable(shadowDrawable, drawable, 0, 0);
-            combinedDrawable.setIconSize(dp(56), dp(56));
-            drawable = combinedDrawable;
-        }
-        floatingButton.setBackgroundDrawable(drawable);
-        floatingButton.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chats_actionIcon), PorterDuff.Mode.MULTIPLY));
+        floatingButton = new FragmentFloatingButton(context, resourceProvider);
         floatingButton.setImageResource(R.drawable.floating_pencil);
-        if (Build.VERSION.SDK_INT >= 21) {
-            StateListAnimator animator = new StateListAnimator();
-            animator.addState(new int[]{android.R.attr.state_pressed}, ObjectAnimator.ofFloat(floatingButton, View.TRANSLATION_Z, dp(2), dp(4)).setDuration(200));
-            animator.addState(new int[]{}, ObjectAnimator.ofFloat(floatingButton, View.TRANSLATION_Z, dp(4), dp(2)).setDuration(200));
-            floatingButton.setStateListAnimator(animator);
-            floatingButton.setOutlineProvider(new ViewOutlineProvider() {
-                @SuppressLint("NewApi")
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setOval(0, 0, dp(56), dp(56));
-                }
-            });
-        }
-        page1.addView(floatingButton, LayoutHelper.createFrame(Build.VERSION.SDK_INT >= 21 ? 56 : 60, Build.VERSION.SDK_INT >= 21 ? 56 : 60, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.BOTTOM, LocaleController.isRTL ? 14 : 0, 0, LocaleController.isRTL ? 0 : 14, 14));
+        page1.addView(floatingButton, FragmentFloatingButton.createDefaultLayoutParams());
 
         dialogsAdapter = new DialogsAdapter(context);
         listView.setAdapter(dialogsAdapter);
@@ -769,7 +742,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     ignoreLayout = true;
                     if (!AndroidUtilities.isTablet()) {
                         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) dropDownContainer.getLayoutParams();
-                        layoutParams.topMargin = (Build.VERSION.SDK_INT >= 21 ? AndroidUtilities.statusBarHeight : 0);
+                        layoutParams.topMargin = AndroidUtilities.statusBarHeight;
                         dropDownContainer.setLayoutParams(layoutParams);
                     }
                     if (!AndroidUtilities.isTablet() && ApplicationLoader.applicationContext.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
@@ -859,7 +832,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (checkDiscard()) {
+                    if (checkDiscard(true)) {
                         cancelThemeApply(false);
                     }
                 } else if (id >= 1 && id <= 3) {
@@ -942,7 +915,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     }
                     showDialog(new ShareAlert(getParentActivity(), null, link, false, link, false) {
                         @Override
-                        protected void onSend(LongSparseArray<TLRPC.Dialog> dids, int count, TLRPC.TL_forumTopic topic) {
+                        protected void onSend(LongSparseArray<TLRPC.Dialog> dids, int count, TLRPC.TL_forumTopic topic, boolean showToast) {
+                            if (!showToast) return;
                             if (dids.size() == 1) {
                                 undoView.showWithAction(dids.valueAt(0).id, UndoView.ACTION_SHARE_BACKGROUND, count);
                             } else {
@@ -1016,7 +990,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         PhotoViewer.getInstance().setParentActivity(getParentActivity());
                         PhotoViewer.getInstance().openPhotoForSelect(arrayList, 0, PhotoViewer.SELECT_TYPE_WALLPAPER, false, new PhotoViewer.EmptyPhotoViewerProvider() {
                             @Override
-                            public void sendButtonPressed(int index, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, boolean forceDocument) {
+                            public void sendButtonPressed(int index, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, int scheduleRepeatPeriod, boolean forceDocument) {
                                 if (photoEntry.imagePath != null) {
                                     File currentWallpaperPath = new File(FileLoader.getDirectory(FileLoader.MEDIA_DIR_CACHE), Utilities.random.nextInt() + ".jpg");
                                     Point screenSize = AndroidUtilities.getRealScreenSize();
@@ -1116,15 +1090,15 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     }
                     sunDrawable.beginApplyLayerColors();
                     int color = Theme.getColor(Theme.key_chats_menuName);
-                    sunDrawable.setLayerColor("Sunny.**", color);
-                    sunDrawable.setLayerColor("Path 6.**", color);
-                    sunDrawable.setLayerColor("Path.**", color);
-                    sunDrawable.setLayerColor("Path 5.**", color);
+                    sunDrawable.setLayerColor("Sunny", color);
+                    sunDrawable.setLayerColor("Path 6", color);
+                    sunDrawable.setLayerColor("Path", color);
+                    sunDrawable.setLayerColor("Path 5", color);
                     sunDrawable.commitApplyLayerColors();
                 }
             } else if (screenType == SCREEN_TYPE_ACCENT_COLOR) {
                 ActionBarMenu menu2 = actionBar2.createMenu();
-                saveItem = menu2.addItem(4, LocaleController.getString(R.string.Save).toUpperCase());
+                saveItem = menu2.addItem(4, LocaleController.getString(R.string.Save));
 
                 dropDownContainer = new ActionBarMenuItem(context, menu2, 0, 0) {
                     @Override
@@ -1939,7 +1913,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         patternsCancelButton[a].setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
                         patternsCancelButton[a].setTypeface(AndroidUtilities.bold());
                         patternsCancelButton[a].setTextColor(getThemedColor(Theme.key_chat_fieldOverlayText));
-                        patternsCancelButton[a].setText(LocaleController.getString(R.string.Cancel).toUpperCase());
+                        patternsCancelButton[a].setText(LocaleController.getString(R.string.Cancel));
                         patternsCancelButton[a].setGravity(Gravity.CENTER);
                         patternsCancelButton[a].setPadding(dp(21), 0, dp(21), 0);
                         patternsCancelButton[a].setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 0));
@@ -1988,7 +1962,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         patternsSaveButton[a].setTextSize(TypedValue.COMPLEX_UNIT_DIP, 15);
                         patternsSaveButton[a].setTypeface(AndroidUtilities.bold());
                         patternsSaveButton[a].setTextColor(getThemedColor(Theme.key_chat_fieldOverlayText));
-                        patternsSaveButton[a].setText(LocaleController.getString(R.string.ApplyTheme).toUpperCase());
+                        patternsSaveButton[a].setText(LocaleController.getString(R.string.ApplyTheme));
                         patternsSaveButton[a].setGravity(Gravity.CENTER);
                         patternsSaveButton[a].setPadding(dp(21), 0, dp(21), 0);
                         patternsSaveButton[a].setBackgroundDrawable(Theme.createSelectorDrawable(getThemedColor(Theme.key_listSelector), 0));
@@ -2214,9 +2188,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             protected void onDraw(Canvas canvas) {
                 if (!AndroidUtilities.usingHardwareInput) {
                     getLocationInWindow(loc);
-                    if (Build.VERSION.SDK_INT < 21 && !AndroidUtilities.isTablet()) {
-                        loc[1] -= AndroidUtilities.statusBarHeight;
-                    }
                     if (actionBar2.getTranslationY() != loc[1]) {
                         actionBar2.setTranslationY(-loc[1]);
                         page2.invalidate();
@@ -2327,7 +2298,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             cancelButton.setGravity(Gravity.CENTER);
             cancelButton.setBackgroundDrawable(Theme.createSelectorDrawable(0x0f000000, 0));
             cancelButton.setPadding(dp(29), 0, dp(29), 0);
-            cancelButton.setText(LocaleController.getString(R.string.Cancel).toUpperCase());
+            cancelButton.setText(LocaleController.getString(R.string.Cancel));
             cancelButton.setTypeface(AndroidUtilities.bold());
             saveButtonsContainer.addView(cancelButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT));
             cancelButton.setOnClickListener(v -> cancelThemeApply(false));
@@ -2338,7 +2309,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             doneButton.setGravity(Gravity.CENTER);
             doneButton.setBackgroundDrawable(Theme.createSelectorDrawable(0x0f000000, 0));
             doneButton.setPadding(dp(29), 0, dp(29), 0);
-            doneButton.setText(LocaleController.getString(R.string.ApplyTheme).toUpperCase());
+            doneButton.setText(LocaleController.getString(R.string.ApplyTheme));
             doneButton.setTypeface(AndroidUtilities.bold());
             saveButtonsContainer.addView(doneButton, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.RIGHT));
             doneButton.setOnClickListener(v -> {
@@ -2761,7 +2732,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     dimAmount = 0;
                     backgroundImage.draw(canvas);
                     dimAmount = currentDim;
-                    Utilities.blurBitmap(bitmap, 3, 1, bitmap.getWidth(), bitmap.getHeight(), bitmap.getRowBytes());
+                    Utilities.blurBitmap(bitmap, 3);
                     tlwallPaper.stripedThumb = bitmap;
 
                     createServiceMessageLocal(tlwallPaper, forBoth);
@@ -3232,7 +3203,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         return false;
     }
 
-    private boolean checkDiscard() {
+    private boolean checkDiscard(boolean invoked) {
         if (screenType == SCREEN_TYPE_ACCENT_COLOR && (
                 accent.accentColor != backupAccentColor ||
                         accent.accentColor2 != backupAccentColor2 ||
@@ -3251,12 +3222,14 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         selectedPattern != null && accent.patternMotion != isMotion ||
                         selectedPattern != null && accent.patternIntensity != currentIntensity
         )) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-            builder.setTitle(LocaleController.getString(R.string.SaveChangesAlertTitle));
-            builder.setMessage(LocaleController.getString(R.string.SaveChangesAlertText));
-            builder.setPositiveButton(LocaleController.getString(R.string.Save), (dialogInterface, i) -> actionBar2.getActionBarMenuOnItemClick().onItemClick(4));
-            builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> cancelThemeApply(false));
-            showDialog(builder.create());
+            if (invoked) {
+                final AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                builder.setTitle(LocaleController.getString(R.string.SaveChangesAlertTitle));
+                builder.setMessage(LocaleController.getString(R.string.SaveChangesAlertText));
+                builder.setPositiveButton(LocaleController.getString(R.string.Save), (dialogInterface, i) -> actionBar2.getActionBarMenuOnItemClick().onItemClick(4));
+                builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> cancelThemeApply(false));
+                showDialog(builder.create());
+            }
             return false;
         }
         return true;
@@ -3346,18 +3319,14 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         final int w = (int) ((float) d.getIntrinsicWidth() / d.getIntrinsicHeight() * h);
         Bitmap bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
         d.setBounds(0, 0, w, h);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            final ColorFilter wasColorFilter = d.getColorFilter();
-            ColorMatrix colorMatrix = new ColorMatrix();
-            colorMatrix.setSaturation(1.3f);
-            AndroidUtilities.multiplyBrightnessColorMatrix(colorMatrix, .94f);
-            d.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
-            d.draw(new Canvas(bitmap));
-            d.setColorFilter(wasColorFilter);
-        } else {
-            d.draw(new Canvas(bitmap));
-        }
-        Utilities.blurBitmap(bitmap, 3, 1, bitmap.getWidth(), bitmap.getHeight(), bitmap.getRowBytes());
+        final ColorFilter wasColorFilter = d.getColorFilter();
+        ColorMatrix colorMatrix = new ColorMatrix();
+        colorMatrix.setSaturation(1.3f);
+        AndroidUtilities.multiplyBrightnessColorMatrix(colorMatrix, .94f);
+        d.setColorFilter(new ColorMatrixColorFilter(colorMatrix));
+        d.draw(new Canvas(bitmap));
+        d.setColorFilter(wasColorFilter);
+        Utilities.blurBitmap(bitmap, 3);
         blurredDrawable = new BitmapDrawable(getContext().getResources(), bitmap);
         blurredDrawable.setFilterBitmap(true);
         return blurredDrawable;
@@ -3540,12 +3509,12 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     @Override
-    public boolean onBackPressed() {
-        if (!checkDiscard()) {
+    public boolean onBackPressed(boolean invoked) {
+        if (!checkDiscard(invoked)) {
             return false;
         }
         cancelThemeApply(true);
-        return true;
+        return super.onBackPressed(invoked);
     }
 
     @SuppressWarnings("unchecked")
@@ -3619,11 +3588,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     acc = MediaDataController.calcHash(acc, wallPaper.id);
                 }
             }
-            TLRPC.TL_account_getWallPapers req = new TLRPC.TL_account_getWallPapers();
+            TL_account.getWallPapers req = new TL_account.getWallPapers();
             req.hash = acc;
             int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-                if (response instanceof TLRPC.TL_account_wallPapers) {
-                    TLRPC.TL_account_wallPapers res = (TLRPC.TL_account_wallPapers) response;
+                if (response instanceof TL_account.TL_wallPapers) {
+                    TL_account.TL_wallPapers res = (TL_account.TL_wallPapers) response;
                     patterns.clear();
                     patternsDict.clear();
                     boolean added2 = false;
@@ -3656,7 +3625,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     MessagesStorage.getInstance(currentAccount).putWallpapers(res.wallpapers, 1);
                 }
                 if (selectedPattern == null && accent != null && !TextUtils.isEmpty(accent.patternSlug)) {
-                    TLRPC.TL_account_getWallPaper req2 = new TLRPC.TL_account_getWallPaper();
+                    TL_account.getWallPaper req2 = new TL_account.getWallPaper();
                     TLRPC.TL_inputWallPaperSlug inputWallPaperSlug = new TLRPC.TL_inputWallPaperSlug();
                     inputWallPaperSlug.slug = accent.patternSlug;
                     req2.wallpaper = inputWallPaperSlug;
@@ -5469,7 +5438,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     }
                     messageCell.isChat = showSecretMessages || dialogId < 0;
                     messageCell.setFullyDraw(true);
-                    messageCell.setMessageObject(message, null, pinnedBotton, pinnedTop);
+                    messageCell.setMessageObject(message, null, pinnedBotton, pinnedTop, false);
                 } else if (view instanceof ChatActionCell) {
                     ChatActionCell actionCell = (ChatActionCell) view;
                     actionCell.setMessageObject(message);
@@ -5666,6 +5635,9 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             if (colorPicker != null) {
                 colorPicker.invalidate();
             }
+            if (floatingButton != null) {
+                floatingButton.updateColors();
+            }
         };
 
         ArrayList<ThemeDescription> items = new ArrayList<>();
@@ -5687,10 +5659,6 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
         items.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         items.add(new ThemeDescription(listView2, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
-
-        items.add(new ThemeDescription(floatingButton, ThemeDescription.FLAG_IMAGECOLOR, null, null, null, null, Theme.key_chats_actionIcon));
-        items.add(new ThemeDescription(floatingButton, ThemeDescription.FLAG_BACKGROUNDFILTER, null, null, null, null, Theme.key_chats_actionBackground));
-        items.add(new ThemeDescription(floatingButton, ThemeDescription.FLAG_BACKGROUNDFILTER | ThemeDescription.FLAG_DRAWABLESELECTEDSTATE, null, null, null, null, Theme.key_chats_actionPressedBackground));
 
         if (!useDefaultThemeForButtons) {
             items.add(new ThemeDescription(saveButtonsContainer, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundWhite));
@@ -5943,7 +5911,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         }
     }
 
-    private class MessageDrawable extends Theme.MessageDrawable {
+    private class MessageDrawable extends org.telegram.ui.ActionBar.MessageDrawable {
         public MessageDrawable(int typeMedia, boolean b, boolean b1) {
             super(typeMedia, b, b1);
         }
@@ -6009,7 +5977,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
         @Override
         protected void onDraw(Canvas canvas) {
-            final float r = dp(8);
+            final float r = getHeight() / 2f;
             AndroidUtilities.rectTmp.set(0, 0, getWidth(), getHeight());
 
             Theme.applyServiceShaderMatrixForView(this, backgroundImage, themeDelegate);
@@ -6095,9 +6063,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             boolean r = false;
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
                 r = true;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    rippleDrawable.setHotspot(event.getX(), event.getY());
-                }
+                rippleDrawable.setHotspot(event.getX(), event.getY());
                 rippleDrawable.setState(new int[]{android.R.attr.state_enabled, android.R.attr.state_pressed});
             } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
                 rippleDrawable.setState(StateSet.NOTHING);

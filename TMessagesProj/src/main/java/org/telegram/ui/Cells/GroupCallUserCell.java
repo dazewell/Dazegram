@@ -66,7 +66,8 @@ public class GroupCallUserCell extends FrameLayout {
     private RLottieDrawable muteDrawable;
     private RLottieDrawable shakeHandDrawable;
 
-    public AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable rightDrawable;
+    public final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable leftDrawable;
+    public final AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable rightDrawable;
     private Drawable verifiedDrawable;
     private Drawable premiumDrawable;
 
@@ -75,7 +76,7 @@ public class GroupCallUserCell extends FrameLayout {
     private AvatarDrawable avatarDrawable;
 
     private ChatObject.Call currentCall;
-    private TLRPC.TL_groupCallParticipant participant;
+    private TLRPC.GroupCallParticipant participant;
     private TLRPC.User currentUser;
     private TLRPC.Chat currentChat;
 
@@ -295,6 +296,7 @@ public class GroupCallUserCell extends FrameLayout {
         nameTextView.setDrawablePadding(AndroidUtilities.dp(6));
         nameTextView.setGravity((LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP);
         addView(nameTextView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 20, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, LocaleController.isRTL ? 54 : 67, 10, LocaleController.isRTL ? 67 : 54, 0));
+        leftDrawable =  new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(nameTextView, AndroidUtilities.dp(20), AnimatedEmojiDrawable.CACHE_TYPE_ALERT_EMOJI_STATUS);
         rightDrawable = new AnimatedEmojiDrawable.SwapAnimatedEmojiDrawable(nameTextView, AndroidUtilities.dp(20), AnimatedEmojiDrawable.CACHE_TYPE_ALERT_EMOJI_STATUS);
 
         speakingDrawable = context.getResources().getDrawable(R.drawable.voice_volume_mini);
@@ -436,6 +438,9 @@ public class GroupCallUserCell extends FrameLayout {
         if (rightDrawable != null) {
             rightDrawable.detach();
         }
+        if (leftDrawable != null) {
+            leftDrawable.detach();
+        }
     }
 
     public boolean isSelfUser() {
@@ -458,7 +463,7 @@ public class GroupCallUserCell extends FrameLayout {
         return avatarImageView.getImageReceiver().hasNotThumb();
     }
 
-    public void setData(AccountInstance account, TLRPC.TL_groupCallParticipant groupCallParticipant, ChatObject.Call call, long self, TLRPC.FileLocation uploadingAvatar, boolean animated) {
+    public void setData(AccountInstance account, TLRPC.GroupCallParticipant groupCallParticipant, ChatObject.Call call, long self, TLRPC.FileLocation uploadingAvatar, boolean animated) {
         currentCall = call;
         accountInstance = account;
         selfId = self;
@@ -466,12 +471,14 @@ public class GroupCallUserCell extends FrameLayout {
         participant = groupCallParticipant;
 
         long id = MessageObject.getPeerId(participant.peer);
+        long botVerificationIcon = 0;
         if (id > 0) {
             currentUser = accountInstance.getMessagesController().getUser(id);
             currentChat = null;
             avatarDrawable.setInfo(accountInstance.getCurrentAccount(), currentUser);
 
             nameTextView.setText(UserObject.getUserName(currentUser));
+            botVerificationIcon = DialogObject.getBotVerificationIcon(currentUser);
             if (currentUser != null && currentUser.verifiedExtended()) {
                 rightDrawable.set(verifiedDrawable = (verifiedDrawable == null ? new VerifiedDrawable(getContext()) : verifiedDrawable), animated);
             } else if (currentUser != null && DialogObject.getEmojiStatusDocumentId(currentUser.emoji_status) != 0) {
@@ -500,7 +507,7 @@ public class GroupCallUserCell extends FrameLayout {
                 hasAvatar = true;
                 avatarImageView.setImage(ImageLocation.getForLocal(uploadingAvatar), "50_50", avatarDrawable, null);
             } else {
-                ImageLocation imageLocation = ImageLocation.getForUser(currentUser, ImageLocation.TYPE_SMALL);
+                ImageLocation imageLocation = ImageLocation.getForUser(account.getCurrentAccount(), currentUser, ImageLocation.TYPE_SMALL);
                 hasAvatar = imageLocation != null;
                 avatarImageView.setImage(imageLocation, "50_50", avatarDrawable, currentUser);
             }
@@ -509,6 +516,7 @@ public class GroupCallUserCell extends FrameLayout {
             currentUser = null;
             avatarDrawable.setInfo(accountInstance.getCurrentAccount(), currentChat);
 
+            botVerificationIcon = DialogObject.getBotVerificationIcon(currentChat);
             if (currentChat != null) {
                 nameTextView.setText(currentChat.title);
                 if (currentChat.verifiedExtended()) {
@@ -529,6 +537,14 @@ public class GroupCallUserCell extends FrameLayout {
                 }
             }
         }
+        if (botVerificationIcon != 0) {
+            leftDrawable.set(botVerificationIcon, animated);
+            nameTextView.setLeftDrawable(leftDrawable);
+            leftDrawable.setColor(Theme.getColor(Theme.key_premiumGradient1));
+        } else {
+            leftDrawable.set((Drawable) null, animated);
+            nameTextView.setLeftDrawable(null);
+        }
         applyParticipantChanges(animated);
     }
 
@@ -544,9 +560,12 @@ public class GroupCallUserCell extends FrameLayout {
         if (rightDrawable != null) {
             rightDrawable.attach();
         }
+        if (leftDrawable != null) {
+            leftDrawable.attach();
+        }
     }
 
-    public TLRPC.TL_groupCallParticipant getParticipant() {
+    public TLRPC.GroupCallParticipant getParticipant() {
         return participant;
     }
 
@@ -593,7 +612,7 @@ public class GroupCallUserCell extends FrameLayout {
             grayIconColor = key;
         }
         if (currentIconGray) {
-            muteButton.setColorFilter(new PorterDuffColorFilter(value, PorterDuff.Mode.MULTIPLY));
+            muteButton.setColorFilter(new PorterDuffColorFilter(value, PorterDuff.Mode.SRC_IN));
             Theme.setSelectorDrawableColor(muteButton.getDrawable(), value & 0x24ffffff, true);
         }
     }
@@ -653,7 +672,7 @@ public class GroupCallUserCell extends FrameLayout {
             }
         }
 
-        TLRPC.TL_groupCallParticipant newParticipant = currentCall.participants.get(MessageObject.getPeerId(participant.peer));
+        TLRPC.GroupCallParticipant newParticipant = currentCall.participants.get(MessageObject.getPeerId(participant.peer));
         if (newParticipant != null) {
             participant = newParticipant;
         }
@@ -768,12 +787,12 @@ public class GroupCallUserCell extends FrameLayout {
                 animator.addUpdateListener(animation -> {
                     float value = animation.getAnimatedFraction();
                     int color = AndroidUtilities.getOffsetColor(oldColor, newMuteColor, value, 1.0f);
-                    muteButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY));
+                    muteButton.setColorFilter(new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN));
                     Theme.setSelectorDrawableColor(muteButton.getDrawable(), color & 0x24ffffff, true);
                 });
                 animators.add(animator);
             } else {
-                muteButton.setColorFilter(new PorterDuffColorFilter(lastMuteColor = newMuteColor, PorterDuff.Mode.MULTIPLY));
+                muteButton.setColorFilter(new PorterDuffColorFilter(lastMuteColor = newMuteColor, PorterDuff.Mode.SRC_IN));
                 Theme.setSelectorDrawableColor(muteButton.getDrawable(), newMuteColor & 0x24ffffff, true);
             }
         }
@@ -882,6 +901,11 @@ public class GroupCallUserCell extends FrameLayout {
     }
 
     private void applyStatus(int newStatus) {
+        // Visibility toggling is disabled to allow the alpha cross-fade; gate accessibility
+        // importance instead so TalkBack announces only the current status, not all four.
+        for (int a = 0; a < statusTextView.length; a++) {
+            statusTextView[a].setImportantForAccessibility(a == newStatus ? IMPORTANT_FOR_ACCESSIBILITY_YES : IMPORTANT_FOR_ACCESSIBILITY_NO);
+        }
         if (newStatus == 0) {
             for (int a = 0; a < statusTextView.length; a++) {
                 //statusTextView[a].setVisibility(a == newStatus ? VISIBLE : INVISIBLE);
@@ -905,12 +929,14 @@ public class GroupCallUserCell extends FrameLayout {
     @Override
     protected void dispatchDraw(Canvas canvas) {
         if (needDivider) {
+            int wasAlpha = dividerPaint.getAlpha();
             if (progressToAvatarPreview != 0) {
-                dividerPaint.setAlpha((int) ((1.0f - progressToAvatarPreview) * 255));
+                dividerPaint.setAlpha((int) ((1.0f - progressToAvatarPreview) * wasAlpha));
             } else {
-                dividerPaint.setAlpha((int) ((1.0f - statusTextView[4].getFullAlpha()) * 255));
+                dividerPaint.setAlpha((int) ((1.0f - statusTextView[4].getFullAlpha()) * wasAlpha));
             }
             canvas.drawLine(LocaleController.isRTL ? 0 : AndroidUtilities.dp(68), getMeasuredHeight() - 1, getMeasuredWidth() - (LocaleController.isRTL ? AndroidUtilities.dp(68) : 0), getMeasuredHeight() - 1, dividerPaint);
+            dividerPaint.setAlpha(wasAlpha);
         }
         int cx = avatarImageView.getLeft() + avatarImageView.getMeasuredWidth() / 2;
         int cy = avatarImageView.getTop() + avatarImageView.getMeasuredHeight() / 2;

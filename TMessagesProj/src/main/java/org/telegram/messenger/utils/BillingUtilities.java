@@ -19,15 +19,15 @@ import org.telegram.messenger.FileLog;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
-import org.telegram.tgnet.AbstractSerializedData;
+import org.telegram.tgnet.InputSerializedData;
+import org.telegram.tgnet.OutputSerializedData;
 import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLObject;
+import org.telegram.tgnet.TLParseException;
 import org.telegram.tgnet.TLRPC;
 
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 
 public class BillingUtilities {
@@ -56,9 +56,15 @@ public class BillingUtilities {
     }
 
     public static Pair<String, String> createDeveloperPayload(TLRPC.InputStorePaymentPurpose paymentPurpose, AccountInstance accountInstance) {
-        long currentAccountId = accountInstance.getUserConfig().getClientUserId();
-        byte[] currentAccountIdBytes = String.valueOf(currentAccountId).getBytes(Charsets.UTF_8);
-        String obfuscatedAccountId = Base64.encodeToString(currentAccountIdBytes, Base64.DEFAULT);
+        String obfuscatedAccountId;
+        if (accountInstance.getUserConfig().isClientActivated()) {
+            long currentAccountId = accountInstance.getUserConfig().getClientUserId();
+            byte[] currentAccountIdBytes = String.valueOf(currentAccountId).getBytes(Charsets.UTF_8);
+            obfuscatedAccountId = Base64.encodeToString(currentAccountIdBytes, Base64.DEFAULT);
+        } else {
+            byte[] currentAccountIdBytes = ("account-" + accountInstance.getCurrentAccount()).getBytes(Charsets.UTF_8);
+            obfuscatedAccountId = Base64.encodeToString(currentAccountIdBytes, Base64.DEFAULT);
+        }
         return Pair.create(obfuscatedAccountId, savePurpose(paymentPurpose));
     }
 
@@ -165,24 +171,18 @@ public class BillingUtilities {
         public long id;
         public TLRPC.InputStorePaymentPurpose purpose;
 
-        public static TL_savedPurpose TLdeserialize(AbstractSerializedData stream, int constructor, boolean exception) {
+        public static TL_savedPurpose TLdeserialize(InputSerializedData stream, int constructor, boolean exception) {
             TL_savedPurpose result = null;
             switch (constructor) {
                 case TL_savedPurpose.constructor:
                     result = new TL_savedPurpose();
                     break;
             }
-            if (result == null && exception) {
-                throw new RuntimeException(String.format("can't parse magic %x in TL_savedPurpose", constructor));
-            }
-            if (result != null) {
-                result.readParams(stream, exception);
-            }
-            return result;
+            return TLdeserialize(TL_savedPurpose.class, result, stream, constructor, exception);
         }
 
         @Override
-        public void readParams(AbstractSerializedData stream, boolean exception) {
+        public void readParams(InputSerializedData stream, boolean exception) {
             flags = stream.readInt32(exception);
             id = stream.readInt64(exception);
             if ((flags & 1) != 0) {
@@ -191,7 +191,7 @@ public class BillingUtilities {
         }
 
         @Override
-        public void serializeToStream(AbstractSerializedData stream) {
+        public void serializeToStream(OutputSerializedData stream) {
             stream.writeInt32(constructor);
             stream.writeInt32(flags);
             stream.writeInt64(id);
@@ -236,12 +236,20 @@ public class BillingUtilities {
             }
 
             byte[] obfuscatedAccountIdBytes = Base64.decode(obfuscatedAccountId, Base64.DEFAULT);
-            long accountId = Long.parseLong(new String(obfuscatedAccountIdBytes, Charsets.UTF_8));
+            String obfuscatedAccountIdString = new String(obfuscatedAccountIdBytes, Charsets.UTF_8);
+            FileLog.d("Billing: Extract payload. obfuscatedAccountIdString=" + obfuscatedAccountIdString);
 
-            AccountInstance acc = findAccountById(accountId);
-            if (acc == null) {
-                FileLog.d("Billing: Extract payload. AccountInstance not found");
-                return null;
+            AccountInstance acc;
+            if (obfuscatedAccountIdString.startsWith("account-")) {
+                int currentAccount = Integer.parseInt(obfuscatedAccountIdString.substring(8));
+                acc = AccountInstance.getInstance(currentAccount);
+            } else {
+                long accountId = Long.parseLong(obfuscatedAccountIdString);
+                acc = findAccountById(accountId);
+                if (acc == null) {
+                    FileLog.d("Billing: Extract payload. AccountInstance not found, accountId=" + accountId);
+                    return null;
+                }
             }
             return Pair.create(acc, purpose);
         } catch (Exception e) {

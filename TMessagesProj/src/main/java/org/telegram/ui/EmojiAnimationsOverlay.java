@@ -1,9 +1,7 @@
 package org.telegram.ui;
 
 import android.graphics.Canvas;
-import android.graphics.Typeface;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -14,6 +12,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.EmojiData;
 import org.telegram.messenger.FileLoader;
@@ -32,12 +31,10 @@ import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.Bulletin;
-import org.telegram.ui.Components.RLottieDrawable;
 import org.telegram.ui.Components.Reactions.AnimatedEmojiEffect;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.RecyclerListView;
@@ -267,8 +264,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         if (bestView != null && chatActivity != null) {
             chatActivity.restartSticker(bestView);
             if (!EmojiData.hasEmojiSupportVibration(bestView.getMessageObject().getStickerEmoji()) && !bestView.getMessageObject().isPremiumSticker() && !bestView.getMessageObject().isAnimatedAnimatedEmoji()) {
-                if (!NekoConfig.disableVibration.Bool())
-                    bestView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                if (!NekoConfig.disableVibration.Bool()) {
+                    try {
+                        bestView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    } catch (Exception ignored) {}
+                }
             }
             showAnimationForCell(bestView, animation, false, true);
         }
@@ -442,8 +442,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         boolean show = showAnimationForCell(view, -1, userTapped, false);
 
         if (userTapped && show && !EmojiData.hasEmojiSupportVibration(view.getMessageObject().getStickerEmoji()) && !view.getMessageObject().isPremiumSticker() && !view.getMessageObject().isAnimatedAnimatedEmoji()) {
-            if (!NekoConfig.disableVibration.Bool())
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+            if (!NekoConfig.disableVibration.Bool()) {
+                try {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                } catch (Exception ignored) {}
+            }
         }
         if (view.getMessageObject().isPremiumSticker() || view.getEffect() != null || (!userTapped && view.getMessageObject().isAnimatedEmojiStickerSingle())) {
             view.getMessageObject().forcePlayEffect = false;
@@ -737,6 +740,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                 drawingObject.isOut = isOutOwner;
                 drawingObject.imageReceiver.setAllowStartAnimation(true);
                 drawingObject.imageReceiver.setAllowLottieVibration(sendTap);
+                final boolean pcache = SharedConfig.getDevicePerformanceClass() <= SharedConfig.PERFORMANCE_CLASS_AVERAGE || !BuildVars.DEBUG_VERSION;
                 int w;
                 if (videoSize == null) {
                     w = getFilterWidth();
@@ -748,7 +752,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                     ImageLocation imageLocation = ImageLocation.getForDocument(document);
                     drawingObject.imageReceiver.setUniqKeyPrefix(currentIndex + "_" + drawingObject.messageId + "_");
 
-                    drawingObject.imageReceiver.setImage(imageLocation, w + "_" + w + "_pcache", null, "tgs", set, 1);
+                    drawingObject.imageReceiver.setImage(imageLocation, w + "_" + w + (pcache ? "_pcache" : ""), null, "tgs", set, 1);
                     drawingObject.imageReceiver.setDelegate(new ImageReceiver.ImageReceiverDelegate() {
                         @Override
                         public void didSetImage(ImageReceiver imageReceiver, boolean set, boolean thumb, boolean memCache) {
@@ -759,9 +763,11 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
 
                         @Override
                         public void onAnimationReady(ImageReceiver imageReceiver) {
-                            if (sendTap && messageObject.isAnimatedAnimatedEmoji() && imageReceiver.getLottieAnimation() != null && !imageReceiver.getLottieAnimation().hasVibrationPattern()) {
-                                if (!NekoConfig.disableVibration.Bool())
-                                contentLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                            if (sendTap && messageObject != null && messageObject.isAnimatedAnimatedEmoji() && imageReceiver.getLottieAnimation() != null && !imageReceiver.getLottieAnimation().hasVibrationPattern()) {
+                                try {
+                                    if (!NekoConfig.disableVibration.Bool())
+                                    contentLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                                } catch (Exception ignored) {}
                             }
                         }
                     });
@@ -777,7 +783,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
                         drawingObject.imageReceiver.setUniqKeyPrefix(currentIndex + "_" + drawingObject.messageId + "_");
                     }
                     drawingObject.document = document;
-                    drawingObject.imageReceiver.setImage(ImageLocation.getForDocument(videoSize, document), w + "_" + w, null, "tgs", set, 1);
+                    drawingObject.imageReceiver.setImage(ImageLocation.getForDocument(videoSize, document), w + "_" + w + (pcache ? "_pcache" : ""), null, "tgs", set, 1);
                 }
 
                 drawingObject.imageReceiver.setLayerNum(Integer.MAX_VALUE);
@@ -855,7 +861,7 @@ public class EmojiAnimationsOverlay implements NotificationCenter.NotificationCe
         Bulletin.UndoButton viewButton = new Bulletin.UndoButton(chatActivity.getParentActivity(), true, chatActivity.getResourceProvider());
         layout.setButton(viewButton);
         viewButton.setUndoAction(() -> {
-            StickersAlert alert = new StickersAlert(chatActivity.getParentActivity(), chatActivity, messageObject.getInputStickerSet(), null, chatActivity.chatActivityEnterView, chatActivity.getResourceProvider());
+            StickersAlert alert = new StickersAlert(chatActivity.getParentActivity(), chatActivity, messageObject.getInputStickerSet(), null, chatActivity.chatActivityEnterView, chatActivity.getResourceProvider(), false);
             alert.setCalcMandatoryInsets(chatActivity.isKeyboardVisible());
             chatActivity.showDialog(alert);
         });

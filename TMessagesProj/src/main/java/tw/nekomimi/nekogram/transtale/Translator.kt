@@ -4,10 +4,8 @@ import android.view.View
 import cn.hutool.core.util.ArrayUtil
 import cn.hutool.core.util.StrUtil
 import cn.hutool.http.HttpRequest
-import org.apache.commons.lang3.LocaleUtils
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.R
-import org.telegram.messenger.SharedConfig
 import tw.nekomimi.nekogram.NekoConfig
 import tw.nekomimi.nekogram.ui.PopupBuilder
 import tw.nekomimi.nekogram.cc.CCConverter
@@ -67,6 +65,10 @@ interface Translator {
 
     suspend fun doTranslate(from: String, to: String, query: String): String
 
+    suspend fun doTranslate(from: String, to: String, query: String, context: List<String>): String {
+        return doTranslate(from, to, query)
+    }
+
     companion object {
 
         @Throws(Exception::class)
@@ -76,16 +78,22 @@ interface Translator {
 
         const val providerGoogle = 1
         const val providerGoogleCN = 2
-        const val providerYandex = 3
+        const val providerGoogle2 = 3
         const val providerLingo = 4
         const val providerMicrosoft = 5
-        const val providerYouDao = 6
+        const val providerVolcengine = 6
         const val providerDeepL = 7
         const val providerTelegram = 8
         const val providerTranSmart = 9
+        const val providerLLM = 10
+        const val providerDeepLOfficial = 11
+        const val providerDeepLFree = 12
 
         @Throws(Exception::class)
-        suspend fun translate(to: Locale, query: String): String {
+        suspend fun translate(to: Locale, query: String): String = translate(to, query, emptyList())
+
+        @Throws(Exception::class)
+        suspend fun translate(to: Locale, query: String, context: List<String>): String {
 
             var language = to.language
             var country = to.country
@@ -95,18 +103,19 @@ interface Translator {
 
             val provider = NekoConfig.translationProvider.Int()
             when (provider) {
-                providerYouDao -> if (language == "zh") {
-                    language = "zh-CHS"
-                }
-                providerDeepL -> language = language.uppercase()
+                providerDeepL,
+                providerDeepLOfficial,
+                providerDeepLFree -> language = AbstractDeepLTranslator.convertLanguageCode(language, country)
+                providerVolcengine,
                 providerMicrosoft,
                 providerGoogle,
+                providerGoogle2,
                 providerGoogleCN -> if (language == "zh") {
                     val countryUpperCase = country.uppercase()
                     if (countryUpperCase == "CN" || countryUpperCase == "DUANG") {
                         language = if (provider == providerMicrosoft) "zh-Hans" else "zh-CN"
                     } else if (countryUpperCase == "TW" || countryUpperCase == "HK") {
-                        language = if (provider == providerMicrosoft) "zh-HanT" else "zh-TW"
+                        language = if (provider == providerMicrosoft) "zh-Hant" else "zh-TW"
                     }
                 }
                 providerTelegram -> language = TelegramAPITranslator.convertLanguageCode(language, country)
@@ -114,22 +123,25 @@ interface Translator {
             }
             val translator = when (provider) {
                 providerGoogle, providerGoogleCN -> GoogleAppTranslator
-                providerYandex -> YandexTranslator
+                providerGoogle2 -> GoogleCloud2Translator
                 providerLingo -> LingoTranslator
                 providerMicrosoft -> MicrosoftTranslator
-                providerYouDao -> YouDaoTranslator
-                providerDeepL -> DeepLTranslator
+                providerVolcengine -> VolcengineTranslator
+                providerDeepL -> DeepLXTranslator
+                providerDeepLOfficial -> DeepLTranslator
+                providerDeepLFree -> DeepLFreeTranslator
                 providerTelegram -> TelegramAPITranslator
                 providerTranSmart -> TranSmartTranslator
+                providerLLM -> LLMTranslator
                 else -> throw IllegalArgumentException()
             }
 
             // FileLog.d("[Trans] use provider ${translator.javaClass.simpleName}, toLang: $toLang, query: $query")
 
-            val result =  translator.doTranslate("auto", language, query).also {
-
-                to.transDb.save(query, it)
-
+            val result = translator.doTranslate("auto", language, query, context).also {
+                if (context.isEmpty()) {
+                    to.transDb.save(query, it)
+                }
             }
 
             if (language == "zh") {
@@ -145,13 +157,17 @@ interface Translator {
 
         }
 
+        val availableLocaleList: Array<Locale> = Locale.getAvailableLocales().also {
+            Arrays.sort(it, Comparator.comparing(Locale::toString))
+        }
+
         @JvmStatic
         @JvmOverloads
         fun showTargetLangSelect(anchor: View, input: Boolean = false, full: Boolean = false, callback: (Locale) -> Unit) {
 
             val builder = PopupBuilder(anchor)
 
-            var locales = (if (full) LocaleUtils.availableLocaleList()
+            var locales = (if (full) availableLocaleList
                     .filter { it.variant.isBlank() } else LocaleController.getInstance()
                     .languages
                     .map { it.pluralLangCode }

@@ -21,6 +21,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Adapters.DialogsSearchAdapter;
@@ -91,10 +92,13 @@ public class DialogsChannelsAdapter extends UniversalAdapter {
             MessagesController.ChannelRecommendations recommendations = MessagesController.getInstance(currentAccount).getCachedChannelRecommendations(0);
             if (recommendations != null) {
                 ArrayList<TLRPC.Chat> chats = new ArrayList<>();
-                for (TLRPC.Chat chat : recommendations.chats) {
-                    TLRPC.Chat localChat = MessagesController.getInstance(currentAccount).getChat(chat.id);
-                    if (ChatObject.isNotInChat(chat) && (localChat == null || ChatObject.isNotInChat(localChat)))
-                        chats.add(chat);
+                for (TLObject obj : recommendations.chats) {
+                    if (obj instanceof TLRPC.Chat) {
+                        final TLRPC.Chat chat = (TLRPC.Chat) obj;
+                        TLRPC.Chat localChat = MessagesController.getInstance(currentAccount).getChat(chat.id);
+                        if (ChatObject.isNotInChat(chat) && (localChat == null || ChatObject.isNotInChat(localChat)))
+                            chats.add(chat);
+                    }
                 }
                 if (!chats.isEmpty()) {
                     items.add(UItem.asGraySection(getString(R.string.SearchRecommendedChannels)));
@@ -247,8 +251,9 @@ public class DialogsChannelsAdapter extends UniversalAdapter {
             loadingChannels = true;
             TLRPC.TL_contacts_search req2 = new TLRPC.TL_contacts_search();
             req2.limit = 20;
+            req2.broadcasts = true;
             req2.q = this.query;
-            ConnectionsManager.getInstance(currentAccount).sendRequest(req2, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+            ConnectionsManager.getInstance(currentAccount).sendRequestTyped(req2, AndroidUtilities::runOnUIThread, (res, err) -> {
                 if (!TextUtils.equals(req2.q, this.query) || TextUtils.isEmpty(this.query)) return;
 
                 loadingChannels = false;
@@ -281,23 +286,24 @@ public class DialogsChannelsAdapter extends UniversalAdapter {
                 String q = this.query.toLowerCase(), qT = AndroidUtilities.translitSafe(q);
                 MessagesController.ChannelRecommendations recommendations = MessagesController.getInstance(currentAccount).getCachedChannelRecommendations(0);
                 if (recommendations != null && !recommendations.chats.isEmpty()) {
-                    for (TLRPC.Chat chat : recommendations.chats) {
-                        if (chat == null)
-                            continue;
-                        if (!ChatObject.isChannelAndNotMegaGroup(chat))
-                            continue;
-                        TLRPC.Chat localChat = MessagesController.getInstance(currentAccount).getChat(chat.id);
-                        if (!(ChatObject.isNotInChat(chat) && (localChat == null || ChatObject.isNotInChat(localChat))))
-                            continue;
-                        String t = chat.title.toLowerCase(), tT = AndroidUtilities.translitSafe(t);
-                        if (
-                            t.startsWith(q) || t.contains(" " + q) ||
-                            tT.startsWith(qT) || tT.contains(" " + qT)
-                        ) {
-                            if (chatIds.contains(chat.id))
+                    for (TLObject obj : recommendations.chats) {
+                        if (obj instanceof TLRPC.Chat) {
+                            final TLRPC.Chat chat = (TLRPC.Chat) obj;
+                            if (!ChatObject.isChannelAndNotMegaGroup(chat))
                                 continue;
-                            chatIds.add(chat.id);
-                            searchRecommendedChannels.add(chat);
+                            TLRPC.Chat localChat = MessagesController.getInstance(currentAccount).getChat(chat.id);
+                            if (!(ChatObject.isNotInChat(chat) && (localChat == null || ChatObject.isNotInChat(localChat))))
+                                continue;
+                            String t = chat.title.toLowerCase(), tT = AndroidUtilities.translitSafe(t);
+                            if (
+                                t.startsWith(q) || t.contains(" " + q) ||
+                                tT.startsWith(qT) || tT.contains(" " + qT)
+                            ) {
+                                if (chatIds.contains(chat.id))
+                                    continue;
+                                chatIds.add(chat.id);
+                                searchRecommendedChannels.add(chat);
+                            }
                         }
                     }
                 }
@@ -318,11 +324,11 @@ public class DialogsChannelsAdapter extends UniversalAdapter {
                 }
 
                 update(true);
-            }));
+            });
         }
     }
 
-    private Runnable searchMessagesRunnable = () -> searchMessages(false);
+    private final Runnable searchMessagesRunnable = () -> searchMessages(false);
     public void search(String query) {
         updateMyChannels();
         if (TextUtils.equals(query, this.query)) return;

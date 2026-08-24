@@ -50,9 +50,7 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         downloadCompleteImageReceiver.ignoreNotifications = true;
 
         downloadDrawable = new RLottieDrawable(R.raw.download_progress, "download_progress", AndroidUtilities.dp(28), AndroidUtilities.dp(28), true, null);
-        downloadDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.MULTIPLY));
         downloadCompleteDrawable = new RLottieDrawable(R.raw.download_finish, "download_finish", AndroidUtilities.dp(28), AndroidUtilities.dp(28), true, null);
-        downloadCompleteDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.MULTIPLY));
 
         downloadImageReceiver.setImageBitmap(downloadDrawable);
         downloadCompleteImageReceiver.setImageBitmap(downloadCompleteDrawable);
@@ -60,6 +58,12 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         downloadImageReceiver.setAutoRepeat(1);
         downloadDrawable.setAutoRepeat(1);
         downloadDrawable.start();
+    }
+
+    public void updateColors() {
+        downloadDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
+        downloadCompleteDrawable.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC));
+        invalidate();
     }
 
     @Override
@@ -81,8 +85,8 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
             currentColor = Theme.getColor(Theme.key_actionBarDefaultIcon);
             paint.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
             paint2.setColor(Theme.getColor(Theme.key_actionBarDefaultIcon));
-            downloadImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.MULTIPLY));
-            downloadCompleteImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.MULTIPLY));
+            downloadImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
+            downloadCompleteImageReceiver.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_actionBarDefaultIcon), PorterDuff.Mode.SRC_IN));
             paint2.setAlpha(100);
         }
 
@@ -113,17 +117,6 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         if (progress != 1f) {
             showCompletedIcon = false;
         }
-        boolean has_file = false;
-        DownloadController downloadController = DownloadController.getInstance(currentAccount);
-        for (int i = 0; i < downloadController.downloadingFiles.size(); i++){
-            if (FileLoader.getInstance(currentAccount).isLoadingFile(downloadController.downloadingFiles.get(i).getFileName())) {
-                has_file = true;
-                break;
-            }
-        }
-        if (!has_file && NaConfig.INSTANCE.getAlwaysShowDownloadIcon().Bool()) {
-            showCompletedIcon = true;
-        }
         if (showCompletedIcon) {
             downloadCompleteImageReceiver.draw(canvas);
         } else {
@@ -131,7 +124,7 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         }
 
         if (progress == 1f && !showCompletedIcon) {
-            if (downloadDrawable.getCurrentFrame() == 0) {
+            if (downloadDrawable.getCurrentFrame() == 0 || getAlpha() != 0) {
                 downloadCompleteDrawable.setCurrentFrame(0, false);
                 downloadCompleteDrawable.start();
                 showCompletedIcon = true;
@@ -140,6 +133,7 @@ public class DownloadProgressIcon extends View implements NotificationCenter.Not
         canvas.restore();
         if (getAlpha() != 0) {
             wasDrawn = true;
+            updateProgress();
         }
     }
 

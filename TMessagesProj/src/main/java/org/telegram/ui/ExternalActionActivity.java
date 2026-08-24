@@ -11,7 +11,6 @@ package org.telegram.ui;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.res.Configuration;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -24,6 +23,8 @@ import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 
+import androidx.annotation.NonNull;
+
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildVars;
@@ -35,12 +36,13 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.DrawerLayoutContainer;
 import org.telegram.ui.ActionBar.INavigationLayout;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Components.ActivityWindowEmptyBackgroundDrawable;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.PasscodeView;
@@ -53,8 +55,8 @@ import tw.nekomimi.nekogram.NekoXConfig;
 public class ExternalActionActivity extends Activity implements INavigationLayout.INavigationLayoutDelegate {
 
     private boolean finished;
-    private static ArrayList<BaseFragment> mainFragmentsStack = new ArrayList<>();
-    private static ArrayList<BaseFragment> layerFragmentsStack = new ArrayList<>();
+    private static final ArrayList<BaseFragment> mainFragmentsStack = new ArrayList<>();
+    private static final ArrayList<BaseFragment> layerFragmentsStack = new ArrayList<>();
 
     private PasscodeView passcodeView;
     protected INavigationLayout actionBarLayout;
@@ -76,10 +78,11 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
 
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         setTheme(R.style.Theme_TMessages);
-        getWindow().setBackgroundDrawableResource(R.drawable.transparent);
-        if (SharedConfig.passcodeHash.length() > 0 && !SharedConfig.allowScreenCapture && !NekoXConfig.disableFlagSecure) {
+        getWindow().setBackgroundDrawable(new ActivityWindowEmptyBackgroundDrawable());
+        if (!SharedConfig.passcodeHash.isEmpty() && !SharedConfig.allowScreenCapture && !NekoXConfig.disableFlagSecure) {
             try {
                 getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
+                AndroidUtilities.logFlagSecure();
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -87,7 +90,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
 
         super.onCreate(savedInstanceState);
 
-        if (SharedConfig.passcodeHash.length() != 0 && SharedConfig.appLocked) {
+        if (!SharedConfig.passcodeHash.isEmpty() && SharedConfig.appLocked) {
             SharedConfig.lastPauseTime = (int) (SystemClock.elapsedRealtime() / 1000);
         }
 
@@ -98,7 +101,6 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
         actionBarLayout = INavigationLayout.newLayout(this, false);
 
         drawerLayoutContainer = new DrawerLayoutContainer(this);
-        drawerLayoutContainer.setAllowOpenDrawer(false, false);
         setContentView(drawerLayoutContainer, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         if (AndroidUtilities.isTablet()) {
@@ -216,14 +218,12 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
         }
         passcodeView.onShow(true, false);
         SharedConfig.isWaitingForPasscodeEnter = true;
-        drawerLayoutContainer.setAllowOpenDrawer(false, false);
         passcodeView.setDelegate(view -> {
             SharedConfig.isWaitingForPasscodeEnter = false;
             if (passcodeSaveIntent != null) {
                 handleIntent(passcodeSaveIntent, passcodeSaveIntentIsNew, passcodeSaveIntentIsRestore, true, passcodeSaveIntentAccount, passcodeSaveIntentState);
                 passcodeSaveIntent = null;
             }
-            drawerLayoutContainer.setAllowOpenDrawer(true, false);
             actionBarLayout.showLastFragment();
             if (AndroidUtilities.isTablet()) {
                 layersActionBarLayout.showLastFragment();
@@ -313,7 +313,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
             final long bot_id = intent.getLongExtra("bot_id", intent.getIntExtra("bot_id", 0));
             final String nonce = intent.getStringExtra("nonce");
             final String payload = intent.getStringExtra("payload");
-            final TLRPC.TL_account_getAuthorizationForm req = new TLRPC.TL_account_getAuthorizationForm();
+            final TL_account.getAuthorizationForm req = new TL_account.getAuthorizationForm();
             req.bot_id = bot_id;
             req.scope = intent.getStringExtra("scope");
             req.public_key = intent.getStringExtra("public_key");
@@ -330,9 +330,9 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
 
             progressDialog.show();
             requestId[0] = ConnectionsManager.getInstance(intentAccount).sendRequest(req, (response, error) -> {
-                final TLRPC.TL_account_authorizationForm authorizationForm = (TLRPC.TL_account_authorizationForm) response;
+                final TL_account.authorizationForm authorizationForm = (TL_account.authorizationForm) response;
                 if (authorizationForm != null) {
-                    TLRPC.TL_account_getPassword req2 = new TLRPC.TL_account_getPassword();
+                    TL_account.getPassword req2 = new TL_account.getPassword();
                     requestId[0] = ConnectionsManager.getInstance(intentAccount).sendRequest(req2, (response1, error1) -> AndroidUtilities.runOnUIThread(() -> {
                         try {
                             progressDialog.dismiss();
@@ -340,7 +340,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
                             FileLog.e(e);
                         }
                         if (response1 != null) {
-                            TLRPC.account_Password accountPassword = (TLRPC.account_Password) response1;
+                            TL_account.Password accountPassword = (TL_account.Password) response1;
                             MessagesController.getInstance(intentAccount).putUsers(authorizationForm.users, false);
                             PassportActivity fragment = new PassportActivity(PassportActivity.TYPE_PASSWORD, req.bot_id, req.scope, req.public_key, payload, nonce, null, authorizationForm, accountPassword);
                             fragment.setNeedActivityResult(true);
@@ -458,7 +458,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
         if (AndroidUtilities.isTablet()) {
             RelativeLayout.LayoutParams relativeLayoutParams = (RelativeLayout.LayoutParams) layersActionBarLayout.getView().getLayoutParams();
             relativeLayoutParams.leftMargin = (AndroidUtilities.displaySize.x - relativeLayoutParams.width) / 2;
-            int y = (Build.VERSION.SDK_INT >= 21 ? AndroidUtilities.statusBarHeight : 0);
+            int y = AndroidUtilities.statusBarHeight;
             relativeLayoutParams.topMargin = y + (AndroidUtilities.displaySize.y - relativeLayoutParams.height - y) / 2;
             layersActionBarLayout.getView().setLayoutParams(relativeLayoutParams);
 
@@ -555,7 +555,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
             AndroidUtilities.cancelRunOnUIThread(lockRunnable);
             lockRunnable = null;
         }
-        if (SharedConfig.passcodeHash.length() != 0) {
+        if (!SharedConfig.passcodeHash.isEmpty()) {
             SharedConfig.lastPauseTime = (int) (SystemClock.elapsedRealtime() / 1000);
             lockRunnable = new Runnable() {
                 @Override
@@ -601,7 +601,7 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
     }
 
     @Override
-    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+    public void onConfigurationChanged(@NonNull android.content.res.Configuration newConfig) {
         AndroidUtilities.checkDisplaySize(this, newConfig);
         AndroidUtilities.setPreferredMaxRefreshRate(getWindow());
         super.onConfigurationChanged(newConfig);
@@ -616,8 +616,6 @@ public class ExternalActionActivity extends Activity implements INavigationLayou
         }
         if (PhotoViewer.getInstance().isVisible()) {
             PhotoViewer.getInstance().closePhoto(true, false);
-        } else if (drawerLayoutContainer.isDrawerOpened()) {
-            drawerLayoutContainer.closeDrawer(false);
         } else if (AndroidUtilities.isTablet()) {
             if (layersActionBarLayout.getView().getVisibility() == View.VISIBLE) {
                 layersActionBarLayout.onBackPressed();

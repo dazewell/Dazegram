@@ -89,6 +89,7 @@ public class ChatReactionsEditActivity extends BaseFragment implements Notificat
             }
         }
         getNotificationCenter().addObserver(this, NotificationCenter.reactionsDidLoad);
+        getNotificationCenter().addObserver(this, NotificationCenter.dialogDeleted);
         return super.onFragmentCreate();
     }
 
@@ -199,7 +200,6 @@ public class ChatReactionsEditActivity extends BaseFragment implements Notificat
                             infoCell.setText(ChatObject.isChannelAndNotMegaGroup(currentChat) ? LocaleController.getString(R.string.EnableReactionsChannelInfo) :
                                     LocaleController.getString(R.string.EnableReactionsGroupInfo));
                         } else {
-                            infoCell.setForeground(Theme.getThemedDrawableByKey(getContext(), R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                             if (selectedType == SELECT_TYPE_SOME) {
                                 infoCell.setText(LocaleController.getString(R.string.EnableSomeReactionsInfo));
                             } else if (selectedType == SELECT_TYPE_ALL) {
@@ -262,6 +262,8 @@ public class ChatReactionsEditActivity extends BaseFragment implements Notificat
             cell.setChecked(nc, true);
         });
         ll.addView(listView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 0, 1f));
+        listView.setSections();
+        actionBar.setAdaptiveBackground(listView);
         fragmentView = contentView = ll;
 
         updateColors();
@@ -325,6 +327,7 @@ public class ChatReactionsEditActivity extends BaseFragment implements Notificat
         super.onFragmentDestroy();
         getMessagesController().setChatReactions(chatId, selectedType, chatReactions);
         getNotificationCenter().removeObserver(this, NotificationCenter.reactionsDidLoad);
+        getNotificationCenter().removeObserver(this, NotificationCenter.dialogDeleted);
     }
 
 
@@ -393,6 +396,15 @@ public class ChatReactionsEditActivity extends BaseFragment implements Notificat
             availableReactions.clear();
             availableReactions.addAll(getMediaDataController().getEnabledReactionsList());
             listAdapter.notifyDataSetChanged();
+        } else if (id == NotificationCenter.dialogDeleted) {
+            long dialogId = (long) args[0];
+            if (dialogId == -this.chatId) {
+                if (parentLayout != null && parentLayout.getLastFragment() == this) {
+                    finishFragment();
+                } else {
+                    removeSelfFromStack();
+                }
+            }
         }
     }
 }

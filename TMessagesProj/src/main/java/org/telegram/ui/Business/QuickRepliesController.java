@@ -19,8 +19,9 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ChatActivity;
-import org.telegram.ui.Components.ChatActivityInterface;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -461,7 +462,7 @@ public class QuickRepliesController {
             }));
 
             if (GREETING.equals(reply.name)) {
-                ConnectionsManager.getInstance(currentAccount).sendRequest(new TLRPC.TL_account_updateBusinessGreetingMessage(), null);
+                ConnectionsManager.getInstance(currentAccount).sendRequest(new TL_account.updateBusinessGreetingMessage(), null);
                 TLRPC.UserFull userInfo = MessagesController.getInstance(currentAccount).getUserFull(UserConfig.getInstance(currentAccount).getClientUserId());
                 if (userInfo != null) {
                     userInfo.flags2 &=~ 4;
@@ -469,7 +470,7 @@ public class QuickRepliesController {
                     MessagesStorage.getInstance(currentAccount).updateUserInfo(userInfo, true);
                 }
             } else if (AWAY.equals(reply.name)) {
-                ConnectionsManager.getInstance(currentAccount).sendRequest(new TLRPC.TL_account_updateBusinessAwayMessage(), null);
+                ConnectionsManager.getInstance(currentAccount).sendRequest(new TL_account.updateBusinessAwayMessage(), null);
                 TLRPC.UserFull userInfo = MessagesController.getInstance(currentAccount).getUserFull(UserConfig.getInstance(currentAccount).getClientUserId());
                 if (userInfo != null) {
                     userInfo.flags2 &=~ 8;
@@ -553,8 +554,8 @@ public class QuickRepliesController {
     }
 
     public boolean processUpdate(TLRPC.Update update, String quick_reply_shortcut, int quick_reply_shortcut_id) {
-        if (update instanceof TLRPC.TL_updateQuickReplyMessage) {
-            TLRPC.Message message = ((TLRPC.TL_updateQuickReplyMessage) update).message;
+        if (update instanceof TL_update.TL_updateQuickReplyMessage) {
+            TLRPC.Message message = ((TL_update.TL_updateQuickReplyMessage) update).message;
             ensureLoaded(() -> {
                 if ((message.flags & 1073741824) != 0) {
                     QuickReply reply = findReply(message.quick_reply_shortcut_id);
@@ -598,9 +599,9 @@ public class QuickRepliesController {
                 }
             });
             return true;
-        } else if (update instanceof TLRPC.TL_updateQuickReplies) {
+        } else if (update instanceof TL_update.TL_updateQuickReplies) {
             ensureLoaded(() -> {
-                ArrayList<TLRPC.TL_quickReply> quick_replies = ((TLRPC.TL_updateQuickReplies) update).quick_replies;
+                ArrayList<TLRPC.TL_quickReply> quick_replies = ((TL_update.TL_updateQuickReplies) update).quick_replies;
                 ArrayList<QuickReply> oldReplies = new ArrayList<>(replies);
                 replies.clear();
                 for (int i = 0; i < quick_replies.size(); ++i) {
@@ -630,9 +631,9 @@ public class QuickRepliesController {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.quickRepliesUpdated);
             });
             return true;
-        } else if (update instanceof TLRPC.TL_updateNewQuickReply) {
+        } else if (update instanceof TL_update.TL_updateNewQuickReply) {
             ensureLoaded(() -> {
-                TLRPC.TL_quickReply tlreply = ((TLRPC.TL_updateNewQuickReply) update).quick_reply;
+                TLRPC.TL_quickReply tlreply = ((TL_update.TL_updateNewQuickReply) update).quick_reply;
                 QuickRepliesController.QuickReply reply = findReply(tlreply.shortcut_id);
                 if (reply != null) {
                     reply.name = tlreply.shortcut;
@@ -657,9 +658,9 @@ public class QuickRepliesController {
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.quickRepliesUpdated);
             });
             return true;
-        } else if (update instanceof TLRPC.TL_updateDeleteQuickReply) {
+        } else if (update instanceof TL_update.TL_updateDeleteQuickReply) {
             ensureLoaded(() -> {
-                int id = ((TLRPC.TL_updateDeleteQuickReply) update).shortcut_id;
+                int id = ((TL_update.TL_updateDeleteQuickReply) update).shortcut_id;
                 QuickReply reply = findReply(id);
                 if (reply != null) {
                     replies.remove(reply);
@@ -680,9 +681,9 @@ public class QuickRepliesController {
                 }
             });
             return true;
-        } else if (update instanceof TLRPC.TL_updateDeleteQuickReplyMessages) {
+        } else if (update instanceof TL_update.TL_updateDeleteQuickReplyMessages) {
             ensureLoaded(() -> {
-                TLRPC.TL_updateDeleteQuickReplyMessages upd = (TLRPC.TL_updateDeleteQuickReplyMessages) update;
+                TL_update.TL_updateDeleteQuickReplyMessages upd = (TL_update.TL_updateDeleteQuickReplyMessages) update;
                 int id = upd.shortcut_id;
                 QuickReply quickReply = findReply(id);
                 if (quickReply != null) {
@@ -803,7 +804,7 @@ public class QuickRepliesController {
                             for (int i = 0; i < ids.size(); ++i) {
                                 req.random_id.add(Utilities.random.nextLong());
                             }
-                            ConnectionsManager.getInstance(currentAccount).sendRequest(req2, null);
+                            ConnectionsManager.getInstance(currentAccount).sendRequest(req, null);
                         } else {
                             FileLog.e("received " + res + " " + err + " on getQuickReplyMessages when trying to send quick reply");
                         }

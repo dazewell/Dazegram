@@ -1,5 +1,7 @@
 package org.telegram.ui.Components.Reactions;
 
+import static org.telegram.ui.ChatActivity.MODE_DEFAULT;
+
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
@@ -297,6 +299,7 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
     }
 
     private boolean isMessageTypeAllowed(MessageObject obj) {
+        if (obj != null && obj.messageOwner != null && obj.messageOwner.rich_message != null) return true;
         return obj != null && !obj.needDrawBluredPreview() && (
             MessageObject.isPhoto(obj.messageOwner) && MessageObject.getMedia(obj.messageOwner).webpage == null ||
             obj.getDocument() != null && (
@@ -311,7 +314,7 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
 
         boolean visible = false;
 
-        if (parentFragment.isSecretChat() || parentFragment.getCurrentChatInfo() != null && parentFragment.getCurrentChatInfo().available_reactions instanceof TLRPC.TL_chatReactionsNone) {
+        if (parentFragment.getChatMode() == ChatActivity.MODE_SCHEDULED || parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES || parentFragment.getChatMode() == ChatActivity.MODE_EDIT_BUSINESS_LINK || parentFragment.isReport() || parentFragment.isSecretChat() || parentFragment.getCurrentChatInfo() != null && parentFragment.getCurrentChatInfo().available_reactions instanceof TLRPC.TL_chatReactionsNone) {
             visible = false;
         } else if (!messages.isEmpty()) {
             visible = true;
@@ -383,9 +386,9 @@ public class ChatSelectionReactionMenuOverlay extends FrameLayout {
         }
     }
 
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (reactionsContainerLayout != null && reactionsContainerLayout.getReactionsWindow() != null) {
-            reactionsContainerLayout.dismissWindow();
+            if (invoked) reactionsContainerLayout.dismissWindow();
             return false;
         }
         return true;

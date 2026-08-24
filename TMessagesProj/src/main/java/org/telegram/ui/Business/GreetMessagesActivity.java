@@ -7,7 +7,6 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.text.TextUtils;
 import android.view.View;
 import android.widget.FrameLayout;
 
@@ -17,6 +16,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -52,10 +52,6 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
         }
     }
 
-    public static void preloadSticker(int currentAccount) {
-
-    }
-
     @Override
     public View createView(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
@@ -65,7 +61,7 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (onBackPressed()) {
+                    if (onBackPressed(true)) {
                         finishFragment();
                     }
                 } else if (id == done_button) {
@@ -91,7 +87,11 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
         recipientsHelper.setValue(currentValue == null ? null : currentValue.recipients);
 
         listView = new UniversalRecyclerView(this, this::fillItems, this::onClick, null);
+        listView.setSections();
+        listView.adapter.setApplyBackground(false);
         contentView.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        actionBar.setAdaptiveBackground(listView, true);
+
         setValue();
 
         return fragmentView = contentView;
@@ -176,9 +176,9 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
 
         doneButtonDrawable.animateToProgress(1f);
         TLRPC.UserFull userFull = getMessagesController().getUserFull(getUserConfig().getClientUserId());
-        TLRPC.TL_account_updateBusinessGreetingMessage req = new TLRPC.TL_account_updateBusinessGreetingMessage();
+        TL_account.updateBusinessGreetingMessage req = new TL_account.updateBusinessGreetingMessage();
         if (enabled) {
-            req.message = new TLRPC.TL_inputBusinessGreetingMessage();
+            req.message = new TL_account.TL_inputBusinessGreetingMessage();
             req.message.shortcut_id = reply.id;
             req.message.recipients = recipientsHelper.getInputValue();
             req.message.no_activity_days = inactivityDays;
@@ -186,7 +186,7 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
 
             if (userFull != null) {
                 userFull.flags2 |= 4;
-                userFull.business_greeting_message = new TLRPC.TL_businessGreetingMessage();
+                userFull.business_greeting_message = new TL_account.TL_businessGreetingMessage();
                 userFull.business_greeting_message.shortcut_id = reply.id;
                 userFull.business_greeting_message.recipients = recipientsHelper.getValue();
                 userFull.business_greeting_message.no_activity_days = inactivityDays;
@@ -213,25 +213,27 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (hasChanges()) {
-            if (!enabled) {
-                processDone();
-                return false;
+            if (invoked) {
+                if (!enabled) {
+                    processDone();
+                    return false;
+                }
+                AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                builder.setTitle(LocaleController.getString(R.string.UnsavedChanges));
+                builder.setMessage(LocaleController.getString(R.string.BusinessGreetUnsavedChanges));
+                builder.setPositiveButton(LocaleController.getString(R.string.ApplyTheme), (dialogInterface, i) -> processDone());
+                builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> finishFragment());
+                showDialog(builder.create());
             }
-            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-            builder.setTitle(LocaleController.getString(R.string.UnsavedChanges));
-            builder.setMessage(LocaleController.getString(R.string.BusinessGreetUnsavedChanges));
-            builder.setPositiveButton(LocaleController.getString(R.string.ApplyTheme), (dialogInterface, i) -> processDone());
-            builder.setNegativeButton(LocaleController.getString(R.string.PassportDiscard), (dialog, which) -> finishFragment());
-            showDialog(builder.create());
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
 
-    public TLRPC.TL_businessGreetingMessage currentValue;
+    public TL_account.TL_businessGreetingMessage currentValue;
 
     public boolean enabled;
     public boolean exclude;
@@ -243,7 +245,7 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
     private static final int RADIO_ALL_CHATS = 4;
 
     private void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asTopView(getString(R.string.BusinessGreetInfo), "RestrictedEmoji", "👋"));
+        items.add(UItem.asTopView(getString(R.string.BusinessGreet), getString(R.string.BusinessGreetInfo), "RestrictedEmoji", "👋"));
         items.add(UItem.asCheck(BUTTON_ENABLE, getString(R.string.BusinessGreetSend)).setChecked(enabled));
         items.add(UItem.asShadow(null));
         if (enabled) {
@@ -255,10 +257,10 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
             }
             items.add(UItem.asShadow(null));
             items.add(UItem.asHeader(getString(R.string.BusinessRecipients)));
-            items.add(UItem.asRadio(RADIO_PRIVATE_CHATS, getString(R.string.BusinessChatsAllPrivateExcept)).setChecked(exclude));
-            items.add(UItem.asRadio(RADIO_ALL_CHATS, getString(R.string.BusinessChatsOnlySelected)).setChecked(!exclude));
+            items.add(UItem.asRadio(RADIO_PRIVATE_CHATS, getString(R.string.BusinessChatsAllPrivateExcept2)).setChecked(exclude));
+            items.add(UItem.asRadio(RADIO_ALL_CHATS, getString(R.string.BusinessChatsOnlySelected2)).setChecked(!exclude));
             items.add(UItem.asShadow(null));
-            recipientsHelper.fillItems(items);
+            recipientsHelper.fillItems(items, adapter);
             items.add(UItem.asShadow(getString(R.string.BusinessGreetRecipientsInfo)));
             items.add(UItem.asHeader(getString(R.string.BusinessGreetPeriod)));
             int daysIndex = -1;
@@ -329,5 +331,16 @@ public class GreetMessagesActivity extends BaseFragment implements NotificationC
         getNotificationCenter().removeObserver(this, NotificationCenter.quickRepliesUpdated);
         getNotificationCenter().removeObserver(this, NotificationCenter.userInfoDidLoad);
         super.onFragmentDestroy();
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        listView.setPadding(0, 0, 0, bottom);
+        listView.setClipToPadding(false);
     }
 }

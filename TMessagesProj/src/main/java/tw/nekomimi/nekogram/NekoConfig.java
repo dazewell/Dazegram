@@ -2,7 +2,6 @@ package tw.nekomimi.nekogram;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
-import android.content.Context;
 import android.content.SharedPreferences;
 
 import org.telegram.messenger.ApplicationLoader;
@@ -19,14 +18,22 @@ import java.util.Set;
 
 import tw.nekomimi.nekogram.config.ConfigItem;
 import tw.nekomimi.nekogram.helpers.CloudSettingsHelper;
+import xyz.nextalone.nagram.NkmrConfig;
 
 import static tw.nekomimi.nekogram.config.ConfigItem.*;
 
 @SuppressLint("ApplySharedPref")
 public class NekoConfig {
 
-    public static final SharedPreferences preferences = ApplicationLoader.applicationContext.getSharedPreferences("nkmrcfg", Context.MODE_PRIVATE);
+    public static final SharedPreferences preferences = NkmrConfig.preferences;
     public static final Object sync = new Object();
+    public static boolean sendReadMessagePackets;
+    public static boolean sendOnlinePackets;
+    public static boolean sendOfflineAfterOnline;
+    public static boolean sendUploadProgress;
+    public static boolean sendReadStoryPackets;
+    public static boolean markReadAfterSend;
+    public static boolean showGhostToggleInDrawer;
     public static final String channelAliasPrefix = "channelAliasPrefix_";
 
     private static boolean configLoaded = false;
@@ -49,7 +56,7 @@ public class NekoConfig {
     public static ConfigItem lastUpdateCheckTime = addConfig("lastUpdateCheckTime", configTypeLong, 0L);
 
     // From NekoConfig
-    public static ConfigItem useIPv6 = addConfig("IPv6", configTypeBool, false);
+//    public static ConfigItem useIPv6 = addConfig("IPv6", configTypeBool, false);
     public static ConfigItem hidePhone = addConfig("HidePhone", configTypeBool, true);
     public static ConfigItem ignoreBlocked = addConfig("IgnoreBlocked", configTypeBool, false);
     public static ConfigItem tabletMode = addConfig("TabletMode", configTypeInt, 0);
@@ -83,6 +90,7 @@ public class NekoConfig {
     public static ConfigItem unlimitedPinnedDialogs = addConfig("UnlimitedPinnedDialogs", configTypeBool, false);
     public static ConfigItem disablePhotoSideAction = addConfig("DisablePhotoViewerSideAction", configTypeBool, false);
     public static ConfigItem openArchiveOnPull = addConfig("OpenArchiveOnPull", configTypeBool, false);
+    public static ConfigItem disablePullDownSearch = addConfig("DisablePullDownSearch", configTypeBool, false);
     public static ConfigItem hideKeyboardOnChatScroll = addConfig("HideKeyboardOnChatScroll", configTypeBool, false);
     public static ConfigItem avatarBackgroundBlur = addConfig("BlurAvatarBackground", configTypeBool, false);
     public static ConfigItem avatarBackgroundDarken = addConfig("DarkenAvatarBackground", configTypeBool, false);
@@ -139,8 +147,6 @@ public class NekoConfig {
 
     public static ConfigItem useSystemDNS = addConfig("useSystemDNS", configTypeBool, false);
     public static ConfigItem customDoH = addConfig("customDoH", configTypeString, "");
-    public static ConfigItem hideProxyByDefault = addConfig("HideProxyByDefault", configTypeBool, false);
-    public static ConfigItem useProxyItem = addConfig("UseProxyItem", configTypeBool, true);
 
     public static ConfigItem disableAppBarShadow = addConfig("DisableAppBarShadow", configTypeBool, false);
     public static ConfigItem mediaPreview = addConfig("MediaPreview", configTypeBool, true);
@@ -161,7 +167,7 @@ public class NekoConfig {
     public static ConfigItem disableLinkPreviewByDefault = addConfig("DisableLinkPreviewByDefault", configTypeBool, false);
     public static ConfigItem sendCommentAfterForward = addConfig("SendCommentAfterForward", configTypeBool, true);
 //    public static ConfigItem increaseVoiceMessageQuality = addConfig("IncreaseVoiceMessageQuality", configTypeBool, true);
-    public static ConfigItem disableTrending = addConfig("DisableTrending", configTypeBool, true);
+//    public static ConfigItem disableTrending = addConfig("DisableTrending", configTypeBool, true);
     public static ConfigItem dontSendGreetingSticker = addConfig("DontSendGreetingSticker", configTypeBool, false);
     public static ConfigItem hideTimeForSticker = addConfig("HideTimeForSticker", configTypeBool, false);
     public static ConfigItem takeGIFasVideo = addConfig("TakeGIFasVideo", configTypeBool, false);
@@ -266,8 +272,49 @@ public class NekoConfig {
             for (int a = 1; a <= 5; a++) {
                 datacenterInfos.add(new DatacenterInfo(a));
             }
+            // ~ Ghost essentials
+            sendReadMessagePackets = preferences.getBoolean("sendReadMessagePackets", true);
+            sendOnlinePackets = preferences.getBoolean("sendOnlinePackets", true);
+            sendUploadProgress = preferences.getBoolean("sendUploadProgress", true);
+            sendReadStoryPackets = preferences.getBoolean("sendReadStoryPackets", true);
+            sendOfflineAfterOnline = preferences.getBoolean("sendOfflineAfterOnline", false);
+            markReadAfterSend = preferences.getBoolean("markReadAfterSend", true);
+            // ~ Ghost other options
+            showGhostToggleInDrawer = preferences.getBoolean("showGhostToggleInDrawer", false);
+
+            NkmrConfig.compact();
             configLoaded = true;
         }
+    }
+
+    public static void setGhostMode(boolean enabled) {
+        sendReadMessagePackets   = !enabled;
+        sendOnlinePackets        = !enabled;
+        sendUploadProgress       = !enabled;
+        sendReadStoryPackets     = !enabled;
+        sendOfflineAfterOnline   = enabled;
+
+        preferences.edit()
+                .putBoolean("sendReadMessagePackets", sendReadMessagePackets)
+                .putBoolean("sendOnlinePackets", sendOnlinePackets)
+                .putBoolean("sendUploadProgress", sendUploadProgress)
+                .putBoolean("sendReadStoryPackets", sendReadStoryPackets)
+                .putBoolean("sendOfflineAfterOnline", sendOfflineAfterOnline)
+                .apply();
+    }
+
+    public static void putBoolean(String key, boolean value) {
+        preferences.edit().putBoolean(key, value).apply();
+    }
+    public static void toggleGhostMode() {
+        setGhostMode(!isGhostModeActive());
+    }
+    public static boolean isGhostModeActive() {
+        return !sendReadMessagePackets
+                && !sendOnlinePackets
+                && !sendUploadProgress
+                && !sendReadStoryPackets
+                && sendOfflineAfterOnline;
     }
 
     public static void checkMigrate(boolean force) {
@@ -417,10 +464,6 @@ public class NekoConfig {
             useSystemDNS.setConfigBool(preferences.getBoolean("useSystemDNS", false));
         if (preferences.contains("customDoH"))
             customDoH.setConfigString(preferences.getString("customDoH", ""));
-        if (preferences.contains("hide_proxy_by_default"))
-            hideProxyByDefault.setConfigBool(preferences.getBoolean("hide_proxy_by_default", false));
-        if (preferences.contains("use_proxy_item"))
-            useProxyItem.setConfigBool(preferences.getBoolean("use_proxy_item", true));
 
         if (preferences.contains("disableAppBarShadow"))
             disableAppBarShadow.setConfigBool(preferences.getBoolean("disableAppBarShadow", false));
@@ -452,8 +495,8 @@ public class NekoConfig {
             sendCommentAfterForward.setConfigBool(preferences.getBoolean("sendCommentAfterForward", true));
 //        if (preferences.contains("increaseVoiceMessageQuality"))
 //            increaseVoiceMessageQuality.setConfigBool(preferences.getBoolean("increaseVoiceMessageQuality", true));
-        if (preferences.contains("disableTrending"))
-            disableTrending.setConfigBool(preferences.getBoolean("disableTrending", true));
+//        if (preferences.contains("disableTrending"))
+//            disableTrending.setConfigBool(preferences.getBoolean("disableTrending", true));
         if (preferences.contains("dontSendGreetingSticker"))
             dontSendGreetingSticker.setConfigBool(preferences.getBoolean("dontSendGreetingSticker", false));
         if (preferences.contains("hideTimeForSticker"))

@@ -28,6 +28,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -65,6 +66,7 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
 
     public FiltersListBottomSheet(BaseFragment baseFragment, ArrayList<Long> selectedDialogs) {
         super(baseFragment.getParentActivity(), false);
+        fixNavigationBar();
         this.selectedDialogs = selectedDialogs;
         this.fragment = baseFragment;
 //        dialogFilters = getCanAddDialogFilters(baseFragment, selectedDialogs);
@@ -99,11 +101,9 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
             @Override
             protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
                 int height = MeasureSpec.getSize(heightMeasureSpec);
-                if (Build.VERSION.SDK_INT >= 21) {
-                    ignoreLayout = true;
-                    setPadding(backgroundPaddingLeft, AndroidUtilities.statusBarHeight, backgroundPaddingLeft, 0);
-                    ignoreLayout = false;
-                }
+                ignoreLayout = true;
+                setPadding(backgroundPaddingLeft, AndroidUtilities.statusBarHeight, backgroundPaddingLeft, 0);
+                ignoreLayout = false;
                 int contentSize = AndroidUtilities.dp(48) + AndroidUtilities.dp(48) * adapter.getItemCount() + backgroundPaddingTop + AndroidUtilities.statusBarHeight;
                 int padding = contentSize < (height / 5 * 3.2) ? 0 : (height / 5 * 2);
                 if (padding != 0 && contentSize < height) {
@@ -141,24 +141,22 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
                 int height = getMeasuredHeight() + AndroidUtilities.dp(36) + backgroundPaddingTop;
                 int statusBarHeight = 0;
                 float radProgress = 1.0f;
-                if (Build.VERSION.SDK_INT >= 21) {
-                    top += AndroidUtilities.statusBarHeight;
-                    height -= AndroidUtilities.statusBarHeight;
+                top += AndroidUtilities.statusBarHeight;
+                height -= AndroidUtilities.statusBarHeight;
 
-                    if (fullHeight) {
-                        if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight * 2) {
-                            int diff = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight * 2 - top - backgroundPaddingTop);
-                            top -= diff;
-                            height += diff;
-                            radProgress = 1.0f - Math.min(1.0f, (diff * 2) / (float) AndroidUtilities.statusBarHeight);
-                        }
-                        if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight) {
-                            statusBarHeight = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight - top - backgroundPaddingTop);
-                        }
+                if (fullHeight) {
+                    if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight * 2) {
+                        int diff = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight * 2 - top - backgroundPaddingTop);
+                        top -= diff;
+                        height += diff;
+                        radProgress = 1.0f - Math.min(1.0f, (diff * 2) / (float) AndroidUtilities.statusBarHeight);
+                    }
+                    if (top + backgroundPaddingTop < AndroidUtilities.statusBarHeight) {
+                        statusBarHeight = Math.min(AndroidUtilities.statusBarHeight, AndroidUtilities.statusBarHeight - top - backgroundPaddingTop);
                     }
                 }
 
-                shadowDrawable.setBounds(0, top, getMeasuredWidth(), height);
+                shadowDrawable.setBounds(0, top, getMeasuredWidth(), getMeasuredHeight());
                 shadowDrawable.draw(canvas);
 
                 if (radProgress != 1.0f) {
@@ -423,7 +421,11 @@ public class FiltersListBottomSheet extends BottomSheet implements NotificationC
                 cell.getImageView().setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.SRC_IN));
                 MessagesController.DialogFilter filter = dialogFilters.get(position);
                 cell.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-                cell.setTextAndIcon(Emoji.replaceEmoji(filter.name, cell.getTextView().getPaint().getFontMetricsInt(), false), 0, new FolderDrawable(getContext(), FolderIconHelper.getTabIcon(filter.emoticon), filter.color), false);
+                CharSequence title = filter.name;
+                title = Emoji.replaceEmoji(title, cell.getTextView().getPaint().getFontMetricsInt(), false);
+                title = MessageObject.replaceAnimatedEmoji(title, filter.entities, cell.getTextView().getPaint().getFontMetricsInt());
+                cell.setTextAndIcon(title, 0, new FolderDrawable(getContext(), FolderIconHelper.getTabIcon(filter.emoticon), filter.color), false);
+                cell.getTextView().setEmojiColor(Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider));
                 boolean isChecked = true;
                 for (int i = 0; i < selectedDialogs.size(); ++i) {
                     long did = selectedDialogs.get(i);

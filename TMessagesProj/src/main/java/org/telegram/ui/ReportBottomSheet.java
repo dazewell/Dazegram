@@ -27,12 +27,12 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.browser.Browser;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.BackDrawable;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -55,7 +55,6 @@ import org.telegram.ui.Components.ViewPagerFixed;
 import org.telegram.ui.Stories.recorder.ButtonWithCounterView;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 
 public class ReportBottomSheet extends BottomSheet {
@@ -66,52 +65,45 @@ public class ReportBottomSheet extends BottomSheet {
     private final Paint backgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final boolean sponsored;
     private final boolean stories;
+    private final boolean ephemeral;
     private final ArrayList<Integer> messageIds;
     private final byte[] sponsoredId;
     private final long dialogId;
     private Listener listener;
 
     interface Listener {
-        default void onReported() {};
-        default void onHidden() {};
-        default void onPremiumRequired() {};
+        default void onReported() {}
+        default void onHidden() {}
+        default void onPremiumRequired() {}
     }
 
-    public ReportBottomSheet(
+    private ReportBottomSheet(
         Context context,
         Theme.ResourcesProvider resourcesProvider,
         boolean stories,
-        long dialogId,
-        int messageId
-    ) {
-        this(context, resourcesProvider, stories, dialogId, new ArrayList<>(Arrays.asList(messageId)));
-    }
-
-    public ReportBottomSheet(
-        Context context,
-        Theme.ResourcesProvider resourcesProvider,
-        boolean stories,
+        boolean ephemeral,
         long dialogId,
         ArrayList<Integer> messageIds
     ) {
-        this(false, context, resourcesProvider, dialogId, stories, messageIds, null);
+        this(false, context, resourcesProvider, dialogId, stories, ephemeral, messageIds, null);
     }
 
-    public ReportBottomSheet(
+    private ReportBottomSheet(
         Context context,
         Theme.ResourcesProvider resourcesProvider,
         long dialogId,
         byte[] sponsoredId
     ) {
-        this(true, context, resourcesProvider, dialogId, false, null, sponsoredId);
+        this(true, context, resourcesProvider, dialogId, false, false, null, sponsoredId);
     }
 
-    public ReportBottomSheet(
+    private ReportBottomSheet(
         final boolean sponsored,
         Context context,
         Theme.ResourcesProvider resourcesProvider,
         long dialogId,
         boolean stories,
+        boolean ephemeral,
         ArrayList<Integer> messageIds,
         byte[] sponsoredId
     ) {
@@ -119,6 +111,7 @@ public class ReportBottomSheet extends BottomSheet {
         this.sponsored = sponsored;
         this.messageIds = messageIds;
         this.stories = stories;
+        this.ephemeral = ephemeral;
         this.sponsoredId = sponsoredId;
         this.dialogId = dialogId;
         backgroundPaint.setColor(Theme.getColor(Theme.key_dialogBackground, resourcesProvider));
@@ -128,7 +121,7 @@ public class ReportBottomSheet extends BottomSheet {
         containerView = new ContainerView(context);
         viewPager = new ViewPagerFixed(context) {
             @Override
-            protected void onTabAnimationUpdate(boolean manual) {
+            public void onTabAnimationUpdate(boolean manual) {
                 super.onTabAnimationUpdate(manual);
                 containerView.invalidate();
             }
@@ -186,7 +179,7 @@ public class ReportBottomSheet extends BottomSheet {
         }
     }
 
-    public ReportBottomSheet setReportChooseOption(TLRPC.TL_channels_sponsoredMessageReportResultChooseOption chooseOption) {
+    private ReportBottomSheet setReportChooseOption(TLRPC.TL_channels_sponsoredMessageReportResultChooseOption chooseOption) {
         View[] viewPages = viewPager.getViewPages();
         if (viewPages[0] instanceof Page) {
             ((Page) viewPages[0]).bind(PAGE_TYPE_OPTIONS);
@@ -198,7 +191,7 @@ public class ReportBottomSheet extends BottomSheet {
         return this;
     }
 
-    public ReportBottomSheet setReportChooseOption(TLRPC.TL_reportResultChooseOption chooseOption) {
+    private ReportBottomSheet setReportChooseOption(TLRPC.TL_reportResultChooseOption chooseOption) {
         View[] viewPages = viewPager.getViewPages();
         if (viewPages[0] instanceof Page) {
             ((Page) viewPages[0]).bind(PAGE_TYPE_OPTIONS);
@@ -210,7 +203,7 @@ public class ReportBottomSheet extends BottomSheet {
         return this;
     }
 
-    public ReportBottomSheet setReportChooseOption(TLRPC.TL_reportResultAddComment chooseOption) {
+    private ReportBottomSheet setReportChooseOption(TLRPC.TL_reportResultAddComment chooseOption) {
         View[] viewPages = viewPager.getViewPages();
         if (viewPages[0] instanceof Page) {
             ((Page) viewPages[0]).bind(PAGE_TYPE_OPTIONS);
@@ -222,7 +215,7 @@ public class ReportBottomSheet extends BottomSheet {
         return this;
     }
 
-    public ReportBottomSheet setListener(Listener listener) {
+    private ReportBottomSheet setListener(Listener listener) {
         this.listener = listener;
         return this;
     }
@@ -254,8 +247,7 @@ public class ReportBottomSheet extends BottomSheet {
     private void submitOption(final CharSequence optionText, final byte[] option, final String comment) {
         TLObject request;
         if (sponsored) {
-            TLRPC.TL_channels_reportSponsoredMessage req = new TLRPC.TL_channels_reportSponsoredMessage();
-            req.channel = MessagesController.getInstance(currentAccount).getInputChannel(-dialogId);
+            TLRPC.TL_messages_reportSponsoredMessage req = new TLRPC.TL_messages_reportSponsoredMessage();
             req.random_id = sponsoredId;
             req.option = option;
             request = req;
@@ -264,6 +256,15 @@ public class ReportBottomSheet extends BottomSheet {
             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
             if (messageIds != null) {
                 req.id.addAll(messageIds);
+            }
+            req.message = comment == null ? "" : comment;
+            req.option = option;
+            request = req;
+        } else if (ephemeral) {
+            TL_ephemeral.TL_reportMessage req = new TL_ephemeral.TL_reportMessage();
+            req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
+            if (messageIds != null && !messageIds.isEmpty()) {
+                req.id = messageIds.get(0);
             }
             req.message = comment == null ? "" : comment;
             req.option = option;
@@ -324,7 +325,7 @@ public class ReportBottomSheet extends BottomSheet {
                     }
                 } else if (error != null) {
                     if (!sponsored && "MESSAGE_ID_REQUIRED".equals(error.text)) {
-                        ChatActivity.openReportChat(dialogId, optionText.toString(), option);
+                        ChatActivity.openReportChat(dialogId, optionText.toString(), option, comment);
                     } else if ("PREMIUM_ACCOUNT_REQUIRED".equals(error.text)) {
                         if (listener != null) {
                             listener.onPremiumRequired();
@@ -754,7 +755,16 @@ public class ReportBottomSheet extends BottomSheet {
         Context context,
         long dialogId
     ) {
-        open(currentAccount, context, dialogId, false, new ArrayList<>(), null, null, new byte[]{}, null);
+        openChat(currentAccount, context, null, dialogId);
+    }
+
+    public static void openChat(
+        int currentAccount,
+        Context context,
+        BulletinFactory bulletinFactory,
+        long dialogId
+    ) {
+        open(currentAccount, context, dialogId, false, false, new ArrayList<>(), bulletinFactory, null, new byte[]{}, null, null);
     }
 
     public static void openChat(
@@ -766,7 +776,7 @@ public class ReportBottomSheet extends BottomSheet {
         final long dialogId = fragment.getDialogId();
         if (context == null) return;
 
-        open(currentAccount, context, dialogId, false, new ArrayList<>(), null, null, new byte[]{}, null);
+        open(currentAccount, context, dialogId, false, false, new ArrayList<>(), null, null, new byte[]{}, null, null);
     }
 
     public static void openChat(
@@ -778,7 +788,7 @@ public class ReportBottomSheet extends BottomSheet {
         final Context context = fragment.getContext();
         if (context == null) return;
 
-        open(currentAccount, context, dialogId, false, new ArrayList<>(), null, null, new byte[]{}, null);
+        open(currentAccount, context, dialogId, false, false, new ArrayList<>(), null, null, new byte[]{}, null, null);
     }
 
     public static void openMessage(
@@ -790,26 +800,14 @@ public class ReportBottomSheet extends BottomSheet {
         final Context context = fragment.getContext();
         if (context == null) return;
 
-        final ArrayList<Integer> messageIds = new ArrayList<>(Collections.singleton(message.getId()));
-        open(currentAccount, context,  message.getDialogId(), false, messageIds, BulletinFactory.of(fragment), fragment == null ? null : fragment.getResourceProvider(), new byte[]{}, null);
-    }
-
-    public static void openMessages(
-        ChatActivity fragment,
-        ArrayList<Integer> ids
-    ) {
-        if (fragment == null) return;
-        final int currentAccount = fragment.getCurrentAccount();
-        final Context context = fragment.getContext();
-        final long dialogId = fragment.getDialogId();
-        if (context == null) return;
-
-        open(currentAccount, context, dialogId, false, ids, BulletinFactory.of(fragment), fragment == null ? null : fragment.getResourceProvider(), new byte[]{}, null);
+        final ArrayList<Integer> messageIds = new ArrayList<>(Collections.singleton(message.isEphemeral() ? message.getEphemeralId() : message.getId()));
+        open(currentAccount, context,  message.getDialogId(), false, message.isEphemeral(), messageIds, BulletinFactory.of(fragment), fragment == null ? null : fragment.getResourceProvider(), new byte[]{}, null, null);
     }
 
     public static void continueReport(
         ChatActivity fragment,
         byte[] option,
+        String message,
         ArrayList<Integer> ids,
         Utilities.Callback<Boolean> whenDone
     ) {
@@ -819,7 +817,7 @@ public class ReportBottomSheet extends BottomSheet {
         final long dialogId = fragment.getDialogId();
         if (context == null) return;
 
-        open(currentAccount, context, dialogId, false, ids, BulletinFactory.of(fragment), fragment == null ? null : fragment.getResourceProvider(), option, whenDone);
+        open(currentAccount, context, dialogId, false, false, ids, BulletinFactory.of(fragment), fragment == null ? null : fragment.getResourceProvider(), option, message, whenDone);
     }
 
     public static void openStory(
@@ -831,18 +829,20 @@ public class ReportBottomSheet extends BottomSheet {
         Utilities.Callback<Boolean> whenDone
     ) {
         final ArrayList<Integer> storyIds = new ArrayList<>(Collections.singleton(storyItem.id));
-        open(currentAccount, context, storyItem.dialogId, true, storyIds, bulletinFactory, resourceProvider, new byte[]{}, whenDone);
+        open(currentAccount, context, storyItem.dialogId, true, false, storyIds, bulletinFactory, resourceProvider, new byte[]{}, null, whenDone);
     }
 
-    public static void open(
+    private static void open(
         int currentAccount,
         Context context,
         long dialogId,
         boolean stories,
+        boolean ephemeral,
         ArrayList<Integer> messageIds,
         BulletinFactory bulletinFactory,
         Theme.ResourcesProvider resourceProvider,
         final byte[] option,
+        String message,
         Utilities.Callback<Boolean> whenDone
     ) {
         if (context == null || messageIds == null) return;
@@ -853,21 +853,30 @@ public class ReportBottomSheet extends BottomSheet {
             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
             req.id.addAll(messageIds);
             req.option = option;
-            req.message = "";
+            req.message = TextUtils.isEmpty(message) ? "" : message;
+            request = req;
+        } else if (ephemeral) {
+            TL_ephemeral.TL_reportMessage req = new TL_ephemeral.TL_reportMessage();
+            req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
+            if (!messageIds.isEmpty()) {
+                req.id = messageIds.get(0);
+            }
+            req.message = TextUtils.isEmpty(message) ? "" : message;
+            req.option = option;
             request = req;
         } else {
             TLRPC.TL_messages_report req = new TLRPC.TL_messages_report();
             req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
             req.id.addAll(messageIds);
             req.option = option;
-            req.message = "";
+            req.message = TextUtils.isEmpty(message) ? "" : message;
             request = req;
         }
         ConnectionsManager.getInstance(currentAccount).sendRequest(request, (response, error) -> {
             if (response != null) {
                 if (response instanceof TLRPC.TL_reportResultChooseOption || response instanceof TLRPC.TL_reportResultAddComment) {
                     AndroidUtilities.runOnUIThread(() -> {
-                        final ReportBottomSheet sheet = new ReportBottomSheet(context, resourceProvider, stories, dialogId, messageIds);
+                        final ReportBottomSheet sheet = new ReportBottomSheet(context, resourceProvider, stories, ephemeral, dialogId, messageIds);
                         if (response instanceof TLRPC.TL_reportResultChooseOption) {
                             sheet.setReportChooseOption((TLRPC.TL_reportResultChooseOption) response);
                         } else if (response instanceof TLRPC.TL_reportResultAddComment) {
@@ -909,17 +918,21 @@ public class ReportBottomSheet extends BottomSheet {
                             done[0] = true;
                             whenDone.run(true);
                         }
-                        if (LaunchActivity.getSafeLastFragment() == null) return;
-                        final BulletinFactory bf = bulletinFactory == null ? BulletinFactory.of(LaunchActivity.getSafeLastFragment()) : bulletinFactory;
-                        if (bf == null) return;
-                        bf
-                            .createSimpleBulletin(
-                                    R.raw.msg_antispam,
-                                    LocaleController.getString(R.string.ReportChatSent),
-                                    LocaleController.getString(R.string.Reported2)
-                            )
-                            .setDuration(Bulletin.DURATION_PROLONG)
-                            .show();
+                        Runnable showToast = () -> {
+                            BaseFragment fragment = LaunchActivity.getSafeLastFragment();
+                            if (fragment == null) return;
+                            final BulletinFactory bf = BulletinFactory.of(fragment);
+                            if (bf == null) return;
+                            bf
+                                .createSimpleBulletin(
+                                        R.raw.msg_antispam,
+                                        LocaleController.getString(R.string.ReportChatSent),
+                                        LocaleController.getString(R.string.Reported2)
+                                )
+                                .setDuration(Bulletin.DURATION_PROLONG)
+                                .show();
+                        };
+                        AndroidUtilities.runOnUIThread(showToast, 220);
                     }, 200);
                 }
             }
@@ -937,8 +950,7 @@ public class ReportBottomSheet extends BottomSheet {
         final long dialogId = fragment.getDialogId();
         if (context == null) return;
 
-        TLRPC.TL_channels_reportSponsoredMessage req = new TLRPC.TL_channels_reportSponsoredMessage();
-        req.channel = MessagesController.getInstance(currentAccount).getInputChannel(-dialogId);
+        TLRPC.TL_messages_reportSponsoredMessage req = new TLRPC.TL_messages_reportSponsoredMessage();
         final byte[] sponsoredId = req.random_id = message.sponsoredId;
         req.option = new byte[]{};
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
@@ -1027,6 +1039,235 @@ public class ReportBottomSheet extends BottomSheet {
                         .show();
                     fragment.removeFromSponsored(message);
                     fragment.removeMessageWithThanos(message);
+                }, 200);
+            }
+        });
+    }
+
+    public static void openSponsored(
+        int currentAccount,
+        Context context,
+        long dialogId,
+
+        TLRPC.TL_sponsoredMessage ad,
+        BulletinFactory bulletinFactory,
+        Theme.ResourcesProvider resourceProvider,
+
+        Runnable showPremium,
+        Runnable done
+    ) {
+//        if (fragment == null) return;
+//        final int currentAccount = fragment.getCurrentAccount();
+//        final Context context = fragment.getContext();
+//        final long dialogId = fragment.getDialogId();
+        if (context == null) return;
+
+        TLRPC.TL_messages_reportSponsoredMessage req = new TLRPC.TL_messages_reportSponsoredMessage();
+        final byte[] sponsoredId = req.random_id = ad.random_id;
+        req.option = new byte[]{};
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (response != null) {
+                if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultChooseOption) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        TLRPC.TL_channels_sponsoredMessageReportResultChooseOption result = (TLRPC.TL_channels_sponsoredMessageReportResultChooseOption) response;
+                        new ReportBottomSheet(context, resourceProvider, dialogId, sponsoredId)
+                            .setReportChooseOption(result)
+                            .setListener(new ReportBottomSheet.Listener() {
+                                @Override
+                                public void onReported() {
+                                    AndroidUtilities.runOnUIThread(() -> {
+                                        if (done != null) {
+                                            done.run();
+                                        }
+                                        bulletinFactory
+                                            .createAdReportedBulletin(
+                                                AndroidUtilities.replaceSingleTag(
+                                                    LocaleController.getString(R.string.AdReported),
+                                                    -1,
+                                                    AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                                    () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                                    resourceProvider
+                                                )
+                                            )
+                                            .show();
+//                                        fragment.removeFromSponsored(message);
+//                                        fragment.removeMessageWithThanos(message);
+                                    }, 200);
+                                }
+
+                                @Override
+                                public void onHidden() {
+                                    AndroidUtilities.runOnUIThread(() -> {
+                                        if (done != null) {
+                                            done.run();
+                                        }
+                                        bulletinFactory
+                                            .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
+                                            .show();
+//                                        fragment.removeFromSponsored(message);
+//                                        fragment.removeMessageWithThanos(message);
+                                    }, 200);
+                                }
+
+                                @Override
+                                public void onPremiumRequired() {
+                                    showPremium.run();
+//                                    fragment.showDialog(new PremiumFeatureBottomSheet(fragment, PremiumPreviewFragment.PREMIUM_FEATURE_ADS, true));
+                                }
+                            })
+                            .show();
+                    });
+                } else if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultReported) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (done != null) {
+                            done.run();
+                        }
+//                        BulletinFactory.of(fragment)
+                        bulletinFactory
+                            .createAdReportedBulletin(
+                                AndroidUtilities.replaceSingleTag(
+                                    LocaleController.getString(R.string.AdReported),
+                                    -1,
+                                    AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                    () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                    resourceProvider
+                                )
+                            )
+                            .show();
+//                        fragment.removeFromSponsored(message);
+//                        fragment.removeMessageWithThanos(message);
+                    }, 200);
+                } else if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultAdsHidden) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (done != null) {
+                            done.run();
+                        }
+//                        BulletinFactory.of(fragment)
+                        bulletinFactory
+                            .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
+                            .show();
+                        MessagesController.getInstance(currentAccount).disableAds(false);
+//                        fragment.removeFromSponsored(message);
+//                        fragment.removeMessageWithThanos(message);
+                    }, 200);
+                }
+            } else if (error != null && "AD_EXPIRED".equalsIgnoreCase(error.text)) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    if (done != null) {
+                        done.run();
+                    }
+                    bulletinFactory
+                        .createAdReportedBulletin(
+                            AndroidUtilities.replaceSingleTag(
+                                LocaleController.getString(R.string.AdReported),
+                                -1,
+                                AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                resourceProvider
+                            )
+                        )
+                        .show();
+                }, 200);
+            }
+        });
+    }
+
+
+    public static void openSponsoredPeer(
+        BaseFragment fragment,
+        byte[] random_id,
+        Theme.ResourcesProvider resourceProvider,
+        Runnable remove
+    ) {
+        if (fragment == null) return;
+        final int currentAccount = fragment.getCurrentAccount();
+        final Context context = fragment.getContext();
+        if (context == null) return;
+
+        final TLRPC.TL_messages_reportSponsoredMessage req = new TLRPC.TL_messages_reportSponsoredMessage();
+        final byte[] sponsoredId = req.random_id = random_id;
+        req.option = new byte[]{};
+        ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
+            if (response != null) {
+                if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultChooseOption) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        TLRPC.TL_channels_sponsoredMessageReportResultChooseOption result = (TLRPC.TL_channels_sponsoredMessageReportResultChooseOption) response;
+                        new ReportBottomSheet(context, resourceProvider, 0, sponsoredId)
+                            .setReportChooseOption(result)
+                            .setListener(new ReportBottomSheet.Listener() {
+                                @Override
+                                public void onReported() {
+                                    AndroidUtilities.runOnUIThread(() -> {
+                                        BulletinFactory.of(fragment)
+                                            .createAdReportedBulletin(
+                                                AndroidUtilities.replaceSingleTag(
+                                                    LocaleController.getString(R.string.AdReported),
+                                                    -1,
+                                                    AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                                    () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                                    resourceProvider
+                                                )
+                                            )
+                                            .show();
+                                            AndroidUtilities.runOnUIThread(remove);
+                                    }, 200);
+                                }
+
+                                @Override
+                                public void onHidden() {
+                                    AndroidUtilities.runOnUIThread(() -> {
+                                        BulletinFactory.of(fragment)
+                                            .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
+                                            .show();
+                                        AndroidUtilities.runOnUIThread(remove);
+                                    }, 200);
+                                }
+
+                                @Override
+                                public void onPremiumRequired() {
+                                    fragment.showDialog(new PremiumFeatureBottomSheet(fragment, PremiumPreviewFragment.PREMIUM_FEATURE_ADS, true));
+                                }
+                            })
+                            .show();
+                    });
+                } else if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultReported) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        BulletinFactory.of(fragment)
+                            .createAdReportedBulletin(
+                                AndroidUtilities.replaceSingleTag(
+                                    LocaleController.getString(R.string.AdReported),
+                                    -1,
+                                    AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                    () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                    resourceProvider
+                                )
+                            )
+                            .show();
+                        AndroidUtilities.runOnUIThread(remove);
+                    }, 200);
+                } else if (response instanceof TLRPC.TL_channels_sponsoredMessageReportResultAdsHidden) {
+                    AndroidUtilities.runOnUIThread(() -> {
+                        BulletinFactory.of(fragment)
+                            .createAdReportedBulletin(LocaleController.getString(R.string.AdHidden))
+                            .show();
+                        MessagesController.getInstance(currentAccount).disableAds(false);
+                        AndroidUtilities.runOnUIThread(remove);
+                    }, 200);
+                }
+            } else if (error != null && "AD_EXPIRED".equalsIgnoreCase(error.text)) {
+                AndroidUtilities.runOnUIThread(() -> {
+                    BulletinFactory.of(fragment)
+                        .createAdReportedBulletin(
+                            AndroidUtilities.replaceSingleTag(
+                                LocaleController.getString(R.string.AdReported),
+                                -1,
+                                AndroidUtilities.REPLACING_TAG_TYPE_LINKBOLD,
+                                () -> Browser.openUrl(context, "https://promote.telegram.org/guidelines"),
+                                resourceProvider
+                            )
+                        )
+                        .show();
+                    AndroidUtilities.runOnUIThread(remove);
                 }, 200);
             }
         });

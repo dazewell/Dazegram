@@ -5,21 +5,16 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PointF;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
-import android.graphics.RectF;
 import android.graphics.Shader;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.Drawable;
 import android.os.Build;
-import android.text.TextUtils;
-import android.util.Log;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 
@@ -30,21 +25,15 @@ import com.google.mlkit.vision.segmentation.subject.SubjectSegmenter;
 import com.google.mlkit.vision.segmentation.subject.SubjectSegmenterOptions;
 
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
-import org.telegram.messenger.ImageLocation;
-import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.MediaController;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.Components.AnimatedFileDrawable;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
-import org.telegram.ui.Components.Point;
-import org.telegram.ui.Components.RLottieDrawable;
-import org.telegram.ui.Components.Rect;
+import org.telegram.ui.Components.RectOld;
 import org.telegram.ui.Components.Size;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 
@@ -54,7 +43,7 @@ import java.io.FileOutputStream;
 
 public class PhotoView extends EntityView {
 
-    private class FrameLayoutDrawer extends FrameLayout {
+    public class FrameLayoutDrawer extends FrameLayout {
         public FrameLayoutDrawer(Context context) {
             super(context);
             setWillNotDraw(false);
@@ -79,37 +68,38 @@ public class PhotoView extends EntityView {
     private boolean segmented = false;
     private AnimatedFloat segmentedT;
 
-    private final FrameLayoutDrawer containerView;
-    public final ImageReceiver centerImage = new ImageReceiver() {
-        @Override
-        protected boolean setImageBitmapByKey(Drawable drawable, String key, int type, boolean memCache, int guid) {
-            if (type == TYPE_IMAGE && drawable instanceof BitmapDrawable) {
-                segmentImage(((BitmapDrawable) drawable).getBitmap());
-            }
-            return super.setImageBitmapByKey(drawable, key, type, memCache, guid);
-        }
-    };
+    public final FrameLayoutDrawer containerView;
+    public Bitmap bitmap;
+//    public final ImageReceiver centerImage = new ImageReceiver() {
+//        @Override
+//        protected boolean setImageBitmapByKey(Drawable drawable, String key, int type, boolean memCache, int guid) {
+//            if (type == TYPE_IMAGE && drawable instanceof BitmapDrawable) {
+//                segmentImage(((BitmapDrawable) drawable).getBitmap());
+//            }
+//            return super.setImageBitmapByKey(drawable, key, type, memCache, guid);
+//        }
+//    };
 
     private File segmentedFile;
     public void preloadSegmented(String path) {
-        if (TextUtils.isEmpty(path)) return;
-        segmentingLoading = true;
-        final int side = Math.round(Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y) * .8f / AndroidUtilities.density);
-        BitmapFactory.Options opts = new BitmapFactory.Options();
-        opts.inJustDecodeBounds = true;
-        BitmapFactory.decodeFile(path, opts);
-        opts.inSampleSize = StoryEntry.calculateInSampleSize(opts, side, side);
-        opts.inJustDecodeBounds = false;
-        opts.inDither = true;
-        segmentedImage = BitmapFactory.decodeFile(path, opts);
-        if (segmentedImage != null) {
-            segmentedFile = new File(path);
-            segmentingLoaded = true;
-        }
+//        if (TextUtils.isEmpty(path)) return;
+//        segmentingLoading = true;
+//        final int side = Math.round(Math.min(AndroidUtilities.displaySize.x, AndroidUtilities.displaySize.y) * .8f / AndroidUtilities.density);
+//        BitmapFactory.Options opts = new BitmapFactory.Options();
+//        opts.inJustDecodeBounds = true;
+//        BitmapFactory.decodeFile(path, opts);
+//        opts.inSampleSize = StoryEntry.calculateInSampleSize(opts, side, side);
+//        opts.inJustDecodeBounds = false;
+//        opts.inDither = true;
+//        segmentedImage = BitmapFactory.decodeFile(path, opts);
+//        if (segmentedImage != null) {
+//            segmentedFile = new File(path);
+//            segmentingLoaded = true;
+//        }
         segmentingLoading = false;
     }
 
-    public PhotoView(Context context, Point position, float angle, float scale, Size baseSize, String path, int orientation, int invert) {
+    public PhotoView(Context context, PointF position, float angle, float scale, Size baseSize, String path, int orientation, int invert) {
         super(context, position);
         setRotation(angle);
         setScale(scale);
@@ -125,16 +115,21 @@ public class PhotoView extends EntityView {
 
         this.orientation = orientation;
         this.invert = invert;
-        centerImage.setAspectFit(true);
-        centerImage.setInvalidateAll(true);
-        centerImage.setParentView(containerView);
-        centerImage.setRoundRadius(dp(12));
-        centerImage.setOrientation(orientation, invert, true);
-        centerImage.setImage(ImageLocation.getForPath(path), getImageFilter(), null, null, null, 1);
+
+        bitmap = StoryEntry.getScaledBitmap(opts -> BitmapFactory.decodeFile(path, opts), 1920, 1920, false, false);
+        if (bitmap != null) {
+            segmentImage(bitmap);
+        }
+//        centerImage.setAspectFit(true);
+//        centerImage.setInvalidateAll(true);
+//        centerImage.setParentView(containerView);
+//        centerImage.setRoundRadius(dp(12));
+//        centerImage.setOrientation(orientation, invert, true);
+//        centerImage.setImage(ImageLocation.getForPath(path), getImageFilter(), null, null, null, 1);
         updatePosition();
     }
 
-    public PhotoView(Context context, Point position, float angle, float scale, Size baseSize, TLObject obj) {
+    public PhotoView(Context context, PointF position, float angle, float scale, Size baseSize, TLObject obj) {
         super(context, position);
         setRotation(angle);
         setScale(scale);
@@ -148,17 +143,17 @@ public class PhotoView extends EntityView {
         mirrorT = new AnimatedFloat(containerView, 0, 500, CubicBezierInterpolator.EASE_OUT_QUINT);
         segmentedT = new AnimatedFloat(containerView, 0, 350, CubicBezierInterpolator.EASE_OUT_QUINT);
 
-        centerImage.setAspectFit(true);
-        centerImage.setInvalidateAll(true);
-        centerImage.setParentView(containerView);
-        centerImage.setRoundRadius(dp(12));
-
-        if (object instanceof TLRPC.Photo) {
-            TLRPC.Photo photo = (TLRPC.Photo) object;
-            TLRPC.PhotoSize photoSize = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, 1000);
-            TLRPC.PhotoSize thumbPhotoSize = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, 90);
-            centerImage.setImage(ImageLocation.getForPhoto(photoSize, photo), getImageFilter(), ImageLocation.getForPhoto(thumbPhotoSize, photo), getImageFilter(), (String) null, null, 1);
-        }
+//        centerImage.setAspectFit(true);
+//        centerImage.setInvalidateAll(true);
+//        centerImage.setParentView(containerView);
+//        centerImage.setRoundRadius(dp(12));
+//
+//        if (object instanceof TLRPC.Photo) {
+//            TLRPC.Photo photo = (TLRPC.Photo) object;
+//            TLRPC.PhotoSize photoSize = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, 1000);
+//            TLRPC.PhotoSize thumbPhotoSize = FileLoader.getClosestPhotoSizeWithSize(photo.sizes, 90);
+//            centerImage.setImage(ImageLocation.getForPhoto(photoSize, photo), getImageFilter(), ImageLocation.getForPhoto(thumbPhotoSize, photo), getImageFilter(), (String) null, null, 1);
+//        }
         updatePosition();
     }
 
@@ -179,8 +174,8 @@ public class PhotoView extends EntityView {
             .addOnSuccessListener(result -> {
                 segmentingLoaded = true;
                 segmentingLoading = false;
-                segmentedImage = result.getForegroundBitmap();
-                highlightSegmented();
+//                segmentedImage = result.getForegroundBitmap();
+//                highlightSegmented();
             })
             .addOnFailureListener(error -> {
                 segmentingLoading = false;
@@ -234,17 +229,17 @@ public class PhotoView extends EntityView {
     }
 
     public Bitmap getSegmentedOutBitmap() {
-        if (!(centerImage.getImageDrawable() instanceof BitmapDrawable))
+        if (bitmap == null)
             return null;
 
-        Bitmap source = ((BitmapDrawable) centerImage.getImageDrawable()).getBitmap();
+        Bitmap source = bitmap;
         Bitmap mask = segmentedImage;
 
         if (source == null || mask == null)
             return null;
 
         int w = source.getWidth(), h = source.getHeight();
-        if (orientation == 90 || orientation == 270 || orientation == -90 || orientation == -270) {
+        if ((orientation / 90) % 2 == 1) {
             w = source.getHeight();
             h = source.getWidth();
         }
@@ -278,13 +273,13 @@ public class PhotoView extends EntityView {
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
-        centerImage.onDetachedFromWindow();
+//        centerImage.onDetachedFromWindow();
     }
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        centerImage.onAttachedToWindow();
+//        centerImage.onAttachedToWindow();
     }
 
     public int getAnchor() {
@@ -326,9 +321,13 @@ public class PhotoView extends EntityView {
         }
     }
 
-    protected void updatePosition() {
+    public void updatePosition() {
         float halfWidth = baseSize.width / 2.0f;
         float halfHeight = baseSize.height / 2.0f;
+        if (crop != null) {
+            halfWidth *= crop.cropPw;
+            halfHeight *= crop.cropPh;
+        }
         setX(getPositionX() - halfWidth);
         setY(getPositionY() - halfHeight);
         updateSelectionView();
@@ -345,6 +344,11 @@ public class PhotoView extends EntityView {
     private Paint highlightPaint;
     private boolean needHighlight;
 
+    private final android.graphics.Rect bitmapSrc = new android.graphics.Rect();
+    private final android.graphics.Rect bitmapDst = new android.graphics.Rect();
+
+    private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+
     protected void stickerDraw(Canvas canvas) {
         if (containerView == null) {
             return;
@@ -357,9 +361,38 @@ public class PhotoView extends EntityView {
 
         final float segmentedT = this.segmentedT.set(segmented);
         if (!segmented) {
-            centerImage.setAlpha(1f - segmentedT);
-            centerImage.setImageCoords(0, 0, (int) baseSize.width, (int) baseSize.height);
-            centerImage.draw(canvas);
+            canvas.save();
+            bitmapPaint.setAlpha((int) (0xFF * (1f - segmentedT)));
+            if (bitmap != null) {
+                canvas.translate(containerView.getWidth() / 2.0f, containerView.getHeight() / 2.0f);
+                canvas.rotate(orientation);
+                float scale = Math.max(baseSize.width / bitmap.getWidth(), baseSize.height / bitmap.getHeight());
+                canvas.scale(scale, scale);
+                if (crop != null) {
+                    canvas.rotate(-getOrientation());
+                    int w = getContentWidth(), h = getContentHeight();
+                    if (((getOrientation() + crop.transformRotation) / 90) % 2 == 1) {
+                        w = getContentHeight();
+                        h = getContentWidth();
+                    }
+                    canvas.clipRect(
+                        -w * crop.cropPw / 2.0f, -h * crop.cropPh / 2.0f,
+                        +w * crop.cropPw / 2.0f, +h * crop.cropPh / 2.0f
+                    );
+                    canvas.scale(crop.cropScale, crop.cropScale);
+                    canvas.translate(crop.cropPx * w, crop.cropPy * h);
+                    canvas.rotate(crop.cropRotate + crop.transformRotation);
+                    if (crop.mirrored) {
+                        canvas.scale(-1, 1);
+                    }
+                    canvas.rotate(getOrientation());
+                }
+                canvas.translate(-bitmap.getWidth() / 2.0f, -bitmap.getHeight() / 2.0f);
+                bitmapSrc.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
+                bitmapDst.set(0, 0, bitmap.getWidth(), bitmap.getHeight());
+                canvas.drawBitmap(bitmap, bitmapSrc, bitmapDst, bitmapPaint);
+            }
+            canvas.restore();
             if (segmentedT > 0) {
                 drawSegmented(canvas);
             }
@@ -399,14 +432,37 @@ public class PhotoView extends EntityView {
             highlightStart = -1;
             needHighlight = false;
             if (!overridenSegmented) {
-                centerImage.setImageCoords(0, 0, (int) baseSize.width, (int) baseSize.height);
-                centerImage.setAlpha(1f);
-                centerImage.draw(canvas);
+                // TODO
+//                centerImage.setImageCoords(0, 0, (int) baseSize.width, (int) baseSize.height);
+//                centerImage.setAlpha(1f);
+//                centerImage.draw(canvas);
             }
             drawSegmented(canvas);
         }
 
         canvas.restore();
+    }
+
+    private void applyCrop(Canvas canvas) {
+        if (crop != null) {
+            canvas.rotate(-getOrientation());
+            int w = getContentWidth(), h = getContentHeight();
+            if (((getOrientation() + crop.transformRotation) / 90) % 2 == 1) {
+                w = getContentHeight();
+                h = getContentWidth();
+            }
+            canvas.clipRect(
+                    -w * crop.cropPw / 2.0f, -h * crop.cropPh / 2.0f,
+                    +w * crop.cropPw / 2.0f, +h * crop.cropPh / 2.0f
+            );
+            canvas.scale(crop.cropScale, crop.cropScale);
+            canvas.translate(crop.cropPx * w, crop.cropPy * h);
+            canvas.rotate(crop.cropRotate + crop.transformRotation);
+            if (crop.mirrored) {
+                canvas.scale(-1, 1);
+            }
+            canvas.rotate(getOrientation());
+        }
     }
 
     private Path roundRectPath;
@@ -446,36 +502,34 @@ public class PhotoView extends EntityView {
         }
     }
 
-    public long getDuration() {
-        RLottieDrawable rLottieDrawable = centerImage.getLottieAnimation();
-        if (rLottieDrawable != null) {
-            return rLottieDrawable.getDuration();
-        }
-        AnimatedFileDrawable animatedFileDrawable = centerImage.getAnimation();
-        if (animatedFileDrawable != null) {
-            return animatedFileDrawable.getDurationMs();
-        }
-        return 0;
-
-    }
-
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
-        super.onMeasure(MeasureSpec.makeMeasureSpec((int) baseSize.width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec((int) baseSize.height, MeasureSpec.EXACTLY));
+        float w = baseSize.width;
+        float h = baseSize.height;
+        if (crop != null) {
+            w *= crop.cropPw;
+            h *= crop.cropPh;
+        }
+        super.onMeasure(
+            MeasureSpec.makeMeasureSpec((int) w, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec((int) h, MeasureSpec.EXACTLY)
+        );
     }
 
     @Override
-    public Rect getSelectionBounds() {
+    public RectOld getSelectionBounds() {
         ViewGroup parentView = (ViewGroup) getParent();
         if (parentView == null) {
-            return new Rect();
+            return new RectOld();
         }
         float scale = parentView.getScaleX();
         float width = getMeasuredWidth() * getScale() + dp(64) / scale;
         float height = getMeasuredHeight() * getScale() + dp(64) / scale;
+        float pwidth = getMeasuredWidth() * getScale() + dp(64) / scale;
+        float pheight = getMeasuredHeight() * getScale() + dp(64) / scale;
         float left = (getPositionX() - width / 2.0f) * scale;
-        float right = left + width * scale;
-        return new Rect(left, (getPositionY() - height / 2.0f) * scale, right - left, height * scale);
+        float right = left + pwidth * scale;
+        return new RectOld(left, (getPositionY() - height / 2.0f) * scale, right - left, height * scale);
     }
 
     @Override
@@ -587,5 +641,27 @@ public class PhotoView extends EntityView {
 
             canvas.restoreToCount(count);
         }
+    }
+
+    public MediaController.CropState crop;
+
+    public int getOrientation() {
+        return orientation;
+    }
+
+    public int getContentWidth() {
+        if (bitmap == null) return 1;
+        return bitmap.getWidth();
+    }
+
+    public int getContentHeight() {
+        if (bitmap == null) return 1;
+        return bitmap.getHeight();
+    }
+
+    public void drawContent(Canvas canvas) {
+        if (bitmap == null) return;
+        bitmapPaint.setAlpha((int) (0xFF));
+        canvas.drawBitmap(bitmap, 0, 0, bitmapPaint);
     }
 }

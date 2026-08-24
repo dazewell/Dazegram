@@ -176,7 +176,7 @@ public class PinchToZoomHelper {
             setFullImage(messageObject);
 
             imageX = image.getImageX();
-            imageY = image.getImageY();
+            imageY = image.getImageY() + child.getPaddingTop();
             imageHeight = image.getImageHeight();
             imageWidth = image.getImageWidth();
             fullImageHeight = image.getBitmapHeight();
@@ -437,72 +437,24 @@ public class PinchToZoomHelper {
         public ZoomOverlayView(Context context) {
             super(context);
 
-            if (Build.VERSION.SDK_INT >= 21) {
-                videoPlayerContainer = new FrameLayout(context);
-                videoPlayerContainer.setOutlineProvider(new ViewOutlineProvider() {
-
-                    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
-                    @Override
-                    public void getOutline(View view, Outline outline) {
-                        ImageReceiver imageReceiver = (ImageReceiver) view.getTag(R.id.parent_tag);
-                        if (imageReceiver != null) {
-                            int[] rad = imageReceiver.getRoundRadius(true);
-                            int maxRad = 0;
-                            for (int a = 0; a < 4; a++) {
-                                maxRad = Math.max(maxRad, rad[a]);
-                            }
-                            outline.setRoundRect(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight(), maxRad);
-                        } else {
-                            outline.setOval(0, 0, AndroidUtilities.roundMessageSize, AndroidUtilities.roundMessageSize);
+            videoPlayerContainer = new FrameLayout(context);
+            videoPlayerContainer.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    ImageReceiver imageReceiver = (ImageReceiver) view.getTag(R.id.parent_tag);
+                    if (imageReceiver != null) {
+                        int[] rad = imageReceiver.getRoundRadius(true);
+                        int maxRad = 0;
+                        for (int a = 0; a < 4; a++) {
+                            maxRad = Math.max(maxRad, rad[a]);
                         }
+                        outline.setRoundRect(0, 0, view.getMeasuredWidth(), view.getMeasuredHeight(), maxRad);
+                    } else {
+                        outline.setOval(0, 0, AndroidUtilities.roundMessageSize, AndroidUtilities.roundMessageSize);
                     }
-                });
-                videoPlayerContainer.setClipToOutline(true);
-            } else {
-                videoPlayerContainer = new FrameLayout(context) {
-
-                    RectF rect = new RectF();
-
-                    @Override
-                    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
-                        super.onSizeChanged(w, h, oldw, oldh);
-                        aspectPath.reset();
-                        ImageReceiver imageReceiver = (ImageReceiver) getTag(R.id.parent_tag);
-                        if (imageReceiver != null) {
-                            int[] rad = imageReceiver.getRoundRadius(true);
-                            int maxRad = 0;
-                            for (int a = 0; a < 4; a++) {
-                                maxRad = Math.max(maxRad, rad[a]);
-                            }
-                            rect.set(0, 0, w, h);
-                            aspectPath.addRoundRect(rect, AndroidUtilities.dp(4), AndroidUtilities.dp(4), Path.Direction.CW);
-                        } else {
-                            aspectPath.addCircle(w / 2, h / 2, w / 2, Path.Direction.CW);
-                        }
-                        aspectPath.toggleInverseFillType();
-                    }
-
-                    @Override
-                    public void setVisibility(int visibility) {
-                        super.setVisibility(visibility);
-                        if (visibility == VISIBLE) {
-                            setLayerType(View.LAYER_TYPE_HARDWARE, null);
-                        }
-                    }
-
-                    @Override
-                    protected void dispatchDraw(Canvas canvas) {
-                        super.dispatchDraw(canvas);
-                        if (getTag() == null) {
-                            canvas.drawPath(aspectPath, aspectPaint);
-                        }
-                    }
-                };
-                aspectPath = new Path();
-                aspectPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-                aspectPaint.setColor(0xff000000);
-                aspectPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.CLEAR));
-            }
+                }
+            });
+            videoPlayerContainer.setClipToOutline(true);
 
             backupImageView = new BackupImageView(context);
             videoPlayerContainer.addView(backupImageView);
@@ -813,13 +765,10 @@ public class PinchToZoomHelper {
                 pinchTranslationY = 0f;
                 child.getParent().requestDisallowInterceptTouchEvent(true);
                 startZoom(child, image, textureViewContainer, textureView, messageObject, spoilerEffect2Index);
-
             }
 
             float newPinchCenterX = (ev.getX(index1) + ev.getX(index2)) / 2.0f;
             float newPinchCenterY = (ev.getY(index1) + ev.getY(index2)) / 2.0f;
-
-
 
             float moveDx = pinchStartCenterX - newPinchCenterX;
             float moveDy = pinchStartCenterY - newPinchCenterY;

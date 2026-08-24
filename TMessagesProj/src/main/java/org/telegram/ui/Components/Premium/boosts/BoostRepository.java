@@ -21,12 +21,14 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
+import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.Vector;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.bots.BotWebViewSheet;
@@ -216,7 +218,7 @@ public class BoostRepository {
             payload.currency = offerDetails.getPriceCurrencyCode();
             payload.amount = (long) ((offerDetails.getPriceAmountMicros() / Math.pow(10, 6)) * Math.pow(10, BillingController.getInstance().getCurrencyExp(option.currency)));
 
-            TLRPC.TL_payments_canPurchasePremium req = new TLRPC.TL_payments_canPurchasePremium();
+            TLRPC.TL_payments_canPurchaseStore req = new TLRPC.TL_payments_canPurchaseStore();
             req.purpose = payload;
             connection.sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (error != null) {
@@ -456,7 +458,7 @@ public class BoostRepository {
             payload.currency = offerDetails.getPriceCurrencyCode();
             payload.amount = (long) ((offerDetails.getPriceAmountMicros() / Math.pow(10, 6)) * Math.pow(10, BillingController.getInstance().getCurrencyExp(option.currency)));
 
-            TLRPC.TL_payments_canPurchasePremium req = new TLRPC.TL_payments_canPurchasePremium();
+            TLRPC.TL_payments_canPurchaseStore req = new TLRPC.TL_payments_canPurchaseStore();
             req.purpose = payload;
             connection.sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (error != null) {
@@ -516,6 +518,56 @@ public class BoostRepository {
         }
     }
 
+    public static void loadCountriesForPolls(Utilities.Callback<Pair<Map<String, List<TLRPC.TL_help_country>>, List<String>>> onDone) {
+        ConnectionsManager connection = ConnectionsManager.getInstance(UserConfig.selectedAccount);
+
+        TLRPC.TL_help_getCountriesList req = new TLRPC.TL_help_getCountriesList();
+        req.lang_code = LocaleController.getInstance().getCurrentLocaleInfo() != null ? LocaleController.getInstance().getCurrentLocaleInfo().getLangCode() : Locale.getDefault().getCountry();
+        int reqId = connection.sendRequest(req, (response, error) -> {
+            if (response != null) {
+                TLRPC.TL_help_countriesList help_countriesList = (TLRPC.TL_help_countriesList) response;
+                Map<String, List<TLRPC.TL_help_country>> countriesMap = new HashMap<>();
+                List<String> sortedLetters = new ArrayList<>();
+
+                for (int i = 0; i < help_countriesList.countries.size(); i++) {
+                    TLRPC.TL_help_country country = help_countriesList.countries.get(i);
+                    final boolean isFragment = country.iso2.equalsIgnoreCase("FT");
+                    if (country.name != null) {
+                        country.default_name = country.name;
+                    }
+                    if (country.hidden && !isFragment) {
+                        continue;
+                    }
+                    if (isFragment) {
+                        country.name = country.default_name = LocaleController.getString(R.string.Fragment);
+                    }
+
+                    String letter = country.default_name.substring(0, 1).toUpperCase();
+                    List<TLRPC.TL_help_country> arr = countriesMap.get(letter);
+                    if (arr == null) {
+                        arr = new ArrayList<>();
+                        countriesMap.put(letter, arr);
+                        sortedLetters.add(letter);
+                    }
+                    arr.add(country);
+                }
+
+                Comparator<String> comparator;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    Collator collator = Collator.getInstance(LocaleController.getInstance().getCurrentLocale() != null ? LocaleController.getInstance().getCurrentLocale() : Locale.getDefault());
+                    comparator = collator::compare;
+                } else {
+                    comparator = String::compareTo;
+                }
+                Collections.sort(sortedLetters, comparator);
+                for (List<TLRPC.TL_help_country> arr : countriesMap.values()) {
+                    Collections.sort(arr, (country, country2) -> comparator.compare(country.default_name, country2.default_name));
+                }
+                AndroidUtilities.runOnUIThread(() -> onDone.run(new Pair<>(countriesMap, sortedLetters)));
+            }
+        });
+    }
+
     public static void loadCountries(Utilities.Callback<Pair<Map<String, List<TLRPC.TL_help_country>>, List<String>>> onDone) {
         ConnectionsManager connection = ConnectionsManager.getInstance(UserConfig.selectedAccount);
 
@@ -531,6 +583,9 @@ public class BoostRepository {
                     TLRPC.TL_help_country country = help_countriesList.countries.get(i);
                     if (country.name != null) {
                         country.default_name = country.name;
+                    }
+                    if (country.hidden) {
+                        continue;
                     }
                     if (country.iso2.equalsIgnoreCase("FT")) {
                         continue;
@@ -600,12 +655,12 @@ public class BoostRepository {
         }
 
         return connection.sendRequest(req, (response, error) -> {
-            if (response != null) {
-                TLRPC.Vector vector = (TLRPC.Vector) response;
-                List<TLRPC.TL_premiumGiftCodeOption> result = new ArrayList<>();
-                List<QueryProductDetailsParams.Product> products = new ArrayList<>();
+            if (response instanceof Vector) {
+                final Vector<TLRPC.TL_premiumGiftCodeOption> vector = (Vector) response;
+                final List<TLRPC.TL_premiumGiftCodeOption> result = new ArrayList<>();
+                final List<QueryProductDetailsParams.Product> products = new ArrayList<>();
                 for (int i = 0; i < vector.objects.size(); i++) {
-                    final TLRPC.TL_premiumGiftCodeOption object = (TLRPC.TL_premiumGiftCodeOption) vector.objects.get(i);
+                    final TLRPC.TL_premiumGiftCodeOption object = vector.objects.get(i);
                     result.add(object);
                     if (object.store_product != null) {
                         products.add(QueryProductDetailsParams.Product.newBuilder()
@@ -645,7 +700,33 @@ public class BoostRepository {
         });
     }
 
-    public static int searchContacts(int reqId, String query, Utilities.Callback<List<TLRPC.User>> onDone) {
+    public static int searchContacts(String query, boolean allowBots, Utilities.Callback<List<TLRPC.User>> onDone) {
+        MessagesController controller = MessagesController.getInstance(UserConfig.selectedAccount);
+        ConnectionsManager connection = ConnectionsManager.getInstance(UserConfig.selectedAccount);
+        if (query == null || query.isEmpty()) {
+            AndroidUtilities.runOnUIThread(() -> onDone.run(Collections.emptyList()));
+            return 0;
+        }
+        TLRPC.TL_contacts_search req = new TLRPC.TL_contacts_search();
+        req.q = query;
+        req.limit = 50;
+        return connection.sendRequest(req, (response, error) -> {
+            if (response instanceof TLRPC.TL_contacts_found) {
+                TLRPC.TL_contacts_found res = (TLRPC.TL_contacts_found) response;
+                controller.putUsers(res.users, false);
+                List<TLRPC.User> result = new ArrayList<>();
+                for (int a = 0; a < res.users.size(); a++) {
+                    TLRPC.User user = res.users.get(a);
+                    if (!user.self && !UserObject.isDeleted(user) && (allowBots || !user.bot) && !UserObject.isService(user.id)) {
+                        result.add(user);
+                    }
+                }
+                AndroidUtilities.runOnUIThread(() -> onDone.run(result));
+            }
+        });
+    }
+
+    public static void searchContactsLocally(String query, boolean allowBots, Utilities.Callback<List<TLRPC.User>> onDone) {
         final int currentAccount = UserConfig.selectedAccount;
         final ArrayList<TLRPC.User> users = new ArrayList<>();
         final ArrayList<TLRPC.TL_contact> contacts = ContactsController.getInstance(currentAccount).contacts;
@@ -660,7 +741,7 @@ public class BoostRepository {
                 final TLRPC.TL_contact contact = contacts.get(i);
                 if (contact != null) {
                     final TLRPC.User user = messagesController.getUser(contact.user_id);
-                    if (user == null || user.bot || UserObject.isService(user.id) || UserObject.isUserSelf(user)) continue;
+                    if (user == null || !allowBots && user.bot || UserObject.isService(user.id) || UserObject.isUserSelf(user)) continue;
                     final String u = UserObject.getUserName(user).toLowerCase();
                     final String ut = AndroidUtilities.translitSafe(u);
                     if (u.startsWith(q) || u.contains(" " + q) || ut.startsWith(qt) || ut.contains(" " + qt)) {
@@ -685,33 +766,6 @@ public class BoostRepository {
             }
         }
         onDone.run(users);
-        return -1;
-//        MessagesController controller = MessagesController.getInstance(UserConfig.selectedAccount);
-//        ConnectionsManager connection = ConnectionsManager.getInstance(UserConfig.selectedAccount);
-//        if (reqId != 0) {
-//            connection.cancelRequest(reqId, false);
-//        }
-//        if (query == null || query.isEmpty()) {
-//            AndroidUtilities.runOnUIThread(() -> onDone.run(Collections.emptyList()));
-//            return 0;
-//        }
-//        TLRPC.TL_contacts_search req = new TLRPC.TL_contacts_search();
-//        req.q = query;
-//        req.limit = 50;
-//        return connection.sendRequest(req, (response, error) -> {
-//            if (response instanceof TLRPC.TL_contacts_found) {
-//                TLRPC.TL_contacts_found res = (TLRPC.TL_contacts_found) response;
-//                controller.putUsers(res.users, false);
-//                List<TLRPC.User> result = new ArrayList<>();
-//                for (int a = 0; a < res.users.size(); a++) {
-//                    TLRPC.User user = res.users.get(a);
-//                    if (!user.self && !UserObject.isDeleted(user) && !user.bot && !UserObject.isService(user.id)) {
-//                        result.add(user);
-//                    }
-//                }
-//                AndroidUtilities.runOnUIThread(() -> onDone.run(result));
-//            }
-//        });
     }
 
     public static void searchChats(long currentChatId, int guid, String query, int count, Utilities.Callback<List<TLRPC.InputPeer>> onDone) {
@@ -759,7 +813,7 @@ public class BoostRepository {
                 List<TLRPC.InputPeer> result = new ArrayList<>();
                 for (int a = 0; a < res.participants.size(); a++) {
                     TLRPC.Peer peer = res.participants.get(a).peer;
-                    if (MessageObject.getPeerId(peer) != selfId) {
+                    if (peer != null && MessageObject.getPeerId(peer) != selfId) {
                         TLRPC.User user = controller.getUser(peer.user_id);
                         if (user != null && !UserObject.isDeleted(user) && !user.bot) {
                             result.add(controller.getInputPeer(peer));

@@ -15,10 +15,13 @@ import java.util.HashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import xyz.nextalone.nagram.NaConfig;
+
 public class PagePreviewRulesHelper extends BaseRemoteHelper {
     private static final String PAGE_PREVIEW_TAG = "pagepreview";
     private static volatile PagePreviewRulesHelper Instance;
     private final ArrayList<DomainInfo> domains = new ArrayList<>();
+    private final ArrayList<DomainInfo> domainsRegex = new ArrayList<>();
     private final HashMap<String, DomainInfo> domainsMap = new HashMap<>();
     private boolean loading = false;
 
@@ -49,7 +52,7 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
     @Override
     protected void onLoadSuccess(ArrayList<JSONObject> responses, Delegate delegate) {
         var tag = getTag();
-        var json = responses.size() > 0 ? responses.get(0) : null;
+        var json = !responses.isEmpty() ? responses.get(0) : null;
         if (json == null) {
             preferences.edit()
                     .remove(tag + "_update_time")
@@ -60,6 +63,7 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
 
         try {
             ArrayList<DomainInfo> domainInfo = new ArrayList<>();
+            ArrayList<DomainInfo> domainInfoRegex = new ArrayList<>();
             var array = json.getJSONArray("domains");
 
             for (int i = 0; i < array.length(); i++) {
@@ -75,18 +79,30 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
                     );
                     domainRules.add(rule);
                 }
+                boolean regex = false;
+                try {
+                    regex = obj.getBoolean("regex");
+                } catch (JSONException ignored) {}
                 var info = new DomainInfo(
                         domain,
-                        domainRules
+                        domainRules,
+                        regex
                 );
                 domainInfo.add(info);
+                if (info.regex) {
+                    domainInfoRegex.add(info);
+                }
             }
 
             domains.clear();
             domains.addAll(domainInfo);
+            domainsRegex.clear();
+            domainsRegex.addAll(domainInfoRegex);
             domainsMap.clear();
             for (DomainInfo info : domains) {
-                domainsMap.put(info.domain, info);
+                if (!info.regex) {
+                    domainsMap.put(info.domain, info);
+                }
             }
             savePagePreviewRules();
         } catch (JSONException e) {
@@ -98,16 +114,23 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
         var tag = getTag();
         String list = preferences.getString(tag, "");
         domains.clear();
+        domainsRegex.clear();
         domainsMap.clear();
         if (!TextUtils.isEmpty(list)) {
             byte[] bytes = Base64.decode(list, Base64.DEFAULT);
             SerializedData data = new SerializedData(bytes);
             int count = data.readInt32(false);
-            for (int a = 0; a < count; a++) {
-                DomainInfo info = DomainInfo.deserialize(data);
-                domains.add(info);
-                domainsMap.put(info.domain, info);
-            }
+            try {
+                for (int a = 0; a < count; a++) {
+                    DomainInfo info = DomainInfo.deserialize(data);
+                    domains.add(info);
+                    if (info.regex) {
+                        domainsRegex.add(info);
+                    } else {
+                        domainsMap.put(info.domain, info);
+                    }
+                }
+            } catch (RuntimeException ignored) {}
             data.cleanup();
         }
     }
@@ -153,8 +176,19 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
         } else {
             oldUrl = textToCheck.toString();
         }
+        if (!NaConfig.INSTANCE.getFixUrlPagePreview().Bool()) {
+            return oldUrl;
+        }
         String host = AndroidUtilities.getHostAuthority(oldUrl.toLowerCase());
         DomainInfo info = domainsMap.get(host);
+        if (info == null) {
+            for (DomainInfo info_ : domainsRegex) {
+                if (info_.regexPattern != null && info_.regexPattern.matcher(oldUrl).find()) {
+                    info = info_;
+                    break;
+                }
+            }
+        }
         if (info == null) {
             return oldUrl;
         }
@@ -199,12 +233,22 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
     public static class DomainInfo {
         public String domain;
         public ArrayList<DomainRule> rules;
+        public Boolean regex;
+        public Pattern regexPattern;
 
         public DomainInfo() {}
 
-        public DomainInfo(String domain, ArrayList<DomainRule> rules) {
+        public DomainInfo(String domain, ArrayList<DomainRule> rules, Boolean regex) {
             this.domain = domain;
             this.rules = rules;
+            this.regex = regex;
+            this.buildRegexPattern();
+        }
+
+        public void buildRegexPattern() {
+            if (this.regex && this.domain != null) {
+                this.regexPattern = Pattern.compile(domain);
+            }
         }
 
         public static DomainInfo deserialize(AbstractSerializedData stream) {
@@ -217,6 +261,8 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
                 rules.add(rule);
             }
             domainInfo.rules = rules;
+            domainInfo.regex = stream.readBool(true);
+            domainInfo.buildRegexPattern();
             return domainInfo;
         }
 
@@ -226,6 +272,7 @@ public class PagePreviewRulesHelper extends BaseRemoteHelper {
             for (DomainRule rule : rules) {
                 rule.serializeToStream(serializedData);
             }
+            serializedData.writeBool(regex);
         }
     }
 }

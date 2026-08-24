@@ -277,7 +277,7 @@ public class DocumentSelectActivity extends BaseFragment {
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (canClosePicker()) {
+                    if (canClosePicker(true)) {
                         finishFragment();
                     }
                 } else if (id == sort_button) {
@@ -292,7 +292,7 @@ public class DocumentSelectActivity extends BaseFragment {
         });
 
         final ActionBarMenu menu = actionBar.createMenu();
-        searchItem = menu.addItem(search_button, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+        searchItem = menu.addItem(search_button, R.drawable.msg_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
             @Override
             public void onSearchExpand() {
                 searching = true;
@@ -534,10 +534,10 @@ public class DocumentSelectActivity extends BaseFragment {
                         }
 
                         @Override
-                        public void actionButtonPressed(boolean canceled, boolean notify, int scheduleDate) {
+                        public void actionButtonPressed(boolean canceled, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                             removeSelfFromStack();
                             if (!canceled) {
-                                sendSelectedPhotos(selectedPhotos, selectedPhotosOrder, notify, scheduleDate);
+                                sendSelectedPhotos(selectedPhotos, selectedPhotosOrder, notify, scheduleDate, scheduleRepeatPeriod);
                             }
                         }
 
@@ -673,7 +673,7 @@ public class DocumentSelectActivity extends BaseFragment {
             if (chatActivity != null && chatActivity.isInScheduleMode()) {
                 AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), chatActivity.getDialogId(), this::sendSelectedFiles);
             } else {
-                sendSelectedFiles(true, 0);
+                sendSelectedFiles(true, 0, 0);
             }
         });
         writeButton.setOnLongClickListener(view -> {
@@ -752,7 +752,7 @@ public class DocumentSelectActivity extends BaseFragment {
                         } else if (num == 1) {
                             AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), chatActivity.getDialogId(), this::sendSelectedFiles);
                         } else if (num == 2) {
-                            sendSelectedFiles(true, 0);
+                            sendSelectedFiles(true, 0, 0);
                         }
                     });
                     itemCells[a].setOnLongClickListener(v -> {
@@ -1032,7 +1032,7 @@ public class DocumentSelectActivity extends BaseFragment {
         }
     }
 
-    private void sendSelectedPhotos(HashMap<Object, Object> photos, ArrayList<Object> order, boolean notify, int scheduleDate) {
+    private void sendSelectedPhotos(HashMap<Object, Object> photos, ArrayList<Object> order, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
         if (photos.isEmpty() || delegate == null || sendPressed) {
             return;
         }
@@ -1062,7 +1062,7 @@ public class DocumentSelectActivity extends BaseFragment {
         delegate.didSelectPhotos(media, notify, scheduleDate);
     }
 
-    private void sendSelectedFiles(boolean notify, int scheduleDate) {
+    private void sendSelectedFiles(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
         if (selectedFiles.size() == 0 || delegate == null || sendPressed) {
             return;
         }
@@ -1193,8 +1193,8 @@ public class DocumentSelectActivity extends BaseFragment {
         }
     }
 
-    private boolean canClosePicker() {
-        if (history.size() > 0) {
+    private boolean canClosePicker(boolean invoked) {
+        if (invoked && !history.isEmpty()) {
             HistoryEntry he = history.remove(history.size() - 1);
             actionBar.setTitle(he.title);
             if (he.dir != null) {
@@ -1210,15 +1210,15 @@ public class DocumentSelectActivity extends BaseFragment {
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (commentTextView != null && commentTextView.isPopupShowing()) {
-            commentTextView.hidePopup(true);
+            if (invoked) commentTextView.hidePopup(true);
             return false;
         }
-        if (!canClosePicker()) {
+        if (!canClosePicker(invoked)) {
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
     public void setDelegate(DocumentSelectActivityDelegate delegate) {

@@ -53,7 +53,6 @@ import org.telegram.ui.Components.EffectsTextView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberPicker;
 import org.telegram.ui.LaunchActivity;
-import org.telegram.ui.Stars.StarsIntroActivity;
 
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -93,8 +92,7 @@ public class BoostDialogs {
             ).show();
             try {
                 containerLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-            } catch (Exception ignore) {
-            }
+            } catch (Exception ignore) {}
         } else {
             BoostDialogs.showToastError(containerLayout.getContext(), error);
         }
@@ -313,9 +311,7 @@ public class BoostDialogs {
         final NumberPicker.OnValueChangeListener onValueChangeListener = (picker, oldVal, newVal) -> {
             try {
                 container.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
-            } catch (Exception ignore) {
-
-            }
+            } catch (Exception ignore) {}
             if (picker.getTag() != null && (picker.getTag().equals("DAY"))) {
                 if (picker.getValue() == picker.getMinValue()) {
                     Calendar calendarCurrent = Calendar.getInstance();
@@ -405,7 +401,7 @@ public class BoostDialogs {
             calendar.setTimeInMillis(System.currentTimeMillis() + (long) dayPicker.getValue() * 24 * 3600 * 1000);
             calendar.set(Calendar.HOUR_OF_DAY, hourPicker.getValue());
             calendar.set(Calendar.MINUTE, minutePicker.getValue() * 5);
-            datePickerDelegate.didSelectDate(true, (int) (calendar.getTimeInMillis() / 1000));
+            datePickerDelegate.didSelectDate(true, (int) (calendar.getTimeInMillis() / 1000), 0);
             builder.getDismissRunnable().run();
         });
 
@@ -413,7 +409,7 @@ public class BoostDialogs {
         BottomSheet bottomSheet = builder.show();
         bottomSheet.setBackgroundColor(datePickerColors.backgroundColor);
         bottomSheet.fixNavigationBar(datePickerColors.backgroundColor);
-        AndroidUtilities.setLightStatusBar(bottomSheet.getWindow(), ColorUtils.calculateLuminance(datePickerColors.backgroundColor) > 0.7f);
+        AndroidUtilities.setLightStatusBar(bottomSheet, ColorUtils.calculateLuminance(datePickerColors.backgroundColor) > 0.7f);
     }
 
     public static void showUnsavedChanges(int type, Context context, Theme.ResourcesProvider resourcesProvider, Runnable onApply, Runnable onDiscard) {

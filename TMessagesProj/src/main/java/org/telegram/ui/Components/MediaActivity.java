@@ -78,6 +78,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
     private long dialogId;
     private long topicId;
     private String hashtag;
+    private String username;
     private int storiesCount;
     private FrameLayout titlesContainer;
     private FrameLayout[] titles = new FrameLayout[2];
@@ -114,6 +115,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
         dialogId = getArguments().getLong("dialog_id");
         topicId = getArguments().getLong("topic_id", 0);
         hashtag = getArguments().getString("hashtag", "");
+        username = getArguments().getString("username", "");
         storiesCount = getArguments().getInt("storiesCount", -1);
         int defaultTab = SharedMediaLayout.TAB_PHOTOVIDEO;
         if (type == TYPE_ARCHIVED_CHANNEL_STORIES) {
@@ -145,6 +147,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
         getNotificationCenter().removeObserver(this, NotificationCenter.userInfoDidLoad);
         getNotificationCenter().removeObserver(this, NotificationCenter.currentUserPremiumStatusChanged);
         getNotificationCenter().removeObserver(this, NotificationCenter.storiesEnabledUpdate);
+        Bulletin.removeDelegate(this);
         if (applyBulletin != null) {
             Runnable runnable = applyBulletin;
             applyBulletin = null;
@@ -196,14 +199,11 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
                             AlertDialog.Builder builder = new AlertDialog.Builder(getContext(), getResourceProvider());
                             builder.setTitle(storyItems.size() > 1 ? LocaleController.getString(R.string.DeleteStoriesTitle) : LocaleController.getString(R.string.DeleteStoryTitle));
                             builder.setMessage(LocaleController.formatPluralString("DeleteStoriesSubtitle", storyItems.size()));
-                            builder.setPositiveButton(LocaleController.getString(R.string.Delete), new DialogInterface.OnClickListener() {
-                                @Override
-                                public void onClick(DialogInterface dialog, int which) {
-                                    getMessagesController().getStoriesController().deleteStories(dialogId, storyItems);
-                                    sharedMediaLayout.closeActionMode(false);
-                                }
+                            builder.setPositiveButton(LocaleController.getString(R.string.Delete), (dialog, which) -> {
+                                getMessagesController().getStoriesController().deleteStories(dialogId, storyItems);
+                                sharedMediaLayout.closeActionMode(false);
                             });
-                            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (DialogInterface.OnClickListener) (dialog, which) -> {
+                            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (dialog, which) -> {
                                 dialog.dismiss();
                             });
                             AlertDialog dialog = builder.create();
@@ -269,6 +269,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
         };
         fragmentView.needBlur = true;
         this.fragmentView = fragmentView;
+        fragmentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
 
         ActionBarMenu menu2 = actionBar.createMenu();
         if (type == TYPE_STORIES || type == TYPE_ARCHIVED_CHANNEL_STORIES) {
@@ -496,7 +497,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
         if (type == TYPE_MEDIA && dialogId == getUserConfig().getClientUserId() && topicId == 0 && !getMessagesController().getSavedMessagesController().unsupported && getMessagesController().getSavedMessagesController().hasDialogs()) {
             initialTab = SharedMediaLayout.TAB_SAVED_DIALOGS;
         }
-        sharedMediaLayout = new SharedMediaLayout(context, dialogId, sharedMediaPreloader, 0, null, currentChatInfo, currentUserInfo, initialTab, this, new SharedMediaLayout.Delegate() {
+        sharedMediaLayout = new SharedMediaLayout(context, dialogId, sharedMediaPreloader, 0, null, currentChatInfo, currentUserInfo, initialTab, 0, this, new SharedMediaLayout.Delegate() {
             @Override
             public void scrollToSharedMedia() {
 
@@ -542,6 +543,11 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
             @Override
             public String getStoriesHashtag() {
                 return hashtag;
+            }
+
+            @Override
+            public String getStoriesHashtagUsername() {
+                return username;
             }
 
             @Override
@@ -717,8 +723,9 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
                 }
             }
         };
+        sharedMediaLayout.scrollSlidingTextTabStrip.setOpen(true);
         if (sharedMediaLayout.getSearchOptionsItem() != null) {
-            sharedMediaLayout.getSearchOptionsItem().setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.MULTIPLY));
+            sharedMediaLayout.getSearchOptionsItem().setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.SRC_IN));
         }
         sharedMediaLayout.setPinnedToTop(true);
         sharedMediaLayout.getSearchItem().setTranslationY(0);
@@ -758,10 +765,10 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
                 subtitleTextView[0].setText(LocaleController.formatPluralStringSpaced("FoundStories", storiesCount));
             }
         } else if (type == TYPE_ARCHIVED_CHANNEL_STORIES) {
-            nameTextView[0].setText(LocaleController.getString("ProfileStoriesArchive"));
+            nameTextView[0].setText(LocaleController.getString(R.string.ProfileStoriesArchive));
         } else if (type == TYPE_STORIES) {
-            nameTextView[0].setText(LocaleController.getString("ProfileMyStories"));
-            nameTextView[1].setText(LocaleController.getString("ProfileStoriesArchive"));
+            nameTextView[0].setText(LocaleController.getString(R.string.ProfileMyStories));
+            nameTextView[1].setText(LocaleController.getString(R.string.ProfileStoriesArchive));
         } else if (avatarDialogId == UserObject.ANONYMOUS) {
             nameTextView[0].setText(LocaleController.getString(R.string.AnonymousForward));
             avatarDrawable.setAvatarType(AvatarDrawable.AVATAR_TYPE_ANONYMOUS);
@@ -802,7 +809,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
             }
         }
 
-        final ImageLocation thumbLocation = ImageLocation.getForUserOrChat(avatarObject, ImageLocation.TYPE_SMALL);
+        final ImageLocation thumbLocation = ImageLocation.getForUserOrChat(currentAccount, avatarObject, ImageLocation.TYPE_SMALL);
         avatarImageView.setImage(thumbLocation, "50_50", avatarDrawable, avatarObject);
 
         if (nameTextView[0] != null && TextUtils.isEmpty(nameTextView[0].getText())) {
@@ -837,15 +844,16 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
     }
 
     @Override
-    public boolean onBackPressed() {
-        if (closeSheet()) {
+    public boolean onBackPressed(boolean invoked) {
+        if (hasShownSheet()) {
+            if (invoked) closeSheet();
             return false;
         }
         if (sharedMediaLayout.isActionModeShown()) {
-            sharedMediaLayout.closeActionMode(false);
+            if (invoked) sharedMediaLayout.closeActionMode(false);
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
     @Override
@@ -981,7 +989,7 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
             subtitleTextView[i].setText(LocaleController.formatPluralString("GIFs", mediaCount[MediaDataController.MEDIA_GIF]), animated);
         } else if (id == SharedMediaLayout.TAB_RECOMMENDED_CHANNELS) {
             showSubtitle(i, true, true);
-            MessagesController.ChannelRecommendations rec = MessagesController.getInstance(currentAccount).getChannelRecommendations(-dialogId);
+            MessagesController.ChannelRecommendations rec = MessagesController.getInstance(currentAccount).getChannelRecommendations(dialogId);
             subtitleTextView[i].setText(LocaleController.formatPluralString("Channels", rec == null ? 0 : rec.more + rec.chats.size()), animated);
         }
     }
@@ -1061,9 +1069,9 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
 
     private void updateColors() {
         if (sharedMediaLayout.getSearchOptionsItem() != null) {
-            sharedMediaLayout.getSearchOptionsItem().setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.MULTIPLY));
+            sharedMediaLayout.getSearchOptionsItem().setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_windowBackgroundWhiteBlackText), PorterDuff.Mode.SRC_IN));
         }
-        actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        actionBar.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
         actionBar.setItemsColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), false);
         actionBar.setItemsColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText), true);
         actionBar.setItemsBackgroundColor(Theme.getColor(Theme.key_actionBarActionModeDefaultSelector), false);
@@ -1132,5 +1140,17 @@ public class MediaActivity extends BaseFragment implements SharedMediaLayout.Sha
             return getLastStoryViewer().getNavigationBarColor(color);
         }
         return color;
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        if (sharedMediaLayout != null) {
+            sharedMediaLayout.setPagesPaddingBottom(bottom);
+        }
     }
 }

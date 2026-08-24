@@ -2,6 +2,7 @@ package org.telegram.messenger;
 
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
+import org.telegram.tgnet.tl.TL_update;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Stories.StoriesStorage;
 
@@ -10,9 +11,9 @@ import java.util.ArrayList;
 public class ChatMessagesMetadataController {
 
     final ChatActivity chatActivity;
-    private ArrayList<MessageObject> reactionsToCheck = new ArrayList<>(10);
-    private ArrayList<MessageObject> extendedMediaToCheck = new ArrayList<>(10);
-    private ArrayList<MessageObject> storiesToCheck = new ArrayList<>(10);
+    private final ArrayList<MessageObject> reactionsToCheck = new ArrayList<>(10);
+    private final ArrayList<MessageObject> extendedMediaToCheck = new ArrayList<>(10);
+    private final ArrayList<MessageObject> storiesToCheck = new ArrayList<>(10);
 
     ArrayList<Integer> reactionsRequests = new ArrayList<>();
     ArrayList<Integer> extendedMediaRequests = new ArrayList<>();
@@ -38,7 +39,7 @@ public class ChatMessagesMetadataController {
             storiesToCheck.clear();
             for (int i = from; i < to; i++) {
                 MessageObject messageObject = messages.get(i);
-                if (chatActivity.getThreadMessage() != messageObject && messageObject.getId() > 0 && messageObject.messageOwner.action == null && (currentTime - messageObject.reactionsLastCheckTime) > 15000L) {
+                if (chatActivity.getThreadMessage() != messageObject && messageObject.getId() > 0 && (messageObject.messageOwner.action == null || messageObject.canSetReaction()) && (currentTime - messageObject.reactionsLastCheckTime) > 15000L) {
                     messageObject.reactionsLastCheckTime = currentTime;
                     reactionsToCheck.add(messageObject);
                 }
@@ -135,8 +136,8 @@ public class ChatMessagesMetadataController {
             if (error == null) {
                 TLRPC.Updates updates = (TLRPC.Updates) response;
                 for (int i = 0; i < updates.updates.size(); i++) {
-                    if (updates.updates.get(i) instanceof TLRPC.TL_updateMessageReactions) {
-                        ((TLRPC.TL_updateMessageReactions) updates.updates.get(i)).updateUnreadState = false;
+                    if (updates.updates.get(i) instanceof TL_update.TL_updateMessageReactions) {
+                        ((TL_update.TL_updateMessageReactions) updates.updates.get(i)).updateUnreadState = false;
                     }
                 }
                 chatActivity.getMessagesController().processUpdates(updates, false);

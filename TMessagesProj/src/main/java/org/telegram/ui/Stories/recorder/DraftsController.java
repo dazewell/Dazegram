@@ -108,8 +108,10 @@ public class DraftsController {
                     continue;
                 }
                 if (
-                    entry.file == null ||
-                    !entry.file.exists() ||
+                    !entry.isCollage() && (
+                        entry.file == null ||
+                        !entry.file.exists()
+                    ) ||
                     (entry.isEdit ?
                         (now > entry.editExpireDate) :
                         (now - entry.draftDate > EXPIRATION_PERIOD)
@@ -148,8 +150,10 @@ public class DraftsController {
                     continue;
                 }
                 if (
-                    entry.file == null ||
-                    !entry.file.exists() ||
+                    !entry.isCollage() && (
+                        entry.file == null ||
+                        !entry.file.exists()
+                    ) ||
                     now - entry.draftDate > EXPIRATION_PERIOD
                 ) {
                     deleteEntries.add(entry);
@@ -466,6 +470,7 @@ public class DraftsController {
 
         public int orientation, invert;
         public int width, height;
+        public MediaController.CropState crop;
         public int resultWidth, resultHeight;
         public long duration;
 
@@ -498,6 +503,7 @@ public class DraftsController {
         public TLRPC.TL_error error;
 
         public String audioPath;
+        public TLRPC.InputDocument audioDocument;
         public String audioAuthor, audioTitle;
         public long audioDuration;
         public long audioOffset;
@@ -520,6 +526,9 @@ public class DraftsController {
         public String botLang;
         public TLRPC.InputMedia botEdit;
 
+        public CollageLayout collage;
+        public ArrayList<VideoEditedInfo.Part> collageParts;
+
         public StoryDraft(@NonNull StoryEntry entry) {
             this.id = entry.draftId;
             this.date = entry.draftDate;
@@ -535,15 +544,16 @@ public class DraftsController {
             this.invert = entry.invert;
             this.width = entry.width;
             this.height = entry.height;
+            this.crop = entry.crop;
             this.resultWidth = entry.resultWidth;
             this.resultHeight = entry.resultHeight;
             this.duration = entry.duration;
             entry.matrix.getValues(this.matrixValues);
             this.gradientTopColor = entry.gradientTopColor;
             this.gradientBottomColor = entry.gradientBottomColor;
-            CharSequence caption = entry.caption;
-            this.captionEntities = entry.captionEntitiesAllowed ? MediaDataController.getInstance(entry.currentAccount).getEntities(new CharSequence[]{caption}, true) : null;
-            this.caption = caption == null ? "" : caption.toString();
+            final CharSequence[] caption = new CharSequence[] { entry.caption };
+            this.captionEntities = entry.captionEntitiesAllowed ? MediaDataController.getInstance(entry.currentAccount).getEntities(caption, true) : null;
+            this.caption = caption[0] == null ? "" : caption[0].toString();
             this.privacyRules.addAll(entry.privacyRules);
             this.paintFilePath = entry.paintFile == null ? "" : entry.paintFile.toString();
             this.paintEntitiesFilePath = entry.paintEntitiesFile == null ? "" : entry.paintEntitiesFile.toString();
@@ -557,6 +567,7 @@ public class DraftsController {
             this.error = entry.error;
 
             this.audioPath = entry.audioPath;
+            this.audioDocument = entry.audioDocument;
             this.audioAuthor = entry.audioAuthor;
             this.audioTitle = entry.audioTitle;
             this.audioDuration = entry.audioDuration;
@@ -579,6 +590,9 @@ public class DraftsController {
             this.botId = entry.botId;
             this.botLang = entry.botLang;
             this.botEdit = entry.editingBotPreview;
+
+            this.collage = entry.collage;
+            this.collageParts = VideoEditedInfo.Part.toParts(entry);
         }
 
         public StoryEntry toEntry() {
@@ -610,6 +624,7 @@ public class DraftsController {
             entry.invert = invert;
             entry.width = width;
             entry.height = height;
+            entry.crop = crop;
             entry.resultWidth = resultWidth;
             entry.resultHeight = resultHeight;
             entry.matrix.setValues(matrixValues);
@@ -622,6 +637,7 @@ public class DraftsController {
                 }
                 caption = Emoji.replaceEmoji(caption, Theme.chat_msgTextPaint.getFontMetricsInt(), true);
                 MessageObject.addEntitiesToText(caption, captionEntities, true, false, true, false);
+                caption = MessageObject.replaceAnimatedEmoji(caption, captionEntities, Theme.chat_msgTextPaint.getFontMetricsInt());
                 entry.caption = caption;
             } else {
                 entry.caption = "";
@@ -652,6 +668,7 @@ public class DraftsController {
             entry.error = error;
 
             entry.audioPath = audioPath;
+            entry.audioDocument = audioDocument;
             entry.audioAuthor = audioAuthor;
             entry.audioTitle = audioTitle;
             entry.audioDuration = audioDuration;
@@ -676,6 +693,9 @@ public class DraftsController {
             entry.botId = botId;
             entry.botLang = botLang;
             entry.editingBotPreview = botEdit;
+
+            entry.collage = collage;
+            entry.collageContent = VideoEditedInfo.Part.toStoryEntries(collageParts);
 
             return entry;
         }
@@ -811,6 +831,27 @@ public class DraftsController {
                 botEdit.serializeToStream(stream);
             }
 
+            if (collage == null || collage.parts.size() <= 1 || collageParts == null || collageParts.size() <= 1) {
+                stream.writeInt32(TLRPC.TL_null.constructor);
+            } else {
+                stream.writeInt32(0xdeadbeef);
+                stream.writeString(collage.toString());
+                for (VideoEditedInfo.Part part : collageParts) {
+                    part.serializeToStream(stream);
+                }
+            }
+
+            if (crop == null) {
+                stream.writeInt32(TLRPC.TL_null.constructor);
+            } else {
+                crop.serializeToStream(stream);
+            }
+
+            if (audioDocument == null) {
+                stream.writeInt32(TLRPC.TL_null.constructor);
+            } else {
+                audioDocument.serializeToStream(stream);
+            }
         }
 
         public int getObjectSize() {
@@ -1002,6 +1043,32 @@ public class DraftsController {
                 magic = stream.readInt32(exception);
                 if (magic != TLRPC.TL_null.constructor) {
                     botEdit = TLRPC.InputMedia.TLdeserialize(stream, magic, exception);
+                }
+            }
+            if (stream.remaining() > 0) {
+                magic = stream.readInt32(exception);
+                if (magic == 0xdeadbeef) {
+                    collage = new CollageLayout(stream.readString(exception));
+                    collageParts = new ArrayList<>();
+                    for (int i = 0; i < collage.parts.size(); ++i) {
+                        VideoEditedInfo.Part part = new VideoEditedInfo.Part();
+                        part.readParams(stream, exception);
+                        part.part = collage.parts.get(i);
+                        collageParts.add(part);
+                    }
+                }
+            }
+            if (stream.remaining() > 0) {
+                magic = stream.readInt32(exception);
+                if (magic == MediaController.CropState.constructor) {
+                    crop = new MediaController.CropState();
+                    crop.readParams(stream, exception);
+                }
+            }
+            if (stream.remaining() > 0) {
+                magic = stream.readInt32(exception);
+                if (magic == TLRPC.TL_inputDocument.constructor) {
+                    audioDocument = TLRPC.InputDocument.TLdeserialize(stream, magic, exception);
                 }
             }
         }

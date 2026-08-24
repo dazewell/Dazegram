@@ -16,8 +16,6 @@ import java.util.Map;
 import tw.nekomimi.nekogram.NekoXConfig;
 
 public class UpdateHelper extends BaseRemoteHelper {
-    public static final String UPDATE_TAG = NekoXConfig.autoUpdateReleaseChannel == 2 ? "updatetest" : "updatev2";
-
     private static final class InstanceHolder {
         private static final UpdateHelper instance = new UpdateHelper();
     }
@@ -35,7 +33,7 @@ public class UpdateHelper extends BaseRemoteHelper {
 
     @Override
     protected String getTag() {
-        return UPDATE_TAG;
+        return NekoXConfig.autoUpdateReleaseChannel >= 2 ? "updatetest" : "updatev2";
     }
 
     @SuppressWarnings("ConstantConditions")
@@ -63,20 +61,24 @@ public class UpdateHelper extends BaseRemoteHelper {
     }
 
     private Update getShouldUpdateVersion(List<JSONObject> responses) {
-        long maxVersion = BuildConfig.VERSION_CODE;
+        long currentVersion = BuildConfig.VERSION_CODE;
+        long currentTimestamp = BuildConfig.BUILD_TIMESTAMP;
         Update ref = null;
         for (var string : responses) {
             try {
-                int version_code = string.getInt("version_code");
-                if (version_code > maxVersion || updateAlways) {
+                int versionCode = string.getInt("version_code");
+                long timestamp = string.getLong("timestamp");
+                if (versionCode > currentVersion
+                        || (versionCode == currentVersion && timestamp > currentTimestamp)
+                        || updateAlways) {
                     if (updateAlways) {
                         updateAlways = false;
                     }
-                    maxVersion = version_code;
                     ref = new Update(
                             string.getBoolean("can_not_skip"),
                             string.getString("version"),
-                            string.getInt("version_code"),
+                            versionCode,
+                            timestamp,
                             string.getInt("sticker"),
                             string.getInt("message"),
                             jsonToMap(string.getJSONObject("gcm")),
@@ -183,15 +185,17 @@ public class UpdateHelper extends BaseRemoteHelper {
         public Boolean canNotSkip;
         public String version;
         public Integer versionCode;
+        public Long timeStamp;
         public Integer sticker;
         public Integer message;
         public Map<String, Integer> gcm;
         public String url;
 
-        public Update(Boolean canNotSkip, String version, int versionCode, int sticker, int message, Map<String, Integer> gcm, String url) {
+        public Update(Boolean canNotSkip, String version, int versionCode, long timeStamp, int sticker, int message, Map<String, Integer> gcm, String url) {
             this.canNotSkip = canNotSkip;
             this.version = version;
             this.versionCode = versionCode;
+            this.timeStamp = timeStamp;
             this.sticker = sticker;
             this.message = message;
             this.gcm = gcm;

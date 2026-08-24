@@ -319,7 +319,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
   private float targetPlaybackSpeed;
   @Nullable private MediaCodecAdapter codec;
   @Nullable private Format codecInputFormat;
-  @Nullable public MediaFormat codecOutputMediaFormat;
+  @Nullable private MediaFormat codecOutputMediaFormat;
   private boolean codecOutputMediaFormatChanged;
   private float codecOperatingRate;
   @Nullable private ArrayDeque<MediaCodecInfo> availableCodecInfos;
@@ -628,7 +628,7 @@ public abstract class MediaCodecRenderer extends BaseRenderer {
   }
 
   @Nullable
-  protected final MediaFormat getCodecOutputMediaFormat() {
+  public final MediaFormat getCodecOutputMediaFormat() {
     return codecOutputMediaFormat;
   }
 

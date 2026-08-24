@@ -2,7 +2,10 @@ package org.telegram.tgnet;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.InstallSourceInfo;
+import android.content.pm.PackageInfo;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.SystemClock;
@@ -12,12 +15,14 @@ import android.util.SparseArray;
 import android.util.LongSparseArray;
 import android.util.SparseIntArray;
 
+import androidx.annotation.Keep;
+
+import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
 import com.google.android.gms.tasks.Task;
 import com.google.android.play.core.integrity.IntegrityManager;
 import com.google.android.play.core.integrity.IntegrityManagerFactory;
 import com.google.android.play.core.integrity.IntegrityTokenRequest;
 import com.google.android.play.core.integrity.IntegrityTokenResponse;
-//import com.google.firebase.remoteconfig.FirebaseRemoteConfig;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -27,6 +32,7 @@ import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BaseController;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.BuildVars;
+import org.telegram.messenger.CaptchaController;
 import org.telegram.messenger.EmuDetector;
 import org.telegram.messenger.FileLoadOperation;
 import org.telegram.messenger.FileLoader;
@@ -41,6 +47,9 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.StatsController;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
+import org.telegram.tgnet.tl.TL_account;
+import org.telegram.tgnet.tl.TL_stories;
+import org.telegram.ui.Components.VideoPlayer;
 import org.telegram.ui.LoginActivity;
 
 import java.io.File;
@@ -72,6 +81,8 @@ import javax.net.ssl.SSLException;
 
 import cn.hutool.core.util.StrUtil;
 import tw.nekomimi.nekogram.NekoConfig;
+import tw.nekomimi.nekogram.NekoXConfig;
+import tw.nekomimi.nekogram.utils.AyuGhostUtils;
 import tw.nekomimi.nekogram.utils.DnsFactory;
 import tw.nekomimi.nekogram.ErrorDatabase;
 
@@ -230,42 +241,37 @@ public class ConnectionsManager extends BaseController {
             systemLangCode = LocaleController.getSystemLocaleStringIso639().toLowerCase();
             langCode = MessagesController.getGlobalMainSettings().getString("lang_code", systemLangCode);
             deviceModel = Build.MANUFACTURER + Build.MODEL;
-            systemVersion = "SDK " + Build.VERSION.SDK_INT;
-        } catch (Exception ignored) {
-            systemLangCode = "";
-            langCode = "";
-            deviceModel = "";
-            systemVersion = "";
-        }
-
-        int version;
-        int appId;
-        String fingerprint;
-        if (getUserConfig().official || !getUserConfig().isClientActivated()) {
-            fingerprint = "49C1522548EBACD46CE322B6FD47F6092BB745D0F88082145CAF35E14DCC38E1";
-            version = BuildConfig.OFFICIAL_VERSION_CODE * 10 + 9;
-            appId = BuildVars.OFFICAL_APP_ID;
-            appVersion = BuildConfig.OFFICIAL_VERSION + " (" + (BuildConfig.OFFICIAL_VERSION_CODE * 10 + 9) + ")";
-        } else {
-            fingerprint = AndroidUtilities.getCertificateSHA256Fingerprint();
-            version = BuildConfig.VERSION_CODE;
-            appId = BuildConfig.APP_ID;
             String versionName = BuildConfig.VERSION_NAME;
             if (versionName.contains("-")) {
                 versionName = StrUtil.subBefore(versionName, "-", false);
             }
             appVersion = versionName + " (" + BuildConfig.VERSION_CODE + ")";
+            systemVersion = "SDK " + Build.VERSION.SDK_INT;
+        } catch (Exception ignored) {
+            systemLangCode = "en";
+            langCode = "";
+            deviceModel = "Android unknown";
+            appVersion = "App version unknown";
+            systemVersion = "SDK " + Build.VERSION.SDK_INT;
         }
-
         if (systemLangCode.trim().length() == 0) {
             systemLangCode = "en";
         }
-
+        if (deviceModel.trim().length() == 0) {
+            deviceModel = "Android unknown";
+        }
+        if (appVersion.trim().length() == 0) {
+            appVersion = "App version unknown";
+        }
+        if (systemVersion.trim().length() == 0) {
+            systemVersion = "SDK Unknown";
+        }
         getUserConfig().loadConfig();
         String pushString = getRegId();
+        String fingerprint = AndroidUtilities.getCertificateSHA256Fingerprint();
 
         int timezoneOffset = (TimeZone.getDefault().getRawOffset() + TimeZone.getDefault().getDSTSavings()) / 1000;
-SharedPreferences mainPreferences;
+        SharedPreferences mainPreferences;
         if (currentAccount == 0) {
             mainPreferences = ApplicationLoader.applicationContext.getSharedPreferences("mainconfig", Activity.MODE_PRIVATE);
         } else {
@@ -276,7 +282,7 @@ SharedPreferences mainPreferences;
         if (getUserConfig().getCurrentUser() != null) {
             userPremium = getUserConfig().getCurrentUser().premium;
         }
-        init(version, TLRPC.LAYER, appId, deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
+        init(BuildConfig.VERSION_CODE, TLRPC.LAYER, NekoXConfig.currentAppId(), deviceModel, systemVersion, appVersion, langCode, systemLangCode, configPath, FileLog.getNetworkLogPath(), pushString, fingerprint, timezoneOffset, getUserConfig().getClientUserId(), userPremium, enablePushConnection);
     }
 
     private String getRegId() {
@@ -315,9 +321,127 @@ SharedPreferences mainPreferences;
         return native_getCurrentDatacenterId(currentAccount);
     }
 
+    public long getCurrentAuthKeyId() {
+        return native_getCurrentAuthKeyId(currentAccount);
+    }
+
     public int getTimeDifference() {
         return native_getTimeDifference(currentAccount);
     }
+
+    private boolean ayuGhostShouldSend(TLObject object) {
+        // --- 不发送动态已读 ---
+        if (!NekoConfig.sendReadStoryPackets &&
+                (object instanceof TL_stories.TL_stories_readStories ||
+                        object instanceof TL_stories.TL_stories_incrementStoryViews)) {
+            return false;
+        }
+        // --- 不发送输入状态 ---
+        if (!NekoConfig.sendUploadProgress &&
+                (object instanceof TLRPC.TL_messages_setTyping ||
+                        object instanceof TLRPC.TL_messages_setEncryptedTyping)) {
+            return false;
+        }
+        // --- 不发送已读消息 ---
+        if (!NekoConfig.sendReadMessagePackets && !AyuGhostUtils.getAllowReadPacket() &&
+                (object instanceof TLRPC.TL_messages_readHistory ||
+                        object instanceof TLRPC.TL_messages_readMessageContents ||
+                        object instanceof TLRPC.TL_channels_readHistory ||
+                        object instanceof TLRPC.TL_channels_readMessageContents)) {
+            return false;
+        }
+        return true;
+    }
+
+    private RequestDelegate ayuGhostApplyCallbackHooks(TLObject object, RequestDelegate onComplete) {
+        // --- 发送消息后自动已读对面消息 ---
+        if (NekoConfig.markReadAfterSend && !NekoConfig.sendReadMessagePackets) {
+            onComplete = ayuGhostWrapMarkReadHook(object, onComplete);
+        }
+        // --- 在线后立即离线 ---
+        if (NekoConfig.sendOfflineAfterOnline &&
+                (object instanceof TLRPC.TL_messages_sendMessage ||
+                        object instanceof TLRPC.TL_messages_sendMedia ||
+                        object instanceof TLRPC.TL_messages_sendMultiMedia)) {
+            onComplete = ayuGhostWrapOfflineHook(object, onComplete);
+        }
+        return onComplete;
+    }
+
+    private RequestDelegate ayuGhostWrapMarkReadHook(TLObject object, RequestDelegate origCallback) {
+        TLRPC.InputPeer peer;
+        if (object instanceof TLRPC.TL_messages_sendMessage) {
+            peer = ((TLRPC.TL_messages_sendMessage) object).peer;
+        } else if (object instanceof TLRPC.TL_messages_sendMedia) {
+            peer = ((TLRPC.TL_messages_sendMedia) object).peer;
+        } else if (object instanceof TLRPC.TL_messages_sendMultiMedia) {
+            peer = ((TLRPC.TL_messages_sendMultiMedia) object).peer;
+        } else {
+            peer = null;
+        }
+        if (peer == null) return origCallback;
+        var dialogId = AyuGhostUtils.getDialogId(peer);
+        return (response, error) -> {
+            origCallback.run(response, error);
+            getMessagesStorage().getDialogMaxMessageId(dialogId, maxId -> {
+                TLRPC.TL_messages_readHistory request = new TLRPC.TL_messages_readHistory();
+                request.peer = peer;
+                request.max_id = maxId;
+                AyuGhostUtils.setAllowReadPacket(true, 1);
+                sendRequest(request, (a1, a2) -> {});
+            });
+        };
+    }
+
+    private RequestDelegate ayuGhostWrapOfflineHook(TLObject object, RequestDelegate origCallback) {
+        TL_account.updateStatus offlineRequest = new TL_account.updateStatus();
+        offlineRequest.offline = true;
+        return (response, error) -> {
+            origCallback.run(response, error);
+            new android.os.Handler().postDelayed(() -> sendRequest(offlineRequest, null), 500);
+        };
+    }
+
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Utilities.Callback2<T, TLRPC.TL_error> completionBlock) {
+        return sendRequestTyped(method, null, completionBlock);
+    }
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock) {
+        return sendRequestTyped(method, executor, completionBlock, DEFAULT_DATACENTER_ID, 0);
+    }
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock, int requestFlags) {
+        return sendRequestTyped(method, executor, completionBlock, DEFAULT_DATACENTER_ID, requestFlags);
+    }
+    public <T extends TLObject> int sendRequestTyped(TLMethod<T> method, Executor executor, Utilities.Callback2<T, TLRPC.TL_error> completionBlock, int dcId, int requestFlags) {
+        return sendRequest(method, (res, err) -> {
+            //noinspection unchecked
+            T result = (T) res;
+            if (executor != null) {
+                executor.execute(() -> completionBlock.run(result, err));
+            } else {
+                completionBlock.run(result, err);
+            }
+        }, null, null, null, requestFlags, dcId, ConnectionTypeGeneric, true);
+    }
+
+
+
+    public int sendRequestTypedAndProcessUpdates(TLMethod<TLRPC.Updates> method, Executor executor, Utilities.Callback2<TLRPC.Updates, TLRPC.TL_error> completionBlock) {
+        return sendRequestTypedAndProcessUpdates(method, executor, completionBlock, DEFAULT_DATACENTER_ID, 0);
+    }
+
+    public int sendRequestTypedAndProcessUpdates(TLMethod<TLRPC.Updates> method, Executor executor, Utilities.Callback2<TLRPC.Updates, TLRPC.TL_error> completionBlock, int dcId, int requestFlags) {
+        return sendRequestTyped(method, null, (result, err) -> {
+            if (result != null) {
+                getMessagesController().processUpdates(result, false);
+            }
+            if (executor != null) {
+                executor.execute(() -> completionBlock.run(result, err));
+            } else {
+                completionBlock.run(result, err);
+            }
+        }, dcId, requestFlags);
+    }
+
 
     public int sendRequest(TLObject object, RequestDelegate completionBlock) {
         return sendRequest(object, completionBlock, null, 0);
@@ -357,17 +481,32 @@ SharedPreferences mainPreferences;
         return requestToken;
     }
 
-    private void sendRequestInternal(TLObject object, RequestDelegate onComplete, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken) {
+    private void sendRequestInternal(TLObject object, RequestDelegate onCompleteOrig, RequestDelegateTimestamp onCompleteTimestamp, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken) {
         if (BuildVars.LOGS_ENABLED) {
             FileLog.d("send request " + object + " with token = " + requestToken);
         }
+        // start request hook
+        {
+            // --- 不发送在线状态 ---
+            if (!NekoConfig.sendOnlinePackets && object instanceof TL_account.updateStatus) {
+                // 不发送在线状态，将状态设置为离线
+                TL_account.updateStatus status = (TL_account.updateStatus) object;
+                status.offline = true;  // 将在线状态改为离线
+            }
+            if (!ayuGhostShouldSend(object)) {
+                return;
+            }
+            onCompleteOrig = ayuGhostApplyCallbackHooks(object, onCompleteOrig);
+        }
+        final var onComplete = onCompleteOrig;
+        // --- end request hook
         try {
             NativeByteBuffer buffer = new NativeByteBuffer(object.getObjectSize());
             object.serializeToStream(buffer);
             object.freeResources();
 
             long startRequestTime = 0;
-            if (BuildVars.DEBUG_PRIVATE_VERSION && BuildVars.LOGS_ENABLED) {
+            if (BuildVars.DEBUG_PRIVATE_VERSION && BuildVars.LOGS_ENABLED || (connectionType & ConnectionTypeDownload) != 0) {
                 startRequestTime = System.currentTimeMillis();
             }
             long finalStartRequestTime = startRequestTime;
@@ -378,6 +517,7 @@ SharedPreferences mainPreferences;
                     int responseSize = 0;
                     if (response != 0) {
                         NativeByteBuffer buff = NativeByteBuffer.wrap(response);
+                        buff.setDataSourceType(TLDataSourceType.NETWORK);
                         buff.reused = true;
                         responseSize = buff.limit();
                         int magic = buff.readInt32(true);
@@ -397,6 +537,15 @@ SharedPreferences mainPreferences;
                         if (BuildVars.LOGS_ENABLED && error.code != -2000) {
                             FileLog.e(object + " got error " + error.code + " " + error.text);
                         }
+                        if (NaConfig.INSTANCE.getShowRPCError().Bool()) {
+                            ErrorDatabase.showErrorToast(object, errorText);
+                        }
+                    }
+                    if ((connectionType & ConnectionTypeDownload) != 0 && VideoPlayer.activePlayers.isEmpty()) {
+                        long ping_time = native_getCurrentPingTime(currentAccount);
+                        final long size = responseSize;
+                        final long delta = Math.max(0, (System.currentTimeMillis() - finalStartRequestTime) - ping_time);
+                        DefaultBandwidthMeter.getSingletonInstance(ApplicationLoader.applicationContext).onTransfer(size, delta);
                     }
                     if (BuildVars.DEBUG_PRIVATE_VERSION && !getUserConfig().isClientActivated() && error != null && error.code == 400 && Objects.equals(error.text, "CONNECTION_NOT_INITED")) {
                         if (BuildVars.LOGS_ENABLED) {
@@ -410,9 +559,9 @@ SharedPreferences mainPreferences;
                         resp.networkType = networkType;
                     }
                     if (BuildVars.LOGS_ENABLED) {
-                        FileLog.d("java received " + resp + " error = " + error + " messageId = " + requestMsgId);
+                        FileLog.d("java received " + resp + (error != null ? " error = " + error : "") + " messageId = 0x" + Long.toHexString(requestMsgId));
+                        FileLog.dumpResponseAndRequest(currentAccount, object, resp, error, requestMsgId, finalStartRequestTime, requestToken);
                     }
-                    FileLog.dumpResponseAndRequest(currentAccount, object, resp, error, requestMsgId, finalStartRequestTime, requestToken);
                     final TLObject finalResponse = resp;
                     final TLRPC.TL_error finalError = error;
                     Utilities.stageQueue.postRunnable(() -> {
@@ -420,6 +569,9 @@ SharedPreferences mainPreferences;
                             onComplete.run(finalResponse, finalError);
                         } else if (onCompleteTimestamp != null) {
                             onCompleteTimestamp.run(finalResponse, finalError, timestamp);
+                        } else if (finalResponse instanceof TLRPC.Updates) {
+                            KeepAliveJob.finishJob();
+                            AccountInstance.getInstance(currentAccount).getMessagesController().processUpdates((TLRPC.Updates) finalResponse, false);
                         }
                         if (finalResponse != null) {
                             finalResponse.freeResources();
@@ -450,16 +602,16 @@ SharedPreferences mainPreferences;
 
     private void listen(int requestToken, RequestDelegateInternal onComplete, QuickAckDelegate onQuickAck, WriteToSocketDelegate onWriteToSocket) {
         requestCallbacks.put(requestToken, new RequestCallbacks(onComplete, onQuickAck, onWriteToSocket));
-        FileLog.d("{rc} listen(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
+//        FileLog.d("{rc} listen(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
     }
 
     private void listenCancel(int requestToken, Runnable onCancelled) {
         RequestCallbacks callbacks = requestCallbacks.get(requestToken);
         if (callbacks != null) {
             callbacks.onCancelled = onCancelled;
-            FileLog.d("{rc} listenCancel(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} listenCancel(" + currentAccount + ", " + requestToken + "): " + requestCallbacks.size() + " requests' callbacks");
         } else {
-            FileLog.d("{rc} listenCancel(" + currentAccount + ", " + requestToken + "): callback not found, " + requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} listenCancel(" + currentAccount + ", " + requestToken + "): callback not found, " + requestCallbacks.size() + " requests' callbacks");
         }
     }
 
@@ -473,13 +625,13 @@ SharedPreferences mainPreferences;
                     callbacks.onCancelled.run();
                 }
                 connectionsManager.requestCallbacks.remove(requestToken);
-                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
             } else {
-                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is not found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//                FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): request to cancel is not found " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
             }
         } else if (callbacks != null) {
             connectionsManager.requestCallbacks.remove(requestToken);
-            FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestClear(" + currentAccount + ", " + requestToken + ", " + cancelled + "): " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         }
     }
 
@@ -492,9 +644,9 @@ SharedPreferences mainPreferences;
             if (callbacks.onComplete != null) {
                 callbacks.onComplete.run(response, errorCode, errorText, networkType, timestamp, requestMsgId, dcId);
             }
-            FileLog.d("{rc} onRequestComplete(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestComplete(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         } else {
-            FileLog.d("{rc} onRequestComplete(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestComplete(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         }
     }
 
@@ -506,9 +658,9 @@ SharedPreferences mainPreferences;
             if (callbacks.onQuickAck != null) {
                 callbacks.onQuickAck.run();
             }
-            FileLog.d("{rc} onRequestQuickAck(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestQuickAck(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         } else {
-            FileLog.d("{rc} onRequestQuickAck(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestQuickAck(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         }
     }
 
@@ -520,9 +672,9 @@ SharedPreferences mainPreferences;
             if (callbacks.onWriteToSocket != null) {
                 callbacks.onWriteToSocket.run();
             }
-            FileLog.d("{rc} onRequestWriteToSocket(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestWriteToSocket(" + currentAccount + ", " + requestToken + "): found request " + requestToken + ", " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         } else {
-            FileLog.d("{rc} onRequestWriteToSocket(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
+//            FileLog.d("{rc} onRequestWriteToSocket(" + currentAccount + ", " + requestToken + "): not found request " + requestToken + "! " + connectionsManager.requestCallbacks.size() + " requests' callbacks");
         }
     }
 
@@ -590,7 +742,18 @@ SharedPreferences mainPreferences;
 
         String installer = "";
         try {
-            installer = ApplicationLoader.applicationContext.getPackageManager().getInstallerPackageName(ApplicationLoader.applicationContext.getPackageName());
+            Context context = ApplicationLoader.applicationContext;
+            if (Build.VERSION.SDK_INT >= 30) {
+                InstallSourceInfo installSourceInfo = context.getPackageManager().getInstallSourceInfo(context.getPackageName());
+                if (installSourceInfo != null) {
+                    installer = installSourceInfo.getInitiatingPackageName();
+                    if (installer == null) {
+                        installer = installSourceInfo.getInstallingPackageName();
+                    }
+                }
+            } else {
+                installer = context.getPackageManager().getInstallerPackageName(context.getPackageName());
+            }
         } catch (Throwable ignore) {
 
         }
@@ -668,6 +831,10 @@ SharedPreferences mainPreferences;
         native_updateDcSettings(currentAccount);
     }
 
+    public void setDefaultDatacenterId(int dcId) {
+        native_moveDatacenter(currentAccount, dcId);
+    }
+
     public long getPauseTime() {
         return lastPauseTime;
     }
@@ -732,6 +899,7 @@ SharedPreferences mainPreferences;
     public static void onUnparsedMessageReceived(long address, final int currentAccount, long messageId) {
         try {
             NativeByteBuffer buff = NativeByteBuffer.wrap(address);
+            buff.setDataSourceType(TLDataSourceType.NETWORK);
             buff.reused = true;
             int constructor = buff.readInt32(true);
             final TLObject message = TLClassStore.Instance().TLdeserialize(buff, constructor, true);
@@ -805,6 +973,9 @@ SharedPreferences mainPreferences;
     }
 
     public static void onRequestNewServerIpAndPort(final int second, final int currentAccount) {
+        if (NaConfig.INSTANCE.getDisableSecondAddress().Bool()) {
+            return;
+        }
         Utilities.globalQueue.postRunnable(() -> {
             boolean networkOnline = ApplicationLoader.isNetworkOnline();
             Utilities.stageQueue.postRunnable(() -> {
@@ -949,7 +1120,7 @@ SharedPreferences mainPreferences;
     public static native void native_setIpStrategy(int currentAccount, byte value);
 
     public static native void native_updateDcSettings(int currentAccount);
-
+    public static native void native_moveDatacenter(int currentAccount, int datacenterId);
     public static native void native_setNetworkAvailable(int currentAccount, boolean value, int networkType, boolean slow);
 
     public static native void native_resumeNetwork(int currentAccount, boolean partial);
@@ -958,8 +1129,10 @@ SharedPreferences mainPreferences;
 
     public static native int native_getCurrentTime(int currentAccount);
 
-    public static native int native_getCurrentDatacenterId(int currentAccount);
+    public static native int native_getCurrentPingTime(int currentAccount);
 
+    public static native int native_getCurrentDatacenterId(int currentAccount);
+    public static native long native_getCurrentAuthKeyId(int currentAccount);
     public static native int native_getTimeDifference(int currentAccount);
 
     public static native void native_sendRequest(int currentAccount, long object, int flags, int datacenterId, int connectionType, boolean immediate, int requestToken);
@@ -973,8 +1146,6 @@ SharedPreferences mainPreferences;
     public static native void native_bindRequestToGuid(int currentAccount, int requestToken, int guid);
 
     public static native void native_applyDatacenterAddress(int currentAccount, int datacenterId, String ipAddress, int port);
-
-    public static native void native_moveToDatacenter(int currentAccount, int datacenterId);
 
     public static native int native_getConnectionState(int currentAccount);
     public static native void native_setUserId(int currentAccount, long id);
@@ -1002,8 +1173,19 @@ SharedPreferences mainPreferences;
     public static native void native_discardConnection(int currentAccount, int datacenterId, int connectionType);
     public static native void native_failNotRunningRequest(int currentAccount, int token);
     public static native void native_receivedIntegrityCheckClassic(int currentAccount, int requestToken, String nonce, String token);
-
+    public static native void native_receivedCaptchaResult(int currentAccount, int[] requestTokens, String token);
     public static native boolean native_isGoodPrime(byte[] prime, int g);
+
+
+    public static boolean testNativeTlScheme(NativeByteBuffer buffer, INativeTlTest test) {
+        return test.test(buffer.address);
+    }
+
+    public static native boolean native_test_AuthAuthorization(long object);
+    public interface INativeTlTest {
+        boolean test(long address);
+    }
+
 
     public static int generateClassGuid() {
         return lastClassGuid++;
@@ -1028,7 +1210,7 @@ SharedPreferences mainPreferences;
         });
     }
 
-    private static byte ipStrategy = -1;
+    public static byte ipStrategy = -1;
     public static boolean hasIpv4;
     public static boolean hasStrangeIpv4;
     public static boolean hasIpv6;
@@ -1040,6 +1222,10 @@ SharedPreferences mainPreferences;
         }
         if (ipStrategy != -1) return ipStrategy;
 
+        if (NaConfig.INSTANCE.getCustomIpStrategy().Int() != 0) {
+            return ipStrategy = (byte) (NaConfig.INSTANCE.getCustomIpStrategy().Int() - 1);
+        }
+
         if (BuildVars.LOGS_ENABLED) {
             try {
                 NetworkInterface networkInterface;
@@ -1049,12 +1235,21 @@ SharedPreferences mainPreferences;
                     if (!networkInterface.isUp() || networkInterface.isLoopback() || networkInterface.getInterfaceAddresses().isEmpty()) {
                         continue;
                     }
+                    if (BuildVars.LOGS_ENABLED) {
+                        FileLog.d("valid interface: " + networkInterface);
+                    }
                     List<InterfaceAddress> interfaceAddresses = networkInterface.getInterfaceAddresses();
                     for (int a = 0; a < interfaceAddresses.size(); a++) {
                         InterfaceAddress address = interfaceAddresses.get(a);
                         InetAddress inetAddress = address.getAddress();
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("address: " + inetAddress.getHostAddress());
+                        }
                         if (inetAddress.isLinkLocalAddress() || inetAddress.isLoopbackAddress() || inetAddress.isMulticastAddress()) {
                             continue;
+                        }
+                        if (BuildVars.LOGS_ENABLED) {
+                            FileLog.d("address is good");
                         }
                     }
                 }
@@ -1095,9 +1290,6 @@ SharedPreferences mainPreferences;
                 }
                 if (!hasIpv4) {
                     ipStrategy = USE_IPV6_ONLY;
-                }
-                if (NekoConfig.useIPv6.Bool()) {
-                    ipStrategy = USE_IPV4_IPV6_RANDOM;
                 }
                 return ipStrategy;
             }
@@ -1216,6 +1408,7 @@ SharedPreferences mainPreferences;
     }
 
     public static long lastPremiumFloodWaitShown = 0;
+    @Keep
     public static void onPremiumFloodWait(final int currentAccount, final int requestToken, boolean isUpload) {
         AndroidUtilities.runOnUIThread(() -> {
             if (UserConfig.selectedAccount != currentAccount) {
@@ -1244,6 +1437,7 @@ SharedPreferences mainPreferences;
         });
     }
 
+    @Keep
     public static void onIntegrityCheckClassic(final int currentAccount, final int requestToken, final String project, final String nonce) {
         AndroidUtilities.runOnUIThread(() -> {
             long start = System.currentTimeMillis();
@@ -1280,5 +1474,10 @@ SharedPreferences mainPreferences;
                     native_receivedIntegrityCheckClassic(currentAccount, requestToken, nonce, "PLAYINTEGRITY_FAILED_EXCEPTION_" + LoginActivity.errorString(e));
                 });
         });
+    }
+
+    @Keep
+    public static void onCaptchaCheck(final int currentAccount, final int requestToken, final String action, final String key_id) {
+        CaptchaController.request(currentAccount, requestToken, action, key_id);
     }
 }

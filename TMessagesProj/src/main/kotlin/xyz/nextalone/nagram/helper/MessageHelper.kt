@@ -5,13 +5,22 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.net.Uri
 import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextUtils
+import android.util.Log
+import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.airbnb.lottie.LottieComposition
+import com.airbnb.lottie.LottieCompositionFactory
+import com.airbnb.lottie.LottieDrawable
+import com.airbnb.lottie.LottieResult
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
+import org.telegram.messenger.Bitmaps.createBitmap
 import org.telegram.messenger.BuildConfig
 import org.telegram.messenger.ChatObject
 import org.telegram.messenger.DialogObject
@@ -19,10 +28,12 @@ import org.telegram.messenger.Emoji
 import org.telegram.messenger.FileLoader
 import org.telegram.messenger.FileLog
 import org.telegram.messenger.LocaleController
+import org.telegram.messenger.MediaController
 import org.telegram.messenger.MediaDataController
 import org.telegram.messenger.MessageObject
 import org.telegram.messenger.R
 import org.telegram.messenger.UserConfig
+import org.telegram.messenger.Utilities
 import org.telegram.tgnet.TLRPC.Chat
 import org.telegram.tgnet.TLRPC.TL_messageEntityBankCard
 import org.telegram.tgnet.TLRPC.TL_messageEntityBotCommand
@@ -37,8 +48,12 @@ import org.telegram.tgnet.TLRPC.TL_messageMediaPoll
 import org.telegram.ui.ActionBar.Theme
 import org.telegram.ui.ChatActivity
 import org.telegram.ui.Components.ColoredImageSpan
+
+import tw.nekomimi.nekogram.utils.UIUtil.runOnIoDispatcher
 import xyz.nextalone.nagram.NaConfig
+
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.Date
 
@@ -76,6 +91,12 @@ object MessageHelper {
             }
         }
         return null
+    }
+
+    fun getUriToMessage(messageObject: MessageObject): Uri? {
+        val f = getPathToMessage(messageObject) ?: return null
+        val context = ApplicationLoader.applicationContext
+        return FileProvider.getUriForFile(context, ApplicationLoader.getApplicationId() + ".provider", f)
     }
 
 
@@ -255,21 +276,24 @@ object MessageHelper {
     }
 
     @JvmStatic
-    fun getMessagePlainText(messageObject: MessageObject): String {
-        val message: String = if (messageObject.isPoll) {
-            val poll = (messageObject.messageOwner.media as TL_messageMediaPoll).poll
-            val pollText = StringBuilder(poll.question.text).append("\n")
-            for (answer in poll.answers) {
-                pollText.append("\n\uD83D\uDD18 ")
-                pollText.append(answer.text.text)
+    fun getMessagePlainText(messageObject: MessageObject): String? {
+        return if (messageObject.isPoll) {
+            val media = messageObject.messageOwner.media as? TL_messageMediaPoll
+            val poll = media?.poll
+            if (poll == null) {
+                null
+            } else {
+                val pollText = StringBuilder(poll.question?.text ?: "").append("\n")
+                for (answer in poll.answers) {
+                    pollText.append("\n\uD83D\uDD18 ").append(answer.text?.text ?: continue)
+                }
+                pollText.toString()
             }
-            pollText.toString()
         } else if (messageObject.isVoiceTranscriptionOpen) {
             messageObject.messageOwner.voiceTranscription
         } else {
             messageObject.messageOwner.message
         }
-        return message
     }
 
     private fun formatTime(timestamp: Int): String {
@@ -310,20 +334,285 @@ object MessageHelper {
         return text
     }
 
-    fun blurify(messageObject: MessageObject?) {
-        if (messageObject?.messageOwner == null) {
+    private var spoilerChars: CharArray = charArrayOf(
+        '⠌', '⡢', '⢑', '⠨', '⠥', '⠮', '⡑'
+    )
+
+    fun blurify(text: CharSequence): CharSequence {
+        val stringBuilder = StringBuilder(text)
+        for (i in text.indices) {
+            stringBuilder.setCharAt(i, spoilerChars[i % spoilerChars.size])
+        }
+        return stringBuilder
+    }
+
+    fun blurify(messageObject: MessageObject) {
+        if (messageObject.messageOwner == null) {
             return
         }
 
+        if (!TextUtils.isEmpty(messageObject.messageText)) {
+            messageObject.messageText = blurify(messageObject.messageText)
+        }
+
         if (!TextUtils.isEmpty(messageObject.messageOwner.message)) {
-            val entity = TL_messageEntitySpoiler()
-            entity.offset = 0
-            entity.length = messageObject.messageOwner.message.length
-            messageObject.messageOwner.entities.add(entity)
+            messageObject.messageOwner.message = blurify(messageObject.messageOwner.message).toString()
+        }
+
+        if (!TextUtils.isEmpty(messageObject.caption)) {
+            messageObject.caption = blurify(messageObject.caption)
         }
 
         if (messageObject.messageOwner.media != null) {
             messageObject.messageOwner.media.spoiler = true
+        }
+    }
+
+    fun saveStickerToGalleryAsGif(activity: Context, path: String?, video: Boolean, animated: Boolean, callback: Utilities.Callback<Uri>?) {
+        Utilities.globalQueue.postRunnable {
+            runCatching {
+                if (video) {
+                    val outputPath = path!!.replace(".webm", ".gif")
+                    if (File(outputPath).exists()) {
+                        File(outputPath).delete()
+                    }
+
+                    runOnIoDispatcher {
+                        val success = convertVideoToGif(path, outputPath)
+                        AndroidUtilities.runOnUIThread {
+                            if (success) {
+                                MediaController.saveFile(outputPath, activity, 0, null, null, callback)
+                            } else {
+                                Log.e("VideoToGif", "Failed to convert to GIF")
+                                Toast.makeText(activity, "Failed to convert video to GIF", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                } else if (animated) {
+                    runOnIoDispatcher {
+                        val outputPath = path!!.replace(".tgs", ".gif")
+                        if (File(outputPath).exists()) {
+                            File(outputPath).delete()
+                        }
+
+                        val result: LottieResult<LottieComposition> = LottieCompositionFactory.fromJsonInputStreamSync(
+                            FileInputStream(File(path)), path)
+                        val composition: LottieComposition? = result.value
+
+                        composition?.let { comp ->
+                            val success = convertLottieToGif(comp, outputPath)
+                            AndroidUtilities.runOnUIThread {
+                                if (success) {
+                                    MediaController.saveFile(outputPath, activity, 0, null, null, callback)
+                                } else {
+                                    Log.e("LottieToGif", "Failed to convert animation to GIF")
+                                    Toast.makeText(activity, "Failed to convert animation to GIF", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Convert static sticker to PNG (since it's already a static image)
+                    val image = BitmapFactory.decodeFile(path)
+                    if (image != null) {
+                        val file = File(path!!.replace(".webp", ".png"))
+                        val stream = FileOutputStream(file)
+                        image.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                        stream.close()
+                        MediaController.saveFile(file.toString(), activity, 0, null, null, callback)
+                    } else {
+                        Toast.makeText(activity, "Failed to process image", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }.onFailure {
+                Log.e("VideoToGif", "")
+            }
+        }
+    }
+
+    /**
+     * Convert video to GIF
+     */
+    private fun convertVideoToGif(inputPath: String, outputPath: String): Boolean {
+        return try {
+            Log.d("VideoToGif", "Converting using FFmpeg + GifEncoder: $inputPath -> $outputPath")
+
+            // Get original frame rate
+            val originalFps = getWebmFrameRateNative(inputPath)
+            Log.d("VideoToGif", "Original frame rate: $originalFps fps")
+
+            // Use FFmpeg to extract frames as Bitmaps
+            val frames = extractFramesFromWebmNative(
+                inputPath,
+                60   // maxFrames (for quality)
+            )
+
+            if (frames != null && frames.isNotEmpty()) {
+                Log.d("VideoToGif", "FFmpeg extracted ${frames.size} frames, creating GIF with GifEncoder")
+
+                // Convert Array<Bitmap> to List<Bitmap>
+                val frameList = frames.toList()
+
+                val frameDelay = (1000.0 / originalFps).toInt().coerceAtLeast(10)
+
+                Log.d("VideoToGif", "Using frame delay: ${frameDelay}ms for $originalFps fps")
+
+                // Use existing GifEncoder to create GIF
+                val success = createGifFromBitmaps(frameList, outputPath, frameDelay)
+
+                if (success) {
+                    Log.d("VideoToGif", "GIF creation successful using FFmpeg + GifEncoder")
+                } else {
+                    Log.e("VideoToGif", "GIF creation failed")
+                }
+
+                success
+            } else {
+                Log.e("VideoToGif", "FFmpeg frame extraction failed")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("VideoToGif", "Error with FFmpeg frame extraction: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Native method for WebM frame extraction using FFmpeg
+     */
+    @JvmStatic
+    private external fun extractFramesFromWebmNative(
+        inputPath: String,
+        maxFrames: Int
+    ): Array<Bitmap>?
+
+    /**
+     * Native method to get WebM frame rate
+     */
+    @JvmStatic
+    private external fun getWebmFrameRateNative(inputPath: String): Double
+
+    /**
+     * Convert Lottie to GIF
+     */
+    private fun convertLottieToGif(composition: LottieComposition, outputPath: String): Boolean {
+        return try {
+            val lottieDrawable = LottieDrawable().apply {
+                this.composition = composition
+            }
+
+            val width = minOf(composition.bounds.width(), 320)
+            val height = minOf(composition.bounds.height(), 320)
+            lottieDrawable.setBounds(0, 0, width, height)
+
+            val frames = mutableListOf<Bitmap>()
+            val totalFrames = (composition.endFrame - composition.startFrame).toInt()
+            val duration = composition.duration
+            val originalFrameRate = composition.frameRate
+            val actualFrameCount = totalFrames
+            val targetFrameRate = originalFrameRate
+
+            Log.d("LottieToGif", "Using all frames: $actualFrameCount, original fps: $targetFrameRate")
+
+            for (i in 0 until actualFrameCount) {
+                val frameIndex = composition.startFrame.toInt() + i
+                val clampedFrameIndex = frameIndex.coerceIn(
+                    composition.startFrame.toInt(),
+                    composition.endFrame.toInt()
+                )
+                lottieDrawable.frame = clampedFrameIndex
+                val bitmap = createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bitmap)
+                lottieDrawable.draw(canvas)
+
+                frames.add(bitmap)
+                Log.d("LottieToGif", "Frame ${i + 1}/$actualFrameCount, lottie frame: $clampedFrameIndex")
+            }
+
+            if (frames.isEmpty()) return false
+            val frameDuration = if (originalFrameRate > 0) {
+                (1000f / originalFrameRate).toInt()
+            } else {
+                (duration / totalFrames).toInt()
+            }
+
+            Log.d("LottieToGif", "Using frame duration: ${frameDuration}ms (target fps: ${1000f/frameDuration})")
+
+            createGifFromBitmaps(frames, outputPath, frameDuration)
+        } catch (e: Exception) {
+            Log.e("LottieToGif", "Error converting Lottie to GIF: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Create GIF from bitmaps
+     */
+    private fun createGifFromBitmaps(bitmaps: List<Bitmap>, outputPath: String, delayMs: Int): Boolean {
+        return try {
+            if (bitmaps.isEmpty()) {
+                Log.e("GifEncoder", "No bitmaps to encode")
+                return false
+            }
+
+            Log.d("GifEncoder", "Creating GIF with ${bitmaps.size} frames, delay: ${delayMs}ms")
+            Log.d("GifEncoder", "Output path: $outputPath")
+
+            // Ensure output directory exists
+            val outputFile = File(outputPath)
+            outputFile.parentFile?.mkdirs()
+
+            val output = FileOutputStream(outputPath)
+            val gifEncoder = GifEncoder()
+
+            // Configure encoder
+            if (!gifEncoder.start(output)) {
+                Log.e("GifEncoder", "Failed to start encoder - output stream may be invalid")
+                try {
+                    output.close()
+                } catch (e: Exception) {
+                    Log.w("GifEncoder", "Failed to close output stream: ${e.message}")
+                }
+                return false
+            }
+
+            // Set GIF properties
+            gifEncoder.setDelay(delayMs)
+            gifEncoder.setRepeat(0) // Loop infinitely
+            gifEncoder.setQuality(10) // Medium quality
+
+            // Add frames
+            var successCount = 0
+            for ((index, bitmap) in bitmaps.withIndex()) {
+                if (bitmap.isRecycled) {
+                    Log.w("GifEncoder", "Skipping recycled bitmap at index $index")
+                    continue
+                }
+
+                if (gifEncoder.addFrame(bitmap)) {
+                    successCount++
+                    Log.d("GifEncoder", "Successfully added frame $index")
+                } else {
+                    Log.e("GifEncoder", "Failed to add frame $index")
+                }
+            }
+
+            Log.d("GifEncoder", "Successfully added $successCount out of ${bitmaps.size} frames")
+
+            val success = gifEncoder.finish()
+            output.close()
+
+            if (success && successCount > 0) {
+                val file = File(outputPath)
+                Log.d("GifEncoder", "GIF created successfully: ${file.length()} bytes")
+            } else {
+                Log.e("GifEncoder", "Failed to finish GIF encoding or no frames added")
+                return false
+            }
+            true
+        } catch (e: Exception) {
+            Log.e("GifEncoder", "Error creating GIF: $e")
+            false
         }
     }
 }

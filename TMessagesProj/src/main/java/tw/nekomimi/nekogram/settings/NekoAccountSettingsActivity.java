@@ -3,14 +3,11 @@ package tw.nekomimi.nekogram.settings;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -20,7 +17,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
-import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
@@ -32,31 +29,24 @@ import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextDetailSettingsCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
-import org.telegram.ui.Components.BlurredRecyclerView;
-import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
-import org.telegram.ui.Components.UndoView;
+import org.telegram.ui.SettingsActivity;
 
 import java.util.ArrayList;
-import java.util.Locale;
 
+import tw.nekomimi.nekogram.config.CellGroup;
 import tw.nekomimi.nekogram.ui.MessageHelper;
 
 @SuppressLint("RtlHardcoded")
 public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
 
-    private ListAdapter listAdapter;
-
     private int rowCount;
 
     private int accountRow;
-    private int uploadDeviceInfoRow;
     private int deleteAccountRow;
     private int account2Row;
-
-    private UndoView tooltip;
 
     @Override
     public boolean onFragmentCreate() {
@@ -70,41 +60,13 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
     @SuppressLint("NewApi")
     @Override
     public View createView(Context context) {
-        actionBar.setBackButtonImage(R.drawable.ic_ab_back);
-        actionBar.setTitle(LocaleController.getString("Account", R.string.Account));
-
-        if (AndroidUtilities.isTablet()) {
-            actionBar.setOccupyStatusBar(false);
-        }
-        actionBar.setActionBarMenuOnItemClick(new ActionBar.ActionBarMenuOnItemClick() {
-            @Override
-            public void onItemClick(int id) {
-                if (id == -1) {
-                    finishFragment();
-                }
-            }
-        });
+        var superView = super.createView(context);
 
         listAdapter = new ListAdapter(context);
 
-        fragmentView = new FrameLayout(context);
-        fragmentView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-        FrameLayout frameLayout = (FrameLayout) fragmentView;
-
-        listView = new BlurredRecyclerView(context);
-        listView.setVerticalScrollBarEnabled(false);
-        listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false));
-        frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT));
         listView.setAdapter(listAdapter);
         listView.setOnItemClickListener((view, position, x, y) -> {
-            if (position == uploadDeviceInfoRow) {
-                getUserConfig().deviceInfo = !getUserConfig().deviceInfo;
-                getUserConfig().saveConfig(true);
-                if (view instanceof TextCheckCell) {
-                    ((TextCheckCell) view).setChecked(!getUserConfig().deviceInfo);
-                }
-                tooltip.showWithAction(0, UndoView.ACTION_NEED_RESATRT, null, null);
-            } else if (position == deleteAccountRow) {
+            if (position == deleteAccountRow) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
                 builder.setMessage(LocaleController.getString("TosDeclineDeleteAccount", R.string.TosDeclineDeleteAccount));
                 builder.setTitle(LocaleController.getString("DeleteAccount", R.string.DeleteAccount));
@@ -154,7 +116,7 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
                             }
                         }
                         // delete account
-                        TLRPC.TL_account_deleteAccount req = new TLRPC.TL_account_deleteAccount();
+                        TL_account.deleteAccount req = new TL_account.deleteAccount();
                         req.reason = "Meow";
                         getConnectionsManager().sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                             try {
@@ -204,18 +166,7 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
             return false;
         });
 
-        tooltip = new UndoView(context);
-        frameLayout.addView(tooltip, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.BOTTOM | Gravity.LEFT, 8, 0, 8, 8));
-
-        return fragmentView;
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
-        if (listAdapter != null) {
-            listAdapter.notifyDataSetChanged();
-        }
+        return superView;
     }
 
     @Override
@@ -223,12 +174,15 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
         rowCount = 0;
 
         accountRow = rowCount++;
-        uploadDeviceInfoRow = -1;
         deleteAccountRow = rowCount++;
         account2Row = rowCount++;
         if (listAdapter != null) {
             listAdapter.notifyDataSetChanged();
         }
+    }
+
+    public String getTitle() {
+        return LocaleController.getString(R.string.Account);
     }
 
     @Override
@@ -273,12 +227,10 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
     }
 
 
-    private class ListAdapter extends RecyclerListView.SelectionAdapter {
-
-        private Context mContext;
+    private class ListAdapter extends BaseListAdapter {
 
         public ListAdapter(Context context) {
-            mContext = context;
+            super(context);
         }
 
         @Override
@@ -287,9 +239,9 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
         }
 
         @Override
-        public void onBindViewHolder(RecyclerView.ViewHolder holder, int position) {
+        public void onBindViewHolder(RecyclerView.ViewHolder holder, int position, boolean partial, boolean divider) {
             switch (holder.getItemViewType()) {
-                case 1: {
+                case CellGroup.ITEM_TYPE_DIVIDER: {
                     if (position == account2Row) {
                         holder.itemView.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     } else {
@@ -297,21 +249,21 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
                     }
                     break;
                 }
-                case 2: {
+                case CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL: {
                     TextSettingsCell textCell = (TextSettingsCell) holder.itemView;
                     textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
                     if (position == deleteAccountRow) {
-                        textCell.setText(LocaleController.getString("DeleteAccount", R.string.DeleteAccount), false);
+                        textCell.setText(LocaleController.getString("DeleteAccount", R.string.DeleteAccount), divider);
                         textCell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteRedText3));
                     }
                     break;
                 }
-                case 3: {
+                case CellGroup.ITEM_TYPE_TEXT_CHECK: {
                     TextCheckCell textCell = (TextCheckCell) holder.itemView;
                     textCell.setEnabled(true, null);
                     break;
                 }
-                case 4: {
+                case CellGroup.ITEM_TYPE_HEADER: {
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
                     if (position == accountRow) {
                         headerCell.setText(LocaleController.getString("Account", R.string.Account));
@@ -324,56 +276,19 @@ public class NekoAccountSettingsActivity extends BaseNekoXSettingsActivity {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
             int type = holder.getItemViewType();
-            return type == 2 || type == 3;
-        }
-
-        @Override
-        public RecyclerView.ViewHolder onCreateViewHolder(ViewGroup parent, int viewType) {
-            View view = null;
-            switch (viewType) {
-                case 1:
-                    view = new ShadowSectionCell(mContext);
-                    break;
-                case 2:
-                    view = new TextSettingsCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 3:
-                    view = new TextCheckCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 4:
-                    view = new HeaderCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 5:
-                    view = new NotificationsCheckCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 6:
-                    view = new TextDetailSettingsCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    break;
-                case 7:
-                    view = new TextInfoPrivacyCell(mContext);
-                    view.setBackground(Theme.getThemedDrawable(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-                    break;
-            }
-            //noinspection ConstantConditions
-            view.setLayoutParams(new RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT));
-            return new RecyclerListView.Holder(view);
+            return type == CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL || type == CellGroup.ITEM_TYPE_TEXT_CHECK;
         }
 
         @Override
         public int getItemViewType(int position) {
             if (position == account2Row) {
-                return 1;
+                return CellGroup.ITEM_TYPE_DIVIDER;
             } else if (position == deleteAccountRow) {
-                return 2;
+                return CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL;
             } else if (position == accountRow) {
-                return 4;
+                return CellGroup.ITEM_TYPE_HEADER;
             }
-            return 3;
+            return CellGroup.ITEM_TYPE_TEXT_CHECK;
         }
     }
 }

@@ -3,7 +3,10 @@ package org.telegram.ui.Business;
 import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.content.Context;
 import android.text.TextUtils;
+
+import androidx.annotation.Nullable;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BotWebViewVibrationEffect;
@@ -13,22 +16,40 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.UItem;
 import org.telegram.ui.Components.UniversalAdapter;
 import org.telegram.ui.Components.UniversalRecyclerView;
+import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.UsersSelectActivity;
 
 import java.util.ArrayList;
 
 public class BusinessRecipientsHelper {
 
+    public final Context context;
+    public final int currentAccount;
+    public final Theme.ResourcesProvider resourcesProvider;
+    @Nullable
     public final BaseFragment fragment;
     public final Runnable update;
+
     public BusinessRecipientsHelper(BaseFragment fragment, Runnable update) {
+        this.context = fragment.getContext();
+        this.currentAccount = fragment.getCurrentAccount();
         this.fragment = fragment;
         this.update = update;
+        this.resourcesProvider = fragment.getResourceProvider();
+    }
+    public BusinessRecipientsHelper(Context context, int currentAccount, Runnable update, Theme.ResourcesProvider resourcesProvider) {
+        this.context = context;
+        this.currentAccount = currentAccount;
+        this.fragment = null;
+        this.update = update;
+        this.resourcesProvider = resourcesProvider;
     }
 
     public int includeFlags, excludeFlags;
@@ -49,12 +70,12 @@ public class BusinessRecipientsHelper {
     }
 
 
-    private TLRPC.TL_businessBotRecipients currentValue;
+    private TL_account.TL_businessBotRecipients currentValue;
     public boolean hasChanges() {
         if (currentValue == null) return true;
         if (currentValue.exclude_selected != exclude) return true;
         if ((currentValue.flags &~ (32 | 16)) != getFlags()) return true;
-        ArrayList<Long> array = exclude ? neverShow : alwaysShow;
+        final ArrayList<Long> array = exclude ? neverShow : alwaysShow;
         if (array.size() != currentValue.users.size()) return true;
         for (int i = 0; i < array.size(); ++i) {
             if (!currentValue.users.contains(array.get(i))) {
@@ -62,9 +83,9 @@ public class BusinessRecipientsHelper {
             }
         }
         if (bot && !exclude) {
-            if (neverShow.size() != currentValue.users.size()) return true;
+            if (neverShow.size() != currentValue.exclude_users.size()) return true;
             for (int i = 0; i < neverShow.size(); ++i) {
-                if (!currentValue.users.contains(neverShow.get(i))) {
+                if (!currentValue.exclude_users.contains(neverShow.get(i))) {
                     return true;
                 }
             }
@@ -72,10 +93,10 @@ public class BusinessRecipientsHelper {
         return false;
     }
 
-    public void setValue(TLRPC.TL_businessRecipients recipients) {
+    public void setValue(TL_account.TL_businessRecipients recipients) {
         this.bot = false;
         if (recipients != null) {
-            currentValue = new TLRPC.TL_businessBotRecipients();
+            currentValue = new TL_account.TL_businessBotRecipients();
             currentValue.flags = recipients.flags;
             currentValue.existing_chats = recipients.existing_chats;
             currentValue.new_chats = recipients.new_chats;
@@ -111,7 +132,7 @@ public class BusinessRecipientsHelper {
         }
     }
 
-    public void setValue(TLRPC.TL_businessBotRecipients recipients) {
+    public void setValue(TL_account.TL_businessBotRecipients recipients) {
         this.bot = true;
         currentValue = recipients;
         if (currentValue == null) {
@@ -139,8 +160,8 @@ public class BusinessRecipientsHelper {
         }
     }
 
-    public TLRPC.TL_businessRecipients getValue() {
-        TLRPC.TL_businessRecipients value = new TLRPC.TL_businessRecipients();
+    public TL_account.TL_businessRecipients getValue() {
+        TL_account.TL_businessRecipients value = new TL_account.TL_businessRecipients();
         final int flags = getFlags();
         value.flags = flags &~ (32 | 16);
         value.existing_chats = (flags & PRIVATE_FLAG_EXISTING_CHATS) != 0;
@@ -166,8 +187,8 @@ public class BusinessRecipientsHelper {
         return value;
     }
 
-    public TLRPC.TL_businessBotRecipients getBotValue() {
-        TLRPC.TL_businessBotRecipients value = new TLRPC.TL_businessBotRecipients();
+    public TL_account.TL_businessBotRecipients getBotValue() {
+        TL_account.TL_businessBotRecipients value = new TL_account.TL_businessBotRecipients();
         final int flags = getFlags();
         value.flags = flags &~ (32 | 16);
         value.existing_chats = (flags & PRIVATE_FLAG_EXISTING_CHATS) != 0;
@@ -207,8 +228,8 @@ public class BusinessRecipientsHelper {
         return value;
     }
 
-    public TLRPC.TL_inputBusinessRecipients getInputValue() {
-        TLRPC.TL_inputBusinessRecipients value = new TLRPC.TL_inputBusinessRecipients();
+    public TL_account.TL_inputBusinessRecipients getInputValue() {
+        TL_account.TL_inputBusinessRecipients value = new TL_account.TL_inputBusinessRecipients();
         final int flags = getFlags();
         value.flags = flags &~ (32 | 16);
         value.existing_chats = (flags & PRIVATE_FLAG_EXISTING_CHATS) != 0;
@@ -234,8 +255,8 @@ public class BusinessRecipientsHelper {
         return value;
     }
 
-    public TLRPC.TL_inputBusinessBotRecipients getBotInputValue() {
-        TLRPC.TL_inputBusinessBotRecipients value = new TLRPC.TL_inputBusinessBotRecipients();
+    public TL_account.TL_inputBusinessBotRecipients getBotInputValue() {
+        TL_account.TL_inputBusinessBotRecipients value = new TL_account.TL_inputBusinessBotRecipients();
         final int flags = getFlags();
         value.flags = flags &~ (32 | 16);
         value.existing_chats = (flags & PRIVATE_FLAG_EXISTING_CHATS) != 0;
@@ -290,63 +311,73 @@ public class BusinessRecipientsHelper {
         exclude = value;
     }
 
-    public void fillItems(ArrayList<UItem> items) {
+    public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
+        fillItems(items, adapter, true);
+    }
+    public void fillItems(ArrayList<UItem> items, UniversalAdapter adapter, boolean enabled) {
+        adapter.whiteSectionStart();
         final int flags = getFlags();
         if (!exclude) {
-            items.add(UItem.asHeader(getString(R.string.BusinessChatsIncluded)));
-            items.add(UItem.asButton(BUTTON_ADD_INCLUDED, R.drawable.msg2_chats_add, getString(R.string.BusinessChatsIncludedAdd)).accent());
+            String value = "";
             if ((flags & PRIVATE_FLAG_EXISTING_CHATS) != 0) {
-                items.add(UItem.asFilterChat(true, LocaleController.getString(R.string.FilterExistingChats), "existing_chats", PRIVATE_FLAG_EXISTING_CHATS));
+                if (!TextUtils.isEmpty(value)) value += ", ";
+                value += getString(R.string.FilterExistingChats);
             }
             if ((flags & PRIVATE_FLAG_NEW_CHATS) != 0) {
-                items.add(UItem.asFilterChat(true, LocaleController.getString(R.string.FilterNewChats), "new_chats", PRIVATE_FLAG_NEW_CHATS));
+                if (!TextUtils.isEmpty(value)) value += ", ";
+                value += getString(R.string.FilterNewChats);
             }
             if ((flags & PRIVATE_FLAG_CONTACTS) != 0) {
-                items.add(UItem.asFilterChat(true, LocaleController.getString(R.string.FilterContacts), "contacts", PRIVATE_FLAG_CONTACTS));
+                if (!TextUtils.isEmpty(value)) value += ", ";
+                value += getString(R.string.FilterContacts);
             }
             if ((flags & PRIVATE_FLAG_NON_CONTACTS) != 0) {
-                items.add(UItem.asFilterChat(true, LocaleController.getString(R.string.FilterNonContacts), "non_contacts", PRIVATE_FLAG_NON_CONTACTS));
+                if (!TextUtils.isEmpty(value)) value += ", ";
+                value += getString(R.string.FilterNonContacts);
             }
             if (!alwaysShow.isEmpty()) {
-                int count = includeExpanded || alwaysShow.size() < 8 ? alwaysShow.size() : Math.min(5, alwaysShow.size());
-                for (int i = 0; i < count; ++i) {
-                    items.add(UItem.asFilterChat(true, alwaysShow.get(i)));
-                }
-                if (count != alwaysShow.size()) {
-                    items.add(UItem.asButton(BUTTON_EXPAND_INCLUDED, R.drawable.arrow_more, LocaleController.formatPluralString("FilterShowMoreChats", alwaysShow.size() - 5)).accent());
-                }
+                if (!TextUtils.isEmpty(value))
+                    value += " + " + alwaysShow.size();
+                else
+                    value += LocaleController.formatPluralStringComma("Chats", alwaysShow.size());
             }
+            if (TextUtils.isEmpty(value)) {
+                value = getString(R.string.BusinessChatsIncludedAdd2);
+            }
+            items.add(UItem.asButton(BUTTON_ADD_INCLUDED, getString(R.string.BusinessChatsIncluded), value).setEnabled(enabled));
         }
         if (bot || exclude) {
-            if (bot) {
-                items.add(UItem.asShadow(null));
-            }
-            items.add(UItem.asHeader(getString(R.string.BusinessChatsExcluded)));
-            items.add(UItem.asButton(BUTTON_ADD_EXCLUDED, R.drawable.msg2_chats_add, getString(R.string.BusinessChatsExcludedAdd)).accent());
+            String value = "";
             if (!bot || exclude) {
                 if ((flags & PRIVATE_FLAG_EXISTING_CHATS) != 0) {
-                    items.add(UItem.asFilterChat(false, getString(R.string.FilterExistingChats), "existing_chats", PRIVATE_FLAG_EXISTING_CHATS));
+                    if (!TextUtils.isEmpty(value)) value += ", ";
+                    value += getString(R.string.FilterExistingChats);
                 }
                 if ((flags & PRIVATE_FLAG_NEW_CHATS) != 0) {
-                    items.add(UItem.asFilterChat(false, getString(R.string.FilterNewChats), "new_chats", PRIVATE_FLAG_NEW_CHATS));
+                    if (!TextUtils.isEmpty(value)) value += ", ";
+                    value += getString(R.string.FilterNewChats);
                 }
                 if ((flags & PRIVATE_FLAG_CONTACTS) != 0) {
-                    items.add(UItem.asFilterChat(false, getString(R.string.FilterContacts), "contacts", PRIVATE_FLAG_CONTACTS));
+                    if (!TextUtils.isEmpty(value)) value += ", ";
+                    value += getString(R.string.FilterContacts);
                 }
                 if ((flags & PRIVATE_FLAG_NON_CONTACTS) != 0) {
-                    items.add(UItem.asFilterChat(false, getString(R.string.FilterNonContacts), "non_contacts", PRIVATE_FLAG_NON_CONTACTS));
+                    if (!TextUtils.isEmpty(value)) value += ", ";
+                    value += getString(R.string.FilterNonContacts);
                 }
             }
             if (!neverShow.isEmpty()) {
-                int count = excludeExpanded || neverShow.size() < 8 ? neverShow.size() : Math.min(5, neverShow.size());
-                for (int i = 0; i < count; ++i) {
-                    items.add(UItem.asFilterChat(false, neverShow.get(i)));
-                }
-                if (count != neverShow.size()) {
-                    items.add(UItem.asButton(BUTTON_EXPAND_EXCLUDED, R.drawable.arrow_more, LocaleController.formatPluralString("FilterShowMoreChats", neverShow.size() - 5)).accent());
-                }
+                if (!TextUtils.isEmpty(value))
+                    value += " + " + neverShow.size();
+                else
+                    value += LocaleController.formatPluralStringComma("Chats", neverShow.size());
             }
+            if (TextUtils.isEmpty(value)) {
+                value = getString(R.string.BusinessChatsExcludedAdd2);
+            }
+            items.add(UItem.asButton(BUTTON_ADD_EXCLUDED, getString(R.string.BusinessChatsExcluded), value).setEnabled(enabled));
         }
+        adapter.whiteSectionEnd();
     }
 
     public boolean onClick(UItem item) {
@@ -362,12 +393,11 @@ public class BusinessRecipientsHelper {
             update.run();
             return true;
         } else if (item.viewType == UniversalAdapter.VIEW_TYPE_FILTER_CHAT) {
-            if (fragment == null) return false;
             final boolean include = item.include;
             final int flag = item.chatType == null ? 0 : getFlag(item.chatType);
-            final String name = flag == 0 ? fragment.getMessagesController().getPeerName(item.dialogId) : getFlagName(flag);
-            fragment.showDialog(
-                new AlertDialog.Builder(fragment.getContext(), fragment.getResourceProvider())
+            final String name = flag == 0 ? MessagesController.getInstance(currentAccount).getPeerName(item.dialogId) : getFlagName(flag);
+            final AlertDialog dialog =
+                new AlertDialog.Builder(context, resourcesProvider)
                     .setTitle(getString(!include ? R.string.BusinessRecipientsRemoveExcludeTitle : R.string.BusinessRecipientsRemoveIncludeTitle))
                     .setMessage(formatString(!include ? R.string.BusinessRecipientsRemoveExcludeMessage : R.string.BusinessRecipientsRemoveIncludeMessage, name))
                     .setPositiveButton(getString(R.string.Remove), (di, w) -> {
@@ -383,8 +413,12 @@ public class BusinessRecipientsHelper {
                         update.run();
                     })
                     .setNegativeButton(getString(R.string.Cancel), null)
-                    .create()
-            );
+                    .create();
+            if (fragment != null) {
+                fragment.showDialog(dialog);
+            } else {
+                dialog.show();
+            }
             return true;
         }
         return false;
@@ -421,8 +455,8 @@ public class BusinessRecipientsHelper {
     }
 
     private void selectChatsFor(boolean include) {
-        ArrayList<Long> arrayList = include ? alwaysShow : neverShow;
-        UsersSelectActivity fragment = new UsersSelectActivity(include, arrayList, getFlags()).asPrivateChats();
+        final ArrayList<Long> arrayList = include ? alwaysShow : neverShow;
+        final UsersSelectActivity fragment = new UsersSelectActivity(include, arrayList, getFlags()).asPrivateChats();
         fragment.noChatTypes = bot && !exclude && !include;
         fragment.allowSelf = false;
         fragment.doNotNewChats = !include && doNotExcludeNewChats;
@@ -444,7 +478,16 @@ public class BusinessRecipientsHelper {
             }
             update.run();
         });
-        this.fragment.presentFragment(fragment);
+        if (this.fragment != null) {
+            this.fragment.presentFragment(fragment);
+        } else {
+            final BaseFragment lastFragment = LaunchActivity.getSafeLastFragment();
+            if (lastFragment == null) return;
+            final BaseFragment.BottomSheetParams bottomSheetParams = new BaseFragment.BottomSheetParams();
+            bottomSheetParams.transitionFromLeft = true;
+            bottomSheetParams.allowNestedScroll = false;
+            lastFragment.showAsSheet(fragment, bottomSheetParams);
+        }
     }
 
 }

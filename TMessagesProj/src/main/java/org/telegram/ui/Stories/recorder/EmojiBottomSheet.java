@@ -53,10 +53,9 @@ import androidx.core.graphics.ColorUtils;
 import androidx.recyclerview.widget.DefaultItemAnimator;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.LinearSmoothScrollerCustom;
+import org.telegram.ui.recyclerview.LinearSmoothScrollerCustom;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.checkerframework.checker.units.qual.A;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLoader;
@@ -337,7 +336,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
                 if (viewType == VIEW_TYPE_PAD) {
                     view = new View(getContext());
                 } else if (viewType == VIEW_TYPE_HEADER) {
-                    final StickerSetNameCell cell1 = new StickerSetNameCell(getContext(), false, resourcesProvider);
+                    final StickerSetNameCell cell1 = new StickerSetNameCell(getContext(), false, resourcesProvider, false);
                     cell1.setText(LocaleController.getString(R.string.FeaturedGifs), 0);
                     view = cell1;
                     final RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT);
@@ -740,7 +739,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
             });
             addView(searchField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
 
-            tabsStrip = new EmojiTabsStrip(context, resourcesProvider, false, false, true, 0, null) {
+            tabsStrip = new EmojiTabsStrip(context, resourcesProvider, false, false, false, true, 0, null) {
                 @Override
                 protected boolean onTabClick(int index) {
                     if (scrollingAnimation) {
@@ -1322,7 +1321,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
                 if (viewType == VIEW_TYPE_PAD) {
                     view = new View(getContext());
                 } else if (viewType == VIEW_TYPE_HEADER) {
-                    view = new StickerSetNameCell(getContext(), true, resourcesProvider);
+                    view = new StickerSetNameCell(getContext(), true, resourcesProvider, false);
                 } else if (viewType == VIEW_TYPE_NOT_FOUND) {
                     view = new NoEmojiView(getContext(), currentType == PAGE_TYPE_EMOJI);
                 } else if (viewType == VIEW_TYPE_WIDGETS) {
@@ -1419,7 +1418,9 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
     }
 
     public void showPremiumBulletin(String text) {
-        container.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        try {
+            container.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        } catch (Exception ignored) {}
         BulletinFactory.of(container, resourcesProvider).createSimpleBulletin(
                 R.raw.star_premium_2,
                 LocaleController.getString(R.string.IncreaseLimit),
@@ -1541,7 +1542,7 @@ public class EmojiBottomSheet extends BottomSheet implements NotificationCenter.
         containerView = new ContainerView(context);
         viewPager = new ViewPagerFixed(context) {
             @Override
-            protected void onTabAnimationUpdate(boolean manual) {
+            public void onTabAnimationUpdate(boolean manual) {
                 if (tabsView != null) {
                     tabsView.setType(viewPager.getPositionAnimated());
                 }

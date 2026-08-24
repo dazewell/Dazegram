@@ -17,12 +17,15 @@ import android.util.SparseIntArray;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.messenger.support.LongSparseIntArray;
-import org.telegram.tgnet.AbstractSerializedData;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.tgnet.InputSerializedData;
 import org.telegram.tgnet.NativeByteBuffer;
+import org.telegram.tgnet.OutputSerializedData;
 import org.telegram.tgnet.TLClassStore;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_update;
+import org.telegram.ui.AccountFrozenAlert;
 import org.telegram.ui.ActionBar.AlertDialog;
 
 import java.io.File;
@@ -45,7 +48,7 @@ public class SecretChatHelper extends BaseController {
         public boolean new_key_used;
         public int decryptedWithVersion;
 
-        public void readParams(AbstractSerializedData stream, boolean exception) {
+        public void readParams(InputSerializedData stream, boolean exception) {
             stream.readInt64(exception);
             date = stream.readInt32(exception);
             layer = TLRPC.TL_decryptedMessageLayer.TLdeserialize(stream, stream.readInt32(exception), exception);
@@ -55,7 +58,7 @@ public class SecretChatHelper extends BaseController {
             new_key_used = stream.readBool(exception);
         }
 
-        public void serializeToStream(AbstractSerializedData stream) {
+        public void serializeToStream(OutputSerializedData stream) {
             stream.writeInt32(constructor);
             stream.writeInt64(0);
             stream.writeInt32(date);
@@ -181,7 +184,7 @@ public class SecretChatHelper extends BaseController {
         performSendEncryptedRequest(reqSend, message, encryptedChat, null, null, null);
     }
 
-    protected void processUpdateEncryption(TLRPC.TL_updateEncryption update, ConcurrentHashMap<Long, TLRPC.User> usersDict) {
+    protected void processUpdateEncryption(TL_update.TL_updateEncryption update, ConcurrentHashMap<Long, TLRPC.User> usersDict) {
         TLRPC.EncryptedChat newChat = update.chat;
         long dialog_id = DialogObject.makeEncryptedDialogId(newChat.id);
         TLRPC.EncryptedChat existingChat = getMessagesController().getEncryptedChatDB(newChat.id, false);
@@ -1366,6 +1369,9 @@ public class SecretChatHelper extends BaseController {
         if (encryptedChat == null || endSeq - startSeq < 0) {
             return;
         }
+        if (endSeq - startSeq > 10000) {
+            return;
+        }
         getMessagesStorage().getStorageQueue().postRunnable(() -> {
             try {
                 int sSeq = startSeq;
@@ -1430,7 +1436,7 @@ public class SecretChatHelper extends BaseController {
                         TLRPC.Message message = messages.get(a);
                         MessageObject messageObject = new MessageObject(currentAccount, message, false, true);
                         messageObject.resendAsIs = true;
-                        getSendMessagesHelper().retrySendMessage(messageObject, true);
+                        getSendMessagesHelper().retrySendMessage(messageObject, true, 0);
                     }
                 });
 
@@ -1557,7 +1563,7 @@ public class SecretChatHelper extends BaseController {
                     updates = new ArrayList<>();
                     pendingSecretMessages.put(chat.id, updates);
                 }
-                TLRPC.TL_updateNewEncryptedMessage updateNewEncryptedMessage = new TLRPC.TL_updateNewEncryptedMessage();
+                TL_update.TL_updateNewEncryptedMessage updateNewEncryptedMessage = new TL_update.TL_updateNewEncryptedMessage();
                 updateNewEncryptedMessage.message = message;
                 updates.add(updateNewEncryptedMessage);
                 return null;
@@ -1921,6 +1927,10 @@ public class SecretChatHelper extends BaseController {
 
     public void startSecretChat(Context context, TLRPC.User user) {
         if (user == null || context == null) {
+            return;
+        }
+        if (getMessagesController().isFrozen()) {
+            AccountFrozenAlert.show(currentAccount);
             return;
         }
         startingSecretChat = true;

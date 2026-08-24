@@ -57,7 +57,7 @@ public class SearchAdapterHelper {
             return null;
         }
 
-        default LongSparseArray<TLRPC.TL_groupCallParticipant> getExcludeCallParticipants() {
+        default LongSparseArray<TLRPC.GroupCallParticipant> getExcludeCallParticipants() {
             return null;
         }
 
@@ -304,10 +304,6 @@ public class SearchAdapterHelper {
             hasChanged = false;
         }
 
-        if (hasChanged) {
-            delegate.onDataSetChanged(searchId);
-        }
-
         final AtomicInteger gotResponses = new AtomicInteger(0);
         final ArrayList<Pair<TLObject, TLRPC.TL_error>> responses = new ArrayList<>();
         for (int i = 0; i < requests.size(); ++i) {
@@ -343,6 +339,10 @@ public class SearchAdapterHelper {
                 }
             })));
             pendingRequestIds.add(reqId.get());
+        }
+
+        if (hasChanged) {
+            delegate.onDataSetChanged(searchId);
         }
     }
 
@@ -486,7 +486,7 @@ public class SearchAdapterHelper {
                 }
             }
         }
-        LongSparseArray<TLRPC.TL_groupCallParticipant> ignoreParticipants = delegate.getExcludeCallParticipants();
+        LongSparseArray<TLRPC.GroupCallParticipant> ignoreParticipants = delegate.getExcludeCallParticipants();
         if (ignoreParticipants != null) {
             for (int a = 0, size = ignoreParticipants.size(); a < size; a++) {
                 TLRPC.User u = (TLRPC.User) globalSearchMap.get(ignoreParticipants.keyAt(a));

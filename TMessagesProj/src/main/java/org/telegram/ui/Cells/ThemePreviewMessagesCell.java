@@ -156,6 +156,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
             }
 
             message1 = new MessageObject(UserConfig.selectedAccount, message, true, false);
+            message1.notime = true;
             message1.forceAvatar = true;
             message1.resetLayout();
             message1.eventId = 1;
@@ -296,7 +297,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
                             return false;
                         }
                         boolean added = getMessageObject().selectReaction(ReactionsLayoutInBubble.VisibleReaction.fromEmojicon(MediaDataController.getInstance(currentAccount).getDoubleTapReaction()), false, false);
-                        setMessageObject(getMessageObject(), null, false, false);
+                        setMessageObject(getMessageObject(), null, false, false, false);
                         requestLayout();
                         ReactionsEffectOverlay.removeCurrent(false);
                         if (added) {
@@ -390,7 +391,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
                 }
 
                 @Override
-                public void didPressReplyMessage(ChatMessageCell cell, int id) {
+                public void didPressReplyMessage(ChatMessageCell cell, int id, float x, float y, boolean longpress) {
                     if (allowLoadingOnTouch()) {
                         progress = ChatActivity.PROGRESS_REPLY;
                         cell.invalidate();
@@ -431,7 +432,7 @@ public class ThemePreviewMessagesCell extends LinearLayout {
             if (messageObject == null) {
                 continue;
             }
-            cells[a].setMessageObject(messageObject, null, false, false);
+            cells[a].setMessageObject(messageObject, null, false, false, false);
             addView(cells[a], LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
         }
     }

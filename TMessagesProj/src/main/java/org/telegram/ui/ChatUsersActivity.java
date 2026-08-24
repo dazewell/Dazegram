@@ -8,15 +8,15 @@
 
 package org.telegram.ui;
 
+import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
+import static org.telegram.ui.bots.AffiliateProgramFragment.percents;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
 import android.content.Context;
-import android.graphics.Canvas;
-import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.SpannableStringBuilder;
@@ -42,6 +42,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.BotWebViewVibrationEffect;
 import org.telegram.messenger.ChatObject;
+import org.telegram.messenger.ContactsController;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -52,6 +53,8 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_communities;
+import org.telegram.tgnet.tl.TL_stars;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -67,6 +70,7 @@ import org.telegram.ui.Cells.LoadingCell;
 import org.telegram.ui.Cells.ManageChatTextCell;
 import org.telegram.ui.Cells.ManageChatUserCell;
 import org.telegram.ui.Cells.ShadowSectionCell;
+import org.telegram.ui.Cells.SlideIntChooseView;
 import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextCheckCell2;
@@ -86,6 +90,7 @@ import org.telegram.ui.Components.UndoView;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -95,6 +100,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private static final int VIEW_TYPE_EXPANDABLE_SWITCH = 14;
     private static final int VIEW_TYPE_NOT_RESTRICT_BOOSTERS_SLIDER = 15;
     private static final int VIEW_TYPE_CHECK = 16;
+    private static final int VIEW_TYPE_SLIDER = 17;
 
     private ListAdapter listViewAdapter;
     private StickerEmptyView emptyView;
@@ -107,7 +113,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     private TLRPC.Chat currentChat;
     private TLRPC.ChatFull info;
-    private boolean isChannel, isForum;
+    private boolean isChannel, isCommunity, isForum;
 
     private String initialBannedRights;
     private TLRPC.TL_chatBannedRights defaultBannedRights = new TLRPC.TL_chatBannedRights();
@@ -121,10 +127,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private LongSparseArray<TLObject> contactsMap = new LongSparseArray<>();
     private long chatId;
     private int type;
+    private boolean transfer;
     private boolean loadingUsers;
     private boolean firstLoaded;
 
-    private LongSparseArray<TLRPC.TL_groupCallParticipant> ignoredUsers;
+    private LongSparseArray<TLRPC.GroupCallParticipant> ignoredUsers;
 
     private int permissionsSectionRow;
     private int sendMessagesRow;
@@ -148,7 +155,16 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private int changeInfoRow;
     private int addUsersRow;
     private int pinMessagesRow;
+    private int editTagRow;
+    private int sendReactionsRow;
     private int manageTopicsRow;
+    private int manageLinkedPeersRow;
+
+    private int payRow;
+    private int payInfoRow;
+    private int priceHeaderRow;
+    private int priceRow;
+    private int priceInfoRow;
 
     private int gigaHeaderRow;
     private int gigaConvertRow;
@@ -170,6 +186,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private boolean hideMembersToggleLoading;
     private int hideMembersRow;
     private int hideMembersInfoRow;
+    private int tagsRow;
+    private int tagsInfoRow;
 
     private int slowmodeRow;
     private int slowmodeSelectRow;
@@ -224,11 +242,17 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     public final static int TYPE_ADMIN = 1;
     public final static int TYPE_USERS = 2;
     public final static int TYPE_KICKED = 3;
+    public final static int TYPE_ADMIN_AND_USERS = 4;
 
     public final static int SELECT_TYPE_MEMBERS = 0; // "Subscribers" / "Members"
     public final static int SELECT_TYPE_ADMIN = 1; // "Add Admin"
     public final static int SELECT_TYPE_BLOCK = 2; // "Remove User"
     public final static int SELECT_TYPE_EXCEPTION = 3; // "Add Exception"
+
+    private boolean initialEnablePrice;
+    private boolean enablePrice;
+    private long initialStarsPrice = 10;
+    private long starsPrice = 10;
 
     private boolean openTransitionStarted;
     private FlickerLoadingView flickerLoadingView;
@@ -256,6 +280,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         super(args);
         chatId = arguments.getLong("chat_id");
         type = arguments.getInt("type");
+        transfer = arguments.getBoolean("transfer");
         needOpenSearch = arguments.getBoolean("open_search");
         selectType = arguments.getInt("selectType");
         currentChat = getMessagesController().getChat(chatId);
@@ -269,10 +294,13 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             defaultBannedRights.send_inline = currentChat.default_banned_rights.send_inline;
             defaultBannedRights.send_gifs = currentChat.default_banned_rights.send_gifs;
             defaultBannedRights.pin_messages = currentChat.default_banned_rights.pin_messages;
+            defaultBannedRights.edit_rank = currentChat.default_banned_rights.edit_rank;
+            defaultBannedRights.send_reactions = currentChat.default_banned_rights.send_reactions;
             defaultBannedRights.send_polls = currentChat.default_banned_rights.send_polls;
             defaultBannedRights.invite_users = currentChat.default_banned_rights.invite_users;
             defaultBannedRights.manage_topics = currentChat.default_banned_rights.manage_topics;
             defaultBannedRights.change_info = currentChat.default_banned_rights.change_info;
+            defaultBannedRights.manage_linked_peers = currentChat.default_banned_rights.manage_linked_peers;
             defaultBannedRights.send_photos = currentChat.default_banned_rights.send_photos;
             defaultBannedRights.send_videos = currentChat.default_banned_rights.send_videos;
             defaultBannedRights.send_roundvideos = currentChat.default_banned_rights.send_roundvideos;
@@ -290,12 +318,14 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
         }
         initialBannedRights = ChatObject.getBannedRightsString(defaultBannedRights);
-        isChannel = ChatObject.isChannel(currentChat) && !currentChat.megagroup;
+        isCommunity = ChatObject.isCommunity(currentChat);
+        isChannel = ChatObject.isChannel(currentChat) && !currentChat.megagroup && !isCommunity;
         isForum = ChatObject.isForum(currentChat);
         if (currentChat != null) {
             initialSignatures = signatures = currentChat.signatures;
             initialProfiles = profiles = currentChat.signature_profiles;
         }
+
     }
 
     private void updateRows() {
@@ -310,6 +340,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         addNew2Row = -1;
         hideMembersRow = -1;
         hideMembersInfoRow = -1;
+        tagsRow = -1;
+        tagsInfoRow = -1;
         addNewSectionRow = -1;
         restricted1SectionRow = -1;
         participantsStartRow = -1;
@@ -331,8 +363,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         sendPollsRow = -1;
         embedLinksRow = -1;
         addUsersRow = -1;
+        manageLinkedPeersRow = -1;
         manageTopicsRow = -1;
         pinMessagesRow = -1;
+        editTagRow = -1;
+        sendReactionsRow = -1;
         changeInfoRow = -1;
         removedUsersRow = -1;
         contactsHeaderRow = -1;
@@ -362,34 +397,46 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         sendMediaVoiceMessagesRow = -1;
         sendMediaVideoMessagesRow = -1;
         sendMediaEmbededLinksRow = -1;
+        payRow = -1;
+        payInfoRow = -1;
+        priceHeaderRow = -1;
+        priceRow = -1;
+        priceInfoRow = -1;
 
         rowCount = 0;
         if (type == TYPE_KICKED) {
             permissionsSectionRow = rowCount++;
-            sendMessagesRow = rowCount++;
-            sendMediaRow = rowCount++;
-            if (sendMediaExpanded) {
-                sendMediaPhotosRow = rowCount++;
-                sendMediaVideosRow = rowCount++;
-                sendMediaStickerGifsRow = rowCount++;
-                sendMediaGifsRow = rowCount++;
-                sendMediaGamesRow = rowCount++;
-                sendMediaInlineRow = rowCount++;
-                sendMediaMusicRow = rowCount++;
-                sendMediaFilesRow = rowCount++;
-                sendMediaVoiceMessagesRow = rowCount++;
-                sendMediaVideoMessagesRow = rowCount++;
-                sendMediaEmbededLinksRow = rowCount++;
-                sendPollsRow = rowCount++;
+
+            if (!isCommunity) {
+                sendMessagesRow = rowCount++;
+                sendMediaRow = rowCount++;
+                if (sendMediaExpanded) {
+                    sendMediaPhotosRow = rowCount++;
+                    sendMediaVideosRow = rowCount++;
+                    sendMediaStickerGifsRow = rowCount++;
+                    sendMediaGifsRow = rowCount++;
+                    sendMediaGamesRow = rowCount++;
+                    sendMediaInlineRow = rowCount++;
+                    sendMediaMusicRow = rowCount++;
+                    sendMediaFilesRow = rowCount++;
+                    sendMediaVoiceMessagesRow = rowCount++;
+                    sendMediaVideoMessagesRow = rowCount++;
+                    sendMediaEmbededLinksRow = rowCount++;
+                    sendPollsRow = rowCount++;
+                    sendReactionsRow = rowCount++;
+                }
+                addUsersRow = rowCount++;
+                pinMessagesRow = rowCount++;
+                editTagRow = rowCount++;
             }
-            addUsersRow = rowCount++;
-            pinMessagesRow = rowCount++;
             changeInfoRow = rowCount++;
-            if (isForum) {
+            if (isCommunity) {
+                manageLinkedPeersRow = rowCount++;
+            } else if (isForum) {
                 manageTopicsRow = rowCount++;
             }
 
-            if (ChatObject.isChannel(currentChat) && currentChat.creator && currentChat.megagroup && !currentChat.gigagroup) {
+            if (ChatObject.isChannel(currentChat) && currentChat.creator && currentChat.megagroup && !currentChat.gigagroup && !isCommunity) {
                 int count = Math.max(currentChat.participants_count, info != null ? info.participants_count : 0);
                 if (count >= getMessagesController().maxMegagroupCount - 1000) {
                     participantsDivider2Row = rowCount++;
@@ -399,7 +446,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 }
             }
 
-            if (!ChatObject.isChannel(currentChat) && currentChat.creator || currentChat.megagroup && !currentChat.gigagroup) {
+            if (info != null && info.paid_messages_available && !isCommunity && ChatObject.canUserDoAction(currentChat, ChatObject.ACTION_BLOCK_USERS) && (ChatObject.isChannel(currentChat) || currentChat != null && currentChat.creator)) {
+                if (participantsDivider2Row == -1) {
+                    participantsDivider2Row = rowCount++;
+                }
+                payRow = rowCount++;
+                payInfoRow = rowCount++;
+                if (enablePrice) {
+                    priceHeaderRow = rowCount++;
+                    priceRow = rowCount++;
+                    priceInfoRow = rowCount++;
+                }
+            }
+
+            if (!isCommunity && (!ChatObject.isChannel(currentChat) && currentChat.creator || currentChat.megagroup && !currentChat.gigagroup /* && ChatObject.canBlockUsers(currentChat) */)) {
                 if (participantsDivider2Row == -1) {
                     participantsDivider2Row = rowCount++;
                 }
@@ -408,7 +468,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 slowmodeInfoRow = rowCount++;
             }
 
-            if (isNotRestrictBoostersVisible()) {
+            if (isNotRestrictBoostersVisible() && !isCommunity) {
                 if (participantsDivider2Row == -1) {
                     participantsDivider2Row = rowCount++;
                 }
@@ -419,7 +479,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 dontRestrictBoostersInfoRow = rowCount++;
             }
 
-            if (ChatObject.isChannel(currentChat) && ChatObject.hasAdminRights(currentChat)) {
+            if (ChatObject.isChannel(currentChat) && !isCommunity && ChatObject.hasAdminRights(currentChat)) {
                 if (participantsDivider2Row == -1) {
                     participantsDivider2Row = rowCount++;
                 }
@@ -428,7 +488,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             if (slowmodeInfoRow == -1 && gigaHeaderRow == -1 || removedUsersRow != -1) {
                 participantsDividerRow = rowCount++;
             }
-            if (ChatObject.canBlockUsers(currentChat) && getParticipantsCount() > 1 && (ChatObject.isChannel(currentChat) || currentChat.creator)) {
+            if (ChatObject.canBlockUsers(currentChat) && !isCommunity && getParticipantsCount() > 1 && (ChatObject.isChannel(currentChat) || currentChat.creator)) {
                 addNewRow = rowCount++;
             }
 
@@ -477,7 +537,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 loadingUserCellRow = rowCount++;
             }
         } else if (type == TYPE_ADMIN) {
-            if (ChatObject.isChannel(currentChat) && currentChat.megagroup && !currentChat.gigagroup && (info == null || info.participants_count <= 200 || !isChannel && info.can_set_stickers)
+            if (!transfer && ChatObject.isChannel(currentChat) && currentChat.megagroup && !currentChat.gigagroup && (info == null || info.participants_count <= 200 || !isChannel && info.can_set_stickers)
                     && ChatObject.hasAdminRights(currentChat)) {
                 recentActionsRow = rowCount++;
                 if (ChatObject.hasAdminRights(currentChat)) {
@@ -497,11 +557,13 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     rowCount += participants.size();
                     participantsEndRow = rowCount;
                 }
-                participantsInfoRow = rowCount++;
+                if (!isCommunity) {
+                    participantsInfoRow = rowCount++;
+                }
             } else if (!firstLoaded) {
                 loadingUserCellRow = rowCount++;
             }
-            if (ChatObject.isChannelAndNotMegaGroup(currentChat) && ChatObject.hasAdminRights(currentChat)) {
+            if (!transfer && ChatObject.isChannelAndNotMegaGroup(currentChat) && ChatObject.hasAdminRights(currentChat) && !isCommunity) {
                 signMessagesRow = rowCount++;
                 if (signatures) {
                     signMessagesProfilesRow = rowCount++;
@@ -517,6 +579,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     hideMembersInfoRow = rowCount++;
                 }
             }
+//            if (currentChat != null && !ChatObject.isChannelAndNotMegaGroup(currentChat) && (currentChat.creator || ChatObject.hasAdminRights(currentChat) && ChatObject.canChangeChatInfo(currentChat))) {
+//                tagsRow = rowCount++;
+//                tagsInfoRow = rowCount++;
+//            }
             if (selectType == SELECT_TYPE_MEMBERS && ChatObject.canAddUsers(currentChat)) {
                 addNewRow = rowCount++;
             }
@@ -563,6 +629,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
         getNotificationCenter().addObserver(this, NotificationCenter.chatInfoDidLoad);
+        getNotificationCenter().addObserver(this, NotificationCenter.dialogDeleted);
         loadChatParticipants(0, 200);
         return true;
     }
@@ -571,6 +638,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         getNotificationCenter().removeObserver(this, NotificationCenter.chatInfoDidLoad);
+        getNotificationCenter().removeObserver(this, NotificationCenter.dialogDeleted);
     }
 
     @Override
@@ -584,11 +652,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         } else if (type == TYPE_BANNED) {
             actionBar.setTitle(getString("ChannelBlacklist", R.string.ChannelBlacklist));
         } else if (type == TYPE_ADMIN) {
-            actionBar.setTitle(getString("ChannelAdministrators", R.string.ChannelAdministrators));
+            actionBar.setTitle(getString(R.string.ChannelAdministrators));
         } else if (type == TYPE_USERS) {
             if (selectType == SELECT_TYPE_MEMBERS) {
                 if (isChannel) {
-                    actionBar.setTitle(getString("ChannelSubscribers", R.string.ChannelSubscribers));
+                    actionBar.setTitle(getString(R.string.ChannelSubscribers));
                 } else {
                     actionBar.setTitle(getString("ChannelMembers", R.string.ChannelMembers));
                 }
@@ -606,7 +674,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             @Override
             public void onItemClick(int id) {
                 if (id == -1) {
-                    if (checkDiscard()) {
+                    if (checkDiscard(true)) {
                         finishFragment();
                     }
                 } else if (id == done_button) {
@@ -617,7 +685,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         if (selectType != SELECT_TYPE_MEMBERS || type == TYPE_USERS || ChatObject.hasAdminRights(currentChat) && (type == TYPE_BANNED || type == TYPE_KICKED)) {
             searchListViewAdapter = new SearchAdapter(context);
             ActionBarMenu menu = actionBar.createMenu();
-            searchItem = menu.addItem(search_button, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+            searchItem = menu.addItem(search_button, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
                 @Override
                 public void onSearchExpand() {
                     searching = true;
@@ -672,29 +740,24 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
 
             if (type == TYPE_KICKED) {
-                doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, AndroidUtilities.dp(56), getString("Done", R.string.Done));
+                doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, dp(56), getString("Done", R.string.Done));
             }
         } else if (type == TYPE_ADMIN && ChatObject.isChannelAndNotMegaGroup(currentChat) && ChatObject.hasAdminRights(currentChat)) {
             ActionBarMenu menu = actionBar.createMenu();
-            doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, AndroidUtilities.dp(56), getString("Done", R.string.Done));
+            doneItem = menu.addItemWithWidth(done_button, R.drawable.ic_ab_done, dp(56), getString("Done", R.string.Done));
         }
 
-        fragmentView = new FrameLayout(context) {
-            @Override
-            protected void dispatchDraw(Canvas canvas) {
-                canvas.drawColor(Theme.getColor(listView.getAdapter() == searchListViewAdapter ? Theme.key_windowBackgroundWhite : Theme.key_windowBackgroundGray));
-                super.dispatchDraw(canvas);
-            }
-        };
+        fragmentView = new FrameLayout(context);
+        fragmentView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
         FrameLayout progressLayout = new FrameLayout(context);
         flickerLoadingView = new FlickerLoadingView(context);
         flickerLoadingView.setViewType(FlickerLoadingView.USERS_TYPE);
         flickerLoadingView.showDate(false);
-        flickerLoadingView.setUseHeaderOffset(true);
+        flickerLoadingView.setUseHeaderOffset(false);
         flickerLoadingView.setColors(Theme.key_actionBarDefaultSubmenuBackground, Theme.key_listSelector, Theme.key_listSelector);
-        progressLayout.addView(flickerLoadingView);
+        progressLayout.addView(flickerLoadingView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.NO_GRAVITY, 12, 30, 12, 0));
 
         progressBar = new RadialProgressView(context);
         progressLayout.addView(progressBar, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER));
@@ -720,15 +783,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     fragmentView.invalidate();
                 }
             }
-
-            @Override
-            protected void dispatchDraw(Canvas canvas) {
-                if (permissionsSectionRow >= 0 && participantsDivider2Row >= 0) {
-                    drawSectionBackground(canvas, permissionsSectionRow, Math.max(0, participantsDivider2Row - 1), getThemedColor(Theme.key_windowBackgroundWhite));
-                }
-                super.dispatchDraw(canvas);
-            }
         };
+        listView.setSections();
         listView.setLayoutManager(layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false) {
             @Override
             public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
@@ -783,6 +839,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         listView.setAdapter(listViewAdapter = new ListAdapter(context));
         listView.setVerticalScrollbarPosition(LocaleController.isRTL ? RecyclerListView.SCROLLBAR_POSITION_LEFT : RecyclerListView.SCROLLBAR_POSITION_RIGHT);
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+        actionBar.setAdaptiveBackground(listView);
 
         listView.setOnItemClickListener((view, position, x, y) -> {
             boolean listAdapter = listView.getAdapter() == listViewAdapter;
@@ -806,6 +863,16 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 updateListAnimated(diffCallback);
 
                 listViewAdapter.notifyItemChanged(signMessagesInfoRow);
+            } else if (position == payRow) {
+                enablePrice = !enablePrice;
+                ((TextCheckCell) view).setChecked(enablePrice);
+
+                AndroidUtilities.updateVisibleRows(listView);
+                DiffCallback diffCallback = saveState();
+                updateRows();
+                updateListAnimated(diffCallback);
+
+                listViewAdapter.notifyItemChanged(payRow);
             } else if (listAdapter) {
                 if (isExpandableSendMediaRow(position)) {
                     CheckBoxCell checkBoxCell = (CheckBoxCell) view;
@@ -842,6 +909,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         defaultBannedRights.embed_links = !defaultBannedRights.embed_links;
                     } else if (position == sendPollsRow) {
                         defaultBannedRights.send_polls = !defaultBannedRights.send_polls;
+                    } else if (position == sendReactionsRow) {
+                        defaultBannedRights.send_reactions = !defaultBannedRights.send_reactions;
                     }
 
                     checkBoxCell.setChecked(!checkBoxCell.isChecked(), true);
@@ -1046,8 +1115,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         BulletinFactory.of(this).createSimpleBulletin(R.raw.contacts_sync_off, AndroidUtilities.replaceTags(LocaleController.formatPluralString("ChannelHiddenMembersForbidden", getMessagesController().hiddenMembersGroupSizeMin))).show();
                     } else if (info != null && ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_BLOCK_USERS) && !hideMembersToggleLoading) {
                         hideMembersToggleLoading = true;
-                        boolean wasParticipantsHidden = info.participants_hidden;
-                        TLRPC.TL_channels_toggleParticipantsHidden req = new TLRPC.TL_channels_toggleParticipantsHidden();
+                        final boolean wasParticipantsHidden = info.participants_hidden;
+                        final TLRPC.TL_channels_toggleParticipantsHidden req = new TLRPC.TL_channels_toggleParticipantsHidden();
                         req.channel = getMessagesController().getInputChannel(chatId);
                         textCell.setChecked(req.enabled = (info.participants_hidden = !info.participants_hidden));
                         textCell.getCheckBox().setIcon(ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_BLOCK_USERS) && (info == null || info.participants_hidden || getParticipantsCount() >= getMessagesController().hiddenMembersGroupSizeMin) ? 0 : R.drawable.permission_locked);
@@ -1070,6 +1139,28 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         });
                     }
                     return;
+                } else if (position == tagsRow) {
+                    if (currentChat == null) return;
+
+                    final TextCell textCell = (TextCell) view;
+                    final boolean wasChecked = textCell.isChecked();
+                    textCell.setChecked(!textCell.isChecked());
+
+                    final TLRPC.TL_messages_editChatDefaultBannedRights req = new TLRPC.TL_messages_editChatDefaultBannedRights();
+                    req.peer = MessagesController.getInputPeer(currentChat);
+                    if (currentChat.default_banned_rights == null) {
+                        currentChat.default_banned_rights = new TLRPC.TL_chatBannedRights();
+                    }
+                    req.banned_rights = currentChat.default_banned_rights;
+                    req.banned_rights.edit_rank = !textCell.isChecked();
+                    getConnectionsManager().sendRequestTyped(req, AndroidUtilities::runOnUIThread, (res, err) -> {
+                        if (res != null) {
+                            getMessagesController().processUpdates(res, false);
+                        } else if (err != null) {
+                            textCell.setChecked(wasChecked);
+                            BulletinFactory.of(ChatUsersActivity.this).showForError(err);
+                        }
+                    });
                 } else if (position == removedUsersRow) {
                     Bundle args = new Bundle();
                     args.putLong("chat_id", chatId);
@@ -1114,7 +1205,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         presentFragment(fragment);
                     }
                     return;
-                } else if (position > permissionsSectionRow && position <= Math.max(manageTopicsRow, changeInfoRow)) {
+                } else if (position > permissionsSectionRow && position <= Math.max(manageTopicsRow, changeInfoRow) || position == manageLinkedPeersRow) {
                     TextCheckCell2 checkCell = (TextCheckCell2) view;
                     if (position == sendMediaRow) {
                         //defaultBannedRights.send_media = !defaultBannedRights.send_media;
@@ -1148,12 +1239,16 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     checkCell.setChecked(!checkCell.isChecked());
                     if (position == changeInfoRow) {
                         defaultBannedRights.change_info = !defaultBannedRights.change_info;
+                    } else if (position == manageLinkedPeersRow) {
+                        defaultBannedRights.manage_linked_peers = !defaultBannedRights.manage_linked_peers;
                     } else if (position == addUsersRow) {
                         defaultBannedRights.invite_users = !defaultBannedRights.invite_users;
                     } else if (position == manageTopicsRow) {
                         defaultBannedRights.manage_topics = !defaultBannedRights.manage_topics;
                     } else if (position == pinMessagesRow) {
                         defaultBannedRights.pin_messages = !defaultBannedRights.pin_messages;
+                    } else if (position == editTagRow) {
+                        defaultBannedRights.edit_rank = !defaultBannedRights.edit_rank;
                     } else {
                         if (position == sendMessagesRow) {
                             defaultBannedRights.send_plain = !defaultBannedRights.send_plain;
@@ -1192,7 +1287,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             boolean canEditAdmin = false;
             if (listAdapter) {
                 participant = listViewAdapter.getItem(position);
-                if (participant instanceof TLRPC.ChannelParticipant) {
+                if (participant instanceof TLRPC.User) {
+                    peerId = ((TLRPC.User) participant).id;
+                    canEditAdmin = true;
+                } else if (participant instanceof TLRPC.ChannelParticipant) {
                     TLRPC.ChannelParticipant channelParticipant = (TLRPC.ChannelParticipant) participant;
                     peerId = MessageObject.getPeerId(channelParticipant.peer);
                     bannedRights = channelParticipant.banned_rights;
@@ -1205,7 +1303,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             adminRights = new TLRPC.TL_chatAdminRights();
                             adminRights.change_info = adminRights.post_messages = adminRights.edit_messages =
                                     adminRights.delete_messages = adminRights.ban_users = adminRights.invite_users =
-                                            adminRights.manage_topics = adminRights.pin_messages = adminRights.add_admins = true;
+                                            adminRights.manage_topics = adminRights.pin_messages = adminRights.add_admins = adminRights.manage_ranks = true;
                             if (!isChannel) {
                                 adminRights.manage_call = true;
                             }
@@ -1219,7 +1317,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         adminRights = new TLRPC.TL_chatAdminRights();
                         adminRights.change_info = adminRights.post_messages = adminRights.edit_messages =
                                 adminRights.delete_messages = adminRights.ban_users = adminRights.invite_users =
-                                        adminRights.manage_topics = adminRights.pin_messages = adminRights.add_admins = true;
+                                        adminRights.manage_topics = adminRights.pin_messages = adminRights.add_admins = adminRights.manage_ranks = true;
                         if (!isChannel) {
                             adminRights.manage_call = true;
                         }
@@ -1311,6 +1409,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             bannedRights.send_inline = true;
                             bannedRights.send_gifs = true;
                             bannedRights.pin_messages = true;
+                            bannedRights.edit_rank = true;
+                            bannedRights.send_reactions = true;
                             bannedRights.send_polls = true;
                             bannedRights.invite_users = true;
                             bannedRights.manage_topics = true;
@@ -1394,7 +1494,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         }
     }
 
-    private void sortAdmins(ArrayList<TLObject> participants) {
+    public static void sortAdmins(ArrayList<TLObject> participants) {
         Collections.sort(participants, (lhs, rhs) -> {
             int type1 = getChannelAdminParticipantType(lhs);
             int type2 = getChannelAdminParticipantType(rhs);
@@ -1472,7 +1572,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         });
     }
 
-    public void setIgnoresUsers(LongSparseArray<TLRPC.TL_groupCallParticipant> participants) {
+    public void setIgnoresUsers(LongSparseArray<TLRPC.GroupCallParticipant> participants) {
         ignoredUsers = participants;
     }
 
@@ -1520,7 +1620,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 admin.admin_rights = new TLRPC.TL_chatAdminRights();
                 admin.admin_rights.change_info = admin.admin_rights.post_messages = admin.admin_rights.edit_messages =
                         admin.admin_rights.delete_messages = admin.admin_rights.ban_users = admin.admin_rights.invite_users =
-                                admin.admin_rights.manage_topics = admin.admin_rights.pin_messages = admin.admin_rights.add_admins = true;
+                                admin.admin_rights.manage_topics = admin.admin_rights.pin_messages = admin.admin_rights.manage_ranks = admin.admin_rights.add_admins = true;
                 if (!isChannel) {
                     admin.admin_rights.manage_call = true;
                 }
@@ -1650,7 +1750,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     @Override
     public boolean canBeginSlide() {
-        return checkDiscard();
+        return checkDiscard(true);
     }
 
     private void openRightsEdit(long user_id, TLObject participant, TLRPC.TL_chatAdminRights adminRights, TLRPC.TL_chatBannedRights bannedRights, String rank, boolean canEditAdmin, int type, boolean removeFragment) {
@@ -1793,6 +1893,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         TLRPC.TL_chatBannedRights bannedRights;
         TLRPC.TL_chatAdminRights adminRights;
         String rank;
+        int joined;
         if (participant instanceof TLRPC.ChannelParticipant) {
             TLRPC.ChannelParticipant channelParticipant = (TLRPC.ChannelParticipant) participant;
             peerId = MessageObject.getPeerId(channelParticipant.peer);
@@ -1801,6 +1902,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             adminRights = channelParticipant.admin_rights;
             date = channelParticipant.date;
             rank = channelParticipant.rank;
+            joined = channelParticipant.date;
         } else if (participant instanceof TLRPC.ChatParticipant) {
             TLRPC.ChatParticipant chatParticipant = (TLRPC.ChatParticipant) participant;
             peerId = chatParticipant.user_id;
@@ -1809,6 +1911,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             bannedRights = null;
             adminRights = null;
             rank = "";
+            joined = chatParticipant.date;
         } else {
             peerId = 0;
             canEdit = false;
@@ -1816,6 +1919,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             adminRights = null;
             date = 0;
             rank = null;
+            joined = 0;
         }
         if (peerId == 0 || peerId == getUserConfig().getClientUserId()) {
             return false;
@@ -1832,22 +1936,22 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             }
 
             boolean result = allowSetAdmin || (ChatObject.canBlockUsers(currentChat) && canEditAdmin);
-            if (resultOnly || !result) {
+            if (resultOnly || !result && joined == 0) {
                 return result;
             }
 
             Utilities.Callback<Integer> openRightsFor = action ->
                 openRightsEdit2(peerId, date, participant, adminRights, bannedRights, rank, canEditAdmin, action, false);
 
-            ItemOptions.makeOptions(this, view)
-                .setScrimViewBackground(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundWhite)))
-                .addIf(allowSetAdmin, R.drawable.msg_admins, editingAdmin ? getString("EditAdminRights", R.string.EditAdminRights) : getString("SetAsAdmin", R.string.SetAsAdmin), () -> openRightsFor.run(0))
+            var options = ItemOptions.makeOptions(this, view)
+                .setScrimViewBackground(listView.getClipBackground(view))
+                .addIf(allowSetAdmin, R.drawable.msg_admins, editingAdmin ? getString(R.string.EditAdminRights) : getString(R.string.SetAsAdmin), () -> openRightsFor.run(0))
                 .addIf(canChangePermission, R.drawable.msg_permissions, getString("ChangePermissions", R.string.ChangePermissions), () -> {
                     if (participant instanceof TLRPC.TL_channelParticipantAdmin || participant instanceof TLRPC.TL_chatParticipantAdmin) {
                         showDialog(
                             new AlertDialog.Builder(getParentActivity())
                                 .setTitle(getString("AppName", R.string.AppName))
-                                .setMessage(LocaleController.formatString("AdminWillBeRemoved", R.string.AdminWillBeRemoved, UserObject.getUserName(user)))
+                                .setMessage(LocaleController.formatString(R.string.AdminWillBeRemoved, UserObject.getUserName(user)))
                                 .setPositiveButton(getString("OK", R.string.OK), (dialog, which) -> openRightsFor.run(1))
                                 .setNegativeButton(getString("Cancel", R.string.Cancel), null)
                                 .create()
@@ -1863,14 +1967,18 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         BulletinFactory.createRemoveFromChatBulletin(this, user, currentChat.title).show();
                     }
                 })
-                .setMinWidth(190)
-                .show();
+                .setMinWidth(190);
+            if (joined != 0) {
+                if (result) options.addGap();
+                options.addText(LocaleController.formatJoined(joined), 13);
+            }
+            options.show();
         } else {
 
             ItemOptions options = ItemOptions.makeOptions(this, view);
 
             if (type == TYPE_KICKED && ChatObject.canBlockUsers(currentChat)) {
-                options.add(R.drawable.msg_permissions, getString("ChannelEditPermissions", R.string.ChannelEditPermissions), () -> {
+                options.add(R.drawable.msg_permissions, getString(R.string.ChannelEditPermissions), () -> {
                     ChatRightsEditActivity fragment = new ChatRightsEditActivity(peerId, chatId, null, defaultBannedRights, bannedRights, rank, ChatRightsEditActivity.TYPE_BANNED, true, false, null);
                     fragment.setDelegate(new ChatRightsEditActivity.ChatRightsEditActivityDelegate() {
                         @Override
@@ -1893,8 +2001,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 });
                 options.add(R.drawable.msg_delete, getString("ChannelDeleteFromList", R.string.ChannelDeleteFromList), true, () -> deletePeer(peerId));
             } else if (type == TYPE_BANNED && ChatObject.canBlockUsers(currentChat)) {
-                if (ChatObject.canAddUsers(currentChat) && peerId > 0) {
-                    options.add(R.drawable.msg_contact_add, isChannel ? getString("ChannelAddToChannel", R.string.ChannelAddToChannel) : getString("ChannelAddToGroup", R.string.ChannelAddToGroup), () -> {
+                if (ChatObject.canAddUsers(currentChat) && peerId > 0 && !ChatObject.isCommunity(currentChat)) {
+                    options.add(R.drawable.msg_contact_add, isChannel ? getString(R.string.ChannelAddToChannel) : getString(R.string.ChannelAddToGroup), () -> {
                         deletePeer(peerId);
                         TLRPC.User user = getMessagesController().getUser(peerId);
                         getMessagesController().addUserToChat(chatId, user, 0, null, ChatUsersActivity.this, null);
@@ -1931,7 +2039,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 });
             }
 
-            options.setScrimViewBackground(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundWhite)));
+            options.setScrimViewBackground(listView.getClipBackground(view));
             options.setMinWidth(190);
 
             boolean result = options.getItemsCount() > 0;
@@ -1945,22 +2053,35 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     private void deletePeer(long peerId) {
-        TLRPC.TL_channels_editBanned req = new TLRPC.TL_channels_editBanned();
-        req.participant = getMessagesController().getInputPeer(peerId);
-        req.channel = getMessagesController().getInputChannel(chatId);
-        req.banned_rights = new TLRPC.TL_chatBannedRights();
-        getConnectionsManager().sendRequest(req, (response, error) -> {
-            if (response != null) {
-                final TLRPC.Updates updates = (TLRPC.Updates) response;
-                getMessagesController().processUpdates(updates, false);
-                if (!updates.chats.isEmpty()) {
-                    AndroidUtilities.runOnUIThread(() -> {
-                        TLRPC.Chat chat = updates.chats.get(0);
-                        getMessagesController().loadFullChat(chat.id, 0, true);
-                    }, 1000);
+        if (isCommunity) {
+            TL_communities.TL_communities_toggleParticipantBanned req =
+                new TL_communities.TL_communities_toggleParticipantBanned();
+            req.participant = getMessagesController().getInputPeer(peerId);
+            req.community = getMessagesController().getInputChannel(chatId);
+            req.unban = true;
+            getConnectionsManager().sendRequestTyped(req, AndroidUtilities::runOnUIThread, (response, error) -> {
+                AndroidUtilities.runOnUIThread(() -> {
+                    getMessagesController().loadFullChat(chatId, 0, true);
+                }, 1000);
+            });
+        } else {
+            TLRPC.TL_channels_editBanned req = new TLRPC.TL_channels_editBanned();
+            req.participant = getMessagesController().getInputPeer(peerId);
+            req.channel = getMessagesController().getInputChannel(chatId);
+            req.banned_rights = new TLRPC.TL_chatBannedRights();
+            getConnectionsManager().sendRequest(req, (response, error) -> {
+                if (response != null) {
+                    final TLRPC.Updates updates = (TLRPC.Updates) response;
+                    getMessagesController().processUpdates(updates, false);
+                    if (!updates.chats.isEmpty()) {
+                        AndroidUtilities.runOnUIThread(() -> {
+                            TLRPC.Chat chat = updates.chats.get(0);
+                            getMessagesController().loadFullChat(chat.id, 0, true);
+                        }, 1000);
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     @Override
@@ -1975,15 +2096,29 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     selectedSlowmode = initialSlowmode = getCurrentSlowmode();
                     isEnabledNotRestrictBoosters = info.boosts_unrestrict > 0;
                     notRestrictBoosters = info.boosts_unrestrict;
+
+                    final TLRPC.Chat chat = getMessagesController().getChat(chatId);
+                    final long stars = chat == null ? 0 : chat.send_paid_messages_stars;
+                    initialEnablePrice = enablePrice = stars > 0;
+                    initialStarsPrice = starsPrice = Utilities.clamp(stars > 0 ? stars : 10, getMessagesController().starsPaidMessageAmountMax, 1);
                 }
                 AndroidUtilities.runOnUIThread(() -> loadChatParticipants(0, 200));
+            }
+        } else if (id == NotificationCenter.dialogDeleted) {
+            long dialogId = (long) args[0];
+            if (dialogId == -chatId) {
+                if (parentLayout != null && parentLayout.getLastFragment() == this) {
+                    finishFragment();
+                } else {
+                    removeSelfFromStack();
+                }
             }
         }
     }
 
     @Override
-    public boolean onBackPressed() {
-        return checkDiscard();
+    public boolean onBackPressed(boolean invoked) {
+        return checkDiscard(invoked);
     }
 
     public void setDelegate(ChatUsersActivityDelegate chatUsersActivityDelegate) {
@@ -1992,18 +2127,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     private int getCurrentSlowmode() {
         if (info != null) {
-            if (info.slowmode_seconds == 10) {
+            if (info.slowmode_seconds == 5) {
                 return 1;
-            } else if (info.slowmode_seconds == 30) {
+            } else if (info.slowmode_seconds == 10) {
                 return 2;
-            } else if (info.slowmode_seconds == 60) {
+            } else if (info.slowmode_seconds == 30) {
                 return 3;
-            } else if (info.slowmode_seconds == 5 * 60) {
+            } else if (info.slowmode_seconds == 60) {
                 return 4;
-            } else if (info.slowmode_seconds == 15 * 60) {
+            } else if (info.slowmode_seconds == 5 * 60) {
                 return 5;
-            } else if (info.slowmode_seconds == 60 * 60) {
+            } else if (info.slowmode_seconds == 15 * 60) {
                 return 6;
+            } else if (info.slowmode_seconds == 60 * 60) {
+                return 7;
             }
         }
         return 0;
@@ -2011,16 +2148,18 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     private int getSecondsForIndex(int index) {
         if (index == 1) {
-            return 10;
+            return 5;
         } else if (index == 2) {
-            return 30;
+            return 10;
         } else if (index == 3) {
-            return 60;
+            return 30;
         } else if (index == 4) {
-            return 5 * 60;
+            return 60;
         } else if (index == 5) {
-            return 15 * 60;
+            return 5 * 60;
         } else if (index == 6) {
+            return 15 * 60;
+        } else if (index == 7) {
             return 60 * 60;
         }
         return 0;
@@ -2036,19 +2175,22 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         }
     }
 
-    private boolean checkDiscard() {
+    private boolean checkDiscard(boolean invoked) {
+        if (transfer) return true;
         String newBannedRights = ChatObject.getBannedRightsString(defaultBannedRights);
         if (!newBannedRights.equals(initialBannedRights) || initialSlowmode != selectedSlowmode || hasNotRestrictBoostersChanges() || signatures != initialSignatures || (signatures && profiles) != initialProfiles) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
-            builder.setTitle(getString("UserRestrictionsApplyChanges", R.string.UserRestrictionsApplyChanges));
-            if (isChannel) {
-                builder.setMessage(getString("ChannelSettingsChangedAlert", R.string.ChannelSettingsChangedAlert));
-            } else {
-                builder.setMessage(getString("GroupSettingsChangedAlert", R.string.GroupSettingsChangedAlert));
+            if (invoked) {
+                final AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+                builder.setTitle(getString("UserRestrictionsApplyChanges", R.string.UserRestrictionsApplyChanges));
+                if (isChannel) {
+                    builder.setMessage(getString("ChannelSettingsChangedAlert", R.string.ChannelSettingsChangedAlert));
+                } else {
+                    builder.setMessage(getString("GroupSettingsChangedAlert", R.string.GroupSettingsChangedAlert));
+                }
+                builder.setPositiveButton(getString("ApplyTheme", R.string.ApplyTheme), (dialogInterface, i) -> processDone());
+                builder.setNegativeButton(getString("PassportDiscard", R.string.PassportDiscard), (dialog, which) -> finishFragment());
+                showDialog(builder.create());
             }
-            builder.setPositiveButton(getString("ApplyTheme", R.string.ApplyTheme), (dialogInterface, i) -> processDone());
-            builder.setNegativeButton(getString("PassportDiscard", R.string.PassportDiscard), (dialog, which) -> finishFragment());
-            showDialog(builder.create());
             return false;
         }
         return true;
@@ -2143,13 +2285,25 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             if (builder.length() != 0) {
                 builder.append(", ");
             }
-            builder.append(getString("UserRestrictionsNoPinMessages", R.string.UserRestrictionsNoPinMessages));
+            builder.append(getString(R.string.UserRestrictionsNoPinMessages));
+        }
+        if (rights.edit_rank && defaultBannedRights.edit_rank != rights.edit_rank) {
+            if (builder.length() != 0) {
+                builder.append(", ");
+            }
+            builder.append(getString(R.string.UserRestrictionsNoEditTags));
+        }
+        if (rights.send_reactions && defaultBannedRights.send_reactions != rights.send_reactions) {
+            if (builder.length() != 0) {
+                builder.append(", ");
+            }
+            builder.append(getString(R.string.UserRestrictionsNoSendReactions));
         }
         if (rights.change_info && defaultBannedRights.change_info != rights.change_info) {
             if (builder.length() != 0) {
                 builder.append(", ");
             }
-            builder.append(getString("UserRestrictionsNoChangeInfo", R.string.UserRestrictionsNoChangeInfo));
+            builder.append(getString(R.string.UserRestrictionsNoChangeInfo));
         }
         if (builder.length() != 0) {
             builder.replace(0, 1, builder.substring(0, 1).toUpperCase());
@@ -2160,7 +2314,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
 
     private void processDone() {
         if (type == TYPE_KICKED) {
-            if (currentChat.creator && !ChatObject.isChannel(currentChat) && selectedSlowmode != initialSlowmode && info != null) {
+            if (currentChat.creator && !ChatObject.isChannel(currentChat) && (selectedSlowmode != initialSlowmode || enablePrice) && info != null) {
                 MessagesController.getInstance(currentAccount).convertToMegaGroup(getParentActivity(), chatId, this, param -> {
                     if (param != 0) {
                         chatId = param;
@@ -2182,6 +2336,27 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 info.slowmode_seconds = getSecondsForIndex(selectedSlowmode);
                 info.flags |= 131072;
                 getMessagesController().setChannelSlowMode(chatId, info.slowmode_seconds);
+            }
+
+            if (enablePrice != initialEnablePrice || enablePrice && initialStarsPrice != starsPrice) {
+                final TL_stars.updatePaidMessagesPrice req = new TL_stars.updatePaidMessagesPrice();
+                req.channel = getMessagesController().getInputChannel(chatId);
+                req.send_paid_messages_stars = enablePrice ? starsPrice : 0;
+                getConnectionsManager().sendRequest(req, (res, err) -> AndroidUtilities.runOnUIThread(() -> {
+
+                }));
+
+                final TLRPC.Chat chat = getMessagesController().getChat(chatId);
+                if (chat != null) {
+                    if (enablePrice) {
+                        chat.flags2 |= 16384;
+                        chat.send_paid_messages_stars = starsPrice;
+                    } else {
+                        chat.flags2 &=~ 16384;
+                        chat.send_paid_messages_stars = 0;
+                    }
+                    getMessagesController().putChat(chat, true);
+                }
             }
 
             if (hasNotRestrictBoostersChanges()) {
@@ -2214,7 +2389,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         return currentChat.megagroup && !currentChat.gigagroup && ChatObject.canUserDoAdminAction(currentChat,ChatObject.ACTION_DELETE_MESSAGES) &&
                 (selectedSlowmode > 0 || defaultBannedRights.send_plain || defaultBannedRights.send_media || defaultBannedRights.send_photos || defaultBannedRights.send_videos
                         || defaultBannedRights.send_stickers || defaultBannedRights.send_audios || defaultBannedRights.send_docs
-                        || defaultBannedRights.send_voices || defaultBannedRights.send_roundvideos || defaultBannedRights.embed_links || defaultBannedRights.send_polls);
+                        || defaultBannedRights.send_voices || defaultBannedRights.send_roundvideos || defaultBannedRights.embed_links || defaultBannedRights.send_polls || defaultBannedRights.send_reactions);
     }
 
     public void setInfo(TLRPC.ChatFull chatFull) {
@@ -2223,6 +2398,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             selectedSlowmode = initialSlowmode = getCurrentSlowmode();
             isEnabledNotRestrictBoosters = info.boosts_unrestrict > 0;
             notRestrictBoosters = info.boosts_unrestrict;
+
+            final TLRPC.Chat chat = getMessagesController().getChat(chatId);
+            final long stars = chat == null ? 0 : chat.send_paid_messages_stars;
+            initialEnablePrice = enablePrice = stars > 0;
+            initialStarsPrice = starsPrice = Utilities.clamp(stars > 0 ? stars : 10, getMessagesController().starsPaidMessageAmountMax, 1);
         }
     }
 
@@ -2231,7 +2411,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         return true;
     }
 
-    private int getChannelAdminParticipantType(TLObject participant) {
+    public static int getChannelAdminParticipantType(TLObject participant) {
         if (participant instanceof TLRPC.TL_channelParticipantCreator || participant instanceof TLRPC.TL_channelParticipantSelf) {
             return 0;
         } else if (participant instanceof TLRPC.TL_channelParticipantAdmin || participant instanceof TLRPC.TL_channelParticipant) {
@@ -2297,7 +2477,31 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     }
 
     private void loadChatParticipants(int offset, int count, boolean reset) {
-        if (!ChatObject.isChannel(currentChat)) {
+        if (isCommunity && type == TYPE_USERS) {
+            loadingUsers = false;
+            participants.clear();
+            bots.clear();
+            contacts.clear();
+            participantsMap.clear();
+            contactsMap.clear();
+            botsMap.clear();
+
+            final HashMap<String, ArrayList<TLRPC.TL_contact>> usersSectionsDict = ContactsController.getInstance(currentAccount).usersSectionsDict;
+            final ArrayList<String> sortedUsersSectionsArray = ContactsController.getInstance(currentAccount).sortedUsersSectionsArray;
+
+            for (String section : sortedUsersSectionsArray) {
+                final ArrayList<TLRPC.TL_contact> contactsArr = usersSectionsDict.get(section);
+                for (TLRPC.TL_contact contact : contactsArr) {
+                    TLRPC.User user = getMessagesController().getUser(contact.user_id);
+                    participants.add(user);
+                }
+            }
+
+            updateRows();
+            if (listViewAdapter != null) {
+                listViewAdapter.notifyDataSetChanged();
+            }
+        } else if (!ChatObject.isChannel(currentChat)) {
             loadingUsers = false;
             participants.clear();
             bots.clear();
@@ -2306,7 +2510,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             contactsMap.clear();
             botsMap.clear();
             if (type == TYPE_ADMIN) {
-                if (info != null) {
+                if (info != null && info.participants != null) {
                     for (int a = 0, size = info.participants.participants.size(); a < size; a++) {
                         TLRPC.ChatParticipant participant = info.participants.participants.get(a);
                         if (participant instanceof TLRPC.TL_chatParticipantCreator || participant instanceof TLRPC.TL_chatParticipantAdmin) {
@@ -2316,7 +2520,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     }
                 }
             } else if (type == TYPE_USERS) {
-                if (info != null) {
+                if (info != null && info.participants != null) {
                     long selfUserId = getUserConfig().clientUserId;
                     for (int a = 0, size = info.participants.participants.size(); a < size; a++) {
                         TLRPC.ChatParticipant participant = info.participants.participants.get(a);
@@ -2909,7 +3113,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             switch (viewType) {
                 case 0:
                     ManageChatUserCell manageChatUserCell = new ManageChatUserCell(mContext, 2, 2, selectType == SELECT_TYPE_MEMBERS);
-                    manageChatUserCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    manageChatUserCell.setUsernameSubtitle();
                     manageChatUserCell.setDelegate((cell, click) -> {
                         TLObject object = getItem((Integer) cell.getTag());
                         if (object instanceof TLRPC.ChannelParticipant) {
@@ -2923,7 +3127,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     break;
                 case 1:
                 default:
-                    view = new GraySectionCell(mContext);
+                    view = new GraySectionCell(mContext, 26, resourceProvider);
+                    view.setBackground(null);
                     break;
             }
             return new RecyclerListView.Holder(view);
@@ -3039,20 +3244,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     GraySectionCell sectionCell = (GraySectionCell) holder.itemView;
                     if (position == groupStartRow) {
                         if (type == TYPE_BANNED) {
-                            sectionCell.setText(getString("ChannelBlockedUsers", R.string.ChannelBlockedUsers));
+                            sectionCell.setText(getString(R.string.ChannelBlockedUsers));
                         } else if (type == TYPE_KICKED) {
-                            sectionCell.setText(getString("ChannelRestrictedUsers", R.string.ChannelRestrictedUsers));
+                            sectionCell.setText(getString(R.string.ChannelRestrictedUsers));
                         } else {
                             if (isChannel) {
-                                sectionCell.setText(getString("ChannelSubscribers", R.string.ChannelSubscribers));
+                                sectionCell.setText(getString(R.string.ChannelSubscribers));
                             } else {
-                                sectionCell.setText(getString("ChannelMembers", R.string.ChannelMembers));
+                                sectionCell.setText(getString(R.string.ChannelMembers));
                             }
                         }
                     } else if (position == globalStartRow) {
-                        sectionCell.setText(getString("GlobalSearch", R.string.GlobalSearch));
+                        sectionCell.setText(getString(R.string.GlobalSearch));
                     } else if (position == contactsStartRow) {
-                        sectionCell.setText(getString("Contacts", R.string.Contacts));
+                        sectionCell.setText(getString(R.string.Contacts));
                     }
                     break;
                 }
@@ -3111,6 +3316,8 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     return ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_DELETE_MESSAGES);
                 } else if (position == hideMembersRow) {
                     return ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_BLOCK_USERS);
+                } else if (position == tagsRow) {
+                    return true;
                 }
             }
             if (viewType == VIEW_TYPE_INNER_CHECK) {
@@ -3133,7 +3340,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             switch (viewType) {
                 case 0:
                     ManageChatUserCell manageChatUserCell = new ManageChatUserCell(mContext, type == TYPE_BANNED || type == TYPE_KICKED ? 7 : 6, type == TYPE_BANNED || type == TYPE_KICKED ? 6 : 2, selectType == SELECT_TYPE_MEMBERS);
-                    manageChatUserCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     manageChatUserCell.setDelegate((cell, click) -> {
                         TLObject participant = listViewAdapter.getItem((Integer) cell.getTag());
                         return createMenuForParticipant(participant, !click, cell);
@@ -3145,7 +3351,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     break;
                 case 2:
                     view = new ManageChatTextCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 3:
                     view = new ShadowSectionCell(mContext);
@@ -3155,63 +3360,63 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     TextInfoPrivacyCell privacyCell = (TextInfoPrivacyCell) view;
                     if (isChannel) {
                         privacyCell.setText(getString(R.string.NoBlockedChannel2));
+                    } else if (isCommunity) {
+                        privacyCell.setText(getString(R.string.NoBlockedCommunity2));
                     } else {
                         privacyCell.setText(getString(R.string.NoBlockedGroup2));
                     }
-                    privacyCell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     break;
                 case 5:
                     HeaderCell headerCell = new HeaderCell(mContext, Theme.key_windowBackgroundWhiteBlueHeader, 21, 11, false);
-                    headerCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     headerCell.setHeight(43);
                     view = headerCell;
                     break;
                 case 6:
                     view = new TextSettingsCell(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case VIEW_TYPE_EXPANDABLE_SWITCH:
                 case 7:
                     view = new TextCheckCell2(mContext);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 8:
-                    view = new GraySectionCell(mContext);
+                    view = new GraySectionCell(mContext, 26, resourceProvider);
                     view.setBackground(null);
                     break;
                 case 10:
-                    view = new LoadingCell(mContext, AndroidUtilities.dp(40), AndroidUtilities.dp(120));
+                    view = new LoadingCell(mContext, dp(40), dp(120));
                     break;
                 case 11:
                     FlickerLoadingView flickerLoadingView = new FlickerLoadingView(mContext);
                     flickerLoadingView.setIsSingleCell(true);
                     flickerLoadingView.setViewType(FlickerLoadingView.USERS_TYPE);
                     flickerLoadingView.showDate(false);
-                    flickerLoadingView.setPaddingLeft(AndroidUtilities.dp(5));
-                    flickerLoadingView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                    flickerLoadingView.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                    flickerLoadingView.setUseHeaderOffset(false);
+                    flickerLoadingView.setPaddingLeft(dp(5));
+                    RecyclerView.LayoutParams lp = new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                    lp.leftMargin = lp.rightMargin = dp(12);
+                    lp.topMargin = dp(30);
+                    flickerLoadingView.setLayoutParams(lp);
                     view = flickerLoadingView;
                     break;
                 case 12:
                     TextCell textCell = new TextCell(mContext, 23, false, true, getResourceProvider());
                     textCell.heightDp = 50;
-                    textCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     view = textCell;
                     break;
                 case 9:
                 default:
                     SlideChooseView chooseView = new SlideChooseView(mContext);
                     view = chooseView;
-                    chooseView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     chooseView.setOptions(
                             selectedSlowmode,
                             getString("SlowmodeOff", R.string.SlowmodeOff),
-                            LocaleController.formatString("SlowmodeSeconds", R.string.SlowmodeSeconds, 10),
-                            LocaleController.formatString("SlowmodeSeconds", R.string.SlowmodeSeconds, 30),
-                            LocaleController.formatString("SlowmodeMinutes", R.string.SlowmodeMinutes, 1),
-                            LocaleController.formatString("SlowmodeMinutes", R.string.SlowmodeMinutes, 5),
-                            LocaleController.formatString("SlowmodeMinutes", R.string.SlowmodeMinutes, 15),
-                            LocaleController.formatString("SlowmodeHours", R.string.SlowmodeHours, 1)
+                            LocaleController.formatString(R.string.SlowmodeSeconds, 5),
+                            LocaleController.formatString(R.string.SlowmodeSeconds, 10),
+                            LocaleController.formatString(R.string.SlowmodeSeconds, 30),
+                            LocaleController.formatString(R.string.SlowmodeMinutes, 1),
+                            LocaleController.formatString(R.string.SlowmodeMinutes, 5),
+                            LocaleController.formatString(R.string.SlowmodeMinutes, 15),
+                            LocaleController.formatString(R.string.SlowmodeHours, 1)
                     );
                     chooseView.setCallback(which -> {
                         if (info == null) {
@@ -3230,7 +3435,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 case VIEW_TYPE_NOT_RESTRICT_BOOSTERS_SLIDER: {
                     SlideChooseView slider = new SlideChooseView(mContext);
                     view = slider;
-                    slider.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     Drawable[] drawables = new Drawable[]{
                             ContextCompat.getDrawable(getContext(), R.drawable.mini_boost_profile_badge),
                             ContextCompat.getDrawable(getContext(), R.drawable.mini_boost_profile_badge2),
@@ -3250,11 +3454,12 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     checkBoxCell.getCheckBoxRound().setColor(Theme.key_switch2TrackChecked, Theme.key_radioBackground, Theme.key_checkboxCheck);
                     checkBoxCell.setEnabled(true);
                     view = checkBoxCell;
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case VIEW_TYPE_CHECK:
                     view = new TextCheckCell(mContext, getResourceProvider());
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+                    break;
+                case VIEW_TYPE_SLIDER:
+                    view = new SlideIntChooseView(mContext, getResourceProvider());
                     break;
             }
             return new RecyclerListView.Holder(view);
@@ -3288,7 +3493,16 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     boolean creator;
                     boolean admin;
                     int joined;
-                    if (item instanceof TLRPC.ChannelParticipant) {
+                    if (item instanceof TLRPC.User) {
+                        peerId = ((TLRPC.User) item).id;
+                        kickedBy = 0;
+                        promotedBy = 0;
+                        bannedRights = null;
+                        joined = 0;
+                        banned = false;
+                        creator = false;
+                        admin = false;
+                    } else if (item instanceof TLRPC.ChannelParticipant) {
                         TLRPC.ChannelParticipant participant = (TLRPC.ChannelParticipant) item;
                         peerId = MessageObject.getPeerId(participant.peer);
                         kickedBy = participant.kicked_by;
@@ -3325,21 +3539,21 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             if (banned) {
                                 TLRPC.User user1 = getMessagesController().getUser(kickedBy);
                                 if (user1 != null) {
-                                    role = LocaleController.formatString("UserRemovedBy", R.string.UserRemovedBy, UserObject.getUserName(user1));
+                                    role = LocaleController.formatString(R.string.UserRemovedBy, UserObject.getUserName(user1));
                                 }
                             }
                             userCell.setData(object, null, role, position != lastRow - 1);
                         } else if (type == TYPE_ADMIN) {
                             String role = null;
                             if (creator) {
-                                role = getString("ChannelCreator", R.string.ChannelCreator);
+                                role = getString(R.string.ChannelCreator);
                             } else if (admin) {
                                 TLRPC.User user1 = getMessagesController().getUser(promotedBy);
                                 if (user1 != null) {
                                     if (user1.id == peerId) {
-                                        role = getString("ChannelAdministrator", R.string.ChannelAdministrator);
+                                        role = getString(R.string.ChannelAdministrator);
                                     } else {
-                                        role = LocaleController.formatString("EditAdminPromotedBy", R.string.EditAdminPromotedBy, UserObject.getUserName(user1));
+                                        role = LocaleController.formatString(R.string.EditAdminPromotedBy, UserObject.getUserName(user1));
                                     }
                                 }
                             }
@@ -3359,15 +3573,15 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     TextInfoPrivacyCell privacyCell = (TextInfoPrivacyCell) holder.itemView;
                     if (position == antiSpamInfoRow) {
                         privacyCell.setText(getString("ChannelAntiSpamInfo", R.string.ChannelAntiSpamInfo));
-                        privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
                     } else if (position == participantsInfoRow) {
                         if (type == TYPE_BANNED || type == TYPE_KICKED) {
                             if (isChannel) {
-                                privacyCell.setText(getString("NoBlockedChannel2", R.string.NoBlockedChannel2));
+                                privacyCell.setText(getString(R.string.NoBlockedChannel2));
+                            } else if (isCommunity) {
+                                privacyCell.setText(getString(R.string.NoBlockedCommunity2));
                             } else {
-                                privacyCell.setText(getString("NoBlockedGroup2", R.string.NoBlockedGroup2));
+                                privacyCell.setText(getString(R.string.NoBlockedGroup2));
                             }
-                            privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                         } else if (type == TYPE_ADMIN) {
                             if (addNewRow != -1) {
                                 if (isChannel) {
@@ -3378,37 +3592,39 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             } else {
                                 privacyCell.setText("");
                             }
-                            privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                         } else if (type == TYPE_USERS) {
                             if (!isChannel || selectType != SELECT_TYPE_MEMBERS) {
                                 privacyCell.setText("");
                             } else {
                                 privacyCell.setText(getString("ChannelMembersInfo", R.string.ChannelMembersInfo));
                             }
-                            privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                         }
                     } else if (position == slowmodeInfoRow) {
-                        privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
                         int seconds = getSecondsForIndex(selectedSlowmode);
                         if (info == null || seconds == 0) {
-                            privacyCell.setText(getString("SlowmodeInfoOff", R.string.SlowmodeInfoOff));
+                            privacyCell.setText(getString(R.string.SlowmodeInfoOff));
                         } else {
-                            privacyCell.setText(LocaleController.formatString("SlowmodeInfoSelected", R.string.SlowmodeInfoSelected, formatSeconds(seconds)));
+                            privacyCell.setText(LocaleController.formatString(R.string.SlowmodeInfoSelected, formatSeconds(seconds)));
                         }
+                    } else if (position == payInfoRow) {
+                        privacyCell.setText(getString(R.string.GroupMessagesChargePriceInfo));
+                    } else if (position == priceInfoRow) {
+                        final float revenuePercent = getMessagesController().starsPaidMessageCommissionPermille / 1000.0f;
+                        final String income = String.valueOf((int) ((starsPrice * revenuePercent / 1000.0 * getMessagesController().starsUsdWithdrawRate1000)) / 100.0);
+                        privacyCell.setText(LocaleController.formatString(R.string.GroupMessagesPriceInfo, percents(getMessagesController().starsPaidMessageCommissionPermille), income));
                     } else if (position == hideMembersInfoRow) {
-                        privacyCell.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-                        privacyCell.setText(getString("ChannelHideMembersInfo", R.string.ChannelHideMembersInfo));
-                    } else if (position == gigaInfoRow) {
-                        privacyCell.setText(getString("BroadcastGroupConvertInfo", R.string.BroadcastGroupConvertInfo));
+                        privacyCell.setText(getString(R.string.ChannelHideMembersInfo));
+                    } else if (position == tagsInfoRow) {
+                        privacyCell.setText(getString(R.string.ChannelMemberTagsInfo));
+                    }else if (position == gigaInfoRow) {
+                        privacyCell.setText(getString(R.string.BroadcastGroupConvertInfo));
                     } else if (position == dontRestrictBoostersInfoRow) {
-                        privacyCell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
                         if (isEnabledNotRestrictBoosters) {
                             privacyCell.setText(getString(R.string.GroupNotRestrictBoostersInfo2));
                         } else {
                             privacyCell.setText(getString(R.string.GroupNotRestrictBoostersInfo));
                         }
                     } else if (position == signMessagesInfoRow) {
-                        privacyCell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                         privacyCell.setText(getString(signatures ? R.string.ChannelSignProfilesInfo : R.string.ChannelSignInfo));
                     }
                     break;
@@ -3429,13 +3645,13 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             actionCell.setColors(Theme.key_windowBackgroundWhiteBlueIcon, Theme.key_windowBackgroundWhiteBlueButton);
                             boolean showDivider = addNew2Row != -1 || (!(loadingUsers && !firstLoaded) && membersHeaderRow == -1 && !participants.isEmpty());
                             if (isChannel) {
-                                actionCell.setText(getString("AddSubscriber", R.string.AddSubscriber), null, R.drawable.msg_contact_add, showDivider);
+                                actionCell.setText(getString(R.string.AddSubscriber), null, R.drawable.msg_contact_add, showDivider);
                             } else {
-                                actionCell.setText(getString("AddMember", R.string.AddMember), null, R.drawable.msg_contact_add, showDivider);
+                                actionCell.setText(getString(R.string.AddMember), null, R.drawable.msg_contact_add, showDivider);
                             }
                         }
                     } else if (position == recentActionsRow) {
-                        actionCell.setText(getString("EventLog", R.string.EventLog), null, R.drawable.msg_log, antiSpamRow > recentActionsRow);
+                        actionCell.setText(getString(R.string.EventLog), null, R.drawable.msg_log, antiSpamRow > recentActionsRow);
                     } else if (position == addNew2Row) {
                         actionCell.setColors(Theme.key_windowBackgroundWhiteBlueIcon, Theme.key_windowBackgroundWhiteBlueButton);
                         boolean showDivider = !(loadingUsers && !firstLoaded) && membersHeaderRow == -1 && !participants.isEmpty();
@@ -3446,11 +3662,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     }
                     break;
                 case 3:
-                    if (position == addNewSectionRow || type == TYPE_KICKED && position == participantsDividerRow && addNewRow == -1 && participantsStartRow == -1) {
-                        holder.itemView.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
-                    } else {
-                        holder.itemView.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow));
-                    }
                     break;
                 case 5:
                     HeaderCell headerCell = (HeaderCell) holder.itemView;
@@ -3460,17 +3671,19 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                             if (count != 0) {
                                 headerCell.setText(LocaleController.formatPluralString("RemovedUser", count));
                             } else {
-                                headerCell.setText(getString("ChannelBlockedUsers", R.string.ChannelBlockedUsers));
+                                headerCell.setText(getString(R.string.ChannelBlockedUsers));
                             }
                         } else {
-                            headerCell.setText(getString("ChannelRestrictedUsers", R.string.ChannelRestrictedUsers));
+                            headerCell.setText(getString(R.string.ChannelRestrictedUsers));
                         }
                     } else if (position == permissionsSectionRow) {
-                        headerCell.setText(getString("ChannelPermissionsHeader", R.string.ChannelPermissionsHeader));
+                        headerCell.setText(getString(isCommunity ? R.string.CommunityPermissionsHeader : R.string.ChannelPermissionsHeader));
                     } else if (position == slowmodeRow) {
-                        headerCell.setText(getString("Slowmode", R.string.Slowmode));
+                        headerCell.setText(getString(R.string.Slowmode));
                     } else if (position == gigaHeaderRow) {
-                        headerCell.setText(getString("BroadcastGroup", R.string.BroadcastGroup));
+                        headerCell.setText(getString(R.string.BroadcastGroup));
+                    } else if (position == priceHeaderRow) {
+                        headerCell.setText(getString(R.string.GroupMessagesPriceHeader));
                     }
                     break;
                 case 6:
@@ -3485,11 +3698,15 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     boolean animated = checkCell.getTag() != null && (Integer) checkCell.getTag() == position;
                     checkCell.setTag(position);
                     if (position == changeInfoRow) {
-                        checkCell.setTextAndCheck(getString("UserRestrictionsChangeInfo", R.string.UserRestrictionsChangeInfo), !defaultBannedRights.change_info && !ChatObject.isPublic(currentChat), manageTopicsRow != -1, animated);
+                        checkCell.setTextAndCheck(getString(isCommunity ? R.string.CommunityAdminRightEditCommunityName : R.string.UserRestrictionsChangeInfo), !defaultBannedRights.change_info && !ChatObject.isPublic(currentChat), manageTopicsRow != -1, animated);
+                    } else if (position == manageLinkedPeersRow) {
+                        checkCell.setTextAndCheck(getString(R.string.CommunityAdminRightEditGroupList), !defaultBannedRights.manage_linked_peers, false, animated);
                     } else if (position == addUsersRow) {
                         checkCell.setTextAndCheck(getString("UserRestrictionsInviteUsers", R.string.UserRestrictionsInviteUsers), !defaultBannedRights.invite_users, true, animated);
                     } else if (position == pinMessagesRow) {
-                        checkCell.setTextAndCheck(getString("UserRestrictionsPinMessages", R.string.UserRestrictionsPinMessages), !defaultBannedRights.pin_messages && !ChatObject.isPublic(currentChat), true, animated);
+                        checkCell.setTextAndCheck(getString(R.string.UserRestrictionsPinMessages), !defaultBannedRights.pin_messages && !ChatObject.isPublic(currentChat), true, animated);
+                    } else if (position == editTagRow) {
+                        checkCell.setTextAndCheck(getString(R.string.UserRestrictionsEditTags), !defaultBannedRights.edit_rank, true, animated);
                     } else if (position == sendMessagesRow) {
                         checkCell.setTextAndCheck(getString("UserRestrictionsSendText", R.string.UserRestrictionsSendText), !defaultBannedRights.send_plain, true, animated);
                     } else if(position == dontRestrictBoostersRow) {
@@ -3499,7 +3716,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     } else if (position == sendMediaRow) {
                         int sentMediaCount = getSendMediaSelectedCount();
                         checkCell.setTextAndCheck(getString("UserRestrictionsSendMedia", R.string.UserRestrictionsSendMedia), sentMediaCount > 0, true, animated);
-                        checkCell.setCollapseArrow(String.format(Locale.US, "%d/9", sentMediaCount), !sendMediaExpanded, new Runnable() {
+                        checkCell.setCollapseArrow(String.format(Locale.US, "%d/13", sentMediaCount), !sendMediaExpanded, new Runnable() {
                             @Override
                             public void run() {
                                 if (!checkCell.isEnabled()) return;
@@ -3568,7 +3785,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         textCell.setTextAndCheckAndIcon(getString("ChannelAntiSpam", R.string.ChannelAntiSpam), info != null && info.antispam, R.drawable.msg_policy, false);
                     } else if (position == hideMembersRow) {
                         textCell.getCheckBox().setIcon(ChatObject.canUserDoAdminAction(currentChat, ChatObject.ACTION_BLOCK_USERS) && (info == null || info.participants_hidden || getParticipantsCount() >= getMessagesController().hiddenMembersGroupSizeMin) ? 0 : R.drawable.permission_locked);
-                        textCell.setTextAndCheck(getString("ChannelHideMembers", R.string.ChannelHideMembers), info != null && info.participants_hidden, false);
+                        textCell.setTextAndCheck(getString(R.string.ChannelHideMembers), info != null && info.participants_hidden, false);
+                    } else if (position == tagsRow) {
+                        textCell.getCheckBox().setIcon(0);
+                        textCell.setTextAndCheck(getString(R.string.ChannelMemberTags), !(currentChat != null && currentChat.default_banned_rights != null && currentChat.default_banned_rights.edit_rank), false);
                     }
                     break;
                 case VIEW_TYPE_INNER_CHECK:
@@ -3597,9 +3817,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                     } else if (position == sendMediaVideoMessagesRow) {
                         checkBoxCell.setText(getString("SendMediaPermissionRound", R.string.SendMediaPermissionRound), "", !defaultBannedRights.send_roundvideos, true, animated);
                     } else if (position == sendMediaEmbededLinksRow) {
-                        checkBoxCell.setText(getString("SendMediaEmbededLinks", R.string.SendMediaEmbededLinks), "", !defaultBannedRights.embed_links && !defaultBannedRights.send_plain, false, animated);
+                        checkBoxCell.setText(getString("SendMediaEmbededLinks", R.string.SendMediaEmbededLinks), "", !defaultBannedRights.embed_links && !defaultBannedRights.send_plain, true, animated);
+                    } else if (position == sendReactionsRow) {
+                        checkBoxCell.setText(getString(R.string.UserRestrictionsSendReactions), "", !defaultBannedRights.send_reactions, false, animated);
                     } else if (position == sendPollsRow) {
-                        checkBoxCell.setText(getString("SendMediaPolls", R.string.SendMediaPolls), "", !defaultBannedRights.send_polls, false, animated);
+                        checkBoxCell.setText(getString("SendMediaPolls", R.string.SendMediaPolls), "", !defaultBannedRights.send_polls, true, animated);
                     } else
                     //  checkBoxCell.setText(getCheckBoxTitle(item.headerName, percents[item.index < 0 ? 8 : item.index], item.index < 0), AndroidUtilities.formatFileSize(item.size), selected, item.index < 0 ? !collapsed : !item.last);
                     checkBoxCell.setPad(1);
@@ -3610,9 +3832,20 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                         checkCell2.setTextAndCheck(getString(R.string.ChannelSignMessages), signatures, signatures);
                     } else if (position == signMessagesProfilesRow) {
                         checkCell2.setTextAndCheck(getString(R.string.ChannelSignMessagesWithProfile), profiles, false);
+                    } else if (position == payRow) {
+                        checkCell2.setTextAndCheck(getString(R.string.GroupMessagesChargePrice), enablePrice, false);
                     }
                     break;
-
+                case VIEW_TYPE_SLIDER:
+                    SlideIntChooseView cell = (SlideIntChooseView) holder.itemView;
+                    if (position == priceRow) {
+                        final int[] steps = SlideIntChooseView.cut(new int[] { 1, 10, 50, 100, 200, 250, 400, 500, 1000, 2500, 5000, 7500, 9000, 10_000 }, (int) getMessagesController().starsPaidMessageAmountMax);
+                        cell.set((int) Utilities.clamp(starsPrice, getMessagesController().starsPaidMessageAmountMax, 1), SlideIntChooseView.Options.make(1, steps, 20, (type, val) -> type == 0 ? LocaleController.formatPluralStringComma("Stars", val) : "" + val), newValue -> {
+                            starsPrice = newValue;
+                            AndroidUtilities.updateVisibleRow(listView, priceInfoRow);
+                        });
+                    }
+                    break;
             }
         }
 
@@ -3633,15 +3866,15 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 return 0;
             } else if (position == addNewSectionRow || position == participantsDividerRow || position == participantsDivider2Row) {
                 return 3;
-            } else if (position == restricted1SectionRow || position == permissionsSectionRow || position == slowmodeRow || position == gigaHeaderRow) {
+            } else if (position == restricted1SectionRow || position == permissionsSectionRow || position == slowmodeRow || position == gigaHeaderRow || position == priceHeaderRow) {
                 return 5;
-            } else if (position == participantsInfoRow || position == slowmodeInfoRow || position == dontRestrictBoostersInfoRow || position == gigaInfoRow || position == antiSpamInfoRow || position == hideMembersInfoRow || position == signMessagesInfoRow) {
+            } else if (position == participantsInfoRow || position == slowmodeInfoRow || position == dontRestrictBoostersInfoRow || position == gigaInfoRow || position == antiSpamInfoRow || position == hideMembersInfoRow || position == tagsInfoRow || position == signMessagesInfoRow || position == payInfoRow || position == priceInfoRow) {
                 return 1;
             } else if (position == blockedEmptyRow) {
                 return 4;
             } else if (position == removedUsersRow) {
                 return 6;
-            } else if (position == changeInfoRow || position == addUsersRow || position == pinMessagesRow || position == sendMessagesRow ||
+            } else if (position == changeInfoRow || position == addUsersRow || position == manageLinkedPeersRow || position == pinMessagesRow || position == editTagRow || position == sendMessagesRow ||
                     position == sendStickersRow || position == embedLinksRow || position == manageTopicsRow || position == dontRestrictBoostersRow) {
                 return 7;
             } else if (position == membersHeaderRow || position == contactsHeaderRow || position == botHeaderRow || position == loadingHeaderRow) {
@@ -3652,7 +3885,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 return 10;
             } else if (position == loadingUserCellRow) {
                 return 11;
-            } else if (position == antiSpamRow || position == hideMembersRow) {
+            } else if (position == antiSpamRow || position == hideMembersRow || position == tagsRow) {
                 return 12;
             } else if (isExpandableSendMediaRow(position)) {
                 return VIEW_TYPE_INNER_CHECK;
@@ -3660,8 +3893,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
                 return VIEW_TYPE_EXPANDABLE_SWITCH;
             } else if (position == dontRestrictBoostersSliderRow) {
                 return VIEW_TYPE_NOT_RESTRICT_BOOSTERS_SLIDER;
-            } else if (position == signMessagesRow || position == signMessagesProfilesRow) {
+            } else if (position == signMessagesRow || position == signMessagesProfilesRow || position == payRow) {
                 return VIEW_TYPE_CHECK;
+            } else if (position == priceRow) {
+                return VIEW_TYPE_SLIDER;
             }
             return 0;
         }
@@ -3692,6 +3927,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         defaultBannedRights.send_roundvideos = !enabled;
         defaultBannedRights.embed_links = !enabled;
         defaultBannedRights.send_polls = !enabled;
+        defaultBannedRights.send_reactions = !enabled;
         AndroidUtilities.updateVisibleRows(listView);
         DiffCallback diffCallback = saveState();
         updateRows();
@@ -3701,6 +3937,7 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
     private boolean isExpandableSendMediaRow(int position) {
         return position == sendMediaPhotosRow || position == sendMediaVideosRow || position == sendMediaStickerGifsRow || position == sendMediaGifsRow || position == sendMediaGamesRow || position == sendMediaInlineRow ||
                 position == sendMediaMusicRow || position == sendMediaFilesRow || position == sendMediaVoiceMessagesRow ||
+                position == sendReactionsRow ||
                 position == sendMediaVideoMessagesRow || position == sendMediaEmbededLinksRow || position == sendPollsRow;
     }
 
@@ -3823,7 +4060,10 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             put(++pointer, sendPollsRow, sparseIntArray);
             put(++pointer, embedLinksRow, sparseIntArray);
             put(++pointer, addUsersRow, sparseIntArray);
+            put(++pointer, manageLinkedPeersRow, sparseIntArray);
             put(++pointer, pinMessagesRow, sparseIntArray);
+            put(++pointer, editTagRow, sparseIntArray);
+            put(++pointer, sendReactionsRow, sparseIntArray);
             if (isForum) {
                 put(++pointer, manageTopicsRow, sparseIntArray);
             }
@@ -3844,6 +4084,11 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
             put(++pointer, signMessagesRow, sparseIntArray);
             put(++pointer, signMessagesProfilesRow, sparseIntArray);
             put(++pointer, signMessagesInfoRow, sparseIntArray);
+            put(++pointer, payRow, sparseIntArray);
+            put(++pointer, payInfoRow, sparseIntArray);
+            put(++pointer, priceHeaderRow, sparseIntArray);
+            put(++pointer, priceRow, sparseIntArray);
+            put(++pointer, priceInfoRow, sparseIntArray);
         }
 
         private void put(int id, int position, SparseIntArray sparseIntArray) {
@@ -3895,6 +4140,9 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         if (!bannedRights.send_polls) {
             i++;
         }
+        if (!bannedRights.send_reactions) {
+            i++;
+        }
         return i;
     }
 
@@ -3917,7 +4165,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{HeaderCell.class, ManageChatUserCell.class, ManageChatTextCell.class, TextCheckCell2.class, TextSettingsCell.class, SlideChooseView.class}, null, null, null, Theme.key_windowBackgroundWhite));
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
 
-        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
@@ -3935,7 +4182,6 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{HeaderCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlueHeader));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{GraySectionCell.class}, new String[]{"textView"}, null, null, null, Theme.key_graySectionText));
-        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{GraySectionCell.class}, null, null, null, Theme.key_graySection));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSettingsCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextSettingsCell.class}, new String[]{"valueTextView"}, null, null, null, Theme.key_windowBackgroundWhiteValueText));
@@ -3977,5 +4223,16 @@ public class ChatUsersActivity extends BaseFragment implements NotificationCente
         themeDescriptions.add(new ThemeDescription(null, 0, null, null, null, cellDelegate, Theme.key_avatar_backgroundPink));
 
         return themeDescriptions;
+    }
+
+    @Override
+    public boolean isSupportEdgeToEdge() {
+        return true;
+    }
+    @Override
+    public void onInsets(int left, int top, int right, int bottom) {
+        listView.setPadding(0, 0, 0, bottom);
+        listView.setClipToPadding(false);
+        undoView.setTranslationY(-bottom);
     }
 }

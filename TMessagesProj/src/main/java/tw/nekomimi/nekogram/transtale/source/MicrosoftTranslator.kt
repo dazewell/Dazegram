@@ -1,21 +1,12 @@
 package tw.nekomimi.nekogram.transtale.source
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import io.ktor.http.ContentType
 import org.json.JSONArray
-import org.telegram.messenger.FileLog
 import org.telegram.messenger.LocaleController
 import org.telegram.messenger.R
 import tw.nekomimi.nekogram.transtale.Translator
-import java.io.ByteArrayOutputStream
-import java.io.DataOutputStream
-import java.io.IOException
-import java.io.InputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.nio.charset.Charset
-import java.util.*
+import xyz.nextalone.nagram.network.NetworkRequestBuilder
+import java.util.Arrays
 
 object MicrosoftTranslator : Translator {
 
@@ -28,68 +19,44 @@ object MicrosoftTranslator : Translator {
             "fa", "pl", "pt", "pa", "otq", "ro", "ru", "sm", "sr", "sk", "sl",
             "es", "sw", "sv", "ty", "ta", "te", "th", "to", "tr", "uk", "ur",
             "vi", "cy", "yua")
-    private var useCN = false
 
     override suspend fun doTranslate(from: String, to: String, query: String): String {
         if (to !in targetLanguages) {
             throw UnsupportedOperationException(LocaleController.getString(R.string.TranslateApiUnsupported))
         }
 
-        return withContext(Dispatchers.IO) {
-            val param = "fromLang=auto-detect&text=" + URLEncoder.encode(query, "UTF-8") +
-                    "&to=" + to
-            val response = request(param)
-            val jsonObject = JSONArray(response).getJSONObject(0)
-            if (!jsonObject.has("translations")) {
-                throw IOException(response)
-            }
-            val array = jsonObject.getJSONArray("translations")
-            array.getJSONObject(0).getString("text")
+        val source = JSONArray()
+        for (s in query.split("\n")) {
+            source.put(s)
         }
-    }
 
-    private fun request(param: String): String {
-        val httpConnectionStream: InputStream
-        val downloadUrl = URL("https://" + (if (useCN) "cn" else "www") + ".bing.com/ttranslatev3")
-        val httpConnection = downloadUrl.openConnection() as HttpURLConnection
-        httpConnection.addRequestProperty("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 10_0 like Mac OS X) AppleWebKit/602.1.38 (KHTML, like Gecko) Version/10.0 Mobile/14A5297c Safari/602.1")
-        httpConnection.connectTimeout = 1000
-        //httpConnection.setReadTimeout(2000);
-        httpConnection.requestMethod = "POST"
-        httpConnection.doOutput = true
-        httpConnection.instanceFollowRedirects = false
-        val dataOutputStream = DataOutputStream(httpConnection.outputStream)
-        val t = param.toByteArray(Charset.defaultCharset())
-        dataOutputStream.write(t)
-        dataOutputStream.flush()
-        dataOutputStream.close()
-        httpConnection.connect()
-        if (httpConnection.responseCode != HttpURLConnection.HTTP_OK) {
-            if (httpConnection.responseCode == HttpURLConnection.HTTP_MOVED_TEMP) {
-                useCN = !useCN
-                FileLog.e("Move to " + if (useCN) "cn" else "www")
-                return request(param)
-            }
-            httpConnectionStream = httpConnection.errorStream
-        } else {
-            httpConnectionStream = httpConnection.inputStream
-        }
-        val outbuf = ByteArrayOutputStream()
-        val data = ByteArray(1024 * 32)
-        while (true) {
-            val read = httpConnectionStream.read(data)
-            if (read > 0) {
-                outbuf.write(data, 0, read)
-            } else if (read == -1) {
-                break
-            } else {
-                break
-            }
-        }
-        val result = String(outbuf.toByteArray())
-        httpConnectionStream.close()
-        outbuf.close()
-        return result
-    }
+        val response = NetworkRequestBuilder.post("https://edge.microsoft.com/translate/translatetext") {
+            contentType(ContentType.Application.Json)
+            parameter("from", "")
+            parameter("to", to)
+            parameter("isEnterpriseClient", "false")
+            setBody(source.toString())
+        }.execute()
 
+        if (response.statusCode != 200) {
+            error("HTTP ${response.statusCode} : ${response.body}")
+        }
+
+        val target = JSONArray(response.body)
+        val result = StringBuilder()
+        for (i in 0 until target.length()) {
+            val obj = target.getJSONObject(i)
+            val tra = obj.getJSONArray("translations")
+            if (tra.length() >= 1) {
+                val traObj = tra.getJSONObject(0)
+                val text = traObj.getString("text")
+                result.append(text)
+                if (i != target.length() - 1) {
+                    result.append("\n")
+                }
+            }
+        }
+
+        return result.toString()
+    }
 }

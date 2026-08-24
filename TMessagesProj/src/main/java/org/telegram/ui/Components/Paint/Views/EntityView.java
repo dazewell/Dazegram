@@ -9,8 +9,8 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
+import android.graphics.PointF;
 import android.os.Build;
-import android.util.Log;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
@@ -25,8 +25,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.ButtonBounce;
 import org.telegram.ui.Components.CubicBezierInterpolator;
-import org.telegram.ui.Components.Point;
-import org.telegram.ui.Components.Rect;
+import org.telegram.ui.Components.RectOld;
 
 import java.util.Arrays;
 import java.util.List;
@@ -85,13 +84,15 @@ public class EntityView extends FrameLayout {
 
     private EntityViewDelegate delegate;
 
-    private Point position;
-    protected SelectionView selectionView;
+    private PointF position;
+    public SelectionView selectionView;
 
     private final Runnable longPressRunnable = () -> {
         recognizedLongPress = true;
         if (delegate != null) {
-            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            try {
+                performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+            } catch (Exception ignored) {}
             delegate.onEntityLongClicked(EntityView.this);
         }
     };
@@ -120,7 +121,7 @@ public class EntityView extends FrameLayout {
     private int stickyXRunnableValue, stickyYRunnableValue;
     private ValueAnimator stickyXAnimator, stickyYAnimator;
 
-    public EntityView(Context context, Point pos) {
+    public EntityView(Context context, PointF pos) {
         super(context);
 
         uuid = UUID.randomUUID();
@@ -132,11 +133,11 @@ public class EntityView extends FrameLayout {
         return uuid;
     }
 
-    public Point getPosition() {
+    public PointF getPosition() {
         return position;
     }
 
-    public void setPosition(Point value) {
+    public void setPosition(PointF value) {
         position = value;
         updatePosition();
     }
@@ -604,8 +605,7 @@ public class EntityView extends FrameLayout {
         if (allowHaptic() && (newScale >= getMaxScale() || newScale <= getMinScale()) != (oldScale >= getMaxScale() || oldScale <= getMinScale())) {
             try {
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
-            } catch (Exception ignore) {
-            }
+            } catch (Exception ignore) {}
         }
         setScaleX(newScale);
         setScaleY(newScale);
@@ -722,8 +722,8 @@ public class EntityView extends FrameLayout {
         updateSelectionView();
     }
 
-    public Rect getSelectionBounds() {
-        return new Rect(0, 0, 0, 0);
+    public RectOld getSelectionBounds() {
+        return new RectOld(0, 0, 0, 0);
     }
 
     public boolean isSelected() {
@@ -837,8 +837,8 @@ public class EntityView extends FrameLayout {
             dotStrokePaint.setShadowLayer(AndroidUtilities.dpf2(0.75f), 0, 0, 0x50000000);
         }
 
-        protected void updatePosition() {
-            Rect bounds = getSelectionBounds();
+        public void updatePosition() {
+            RectOld bounds = getSelectionBounds();
             LayoutParams layoutParams = (LayoutParams) getLayoutParams();
             layoutParams.leftMargin = (int) bounds.x;
             layoutParams.topMargin = (int) bounds.y;

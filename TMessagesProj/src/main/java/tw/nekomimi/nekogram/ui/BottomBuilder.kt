@@ -81,11 +81,11 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
 
     fun addTitle(title: CharSequence, bigTitle: Boolean, subTitle: CharSequence?): HeaderCell {
 
-        val headerCell = HeaderCell(ctx, Theme.key_dialogTextBlue2, 23, 15, false)
+        val headerCell = HeaderCell(ctx, Theme.key_dialogTextBlue2, 23, 15, subTitle != null)
         headerCell.setBigTitle(bigTitle)
         headerCell.setText(if (title is String) AndroidUtilities.replaceTags(title) else title)
         subTitle?.also {
-            headerCell.setText2(it)
+            headerCell.setText2Long(it)
         }
         rootView.addView(headerCell, LayoutHelper.createLinear(-1, -2).apply {
             bottomMargin = AndroidUtilities.dp(8F)

@@ -34,6 +34,7 @@
 -dontwarn com.google.android.gms.**
 -dontwarn com.google.common.cache.**
 -dontwarn com.google.common.primitives.**
+-dontwarn com.google.common.util.concurrent.ListenableFuture
 -dontwarn com.googlecode.mp4parser.**
 
 -keep class com.google.android.datatransport.** { *; }
@@ -42,6 +43,10 @@
 -keep class com.google.android.exoplayer2.metadata.flac.PictureFrame { *; }
 -keep class com.google.android.exoplayer2.decoder.SimpleDecoderOutputBuffer { *; }
 -keep class org.telegram.ui.Stories.recorder.FfmpegAudioWaveformLoader { *; }
+-keep class androidx.mediarouter.app.MediaRouteButton { *; }
+-keepclassmembers class ** {
+    @android.webkit.JavascriptInterface <methods>;
+}
 
 -keep class org.dizitart.no2.**  { *; }
 -keep class org.slf4j.** { *; }
@@ -61,12 +66,6 @@
     java.lang.Object writeReplace();
     java.lang.Object readResolve();
 }
-
--keep class tw.nekomimi.nekogram.InternalUpdater$ReleaseMetadata { *; }
--keep class tw.nekomimi.nekogram.InternalUpdater$ApkMetadata { *; }
--keep class tw.nekomimi.nekogram.InternalUpdater$GithubApiContents { *; }
--keep class tw.nekomimi.nekogram.InternalUpdater$NekoXReleaseNote { *; }
--keep class tw.nekomimi.nekogram.InternalUpdater$NekoXAPK { *; }
 
 ## https://developers.google.com/ml-kit/known-issues#android_issues
 #-keep class com.google.mlkit.nl.languageid.internal.LanguageIdentificationJni { *; }
@@ -143,6 +142,13 @@
 -dontwarn org.checkerframework.**
 -dontwarn javax.annotation.**
 
+-keep class io.nano.tex.** {*;}
+
+# JLatexMath: macro/atom classes are loaded reflectively by Class.forName
+-keep class org.scilab.forge.jlatexmath.** { *; }
+-keep class ru.noties.jlatexmath.** { *; }
+-dontwarn org.scilab.forge.jlatexmath.**
+
 # Use -keep to explicitly keep any other classes shrinking would remove
 -dontobfuscate
 
@@ -159,4 +165,13 @@
 -dontwarn lombok.**
 -dontwarn org.slf4j.**
 -dontwarn org.w3c.dom.bootstrap.**
+
+-dontwarn sun.misc.Unsafe
+-dontwarn org.bouncycastle.crypto.**
+-dontwarn org.bouncycastle.asn1.**
 -dontwarn sun.net.spi.nameservice.**
+-dontwarn com.sun.jna.**
+-dontwarn javax.naming.NamingException
+-dontwarn javax.naming.directory.DirContext
+-dontwarn javax.naming.directory.InitialDirContext
+-dontwarn org.xbill.DNS.spi.DnsjavaInetAddressResolverProvider

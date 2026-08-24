@@ -1,5 +1,6 @@
 package org.telegram.messenger;
 
+import static org.telegram.messenger.AndroidUtilities.isInAirplaneMode;
 import static org.telegram.ui.PremiumPreviewFragment.applyNewSpan;
 
 import android.app.Activity;
@@ -20,10 +21,9 @@ import org.telegram.tgnet.TL_smsjobs;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.Adapters.DrawerLayoutAdapter;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.BulletinFactory;
-import org.telegram.ui.Components.SpannableStringLight;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.UpdateAppAlertDialog;
 import org.telegram.ui.Components.UpdateLayout;
 import org.telegram.ui.IUpdateLayout;
@@ -32,7 +32,6 @@ import org.telegram.ui.SMSStatsActivity;
 import org.telegram.ui.SMSSubscribeSheet;
 
 import java.io.File;
-import java.util.ArrayList;
 
 public class ApplicationLoaderImpl extends ApplicationLoader {
     @Override
@@ -110,8 +109,8 @@ public class ApplicationLoaderImpl extends ApplicationLoader {
     }
 
     @Override
-    public IUpdateLayout takeUpdateLayout(Activity activity, ViewGroup sideMenu, ViewGroup sideMenuContainer) {
-        return new UpdateLayout(activity, sideMenu, sideMenuContainer);
+    public IUpdateLayout takeUpdateLayout(Activity activity, ViewGroup sideMenuContainer) {
+        return new UpdateLayout(activity, sideMenuContainer);
     }
 
     @Override
@@ -130,13 +129,14 @@ public class ApplicationLoaderImpl extends ApplicationLoader {
     }
 
     @Override
-    public boolean extendDrawer(ArrayList<DrawerLayoutAdapter.Item> items) {
+    public void addItemOptions(ItemOptions itemOptions) {
         if (SMSJobController.getInstance(UserConfig.selectedAccount).isAvailable()) {
             CharSequence text = LocaleController.getString(R.string.SmsJobsMenu);
             if (MessagesController.getGlobalMainSettings().getBoolean("newppsms", true)) {
                 text = applyNewSpan(text.toString());
             }
-            DrawerLayoutAdapter.Item item = new DrawerLayoutAdapter.Item(93, text, R.drawable.left_sms).onClick(v -> {
+            boolean withError = isInAirplaneMode(LaunchActivity.instance) || SMSJobController.getInstance(UserConfig.selectedAccount).hasError();
+            itemOptions.add(R.drawable.left_sms, text, withError, () -> {
                 MessagesController.getGlobalMainSettings().edit().putBoolean("newppsms", false).apply();
                 SMSJobController controller = (SMSJobController) SMSJobController.getInstance(UserConfig.selectedAccount);
                 final int state = controller.currentState;
@@ -188,12 +188,7 @@ public class ApplicationLoaderImpl extends ApplicationLoader {
                     lastFragment.presentFragment(new SMSStatsActivity());
                 }
             });
-            if (SMSStatsActivity.isAirplaneMode(LaunchActivity.instance) || SMSJobController.getInstance(UserConfig.selectedAccount).hasError()) {
-                item.withError();
-            }
-            items.add(item);
         }
-        return true;
     }
 
     @Override

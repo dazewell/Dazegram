@@ -46,6 +46,7 @@ import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.AlertDialogDecor;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -70,7 +71,6 @@ import org.telegram.ui.LaunchActivity;
 import org.telegram.ui.PrivacyControlActivity;
 
 import java.util.ArrayList;
-import java.util.Objects;
 
 public class BusinessLinksActivity extends UniversalFragment implements NotificationCenter.NotificationCenterDelegate {
 
@@ -78,7 +78,18 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
 
     private static AlertDialog currentDialog;
 
-    public static void openRenameAlert(Context context, int currentAccount, TLRPC.TL_businessChatLink link, Theme.ResourcesProvider resourcesProvider, boolean forceNotAdaptive) {
+    @Override
+    public View createView(Context context) {
+        super.createView(context);
+
+        listView.setSections();
+        listView.adapter.setApplyBackground(false);
+        actionBar.setAdaptiveBackground(listView, true);
+
+        return fragmentView;
+    }
+
+    public static void openRenameAlert(Context context, int currentAccount, TL_account.TL_businessChatLink link, Theme.ResourcesProvider resourcesProvider, boolean forceNotAdaptive) {
         BaseFragment fragment = LaunchActivity.getLastFragment();
         Activity activity = AndroidUtilities.findActivity(context);
         View currentFocus = activity != null ? activity.getCurrentFocus() : null;
@@ -236,9 +247,9 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
         editText.setSelection(editText.getText().length());
     }
 
-    public static boolean closeRenameAlert() {
+    public static boolean closeRenameAlert(boolean invoked) {
         if (currentDialog != null && currentDialog.isShowing()) {
-            currentDialog.dismiss();
+            if (invoked) currentDialog.dismiss();
             return true;
         }
         return false;
@@ -266,11 +277,12 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
     }
 
     @Override
-    public boolean onBackPressed() {
-        if (closeRenameAlert()) {
+    public boolean onBackPressed(boolean invoked) {
+        if (currentDialog != null && currentDialog.isShowing()) {
+            if (invoked) currentDialog.dismiss();
             return false;
         }
-        return super.onBackPressed();
+        return super.onBackPressed(invoked);
     }
 
     @Override
@@ -317,12 +329,12 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
 
     @Override
     protected void fillItems(ArrayList<UItem> items, UniversalAdapter adapter) {
-        items.add(UItem.asTopView(getString(R.string.BusinessLinksInfo), R.raw.biz_links));
+        items.add(UItem.asTopView(getString(R.string.BusinessLinks), getString(R.string.BusinessLinksInfo), R.raw.biz_links));
         adapter.whiteSectionStart();
         if (BusinessLinksController.getInstance(currentAccount).canAddNew()) {
             items.add(UItem.asButton(BUTTON_ADD, R.drawable.menu_link_create, getString(R.string.BusinessLinksAdd)).accent());
         }
-        for (TLRPC.TL_businessChatLink businessLink : BusinessLinksController.getInstance(currentAccount).links) {
+        for (TL_account.TL_businessChatLink businessLink : BusinessLinksController.getInstance(currentAccount).links) {
             UItem item = UItem.asBusinessChatLink(new BusinessLinkWrapper(businessLink));
             items.add(item);
         }
@@ -377,7 +389,7 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
     @Override
     protected boolean onLongClick(UItem item, View view, int position, float x, float y) {
         if (item.viewType == UniversalAdapter.VIEW_TYPE_BUSINESS_LINK && item.object instanceof BusinessLinkWrapper) {
-            TLRPC.TL_businessChatLink link = ((BusinessLinkWrapper) item.object).link;
+            TL_account.TL_businessChatLink link = ((BusinessLinkWrapper) item.object).link;
 
             ItemOptions options = ItemOptions.makeOptions(this, view);
             options.add(R.drawable.msg_copy, getString(R.string.Copy), () -> {
@@ -409,6 +421,7 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
                     button.setTextColor(getThemedColor(Theme.key_text_RedBold));
                 }
             });
+            options.setScrimViewBackground(listView.getClipBackground(view));
             options.show();
             return true;
         }
@@ -422,22 +435,22 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
                 listView.adapter.update(true);
             }
         } else if (id == NotificationCenter.businessLinkCreated) {
-            TLRPC.TL_businessChatLink link = (TLRPC.TL_businessChatLink) args[0];
+            TL_account.TL_businessChatLink link = (TL_account.TL_businessChatLink) args[0];
             Bundle activityArgs = new Bundle();
             activityArgs.putInt("chatMode", ChatActivity.MODE_EDIT_BUSINESS_LINK);
             activityArgs.putString("business_link", link.link);
             ChatActivity chatActivity = new ChatActivity(activityArgs);
             presentFragment(chatActivity);
         } else if (id == NotificationCenter.needDeleteBusinessLink) {
-            TLRPC.TL_businessChatLink link = (TLRPC.TL_businessChatLink) args[0];
+            TL_account.TL_businessChatLink link = (TL_account.TL_businessChatLink) args[0];
             BusinessLinksController.getInstance(currentAccount).deleteLinkUndoable(this, link.link);
         }
     }
 
     public static class BusinessLinkWrapper {
-        TLRPC.TL_businessChatLink link;
+        TL_account.TL_businessChatLink link;
 
-        public BusinessLinkWrapper(TLRPC.TL_businessChatLink link) {
+        public BusinessLinkWrapper(TL_account.TL_businessChatLink link) {
             this.link = link;
         }
 
@@ -466,7 +479,7 @@ public class BusinessLinksActivity extends UniversalFragment implements Notifica
 
         private boolean needDivider;
 
-        private TLRPC.TL_businessChatLink businessLink;
+        private TL_account.TL_businessChatLink businessLink;
 
         public BusinessLinkView(Context context, Theme.ResourcesProvider resourcesProvider) {
             super(context);

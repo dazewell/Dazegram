@@ -81,6 +81,9 @@ import org.telegram.ui.Components.Reactions.HwEmojis;
 import org.telegram.ui.Components.Reactions.ReactionsEffectOverlay;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
 import org.telegram.ui.Components.Reactions.ReactionsUtils;
+import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundProvider;
 import org.telegram.ui.PremiumPreviewFragment;
 import org.telegram.ui.SelectAnimatedEmojiDialog;
 import org.telegram.ui.Stars.StarsReactionsSheet;
@@ -94,6 +97,7 @@ import tw.nekomimi.nekogram.NekoConfig;
 
 public class ReactionsContainerLayout extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
+    public boolean forceAttachToParent = false;
     public final static Property<ReactionsContainerLayout, Float> TRANSITION_PROGRESS_VALUE = new Property<ReactionsContainerLayout, Float>(Float.class, "transitionProgress") {
         @Override
         public Float get(ReactionsContainerLayout reactionsContainerLayout) {
@@ -147,8 +151,8 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         }
     }
 
-    private Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private Paint leftShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG),
+    private final Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint leftShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG),
             rightShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float leftAlpha, rightAlpha;
     private float transitionProgress = 1f;
@@ -295,7 +299,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                     boolean b2 = newProgress > 1f;
                     if (b1 != b2) {
                         if (!NekoConfig.disableVibration.Bool()) {
-                            recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            try {
+                                recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            } catch (Exception ignore) {}
                         }
                     }
                     if (pullingLeftOffset < 0) {
@@ -328,7 +334,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                     boolean b2 = newProgress > 1f;
                     if (b1 != b2) {
                         if (!NekoConfig.disableVibration.Bool()) {
-                            recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            try {
+                                recyclerListView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                            } catch (Exception ignore) {}
                         }
                     }
                     if (customReactionsContainer != null) {
@@ -505,7 +513,11 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         if (reactionsWindow != null) {
             return;
         }
-        reactionsWindow = new CustomEmojiReactionsWindow(type, fragment, allReactionsList, selectedReactions, this, resourcesProvider);
+        reactionsWindow = new CustomEmojiReactionsWindow(type, fragment, allReactionsList, selectedReactions, this, resourcesProvider, forceAttachToParent);
+        if (backgroundFactory != null) {
+            reactionsWindow.setBackgroundFactory(backgroundFactory, backgroundColorProvider);
+        }
+        reactionsWindow.setLongPressEnabled(delegate == null || delegate.allowLongPress());
         invalidateLoopViews();
         reactionsWindow.onDismissListener(() -> {
             reactionsWindow = null;
@@ -516,6 +528,10 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         });
         onShownCustomEmojiReactionDialog();
         //animatePullingBack();
+    }
+
+    public View getWindowView() {
+        return reactionsWindow == null ? null : reactionsWindow.windowView;
     }
 
     protected void onShownCustomEmojiReactionDialog() {
@@ -608,6 +624,32 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         listAdapter.updateItems(animated);
     }
 
+    private BlurredBackgroundDrawable blurredBackgroundDrawable;
+    private BlurredBackgroundDrawable blurredBackgroundDrawable1;
+    private BlurredBackgroundDrawable blurredBackgroundDrawable2;
+
+    private BlurredBackgroundDrawableViewFactory backgroundFactory;
+    private BlurredBackgroundProvider backgroundColorProvider;
+
+    public void setBackgroundFactory(BlurredBackgroundDrawableViewFactory backgroundFactory, BlurredBackgroundProvider backgroundColorProvider) {
+        this.backgroundFactory = backgroundFactory;
+        this.backgroundColorProvider = backgroundColorProvider;
+        this.blurredBackgroundDrawable = backgroundFactory.create(this, true)
+            .setColorProvider(backgroundColorProvider)
+            .setRadius(dp(24))
+            .setPadding(dp(8));
+        this.blurredBackgroundDrawable1 = backgroundFactory.create(this, true)
+            .setColorProvider(backgroundColorProvider)
+            .setRadius(dp(8))
+            .setPadding(dp(8));
+        this.blurredBackgroundDrawable2 = backgroundFactory.create(this, true)
+            .setColorProvider(backgroundColorProvider)
+            .setRadius(dp(4))
+            .setPadding(dp(8));
+    }
+
+
+
     @Override
     protected void dispatchDraw(Canvas canvas) {
         long dt = Math.min(16, System.currentTimeMillis() - lastUpdate);
@@ -636,7 +678,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             invalidate();
         }
 
-        if (pressedReaction != null && type != TYPE_MESSAGE_EFFECTS) {
+        if (pressedReaction != null && type != TYPE_MESSAGE_EFFECTS && (delegate == null || delegate.allowLongPress())) {
             if (pressedProgress != 1f) {
                 pressedProgress += 16f / (pressedReaction.isStar ? ViewConfiguration.getLongPressTimeout() : 1500f);
                 if (pressedProgress >= 1f) {
@@ -682,7 +724,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
         if (type != TYPE_STORY) {
             shadow.setAlpha((int) (Utilities.clamp(1f - (customEmojiReactionsEnterProgress / 0.05f), 1f, 0f) * 255));
             shadow.setBounds((int) (getPaddingLeft() + (getWidth() - getPaddingRight() + shadowPad.right) * lt - shadowPad.left), getPaddingTop() - shadowPad.top - (int) expandSize, (int) ((getWidth() - getPaddingRight() + shadowPad.right) * rt), getHeight() - getPaddingBottom() + shadowPad.bottom + (int) expandSize);
-            shadow.draw(canvas);
+            if (blurredBackgroundDrawable == null) {
+                shadow.draw(canvas);
+            }
         }
 
         canvas.restoreToCount(s);
@@ -696,7 +740,16 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             if (type == TYPE_STORY || delegate.drawBackground()) {
                 delegate.drawRoundRect(canvas, rect, radius, getX(), getY(), 255, false);
             } else {
-                canvas.drawRoundRect(rect, radius, radius, bgPaint);
+                if (blurredBackgroundDrawable != null) {
+                    rect.round(AndroidUtilities.rectTmp2);
+                    AndroidUtilities.rectTmp2.inset(-dp(8), -dp(8));
+
+                    blurredBackgroundDrawable.setBounds(AndroidUtilities.rectTmp2);
+                    blurredBackgroundDrawable.setAlpha(bgPaint.getAlpha());
+                    blurredBackgroundDrawable.draw(canvas);
+                } else {
+                    canvas.drawRoundRect(rect, radius, radius, bgPaint);
+                }
             }
 
             if (hasStar) {
@@ -881,7 +934,17 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             rectF.set(cx - br, cy - br, cx + br, cy + br);
             delegate.drawRoundRect(canvas, rectF, br, getX(), getY(), alpha, false);
         } else {
-            canvas.drawCircle(cx, cy, br, bgPaint);
+            if (blurredBackgroundDrawable1 != null) {
+                AndroidUtilities.rectTmp.set(cx - br, cy - br, cx + br, cy + br);
+                AndroidUtilities.rectTmp.round(AndroidUtilities.rectTmp2);
+                AndroidUtilities.rectTmp2.inset(-dp(8), -dp(8));
+
+                blurredBackgroundDrawable1.setBounds(AndroidUtilities.rectTmp2);
+                blurredBackgroundDrawable1.setAlpha(bgPaint.getAlpha());
+                blurredBackgroundDrawable1.draw(canvas);
+            } else {
+                canvas.drawCircle(cx, cy, br, bgPaint);
+            }
         }
 
         cx = LocaleController.isRTL || mirrorX ? bigCircleOffset - bigCircleRadius : getWidth() - bigCircleOffset + bigCircleRadius;
@@ -895,7 +958,17 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             rectF.set(cx - sr, cy - sr, cx + sr, cy + sr);
             delegate.drawRoundRect(canvas, rectF, sr, getX(), getY(), alpha, false);
         } else {
-            canvas.drawCircle(cx, cy, sr, bgPaint);
+            if (blurredBackgroundDrawable2 != null) {
+                AndroidUtilities.rectTmp.set(cx - sr, cy - sr, cx + sr, cy + sr);
+                AndroidUtilities.rectTmp.round(AndroidUtilities.rectTmp2);
+                AndroidUtilities.rectTmp2.inset(-dp(8), -dp(8));
+
+                blurredBackgroundDrawable2.setBounds(AndroidUtilities.rectTmp2);
+                blurredBackgroundDrawable2.setAlpha(bgPaint.getAlpha());
+                blurredBackgroundDrawable2.draw(canvas);
+            } else {
+                canvas.drawCircle(cx, cy, sr, bgPaint);
+            }
         }
         canvas.restore();
 
@@ -2170,7 +2243,9 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
             @Override
             public void run() {
                 if (!NekoConfig.disableVibration.Bool()) {
-                    performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    try {
+                        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                    } catch (Exception ignored) {}
                 }
                 pressedReactionPosition = visibleReactionsList.indexOf(currentReaction);
                 pressedReaction = currentReaction;
@@ -2191,7 +2266,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                 pressed = true;
                 pressedX = event.getX();
                 pressedY = event.getY();
-                if (sideScale == 1f && !isLocked && type != TYPE_TAGS && type != TYPE_STICKER_SET_EMOJI && type != TYPE_MESSAGE_EFFECTS) {
+                if (sideScale == 1f && !isLocked && type != TYPE_TAGS && type != TYPE_STICKER_SET_EMOJI && type != TYPE_MESSAGE_EFFECTS && (delegate == null || delegate.allowLongPress())) {
                     AndroidUtilities.runOnUIThread(longPressRunnable, ViewConfiguration.getLongPressTimeout());
                 }
             }
@@ -2227,7 +2302,7 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
                     loopImageView.animatedEmojiDrawable.getImageReceiver().setRoundRadius(selected ? dp(6) : 0);
                 }
             }
-            if (currentReaction != null && currentReaction.isStar && particles != null && LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS)) {
+            if (currentReaction != null && currentReaction.isStar && particles != null && LiteMode.isEnabled(LiteMode.FLAG_ANIMATED_EMOJI_REACTIONS) && LiteMode.isEnabled(LiteMode.FLAG_PARTICLES)) {
                 final int sz = (int) (getHeight() * .7f);
                 AndroidUtilities.rectTmp.set(getWidth() / 2f - sz / 2f, getHeight() / 2f - sz / 2f, getWidth() / 2f + sz / 2f, getHeight() / 2f + sz / 2f);
                 RLottieDrawable lottieDrawable = enterImageView.getImageReceiver().getLottieAnimation();
@@ -2305,6 +2380,10 @@ public class ReactionsContainerLayout extends FrameLayout implements Notificatio
 
         default boolean drawBackground() {
             return false;
+        }
+
+        default boolean allowLongPress() {
+            return true;
         }
     }
 

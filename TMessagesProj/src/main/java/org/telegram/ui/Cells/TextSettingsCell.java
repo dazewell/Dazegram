@@ -26,6 +26,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BuildVars;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiDrawable;
@@ -92,13 +93,13 @@ public class TextSettingsCell extends FrameLayout {
         valueTextView.setTextSize(AndroidUtilities.dp(16));
         valueTextView.setGravity((LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL);
         valueTextView.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteValueText, resourcesProvider));
-        addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, padding, 0, padding, 0));
+        addView(valueTextView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.TOP, padding - 4, 0, padding - 4, 0));
 
         imageView = new RLottieImageView(context);
         imageView.setScaleType(ImageView.ScaleType.CENTER);
         imageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon, resourcesProvider), PorterDuff.Mode.MULTIPLY));
         imageView.setVisibility(GONE);
-        addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 21, 0, 21, 0));
+        addView(imageView, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, 16, 0, 16, 0));
 
         valueImageView = new ImageView(context);
         valueImageView.setScaleType(ImageView.ScaleType.CENTER);
@@ -111,12 +112,18 @@ public class TextSettingsCell extends FrameLayout {
         return valueImageView;
     }
 
+    private boolean betterLayout = BuildVars.DEBUG_PRIVATE_VERSION;
+    public void setBetterLayout(boolean betterLayout) {
+        // I might break something with this, gonna need to further test
+        this.betterLayout = betterLayout;
+    }
+
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), AndroidUtilities.dp(50) + (needDivider ? 1 : 0));
 
         int availableWidth = getMeasuredWidth() - getPaddingLeft() - getPaddingRight() - AndroidUtilities.dp(34);
-        int width = availableWidth / 2;
+        int width = betterLayout ? availableWidth : availableWidth / 2;
         if (valueImageView.getVisibility() == VISIBLE) {
             valueImageView.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
         }
@@ -127,14 +134,20 @@ public class TextSettingsCell extends FrameLayout {
             } else {
                 imageView.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.AT_MOST));
             }
+            if (betterLayout) width -= imageView.getMeasuredWidth() + AndroidUtilities.dp(8);
         }
 
         if (valueBackupImageView != null) {
             valueBackupImageView.measure(MeasureSpec.makeMeasureSpec(valueBackupImageView.getLayoutParams().height, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(valueBackupImageView.getLayoutParams().width, MeasureSpec.EXACTLY));
+            if (betterLayout) width -= valueBackupImageView.getMeasuredWidth() + AndroidUtilities.dp(8);
         }
         if (valueTextView.getVisibility() == VISIBLE) {
             valueTextView.measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.AT_MOST), MeasureSpec.makeMeasureSpec(getMeasuredHeight(), MeasureSpec.EXACTLY));
-            width = availableWidth - valueTextView.getMeasuredWidth() - AndroidUtilities.dp(8);
+            if (betterLayout) {
+                width -= valueTextView.getMeasuredWidth() + AndroidUtilities.dp(8);
+            } else {
+                width = availableWidth - valueTextView.getMeasuredWidth() - AndroidUtilities.dp(8);
+            }
 
             if (valueImageView.getVisibility() == VISIBLE) {
                 MarginLayoutParams params = (MarginLayoutParams) valueImageView.getLayoutParams();
@@ -217,6 +230,10 @@ public class TextSettingsCell extends FrameLayout {
         setWillNotDraw(!divider);
     }
 
+    public void setValue(CharSequence value, boolean animated) {
+        valueTextView.setText(value, animated);
+    }
+
     public void setIcon(int resId) {
         MarginLayoutParams params = (MarginLayoutParams) textView.getLayoutParams();
         imageViewIsColorful = false;
@@ -233,9 +250,9 @@ public class TextSettingsCell extends FrameLayout {
             imageView.setBackground(null);
             imageView.setVisibility(VISIBLE);
             if (LocaleController.isRTL) {
-                params.rightMargin = AndroidUtilities.dp(71);
+                params.rightMargin = AndroidUtilities.dp(58);
             } else {
-                params.leftMargin = AndroidUtilities.dp(71);
+                params.leftMargin = AndroidUtilities.dp(58);
             }
         }
     }
@@ -256,9 +273,9 @@ public class TextSettingsCell extends FrameLayout {
             imageView.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.MULTIPLY));
             imageView.setVisibility(VISIBLE);
             if (LocaleController.isRTL) {
-                params.rightMargin = AndroidUtilities.dp(71);
+                params.rightMargin = AndroidUtilities.dp(58);
             } else {
-                params.leftMargin = AndroidUtilities.dp(71);
+                params.leftMargin = AndroidUtilities.dp(58);
             }
         }
     }
@@ -347,7 +364,7 @@ public class TextSettingsCell extends FrameLayout {
         super.dispatchDraw(canvas);
 
         if (needDivider) {
-            int offset = AndroidUtilities.dp(imageView.getVisibility() == View.VISIBLE ? 71 : 20);
+            int offset = AndroidUtilities.dp(imageView.getVisibility() == View.VISIBLE ? 58 : 20);
             canvas.drawLine(LocaleController.isRTL ? 0 : offset, getMeasuredHeight() - 1, getMeasuredWidth() - (LocaleController.isRTL ? offset : 0), getMeasuredHeight() - 1, Theme.dividerPaint);
         }
     }
@@ -375,7 +392,7 @@ public class TextSettingsCell extends FrameLayout {
     public BackupImageView getValueBackupImageView() {
         if (valueBackupImageView == null) {
             valueBackupImageView = new BackupImageView(getContext());
-            addView(valueBackupImageView, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, padding, 0, padding, 0));
+            addView(valueBackupImageView, LayoutHelper.createFrame(24, 24, (LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT) | Gravity.CENTER_VERTICAL, padding - 4, 0, padding - 4, 0));
         }
         return valueBackupImageView;
     }

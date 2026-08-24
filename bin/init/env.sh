@@ -1,15 +1,22 @@
 #!/bin/bash
 
 if [ -z "$ANDROID_HOME" ]; then
-  if [ -d "$HOME/Android/Sdk" ]; then
+  if [ -n "$ANDROID_SDK_ROOT" ] && [ -d "$ANDROID_SDK_ROOT" ]; then
+    export ANDROID_HOME="$ANDROID_SDK_ROOT"
+  elif [ -d "$HOME/Android/Sdk" ]; then
     export ANDROID_HOME="$HOME/Android/Sdk"
   elif [ -d "$HOME/.local/lib/android/sdk" ]; then
     export ANDROID_HOME="$HOME/.local/lib/android/sdk"
+  elif [ -d "$HOME/Library/Android/sdk" ]; then
+    export ANDROID_HOME="$HOME/Library/Android/sdk"
+  elif [ -n "$LOCALAPPDATA" ] && [ -d "$LOCALAPPDATA/Android/Sdk" ]; then
+    # MSYS2/MINGW64 default install location.
+    export ANDROID_HOME="$LOCALAPPDATA/Android/Sdk"
   fi
 fi
 
 
-_NDK="$ANDROID_HOME/ndk/21.4.7075529"
+_NDK="$ANDROID_HOME/ndk/27.2.12479018"
 [ -f "$_NDK/source.properties" ] || _NDK="$ANDROID_NDK_HOME"
 [ -f "$_NDK/source.properties" ] || _NDK="$NDK"
 [ -f "$_NDK/source.properties" ] || _NDK="$ANDROID_HOME/ndk-bundle"

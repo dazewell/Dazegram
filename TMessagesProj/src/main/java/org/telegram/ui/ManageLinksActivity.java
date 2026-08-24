@@ -5,7 +5,6 @@ import static org.telegram.messenger.LocaleController.formatString;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -41,7 +40,6 @@ import org.telegram.messenger.AnimationNotificationsLocker;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.ContactsController;
-import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.DocumentObject;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
@@ -92,7 +90,7 @@ import java.util.Locale;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
-public class ManageLinksActivity extends BaseFragment {
+public class ManageLinksActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private ListAdapter listViewAdapter;
     private RecyclerListView listView;
@@ -569,6 +567,8 @@ public class ManageLinksActivity extends BaseFragment {
 
 
         listView = new RecyclerListView(context);
+        listView.setSections();
+        actionBar.setAdaptiveBackground(listView);
         LinearLayoutManager layoutManager = new LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false) {
             @Override
             public boolean supportsPredictiveItemAnimations() {
@@ -666,7 +666,9 @@ public class ManageLinksActivity extends BaseFragment {
                 LinkCell cell = (LinkCell) view;
                 cell.optionsView.callOnClick();
                 if (!NekoConfig.disableVibration.Bool()) {
-                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    try {
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                    } catch (Exception ignored) {}
                 }
                 return true;
             }
@@ -765,11 +767,10 @@ public class ManageLinksActivity extends BaseFragment {
                 case 0:
                 default:
                     view = new HintInnerCell(mContext);
-                    view.setBackgroundDrawable(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundWhite));
+                    view.setTag(RecyclerListView.TAG_NOT_SECTION);
                     break;
                 case 1:
                     view = new HeaderCell(mContext, 23);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 2:
                     LinkActionView linkActionView = new LinkActionView(mContext, ManageLinksActivity.this, null, currentChatId, true, isChannel);
@@ -787,11 +788,9 @@ public class ManageLinksActivity extends BaseFragment {
                         }
                     });
                     view = linkActionView;
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 3:
                     view = new CreationTextCell(mContext, 64, resourceProvider);
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 4:
                     view = new ShadowSectionCell(mContext);
@@ -805,27 +804,22 @@ public class ManageLinksActivity extends BaseFragment {
                     flickerLoadingView.setViewType(FlickerLoadingView.INVITE_LINKS_TYPE);
                     flickerLoadingView.showDate(false);
                     view = flickerLoadingView;
-                    view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
                 case 7:
                     view = new ShadowSectionCell(mContext);
-                    view.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     break;
                 case 8:
                     TextSettingsCell revokeAll = new TextSettingsCell(mContext);
-                    revokeAll.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     revokeAll.setText(getString(R.string.DeleteAllRevokedLinks), false);
                     revokeAll.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
                     view = revokeAll;
                     break;
                 case 9:
                     TextInfoPrivacyCell cell = new TextInfoPrivacyCell(mContext);
-                    cell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     view = cell;
                     break;
                 case 10:
                     ManageChatUserCell userCell = new ManageChatUserCell(mContext, 8, 6, false);
-                    userCell.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     view = userCell;
                     break;
                 case 11:
@@ -931,7 +925,6 @@ public class ManageLinksActivity extends BaseFragment {
                     break;
                 case 11:
                     TextInfoPrivacyCell infoCell = (TextInfoPrivacyCell) holder.itemView;
-                    infoCell.setBackground(Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow));
                     if (position == linksInfoRow) {
                         final TLRPC.ChatFull chatFull = getMessagesController().getChatFull(currentChatId);
                         final TLRPC.Chat chat = getMessagesController().getChat(currentChatId);
@@ -1122,7 +1115,8 @@ public class ManageLinksActivity extends BaseFragment {
                             if (invite.link == null) return;
                             showDialog(new ShareAlert(getContext(), null, invite.link, false, invite.link, false, getResourceProvider()) {
                                 @Override
-                                protected void onSend(LongSparseArray<TLRPC.Dialog> dids, int count, TLRPC.TL_forumTopic topic) {
+                                protected void onSend(LongSparseArray<TLRPC.Dialog> dids, int count, TLRPC.TL_forumTopic topic, boolean showToast) {
+                                    if (!showToast) return;
                                     final String str;
                                     if (dids != null && dids.size() == 1) {
                                         long did = dids.valueAt(0).id;
@@ -1154,6 +1148,7 @@ public class ManageLinksActivity extends BaseFragment {
                             .show();
                     });
                 }
+                options.setScrimViewBackground(listView.getClipBackground(LinkCell.this));
                 options.show();
             });
             optionsView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
@@ -1366,7 +1361,7 @@ public class ManageLinksActivity extends BaseFragment {
 
             if (!TextUtils.isEmpty(invite.title)) {
                 SpannableStringBuilder builder = new SpannableStringBuilder(invite.title);
-                Emoji.replaceEmoji(builder, titleView.getPaint().getFontMetricsInt(), (int) titleView.getPaint().getTextSize(), false);
+                Emoji.replaceEmoji(builder, titleView.getPaint().getFontMetricsInt(), false);
                 titleView.setText(builder);
             } else if (invite.link.startsWith("https://t.me/+")) {
                 titleView.setText(MessagesController.getInstance(currentAccount).linkPrefix + "/" + invite.link.substring("https://t.me/+".length()));
@@ -1398,18 +1393,20 @@ public class ManageLinksActivity extends BaseFragment {
                     }
                 }
             }
+
+            final SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(joinedString);
             if (invite.permanent && !invite.revoked) {
-                SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(joinedString);
                 DotDividerSpan dotDividerSpan = new DotDividerSpan();
                 dotDividerSpan.setTopPadding(dp(1.5f));
                 spannableStringBuilder.append("  .  ").setSpan(dotDividerSpan, spannableStringBuilder.length() - 3, spannableStringBuilder.length() - 2, 0);
                 spannableStringBuilder.append(getString(R.string.Permanent));
-                subtitleView.setText(spannableStringBuilder);
             } else if (invite.expired || invite.revoked) {
                 if (invite.revoked && invite.usage == 0) {
                     joinedString = getString(invite.subscription_pricing != null ? R.string.NoOneSubscribed : R.string.NoOneJoined);
+                    spannableStringBuilder.clear();
+                    spannableStringBuilder.append(joinedString);
                 }
-                SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(joinedString);
+
                 DotDividerSpan dotDividerSpan = new DotDividerSpan();
                 dotDividerSpan.setTopPadding(dp(1.5f));
                 spannableStringBuilder.append("  .  ").setSpan(dotDividerSpan, spannableStringBuilder.length() - 3, spannableStringBuilder.length() - 2, 0);
@@ -1418,9 +1415,7 @@ public class ManageLinksActivity extends BaseFragment {
                 } else {
                     spannableStringBuilder.append(getString(invite.revoked ? R.string.Revoked : R.string.Expired));
                 }
-                subtitleView.setText(spannableStringBuilder);
             } else if (invite.expire_date > 0) {
-                SpannableStringBuilder spannableStringBuilder = new SpannableStringBuilder(joinedString);
                 DotDividerSpan dotDividerSpan = new DotDividerSpan();
                 dotDividerSpan.setTopPadding(dp(1.5f));
                 spannableStringBuilder.append("  .  ").setSpan(dotDividerSpan, spannableStringBuilder.length() - 3, spannableStringBuilder.length() - 2, 0);
@@ -1440,10 +1435,16 @@ public class ManageLinksActivity extends BaseFragment {
                     spannableStringBuilder.append(String.format(Locale.ENGLISH, "%02d", h)).append(String.format(Locale.ENGLISH, ":%02d", m)).append(String.format(Locale.ENGLISH, ":%02d", s));
                     timerRunning = true;
                 }
-                subtitleView.setText(spannableStringBuilder);
-            } else {
-                subtitleView.setText(joinedString);
             }
+
+            if (invite.request_needed) {
+                DotDividerSpan dotDividerSpan = new DotDividerSpan();
+                dotDividerSpan.setTopPadding(dp(1.5f));
+                spannableStringBuilder.append("  .  ").setSpan(dotDividerSpan, spannableStringBuilder.length() - 3, spannableStringBuilder.length() - 2, 0);
+                spannableStringBuilder.append(getString(R.string.ApprovalRequired));
+            }
+
+            subtitleView.setText(spannableStringBuilder);
         }
     }
 
@@ -1710,7 +1711,7 @@ public class ManageLinksActivity extends BaseFragment {
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND | ThemeDescription.FLAG_CHECKTAG, null, null, null, null, Theme.key_windowBackgroundGray));
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND | ThemeDescription.FLAG_CHECKTAG, null, null, null, null, Theme.key_windowBackgroundWhite));
 
-        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
+//        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
@@ -1776,5 +1777,31 @@ public class ManageLinksActivity extends BaseFragment {
     public void onTransitionAnimationStart(boolean isOpen, boolean backward) {
         super.onTransitionAnimationStart(isOpen, backward);
         notificationsLocker.lock();
+    }
+
+    @Override
+    public boolean onFragmentCreate() {
+        getNotificationCenter().addObserver(this, NotificationCenter.dialogDeleted);
+        return super.onFragmentCreate();
+    }
+
+    @Override
+    public void onFragmentDestroy() {
+        getNotificationCenter().removeObserver(this, NotificationCenter.dialogDeleted);
+        super.onFragmentDestroy();
+    }
+
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.dialogDeleted) {
+            long dialogId = (long) args[0];
+            if (dialogId == -this.currentChatId) {
+                if (parentLayout != null && parentLayout.getLastFragment() == this) {
+                    finishFragment();
+                } else {
+                    removeSelfFromStack();
+                }
+            }
+        }
     }
 }

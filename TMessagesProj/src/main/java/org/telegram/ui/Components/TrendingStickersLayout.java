@@ -443,7 +443,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
         if (delegate.canSendSticker()) {
             stickersAlertDelegate = new StickersAlert.StickersAlertDelegate() {
                 @Override
-                public void onStickerSelected(TLRPC.Document sticker, String query, Object parent, MessageObject.SendAnimationData sendAnimationData, boolean clearsInputField, boolean notify, int scheduleDate) {
+                public void onStickerSelected(TLRPC.Document sticker, String query, Object parent, MessageObject.SendAnimationData sendAnimationData, boolean clearsInputField, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                     delegate.onStickerSelected(sticker, parent, clearsInputField, notify, scheduleDate);
                 }
 
@@ -460,7 +460,7 @@ public class TrendingStickersLayout extends FrameLayout implements NotificationC
         } else {
             stickersAlertDelegate = null;
         }
-        final StickersAlert stickersAlert = new StickersAlert(getContext(), parentFragment, inputStickerSet, null, stickersAlertDelegate, resourcesProvider);
+        final StickersAlert stickersAlert = new StickersAlert(getContext(), parentFragment, inputStickerSet, null, stickersAlertDelegate, resourcesProvider, false);
         stickersAlert.setShowTooltipWhenToggle(false);
         stickersAlert.setInstallDelegate(new StickersAlert.StickersAlertInstallDelegate() {
             @Override

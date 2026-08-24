@@ -15,10 +15,12 @@ public class WebViewRequestProps {
     public int currentAccount;
     public long peerId;
     public long botId;
+    public long queryId;
     public String buttonText;
     public String buttonUrl;
     public @BotWebViewAttachedSheet.WebViewType int type;
     public int replyToMsgId;
+    public long monoforumTopicId;
     public boolean silent;
     public TLRPC.BotApp app;
     public boolean allowWrite;
@@ -26,26 +28,29 @@ public class WebViewRequestProps {
     public TLRPC.User botUser;
     public int flags;
     public boolean compact;
+    public boolean fullscreen;
 
     public TLObject response;
     public long responseTime;
 
 
     public static WebViewRequestProps of(
-            int currentAccount,
-            long peerId,
-            long botId,
-            String buttonText,
-            String buttonUrl,
-            @BotWebViewAttachedSheet.WebViewType int type,
-            int replyToMsgId,
-            boolean silent,
-            TLRPC.BotApp app,
-            boolean allowWrite,
-            String startParam,
-            TLRPC.User botUser,
-            int flags,
-            boolean compact
+        int currentAccount,
+        long peerId,
+        long botId,
+        String buttonText,
+        String buttonUrl,
+        @BotWebViewAttachedSheet.WebViewType int type,
+        int replyToMsgId,
+        long monoforumTopicId,
+        boolean silent,
+        TLRPC.BotApp app,
+        boolean allowWrite,
+        String startParam,
+        TLRPC.User botUser,
+        int flags,
+        boolean compact,
+        boolean fullscreen
     ) {
         WebViewRequestProps p = new WebViewRequestProps();
         p.currentAccount = currentAccount;
@@ -55,6 +60,7 @@ public class WebViewRequestProps {
         p.buttonUrl = buttonUrl;
         p.type = type;
         p.replyToMsgId = replyToMsgId;
+        p.monoforumTopicId = monoforumTopicId;
         p.silent = silent;
         p.app = app;
         p.allowWrite = allowWrite;
@@ -62,10 +68,12 @@ public class WebViewRequestProps {
         p.botUser = botUser;
         p.flags = flags;
         p.compact = compact;
-        if (!compact && !TextUtils.isEmpty(buttonUrl)) {
+        p.fullscreen = fullscreen;
+        if (!compact && !fullscreen && !TextUtils.isEmpty(buttonUrl)) {
             try {
                 Uri uri = Uri.parse(buttonUrl);
                 p.compact = TextUtils.equals(uri.getQueryParameter("mode"), "compact");
+                p.fullscreen = TextUtils.equals(uri.getQueryParameter("mode"), "fullscreen");
             } catch (Exception e) {
                 FileLog.e(e);
             }
@@ -84,18 +92,18 @@ public class WebViewRequestProps {
             return false;
         final WebViewRequestProps p = (WebViewRequestProps) obj;
         return (
-                currentAccount == p.currentAccount &&
-                        peerId == p.peerId &&
-                        botId == p.botId &&
-                        TextUtils.equals(buttonUrl, p.buttonUrl) &&
-                        type == p.type &&
-                        replyToMsgId == p.replyToMsgId &&
-                        silent == p.silent &&
-                        (app == null ? 0 : app.id) == (p.app == null ? 0 : p.app.id) &&
-                        allowWrite == p.allowWrite &&
-                        TextUtils.equals(startParam, p.startParam) &&
-                        (botUser == null ? 0 : botUser.id) == (p.botUser == null ? 0 : p.botUser.id) &&
-                        flags == p.flags
+            currentAccount == p.currentAccount &&
+            peerId == p.peerId &&
+            botId == p.botId &&
+            TextUtils.equals(buttonUrl, p.buttonUrl) &&
+            type == p.type &&
+            replyToMsgId == p.replyToMsgId &&
+            silent == p.silent &&
+            (app == null ? 0 : app.id) == (p.app == null ? 0 : p.app.id) &&
+            allowWrite == p.allowWrite &&
+            TextUtils.equals(startParam, p.startParam) &&
+            (botUser == null ? 0 : botUser.id) == (p.botUser == null ? 0 : p.botUser.id) &&
+            flags == p.flags
         );
     }
 }

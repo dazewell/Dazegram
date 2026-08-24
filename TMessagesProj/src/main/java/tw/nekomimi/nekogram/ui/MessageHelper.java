@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.SparseArray;
@@ -168,33 +169,33 @@ public class MessageHelper extends BaseController {
                     }
                 }
                 if (messageObject.messageOwner.media.photo instanceof TLRPC.TL_photo) {
-                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of((TLRPC.TL_photo) messageObject.messageOwner.media.photo, null, did, null, null, messageObject.messageOwner.message, entities, null, params, notify, scheduleDate, 0, messageObject, false));
+                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of((TLRPC.TL_photo) messageObject.messageOwner.media.photo, null, did, null, null, messageObject.messageOwner.message, entities, null, params, notify, scheduleDate, 0, 0, messageObject, false));
                 } else if (messageObject.messageOwner.media.document instanceof TLRPC.TL_document) {
-                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of((TLRPC.TL_document) messageObject.messageOwner.media.document, null, messageObject.messageOwner.attachPath, did, null, null, messageObject.messageOwner.message, entities, null, params, notify, scheduleDate, 0, messageObject, null, false));
+                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of((TLRPC.TL_document) messageObject.messageOwner.media.document, null, messageObject.messageOwner.attachPath, did, null, null, messageObject.messageOwner.message, entities, null, params, notify, scheduleDate, 0, 0, messageObject, null, false));
                 } else if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaVenue || messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaGeo) {
-                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(messageObject.messageOwner.media, did, null, null, null, null, notify, scheduleDate));
+                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(messageObject.messageOwner.media, did, null, null, null, null, notify, scheduleDate, 0));
                 } else if (messageObject.messageOwner.media.phone_number != null) {
                     TLRPC.User user = new TLRPC.TL_userContact_old2();
                     user.phone = messageObject.messageOwner.media.phone_number;
                     user.first_name = messageObject.messageOwner.media.first_name;
                     user.last_name = messageObject.messageOwner.media.last_name;
                     user.id = messageObject.messageOwner.media.user_id;
-                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(user, did, null, null, null, null, notify, scheduleDate));
+                    getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(user, did, null, null, null, null, notify, scheduleDate, 0));
                 } else if ((int) did != 0) {
                     ArrayList<MessageObject> arrayList = new ArrayList<>();
                     arrayList.add(messageObject);
-                    getSendMessagesHelper().sendMessage(arrayList, did, false, false, notify, scheduleDate);
+                    getSendMessagesHelper().sendMessage(arrayList, did, false, false, notify, scheduleDate, 0);
                 }
             } else if (messageObject.messageOwner.message != null) {
                 TLRPC.WebPage webPage = null;
                 if (messageObject.messageOwner.media instanceof TLRPC.TL_messageMediaWebPage) {
                     webPage = messageObject.messageOwner.media.webpage;
                 }
-                getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(messageObject.messageOwner.message, did, null, null, webPage, webPage != null, entities, null, null, notify, scheduleDate, null, false));
+                getSendMessagesHelper().sendMessage(SendMessagesHelper.SendMessageParams.of(messageObject.messageOwner.message, did, null, null, webPage, webPage != null, entities, null, null, notify, scheduleDate, 0, null, false));
             } else if ((int) did != 0) {
                 ArrayList<MessageObject> arrayList = new ArrayList<>();
                 arrayList.add(messageObject);
-                getSendMessagesHelper().sendMessage(arrayList, did, true, false, notify, scheduleDate);
+                getSendMessagesHelper().sendMessage(arrayList, did, true, false, notify, scheduleDate, 0);
             }
         }
     }
@@ -358,7 +359,7 @@ public class MessageHelper extends BaseController {
         SQLiteCursor cursor;
         MessageObject ret = null;
         try {
-            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data,send_state,mid,date FROM messages WHERE uid = %d ORDER BY date DESC LIMIT %d,%d", dialogId, 0, 10));
+            cursor = getMessagesStorage().getDatabase().queryFinalized(String.format(Locale.US, "SELECT data,send_state,mid,date FROM messages_v2 WHERE uid = %d ORDER BY date DESC LIMIT %d,%d", dialogId, 0, 10));
             while (cursor.next()) {
                 NativeByteBuffer data = cursor.byteBufferValue(0);
                 if (data == null)
@@ -389,10 +390,7 @@ public class MessageHelper extends BaseController {
         return ret;
     }
 
-    public void saveStickerToGallery(Context context, MessageObject messageObject) {
-        if (messageObject.isAnimatedSticker()) return;
-        // Animated Sticker is not supported.
-
+    public void saveStickerToGallery(Context context, MessageObject messageObject, Utilities.Callback<Uri> onSaved) {
         String path = messageObject.messageOwner.attachPath;
         if (!TextUtils.isEmpty(path)) {
             File temp = new File(path);
@@ -411,39 +409,15 @@ public class MessageHelper extends BaseController {
             path = FileLoader.getInstance(currentAccount).getPathToAttach(messageObject.getDocument(), true).toString();
         }
         if (!TextUtils.isEmpty(path)) {
-            if (messageObject.isVideoSticker()) {
-                MediaController.saveFile(path, context, 1, null, null);
-            } else {
-                try {
-                    Bitmap image = BitmapFactory.decodeFile(path);
-                    FileOutputStream stream = new FileOutputStream(path + ".png");
-                    image.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                    stream.close();
-                    MediaController.saveFile(path + ".png", context, 0, null, null);
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+            xyz.nextalone.nagram.helper.MessageHelper.INSTANCE.saveStickerToGalleryAsGif(context, path, messageObject.isVideoSticker(), messageObject.isAnimatedSticker(), onSaved);
         }
     }
 
-    public void saveStickerToGallery(Context context, TLRPC.Document document) {
+    public void saveStickerToGallery(Context context, TLRPC.Document document, Utilities.Callback<Uri> onSaved) {
         String path = FileLoader.getInstance(currentAccount).getPathToAttach(document, true).toString();
 
         if (!TextUtils.isEmpty(path)) {
-            if (MessageObject.isVideoSticker(document)) {
-                MediaController.saveFile(path, context, 1, null, document.mime_type);
-            } else {
-                try {
-                    Bitmap image = BitmapFactory.decodeFile(path);
-                    FileOutputStream stream = new FileOutputStream(path + ".png");
-                    image.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                    stream.close();
-                    MediaController.saveFile(path + ".png", context, 0, null, null);
-                } catch (Exception e) {
-                    FileLog.e(e);
-                }
-            }
+            xyz.nextalone.nagram.helper.MessageHelper.INSTANCE.saveStickerToGalleryAsGif(context, path, MessageObject.isVideoSticker(document), MessageObject.isAnimatedStickerDocument(document, true), onSaved);
         }
     }
 

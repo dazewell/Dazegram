@@ -109,8 +109,11 @@ public class SwipeGestureSettingsView extends FrameLayout {
 
             SharedConfig.updateChatListSwipeSetting(newVal);
             invalidate();
-            if (!NekoConfig.disableVibration.Bool())
-                picker.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+            if (!NekoConfig.disableVibration.Bool()) {
+                try {
+                    picker.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                } catch (Exception ignored) {}
+            }
         });
         picker.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         picker.setValue(SharedConfig.getChatSwipeAction(currentAccount));
@@ -313,11 +316,11 @@ public class SwipeGestureSettingsView extends FrameLayout {
             int backgroundColor = ColorUtils.blendARGB(Theme.getColor(Theme.key_windowBackgroundWhite), Theme.getColor(Theme.key_chats_archiveBackground), 0.9f);//Theme.getColor(Theme.key_chats_archiveBackground);
             int iconColor = Theme.getColor(Theme.key_chats_archiveIcon);
             if (i == SWIPE_GESTURE_ARCHIVE) {
-                icons[i].setLayerColor("Arrow.**", backgroundColor);
-                icons[i].setLayerColor("Box2.**",iconColor);
-                icons[i].setLayerColor("Box1.**",iconColor);
+                icons[i].setLayerColor("Arrow", backgroundColor);
+                icons[i].setLayerColor("Box2",iconColor);
+                icons[i].setLayerColor("Box1",iconColor);
             } else {
-                icons[i].setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.MULTIPLY));
+                icons[i].setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.SRC_IN));
             }
         }
     }

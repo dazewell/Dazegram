@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 
 import org.telegram.messenger.ImageReceiver;
 import org.telegram.messenger.MessagesController;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AvatarDrawable;
@@ -46,6 +47,8 @@ public class AvatarSpan extends ReplacementSpan {
 
         setParent(parent);
     }
+
+    public boolean needDrawShadow = true;
 
     public void setSize(float sz) {
         imageReceiver.setRoundRadius(dp(sz));
@@ -109,6 +112,11 @@ public class AvatarSpan extends ReplacementSpan {
         imageReceiver.setForUserOrChat(user, avatarDrawable);
     }
 
+    public void setObject(TLObject obj) {
+        avatarDrawable.setInfo(currentAccount, obj);
+        imageReceiver.setForUserOrChat(obj, avatarDrawable);
+    }
+
     public void setName(String name) {
         avatarDrawable.setInfo(0, name, null, null, null, null);
         imageReceiver.setForUserOrChat(null, avatarDrawable);
@@ -125,16 +133,19 @@ public class AvatarSpan extends ReplacementSpan {
 
     private float translateX, translateY;
     private int shadowPaintAlpha = 0xFF;
+    public boolean usePaintAlpha = true;
 
     @Override
     public void draw(@NonNull Canvas canvas, CharSequence text, int start, int end, float x, int top, int y, int bottom, @NonNull Paint paint) {
-        if (shadowPaintAlpha != paint.getAlpha()) {
-            shadowPaint.setAlpha(shadowPaintAlpha = paint.getAlpha());
-            shadowPaint.setShadowLayer(dp(1), 0, dp(.66f), Theme.multAlpha(0x33000000, shadowPaintAlpha / 255f));
+        if (needDrawShadow) {
+            if (shadowPaintAlpha != paint.getAlpha()) {
+                shadowPaint.setAlpha(shadowPaintAlpha = paint.getAlpha());
+                shadowPaint.setShadowLayer(dp(1), 0, dp(.66f), Theme.multAlpha(0x33000000, shadowPaintAlpha / 255f));
+            }
+            canvas.drawCircle(translateX + x + dp(sz) / 2f, translateY + (top + bottom) / 2f, dp(sz) / 2f, shadowPaint);
         }
-        canvas.drawCircle(translateX + x + dp(sz) / 2f, translateY + (top + bottom) / 2f, dp(sz) / 2f, shadowPaint);
         imageReceiver.setImageCoords(translateX + x, translateY + (top + bottom) / 2f - dp(sz) / 2f, dp(sz), dp(sz));
-        imageReceiver.setAlpha(paint.getAlpha() / 255f);
+        imageReceiver.setAlpha(usePaintAlpha ? paint.getAlpha() / 255f : 1.0f);
         imageReceiver.draw(canvas);
     }
 

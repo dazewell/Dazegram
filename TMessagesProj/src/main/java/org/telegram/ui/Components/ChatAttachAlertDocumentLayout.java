@@ -53,6 +53,7 @@ import org.telegram.messenger.FileLoader;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MediaController;
+import org.telegram.messenger.MediaDataController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
@@ -76,6 +77,7 @@ import org.telegram.ui.Cells.ShadowSectionCell;
 import org.telegram.ui.Cells.SharedDocumentCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.Premium.LimitReachedBottomSheet;
+import org.telegram.ui.Components.blur3.ViewGroupPartRenderer;
 import org.telegram.ui.FilteredSearchView;
 import org.telegram.ui.PhotoPickerActivity;
 
@@ -100,8 +102,8 @@ import tw.nekomimi.nekogram.utils.EnvUtil;
 public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLayout {
 
     public interface DocumentSelectActivityDelegate {
-        void didSelectFiles(ArrayList<String> files, String caption, ArrayList<MessageObject> fmessages, boolean notify, int scheduleDate, long effectId, boolean invertMedia);
-        default void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate) {
+        void didSelectFiles(ArrayList<String> files, String caption, ArrayList<TLRPC.MessageEntity> captionEntities, ArrayList<MessageObject> fmessages, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia, long payStars);
+        default void didSelectPhotos(ArrayList<SendMessagesHelper.SendingMediaInfo> photos, boolean notify, int scheduleDate, int scheduleRepeatPeriod, long payStars) {
 
         }
 
@@ -140,8 +142,6 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
     private FlickerLoadingView loadingView;
 
     private boolean sendPressed;
-
-    private boolean ignoreLayout;
 
     private StickerEmptyView emptyView;
     private float additionalTranslationY;
@@ -238,7 +238,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         }
 
         ActionBarMenu menu = parentAlert.actionBar.createMenu();
-        searchItem = menu.addItem(search_button, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+        searchItem = menu.addItem(search_button, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
             @Override
             public void onSearchExpand() {
                 searching = true;
@@ -326,7 +326,6 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         backgroundListView.setLayoutManager(backgroundLayoutManager = new FillLastLinearLayoutManager(context, LinearLayoutManager.VERTICAL, false, AndroidUtilities.dp(56), backgroundListView));
         backgroundListView.setClipToPadding(false);
         backgroundListView.setAdapter(backgroundListAdapter = new ListAdapter(context));
-        backgroundListView.setPadding(0, 0, 0, AndroidUtilities.dp(48));
         addView(backgroundListView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         backgroundListView.setVisibility(View.GONE);
 
@@ -349,16 +348,21 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
 
             }
         };
+        listView.setSections();
+        iBlur3Capture = listView;
+        iBlur3CaptureView = listView;
+        occupyStatusBar = true;
+        occupyNavigationBar = true;
         listView.setSectionsType(RecyclerListView.SECTIONS_TYPE_DATE);
         listView.setVerticalScrollBarEnabled(false);
-        listView.setLayoutManager(layoutManager = new FillLastLinearLayoutManager(context, LinearLayoutManager.VERTICAL, false, AndroidUtilities.dp(56), listView) {
+        listView.setLayoutManager(layoutManager = new FillLastLinearLayoutManager(context, LinearLayoutManager.VERTICAL, false, AndroidUtilities.dp(56) + AndroidUtilities.statusBarHeight, listView) {
             @Override
             public void smoothScrollToPosition(RecyclerView recyclerView, RecyclerView.State state, int position) {
                 LinearSmoothScroller linearSmoothScroller = new LinearSmoothScroller(recyclerView.getContext()) {
                     @Override
                     public int calculateDyToMakeVisible(View view, int snapPreference) {
                         int dy = super.calculateDyToMakeVisible(view, snapPreference);
-                        dy -= (listView.getPaddingTop() - AndroidUtilities.dp(56));
+                        dy -= (listView.getPaddingTop() - AndroidUtilities.statusBarHeight - AndroidUtilities.dp(56));
                         return dy;
                     }
 
@@ -373,7 +377,6 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         });
         listView.setClipToPadding(false);
         listView.setAdapter(listAdapter);
-        listView.setPadding(0, 0, 0, AndroidUtilities.dp(48));
         addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
         searchAdapter = new SearchAdapter(context);
 
@@ -403,8 +406,11 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     int top = parentAlert.scrollOffsetY[0] - backgroundPaddingTop - offset;
                     if (top + backgroundPaddingTop < ActionBar.getCurrentActionBarHeight()) {
                         RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findViewHolderForAdapterPosition(0);
-                        if (holder != null && holder.itemView.getTop() > AndroidUtilities.dp(56)) {
-                            listView.smoothScrollBy(0, holder.itemView.getTop() - AndroidUtilities.dp(56));
+                        if (holder != null) {
+                            final int dy = holder.itemView.getTop() - AndroidUtilities.statusBarHeight - AndroidUtilities.dp(56);
+                            if (dy > 0) {
+                                listView.smoothScrollBy(0, dy);
+                            }
                         }
                     }
                 }
@@ -451,7 +457,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                             }
 
                             @Override
-                            public void actionButtonPressed(boolean canceled, boolean notify, int scheduleDate) {
+                            public void actionButtonPressed(boolean canceled, boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                                 if (!canceled) {
                                     sendSelectedPhotos(selectedPhotos, selectedPhotosOrder, notify, scheduleDate);
                                 }
@@ -532,7 +538,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             searchAdapter.addSearchFilter(filtersView.getFilterAt(position));
         });
         filtersView.setBackgroundColor(getThemedColor(Theme.key_dialogBackground));
-        addView(filtersView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP));
+        addView(filtersView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 44, Gravity.TOP));
         filtersView.setTranslationY(-AndroidUtilities.dp(44));
         filtersView.setVisibility(INVISIBLE);
 
@@ -687,7 +693,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         }
         View child = listView.getChildAt(0);
         RecyclerListView.Holder holder = (RecyclerListView.Holder) listView.findContainingViewHolder(child);
-        int top = (int) child.getY() - AndroidUtilities.dp(8);
+        int top = (int) child.getY() - AndroidUtilities.statusBarHeight - AndroidUtilities.dp(4) - AndroidUtilities.dp(8);
         int newOffset = top > 0 && holder != null && holder.getAdapterPosition() == 0 ? top : 0;
         if (top >= 0 && holder != null && holder.getAdapterPosition() == 0) {
             newOffset = top;
@@ -729,11 +735,8 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             }
             parentAlert.setAllowNestedScroll(true);
         }
-        if (listView.getPaddingTop() != padding) {
-            ignoreLayout = true;
-            listView.setPadding(0, padding, 0, AndroidUtilities.dp(48));
-            ignoreLayout = false;
-        }
+        padding += AndroidUtilities.statusBarHeight;
+        listView.setPaddingWithoutRequestLayout(0, padding, 0, listPaddingBottom);
         FrameLayout.LayoutParams layoutParams = (FrameLayout.LayoutParams) filtersView.getLayoutParams();
         layoutParams.topMargin = ActionBar.getCurrentActionBarHeight();
     }
@@ -741,14 +744,6 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
     @Override
     public int getButtonsHideOffset() {
         return AndroidUtilities.dp(62);
-    }
-
-    @Override
-    public void requestLayout() {
-        if (ignoreLayout) {
-            return;
-        }
-        super.requestLayout();
     }
 
     @Override
@@ -762,21 +757,27 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
     }
 
     @Override
-    public void sendSelectedItems(boolean notify, int scheduleDate, long effectId, boolean invertMedia) {
+    public boolean sendSelectedItems(boolean notify, int scheduleDate, int scheduleRepeatPeriod, long effectId, boolean invertMedia) {
         if (selectedFiles.size() == 0 && selectedMessages.size() == 0 || delegate == null || sendPressed) {
-            return;
+            return false;
         }
-        sendPressed = true;
-        ArrayList<MessageObject> fmessages = new ArrayList<>();
-        Iterator<FilteredSearchView.MessageHashId> idIterator = selectedMessages.keySet().iterator();
+        final ArrayList<MessageObject> fmessages = new ArrayList<>();
+        final Iterator<FilteredSearchView.MessageHashId> idIterator = selectedMessages.keySet().iterator();
         while (idIterator.hasNext()) {
             FilteredSearchView.MessageHashId hashId = idIterator.next();
             fmessages.add(selectedMessages.get(hashId));
         }
-        ArrayList<String> files = new ArrayList<>(selectedFilesOrder);
-        delegate.didSelectFiles(files, parentAlert.commentTextView.getText().toString(), fmessages, notify, scheduleDate, effectId, invertMedia);
+        final ArrayList<String> files = new ArrayList<>(selectedFilesOrder);
 
-        parentAlert.dismiss(true);
+        final CharSequence[] message = new CharSequence[]{ parentAlert.getCommentView().getText() };
+        final ArrayList<TLRPC.MessageEntity> captionEntities = MediaDataController.getInstance(parentAlert.currentAccount).getEntities(message, true);
+        final String caption = message[0].toString();
+
+        return AlertsCreator.ensurePaidMessageConfirmation(parentAlert.currentAccount, parentAlert.getDialogId(), (!TextUtils.isEmpty(caption) ? 1 : 0) + files.size() + parentAlert.getAdditionalMessagesCount(), payStars -> {
+            sendPressed = true;
+            delegate.didSelectFiles(files, caption, captionEntities, fmessages, notify, scheduleDate, 0, effectId, invertMedia, payStars);
+            parentAlert.dismiss(true);
+        });
     }
 
     private boolean onItemClick(View view, Object object) {
@@ -843,6 +844,20 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
         } else {
             return false;
         }
+
+        if (parentAlert.isPollAttach) {
+            if (selectedFiles.isEmpty() && selectedMessages.isEmpty() || delegate == null || sendPressed) {
+                return true;
+            }
+            final ArrayList<MessageObject> fmessages = new ArrayList<>();
+            for (FilteredSearchView.MessageHashId hashId : selectedMessages.keySet()) {
+                fmessages.add(selectedMessages.get(hashId));
+            }
+            final ArrayList<String> files = new ArrayList<>(selectedFilesOrder);
+            delegate.didSelectFiles(files, null, null, fmessages, false, 0, 0, 0, false, 0);
+            return true;
+        }
+
         if (view instanceof SharedDocumentCell) {
             ((SharedDocumentCell) view).setChecked(add, true);
         }
@@ -917,6 +932,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     info.path = photoEntry.path;
                 }
                 info.thumbPath = photoEntry.thumbPath;
+                info.coverPath = photoEntry.coverPath;
                 info.videoEditedInfo = photoEntry.editedInfo;
                 info.isVideo = photoEntry.isVideo;
                 info.caption = photoEntry.caption != null ? photoEntry.caption.toString() : null;
@@ -925,7 +941,9 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                 info.ttl = photoEntry.ttl;
             }
         }
-        delegate.didSelectPhotos(media, notify, scheduleDate);
+        AlertsCreator.ensurePaidMessageConfirmation(parentAlert.currentAccount, parentAlert.getDialogId(), media.size() + parentAlert.getAdditionalMessagesCount(), payStars -> {
+            delegate.didSelectPhotos(media, notify, scheduleDate, 0, payStars);
+        });
     }
 
     public void loadRecentFiles() {
@@ -1372,8 +1390,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
             FileLog.e(e);
         }
 
-        if (!isSoundPicker && !isEmojiPicker) {
-
+        if (!isSoundPicker && (parentAlert == null || !parentAlert.isPollAttach) && !isEmojiPicker) {
             fs = new ListItem();
             fs.title = LocaleController.getString(R.string.Gallery);
             fs.subtitle = LocaleController.getString(R.string.GalleryInfo);
@@ -1481,14 +1498,15 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                     break;
                 case 2:
                     view = new ShadowSectionCell(mContext);
-                    Drawable drawable = Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow);
-                    CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(getThemedColor(Theme.key_windowBackgroundGray)), drawable);
-                    combinedDrawable.setFullsize(true);
-                    view.setBackgroundDrawable(combinedDrawable);
+                    // Drawable drawable = Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow);
+                    // CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(getThemedColor(Theme.key_windowBackgroundGray)), drawable);
+                    // combinedDrawable.setFullsize(true);
+                    // view.setBackgroundDrawable(combinedDrawable);
                     break;
                 case 3:
                 default:
                     view = new View(mContext);
+                    view.setTag(RecyclerListView.TAG_NOT_SECTION);
                     break;
             }
             return new RecyclerListView.Holder(view);
@@ -2169,6 +2187,7 @@ public class ChatAttachAlertDocumentLayout extends ChatAttachAlert.AttachAlertLa
                 case 3:
                 default:
                     view = new View(mContext);
+                    view.setTag(RecyclerListView.TAG_NOT_SECTION);
                     break;
             }
             view.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));

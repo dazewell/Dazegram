@@ -10,6 +10,7 @@ import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.PointF;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
@@ -36,14 +37,14 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.MessageDrawable;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatActionCell;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.Components.BlurringShader;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MessageBackgroundDrawable;
-import org.telegram.ui.Components.Point;
-import org.telegram.ui.Components.Rect;
+import org.telegram.ui.Components.RectOld;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Stories.recorder.PreviewView;
 import org.telegram.ui.Stories.recorder.StoryEntry;
@@ -70,21 +71,21 @@ public class MessageEntityView extends EntityView {
         return false;
     }
 
-    public MessageEntityView(Context context, Point position, ArrayList<MessageObject> messageObjects, BlurringShader.BlurManager blurManager, boolean isRepostVideoPreview, PreviewView.TextureViewHolder videoTextureHolder) {
+    public MessageEntityView(Context context, PointF position, ArrayList<MessageObject> messageObjects, BlurringShader.BlurManager blurManager, boolean isRepostVideoPreview, PreviewView.TextureViewHolder videoTextureHolder) {
         this(context, position, 0.0f, 1.0f, messageObjects, blurManager, isRepostVideoPreview, videoTextureHolder);
     }
 
-    public MessageEntityView(Context context, Point position, float angle, float scale, ArrayList<MessageObject> thisMessageObjects, BlurringShader.BlurManager blurManager, boolean isRepostVideoPreview, PreviewView.TextureViewHolder videoTextureHolder) {
+    public MessageEntityView(Context context, PointF position, float angle, float scale, ArrayList<MessageObject> thisMessageObjects, BlurringShader.BlurManager blurManager, boolean isRepostVideoPreview, PreviewView.TextureViewHolder videoTextureHolder) {
         super(context, position);
         this.blurManager = blurManager;
         setRotation(angle);
         setScale(scale);
         int date = 0;
         for (int i = 0; i < thisMessageObjects.size(); ++i) {
-            MessageObject msg = thisMessageObjects.get(i);
+            final MessageObject msg = thisMessageObjects.get(i);
             date = msg.messageOwner.date;
-            TLRPC.Message messageOwner = copyMessage(msg.messageOwner);
-            Boolean b = StoryEntry.useForwardForRepost(msg);
+            final TLRPC.Message messageOwner = copyMessage(msg.messageOwner);
+            final Boolean b = StoryEntry.useForwardForRepost(msg);
             if (b != null && b && messageOwner.fwd_from != null && messageOwner.fwd_from.from_id != null) {
                 messageOwner.from_id = messageOwner.fwd_from.from_id;
                 messageOwner.peer_id = messageOwner.fwd_from.from_id;
@@ -92,7 +93,8 @@ public class MessageEntityView extends EntityView {
                 messageOwner.fwd_from = null;
             }
             messageOwner.voiceTranscriptionOpen = false;
-            MessageObject newMsg = new MessageObject(msg.currentAccount, messageOwner, msg.replyMessageObject, MessagesController.getInstance(msg.currentAccount).getUsers(), MessagesController.getInstance(msg.currentAccount).getChats(), null, null, true, true, 0, true, isRepostVideoPreview, false);
+            final MessageObject newMsg = new MessageObject(msg.currentAccount, messageOwner, msg.replyMessageObject, MessagesController.getInstance(msg.currentAccount).getUsers(), MessagesController.getInstance(msg.currentAccount).getChats(), null, null, true, true, 0, true, isRepostVideoPreview, false);
+            newMsg.setType();
             messageObjects.add(newMsg);
         }
 //        dateCell = new ChatActionCell(context, false, resourcesProvider) {
@@ -149,6 +151,9 @@ public class MessageEntityView extends EntityView {
                     if (child instanceof ChatMessageCell) {
                         childleft = child.getLeft() + ((ChatMessageCell) child).getBoundsLeft();
                         childright = child.getLeft() + ((ChatMessageCell) child).getBoundsRight();
+                    } else if (child instanceof ChatActionCell) {
+                        childleft = child.getLeft() + ((ChatActionCell) child).getBoundsLeft();
+                        childright = child.getLeft() + ((ChatActionCell) child).getBoundsRight();
                     }
                     left = Math.min(childleft, left);
                     right = Math.max(childright, right);
@@ -166,6 +171,9 @@ public class MessageEntityView extends EntityView {
                     if (child instanceof ChatMessageCell) {
                         childleft = child.getLeft() + ((ChatMessageCell) child).getBoundsLeft();
                         childright = child.getLeft() + ((ChatMessageCell) child).getBoundsRight();
+                    } else if (child instanceof ChatActionCell) {
+                        childleft = child.getLeft() + ((ChatActionCell) child).getBoundsLeft();
+                        childright = child.getLeft() + ((ChatActionCell) child).getBoundsRight();
                     }
                     cleft = Math.min(childleft, cleft);
                     cright = Math.max(childright, cright);
@@ -399,9 +407,10 @@ public class MessageEntityView extends EntityView {
                         ChatActionCell cell = (ChatActionCell) child;
                         if (cell.hasGradientService()) {
                             canvas.save();
-                            canvas.translate(cell.getX(), cell.getY());
+                            canvas.translate(cell.getX(), cell.getY() + cell.getPaddingTop());
                             canvas.scale(cell.getScaleX(), cell.getScaleY(), cell.getMeasuredWidth() / 2f, cell.getMeasuredHeight() / 2f);
                             cell.drawBackground(canvas, true);
+                            cell.drawReactions(canvas, true, null);
                             canvas.restore();
                         }
                     }
@@ -446,8 +455,8 @@ public class MessageEntityView extends EntityView {
 
                             int left = (cell.getLeft() + cell.getBackgroundDrawableLeft());
                             int right = (cell.getLeft() + cell.getBackgroundDrawableRight());
-                            int top = (cell.getTop() + cell.getBackgroundDrawableTop());
-                            int bottom = (cell.getTop() + cell.getBackgroundDrawableBottom());
+                            int top = (cell.getTop() + cell.getPaddingTop() + cell.getBackgroundDrawableTop());
+                            int bottom = (cell.getTop() + cell.getPaddingTop() + cell.getBackgroundDrawableBottom());
 
                             if ((cell.getCurrentPosition().flags & MessageObject.POSITION_FLAG_TOP) == 0) {
                                 top -= AndroidUtilities.dp(10);
@@ -529,7 +538,7 @@ public class MessageEntityView extends EntityView {
                 boolean result = super.drawChild(canvas, child, drawingTime);
                 if (cell != null && cell.hasOutboundsContent()) {
                     canvas.save();
-                    canvas.translate(cell.getX(), cell.getY());
+                    canvas.translate(cell.getX(), cell.getY() + cell.getPaddingTop());
                     cell.drawOutboundsContent(canvas);
                     canvas.restore();
                 } else if (actionCell != null) {
@@ -750,6 +759,32 @@ public class MessageEntityView extends EntityView {
             @NonNull
             @Override
             public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+                if (viewType == 1) {
+                    final ChatActionCell cell = new ChatActionCell(context, false, resourcesProvider) {
+                        public final BlurringShader.StoryBlurDrawer blurDrawer = new BlurringShader.StoryBlurDrawer(blurManager, this, BlurringShader.StoryBlurDrawer.BLUR_TYPE_ACTION_BACKGROUND);
+                        private final TextPaint textPaint = new TextPaint(Paint.ANTI_ALIAS_FLAG); {
+                            textPaint.setTypeface(AndroidUtilities.bold());
+                            textPaint.setTextSize(AndroidUtilities.dp(Math.max(16, SharedConfig.fontSize) - 2));
+                            textPaint.setColor(0xffffffff);
+                        }
+
+                        @Override
+                        protected Paint getThemedPaint(String paintKey) {
+                            if (Theme.key_paint_chatActionText.equals(paintKey) || Theme.key_paint_chatActionText2.equals(paintKey)) {
+                                return textPaint;
+                            }
+                            if (Theme.key_paint_chatActionBackground.equals(paintKey)) {
+                                usesBackgroundPaint = true;
+                                Paint paint = blurDrawer.adapt(isDark).getPaint(1f);
+                                if (paint != null) {
+                                    return paint;
+                                }
+                            }
+                            return super.getThemedPaint(paintKey);
+                        }
+                    };
+                    return new RecyclerListView.Holder(cell);
+                }
                 ChatMessageCell cell = new ChatMessageCell(context, UserConfig.selectedAccount, false, null, resourcesProvider) {
                     public BlurringShader.StoryBlurDrawer blurDrawer = new BlurringShader.StoryBlurDrawer(blurManager, this, BlurringShader.StoryBlurDrawer.BLUR_TYPE_ACTION_BACKGROUND);
 
@@ -831,14 +866,27 @@ public class MessageEntityView extends EntityView {
             public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
                 position = messageObjects.size() - 1 - position;
                 MessageObject message = messageObjects.get(position);
-                boolean pinnedTop = false;
-                if (groupedMessages != null) {
-                    MessageObject.GroupedMessagePosition p = groupedMessages.getPosition(message);
-                    if (p != null) {
-                        pinnedTop = p.minY != 0;
+                if (holder.itemView instanceof ChatMessageCell) {
+                    final ChatMessageCell cell = (ChatMessageCell) holder.itemView;
+                    boolean pinnedTop = false;
+                    if (groupedMessages != null) {
+                        MessageObject.GroupedMessagePosition p = groupedMessages.getPosition(message);
+                        if (p != null) {
+                            pinnedTop = p.minY != 0;
+                        }
                     }
+                    cell.setMessageObject(message, groupedMessages, groupedMessages != null, pinnedTop, false);
+                } else if (holder.itemView instanceof ChatActionCell) {
+                    final ChatActionCell cell = (ChatActionCell) holder.itemView;
+                    cell.setMessageObject(message);
                 }
-                ((ChatMessageCell) holder.itemView).setMessageObject(message, groupedMessages, groupedMessages != null, pinnedTop);
+            }
+
+            @Override
+            public int getItemViewType(int position) {
+                position = messageObjects.size() - 1 - position;
+                MessageObject message = messageObjects.get(position);
+                return message.contentType;
             }
 
             @Override
@@ -994,6 +1042,26 @@ public class MessageEntityView extends EntityView {
                 top = Math.min(top, cbottom);
                 bottom = Math.max(bottom, ctop);
                 bottom = Math.max(bottom, cbottom);
+            } else if (child instanceof ChatActionCell) {
+                ChatActionCell cell = (ChatActionCell) child;
+                float cleft, ctop, cright, cbottom;
+                if (cell.starGiftLayout.has()) {
+                    cleft = container.getX() + cell.getX() + cell.getBoundsLeft();
+                    cright = container.getX() + cell.getX() + cell.getBoundsRight();
+                    ctop = container.getY() + cell.getY();
+                    cbottom = container.getY() + cell.getY() + cell.getMeasuredHeight();
+                } else {
+                    // TODO
+                    continue;
+                }
+                left = Math.min(left, cleft);
+                left = Math.min(left, cright);
+                right = Math.max(right, cleft);
+                right = Math.max(right, cright);
+                top = Math.min(top, ctop);
+                top = Math.min(top, cbottom);
+                bottom = Math.max(bottom, ctop);
+                bottom = Math.max(bottom, cbottom);
             }
         }
         rect.set(left, top, right, bottom);
@@ -1040,18 +1108,22 @@ public class MessageEntityView extends EntityView {
         setMeasuredDimension(container.getMeasuredWidth(), container.getMeasuredHeight());
         updatePosition();
         if (firstMeasure) {
-            int maxWidth = MeasureSpec.getSize(widthMeasureSpec) - dp(22 * 2);
-            int maxHeight = MeasureSpec.getSize(heightMeasureSpec) - dp(96 * 2);
+            final boolean isAction = messageObjects != null && messageObjects.size() == 1 && messageObjects.get(0).contentType == 1;
 
-            int width = getMeasuredWidth();
-            int height = getMeasuredHeight();
+            final int maxWidth = MeasureSpec.getSize(widthMeasureSpec) - dp(isAction ? 0 : 22 * 2);
+            final int maxHeight = MeasureSpec.getSize(heightMeasureSpec) - dp(isAction ? 0 : 96 * 2);
 
-            float scale = Math.min((float) maxWidth / width, (float) maxHeight / height);
+            final int width = getMeasuredWidth();
+            final int height = getMeasuredHeight();
+
+            final float scale = Math.min((float) maxWidth / width, (float) maxHeight / height);
             if (scale < 1) {
                 setScale(scale);
             }
-            Point p = getPosition();
-            p.x -= dp(19) * Math.min(1, scale);
+            final PointF p = getPosition();
+            if (!isAction) {
+                p.x -= dp(19) * Math.min(1, scale);
+            }
             setPosition(p);
 
             firstMeasure = false;
@@ -1059,13 +1131,13 @@ public class MessageEntityView extends EntityView {
     }
 
     @Override
-    public Rect getSelectionBounds() {
+    public RectOld getSelectionBounds() {
         ViewGroup parentView = (ViewGroup) getParent();
         if (parentView == null) {
-            return new Rect();
+            return new RectOld();
         }
         float scale = parentView.getScaleX();
-        return new Rect(
+        return new RectOld(
             getPositionX() * scale - getMeasuredWidth() * getScale() / 2.0f * scale - dp(1.0f + 19.5f + 15),
             getPositionY() * scale - getMeasuredHeight() * getScale() / 2.0f * scale - dp(1.0f + 19.5f + 15),
             (getMeasuredWidth() * getScale()) * scale + dp((1.0f + 19.5f + 15) * 2),
@@ -1214,51 +1286,51 @@ public class MessageEntityView extends EntityView {
         public Drawable getDrawable(String drawableKey) {
             if (drawableKey.equals(Theme.key_drawable_msgIn)) {
                 if (msgInDrawable == null) {
-                    msgInDrawable = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, false, false, resourcesProvider);
+                    msgInDrawable = new MessageDrawable(MessageDrawable.TYPE_TEXT, false, false, resourcesProvider);
                 }
                 return msgInDrawable;
             }
             if (drawableKey.equals(Theme.key_drawable_msgInSelected)) {
                 if (msgInDrawableSelected == null) {
-                    msgInDrawableSelected = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, false, true, resourcesProvider);
+                    msgInDrawableSelected = new MessageDrawable(MessageDrawable.TYPE_TEXT, false, true, resourcesProvider);
                 }
                 return msgInDrawableSelected;
             }
             if (drawableKey.equals(Theme.key_drawable_msgOut)) {
                 if (msgOutDrawable == null) {
-                    msgOutDrawable = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, true, false, resourcesProvider);
+                    msgOutDrawable = new MessageDrawable(MessageDrawable.TYPE_TEXT, true, false, resourcesProvider);
                 }
                 return msgOutDrawable;
             }
             if (drawableKey.equals(Theme.key_drawable_msgOutSelected)) {
                 if (msgOutDrawableSelected == null) {
-                    msgOutDrawableSelected = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_TEXT, true, true, resourcesProvider);
+                    msgOutDrawableSelected = new MessageDrawable(MessageDrawable.TYPE_TEXT, true, true, resourcesProvider);
                 }
                 return msgOutDrawableSelected;
             }
 
             if (drawableKey.equals(Theme.key_drawable_msgInMedia)) {
                 if (msgMediaInDrawable == null) {
-                    msgMediaInDrawable = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, false, false, resourcesProvider);
+                    msgMediaInDrawable = new MessageDrawable(MessageDrawable.TYPE_MEDIA, false, false, resourcesProvider);
                 }
                 msgMediaInDrawable.invalidateSelf();
                 return msgMediaInDrawable;
             }
             if (drawableKey.equals(Theme.key_drawable_msgInMediaSelected)) {
                 if (msgMediaInDrawableSelected == null) {
-                    msgMediaInDrawableSelected = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, false, true, resourcesProvider);
+                    msgMediaInDrawableSelected = new MessageDrawable(MessageDrawable.TYPE_MEDIA, false, true, resourcesProvider);
                 }
                 return msgMediaInDrawableSelected;
             }
             if (drawableKey.equals(Theme.key_drawable_msgOutMedia)) {
                 if (msgMediaOutDrawable == null) {
-                    msgMediaOutDrawable = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, true, false, resourcesProvider);
+                    msgMediaOutDrawable = new MessageDrawable(MessageDrawable.TYPE_MEDIA, true, false, resourcesProvider);
                 }
                 return msgMediaOutDrawable;
             }
             if (drawableKey.equals(Theme.key_drawable_msgOutMediaSelected)) {
                 if (msgMediaOutDrawableSelected == null) {
-                    msgMediaOutDrawableSelected = new Theme.MessageDrawable(Theme.MessageDrawable.TYPE_MEDIA, true, true, resourcesProvider);
+                    msgMediaOutDrawableSelected = new MessageDrawable(MessageDrawable.TYPE_MEDIA, true, true, resourcesProvider);
                 }
                 return msgMediaOutDrawableSelected;
             }
@@ -1271,10 +1343,10 @@ public class MessageEntityView extends EntityView {
             return isDark;
         }
     };
-    private Theme.MessageDrawable msgInDrawable, msgInDrawableSelected;
-    private Theme.MessageDrawable msgOutDrawable, msgOutDrawableSelected;
-    private Theme.MessageDrawable msgMediaInDrawable, msgMediaInDrawableSelected;
-    private Theme.MessageDrawable msgMediaOutDrawable, msgMediaOutDrawableSelected;
+    private MessageDrawable msgInDrawable, msgInDrawableSelected;
+    private MessageDrawable msgOutDrawable, msgOutDrawableSelected;
+    private MessageDrawable msgMediaInDrawable, msgMediaInDrawableSelected;
+    private MessageDrawable msgMediaOutDrawable, msgMediaOutDrawableSelected;
 
     public void setupTheme(StoryEntry entry) {
         if (entry == null) {
@@ -1331,8 +1403,13 @@ public class MessageEntityView extends EntityView {
         invalidateAll();
     }
 
-    public TLRPC.TL_message copyMessage(TLRPC.Message msg) {
-        TLRPC.TL_message newmsg = new TLRPC.TL_message();
+    public TLRPC.Message copyMessage(TLRPC.Message msg) {
+        TLRPC.Message newmsg;
+        if (msg instanceof TLRPC.TL_message) {
+            newmsg = new TLRPC.TL_message();
+        } else if (msg instanceof TLRPC.TL_messageService) {
+            newmsg = new TLRPC.TL_messageService();
+        } else return msg;
         newmsg.id = msg.id;
         newmsg.from_id = msg.from_id;
         newmsg.peer_id = msg.peer_id;

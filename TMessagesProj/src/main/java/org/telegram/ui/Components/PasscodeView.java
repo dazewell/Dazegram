@@ -936,7 +936,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
                 }
             }
         });
-        backgroundAnimationSpring.addUpdateListener((animation, value, velocity) -> motionBackgroundDrawable.updateAnimation(true));
+        backgroundAnimationSpring.addUpdateListener((animation, value, velocity) -> motionBackgroundDrawable.updateAnimation());
         backgroundAnimationSpring.start();
     }
 
@@ -1227,7 +1227,7 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
                         }
                     });
                     final BiometricPrompt.PromptInfo promptInfo = new BiometricPrompt.PromptInfo.Builder()
-                            .setTitle(LocaleController.getString(R.string.UnlockToUse).replace("Telegram", LocaleController.getString("NekoX", R.string.NekoX)))
+                            .setTitle(LocaleController.getString(R.string.UnlockToUse).replace("Telegram", LocaleController.getString(R.string.NekoX)))
                             .setNegativeButtonText(LocaleController.getString(R.string.UsePIN))
                             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                             .build();
@@ -1392,7 +1392,11 @@ public class PasscodeView extends FrameLayout implements NotificationCenter.Noti
                     imageView.playAnimation();
                     showPin(true);
                     if (!NekoConfig.disableVibration.Bool()) {
-                        AndroidUtilities.runOnUIThread(() -> imageView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING), 350);
+                        AndroidUtilities.runOnUIThread(() -> {
+                            try {
+                                imageView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP, HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+                            } catch (Exception ignore) {}
+                        }, 350);
                     }
                     AnimatorSet animatorSet = new AnimatorSet();
                     ArrayList<Animator> animators = new ArrayList<>();

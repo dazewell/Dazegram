@@ -6,6 +6,8 @@ import static org.telegram.ui.Components.EditTextEmoji.STYLE_GIFT;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.text.Editable;
@@ -32,6 +34,7 @@ import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedColor;
+import org.telegram.ui.Components.AnimatedEmojiDrawable;
 import org.telegram.ui.Components.AnimatedTextView;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextCaption;
@@ -53,6 +56,10 @@ public class EditEmojiTextCell extends FrameLayout {
 
     public boolean autofocused;
     private boolean focused;
+
+    private boolean allowEntities = true;
+
+    private ImageView iconImageView;
 
     final AnimatedColor limitColor;
     private int limitCount;
@@ -107,6 +114,19 @@ public class EditEmojiTextCell extends FrameLayout {
         this(context, parent, hint, multiline, -1, style, null);
     }
 
+    public int emojiCacheType() {
+        return AnimatedEmojiDrawable.getCacheTypeForEnterView();
+    }
+
+    public void setEmojiViewCacheType(int cacheType) {
+        editTextEmoji.setEmojiViewCacheType(cacheType);
+    }
+
+    public EditEmojiTextCell setAllowEntities(boolean allow) {
+        allowEntities = allow;
+        return this;
+    }
+
     public EditEmojiTextCell(
         Context context,
         SizeNotifierFrameLayout parent,
@@ -136,7 +156,8 @@ public class EditEmojiTextCell extends FrameLayout {
                     limit.setTextColor(limitColor.set(Theme.getColor(limitCount <= 0 ? Theme.key_text_RedRegular : Theme.key_dialogSearchHint, resourceProvider)));
                 }
                 int h = Math.min(dp(48), getHeight());
-                limit.setBounds(getScrollX(), getHeight() - h, getScrollX() + getWidth() - dp(12), getHeight());
+                final float ty = multiline ? 0 : -dp(1);
+                limit.setBounds(getScrollX(), ty + getHeight() - h, getScrollX() + getWidth() - dp(12 + (!multiline ? 44 : 0)), ty + getHeight());
                 limit.draw(canvas);
             }
 
@@ -156,13 +177,22 @@ public class EditEmojiTextCell extends FrameLayout {
                 stringBuilder = new SpannableStringBuilder(getString(R.string.Italic));
                 stringBuilder.setSpan(new TypefaceSpan(AndroidUtilities.getTypeface(AndroidUtilities.TYPEFACE_ROBOTO_MEDIUM_ITALIC)), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 menu.add(R.id.menu_groupbolditalic, R.id.menu_italic, order++, stringBuilder);
-//                menu.add(R.id.menu_groupbolditalic, R.id.menu_link, order++, getString(R.string.CreateLink));
                 stringBuilder = new SpannableStringBuilder(LocaleController.getString(R.string.Strike));
                 TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
                 run.flags |= TextStyleSpan.FLAG_STYLE_STRIKE;
                 stringBuilder.setSpan(new TextStyleSpan(run), 0, stringBuilder.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                 menu.add(R.id.menu_groupbolditalic, R.id.menu_strike, order++, stringBuilder);
                 menu.add(R.id.menu_groupbolditalic, R.id.menu_regular, order++, getString(R.string.Regular));
+            }
+
+            @Override
+            protected boolean allowEntities() {
+                return allowEntities && super.allowEntities();
+            }
+
+            @Override
+            public int emojiCacheType() {
+                return EditEmojiTextCell.this.emojiCacheType();
             }
         };
         final EditTextCaption editText = editTextEmoji.getEditText();
@@ -243,6 +273,22 @@ public class EditEmojiTextCell extends FrameLayout {
         updateLimitText();
     }
 
+    public void setOnChangeIcon(Context context, OnClickListener onChangeIcon) {
+        editTextEmoji.setLayoutParams(LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.CENTER_VERTICAL, LocaleController.isRTL ? 19 : 40, 0, !LocaleController.isRTL ? 19 : 40, 0));
+        iconImageView = new ImageView(context);
+        iconImageView.setFocusable(true);
+        iconImageView.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_stickers_menuSelector)));
+        iconImageView.setScaleType(ImageView.ScaleType.CENTER);
+        iconImageView.setOnClickListener(onChangeIcon);
+        iconImageView.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_windowBackgroundWhiteGrayIcon), PorterDuff.Mode.MULTIPLY));
+        iconImageView.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+        addView(iconImageView, LayoutHelper.createFrame(48, 48, (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT) | Gravity.TOP, 8, 2, 8, 0));
+    }
+
+    public void setIcon(int icon, String name) {
+        iconImageView.setImageResource(icon);
+    }
+
     public void setText(CharSequence text) {
         ignoreEditText = true;
         editTextEmoji.setText(text);
@@ -283,5 +329,13 @@ public class EditEmojiTextCell extends FrameLayout {
                     Theme.dividerPaint
             );
         }
+    }
+
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        if (iconImageView != null) {
+            iconImageView.measure(MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(48), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(AndroidUtilities.dp(48), MeasureSpec.EXACTLY));
+        }
+        super.onMeasure(MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthMeasureSpec), MeasureSpec.EXACTLY), heightMeasureSpec);
     }
 }

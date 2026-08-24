@@ -12,20 +12,16 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
-import android.animation.StateListAnimator;
-import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.res.Configuration;
 import android.graphics.Canvas;
-import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
 import android.graphics.Rect;
 import android.graphics.Typeface;
-import android.graphics.drawable.Drawable;
 import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
@@ -40,7 +36,6 @@ import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.ViewOutlineProvider;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
@@ -51,7 +46,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.core.content.ContextCompat;
 import androidx.core.graphics.ColorUtils;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -66,6 +60,7 @@ import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.RequestDelegate;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -74,10 +69,9 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ActionBar.ThemeDescription;
 import org.telegram.ui.Components.AlertsCreator;
-import org.telegram.ui.Components.CombinedDrawable;
-import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.CustomPhoneKeyboardView;
 import org.telegram.ui.Components.EditTextBoldCursor;
+import org.telegram.ui.Components.FragmentFloatingButton;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.OutlineTextContainerView;
 import org.telegram.ui.Components.RLottieDrawable;
@@ -133,7 +127,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     private String email;
     private boolean paused;
     private boolean waitingForEmail;
-    private TLRPC.account_Password currentPassword;
+    private TL_account.Password currentPassword;
     private byte[] currentPasswordHash = new byte[0];
     private long currentSecretId;
     private byte[] currentSecret;
@@ -142,9 +136,8 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     private String emailCode;
 
     private VerticalPositionAutoAnimator floatingAutoAnimator;
-    private FrameLayout floatingButtonContainer;
+    private FragmentFloatingButton floatingButton;
     private TransformableLoginButtonView floatingButtonIcon;
-    private RadialProgressView floatingProgressView;
 
     private CustomPhoneKeyboardView keyboardView;
 
@@ -188,7 +181,12 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     private Runnable monkeyAfterSwitchCallback;
     private Runnable monkeyEndCallback;
 
-    public TwoStepVerificationSetupActivity(int type, TLRPC.account_Password password) {
+    private Runnable openedSettings;
+    public void setOnOpenedSettings(Runnable openedSettings) {
+        this.openedSettings = openedSettings;
+    }
+
+    public TwoStepVerificationSetupActivity(int type, TL_account.Password password) {
         super();
         currentType = type;
         currentPassword = password;
@@ -199,7 +197,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         }
     }
 
-    public TwoStepVerificationSetupActivity(int account, int type, TLRPC.account_Password password) {
+    public TwoStepVerificationSetupActivity(int account, int type, TL_account.Password password) {
         super();
         currentAccount = account;
         currentType = type;
@@ -298,47 +296,18 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
             item.addSubItem(item_abort, LocaleController.getString(R.string.AbortPasswordMenu));
         }
 
-        floatingButtonContainer = new FrameLayout(context);
-        if (Build.VERSION.SDK_INT >= 21) {
-            StateListAnimator animator = new StateListAnimator();
-            animator.addState(new int[]{android.R.attr.state_pressed}, ObjectAnimator.ofFloat(floatingButtonIcon, "translationZ", AndroidUtilities.dp(2), AndroidUtilities.dp(4)).setDuration(200));
-            animator.addState(new int[]{}, ObjectAnimator.ofFloat(floatingButtonIcon, "translationZ", AndroidUtilities.dp(4), AndroidUtilities.dp(2)).setDuration(200));
-            floatingButtonContainer.setStateListAnimator(animator);
-            floatingButtonContainer.setOutlineProvider(new ViewOutlineProvider() {
-                @SuppressLint("NewApi")
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setOval(0, 0, AndroidUtilities.dp(56), AndroidUtilities.dp(56));
-                }
-            });
-        }
-        floatingAutoAnimator = VerticalPositionAutoAnimator.attach(floatingButtonContainer);
-        floatingButtonContainer.setOnClickListener(view -> processNext());
+        floatingButton = new FragmentFloatingButton(context, resourceProvider);
+        floatingAutoAnimator = VerticalPositionAutoAnimator.attach(floatingButton);
+        floatingButton.setOnClickListener(view -> processNext());
 
         floatingButtonIcon = new TransformableLoginButtonView(context);
         floatingButtonIcon.setTransformType(TransformableLoginButtonView.TRANSFORM_ARROW_CHECK);
         floatingButtonIcon.setProgress(0f);
         floatingButtonIcon.setColor(Theme.getColor(Theme.key_chats_actionIcon));
         floatingButtonIcon.setDrawBackground(false);
-        floatingButtonContainer.setContentDescription(LocaleController.getString(R.string.Next));
-        floatingButtonContainer.addView(floatingButtonIcon, LayoutHelper.createFrame(Build.VERSION.SDK_INT >= 21 ? 56 : 60, Build.VERSION.SDK_INT >= 21 ? 56 : 60));
-
-        floatingProgressView = new RadialProgressView(context);
-        floatingProgressView.setSize(AndroidUtilities.dp(22));
-        floatingProgressView.setAlpha(0.0f);
-        floatingProgressView.setScaleX(0.1f);
-        floatingProgressView.setScaleY(0.1f);
-        floatingButtonContainer.addView(floatingProgressView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-
-        Drawable drawable = Theme.createSimpleSelectorCircleDrawable(AndroidUtilities.dp(56), Theme.getColor(Theme.key_chats_actionBackground), Theme.getColor(Theme.key_chats_actionPressedBackground));
-        if (Build.VERSION.SDK_INT < 21) {
-            Drawable shadowDrawable = ContextCompat.getDrawable(context, R.drawable.floating_shadow).mutate();
-            shadowDrawable.setColorFilter(new PorterDuffColorFilter(0xff000000, PorterDuff.Mode.MULTIPLY));
-            CombinedDrawable combinedDrawable = new CombinedDrawable(shadowDrawable, drawable, 0, 0);
-            combinedDrawable.setIconSize(AndroidUtilities.dp(56), AndroidUtilities.dp(56));
-            drawable = combinedDrawable;
-        }
-        floatingButtonContainer.setBackground(drawable);
+        floatingButton.setContentDescription(LocaleController.getString(R.string.Next));
+        floatingButton.addView(floatingButtonIcon, LayoutHelper.createFrame(56, 56, Gravity.CENTER));
+        floatingButton.addAdditionalView(floatingButtonIcon);
 
         bottomSkipButton = new TextView(context);
         bottomSkipButton.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlueText2));
@@ -445,6 +414,11 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 fragment.setPassword(currentPassword);
                 fragment.setBlockingAlert(otherwiseReloginDays);
                 presentFragment(fragment, true);
+
+                if (openedSettings != null) {
+                    AndroidUtilities.runOnUIThread(openedSettings);
+                    openedSettings = null;
+                }
             }
         });
 
@@ -714,8 +688,8 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 };
                 scrollView.setVerticalScrollBarEnabled(false);
                 frameLayout.addView(scrollView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
-                frameLayout.addView(bottomSkipButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP ? 56 : 60, Gravity.BOTTOM, 0, 0, 0, 16));
-                frameLayout.addView(floatingButtonContainer, LayoutHelper.createFrame(Build.VERSION.SDK_INT >= 21 ? 56 : 60, Build.VERSION.SDK_INT >= 21 ? 56 : 60, Gravity.RIGHT | Gravity.BOTTOM, 0, 0, 24, 16));
+                frameLayout.addView(bottomSkipButton, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 56, Gravity.BOTTOM, 0, 0, 0, 16));
+                frameLayout.addView(floatingButton, FragmentFloatingButton.createDefaultLayoutParams());
                 container.addView(keyboardFrameLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
                 LinearLayout scrollViewLinearLayout = new LinearLayout(context) {
@@ -724,7 +698,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
                         MarginLayoutParams params = (MarginLayoutParams) titleTextView.getLayoutParams();
-                        params.topMargin = (imageView.getVisibility() == GONE && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP ? AndroidUtilities.statusBarHeight : 0) + AndroidUtilities.dp(8) + (currentType == TYPE_ENTER_HINT && AndroidUtilities.isSmallScreen() && !isLandscape() ? AndroidUtilities.dp(32) : 0);
+                        params.topMargin = (imageView.getVisibility() == GONE ? AndroidUtilities.statusBarHeight : 0) + AndroidUtilities.dp(8) + (currentType == TYPE_ENTER_HINT && AndroidUtilities.isSmallScreen() && !isLandscape() ? AndroidUtilities.dp(32) : 0);
                     }
                 };
                 scrollViewLinearLayout.setOrientation(LinearLayout.VERTICAL);
@@ -779,10 +753,8 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 showPasswordButton.setImageResource(R.drawable.msg_message);
                 showPasswordButton.setScaleType(ImageView.ScaleType.CENTER);
                 showPasswordButton.setContentDescription(LocaleController.getString(R.string.TwoStepVerificationShowPassword));
-                if (Build.VERSION.SDK_INT >= 21) {
-                    showPasswordButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
-                }
-                showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.SRC_IN));
+                showPasswordButton.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector)));
+                showPasswordButton.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chat_messagePanelIcons), PorterDuff.Mode.MULTIPLY));
                 AndroidUtilities.updateViewVisibilityAnimated(showPasswordButton, false, 0.1f, false);
                 showPasswordButton.setOnClickListener(v -> {
                     ignoreTextChange = true;
@@ -1117,14 +1089,14 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 descriptionText.setText(LocaleController.formatString("EmailPasswordConfirmText2", R.string.EmailPasswordConfirmText2, currentPassword.email_unconfirmed_pattern != null ? currentPassword.email_unconfirmed_pattern : ""));
                 descriptionText.setVisibility(View.VISIBLE);
 
-                floatingButtonContainer.setVisibility(View.GONE);
+                floatingButton.setButtonVisible(false, false);
 
                 bottomSkipButton.setVisibility(View.VISIBLE);
                 bottomSkipButton.setGravity(Gravity.CENTER);
                 ((ViewGroup.MarginLayoutParams) bottomSkipButton.getLayoutParams()).bottomMargin = 0;
                 bottomSkipButton.setText(LocaleController.getString(R.string.ResendCode));
                 bottomSkipButton.setOnClickListener(v -> {
-                    TLRPC.TL_account_resendPasswordEmail req = new TLRPC.TL_account_resendPasswordEmail();
+                    TL_account.resendPasswordEmail req = new TL_account.resendPasswordEmail();
                     ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {});
                     showDialog(new AlertDialog.Builder(getParentActivity())
                             .setMessage(LocaleController.getString(R.string.ResendCodeInfo))
@@ -1160,7 +1132,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 descriptionText.setText(AndroidUtilities.formatSpannable(LocaleController.getString(R.string.RestoreEmailSent), emailPattern));
                 descriptionText.setVisibility(View.VISIBLE);
 
-                floatingButtonContainer.setVisibility(View.GONE);
+                floatingButton.setButtonVisible(false, false);
                 codeFieldContainer.setVisibility(View.VISIBLE);
 
                 imageView.setAnimation(R.raw.tsv_setup_mail, 120, 120);
@@ -1342,15 +1314,21 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 if (closeAfterSet) {
                     finishFragment();
                 } else if (fromRegistration) {
-                    Bundle args = new Bundle();
+                    final Bundle args = new Bundle();
                     args.putBoolean("afterSignup", true);
-                    DialogsActivity dialogsActivity = new DialogsActivity(args);
-                    presentFragment(dialogsActivity, true);
+                    MainTabsActivity mainTabsActivity = new MainTabsActivity();
+                    mainTabsActivity.prepareDialogsActivity(args);
+                    presentFragment(mainTabsActivity, true);
                 } else {
                     TwoStepVerificationActivity fragment = new TwoStepVerificationActivity();
                     fragment.setCurrentPasswordParams(currentPassword, currentPasswordHash, currentSecretId, currentSecret);
                     fragment.setBlockingAlert(otherwiseReloginDays);
                     presentFragment(fragment, true);
+
+                    if (openedSettings != null) {
+                        AndroidUtilities.runOnUIThread(openedSettings);
+                        openedSettings = null;
+                    }
                 }
                 break;
             }
@@ -1373,7 +1351,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
 
                 needShowProgress();
                 Utilities.globalQueue.postRunnable(() -> {
-                    final TLRPC.TL_account_getPasswordSettings req = new TLRPC.TL_account_getPasswordSettings();
+                    final TL_account.getPasswordSettings req = new TL_account.getPasswordSettings();
                     final byte[] x_bytes;
                     if (currentPassword.current_algo instanceof TLRPC.TL_passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow) {
                         TLRPC.TL_passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow algo = (TLRPC.TL_passwordKdfAlgoSHA256SHA256PBKDF2HMACSHA512iter100000SHA256ModPow) currentPassword.current_algo;
@@ -1396,10 +1374,10 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                         } else {
                             AndroidUtilities.runOnUIThread(() -> {
                                 if ("SRP_ID_INVALID".equals(error.text)) {
-                                    TLRPC.TL_account_getPassword getPasswordReq = new TLRPC.TL_account_getPassword();
+                                    TL_account.getPassword getPasswordReq = new TL_account.getPassword();
                                     ConnectionsManager.getInstance(currentAccount).sendRequest(getPasswordReq, (response2, error2) -> AndroidUtilities.runOnUIThread(() -> {
                                         if (error2 == null) {
-                                            currentPassword = (TLRPC.account_Password) response2;
+                                            currentPassword = (TL_account.Password) response2;
                                             TwoStepVerificationActivity.initPasswordNewAlgo(currentPassword);
                                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didSetOrRemoveTwoStepPassword, currentPassword);
                                             processNext();
@@ -1541,7 +1519,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                 break;
             }
             case TYPE_EMAIL_CONFIRM: {
-                TLRPC.TL_account_confirmPasswordEmail req = new TLRPC.TL_account_confirmPasswordEmail();
+                TL_account.confirmPasswordEmail req = new TL_account.confirmPasswordEmail();
                 req.code = codeFieldContainer.getCode();
                 ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                     needHideProgress();
@@ -1565,6 +1543,11 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                                     fragment.setBlockingAlert(otherwiseReloginDays);
                                     presentFragment(fragment, true);
                                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didSetOrRemoveTwoStepPassword, currentPassword);
+
+                                    if (openedSettings != null) {
+                                        AndroidUtilities.runOnUIThread(openedSettings);
+                                        openedSettings = null;
+                                    }
                                 });
                                 if (currentPassword.has_recovery) {
                                     builder.setMessage(LocaleController.getString(R.string.YourEmailSuccessChangedText));
@@ -1762,10 +1745,10 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     }
 
     private void loadPasswordInfo() {
-        TLRPC.TL_account_getPassword req = new TLRPC.TL_account_getPassword();
+        TL_account.getPassword req = new TL_account.getPassword();
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
             if (error == null) {
-                currentPassword = (TLRPC.account_Password) response;
+                currentPassword = (TL_account.Password) response;
                 if (!TwoStepVerificationActivity.canHandleCurrentPassword(currentPassword, false)) {
                     AlertsCreator.showUpdateAppAlert(getParentActivity(), LocaleController.getString(R.string.UpdateAppAlert), true);
                     return;
@@ -1797,47 +1780,11 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
         if (getParentActivity() == null || getParentActivity().isFinishing()) {
             return;
         }
-        AnimatorSet set = new AnimatorSet();
-        if (floatingButtonContainer.getVisibility() == View.VISIBLE) {
-            set.playTogether(
-                    ObjectAnimator.ofFloat(floatingProgressView, View.ALPHA, 1),
-                    ObjectAnimator.ofFloat(floatingProgressView, View.SCALE_X, 1f),
-                    ObjectAnimator.ofFloat(floatingProgressView, View.SCALE_Y, 1f),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.ALPHA, 0),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.SCALE_X, 0.1f),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.SCALE_Y, 0.1f)
-            );
-        } else {
-            set.playTogether(
-                    ObjectAnimator.ofFloat(radialProgressView, View.ALPHA, 1),
-                    ObjectAnimator.ofFloat(radialProgressView, View.SCALE_X, 1f),
-                    ObjectAnimator.ofFloat(radialProgressView, View.SCALE_Y, 1f)
-            );
-        }
-        set.setInterpolator(CubicBezierInterpolator.DEFAULT);
-        set.start();
+        floatingButton.setProgressVisible(true, true);
     }
 
     protected void needHideProgress() {
-        AnimatorSet set = new AnimatorSet();
-        if (floatingButtonContainer.getVisibility() == View.VISIBLE) {
-            set.playTogether(
-                    ObjectAnimator.ofFloat(floatingProgressView, View.ALPHA, 0),
-                    ObjectAnimator.ofFloat(floatingProgressView, View.SCALE_X, 0.1f),
-                    ObjectAnimator.ofFloat(floatingProgressView, View.SCALE_Y, 0.1f),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.ALPHA, 1),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.SCALE_X, 1f),
-                    ObjectAnimator.ofFloat(floatingButtonIcon, View.SCALE_Y, 1f)
-            );
-        } else {
-            set.playTogether(
-                    ObjectAnimator.ofFloat(radialProgressView, View.ALPHA, 0),
-                    ObjectAnimator.ofFloat(radialProgressView, View.SCALE_X, 0.1f),
-                    ObjectAnimator.ofFloat(radialProgressView, View.SCALE_Y, 0.1f)
-            );
-        }
-        set.setInterpolator(CubicBezierInterpolator.DEFAULT);
-        set.start();
+        floatingButton.setProgressVisible(false, true);
     }
 
     private boolean isValidEmail(String text) {
@@ -1863,7 +1810,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     private void setNewPassword(final boolean clear) {
         if (clear && waitingForEmail && currentPassword.has_password) {
             needShowProgress();
-            TLRPC.TL_account_cancelPasswordEmail req = new TLRPC.TL_account_cancelPasswordEmail();
+            TL_account.cancelPasswordEmail req = new TL_account.cancelPasswordEmail();
             ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 needHideProgress();
                 if (error == null) {
@@ -1874,13 +1821,18 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                     fragment.setBlockingAlert(otherwiseReloginDays);
                     presentFragment(fragment, true);
                     NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didRemoveTwoStepPassword);
+
+                    if (openedSettings != null) {
+                        AndroidUtilities.runOnUIThread(openedSettings);
+                        openedSettings = null;
+                    }
                 }
             }));
             return;
         }
         final String password = firstPassword;
 
-        TLRPC.TL_account_passwordInputSettings new_settings = new TLRPC.TL_account_passwordInputSettings();
+        TL_account.passwordInputSettings new_settings = new TL_account.passwordInputSettings();
         if (clear) {
             UserConfig.getInstance(currentAccount).resetSavedPassword();
             currentSecret = null;
@@ -1920,7 +1872,7 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
             req.flags |= 1;
             request = req;
         } else {
-            TLRPC.TL_account_updatePasswordSettings req = new TLRPC.TL_account_updatePasswordSettings();
+            TL_account.updatePasswordSettings req = new TL_account.updatePasswordSettings();
             if (currentPasswordHash == null || currentPasswordHash.length == 0 || clear && waitingForEmail) {
                 req.password = new TLRPC.TL_inputCheckPasswordEmpty();
             }
@@ -1930,8 +1882,8 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
 
         needShowProgress();
         Utilities.globalQueue.postRunnable(() -> {
-            if (request instanceof TLRPC.TL_account_updatePasswordSettings) {
-                TLRPC.TL_account_updatePasswordSettings req = (TLRPC.TL_account_updatePasswordSettings) request;
+            if (request instanceof TL_account.updatePasswordSettings) {
+                TL_account.updatePasswordSettings req = (TL_account.updatePasswordSettings) request;
                 if (req.password == null) {
                     req.password = getNewSrpPassword();
                 }
@@ -1954,10 +1906,10 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
 
             RequestDelegate requestDelegate = (response, error) -> AndroidUtilities.runOnUIThread(() -> {
                 if (error != null && "SRP_ID_INVALID".equals(error.text)) {
-                    TLRPC.TL_account_getPassword getPasswordReq = new TLRPC.TL_account_getPassword();
+                    TL_account.getPassword getPasswordReq = new TL_account.getPassword();
                     ConnectionsManager.getInstance(currentAccount).sendRequest(getPasswordReq, (response2, error2) -> AndroidUtilities.runOnUIThread(() -> {
                         if (error2 == null) {
-                            currentPassword = (TLRPC.account_Password) response2;
+                            currentPassword = (TL_account.Password) response2;
                             TwoStepVerificationActivity.initPasswordNewAlgo(currentPassword);
                             setNewPassword(clear);
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didSetOrRemoveTwoStepPassword, currentPassword);
@@ -1994,6 +1946,11 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
                                 fragment.setBlockingAlert(otherwiseReloginDays);
                                 presentFragment(fragment, true);
                                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.didSetOrRemoveTwoStepPassword, currentPassword);
+
+                                if (openedSettings != null) {
+                                    AndroidUtilities.runOnUIThread(openedSettings);
+                                    openedSettings = null;
+                                }
                             });
                             if (password == null && currentPassword != null && currentPassword.has_password) {
                                 builder.setMessage(LocaleController.getString(R.string.YourEmailSuccessText));
@@ -2157,12 +2114,12 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     }
 
     @Override
-    public boolean onBackPressed() {
+    public boolean onBackPressed(boolean invoked) {
         if (otherwiseReloginDays >= 0 && parentLayout.getFragmentStack().size() == 1) {
-            showSetForcePasswordAlert();
+            if (invoked) showSetForcePasswordAlert();
             return false;
         }
-        finishFragment();
+        if (invoked) finishFragment(); // ???
         return true;
     }
 
@@ -2195,9 +2152,11 @@ public class TwoStepVerificationSetupActivity extends BaseFragment {
     @Override
     public void finishFragment() {
         if (otherwiseReloginDays >= 0 && parentLayout.getFragmentStack().size() == 1) {
-                final Bundle args = new Bundle();
-                args.putBoolean("afterSignup", true);
-                presentFragment(new DialogsActivity(args), true);
+            final Bundle args = new Bundle();
+            args.putBoolean("afterSignup", true);
+            MainTabsActivity mainTabsActivity = new MainTabsActivity();
+            mainTabsActivity.prepareDialogsActivity(args);
+            presentFragment(mainTabsActivity, true);
         } else {
             super.finishFragment();
         }

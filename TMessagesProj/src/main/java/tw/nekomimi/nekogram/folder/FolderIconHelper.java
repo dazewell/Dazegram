@@ -104,7 +104,7 @@ public class FolderIconHelper {
     }
 
     public static int getIconWidth() {
-        return AndroidUtilities.dp(28);
+        return AndroidUtilities.dp(21);
     }
 
     public static int getPadding() {
@@ -124,7 +124,7 @@ public class FolderIconHelper {
 
     public static int getPaddingTab() {
         if (NekoConfig.tabsTitleType.Int() != NekoXConfig.TITLE_TYPE_ICON) {
-            return AndroidUtilities.dp(32);
+            return AndroidUtilities.dp(24);
         }
         return AndroidUtilities.dp(16);
     }

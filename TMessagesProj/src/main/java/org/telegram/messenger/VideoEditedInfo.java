@@ -11,23 +11,32 @@ package org.telegram.messenger;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
+import android.graphics.PointF;
+import android.graphics.SurfaceTexture;
 import android.text.TextUtils;
 import android.view.View;
 
+import org.telegram.messenger.video.MediaCodecPlayer;
 import org.telegram.messenger.video.MediaCodecVideoConvertor;
 import org.telegram.tgnet.AbstractSerializedData;
+import org.telegram.tgnet.InputSerializedData;
+import org.telegram.tgnet.OutputSerializedData;
 import org.telegram.tgnet.SerializedData;
+import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_stories;
 import org.telegram.ui.Components.AnimatedFileDrawable;
 import org.telegram.ui.Components.Paint.PaintTypeface;
 import org.telegram.ui.Components.Paint.Views.LinkPreview;
 import org.telegram.ui.Components.PhotoFilterView;
-import org.telegram.ui.Components.Point;
+import org.telegram.ui.Components.RLottieNative;
 import org.telegram.ui.Components.Reactions.ReactionsLayoutInBubble;
+import org.telegram.ui.Stories.recorder.CollageLayout;
 import org.telegram.ui.Stories.recorder.StoryEntry;
 import org.telegram.ui.Stories.recorder.Weather;
 
+import java.io.File;
+import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Locale;
 
@@ -48,6 +57,7 @@ public class VideoEditedInfo {
     public int bitrate;
     public int framerate = 24;
     public String originalPath;
+    public long videoOffset;
     public long estimatedSize;
     public long estimatedDuration;
     public boolean roundVideo;
@@ -66,6 +76,9 @@ public class VideoEditedInfo {
     public boolean isStory;
     public StoryEntry.HDRInfo hdrInfo;
 
+    public CollageLayout collage;
+    public ArrayList<Part> collageParts;
+
     public boolean isSticker;
 
     public Bitmap thumb;
@@ -83,7 +96,6 @@ public class VideoEditedInfo {
     public boolean videoConvertFirstWrite;
     public boolean needUpdateProgress = false;
     public boolean shouldLimitFps = true;
-    public boolean tryUseHevc = false;
     public boolean fromCamera;
 
     public ArrayList<MediaCodecVideoConvertor.MixedSoundInfo> mixedSoundInfos = new ArrayList<>();
@@ -95,7 +107,7 @@ public class VideoEditedInfo {
         public byte subType;
 
         @Override
-        public void readParams(AbstractSerializedData stream, boolean exception) {
+        public void readParams(InputSerializedData stream, boolean exception) {
             super.readParams(stream, exception);
             subType = stream.readByte(exception);
             boolean hasPath = stream.readBool(exception);
@@ -108,7 +120,7 @@ public class VideoEditedInfo {
         }
 
         @Override
-        public void serializeToStream(AbstractSerializedData stream) {
+        public void serializeToStream(OutputSerializedData stream) {
             super.serializeToStream(stream);
             stream.writeByte(subType);
             stream.writeBool(!TextUtils.isEmpty(documentAbsolutePath));
@@ -129,6 +141,7 @@ public class VideoEditedInfo {
         public static final byte TYPE_MESSAGE = 6;
         public static final byte TYPE_LINK = 7;
         public static final byte TYPE_WEATHER = 8;
+        public static final byte TYPE_VIDEO = 9;
 
         public byte type;
         public byte subType;
@@ -150,6 +163,7 @@ public class VideoEditedInfo {
         public float roundRadius;
 
         public String segmentedPath = "";
+        public MediaController.CropState crop;
 
         public float scale = 1.0f;
         public float textViewWidth;
@@ -161,8 +175,7 @@ public class VideoEditedInfo {
         public TLRPC.Document document;
         public Object parentObject;
 
-        public int[] metadata;
-        public long ptr;
+        public RLottieNative lottieNative;
         public float currentFrame;
         public float framesPerDraw;
         public Bitmap bitmap;
@@ -258,6 +271,11 @@ public class VideoEditedInfo {
                 roundDuration = data.readInt64(exception);
             } else if (type == TYPE_PHOTO) {
                 segmentedPath = data.readString(exception);
+                int magic = data.readInt32(exception);
+                if (magic == MediaController.CropState.constructor) {
+                    crop = new MediaController.CropState();
+                    crop.readParams(data, exception);
+                }
             } else if (type == TYPE_WEATHER) {
                 int magic = data.readInt32(exception);
                 if (magic == 0x7EA7539) {
@@ -329,6 +347,11 @@ public class VideoEditedInfo {
                 data.writeInt64(roundDuration);
             } else if (type == TYPE_PHOTO) {
                 data.writeString(segmentedPath);
+                if (crop != null) {
+                    crop.serializeToStream(data);
+                } else {
+                    data.writeInt32(TLRPC.TL_null.constructor);
+                }
             } else if (type == TYPE_WEATHER) {
                 if (weather == null) {
                     data.writeInt32(0xdeadbeef);
@@ -369,8 +392,7 @@ public class VideoEditedInfo {
             entity.textViewY = textViewY;
             entity.document = document;
             entity.parentObject = parentObject;
-            entity.metadata = metadata;
-            entity.ptr = ptr;
+            entity.lottieNative = lottieNative;
             entity.currentFrame = currentFrame;
             entity.framesPerDraw = framesPerDraw;
             entity.bitmap = bitmap;
@@ -416,7 +438,7 @@ public class VideoEditedInfo {
                 blurPathBytes = null;
             }
             SerializedData serializedData = new SerializedData(len);
-            serializedData.writeInt32(10);
+            serializedData.writeInt32(11);
             serializedData.writeInt64(avatarStartTime);
             serializedData.writeInt32(originalBitrate);
             if (filterState != null) {
@@ -509,12 +531,21 @@ public class VideoEditedInfo {
             }
             serializedData.writeFloat(volume);
             serializedData.writeBool(isSticker);
+            if (collage != null && collageParts != null && collage.parts.size() > 1 && !collageParts.isEmpty()) {
+                serializedData.writeInt32(0xdeadbeef);
+                serializedData.writeString(collage.toString());
+                for (int i = 0; i < collageParts.size(); ++i) {
+                    collageParts.get(i).serializeToStream(serializedData);
+                }
+            } else {
+                serializedData.writeInt32(TLRPC.TL_null.constructor);
+            }
             filters = Utilities.bytesToHex(serializedData.toByteArray());
             serializedData.cleanup();
         } else {
             filters = "";
         }
-        return String.format(Locale.US, "-1_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_-%s_%s", startTime, endTime, rotationValue, originalWidth, originalHeight, bitrate, resultWidth, resultHeight, originalDuration, framerate, filters, originalPath);
+        return String.format(Locale.US, "-1_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_-%s_%s", startTime, endTime, rotationValue, originalWidth, originalHeight, bitrate, resultWidth, resultHeight, originalDuration, framerate, videoOffset, filters, originalPath);
     }
 
     public boolean parseString(String string) {
@@ -523,7 +554,7 @@ public class VideoEditedInfo {
         }
         try {
             String[] args = string.split("_");
-            if (args.length >= 11) {
+            if (args.length >= 12) {
                 startTime = Long.parseLong(args[1]);
                 endTime = Long.parseLong(args[2]);
                 rotationValue = Integer.parseInt(args[3]);
@@ -534,11 +565,12 @@ public class VideoEditedInfo {
                 resultHeight = Integer.parseInt(args[8]);
                 originalDuration = Long.parseLong(args[9]);
                 framerate = Integer.parseInt(args[10]);
+                videoOffset = Long.parseLong(args[11]);
                 muted = bitrate == -1;
                 int start;
-                if (args[11].startsWith("-")) {
-                    start = 12;
-                    String s = args[11].substring(1);
+                if (args[12].startsWith("-")) {
+                    start = 13;
+                    String s = args[12].substring(1);
                     if (s.length() > 0) {
                         SerializedData serializedData = new SerializedData(Utilities.hexToBytes(s));
                         int version = serializedData.readInt32(false);
@@ -567,7 +599,9 @@ public class VideoEditedInfo {
                             filterState.blurType = serializedData.readInt32(false);
                             filterState.sharpenValue = serializedData.readFloat(false);
                             filterState.blurExcludeSize = serializedData.readFloat(false);
-                            filterState.blurExcludePoint = new Point(serializedData.readFloat(false), serializedData.readFloat(false));
+                            float x = serializedData.readFloat(false);
+                            float y = serializedData.readFloat(false);
+                            filterState.blurExcludePoint = new PointF(x, y);
                             filterState.blurExcludeBlurSize = serializedData.readFloat(false);
                             filterState.blurAngle = serializedData.readFloat(false);
 
@@ -642,10 +676,23 @@ public class VideoEditedInfo {
                         if (version >= 10) {
                             isSticker = serializedData.readBool(false);
                         }
+                        if (version >= 11) {
+                            int magic = serializedData.readInt32(false);
+                            if (magic == 0xdeadbeef) {
+                                collage = new CollageLayout(serializedData.readString(false));
+                                collageParts = new ArrayList<>();
+                                for (int i = 0; i < collage.parts.size(); ++i) {
+                                    Part part = new Part();
+                                    part.part = collage.parts.get(i);
+                                    part.readParams(serializedData, false);
+                                    collageParts.add(part);
+                                }
+                            }
+                        }
                         serializedData.cleanup();
                     }
                 } else {
-                    start = 11;
+                    start = 12;
                 }
 
                 for (int a = start; a < args.length; a++) {
@@ -675,5 +722,116 @@ public class VideoEditedInfo {
 
     public boolean canAutoPlaySourceVideo() {
         return roundVideo;
+    }
+
+    public static class Part extends TLObject {
+
+        public int flags;
+        public boolean isVideo;
+        public boolean muted;
+        public String path;
+        public float volume = 1.0f;
+        public long offset = 0;
+        public boolean loop = true;
+        public float left, right;
+        public int width, height;
+        public long duration;
+
+        public CollageLayout.Part part;
+
+        public Part() {}
+        public Part(StoryEntry entry) {
+            isVideo = entry.isVideo;
+            muted = entry.muted;
+            path = entry.file.getAbsolutePath();
+            volume = entry.videoVolume;
+            loop = entry.videoLoop;
+            offset = entry.videoOffset;
+            left = entry.videoLeft;
+            right = entry.videoRight;
+            width = entry.width;
+            height = entry.height;
+            duration = entry.duration;
+        }
+
+        public static ArrayList<Part> toParts(StoryEntry collageEntry) {
+            if (collageEntry == null || collageEntry.collageContent == null)
+                return null;
+            final ArrayList<Part> parts = new ArrayList<>();
+            for (int i = 0; i < collageEntry.collageContent.size(); ++i) {
+                final StoryEntry entry = collageEntry.collageContent.get(i);
+                Part part = new Part(entry);
+                part.part = collageEntry.collage.parts.get(i);
+                parts.add(part);
+            }
+            return parts;
+        }
+
+        public static ArrayList<StoryEntry> toStoryEntries(ArrayList<Part> parts) {
+            if (parts == null) return null;
+            final ArrayList<StoryEntry> entries = new ArrayList<>();
+            for (Part part : parts) {
+                final StoryEntry entry = new StoryEntry();
+                entry.isVideo = part.isVideo;
+                entry.muted = part.muted;
+                entry.file = new File(part.path);
+                entry.videoVolume = part.volume;
+                entry.videoLoop = part.loop;
+                entry.videoOffset = part.offset;
+                entry.videoLeft = part.left;
+                entry.videoRight = part.right;
+                entry.width = part.width;
+                entry.height = part.height;
+                entry.duration = part.duration;
+                entries.add(entry);
+            }
+            return entries;
+        }
+
+        @Override
+        public void readParams(InputSerializedData stream, boolean exception) {
+            flags = stream.readInt32(exception);
+            isVideo = (flags & 1) != 0;
+            loop = (flags & 2) != 0;
+            muted = (flags & 4) != 0;
+            path = stream.readString(exception);
+            volume = stream.readFloat(exception);
+            offset = stream.readInt64(exception);
+            left = stream.readFloat(exception);
+            right = stream.readFloat(exception);
+            width = stream.readInt32(exception);
+            height = stream.readInt32(exception);
+            duration = stream.readInt64(exception);
+        }
+
+        @Override
+        public void serializeToStream(OutputSerializedData stream) {
+            flags = isVideo ? flags | 1 : flags &~ 1;
+            flags = loop ? flags | 2 : flags &~ 2;
+            flags = muted ? flags | 4 : flags &~ 4;
+            stream.writeInt32(flags);
+            stream.writeString(path);
+            stream.writeFloat(volume);
+            stream.writeInt64(offset);
+            stream.writeFloat(left);
+            stream.writeFloat(right);
+            stream.writeInt32(width);
+            stream.writeInt32(height);
+            stream.writeInt64(duration);
+        }
+
+        public FloatBuffer posBuffer;
+        public FloatBuffer uvBuffer;
+
+        // software rendering
+        public AnimatedFileDrawable animatedFileDrawable;
+        public float currentFrame;
+        public float framesPerDraw;
+        public float msPerFrame;
+
+        // hardware rendering
+        public SurfaceTexture surfaceTexture;
+        public MediaCodecPlayer player;
+
     }
 }

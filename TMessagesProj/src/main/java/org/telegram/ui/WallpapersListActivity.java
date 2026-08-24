@@ -20,8 +20,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Spannable;
 import android.text.SpannableString;
@@ -40,6 +38,7 @@ import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
 
+import androidx.annotation.Keep;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -60,6 +59,7 @@ import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenu;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
@@ -73,7 +73,6 @@ import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.WallpaperCell;
 import org.telegram.ui.Components.ColorPicker;
-import org.telegram.ui.Components.CombinedDrawable;
 import org.telegram.ui.Components.EmptyTextProgressView;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.NumberTextView;
@@ -88,6 +87,7 @@ import java.util.HashMap;
 public class WallpapersListActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private int rowCount;
+    @Keep
     private int uploadImageRow;
     private int setColorRow;
     private int sectionRow;
@@ -547,7 +547,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                             }
                             deleteCount[0]++;
                             TLRPC.WallPaper wallPaper = (TLRPC.WallPaper) object;
-                            TLRPC.TL_account_saveWallPaper req = new TLRPC.TL_account_saveWallPaper();
+                            TL_account.saveWallPaper req = new TL_account.saveWallPaper();
                             req.settings = new TLRPC.TL_wallPaperSettings();
                             req.unsave = true;
 
@@ -594,7 +594,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                     args.putBoolean("onlySelect", true);
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
                     DialogsActivity fragment = new DialogsActivity(args);
-                    fragment.setDelegate((fragment1, dids, message, param, notify, scheduleDate, topicsFragment) -> {
+                    fragment.setDelegate((fragment1, dids, message, param, notify, scheduleDate, scheduleRepeatPeriod, topicsFragment) -> {
                         StringBuilder fmessage = new StringBuilder();
                         for (int b = 0; b < selectedWallPapers.size(); b++) {
                             Object object = selectedWallPapers.valueAt(b);
@@ -622,10 +622,10 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                             for (int a = 0; a < dids.size(); a++) {
                                 long did = dids.get(a).dialogId;
                                 if (message != null) {
-                                    SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(message.toString(), did, null, null, null, true, null, null, null, true, 0, null, false));
+                                    SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(message.toString(), did, null, null, null, true, null, null, null, true, 0, 0, null, false));
                                 }
                                 if (!TextUtils.isEmpty(fmessage)) {
-                                    SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(fmessage.toString(), did, null, null, null, true, null, null, null, true, 0, null, false));
+                                    SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(fmessage.toString(), did, null, null, null, true, null, null, null, true, 0, 0, null, false));
                                 }
                             }
                             fragment1.finishFragment();
@@ -649,7 +649,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
 
                             ChatActivity chatActivity = new ChatActivity(args1);
                             presentFragment(chatActivity, true);
-                            SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(fmessage.toString(), did, null, null, null, true, null, null, null, true, 0, null, false));
+                            SendMessagesHelper.getInstance(currentAccount).sendMessage(SendMessagesHelper.SendMessageParams.of(fmessage.toString(), did, null, null, null, true, null, null, null, true, 0, 0, null, false));
                         }
                         return true;
                     });
@@ -660,7 +660,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
 
         if (currentType == TYPE_ALL) {
             ActionBarMenu menu = actionBar.createMenu();
-            searchItem = menu.addItem(0, R.drawable.ic_ab_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
+            searchItem = menu.addItem(0, R.drawable.outline_header_search).setIsSearchField(true).setActionBarMenuItemSearchListener(new ActionBarMenuItem.ActionBarMenuItemSearchListener() {
                 @Override
                 public void onSearchExpand() {
                     listView.setAdapter(searchAdapter);
@@ -711,42 +711,10 @@ public class WallpapersListActivity extends BaseFragment implements Notification
 
         FrameLayout frameLayout = (FrameLayout) fragmentView;
 
-        listView = new RecyclerListView(context) {
-
-            private Paint paint = new Paint();
-
-            @Override
-            public boolean hasOverlappingRendering() {
-                return false;
-            }
-
-            @Override
-            public void onDraw(Canvas c) {
-                ViewHolder holder;
-                if (getAdapter() == listAdapter && resetInfoRow != -1) {
-                    holder = findViewHolderForAdapterPosition(resetInfoRow);
-                } else {
-                    holder = null;
-                }
-                int bottom;
-                int height = getMeasuredHeight();
-                if (holder != null) {
-                    bottom = holder.itemView.getBottom();
-                    if (holder.itemView.getBottom() >= height) {
-                        bottom = height;
-                    }
-                } else {
-                    bottom = height;
-                }
-
-                paint.setColor(Theme.getColor(Theme.key_windowBackgroundWhite));
-                c.drawRect(0, 0, getMeasuredWidth(), bottom, paint);
-                if (bottom != height) {
-                    paint.setColor(Theme.getColor(Theme.key_windowBackgroundGray));
-                    c.drawRect(0, bottom, getMeasuredWidth(), height, paint);
-                }
-            }
-        };
+        listView = new RecyclerListView(context);
+        listView.setSections();
+        actionBar.setAdaptiveBackground(listView);
+        listView.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundGray));
         listView.setClipToPadding(false);
         listView.setHorizontalScrollBarEnabled(false);
         listView.setVerticalScrollBarEnabled(false);
@@ -785,7 +753,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                     progressDialog = new AlertDialog(getParentActivity(), AlertDialog.ALERT_TYPE_SPINNER);
                     progressDialog.setCanCancel(false);
                     progressDialog.show();
-                    TLRPC.TL_account_resetWallPapers req = new TLRPC.TL_account_resetWallPapers();
+                    TL_account.resetWallPapers req = new TL_account.resetWallPapers();
                     ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> loadWallpapers(false)));
                 });
                 builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
@@ -825,7 +793,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
         searchEmptyView = new EmptyTextProgressView(context);
         searchEmptyView.setVisibility(View.GONE);
         searchEmptyView.setShowAtCenter(true);
-        searchEmptyView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
+        searchEmptyView.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
         searchEmptyView.setText(LocaleController.getString(R.string.NoResult));
         listView.setEmptyView(searchEmptyView);
         frameLayout.addView(searchEmptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
@@ -1133,11 +1101,11 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                 acc = MediaDataController.calcHash(acc, wallPaper.id);
             }
         }
-        TLRPC.TL_account_getWallPapers req = new TLRPC.TL_account_getWallPapers();
+        TL_account.getWallPapers req = new TL_account.getWallPapers();
         req.hash = acc;
         int reqId = ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> AndroidUtilities.runOnUIThread(() -> {
-            if (response instanceof TLRPC.TL_account_wallPapers) {
-                TLRPC.TL_account_wallPapers res = (TLRPC.TL_account_wallPapers) response;
+            if (response instanceof TL_account.TL_wallPapers) {
+                TL_account.TL_wallPapers res = (TL_account.TL_wallPapers) response;
                 patterns.clear();
                 patternsDict.clear();
                 if (currentType != TYPE_COLOR && currentType != TYPE_CHANNEL_PATTERNS) {
@@ -1857,18 +1825,10 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                 }
                 case 1: {
                     view = new ShadowSectionCell(mContext);
-                    Drawable drawable = Theme.getThemedDrawableByKey(mContext, wallPaperStartRow == -1 ? R.drawable.greydivider_bottom : R.drawable.greydivider, Theme.key_windowBackgroundGrayShadow);
-                    CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)), drawable);
-                    combinedDrawable.setFullsize(true);
-                    view.setBackgroundDrawable(combinedDrawable);
                     break;
                 }
                 case 3: {
                     view = new TextInfoPrivacyCell(mContext);
-                    Drawable drawable = Theme.getThemedDrawableByKey(mContext, R.drawable.greydivider_bottom, Theme.key_windowBackgroundGrayShadow);
-                    CombinedDrawable combinedDrawable = new CombinedDrawable(new ColorDrawable(Theme.getColor(Theme.key_windowBackgroundGray)), drawable);
-                    combinedDrawable.setFullsize(true);
-                    view.setBackgroundDrawable(combinedDrawable);
                     break;
                 }
                 case 2:
@@ -2006,19 +1966,18 @@ public class WallpapersListActivity extends BaseFragment implements Notification
         themeDescriptions.add(new ThemeDescription(fragmentView, 0, null, null, null, null, Theme.key_windowBackgroundWhite));
         themeDescriptions.add(new ThemeDescription(fragmentView, 0, null, null, null, null, Theme.key_windowBackgroundGray));
 
-        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
+//        themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_LISTGLOWCOLOR, null, null, null, null, Theme.key_actionBarDefault));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_ITEMSCOLOR, null, null, null, null, Theme.key_actionBarDefaultIcon));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_TITLECOLOR, null, null, null, null, Theme.key_actionBarDefaultTitle));
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_AB_SELECTORCOLOR, null, null, null, null, Theme.key_actionBarDefaultSelector));
 
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_SELECTOR, null, null, null, null, Theme.key_listSelector));
 
-        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUNDFILTER, new Class[]{TextInfoPrivacyCell.class}, null, null, null, Theme.key_windowBackgroundGrayShadow));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUNDFILTER | ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{TextInfoPrivacyCell.class}, null, null, null, Theme.key_windowBackgroundGray));
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextInfoPrivacyCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteGrayText4));
 
-        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUNDFILTER, new Class[]{ShadowSectionCell.class}, null, null, null, Theme.key_windowBackgroundGrayShadow));
         themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_BACKGROUNDFILTER | ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{ShadowSectionCell.class}, null, null, null, Theme.key_windowBackgroundGray));
 
         themeDescriptions.add(new ThemeDescription(listView, 0, new Class[]{TextCell.class}, new String[]{"textView"}, null, null, null, Theme.key_windowBackgroundWhiteBlackText));

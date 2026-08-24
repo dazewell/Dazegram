@@ -38,15 +38,15 @@ public class AutoTranslatePopupWrapper {
         this.topicId = topicId;
 
         if (swipeBackLayout != null) {
-            var backItem = ActionBarMenuItem.addItem(windowLayout, R.drawable.msg_arrow_back, LocaleController.getString("Back", R.string.Back), false, resourcesProvider);
+            var backItem = ActionBarMenuItem.addItem(windowLayout, R.drawable.msg_arrow_back, LocaleController.getString(R.string.Back), false, resourcesProvider);
             backItem.setOnClickListener(view -> swipeBackLayout.closeForeground());
         }
 
-        defaultItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString("Default", R.string.Default), true, resourcesProvider);
+        defaultItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString(R.string.Default), true, resourcesProvider);
 
         defaultItem.setOnClickListener(view -> {
             if (!supportLanguageDetector) {
-                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString("BrokenMLKit", R.string.BrokenMLKit), LocaleController.getString("BrokenMLKitDetail", R.string.BrokenMLKitDetail), null).show();
+                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString(R.string.BrokenMLKit), LocaleController.getString(R.string.BrokenMLKitDetail), null).show();
                 return;
             }
             DialogConfig.removeAutoTranslateConfig(dialogId, topicId);
@@ -54,11 +54,11 @@ public class AutoTranslatePopupWrapper {
         });
         defaultItem.setAlpha(supportLanguageDetector ? 1.0f : 0.5f);
 
-        enableItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString("Enable", R.string.Enable), true, resourcesProvider);
+        enableItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString(R.string.Enable), true, resourcesProvider);
         enableItem.setChecked(DialogConfig.hasAutoTranslateConfig(dialogId, topicId) && DialogConfig.isAutoTranslateEnable(dialogId, topicId));
         enableItem.setOnClickListener(view -> {
             if (!supportLanguageDetector) {
-                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString("BrokenMLKit", R.string.BrokenMLKit), LocaleController.getString("BrokenMLKitDetail", R.string.BrokenMLKitDetail), null).show();
+                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString(R.string.BrokenMLKit), LocaleController.getString(R.string.BrokenMLKitDetail), null).show();
                 return;
             }
             DialogConfig.setAutoTranslateEnable(dialogId, topicId, true);
@@ -66,11 +66,11 @@ public class AutoTranslatePopupWrapper {
         });
         enableItem.setAlpha(supportLanguageDetector ? 1.0f : 0.5f);
 
-        disableItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString("Disable", R.string.Disable), true, resourcesProvider);
+        disableItem = ActionBarMenuItem.addItem(windowLayout, 0, LocaleController.getString(R.string.Disable), true, resourcesProvider);
         disableItem.setChecked(DialogConfig.hasAutoTranslateConfig(dialogId, topicId) && !DialogConfig.isAutoTranslateEnable(dialogId, topicId));
         disableItem.setOnClickListener(view -> {
             if (!supportLanguageDetector) {
-                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString("BrokenMLKit", R.string.BrokenMLKit), LocaleController.getString("BrokenMLKitDetail", R.string.BrokenMLKitDetail), null).show();
+                BulletinFactory.of(fragment).createErrorBulletinSubtitle(LocaleController.getString(R.string.BrokenMLKit), LocaleController.getString(R.string.BrokenMLKitDetail), null).show();
                 return;
             }
             DialogConfig.setAutoTranslateEnable(dialogId, topicId, false);
@@ -89,7 +89,7 @@ public class AutoTranslatePopupWrapper {
         textView.setPadding(AndroidUtilities.dp(13), AndroidUtilities.dp(8), AndroidUtilities.dp(13), AndroidUtilities.dp(8));
         textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         textView.setTextColor(Theme.getColor(Theme.key_actionBarDefaultSubmenuItem, resourcesProvider));
-        textView.setText(LocaleController.getString("AutoTranslateAbout", R.string.AutoTranslateAbout));
+        textView.setText(LocaleController.getString(R.string.AutoTranslateAbout));
         windowLayout.addView(textView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
     }
 

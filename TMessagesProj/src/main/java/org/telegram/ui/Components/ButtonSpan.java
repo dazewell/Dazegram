@@ -10,7 +10,9 @@ import android.graphics.Paint;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.SpannableString;
+import android.text.SpannableStringBuilder;
 import android.text.Spanned;
+import android.text.TextUtils;
 import android.text.style.ClickableSpan;
 import android.text.style.ReplacementSpan;
 import android.view.MotionEvent;
@@ -33,7 +35,7 @@ public class ButtonSpan extends ReplacementSpan {
     private final Runnable onClickListener;
     private ButtonBounce bounce;
 
-    private ButtonSpan(CharSequence buttonText, Runnable onClick, Theme.ResourcesProvider resourcesProvider) {
+    public ButtonSpan(CharSequence buttonText, Runnable onClick, Theme.ResourcesProvider resourcesProvider) {
         this.resourcesProvider = resourcesProvider;
         this.onClickListener = onClick;
         text = new Text(buttonText, 12);
@@ -44,11 +46,18 @@ public class ButtonSpan extends ReplacementSpan {
     }
 
     public static CharSequence make(CharSequence buttonText, Runnable onClick, Theme.ResourcesProvider resourcesProvider) {
+        return make(buttonText, onClick, resourcesProvider, null);
+    }
+
+    public static CharSequence make(CharSequence buttonText, Runnable onClick, Theme.ResourcesProvider resourcesProvider, Integer forcedColor) {
         SpannableString ss = new SpannableString("btn");
         ButtonSpan span1 = new ButtonSpan(buttonText, onClick, resourcesProvider);
         ss.setSpan(span1, 0, ss.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        span1.forcedColor = forcedColor;
         return ss;
     }
+
+    public Integer forcedColor;
 
     public int getSize() {
         return (int) (this.text.getCurrentWidth() + dp(14));
@@ -66,7 +75,7 @@ public class ButtonSpan extends ReplacementSpan {
         final float s = bounce == null ? 1f : bounce.getScale(.025f);
         canvas.save();
         canvas.scale(s, s, AndroidUtilities.rectTmp.centerX(), AndroidUtilities.rectTmp.centerY());
-        final int color = Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
+        final int color = forcedColor != null ? forcedColor : Theme.getColor(Theme.key_featuredStickers_addButton, resourcesProvider);
         backgroundPaint.setColor(Theme.multAlpha(color, .15f));
         canvas.drawRoundRect(AndroidUtilities.rectTmp, h / 2, h / 2, backgroundPaint);
         this.text.draw(canvas, x + dp(7), (top + bottom) / 2f, color, 1f);
@@ -92,15 +101,21 @@ public class ButtonSpan extends ReplacementSpan {
 
         public ButtonSpan findSpan(float x, int y) {
             if (!(getText() instanceof Spanned)) return null;
-            Layout layout = getLayout();
+            final Layout layout = getLayout();
             if (layout == null) return null;
-            int line = layout.getLineForVertical(y);
-            int offset = layout.getOffsetForHorizontal(line, x);
-            Spanned spanned = (Spanned) getText();
-            ButtonSpan[] spans = spanned.getSpans(layout.getLineStart(line), layout.getLineEnd(line), ButtonSpan.class);
+            final int line = layout.getLineForVertical(y);
+            final Spanned spanned = (Spanned) getText();
+            final ButtonSpan[] spans = spanned.getSpans(layout.getLineStart(line), layout.getLineEnd(line), ButtonSpan.class);
             for (int i = 0; i < spans.length; ++i) {
-                ButtonSpan span = spans[i];
-                if (spanned.getSpanStart(span) <= offset && spanned.getSpanEnd(span) >= offset) {
+                final ButtonSpan span = spans[i];
+                float begin = layout.getPrimaryHorizontal(spanned.getSpanStart(span));
+                float end   = layout.getPrimaryHorizontal(spanned.getSpanEnd(span));
+                if (end < begin) {
+                    final float tmp = begin;
+                    begin = end;
+                    end = tmp;
+                }
+                if (x >= begin && x <= end) {
                     return span;
                 }
             }
@@ -113,7 +128,7 @@ public class ButtonSpan extends ReplacementSpan {
         @Override
         public boolean onTouchEvent(MotionEvent event) {
             int action = event.getAction();
-            ButtonSpan span = findSpan(event.getX(), (int) event.getY());
+            ButtonSpan span = findSpan(event.getX() - getPaddingLeft(), (int) event.getY() - getPaddingTop());
             if (action == MotionEvent.ACTION_DOWN) {
                 pressedSpan = span;
                 if (pressedSpan != null) {
@@ -135,6 +150,31 @@ public class ButtonSpan extends ReplacementSpan {
                 }
             }
             return pressedSpan != null || super.onTouchEvent(event);
+        }
+
+        @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        }
+
+        @Override
+        protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+            super.onLayout(changed, left, top, right, bottom);
+            if (buttonToBeAdded != null && getMeasuredWidth() > 0) {
+                SpannableString btn = new SpannableString(" btn");
+                btn.setSpan(buttonToBeAdded, 1, btn.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                SpannableStringBuilder sb = new SpannableStringBuilder(
+                        TextUtils.ellipsize(getText(), getPaint(), getMeasuredWidth() - getPaddingLeft() - getPaddingRight() - buttonToBeAdded.getSize() - dp(4), TextUtils.TruncateAt.END)
+                );
+                sb.append(btn);
+                setText(sb);
+                buttonToBeAdded = null;
+            }
+        }
+
+        ButtonSpan buttonToBeAdded;
+        public void addButton(ButtonSpan span) {
+            buttonToBeAdded = span;
         }
     }
 }

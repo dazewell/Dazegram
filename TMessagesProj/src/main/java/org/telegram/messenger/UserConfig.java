@@ -15,24 +15,22 @@ import android.util.Base64;
 import android.util.SparseArray;
 import android.util.LongSparseArray;
 
-import com.google.android.exoplayer2.util.Log;
-
+import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.SerializedData;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_account;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 
 import tw.nekomimi.nekogram.NekoConfig;
+import tw.nekomimi.nekogram.helpers.remote.ExtendedHelper;
 
 public class UserConfig extends BaseController {
 
     public static int selectedAccount;
     public final static int MAX_ACCOUNT_DEFAULT_COUNT = 8;
-    public final static int MAX_ACCOUNT_COUNT = 10;
+    public final static int MAX_ACCOUNT_PREMIUM_COUNT = 10;
+    public final static int MAX_ACCOUNT_COUNT = 128;
 
     private final Object sync = new Object();
     private volatile boolean configLoaded;
@@ -46,9 +44,10 @@ public class UserConfig extends BaseController {
     public int lastHintsSyncTime;
     public boolean draftsLoaded;
     public boolean unreadDialogsLoaded = true;
-    public TLRPC.TL_account_tmpPassword tmpPassword;
+    public TL_account.tmpPassword tmpPassword;
     public int ratingLoadTime;
     public int botRatingLoadTime;
+    public int botGuestRatingLoadTime;
     public int webappRatingLoadTime;
     public boolean contactsReimported;
     public boolean hasValidDialogLoadIds;
@@ -67,17 +66,18 @@ public class UserConfig extends BaseController {
     public boolean notificationsSignUpSettingsLoaded;
     public boolean syncContacts = true;
     public boolean suggestContacts = true;
+    public boolean showCallsTab;
     public boolean hasSecureData;
     public int loginTime;
     public TLRPC.TL_help_termsOfService unacceptedTermsOfService;
     public long autoDownloadConfigLoadTime;
-    public boolean official;
-    public boolean deviceInfo;
 
     public String premiumGiftsStickerPack;
+    public String premiumTonStickerPack;
     public String genericAnimationsStickerPack;
     public String defaultTopicIcons;
     public long lastUpdatedPremiumGiftsStickerPack;
+    public long lastUpdatedTonGiftsStickerPack;
     public long lastUpdatedGenericAnimations;
     public long lastUpdatedDefaultTopicIcons;
 
@@ -128,7 +128,28 @@ public class UserConfig extends BaseController {
     }
 
     public static int getMaxAccountCount() {
-        return hasPremiumOnAccounts() ? 5 : 3;
+        return hasPremiumOnAccounts() ? MAX_ACCOUNT_PREMIUM_COUNT : MAX_ACCOUNT_DEFAULT_COUNT;
+    }
+
+    public static int requestAccountSlot() {
+        int availableAccount = -1;
+        for (int a = 0; a < MAX_ACCOUNT_COUNT; a++) {
+            if (!getInstance(a).isClientActivated()) {
+                availableAccount = a;
+                break;
+            }
+        }
+        if (availableAccount < 0) {
+            return -1;
+        }
+
+        if (getActivatedAccountsCount() < getMaxAccountCount()) {
+            return availableAccount;
+        }
+        if (ExtendedHelper.getInstance().hasExtended()) {
+            return availableAccount;
+        }
+        return -1;
     }
 
     public int getNewMessageId() {
@@ -161,10 +182,12 @@ public class UserConfig extends BaseController {
                     editor.putBoolean("unreadDialogsLoaded", unreadDialogsLoaded);
                     editor.putInt("ratingLoadTime", ratingLoadTime);
                     editor.putInt("botRatingLoadTime", botRatingLoadTime);
+                    editor.putInt("botGuestRatingLoadTime", botGuestRatingLoadTime);
                     editor.putInt("webappRatingLoadTime", webappRatingLoadTime);
                     editor.putBoolean("contactsReimported", contactsReimported);
                     editor.putInt("loginTime", loginTime);
                     editor.putBoolean("syncContacts", syncContacts);
+                    editor.putBoolean("showCallsTab", showCallsTab);
                     editor.putBoolean("suggestContacts", suggestContacts);
                     editor.putBoolean("hasSecureData", hasSecureData);
                     editor.putBoolean("notificationsSettingsLoaded4", notificationsSettingsLoaded);
@@ -173,8 +196,6 @@ public class UserConfig extends BaseController {
                     editor.putBoolean("hasValidDialogLoadIds", hasValidDialogLoadIds);
                     editor.putInt("sharingMyLocationUntil", sharingMyLocationUntil);
                     editor.putInt("lastMyLocationShareTime", lastMyLocationShareTime);
-                    editor.putBoolean("official", official);
-                    editor.putBoolean("deviceInfo", deviceInfo);
 
                     editor.putBoolean("filtersLoaded", filtersLoaded);
                     editor.putString("premiumGiftsStickerPack", premiumGiftsStickerPack);
@@ -277,7 +298,7 @@ public class UserConfig extends BaseController {
     private void checkPremiumSelf(TLRPC.User oldUser, TLRPC.User newUser) {
         if (oldUser != null && newUser != null && oldUser.premium != newUser.premium) {
             AndroidUtilities.runOnUIThread(() -> {
-                getMessagesController().updatePremium(newUser.premium || NekoConfig.localPremium.Bool());
+                getMessagesController().updatePremium(newUser.premium);
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.currentUserPremiumStatusChanged);
                 NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.premiumStatusChangedGlobal);
 
@@ -315,17 +336,17 @@ public class UserConfig extends BaseController {
             contactsReimported = preferences.getBoolean("contactsReimported", false);
             ratingLoadTime = preferences.getInt("ratingLoadTime", 0);
             botRatingLoadTime = preferences.getInt("botRatingLoadTime", 0);
+            botGuestRatingLoadTime = preferences.getInt("botGuestRatingLoadTime", 0);
             webappRatingLoadTime = preferences.getInt("webappRatingLoadTime", 0);
             loginTime = preferences.getInt("loginTime", currentAccount);
             syncContacts = preferences.getBoolean("syncContacts", true);
+            showCallsTab = preferences.getBoolean("showCallsTab", false);
             suggestContacts = preferences.getBoolean("suggestContacts", true);
             hasSecureData = preferences.getBoolean("hasSecureData", false);
             notificationsSettingsLoaded = preferences.getBoolean("notificationsSettingsLoaded4", false);
             notificationsSignUpSettingsLoaded = preferences.getBoolean("notificationsSignUpSettingsLoaded", false);
             autoDownloadConfigLoadTime = preferences.getLong("autoDownloadConfigLoadTime", 0);
             hasValidDialogLoadIds = preferences.contains("2dialogsLoadOffsetId") || preferences.getBoolean("hasValidDialogLoadIds", false);
-            official = preferences.getBoolean("official", false);
-            deviceInfo = preferences.getBoolean("deviceInfo", true);
 
             sharingMyLocationUntil = preferences.getInt("sharingMyLocationUntil", 0);
             lastMyLocationShareTime = preferences.getInt("lastMyLocationShareTime", 0);
@@ -365,7 +386,7 @@ public class UserConfig extends BaseController {
                 byte[] bytes = Base64.decode(string, Base64.DEFAULT);
                 if (bytes != null) {
                     SerializedData data = new SerializedData(bytes);
-                    tmpPassword = TLRPC.TL_account_tmpPassword.TLdeserialize(data, data.readInt32(false), false);
+                    tmpPassword = TL_account.tmpPassword.TLdeserialize(data, data.readInt32(false), false);
                     data.cleanup();
                 }
             }
@@ -487,10 +508,12 @@ public class UserConfig extends BaseController {
         migrateOffsetAccess = -1;
         ratingLoadTime = 0;
         botRatingLoadTime = 0;
+        botGuestRatingLoadTime = 0;
         webappRatingLoadTime = 0;
         draftsLoaded = false;
         contactsReimported = true;
         syncContacts = true;
+        showCallsTab = false;
         suggestContacts = true;
         unreadDialogsLoaded = true;
         hasValidDialogLoadIds = true;
@@ -570,6 +593,13 @@ public class UserConfig extends BaseController {
         editor.commit();
     }
 
+    public void setShowCallsTab(boolean show) {
+        if (showCallsTab != show) {
+            showCallsTab = show;
+            saveConfig(false);
+        }
+    }
+
     public boolean isPremium() {
         TLRPC.User user = currentUser;
         if (user == null) {
@@ -615,5 +645,14 @@ public class UserConfig extends BaseController {
     public void clearFilters() {
         getPreferences().edit().remove("filtersLoaded").apply();
         filtersLoaded = false;
+    }
+
+    public static int getProductionAccount() {
+        for (int i = -1; i < MAX_ACCOUNT_COUNT; ++i) {
+            final int account = i < 0 ? selectedAccount : i;
+            if (getInstance(account).isClientActivated() && !ConnectionsManager.getInstance(account).isTestBackend())
+                return account;
+        }
+        return selectedAccount;
     }
 }

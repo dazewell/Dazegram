@@ -20,7 +20,6 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -38,32 +37,26 @@ import android.view.ViewGroup;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.content.FileProvider;
-import androidx.multidex.MultiDex;
-
-import androidx.multidex.MultiDex;
 
 import org.json.JSONObject;
 import org.telegram.messenger.voip.VideoCapturerDevice;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.BaseFragment;
-import org.telegram.ui.Adapters.DrawerLayoutAdapter;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.ForegroundDetector;
-import org.telegram.ui.Components.Premium.boosts.BoostRepository;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.UpdateAppAlertDialog;
 import org.telegram.ui.Components.UpdateLayout;
 import org.telegram.ui.IUpdateLayout;
 import org.telegram.ui.LauncherIconController;
 
 import java.io.File;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.Locale;
+
 import java.util.LinkedList;
 
 import tw.nekomimi.nekogram.NekoConfig;
-import tw.nekomimi.nekogram.NekoXConfig;
 import tw.nekomimi.nekogram.helpers.AnalyticsHelper;
 import tw.nekomimi.nekogram.parts.SignturesKt;
 import tw.nekomimi.nekogram.utils.FileUtil;
@@ -106,7 +99,6 @@ public class ApplicationLoader extends Application {
     @Override
     protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
-        MultiDex.install(this);
         try {
             applicationContext = getApplicationContext();
         } catch (Throwable ignore) {
@@ -127,7 +119,7 @@ public class ApplicationLoader extends Application {
     public static IMapsProvider getMapsProvider() {
         if (mapsProvider == null) {
             if (NekoConfig.useOSMDroidMap.Bool())
-                mapsProvider = new OSMDroidMapsProvider();
+                mapsProvider = new LibreMapsProvider();
             else {
                 mapsProvider = new GoogleMapsProvider();
             }
@@ -146,8 +138,36 @@ public class ApplicationLoader extends Application {
         return BuildConfig.APPLICATION_ID;
     }
 
+    public static boolean isHuaweiStoreBuild() {
+        return applicationLoaderInstance.isHuaweiBuild();
+    }
+
     public static boolean isStandaloneBuild() {
         return true;
+    }
+
+    public static boolean isBetaBuild() {
+        return applicationLoaderInstance.isBeta();
+    }
+
+    public static boolean isAndroidTestEnvironment() {
+        return applicationLoaderInstance.isAndroidTestEnv();
+    }
+
+    protected boolean isHuaweiBuild() {
+        return false;
+    }
+
+    protected boolean isStandalone() {
+        return false;
+    }
+
+    protected boolean isBeta() {
+        return false;
+    }
+
+    protected boolean isAndroidTestEnv() {
+        return false;
     }
 
     @SuppressLint("SdCardPath")
@@ -177,6 +197,19 @@ public class ApplicationLoader extends Application {
         File filesDir = new File(getDataDirFixed(), "cache");
         FileUtil.initDir(filesDir);
         return filesDir;
+    }
+
+    public static File getFilesDirFixed(String child) {
+        try {
+            File path = getFilesDirFixed();
+            File dir = new File(path, child);
+            dir.mkdirs();
+
+            return dir;
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+        return null;
     }
 
     public static void postInitApplication() {
@@ -311,6 +344,7 @@ public class ApplicationLoader extends Application {
             } catch (Exception e) {
                 FileLog.e(e);
             }
+            FileLog.d("device = manufacturer=" + Build.MANUFACTURER + ", device=" + Build.DEVICE + ", model=" + Build.MODEL + ", product=" + Build.PRODUCT);
         }
         if (applicationContext == null) {
             applicationContext = getApplicationContext();
@@ -319,6 +353,7 @@ public class ApplicationLoader extends Application {
         Utilities.stageQueue.postRunnable(() -> SignturesKt.checkMT(this));
 
         NativeLoader.initNativeLibs(ApplicationLoader.applicationContext);
+
         try {
             ConnectionsManager.native_setJava(false);
         } catch (UnsatisfiedLinkError error) {
@@ -343,9 +378,6 @@ public class ApplicationLoader extends Application {
 
         applicationHandler = new Handler(applicationContext.getMainLooper());
 
-        org.osmdroid.config.Configuration.getInstance().setUserAgentValue("Telegram-FOSS ( NekoX ) " + BuildConfig.VERSION_NAME);
-        org.osmdroid.config.Configuration.getInstance().setOsmdroidBasePath(new File(ApplicationLoader.applicationContext.getCacheDir(), "osmdroid"));
-
         LauncherIconController.tryFixLauncherIconIfNeeded();
         ProxyRotationController.init();
     }
@@ -353,6 +385,16 @@ public class ApplicationLoader extends Application {
     // Local Push Service, TFoss implementation
     public static void startPushService() {
         Utilities.stageQueue.postRunnable(ApplicationLoader::startPushServiceInternal);
+    }
+
+    private static Intent createNotificationsServiceIntent() {
+        Intent intent = new Intent(applicationContext, NotificationsService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && NaConfig.INSTANCE.getPushServiceTypeInAppDialog().Bool()) {
+            intent.setAction(NotificationsService.ACTION_START_FOREGROUND);
+        } else {
+            intent.setAction(NotificationsService.ACTION_START_BACKGROUND);
+        }
+        return intent;
     }
 
     private static void startPushServiceInternal() {
@@ -376,28 +418,27 @@ public class ApplicationLoader extends Application {
                 try {
                     Log.d("TFOSS", "Starting push service...");
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && NaConfig.INSTANCE.getPushServiceTypeInAppDialog().Bool()) {
-                        applicationContext.startForegroundService(new Intent(applicationContext, NotificationsService.class));
+                        applicationContext.startForegroundService(createNotificationsServiceIntent());
                     } else {
-                        applicationContext.startService(new Intent(applicationContext, NotificationsService.class));
+                        applicationContext.startService(createNotificationsServiceIntent());
                     }
 
                     Log.d("TFOSS", "Trying to start push service every 10 minutes");
                     // Telegram-FOSS: unconditionally enable push service
                     AlarmManager am = (AlarmManager) applicationContext.getSystemService(Context.ALARM_SERVICE);
-                    Intent i = new Intent(applicationContext, NotificationsService.class);
-                    pendingIntent = PendingIntent.getBroadcast(applicationContext, 0, i, PendingIntent.FLAG_IMMUTABLE);
+                    pendingIntent = PendingIntent.getService(applicationContext, 0, createNotificationsServiceIntent(), PendingIntent.FLAG_IMMUTABLE);
 
                     am.cancel(pendingIntent);
                     am.setInexactRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis(), 10 * 60 * 1000, pendingIntent);
                 } catch (Throwable e) {
-                    Log.d("TFOSS", "Failed to start push service");
+                    Log.e("TFOSS", "Failed to start push service");
                 }
             });
 
         } else AndroidUtilities.runOnUIThread(() -> {
-            applicationContext.stopService(new Intent(applicationContext, NotificationsService.class));
+            applicationContext.stopService(createNotificationsServiceIntent());
 
-            PendingIntent pintent = PendingIntent.getService(applicationContext, 0, new Intent(applicationContext, NotificationsService.class), PendingIntent.FLAG_MUTABLE);
+            PendingIntent pintent = PendingIntent.getService(applicationContext, 0, createNotificationsServiceIntent(), PendingIntent.FLAG_MUTABLE);
             AlarmManager alarm = (AlarmManager)applicationContext.getSystemService(Context.ALARM_SERVICE);
             alarm.cancel(pintent);
             if (pendingIntent != null) {
@@ -714,8 +755,12 @@ public class ApplicationLoader extends Application {
         return true;
     }
 
-    public IUpdateLayout takeUpdateLayout(Activity activity, ViewGroup sideMenu, ViewGroup sideMenuContainer) {
-        return new UpdateLayout(activity, sideMenu, sideMenuContainer);
+    public boolean showCustomUpdateAppPopup(Context context, BetaUpdate update, int account) {
+        return false;
+    }
+
+    public IUpdateLayout takeUpdateLayout(Activity activity, ViewGroup sideMenuContainer) {
+        return new UpdateLayout(activity, sideMenuContainer);
     }
 
     public TLRPC.Update parseTLUpdate(int constructor) {
@@ -734,8 +779,8 @@ public class ApplicationLoader extends Application {
         return false;
     }
 
-    public boolean extendDrawer(ArrayList<DrawerLayoutAdapter.Item> items) {
-        return false;
+    public void addItemOptions(ItemOptions itemOptions) {
+
     }
 
     public boolean checkRequestPermissionResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -755,6 +800,25 @@ public class ApplicationLoader extends Application {
     }
 
     public BaseFragment openSettings(int n) {
+        return null;
+    }
+
+    public boolean isCustomUpdate() {
+        return false;
+    }
+    public void downloadUpdate() {}
+    public void cancelDownloadingUpdate() {}
+    public boolean isDownloadingUpdate() {
+        return false;
+    }
+    public float getDownloadingUpdateProgress() {
+        return 0.0f;
+    }
+    public void checkUpdate(boolean force, Runnable whenDone) {}
+    public BetaUpdate getUpdate() {
+        return null;
+    }
+    public File getDownloadedUpdateFile() {
         return null;
     }
 }

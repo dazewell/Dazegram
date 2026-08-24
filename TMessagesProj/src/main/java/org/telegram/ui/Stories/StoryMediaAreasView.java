@@ -36,6 +36,7 @@ import androidx.annotation.NonNull;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
+import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.browser.Browser;
@@ -261,6 +262,12 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
                 selectedArea = null;
                 invalidate();
                 return;
+            } else if (selectedArea.mediaArea instanceof TL_stories.TL_mediaAreaStarGift) {
+                final String slug = ((TL_stories.TL_mediaAreaStarGift) selectedArea.mediaArea).slug;
+                Browser.openUrl(getContext(), "https://" + MessagesController.getInstance(UserConfig.selectedAccount).linkPrefix + "/nft/" + slug);
+                selectedArea = null;
+                invalidate();
+                return;
             }
 
             LocationActivity fragment = new LocationActivity(3) {
@@ -323,6 +330,8 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
         SpannableStringBuilder text = new SpannableStringBuilder();
         if (selectedArea.mediaArea instanceof TL_stories.TL_mediaAreaChannelPost) {
             text.append(LocaleController.getString(R.string.StoryViewMessage));
+        } else if (selectedArea.mediaArea instanceof TL_stories.TL_mediaAreaStarGift) {
+            text.append(LocaleController.getString(R.string.StoryViewGift));
         } else if (selectedArea.mediaArea instanceof TL_stories.TL_mediaAreaUrl) {
             thisHint.setMultilineText(multiline = true);
             text.append(LocaleController.getString(R.string.StoryOpenLink));
@@ -518,7 +527,7 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
                 canvas.scale(s, s, rectF.centerX(), rectF.centerY());
                 canvas.rotate(lastSelectedArea.getRotation(), rectF.centerX(), rectF.centerY());
                 final float r = (lastSelectedArea.mediaArea.coordinates.flags & 1) != 0 ?
-                    (float) (lastSelectedArea.mediaArea.coordinates.radius / 100.0 * getWidth()) :
+                    (float) (lastSelectedArea.mediaArea.coordinates.radius / 100.0 * lastSelectedArea.getMeasuredWidth()) :
                     .2f * lastSelectedArea.getMeasuredHeight();
                 clipPath.addRoundRect(rectF, r, r, Path.Direction.CW);
                 canvas.clipPath(clipPath);
@@ -724,7 +733,7 @@ public class StoryMediaAreasView extends FrameLayout implements View.OnClickList
         public float getInnerRadius() {
             if (getParent() instanceof View && mediaArea != null && mediaArea.coordinates != null) {
                 return (mediaArea.coordinates.flags & 1) != 0 ?
-                        (float) (mediaArea.coordinates.radius / 100.0 * ((View) getParent()).getWidth() / getScaleX()) :
+                        (float) (mediaArea.coordinates.radius / 100.0 * getWidth() / getScaleX()) :
                         .2f * getMeasuredHeight();
             } else {
                 return .2f * getMeasuredHeight();

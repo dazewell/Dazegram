@@ -61,6 +61,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -120,6 +121,7 @@
 
     <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
     <uses-permission android:name="com.google.android.providers.gsf.permission.READ_GSERVICES" />
+    <uses-permission android:name="android.permission.CREDENTIAL_MANAGER_SET_ORIGIN" />
 
     <queries>
         <package android:name="com.google.android.apps.maps"/>
@@ -134,7 +136,7 @@
         android:allowBackup="true"
         android:restoreAnyVersion="true"
         android:backupAgent=".BackupAgent"
-        android:hardwareAccelerated="@bool/useHardwareAcceleration"
+        android:hardwareAccelerated="true"
         android:icon="@mipmap/ic_launcher_nagram"
         android:label="@string/NekoX"
         android:largeHeap="true"
@@ -148,6 +150,7 @@
         android:allowAudioPlaybackCapture="true"
         tools:replace="android:supportsRtl"
         android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true"
     >
         <!-- usesCleartextTraffic for browser supporting opening http:// links -->
 
@@ -344,8 +347,9 @@
         <activity
             android:name="org.telegram.ui.LaunchActivity"
             android:theme="@style/Theme.TMessages.Start"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode|smallestScreenSize|screenLayout"
+            android:supportsPictureInPicture="true"
+            android:hardwareAccelerated="true"
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
@@ -397,6 +401,9 @@
                 <data android:host="telegram.dog" android:scheme="https" />
                 <data android:host="t.me" android:scheme="http" />
                 <data android:host="t.me" android:scheme="https" />
+
+                <data android:host="www.keepassdx.com" android:scheme="http" />
+                <data android:host="www.keepassdx.com" android:scheme="https" />
             </intent-filter>
             <intent-filter android:icon="@mipmap/ic_launcher_nagram" android:roundIcon="@mipmap/ic_launcher_nagram_round" android:priority="1">
                 <action android:name="android.intent.action.VIEW"/>
@@ -436,7 +443,7 @@
         <activity
             android:name="org.telegram.ui.BubbleActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:allowEmbedded="true"
             android:documentLaunchMode="always"
@@ -444,7 +451,7 @@
         <activity
             android:name="org.telegram.ui.ShareActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustPan"
             android:excludeFromRecents="true"
             android:stateNotNeeded="true"
@@ -460,7 +467,7 @@
         <activity
             android:name="org.telegram.ui.ExternalActionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustPan"
             android:exported="true">
             <intent-filter android:icon="@mipmap/ic_launcher_nagram" android:roundIcon="@mipmap/ic_launcher_nagram_round">
@@ -471,7 +478,7 @@
         <activity
             android:name="org.telegram.ui.ChatsWidgetConfigActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustPan"
             android:exported="true">
             <intent-filter android:icon="@mipmap/ic_launcher_nagram" android:roundIcon="@mipmap/ic_launcher_nagram_round">
@@ -481,7 +488,7 @@
         <activity
             android:name="org.telegram.ui.ContactsWidgetConfigActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustPan"
             android:exported="true">
             <intent-filter android:icon="@mipmap/ic_launcher_nagram" android:roundIcon="@mipmap/ic_launcher_nagram_round">
@@ -491,7 +498,7 @@
         <activity
             android:name="org.telegram.ui.FeedWidgetConfigActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
-            android:hardwareAccelerated="@bool/useHardwareAcceleration"
+            android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustPan"
             android:exported="true">
             <intent-filter
@@ -530,6 +537,11 @@
             android:taskAffinity="${applicationId}.voip_feedback"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.TMessages.TransparentWithAlerts"/>
+        <activity
+            android:name="tw.nekomimi.nekogram.helpers.AppRestartHelper"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:process=":nagram"
+            android:exported="false" />
 
         <receiver
             android:name=".AutoMessageHeardReceiver"
@@ -555,28 +567,13 @@
             </intent-filter>
         </receiver>
 
-        <receiver
-            android:name=".AutoMessageReplyReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="org.telegram.messenger.ACTION_MESSAGE_REPLY"/>
-            </intent-filter>
-        </receiver>
-
-        <!--<receiver-->
-        <!--    android:name=".SmsReceiver"-->
-        <!--    android:exported="true">-->
-        <!--    <intent-filter>-->
-        <!--        <action android:name="com.google.android.gms.auth.api.phone.SMS_RETRIEVED"/>-->
-        <!--    </intent-filter>-->
-        <!--</receiver>-->
-
-        <receiver android:name=".CallReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE"/>
-            </intent-filter>
-        </receiver>
+<!--        <receiver-->
+<!--            android:name=".SmsReceiver"-->
+<!--            android:exported="true">-->
+<!--            <intent-filter>-->
+<!--                <action android:name="android.intent.action.PHONE_STATE"/>-->
+<!--            </intent-filter>-->
+<!--        </receiver>-->
 
         <service
             android:name=".AuthenticatorService"
@@ -620,7 +617,7 @@
             android:name=".NotificationsService"
             android:enabled="true"
             android:exported="true"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="remoteMessaging"
         />
         <service
             android:name=".NotificationRepeat"
@@ -672,15 +669,6 @@
                 <action android:name="android.media.browse.MediaBrowserService"/>
             </intent-filter>
         </service>
-<!--        <service-->
-<!--            android:name="tw.nekomimi.nekogram.NekoXPushService"-->
-<!--            android:enabled="true"-->
-<!--            android:label="@string/NekoXPushService"-->
-<!--            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">-->
-<!--            <intent-filter>-->
-<!--                <action android:name="android.service.notification.NotificationListenerService" />-->
-<!--            </intent-filter>-->
-<!--        </service>-->
         <service
             android:name=".voip.TelegramConnectionService"
             android:permission="android.permission.BIND_TELECOM_CONNECTION_SERVICE"
@@ -724,6 +712,15 @@
 
         <receiver android:name=".WearReplyReceiver" android:enabled="true" android:exported="false"/>
 
+        <service
+            android:name=".WearAuthListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED" />
+                <data android:scheme="wear" android:host="*" android:pathPrefix="/tg-wear-auth/" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".StopLiveLocationReceiver" android:enabled="true" android:exported="false"/>
 
         <receiver android:name=".PopupReplyReceiver" android:enabled="true" android:exported="false"/>
@@ -737,6 +734,8 @@
         <receiver android:name=".NotificationDismissReceiver" android:exported="false"/>
 
         <receiver android:name=".voip.VoIPActionsReceiver" android:exported="false"/>
+
+        <receiver android:name=".ShortcutResultReceiver" android:exported="false"/>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -802,14 +801,12 @@
 <!--            android:permission="android.permission.BIND_REMOTEVIEWS"-->
 <!--            android:exported="false" />-->
 
-        <receiver android:exported="true" android:enabled="true" android:name=".UnifiedPushReceiver">
+        <service android:name=".UnifiedPushService"
+            android:exported="false">
             <intent-filter>
-                <action android:name="org.unifiedpush.android.connector.MESSAGE"/>
-                <action android:name="org.unifiedpush.android.connector.UNREGISTERED"/>
-                <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT"/>
-                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED"/>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT"/>
             </intent-filter>
-        </receiver>
+        </service>
         <service android:name=".GcmPushListenerService"
             android:exported="true">
             <intent-filter>
@@ -846,13 +843,34 @@
         <meta-data android:name="com.google.android.gms.car.notification.SmallIcon" android:resource="@drawable/ic_player" />
         <meta-data android:name="com.google.android.gms.car.application" android:resource="@xml/automotive_app_desc" />
 
+        <service
+            android:name="org.telegram.messenger.car.TelegramCarAppService"
+            android:exported="true"
+            android:foregroundServiceType="connectedDevice">
+            <intent-filter>
+                <action android:name="androidx.car.app.CarAppService" />
+                <category android:name="androidx.car.app.category.MESSAGING" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="androidx.car.app.minCarApiLevel"
+            android:value="7" />
+
         <!--<meta-data android:name="com.google.android.gms.vision.DEPENDENCIES" android:value="face,barcode" />-->
 
         <meta-data android:name="android.max_aspect" android:value="2.5" />
+        <meta-data
+            android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+            android:value="org.telegram.messenger.chromecast.ChromecastOptionsProvider" />
 
         <property
             android:name="miui.continuity.policy"
             android:value="5" />
+
+        <profileable
+            android:shell="true"
+            tools:targetApi="q" />
 
     </application>
 

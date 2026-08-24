@@ -11,15 +11,12 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.opengl.GLES20;
-import android.opengl.GLUtils;
 import android.os.Build;
 import android.text.Layout;
 import android.text.Spannable;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.TextUtils;
-import android.util.Log;
 import android.util.Pair;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -29,32 +26,22 @@ import android.view.inputmethod.EditorInfo;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 
-import com.google.common.collect.BiMap;
-
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.Bitmaps;
 import org.telegram.messenger.Emoji;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.UserConfig;
-import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
-import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AnimatedEmojiSpan;
 import org.telegram.ui.Components.AnimatedFileDrawable;
-import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.Paint.Views.EditTextOutline;
 import org.telegram.ui.Components.Paint.Views.PaintTextOptionsView;
-import org.telegram.ui.Components.RLottieDrawable;
+import org.telegram.ui.Components.RLottieNative;
 
 import java.io.File;
-import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.ArrayList;
-
-import javax.microedition.khronos.opengles.GL10;
 
 public class WebmEncoder {
 
@@ -197,17 +184,17 @@ public class WebmEncoder {
         }
 
         private void drawEntity(Canvas canvas, VideoEditedInfo.MediaEntity entity, int textColor, long time) {
-            if (entity.ptr != 0) {
+            if (entity.lottieNative != null) {
                 if (entity.bitmap == null || entity.W <= 0 || entity.H <= 0) {
                     return;
                 }
-                RLottieDrawable.getFrame(entity.ptr, (int) entity.currentFrame, entity.bitmap, entity.W, entity.H, entity.bitmap.getRowBytes(), true);
+                entity.lottieNative.getFrame((int) entity.currentFrame, entity.bitmap, true);
                 applyRoundRadius(entity, entity.bitmap, (entity.subType & 8) != 0 ? textColor : 0);
 
                 canvas.drawBitmap(entity.bitmap, entity.matrix, bitmapPaint);
 
                 entity.currentFrame += entity.framesPerDraw;
-                if (entity.currentFrame >= entity.metadata[0]) {
+                if (entity.currentFrame >= entity.lottieNative.getFrameCount()) {
                     entity.currentFrame = 0;
                 }
             } else if (entity.animatedFileDrawable != null) {
@@ -290,7 +277,7 @@ public class WebmEncoder {
                 };
                 ((Spannable) text).setSpan(span, e.offset, e.offset + e.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             }
-            text = Emoji.replaceEmoji(text, editText.getPaint().getFontMetricsInt(), (int) (editText.getTextSize() * .8f), false);
+            text = Emoji.replaceEmoji(text, editText.getPaint().getFontMetricsInt(), false);
             if (text instanceof Spanned) {
                 Emoji.EmojiSpan[] spans = ((Spanned) text).getSpans(0, text.length(), Emoji.EmojiSpan.class);
                 if (spans != null) {
@@ -386,9 +373,8 @@ public class WebmEncoder {
                     return;
                 }
                 entity.bitmap = Bitmap.createBitmap(entity.W, entity.H, Bitmap.Config.ARGB_8888);
-                entity.metadata = new int[3];
-                entity.ptr = RLottieDrawable.create(entity.text, null, entity.W, entity.H, entity.metadata, false, null, false, 0);
-                entity.framesPerDraw = (float) entity.metadata[1] / fps;
+                entity.lottieNative = RLottieNative.createFromFile(entity.text, null, entity.W, entity.H, false, null, false, 0);
+                entity.framesPerDraw = entity.lottieNative != null ? (float) entity.lottieNative.getFps() / fps : 0;
             } else if ((entity.subType & 4) != 0) {
                 entity.looped = false;
                 entity.animatedFileDrawable = new AnimatedFileDrawable(new File(entity.text), true, 0, 0, null, null, null, 0, UserConfig.selectedAccount, true, 512, 512, null);

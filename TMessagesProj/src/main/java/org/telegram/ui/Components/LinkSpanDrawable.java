@@ -38,6 +38,8 @@ import org.telegram.ui.ActionBar.SimpleTextView;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.ArticleViewer;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 
 public class LinkSpanDrawable<S extends CharacterStyle> {
@@ -247,6 +249,10 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
 
         public LinkCollector() {}
         public LinkCollector(View parentView) {
+            mParent = parentView;
+        }
+
+        public void setParent(View parentView) {
             mParent = parentView;
         }
 
@@ -546,6 +552,12 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             }
         }
 
+        private int maxWidth;
+        @Override
+        public void setMaxWidth(int maxPixels) {
+            maxWidth = maxPixels;
+        }
+
         protected int processColor(int color) {
             return color;
         }
@@ -588,13 +600,21 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             onLongPressListener = listener;
         }
 
+        public int getTextPaddingTop() {
+            int y = getPaddingTop();
+            if (getGravity() == Gravity.CENTER && getLayout() != null) {
+                y += Math.max(0, ((getHeight() - getPaddingTop() - getPaddingBottom()) - getLayout().getHeight()) / 2);
+            }
+            return y;
+        }
+
         public ClickableSpan hit(int x, int y) {
             Layout textLayout = getLayout();
             if (textLayout == null) {
                 return null;
             }
             x -= getPaddingLeft();
-            y -= getPaddingTop();
+            y -= getTextPaddingTop();
             final int line = textLayout.getLineForVertical(y);
             final int off = textLayout.getOffsetForHorizontal(line, x);
             final float left = textLayout.getLineLeft(line);
@@ -610,6 +630,47 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
 
         public int overrideColor() {
             return Theme.getColor(Theme.key_chat_linkSelectBackground, resourcesProvider);
+        }
+
+        private boolean triedGetInvalidate;
+        private static Field mEditor;
+        private static Class editorClass;
+        private static Method mEditorInvalidateDisplayList;
+        private Object editor;
+
+        @Override
+        public void invalidate() {
+            if (!triedGetInvalidate) {
+                triedGetInvalidate = true;
+                try {
+                    if (editorClass == null) {
+                        mEditor = TextView.class.getDeclaredField("mEditor");
+                        mEditor.setAccessible(true);
+                        editorClass = Class.forName("android.widget.Editor");
+                        try {
+                            mEditorInvalidateDisplayList = editorClass.getDeclaredMethod("invalidateTextDisplayList");
+                            mEditorInvalidateDisplayList.setAccessible(true);
+                        } catch (Exception ignore) {}
+                    }
+                } catch (Throwable e) {
+                    FileLog.e(e);
+                }
+            }
+            super.invalidate();
+            if (!isHardwareAccelerated()) {
+                return;
+            }
+            try {
+                // on hardware accelerated edittext to invalidate imagespan display list must be invalidated
+                if (mEditorInvalidateDisplayList != null) {
+                    if (editor == null) {
+                        editor = mEditor.get(this);
+                    }
+                    if (editor != null) {
+                        mEditorInvalidateDisplayList.invoke(editor);
+                    }
+                }
+            } catch (Exception ignore) {};
         }
 
         @Override
@@ -667,7 +728,7 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             if (!isCustomLinkCollector) {
                 canvas.save();
                 if (!disablePaddingsOffset) {
-                    canvas.translate(disablePaddingsOffsetX ? 0 : getPaddingLeft(), disablePaddingsOffsetY ? 0 : getPaddingTop());
+                    canvas.translate(disablePaddingsOffsetX ? 0 : getPaddingLeft(), disablePaddingsOffsetY ? 0 : getTextPaddingTop());
                 }
                 if (links != null && links.draw(canvas)) {
                     invalidate();
@@ -685,8 +746,8 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
                     canvas.translate(getPaddingLeft(), offset);
                 }
                 stack = AnimatedEmojiSpan.update(emojiCacheType(), this, stack, getLayout());
-                if (emojiColorFilter == null) {
-                    emojiColorFilter = new PorterDuffColorFilter(getPaint().linkColor, PorterDuff.Mode.SRC_IN);
+                if (emojiColorIsLink && (emojiColorFilter == null || emojiColorFilterColor != getPaint().linkColor)) {
+                    emojiColorFilter = new PorterDuffColorFilter(emojiColorFilterColor = getPaint().linkColor, PorterDuff.Mode.SRC_IN);
                 }
                 AnimatedEmojiSpan.drawAnimatedEmojis(canvas, layout, stack, 0, null, 0, 0, 0, 1f, emojiColorFilter);
             } catch (Exception e) {
@@ -702,7 +763,21 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             return AnimatedEmojiDrawable.CACHE_TYPE_MESSAGES;
         }
 
+        private boolean emojiColorIsLink = true;
         private ColorFilter emojiColorFilter;
+        private int emojiColorFilterColor;
+
+        public void resetEmojiColor() {
+            emojiColorIsLink = false;
+            emojiColorFilter = null;
+            invalidate();
+        }
+
+        public void setEmojiColor(int color) {
+            emojiColorIsLink = false;
+            emojiColorFilter = new PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN);
+            invalidate();
+        }
 
         @Override
         public void setText(CharSequence text, TextView.BufferType type) {
@@ -712,6 +787,9 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
 
         @Override
         protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            if (maxWidth > 0) {
+                widthMeasureSpec = MeasureSpec.makeMeasureSpec(Math.min(maxWidth, MeasureSpec.getSize(widthMeasureSpec)), MeasureSpec.getMode(widthMeasureSpec));
+            }
             super.onMeasure(widthMeasureSpec, heightMeasureSpec);
             stack = AnimatedEmojiSpan.update(emojiCacheType(), this, stack, getLayout());
         }
@@ -728,18 +806,6 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             AnimatedEmojiSpan.release(this, stack);
         }
 
-        @Override
-        public void setTextColor(int color) {
-            super.setTextColor(color);
-            emojiColorFilter = new PorterDuffColorFilter(getPaint().linkColor, PorterDuff.Mode.SRC_IN);
-        }
-
-        @Override
-        public void setTextColor(ColorStateList colors) {
-            super.setTextColor(colors);
-            emojiColorFilter = new PorterDuffColorFilter(getPaint().linkColor, PorterDuff.Mode.SRC_IN);
-        }
-
         public boolean hasLinks() {
             Layout textLayout = getLayout();
             if (textLayout == null) return false;
@@ -748,6 +814,95 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             Spanned spanned = (Spanned) text;
             ClickableSpan[] spans = spanned.getSpans(0, spanned.length(), ClickableSpan.class);
             return spans != null && spans.length > 0;
+        }
+
+        public void clear() {
+            links.clear(false);
+        }
+    }
+
+    public static class LinksSimpleTextView extends SimpleTextView {
+        private Theme.ResourcesProvider resourcesProvider;
+        public LinksSimpleTextView(Context context) {
+            this(context, null);
+        }
+
+        public LinksSimpleTextView(Context context, Theme.ResourcesProvider resourcesProvider) {
+            super(context);
+            this.resourcesProvider = resourcesProvider;
+        }
+
+        private final LinkCollector links = new LinkCollector(this);
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            canvas.save();
+            canvas.translate(getLayoutX(), getLayoutY());
+            if (links.draw(canvas)) {
+                invalidate();
+            }
+            canvas.restore();
+        }
+
+        private LinkSpanDrawable pressedLink;
+
+        public ClickableSpan hit(int x, int y) {
+            Layout textLayout = getLayout();
+            if (textLayout == null) {
+                return null;
+            }
+            x -= getLayoutX();
+            y -= getLayoutY();
+            final int line = textLayout.getLineForVertical(y);
+            final int off = textLayout.getOffsetForHorizontal(line, x);
+            final float left = textLayout.getLineLeft(line);
+            if (left <= x && left + textLayout.getLineWidth(line) >= x && y >= 0 && y <= textLayout.getHeight()) {
+                Spannable buffer = new SpannableString(textLayout.getText());
+                ClickableSpan[] spans = buffer.getSpans(off, off, ClickableSpan.class);
+                if (spans.length != 0 && !AndroidUtilities.isAccessibilityScreenReaderEnabled()) {
+                    return spans[0];
+                }
+            }
+            return null;
+        }
+
+        @Override
+        public boolean onTouchEvent(MotionEvent event) {
+            if (links != null) {
+                Layout textLayout = getLayout();
+                ClickableSpan span;
+                if ((span = hit((int) event.getX(), (int) event.getY())) != null) {
+                    if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                        final LinkSpanDrawable link = new LinkSpanDrawable<ClickableSpan>(span, resourcesProvider, event.getX(), event.getY());
+                        pressedLink = link;
+                        links.addLink(pressedLink);
+                        Spannable buffer = new SpannableString(textLayout.getText());
+                        int start = buffer.getSpanStart(pressedLink.getSpan());
+                        int end = buffer.getSpanEnd(pressedLink.getSpan());
+                        LinkPath path = pressedLink.obtainNewPath();
+                        path.setCurrentLayout(textLayout, start, 0);
+                        textLayout.getSelectionPath(start, end, path);
+                        return true;
+                    }
+                }
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    links.clear();
+                    if (pressedLink != null && pressedLink.getSpan() == span) {
+                        if (pressedLink.getSpan() instanceof ClickableSpan) {
+                            ((ClickableSpan) pressedLink.getSpan()).onClick(this);
+                        }
+                        pressedLink = null;
+                        return true;
+                    }
+                    pressedLink = null;
+                }
+                if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                    links.clear();
+                    pressedLink = null;
+                }
+            }
+            return pressedLink != null || super.onTouchEvent(event);
         }
     }
 
@@ -766,8 +921,8 @@ public class LinkSpanDrawable<S extends CharacterStyle> {
             return ColorUtils.setAlphaComponent(getTextColor(), (int) (Color.alpha(getTextColor()) * .1175f));
         }
 
-        private LinkCollector links = new LinkCollector(this);
-        private Paint linkBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final LinkCollector links = new LinkCollector(this);
+        private final Paint linkBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
         @Override
         protected void onDraw(Canvas canvas) {

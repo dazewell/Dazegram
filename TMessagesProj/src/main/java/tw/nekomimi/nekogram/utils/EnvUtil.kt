@@ -6,7 +6,6 @@ import android.os.Environment
 import android.os.storage.StorageManager
 import org.telegram.messenger.AndroidUtilities
 import org.telegram.messenger.ApplicationLoader
-import org.telegram.messenger.FileLog
 import tw.nekomimi.nekogram.NekoConfig
 import java.io.File
 import java.util.*
@@ -20,7 +19,7 @@ object EnvUtil {
         try {
             val mStorageManager = ApplicationLoader.applicationContext.getSystemService(Context.STORAGE_SERVICE) as StorageManager
             (mStorageManager.javaClass.getMethod("getVolumePaths").invoke(mStorageManager) as Array<String>).map { File(it) }
-        } catch (e:  Throwable) {
+        } catch (_:  Throwable) {
             AndroidUtilities.getRootDirs()
         }
 
@@ -40,7 +39,7 @@ object EnvUtil {
 
             }
 
-            if (Build.VERSION.SDK_INT < 30) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                 add(Environment.getExternalStoragePublicDirectory("Nagram"))
             }
 
@@ -52,7 +51,7 @@ object EnvUtil {
 
         if (NekoConfig.cachePath.String() == "") {
             // https://github.com/NekoX-Dev/NekoX/issues/284
-            NekoConfig.cachePath.setConfigString(availableDirectories[2]);
+            NekoConfig.cachePath.setConfigString(availableDirectories[2])
         }
         var telegramPath = File(NekoConfig.cachePath.String())
         if (telegramPath.isDirectory || telegramPath.mkdirs()) {
@@ -63,7 +62,7 @@ object EnvUtil {
 
         // fallback
 
-        telegramPath = ApplicationLoader.applicationContext.getExternalFilesDir(null) ?: File(ApplicationLoader.getDataDirFixed(), "cache/files")
+        telegramPath = ApplicationLoader.applicationContext.getExternalFilesDir(null) ?: File(availableDirectories[1])
 
         if (telegramPath.isDirectory || telegramPath.mkdirs()) {
 
@@ -71,11 +70,11 @@ object EnvUtil {
 
         }
 
-        telegramPath = File(ApplicationLoader.getDataDirFixed(), "cache/files")
+        telegramPath = File(availableDirectories[1])
 
-        if (!telegramPath.isDirectory) telegramPath.mkdirs();
+        if (!telegramPath.isDirectory) telegramPath.mkdirs()
 
-        return telegramPath;
+        return telegramPath
 
     }
 
@@ -87,14 +86,4 @@ object EnvUtil {
         }
         return File(availableDirectories[3])
     }
-
-    @JvmStatic
-    fun doTest() {
-
-        FileLog.d("rootDirectories: ${rootDirectories.size}")
-
-        rootDirectories.forEach { FileLog.d(it.path) }
-
-    }
-
 }
