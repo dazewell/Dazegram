@@ -133,6 +133,57 @@ jobs:
           $badExit = $LASTEXITCODE
           if ($badExit -eq 0) { Write-Host '::error::guard PASSED a tampered candidate (keystore swapped)'; exit 1 }
 
-          Write-Host 'fixture OK: clean candidate passed, tampered candidate blocked, against the live manifests.'
-          # The tampered run intentionally left $LASTEXITCODE=1; end the step green.
+          # Double-modified candidate. The clean/tampered cases above snapshot the
+          # anchor tree, so OLD_NBASE..NEW_SNAPSHOT is empty and the fork-vs-upstream
+          # intersection (the whole C2 guard) is never exercised. Here the snapshot
+          # carries a GENUINE upstream change to a file the fork also modified, so
+          # the parent delta is non-empty and the guard must reject that path as
+          # DOUBLE-MODIFIED specifically — an exit code alone could be right for the
+          # wrong reason, so we assert on the reason string.
+          $protected = @(Get-Content .github/sync/protected-paths.tsv | Select-Object -Skip 1 | ForEach-Object { ($_ -split "`t")[0] })
+          $anchorFiles = @{}; git ls-tree -r --name-only $anchor | ForEach-Object { $anchorFiles[$_] = $true }
+          $forkMod = @(git diff --name-only $oldNbase $head | Where-Object { $anchorFiles.ContainsKey($_) -and $_ -notin $protected -and $_ -match '\.(java|kt)$' })
+          if ($forkMod.Count -lt 1) { Write-Host '::error::no fork-modified non-protected file to build the double-modified fixture'; exit 1 }
+          $F = $forkMod[0]
+          Write-Host "double-modified fixture file: $F"
+
+          # Upstream side: anchor's copy of F + a marker, snapshotted so the parent
+          # delta genuinely contains F. NEW_SRC descends from the anchor.
+          $srcModFile = Join-Path $env:RUNNER_TEMP 'gc-src'
+          Set-Content -LiteralPath $srcModFile -Value (((git cat-file blob "${anchor}:$F") -join "`n") + "`n// guard-check upstream marker") -NoNewline
+          $srcModBlob = (git hash-object -w -- $srcModFile).Trim()
+          $sidx = Join-Path $env:RUNNER_TEMP 'gc-s.idx'; Remove-Item -LiteralPath $sidx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $sidx
+          git read-tree $srcTree; git update-index --cacheinfo "100644,$srcModBlob,$F"
+          $srcModTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $newSrc2 = (git commit-tree $srcModTree -p $anchor -m "guard-check upstream bump #infra").Trim()
+          $snap2   = (git commit-tree $srcModTree -p $oldNbase -m "guard-check bumped snapshot #infra").Trim()
+
+          # Candidate: HEAD's copy of F + the same marker — the clean-merge outcome
+          # (fork changes preserved, upstream marker applied). Built directly so the
+          # fixture never depends on a merge that might conflict for an unrelated reason.
+          $candModFile = Join-Path $env:RUNNER_TEMP 'gc-cand'
+          Set-Content -LiteralPath $candModFile -Value (((git cat-file blob "${head}:$F") -join "`n") + "`n// guard-check upstream marker") -NoNewline
+          $candModBlob = (git hash-object -w -- $candModFile).Trim()
+          $cidx = Join-Path $env:RUNNER_TEMP 'gc-c.idx'; Remove-Item -LiteralPath $cidx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $cidx
+          git read-tree $head; git update-index --cacheinfo "100644,$candModBlob,$F"
+          $dblTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $dbl = (git commit-tree $dblTree -p $head -p $snap2 -m "guard-check double-modified candidate #infra").Trim()
+
+          Write-Host '--- running guard on DOUBLE-MODIFIED candidate (expect exit 1, reason DOUBLE-MODIFIED) ---'
+          # Capture ALL streams (*>&1): the guard reports via Write-Host, which 2>&1
+          # does not capture, so the reason-string assertion below needs the merged
+          # stream. -Width keeps the long path on one line so the match holds.
+          $dblOut = (& ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap2 -NewSrc $newSrc2 -NewDev $dbl *>&1 | Out-String -Width 8192)
+          $dblExit = $LASTEXITCODE
+          Write-Host $dblOut
+          if ($dblExit -eq 0) { Write-Host '::error::guard PASSED a double-modified candidate'; exit 1 }
+          if ($dblOut -notmatch 'DOUBLE-MODIFIED') { Write-Host '::error::guard blocked the double-modified candidate for the WRONG reason (no DOUBLE-MODIFIED)'; exit 1 }
+          if ($dblOut -notmatch [regex]::Escape($F)) { Write-Host "::error::DOUBLE-MODIFIED did not name the expected file $F"; exit 1 }
+
+          Write-Host 'fixture OK: clean candidate passed; tampered and double-modified candidates blocked (the latter as DOUBLE-MODIFIED on a non-empty upstream delta), against the live manifests.'
+          # The blocking runs intentionally left $LASTEXITCODE=1; end the step green.
           exit 0

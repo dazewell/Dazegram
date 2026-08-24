@@ -106,12 +106,44 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   whether a fork-sensitive hunk was resolved to the right side.
 - **Fork call-edge and declaration survival** — that a retained fork method still
   has its callers and its declaration after the merge.
-- Whether a **modified** shared file quietly lost fork behaviour while staying a
-  "clean" 3-way merge. The guard confirms sensitive *pinned* files are untouched;
-  it does not read the semantics of every ordinary modified file.
+- Whether an **upstream-only** modification — a file upstream changed but the fork
+  did not — is semantically safe to take. The guard blocks the fork ∩ upstream
+  *double-modified* intersection (the dangerous silent-revert case), but an
+  upstream-only change auto-applies and its per-hunk correctness is not read here.
 - On-device behaviour. Nothing here proves the build runs on a phone.
 
 Do not read the machine gate as "all 549 semantic gates ran." It did not. Auto
 push is justified only because an ordinary 3-way merge preserves `dev`'s delta
 when there is no conflict and no unclassified delta — and a real upstream bump
 almost always trips the new-path or conflict guard first, which is the point.
+
+## Signer identity — why there is no alias pin
+
+The signer is proven on the runner by exporting the certificate the configured
+alias resolves to and checking it against two pins: the DER SHA-256
+(`4056b5df…`) and the subject `CN=Dmitriy Babenko`. There is deliberately **no
+pinned alias label**, and adding one later would close no gap. The cases are
+exhaustive:
+
+- alias absent → blocked (the non-empty `ALIAS_NAME` check).
+- alias present, certificate ≠ the pinned SHA-256 → blocked.
+- alias present, subject ≠ `CN=Dmitriy Babenko` → blocked.
+- alias present, certificate == the pinned SHA-256 → the same cryptographic
+  signing identity; nothing is left for an alias comparison to catch.
+
+An alias is a *label pointing at* a key; the certificate hash constrains the
+signing **identity itself**, so the SHA-256 + subject check strictly subsumes a
+label comparison. **Do not add an alias pin later believing it closes a gap — it
+closes none, and it would place a secret-adjacent label in a committed file.**
+
+## Known future block cause: the `generated with` token
+
+The attribution scan (guard 14) matches a small set of tokens case-insensitively,
+including `generated with`, in the source lines a sync adds. That phrase appears
+in some generated-code headers (`Generated with protoc`, and similar). Today it is
+latent — `git grep -i 'generated with'` finds zero matches across the source on
+`dev` and `nbase` — but a future upstream file carrying it will **block the sync**
+and route it to human review. That is the safe direction (it blocks rather than
+passing a possible violation), and a narrow fast lane that often routes to review
+is the intended behaviour. If you hit it, resolve on the PC; do **not** weaken the
+scan to make the sync pass.

@@ -210,7 +210,11 @@ jobs:
           $kv = @{}
           foreach ($l in ($props -split "`n")) { if ($l -match '^\s*([^#=]+?)\s*=\s*(.*?)\s*$') { $kv[$Matches[1]] = $Matches[2] } }
           $alias = $kv['ALIAS_NAME']
-          if (-not $kv['KEYSTORE_PASS'] -or -not $alias) { Write-Host '::error::signing props missing'; exit 1 }
+          # Guard failures, not tooling errors: an empty alias or store password means
+          # we cannot prove the signing identity, so we refuse to push rather than
+          # letting keytool fail ambiguously later.
+          if (-not $alias) { Write-Host '::error::guard: ALIAS_NAME is empty — cannot select the signing key to prove its identity. Refusing to push.'; exit 1 }
+          if (-not $kv['KEYSTORE_PASS']) { Write-Host '::error::guard: KEYSTORE_PASS is empty — cannot open the keystore to prove the signer. Refusing to push.'; exit 1 }
           # Keystore and DER live under RUNNER_TEMP and are removed in finally, so
           # nothing signing-related is left in the workspace on any exit path.
           $ks  = Join-Path $env:RUNNER_TEMP 'candidate.keystore'
