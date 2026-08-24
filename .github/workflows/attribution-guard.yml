@@ -1,0 +1,50 @@
+name: Attribution guard
+
+# Fails a PR if any commit in its range (base..head) carries AI/assistant
+# attribution: a vendor name or bot identity as commit author/committer, a
+# Co-authored-by trailer naming a vendor/bot, an authorship-attribution
+# phrase in a commit message, or an AI-attribution phrase in an added
+# Java/Kotlin/XML source line. This is the automated backstop for the
+# no-AI-mentions rule the nagramx-workflow skill and CLAUDE.md already state
+# in prose. See Tools/scripts/attribution_guard.py for the full design,
+# including why it deliberately does NOT bare-keyword-scan commit messages
+# or source code (this fork ships a real LLM feature that legitimately
+# mentions these vendors as product functionality).
+#
+# This is a range guard, not a full-history scan: the fork's history already
+# legitimately contains all of upstream Telegram's (and prior lineage's)
+# commits, so scanning everything would be meaningless noise and would also
+# make every PR fail on pre-existing history it didn't introduce.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: No AI/assistant attribution in range
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: Run attribution guard
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -e
+          # A shallow default checkout can leave the base ref unreachable even
+          # with fetch-depth: 0 on some runners/mirrors; fetch it explicitly so
+          # a missing base fails on a real "cannot resolve", not a silent
+          # empty range. The guard itself fails closed either way.
+          git fetch --no-tags origin "$BASE_SHA" "$HEAD_SHA" || true
+          python Tools/scripts/attribution_guard.py --base "$BASE_SHA" --head "$HEAD_SHA"
