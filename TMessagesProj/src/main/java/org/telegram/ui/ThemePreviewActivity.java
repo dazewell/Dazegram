@@ -126,6 +126,7 @@ import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.AnimatedFloat;
 import org.telegram.ui.Components.BackgroundGradientDrawable;
 import org.telegram.ui.Components.BackupImageView;
+import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.CircularProgressDrawable;
 import org.telegram.ui.Components.ColorPicker;
 import org.telegram.ui.Components.ColoredImageSpan;
@@ -323,6 +324,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
     private BlurButton applyButton1;
     private BlurButton applyButton2;
+    // NagramX: guards the async Monet-pattern Apply so a fast double-tap can't queue two writes and act on a detached fragment.
+    private boolean applyingMonetPattern;
 
     private String loadingFile = null;
     private File loadingFileObject = null;
@@ -604,6 +607,13 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
         isBlurred = blur;
         isMotion = motion;
         dimAmount = dim;
+    }
+
+    // NagramX: the live Monet-colour tile (tile 0) opened for pattern selection only. dialogId==0 excludes per-chat previews, which must never read or write the global record.
+    private boolean isMonetPatternPreview() {
+        return dialogId == 0
+                && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper
+                && ((WallpapersListActivity.ColorWallpaper) currentWallpaper).monetPattern;
     }
 
     @SuppressLint("Recycle")
@@ -1073,7 +1083,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         menu2.addItem(OPTION_PHOTO_EDIT, R.drawable.msg_header_draw);
                     }
                 }
-                if (dialogId == 0 && (BuildVars.DEBUG_PRIVATE_VERSION && Theme.getActiveTheme().getAccent(false) != null || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !Theme.DEFAULT_BACKGROUND_SLUG.equals(((WallpapersListActivity.ColorWallpaper) currentWallpaper).slug) || currentWallpaper instanceof TLRPC.TL_wallPaper)) {
+                if (dialogId == 0 && (BuildVars.DEBUG_PRIVATE_VERSION && Theme.getActiveTheme().getAccent(false) != null || currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !Theme.DEFAULT_BACKGROUND_SLUG.equals(((WallpapersListActivity.ColorWallpaper) currentWallpaper).slug) && !isMonetPatternPreview() || currentWallpaper instanceof TLRPC.TL_wallPaper)) {
                     menu2.addItem(5, R.drawable.msg_header_share);
                 }
                 if (dialogId != 0 && shouldShowDayNightIcon) {
@@ -1729,8 +1739,16 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                         }
                     });
                     if (a == 2) {
-                        backgroundCheckBoxView[a].setAlpha(0.0f);
-                        backgroundCheckBoxView[a].setVisibility(View.INVISIBLE);
+                        if (isMonetPatternPreview()) {
+                            // NagramX: Motion stays in the centered Pattern + Motion pair for the Monet tile
+                            backgroundCheckBoxView[a].setChecked(isMotion, false);
+                        } else {
+                            backgroundCheckBoxView[a].setAlpha(0.0f);
+                            backgroundCheckBoxView[a].setVisibility(View.INVISIBLE);
+                        }
+                    } else if (a == 0 && isMonetPatternPreview()) {
+                        // NagramX: no Colors tab for the live Monet-colour tile
+                        backgroundCheckBoxView[a].setVisibility(View.GONE);
                     }
                 }
             }
@@ -2468,6 +2486,45 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             return;
         }
 
+        if (isMonetPatternPreview()) {
+            // NagramX: persist the shared pattern over the theme's live colour off the UI thread (themeQueue).
+            // Runs before any wallpaper file is written (mirrors the EmojiWallpaper early-return) so a blurred/baked file is never left behind.
+            // In-flight guard: a fast second tap while the write is running is ignored, so we never queue two writes or act on a fragment the first callback already closed.
+            if (applyingMonetPattern) {
+                return;
+            }
+            applyingMonetPattern = true;
+            // Capture the theme the user is acting on now, on the UI thread. The async write can outlast a
+            // day/night flip or a theme switch, so clearing Theme.getActiveTheme() in the callback could wipe the
+            // override of an unrelated (possibly standard) theme. We only ever clear this captured Monet theme.
+            final Theme.ThemeInfo initiatingTheme = Theme.getActiveTheme();
+            xyz.nextalone.nagram.helper.MonetPatternHelper.applyAsync(currentAccount, selectedPattern, currentIntensity, isMotion, success -> {
+                applyingMonetPattern = false;
+                if (!success) {
+                    if (getParentActivity() != null) {
+                        BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.UnknownError)).show();
+                    }
+                    return;
+                }
+                // The user explicitly pressed Apply, so the global effects run regardless of attachment;
+                // only the fragment-local navigation (delegate + close) is skipped once detached.
+                // Clear the override only on the captured theme, and only if it is still Monet, so a mid-write
+                // theme change can't strip a standard theme's wallpaper.
+                if (initiatingTheme != null && initiatingTheme.isMonet()) {
+                    initiatingTheme.setOverrideWallpaper(null);
+                }
+                Theme.reloadWallpaper(true);
+                if (getParentActivity() == null) {
+                    return;
+                }
+                if (delegate != null) {
+                    delegate.didSetNewBackground(null);
+                }
+                finishFragment();
+            });
+            return;
+        }
+
         boolean done;
         boolean sameFile = false;
         Theme.ThemeInfo theme = Theme.getActiveTheme();
@@ -2513,7 +2570,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
                     FileLog.e(e);
                 }
             }
-        } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
+        } else if (currentWallpaper instanceof WallpapersListActivity.ColorWallpaper && !isMonetPatternPreview()) {
             if (selectedPattern != null) {
                 try {
                     WallpapersListActivity.ColorWallpaper wallPaper = (WallpapersListActivity.ColorWallpaper) currentWallpaper;
@@ -3036,6 +3093,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
 
         backgroundImage = backgroundImages[0];
         backgroundImage.setBackground(backgroundImages[1].getBackground());
+        // NagramX: the pattern tint is receiver-local, so restore it on the buffer just swapped in.
+        backgroundImage.getImageReceiver().setColorFilter(new PorterDuffColorFilter(patternColor, blendMode));
         updateIntensity();
         backgroundImages[1].setVisibility(View.VISIBLE);
         backgroundImages[1].setAlpha(1f);
@@ -4000,6 +4059,11 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void updateMotionButton() {
+        if (isMonetPatternPreview()) {
+            // NagramX: Colors stays hidden; keep Motion in place and just track the checkbox state
+            backgroundCheckBoxView[2].setChecked(isMotion, true);
+            return;
+        }
         if (screenType == SCREEN_TYPE_ACCENT_COLOR || screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
             if (selectedPattern == null && currentWallpaper instanceof WallpapersListActivity.ColorWallpaper) {
                 backgroundCheckBoxView[2].setChecked(false, true);
@@ -4051,7 +4115,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
     }
 
     private void showPatternsView(int num, boolean show, boolean animated) {
-        boolean showMotion = show && num == 1 && selectedPattern != null;
+        // NagramX: the Monet tile has no Colors pill, so Motion owns that slot in every open/close state
+        boolean showMotion = isMonetPatternPreview() || show && num == 1 && selectedPattern != null;
         if (show) {
             if (num == 0) {
                 if (screenType == SCREEN_TYPE_CHANGE_BACKGROUND) {
@@ -4139,8 +4204,8 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             } else {
                 animators.add(ObjectAnimator.ofFloat(listView2, View.TRANSLATION_Y, 0));
                 animators.add(ObjectAnimator.ofFloat(patternLayout[num], View.TRANSLATION_Y, patternLayout[num].getMeasuredHeight()));
-                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[0], View.ALPHA, 1.0f));
-                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[2], View.ALPHA, 0.0f));
+                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[0], View.ALPHA, showMotion ? 0.0f : 1.0f));
+                animators.add(ObjectAnimator.ofFloat(backgroundCheckBoxView[2], View.ALPHA, showMotion ? 1.0f : 0.0f));
                 animators.add(ObjectAnimator.ofFloat(backgroundImage, View.ALPHA, 1.0f));
             }
             patternViewAnimation.playTogether(animators);
@@ -4425,12 +4490,7 @@ public class ThemePreviewActivity extends BaseFragment implements DownloadContro
             backgroundImage.setBackgroundColor(backgroundColor);
             patternColor = checkColor = AndroidUtilities.getPatternColor(backgroundColor);
         }
-        if (!Theme.hasThemeKey(Theme.key_chat_serviceBackground) || backgroundImage.getBackground() instanceof MotionBackgroundDrawable) {
-            themeDelegate.applyChatServiceMessageColor(new int[]{checkColor, checkColor, checkColor, checkColor}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
-        } else if (Theme.getCachedWallpaperNonBlocking() instanceof MotionBackgroundDrawable) {
-            int c = getThemedColor(Theme.key_chat_serviceBackground);
-            themeDelegate.applyChatServiceMessageColor(new int[]{c, c, c, c}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
-        }
+        themeDelegate.applyChatServiceMessageColor(new int[]{checkColor, checkColor, checkColor, checkColor}, backgroundImage.getBackground(), backgroundImage.getBackground(), currentIntensity);
         if (backgroundPlayAnimationImageView != null) {
             backgroundPlayAnimationImageView.setColorFilter(new PorterDuffColorFilter(getThemedColor(Theme.key_chat_serviceText), PorterDuff.Mode.MULTIPLY));
         }

@@ -302,6 +302,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
         public boolean isGradient;
         public TLRPC.WallPaper parentWallpaper;
         public Bitmap defaultCache;
+        public boolean monetPattern; // NagramX: preview-only marker for the live Monet-colour tile
 
         public String getHash() {
             String string = String.valueOf(color) +
@@ -948,6 +949,17 @@ public class WallpapersListActivity extends BaseFragment implements Notification
                     colorWallpaper.parentWallpaper = wallPaper;
                     object = colorWallpaper;
                 }
+            } else if (object instanceof FileWallpaper && Theme.THEME_BACKGROUND_SLUG.equals(((FileWallpaper) object).slug) && Theme.getActiveTheme().isMonet() && dialogId == 0) {
+                // NagramX: tile 0 is the live Monet colour — open the pattern-only preview seeded from the shared record. dialogId==0 keeps the per-chat tile 0 out of the global record.
+                ColorWallpaper colorWallpaper = new ColorWallpaper(Theme.THEME_BACKGROUND_SLUG, Theme.getMonetWallpaperColor(), 0, 0, 0, 45, 1.0f, false, null);
+                colorWallpaper.monetPattern = true;
+                xyz.nextalone.nagram.helper.MonetPatternHelper.Record record = xyz.nextalone.nagram.helper.MonetPatternHelper.getRecord();
+                if (record != null) {
+                    colorWallpaper.patternId = record.patternId;
+                    colorWallpaper.intensity = record.intensity;
+                    colorWallpaper.motion = record.motion;
+                }
+                object = colorWallpaper;
             }
             ThemePreviewActivity wallpaperActivity = new ThemePreviewActivity(object, null, true, false) {
                 @Override
@@ -958,7 +970,7 @@ public class WallpapersListActivity extends BaseFragment implements Notification
             if (currentType == TYPE_COLOR || dialogId != 0) {
                 wallpaperActivity.setDelegate(wallPaper -> WallpapersListActivity.this.removeSelfFromStack());
             }
-            if (selectedBackgroundSlug.equals(slug)) {
+            if (selectedBackgroundSlug.equals(slug) && !(object instanceof ColorWallpaper && ((ColorWallpaper) object).monetPattern)) {
                 wallpaperActivity.setInitialModes(selectedBackgroundBlurred, selectedBackgroundMotion, selectedIntensity);
             }
             wallpaperActivity.setPatterns(patterns);

@@ -9647,7 +9647,15 @@ public class Theme {
                     motionBackgroundDrawable.setPhase(previousPhase);
                     settings.wallpaper = motionBackgroundDrawable;
                 } else if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
-                    settings.wallpaper = new ColorDrawable(backgroundColor);
+                    // NagramX: composite the shared Monet pattern over the live flat colour
+                    Drawable monetPattern = xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
+                    if (monetPattern != null) {
+                        settings.wallpaper = monetPattern;
+                        settings.isPatternWallpaper = true;
+                        settings.isWallpaperMotion = xyz.nextalone.nagram.helper.MonetPatternHelper.isMotion();
+                    } else {
+                        settings.wallpaper = new ColorDrawable(backgroundColor);
+                    }
                 } else {
                     final int[] colors = {backgroundColor, gradientToColor1};
                     final BackgroundGradientDrawable.Orientation orientation = BackgroundGradientDrawable.getGradientOrientation(rotation);
@@ -9861,6 +9869,11 @@ public class Theme {
         return null;
     }
 
+    // NagramX: settled live Monet wallpaper base colour, not the interpolated getColor()
+    public static int getMonetWallpaperColor() {
+        return currentColors.get(key_chat_wallpaper);
+    }
+
     public static Drawable getThemedWallpaper(boolean thumb, View ownerView) {
         int backgroundColor = currentColors.get(key_chat_wallpaper);
         File file = null;
@@ -9874,8 +9887,12 @@ public class Theme {
             if (rotation == -1) {
                 rotation = 45;
             }
-            if (gradientToColor1 == 0) {
-                return new ColorDrawable(backgroundColor);
+            if (gradientToColor1 == 0 || gradientToColor1 == backgroundColor) {
+                // NagramX: composite the shared Monet pattern over the live flat colour (same flat test as createBackgroundDrawable)
+                Drawable monetPattern = thumb
+                        ? xyz.nextalone.nagram.helper.MonetPatternHelper.buildThumbComposite(currentTheme, backgroundColor)
+                        : xyz.nextalone.nagram.helper.MonetPatternHelper.buildComposite(currentTheme, backgroundColor);
+                return monetPattern != null ? monetPattern : new ColorDrawable(backgroundColor);
             } else {
                 ThemeAccent accent = currentTheme.getAccent(false);
                 if (accent != null && !TextUtils.isEmpty(accent.patternSlug) && previousTheme == null) {
