@@ -265,9 +265,9 @@ or, one block per item:
   started by: <this session/branch — so a later reader knows who owns it>
   identity:   <tool-native handle or async-shell session id>
               OR <PID>, <image name>, <start time>, <path/cwd>
-  owned resource: <recorded daemon-specific resource (adb port, emulator
-              serial) if this item is a daemon> | n/a — used the shared/ambient
-              resource and did not stop it (rule 8)
+  owned resource: <daemon-specific resource: adb port, emulator serial, or
+              for a gradle-daemon row, the isolated GRADLE_USER_HOME path> | n/a
+              — used the shared/ambient resource and did not stop it (rule 8)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
