@@ -281,6 +281,33 @@ def iter_commit_records(base_sha: str, head_sha: str):
         }
 
 
+def iter_added_lines(diff_text: str):
+    """Yield (file, content) for each added (`+`) line in a unified diff,
+    tracking the current file via `+++ <path>` headers. Split out from
+    check_source_diff() so the header-vs-content edge case (a content line
+    that itself starts with `++`) has a standalone, git-free regression test.
+    """
+    current_file: str | None = None
+    for line in diff_text.splitlines():
+        if line.startswith("+++ "):
+            # Real unified-diff file headers are always "+++ <path>" with a
+            # space. Without the space check, an added *content* line whose
+            # text happens to start with "++" (rare, but legal source) would
+            # render as "+++<content>" and get misread as a header, silently
+            # dropping current_file and skipping that line (and anything
+            # after it, until the next real header resets it).
+            path = line[4:].strip()
+            if path.startswith("b/"):
+                path = path[2:]
+            current_file = None if path in ("", "/dev/null") else path
+            continue
+        if not line.startswith("+"):
+            continue
+        if current_file is None:
+            continue
+        yield current_file, line[1:]
+
+
 def check_source_diff(sha: str, subject: str, parents: str) -> list[Violation]:
     # A merge commit's diff is ambiguous against ALL parents (git show's
     # default "combined diff" for merges is unreliable to line-scan), but its
@@ -299,19 +326,7 @@ def check_source_diff(sha: str, subject: str, parents: str) -> list[Violation]:
         raise RuntimeError(f"git diff failed for {sha}: {result.stderr.strip()}")
 
     violations: list[Violation] = []
-    current_file: str | None = None
-    for line in result.stdout.splitlines():
-        if line.startswith("+++"):
-            path = line[4:].strip() if line.startswith("+++ ") else line[3:].strip()
-            if path.startswith("b/"):
-                path = path[2:]
-            current_file = None if path in ("", "/dev/null") else path
-            continue
-        if not line.startswith("+"):
-            continue
-        if current_file is None:
-            continue
-        content = line[1:]
+    for current_file, content in iter_added_lines(result.stdout):
         for label, snippet in find_source_attribution(content):
             violations.append(
                 Violation(
@@ -437,6 +452,27 @@ def run_self_test() -> int:
     check(
         "source: legitimate OpenAI-compatible client code is NOT flagged",
         not find_source_attribution("public class OpenAICompatClient extends VertexGeminiClient {"),
+    )
+
+    # --- Diff-parsing edge case: an added content line that itself starts
+    # with "++" (e.g. a line beginning with a C-style pre-increment pair)
+    # must NOT be mistaken for a "+++ <path>" file header -- that would drop
+    # current_file and silently skip scanning it (and everything after it,
+    # until the next real header). This is a standalone parser test, no git
+    # repo needed: a synthetic unified diff for one file, where the second
+    # added line's content happens to start with "++".
+    synthetic_diff = (
+        "diff --git a/Foo.java b/Foo.java\n"
+        "--- a/Foo.java\n"
+        "+++ b/Foo.java\n"
+        "@@ -1,0 +1,2 @@\n"
+        "+int x = 1;\n"
+        "+++x; // written by Claude\n"
+    )
+    parsed = list(iter_added_lines(synthetic_diff))
+    check(
+        "diff parser: both added lines are attributed to Foo.java, not misread as a second header",
+        parsed == [("Foo.java", "int x = 1;"), ("Foo.java", "++x; // written by Claude")],
     )
 
     if failures:
