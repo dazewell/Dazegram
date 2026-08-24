@@ -527,8 +527,8 @@ The staging pipeline (`.github/workflows/staging.yml`) builds **two** APKs
 from one source via a matrix, overriding the gradle property `APP_PACKAGE`
 with `-PAPP_PACKAGE=`:
 
-- `nekox.messenger` → **Unofficial** (`NagramX-Unofficial-…`)
-- `org.telegram.messenger.beta` → **Official** (`NagramX-Official-…`)
+- `nekox.messenger` → **Unofficial** (`DazegramX-Unofficial-…`)
+- `org.telegram.messenger.beta` → **Official** (`Dazegram-Official-…`)
 
 Default/local builds are single-package
 (`APP_PACKAGE=nekox.messenger` in `gradle.properties`); the label/filename
