@@ -105,16 +105,15 @@ the pre-archive verification side (below) for every child session it archives.
      stop. It survives `gradlew --stop`. Leave it alone; it idles out.
    - **Isolated `GRADLE_USER_HOME` cache directory.** If you started a Gradle
      build with a session-specific `GRADLE_USER_HOME` outside the worktree
-     (rule 8's isolation pattern), the cache and daemon registry inside it are
-     yours to remove, but **only after** the session is archived (see the
-     post-archive cleanup rule below). The cache and registry are not safe to
-     delete while the session is running or while `archive_session` may still
-     reference them. Deletion of an isolated cache happens in the orchestrator,
-     not the starter — once the session is successfully archived, the
-     orchestrator confirms the isolated path from the child's process ledger
-     `owned_resource` field, verifies it is child-owned and outside the removed
-     worktree, runs a process-use check scoped to that path, and deletes only
-     that literal directory path if the check clears.
+     for daemon isolation, the cache and daemon registry inside it are yours
+     to remove, but **only after** the session is archived. The cache is not
+     safe to delete while the session is running or while `archive_session`
+     may still reference it. Deletion happens in the orchestrator; record the
+     absolute path in your handback's `Isolated GRADLE_USER_HOME` field so
+     the orchestrator can clean it up after archive succeeds (see post-archive
+     step 7 for the exact validation and deletion contract). Cleanup applies
+     whenever an isolated home was used, regardless of daemon mode
+     (`--no-daemon` stops the single-use daemon but the ~2.8 GB cache remains).
 9. **Keep long-running processes' working directory and logs outside the
    session worktree.** Start them with a working directory such as `$env:TEMP`
    and redirect any log output there too, not into the worktree. A process
@@ -266,14 +265,27 @@ or, one block per item:
   started by: <this session/branch — so a later reader knows who owns it>
   identity:   <tool-native handle or async-shell session id>
               OR <PID>, <image name>, <start time>, <path/cwd>
-  owned resource: <recorded port / emulator serial / isolated GRADLE_USER_HOME
-              path, if this item involved a daemon you own> | n/a — used the
-              shared/ambient resource and did not stop it (rule 8)
+  owned resource: <recorded port / emulator serial, if this item involved a
+              daemon you own> | n/a — used the shared/ambient resource and
+              did not stop it (rule 8)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
               yet verified
 ```
+
+**Separate from the process ledger**, include a mandatory cache cleanup field in your handback:
+
+```
+Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
+```
+
+Use this field to record an isolated Gradle cache directory you created
+for daemon isolation. Omit this field only if you used `--no-daemon`
+throughout, a shared/default Gradle home, or no Gradle build at all. When a
+gradle-daemon row exists in the process ledger **and** you created an isolated
+home, the `owned resource` value in that row should agree with this path.
+
 
 **Tool-managed async/background shells go in this ledger too** — record their
 returned handle/session id under `identity` and their `stop result` from
@@ -483,26 +495,27 @@ and it archives **only its own direct children** — never a grandchild.
      a substitute for `archive_session` on an app-managed child.
 7. **Post-archive cache cleanup for isolated `GRADLE_USER_HOME` only.** After
    `archive_session` succeeds for a child that recorded an isolated
-   `GRADLE_USER_HOME` in its process ledger (under the `owned_resource`
-   field), and **only then**, clean up that session-specific cache directory:
-   - Confirm the path from the child's ledger is child-owned (recorded by that
-    session, not another), outside the removed worktree, and not the
-    shared/default `%USERPROFILE%\.gradle` or another active session's home.
+   `GRADLE_USER_HOME` in its handback (the mandatory `Isolated GRADLE_USER_HOME`
+   field, separate from the process ledger), and **only then**, clean up that
+   session-specific cache directory:
+   - Confirm the path from the child's handback is child-owned (recorded by that
+     session, not another), outside the removed worktree, and not the
+     shared/default `%USERPROFILE%\.gradle` or another active session's home.
    - Run an exact-path process-use check against that directory to confirm no
-    live process is reading it (exclude the probe's own process from the match
-    to avoid false positives). If any unexplained process references it, **do
-    not delete** — report the finding and leave the cache for manual
-    recovery.
+     live process is reading it (exclude the probe's own process from the match
+     to avoid false positives). If any unexplained process references it, **do
+     not delete** — report the finding and leave the cache for manual
+     recovery.
    - Delete only the resolved literal directory path (the exact path from the
-    ledger), without wildcards, globs, or broad-root variables. Never use
-    `Remove-Item -Recurse` blindly; use a tool that confirms the deletion or
-    reports exact-path evidence when it fails.
+     handback), without wildcards, globs, or broad-root variables. Never use
+     `Remove-Item -Recurse` blindly; use a tool that confirms the deletion or
+     reports exact-path evidence when it fails.
    - **Do not** stop shared Gradle or Kotlin daemons to make the deletion pass
-    — if a daemon blocks it, leave the cache intact and report the block.
+     — if a daemon blocks it, leave the cache intact and report the block.
    - If cache deletion fails, report the exact path and error; do not retry
-    destructively.
-   - Sessions that used `--no-daemon`, a shared/default Gradle home, or never
-    recorded an isolated `GRADLE_USER_HOME` owe no isolated cache cleanup.
+     destructively.
+   - If the child's handback reads `Isolated GRADLE_USER_HOME: <none>`, no
+     cache cleanup is needed.
 8. Archive only after 1–6 all pass clean. If a missing ledger, a remaining or
    unverified process, an unexplained residual-sweep/handle result, or a
    removal/`archive_session` failure blocks any step: **do not archive.**

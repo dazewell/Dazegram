@@ -328,13 +328,14 @@ Staging build: <conclusion, and whether the APK was uploaded>
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md
+Isolated GRADLE_USER_HOME: <absolute child-owned path> | <none>
 What changed:  <bullets — one per user-visible behaviour, plus the hook points touched>
 Reused:        <what existing components you reused, or why nothing fit>
 Assumptions:   <anything you decided that was not in the brief>
 Not done:      <anything deliberately left out, and why>
 ```
 
-**Process ledger note:** If you started Gradle with a session-specific `GRADLE_USER_HOME` (an isolated cache directory outside the worktree for daemon isolation), **record that path in the `owned_resource` field** of the gradle-daemon ledger row. The orchestrator uses this record to clean up the cache after the session is archived, preventing ~2.8 GB of regenerable cache from orphaning per session. The `owned_resource` field is specifically for this — a shared/ambient resource uses `n/a`. See `.claude/skills/nagramx-process-lifecycle/SKILL.md` rule 8 and post-archive step 7 for the full contract.
+**Cache cleanup field:** Include `Isolated GRADLE_USER_HOME` whenever you started a Gradle build with a session-specific `GRADLE_USER_HOME` for daemon isolation — record its absolute path here. Use `<none>` only if you used `--no-daemon`, a shared/default home, or no Gradle at all. Cleanup applies regardless of daemon mode (`--no-daemon` stops the single-use daemon but the ~2.8 GB cache remains). See `.claude/skills/nagramx-process-lifecycle/SKILL.md` rule 8 and post-archive step 7 for the full contract.
 
 Flag assumptions rather than burying them, never report a gate as passed when
 it was skipped, and never omit the process ledger line — a missing ledger
