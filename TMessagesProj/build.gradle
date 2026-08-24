@@ -205,7 +205,8 @@ android {
 
     sourceSets.main.jniLibs.srcDirs = ['./jni/']
 
-    // NagramX: default app-icon glyph differs per package variant (Official = Dazegram, Unofficial = DazegramX).
+    // NagramX: default app-icon glyph differs per package variant - Official draws the shared monoline "D"
+    // shape, Unofficial draws the same shape plus one added diagonal chord as its distinguisher.
     // Each dir holds the same 6 resource names (5 launcher foregrounds + the shared monochrome), so only one
     // may be on the path at a time - two dirs on the path is a duplicate-resource build failure, not an override.
     // Trap: a same-name file under a DIFFERENT resource qualifier (e.g. drawable-v24/ vs drawable/) does NOT
