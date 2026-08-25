@@ -11269,7 +11269,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
 
                 recordIsCanceled = true;
-                isRecordingStateChanged();
                 runningAnimationAudio.setDuration(150);
             } else if (recordState == RECORD_STATE_PREPARING) {
                 createRecordAudioPanel();
