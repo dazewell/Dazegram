@@ -206,13 +206,44 @@ function Test-Partition([hashtable]$preBlobs, [hashtable]$candBlobs, [string[]]$
     return @($f | Select-Object -Unique)
 }
 
-# Guard 10: .gitmodules blob unchanged; BoringSSL stays a vendored tree, never a
-# submodule commit.
-function Test-Gitmodules([string]$candGitmodulesBlob, [string]$boringMode, [string]$boringType, [hashtable]$pins) {
+# Guard 10: .gitmodules blob unchanged, and every vendored native keeps its pinned
+# git object shape — a vendored tree stays a `040000 tree` and never silently
+# becomes a `160000 commit` submodule (the 12.10.1 default merge did exactly that to
+# libyuv and openh264), and an intentional gitlink keeps its pinned commit.
+#
+# Table-driven: the pinned table is read from VENDORED_NATIVES + <N>_PATH/_MODE/_TYPE
+# (+ <N>_COMMIT for a gitlink). $observed maps each pinned path to the git tree entry
+# actually present in the candidate (a {Mode;Type;Object} object, or $null if the
+# path is gone). Adding a component is a pins.env edit, not a code edit here.
+function Get-VendoredPins([hashtable]$pins) {
+    $rows = @()
+    foreach ($name in ($pins['VENDORED_NATIVES'] -split ',')) {
+        $n = $name.Trim()
+        if (-not $n) { continue }
+        $rows += [pscustomobject]@{
+            Name   = $n
+            Path   = $pins["${n}_PATH"]
+            Mode   = $pins["${n}_MODE"]
+            Type   = $pins["${n}_TYPE"]
+            Commit = $pins["${n}_COMMIT"]   # $null for a vendored tree
+        }
+    }
+    return $rows
+}
+
+function Test-Gitmodules([string]$candGitmodulesBlob, [hashtable]$observed, [hashtable]$pins) {
     $f = @()
     if ($candGitmodulesBlob -ne $pins['GITMODULES_BLOB']) { $f += ".gitmodules blob changed: $candGitmodulesBlob" }
-    if ($boringMode -ne $pins['BORINGSSL_MODE'] -or $boringType -ne $pins['BORINGSSL_TYPE']) {
-        $f += "BoringSSL entry is $boringMode $boringType, expected $($pins['BORINGSSL_MODE']) $($pins['BORINGSSL_TYPE']) (submodule-ified?)"
+    foreach ($row in (Get-VendoredPins $pins)) {
+        $obs = $observed[$row.Path]
+        if (-not $obs) { $f += "$($row.Name) vendored entry MISSING from candidate: $($row.Path)"; continue }
+        if ($obs.Mode -ne $row.Mode -or $obs.Type -ne $row.Type) {
+            $f += "$($row.Name) entry is $($obs.Mode) $($obs.Type), expected $($row.Mode) $($row.Type) (submodule-ified?): $($row.Path)"
+            continue
+        }
+        if ($row.Type -eq 'commit' -and $obs.Object -ne $row.Commit) {
+            $f += "$($row.Name) gitlink commit $($obs.Object) != pinned $($row.Commit): $($row.Path)"
+        }
     }
     return $f
 }
@@ -385,10 +416,34 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Fails  'Test-Partition(unclass)'  (Test-Partition $pre $modC @() @()) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-Partition(upstream)' (Test-Partition $pre $modC @() @('b')) ([ref]$log)) -and $ok
 
-    # Guard 10 gitmodules / boringssl
-    $ok = (Assert-Fails  'Test-Gitmodules(blob)'  (Test-Gitmodules 'wrongblob' '040000' 'tree' $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-Gitmodules(commit)' (Test-Gitmodules $pins['GITMODULES_BLOB'] '160000' 'commit' $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-Gitmodules'        (Test-Gitmodules $pins['GITMODULES_BLOB'] '040000' 'tree' $pins) ([ref]$log)) -and $ok
+    # Guard 10 gitmodules / vendored natives. Build the good observed state straight
+    # from the pinned table (tree object shas are arbitrary; a gitlink's object is
+    # its pinned commit), then mutate one entry per negative case.
+    $vend = Get-VendoredPins $pins
+    $obsGood = @{}
+    foreach ($row in $vend) {
+        $obj = if ($row.Type -eq 'commit') { $row.Commit } else { '0' * 40 }
+        $obsGood[$row.Path] = [pscustomobject]@{ Mode = $row.Mode; Type = $row.Type; Object = $obj }
+    }
+    $ok = (Assert-Fails  'Test-Gitmodules(blob)'   (Test-Gitmodules 'wrongblob' $obsGood $pins) ([ref]$log)) -and $ok
+    # A 160000 commit presented where a 040000 tree is pinned must be rejected — one
+    # negative case per vendored TREE entry (the exact 12.10.1 silent submodule-ify).
+    foreach ($row in $vend | Where-Object { $_.Type -eq 'tree' }) {
+        $obsBad = @{}; foreach ($k in $obsGood.Keys) { $obsBad[$k] = $obsGood[$k] }
+        $obsBad[$row.Path] = [pscustomobject]@{ Mode = '160000'; Type = 'commit'; Object = 'f' * 40 }
+        $ok = (Assert-Fails "Test-Gitmodules(submodule:$($row.Name))" (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsBad $pins) ([ref]$log)) -and $ok
+    }
+    # A wrong gitlink commit must be rejected — one negative case per COMMIT entry.
+    foreach ($row in $vend | Where-Object { $_.Type -eq 'commit' }) {
+        $obsBad = @{}; foreach ($k in $obsGood.Keys) { $obsBad[$k] = $obsGood[$k] }
+        $obsBad[$row.Path] = [pscustomobject]@{ Mode = $row.Mode; Type = $row.Type; Object = 'd' * 40 }
+        $ok = (Assert-Fails "Test-Gitmodules(commit:$($row.Name))" (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsBad $pins) ([ref]$log)) -and $ok
+    }
+    # A pinned entry missing from the candidate must be rejected.
+    $obsMissing = @{}; foreach ($k in $obsGood.Keys) { $obsMissing[$k] = $obsGood[$k] }
+    $obsMissing.Remove($vend[0].Path)
+    $ok = (Assert-Fails  'Test-Gitmodules(missing)' (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsMissing $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-Gitmodules'         (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsGood $pins) ([ref]$log)) -and $ok
 
     # Guard 11 layer floors
     $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 171 57 599 262 $pins) ([ref]$log)) -and $ok
@@ -494,12 +549,11 @@ function Invoke-RealGuard([hashtable]$pins, $protectedRows, $manifestRows) {
     # Guard 11 extension: executable Gradle build surface stays in the fork delta.
     $failures += Test-GradleSurface $forkDelta $preBlobs @($pins['GRADLE_SURFACE'] -split ',')
 
-    # Guard 10 gitmodules / boringssl
-    $boring = Get-PathEntry $NewDev $pins['BORINGSSL_PATH']
-    $bMode = if ($boring) { $boring.Mode } else { 'MISSING' }
-    $bType = if ($boring) { $boring.Type } else { 'MISSING' }
+    # Guard 10 gitmodules / vendored natives: observe each pinned path's git entry.
+    $observed = @{}
+    foreach ($row in (Get-VendoredPins $pins)) { $observed[$row.Path] = Get-PathEntry $NewDev $row.Path }
     $gm = if ($candBlobs.ContainsKey('.gitmodules')) { $candBlobs['.gitmodules'] } else { 'MISSING' }
-    $failures += Test-Gitmodules $gm $bMode $bType $pins
+    $failures += Test-Gitmodules $gm $observed $pins
 
     # Guard 11 layer floors
     $nek = @(git ls-tree -r --name-only $NewDev -- $pins['NEKOMIMI_PATH']).Count
@@ -568,7 +622,7 @@ $requiredPins = @(
     'ANCHOR_SRC', 'OLD_NBASE', 'OLD_NBASE_TREE', 'NAGRAM_REPO', 'NAGRAM_BRANCH',
     'KEYSTORE_PATH', 'KEYSTORE_BLOB', 'KEYSTORE_CERT_SHA256',
     'SIGNING_GRADLE_PATH', 'SIGNING_GRADLE_BLOB',
-    'GITMODULES_BLOB', 'BORINGSSL_PATH', 'BORINGSSL_MODE', 'BORINGSSL_TYPE',
+    'GITMODULES_BLOB', 'VENDORED_NATIVES',
     'NEKOMIMI_PATH', 'NEKOMIMI_MIN', 'RADOLYN_PATH', 'RADOLYN_EXACT',
     'STRINGS_NAX_PATH', 'STRINGS_NAX_MIN', 'NACONFIG_PATH', 'NACONFIG_ADDCONFIG_MIN',
     'AYU_DB_PATH', 'AYU_DATA_PATH', 'AYU_VERSION', 'AYU_MIN_VERSION', 'AYU_ENTITIES',
@@ -582,6 +636,20 @@ foreach ($k in $requiredPins) {
 }
 foreach ($k in $numericPins) {
     if ($pins.ContainsKey($k) -and $pins[$k] -notmatch '^\d+$') { $pinProblems += "not numeric: $k = '$($pins[$k])'" }
+}
+# Vendored-native table (guard 10): every listed entry must carry PATH/MODE/TYPE,
+# and any gitlink (160000 commit) needs a 40-hex _COMMIT. A malformed row would let
+# Test-Gitmodules compare against an empty string and silently pass.
+if (-not [string]::IsNullOrWhiteSpace($pins['VENDORED_NATIVES'])) {
+    foreach ($nm in ($pins['VENDORED_NATIVES'] -split ',')) {
+        $n = $nm.Trim(); if (-not $n) { continue }
+        foreach ($suf in 'PATH', 'MODE', 'TYPE') {
+            if ([string]::IsNullOrWhiteSpace($pins["${n}_${suf}"])) { $pinProblems += "missing/empty: ${n}_${suf}" }
+        }
+        if ($pins["${n}_TYPE"] -eq 'commit' -and $pins["${n}_COMMIT"] -notmatch '^[0-9a-f]{40}$') {
+            $pinProblems += "gitlink ${n} needs a 40-hex ${n}_COMMIT (got '$($pins["${n}_COMMIT"])')"
+        }
+    }
 }
 if ($pinProblems.Count) {
     Write-Host 'PINS INCOMPLETE — an unpinned invariant would silently coerce to a passing check:'

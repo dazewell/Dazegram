@@ -79,7 +79,7 @@ unreviewed path). That block is the system working.
 
 | File | Purpose |
 | --- | --- |
-| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, BoringSSL entry, layer floors, Ayu schema. Read from PRE, never from a candidate. |
+| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
 | `workflow-manifest.tsv` | The approved `.github/workflows` set the snapshot may carry (Nagram's `debug`/`pr`/`release`). Any addition or change blocks. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. |
@@ -93,7 +93,11 @@ unreviewed path). That block is the system working.
 - The 49 protected blobs byte-identical in PRE and candidate.
 - The guard and its workflows unchanged by the candidate.
 - `.github/workflows` in the snapshot matches the approved manifest exactly.
-- `.gitmodules` blob unchanged; BoringSSL stays a vendored `040000 tree`.
+- `.gitmodules` blob unchanged; every vendored native keeps its pinned git object
+  shape — boringssl, libyuv, openh264 and tlottie_lib stay `040000 tree`, and the
+  tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`
+  (`VENDORED_NATIVES`), so a `040000 tree` silently turning into a `160000 commit`
+  submodule (as the 12.10.1 default merge did to libyuv and openh264) blocks.
 - Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 57, `strings_nax` ≥
   599 entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
@@ -104,8 +108,11 @@ unreviewed path). That block is the system working.
   var).
 - **Executable Gradle build surface** (`build.gradle`, `settings.gradle`,
   `gradle/wrapper/gradle-wrapper.properties`, `gradlew`, `gradlew.bat`,
-  `buildSrc/**`) stays in the fork delta, so an upstream-only change to it always
-  lands in the double-modified intersection and blocks (see `GRADLE_SURFACE`).
+  `buildSrc/**`, `gradle.properties`) stays in the fork delta, so an upstream-only
+  change to it always lands in the double-modified intersection and blocks (see
+  `GRADLE_SURFACE`). `gradle.properties` carries `APP_PACKAGE` and the APK version
+  inputs and is in neither `protected-paths.tsv` nor a blob pin, so this membership
+  is the only thing stopping an upstream-only edit to it from auto-applying.
 - Snapshot ancestry: exactly one parent (current `nbase`), source descends from
   the recorded anchor, source not an ancestor of the snapshot.
 - No upstream commit imported into `dev`; no prohibited attribution in the
