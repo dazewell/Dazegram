@@ -9,7 +9,7 @@ touching `sync-upstream.yml`, `sync-guard.ps1`, or any pin.
 - **Original base fork:** `risin42/NagramX` — now **archived**. Historically this
   was the base fork, and the app's About screen retains that attribution. The
   `source` remote and the old sync flow through it are no longer configured; the
-  full history is preserved in `origin/base`.
+  full history is preserved in the `base` branch on `origin`.
 - **Current parent:** `NextAlone/Nagram` (`nagram` remote). This is where
   upstream changes now come from.
 - **This repo:** `dazewell/Dazegram` (renamed from `dazewell/NagramX`; the old
