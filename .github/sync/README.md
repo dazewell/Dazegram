@@ -127,16 +127,17 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   already moved. So a guard-clean sync that breaks a fork call edge lands on the
   trunk first and is caught by a red build afterwards, not held back by the guard.
 
-Do not read the machine gate as "all 549 semantic gates ran." It did not. The
-typical sync path blocks early: conflicts at the merge step (step 3) abort before
-the guard runs, and unclassified deltas are detected by the guard at step 4.
-An upstream bump almost always trips one of these blocking gates, requiring PC
-reconciliation. The rare case where the sync passes both the merge and the guard
-is when the upstream delta is sufficiently small and scoped to fork-layer-only
-paths. Even then, auto-push is justified only because an ordinary 3-way merge
-preserves `dev`'s delta when there is no conflict and no unclassified delta — not
-because the guard has comprehensively validated semantic correctness across all
-627 shared-and-differing files.
+Do not read the machine gate as "all 627 semantic gates ran" across the
+shared-and-differing files. It did not. The typical sync path blocks early:
+conflicts at the merge step (step 3) abort before the guard runs, and
+unclassified deltas are detected by the guard at step 4. An upstream bump almost
+always trips one of these blocking gates, requiring PC reconciliation. The rare
+case where the sync passes both the merge and the guard is when the upstream
+delta is sufficiently small and scoped to fork-layer-only paths. Even then,
+auto-push is justified only because an ordinary 3-way merge preserves `dev`'s
+delta when there is no conflict and no unclassified delta — not because the
+guard has comprehensively validated semantic correctness across all 627
+shared-and-differing files.
 
 ## Signer identity — certificate, subject, and key-entry type
 

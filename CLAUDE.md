@@ -16,7 +16,7 @@ Guidance for working in this repository. These instructions override default beh
 
 **The one hard line:** no AI mentions in git logs (commit messages, PR titles/bodies) or in the app's source (comments included) — no `Co-Authored-By`, no "Generated with" footers, no AI-flavored comments. This file, the skill, `README.md`, `FEATURES.md`, and the memory notes may describe the process openly; the history and code may not.
 
-**Detection tooling exception:** Process and CI detection tooling (e.g. `sync-guard.ps1`, `commit-tag.yml`) may necessarily contain vendor/token literals and known-bad fixtures solely to detect and reject prohibited patterns — those literals are examples for rejection, not attribution. This carve-out applies *only* to process/CI detection tooling, never to app source, authored commits, PR descriptions, or normal documentation prose.
+**Detection tooling exception:** Process and CI detection tooling (e.g. `sync-guard.ps1`, `commit-tag.yml`) may necessarily contain synthetic vendor/token fixtures and known-bad rejection patterns solely to detect and reject prohibited tokens — these are example strings used for pattern matching, not real secrets or real attribution. This carve-out applies *only* to process/CI detection tooling, never to app source, authored commits, PR descriptions, or normal documentation prose. Real credentials or real tokens must never appear in any repository file.
 
 **Every GitHub review point is closed before handoff:** reply with the fix, or explicitly explain why it will not be changed, then resolve the review thread. Verify that no review threads remain unresolved.
 
