@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewConfiguration;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -73,8 +74,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     private static final int CONFIGURATION_LONG_PRESS_MS = 1000;
-    // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
-    private static final int RELAYOUT_SETTLE_DELAY = 300;
 
     private final ControlsLayout controls;
     private final CollapsingLinearLayout startSlot;
@@ -83,14 +82,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private final CollapsingLinearLayout orderedSlot;
     private final CollapsingLinearLayout endSlot;
     private final Map<View, Integer> configuredOrder = new HashMap<>();
-    private View pinnedTrailingView;
     /**
      * deleteRichDraftButton (see addStart) is not a registered, orderable button - it is a plain
      * child appended once and left there. Its own visibility is toggled elsewhere (see
      * updateRichDraftPreview in ChatActivityEnterView, left untouched by this change) so that at
      * most it or the emoji button is showing at a time; this class does not enforce that. What it
      * does need from this class is a fixed anchor position so a later configurable button never
-     * inserts on the wrong side of it - the same role pinnedTrailingView plays for the trailing zone.
+     * inserts on the wrong side of it.
      */
     private View pinnedLeadingView;
     private Runnable configurationLongPress;
@@ -239,7 +237,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * and the whole row could be sorted in one pass.
      */
     public void addConfigurable(String key, View view) {
-        addConfigurable(key, view, ComposerLayout.zoneOf(key), ComposerLayout.indexOf(key), ComposerLayout.trailingKey());
+        addConfigurable(key, view, ComposerLayout.zoneOf(key), ComposerLayout.indexOf(key));
     }
 
     /**
@@ -249,15 +247,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * would show the previous layout for the whole gesture. The order is local to the supplied
      * zone, matching ComposerLayout.indexOf().
      */
-    public void addConfigurable(String key, View view, int zone, int order, String trailingKey) {
+    public void addConfigurable(String key, View view, int zone, int order) {
         AndroidUtilities.removeFromParent(view);
-        if (view == pinnedTrailingView) {
-            // The anchor is being re-placed. Drop the stale reference now so moving it to another zone
-            // or to Hidden - both return before re-pinning - does not leave a later configurable button
-            // ordering itself (via endContextIndex) against a view that is no longer the trailing anchor.
-            // Re-set below if it stays pinned.
-            pinnedTrailingView = null;
-        }
         configuredOrder.put(view, order);
         // One sizing gate for every configurable button, whatever zone it lands in. The assets are all
         // 24dp vectors, but their ink fills the canvas by different amounts and sits off-centre by a
@@ -274,12 +265,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return;
         }
         if (zone == ComposerButtons.ZONE_END) {
-            if (key.equals(trailingKey)) {
-                pinnedTrailingView = view;
-                endSlot.addView(view, LayoutHelper.createLinear(buttonSize(), buttonSize()));
-            } else {
-                endSlot.addView(view, insertIndex(endSlot, order, endContextIndex()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
-            }
+            endSlot.addView(view, insertIndex(endSlot, order, endSlot.getChildCount()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
             return;
         }
         orderedSlot.addView(view, insertIndex(orderedSlot, order, orderedSlot.getChildCount()), LayoutHelper.createLinear(buttonSize(), buttonSize()));
@@ -287,7 +273,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
     }
 
     // Walks the siblings already in the slot and stops in front of the first one the layout puts
-    // after this button. Views with no recorded order (the attach group) are left where they are.
+    // after this button. Views with no recorded order (the trailing context group) are left where they are.
     private int insertIndex(ViewGroup slot, int order, int limit) {
         for (int i = 0; i < limit && i < slot.getChildCount(); i++) {
             Integer other = configuredOrder.get(slot.getChildAt(i));
@@ -314,12 +300,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         controls.setTrailingContextGroup(view);
     }
 
-    private int endContextIndex() {
-        int index = pinnedTrailingView != null ? endSlot.indexOfChild(pinnedTrailingView) : -1;
-        return index < 0 ? endSlot.getChildCount() : index;
-    }
-
-    // Mirrors endContextIndex(): caps where a configurable leading button can land so it never
+    // Caps where a configurable leading button can land so it never
     // inserts past the delete-draft button's reserved slot (see addStart).
     private int startContextIndex() {
         int index = pinnedLeadingView != null ? startSlot.indexOfChild(pinnedLeadingView) : -1;
@@ -610,12 +591,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private CollapsingLinearLayout endSlot;
         // The row is drawn as up to four separate glass bubbles instead of one full-width capsule, one
         // per child group that can collapse or slide independently. Left to right in LTR: the leading
-        // zone, the scrolling middle group, the attach context group, and the trailing group - every
-        // configurable end-slot button and the pinned trailing anchor now share one bubble, since with
-        // attach pinned (see #composer-attach-pinned) there is no visible show/hide difference left
-        // between them to keep them apart, and both ends of the row then read the same. Each has its own
-        // drawable (see attachGlass) so its own backdrop sample and render node stay correct; a single
-        // drawable re-bounded across the rects would force a chat-wide re-capture every frame.
+        // zone, the scrolling middle group, the attach context group, and the configurable trailing
+        // group. Each has its own drawable (see attachGlass) so its own backdrop sample and render node
+        // stay correct; a single drawable re-bounded across the rects would force a chat-wide re-capture
+        // every frame.
         private static final int BUBBLE_LEADING = 0;
         private static final int BUBBLE_MIDDLE = 1;
         private static final int BUBBLE_CONTEXT = 2;
@@ -624,8 +603,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private BlurredBackgroundDrawable[] bubbles;
         // The one trailing sub-group the drawGlass split still needs to tell apart inside endSlot: the
         // attach context group (endSlot child 0, its own chat-type lifecycle). Everything else in endSlot
-        // - the configurable buttons and the pinned trailing anchor together - is the single trailing
-        // bubble, so the anchor no longer needs its own reference here.
+        // is the single trailing bubble.
         private View trailingContextGroup;
         // Reused across dispatchDraw so no frame allocates: each bubble's content span in this view's
         // coordinates, whether it has anything to draw, and the alpha its group is currently faded to.
@@ -704,6 +682,15 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private float pendingEndShift;
         private boolean resumingMidAnimation;
         private final Runnable boundsAnimationStarter = this::startBoundsAnimation;
+        // A slot occupancy change should clear on the very next traversal: checkSlotOccupancy(true) runs
+        // before measuring slots and force-layouts the changed slot (and the middle strip host when needed),
+        // so this listener only needs to request one fresh pass when a mismatch is observed at pre-draw time.
+        private final ViewTreeObserver.OnPreDrawListener occupancyPreDrawListener = () -> {
+            if (checkSlotOccupancy(false)) {
+                requestLayout();
+            }
+            return true;
+        };
 
         ControlsLayout(Context context) {
             super(context);
@@ -816,6 +803,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             computeEndSlotOccupancy();
             applyEndSlotGapMargins();
 
+            checkSlotOccupancy(true);
             startSlot.measure(unboundedWidthSpec, heightSpec);
             endSlot.measure(unboundedWidthSpec, heightSpec);
             // One icon inset of horizontal padding on the scrolling middle content so its first and last
@@ -874,11 +862,48 @@ public final class ComposerToolbarLayout extends FrameLayout {
             setMeasuredDimension(panelWidth, height);
         }
 
+        private boolean checkSlotOccupancy(boolean forceLayout) {
+            boolean changed = false;
+            if (startSlot != null && startSlot.occupancyChanged()) {
+                changed = true;
+                if (forceLayout) {
+                    startSlot.forceLayout();
+                }
+            }
+            if (endSlot != null && endSlot.occupancyChanged()) {
+                changed = true;
+                if (forceLayout) {
+                    endSlot.forceLayout();
+                }
+            }
+            if (middleContent != null) {
+                for (int i = 0; i < middleContent.getChildCount(); i++) {
+                    View child = middleContent.getChildAt(i);
+                    if (!(child instanceof CollapsingLinearLayout)) {
+                        continue;
+                    }
+                    CollapsingLinearLayout slot = (CollapsingLinearLayout) child;
+                    if (!slot.occupancyChanged()) {
+                        continue;
+                    }
+                    changed = true;
+                    if (forceLayout) {
+                        slot.forceLayout();
+                        middleContent.forceLayout();
+                        if (middleScrollView != null) {
+                            middleScrollView.forceLayout();
+                        }
+                    }
+                }
+            }
+            return changed;
+        }
+
         // Which trailing groups occupy space this pass. Read straight off visibility/alpha so it can run
         // before the end slot is measured and feed its gap margin. The trailing group is every end-slot
         // button that is not the context group - each a single button whose slot occupancy line (VISIBLE
-        // and alpha >= 0.5) matches what it lays out, the pinned anchor included - so it is occupied if any
-        // one of them is. Context is different: attachLayout is a plain LinearLayout that still
+        // and alpha >= 0.5) matches what it lays out - so it is occupied if any one of them is. Context is
+        // different: attachLayout is a plain LinearLayout that still
         // measures a VISIBLE child to full width at alpha 0 (a suggestion button that finished fading out
         // stays VISIBLE in toolbar mode), so it is occupied only while it holds an engaged child - the
         // same rule the end slot collapses on (hasEngagedChild) - not merely because the wrapper is on
@@ -911,9 +936,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // it, so SlidingLinearLayout spaces it out for free in both measure and layout. The gap rides
         // context's array-trailing margin; the walk in SlidingLinearLayout advances by rightMargin in LTR
         // and leftMargin in RTL, so the side it lives on flips with the layout direction. It is keyed on
-        // occTrailing (any non-context end-slot button, pinned anchor included) so the common
-        // context-group-plus-attach row still gets its gap now that the pinned anchor no longer carries
-        // its own. Suppressed unless both groups are present, which keeps the first occupied end-slot
+        // occTrailing (any non-context end-slot button) so the common context-group-plus-attach row still
+        // gets its gap. Suppressed unless both groups are present, which keeps the first occupied end-slot
         // group flush against the middle|end gap rather than doubling it, and leaves an empty context
         // reserving nothing.
         private void applyEndSlotGapMargins() {
@@ -1021,13 +1045,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
             int top = glassDrawInsetPx;
             int bottom = getHeight() - glassDrawInsetPx;
             boolean rtl = getLayoutDirection() == LAYOUT_DIRECTION_RTL;
-            // The leading group owns the row's leading edge and the trailing group its trailing edge (the
-            // trailing group ends at the pinned anchor); those two outer edges repeat the capsule's flush
-            // arithmetic so they still line up with the input pill above. Every other edge sits at its
-            // group's own content edge, and the real gap reserved in layout separates it from its
-            // neighbour. If the trailing zone is empty the row loses its trailing flush (accepted), which
-            // trailingEdgeRole reports as -1; likewise a bare trailing-only row leaves the leading edge
-            // unflushed rather than stretching a trailing pill across the empty leading side.
+            // The leading group owns the row's leading edge and the trailing group its trailing edge; those
+            // two outer edges repeat the capsule's flush arithmetic so they still line up with the input pill
+            // above. Every other edge sits at its group's own content edge, and the real gap reserved in
+            // layout separates it from its neighbour. If the trailing zone is empty the row loses its
+            // trailing flush (accepted), which trailingEdgeRole reports as -1; likewise a row with only
+            // trailing content leaves the leading edge unflushed rather than stretching a trailing pill
+            // across the empty leading side.
             int leadingEdgeRole = leadingEdgeRole();
             int trailingEdgeRole = trailingEdgeRole();
             for (int role = 0; role < BUBBLE_COUNT; role++) {
@@ -1131,9 +1155,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
             return false;
         }
 
-        // The trailing bubble spans every end-slot button that is not the attach context group - the
-        // configurable buttons and the pinned anchor together - from the leftmost occupied one to the
-        // rightmost, so it hugs its content and collapses with it.
+        // The trailing bubble spans every end-slot button that is not the attach context group, from the
+        // leftmost occupied one to the rightmost, so it hugs its content and collapses with it.
         private void computeTrailingSpan() {
             bubbleOccupied[BUBBLE_TRAILING] = false;
             if (endSlot == null) {
@@ -1158,10 +1181,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
                 if (right > max) {
                     max = right;
                 }
-                // The most opaque button drives the pill. The pinned attach anchor is always fully opaque,
-                // so once it shares this bubble the pill stays solid whenever attach is present - a
-                // configurable button fading in beside it no longer fades the whole pill. Accepted: the
-                // pill is there because attach is.
+                // The most opaque button drives the pill, so a trailing button that is fully visible keeps
+                // the pill solid while a neighbour fades in.
                 alpha = Math.max(alpha, alphaOf(child));
             }
             if (max > min) {
@@ -1297,7 +1318,17 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            getViewTreeObserver().addOnPreDrawListener(occupancyPreDrawListener);
+        }
+
+        @Override
         protected void onDetachedFromWindow() {
+            ViewTreeObserver observer = getViewTreeObserver();
+            if (observer.isAlive()) {
+                observer.removeOnPreDrawListener(occupancyPreDrawListener);
+            }
             super.onDetachedFromWindow();
             cancelBoundsAnimation();
             resetBounds();
@@ -1575,11 +1606,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     private static final class CollapsingLinearLayout extends SlidingLinearLayout {
         private View contextGroup;
-        private final Runnable settleCheck = () -> {
-            if (needsRelayout()) {
-                requestLayout();
-            }
-        };
 
         CollapsingLinearLayout(Context context) {
             super(context);
@@ -1598,8 +1624,8 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // let go - and the neighbouring buttons crawled back into place. The attach wrapper adds one more
         // condition: even while it is on screen it only occupies the row while it holds an engaged child,
         // so a wrapper full of faded-out buttons (a hidden suggestion button stays VISIBLE at alpha 0 in
-        // toolbar mode) collapses to zero width and the pinned attach button slides left instead of sitting
-        // beyond an empty opaque pill.
+        // toolbar mode) collapses to zero width and neighbouring configurable buttons slide left instead of
+        // sitting beyond an empty opaque pill.
         @Override
         boolean isOccupied(View child) {
             if (child == contextGroup && child instanceof ViewGroup
@@ -1625,28 +1651,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         @Override
         public void onDescendantInvalidated(View child, View target) {
             super.onDescendantInvalidated(child, target);
-            if (needsRelayout()) {
-                requestLayout();
-                scheduleSettleCheck();
-            }
             invalidate();
-        }
-
-        // Asking from here only gets as far as the first parent that is already waiting on a layout, and if
-        // that parent's own measure is skipped its request never reaches the root, so nothing ever comes
-        // back down to this row. Opening the keyboard on the way into edit mode is long enough for every
-        // ask during a control's fade to land that way. Once the pass is over the chain is clear again, so
-        // a look from outside it gets through: this runs after the fade, and only asks again if the row
-        // still has not been measured.
-        private void scheduleSettleCheck() {
-            AndroidUtilities.cancelRunOnUIThread(settleCheck);
-            AndroidUtilities.runOnUIThread(settleCheck, RELAYOUT_SETTLE_DELAY);
-        }
-
-        @Override
-        protected void onDetachedFromWindow() {
-            super.onDetachedFromWindow();
-            AndroidUtilities.cancelRunOnUIThread(settleCheck);
         }
 
         // Occupancy changes reflow the row; a finished fade has to reflow too, otherwise the control that
@@ -1657,7 +1662,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // was requested for it, and a request that got lost mid-pass left the count already updated. The
         // mismatch was gone, nothing asked again, and the control sat visible inside a zero-width box for
         // the rest of the session. Leaving the count alone keeps the mismatch until a measure clears it.
-        private boolean needsRelayout() {
+        boolean occupancyChanged() {
             int occupied = 0;
             boolean releasedChildVisible = false;
             for (int i = 0; i < getChildCount(); i++) {
