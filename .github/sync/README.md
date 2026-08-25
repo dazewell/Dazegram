@@ -63,15 +63,17 @@ Every routine sync, on `workflow_dispatch` (no inputs):
 4. Run `sync-guard.ps1` from the trusted `dev` checkout.
 5. Only on a clean guard, **atomically** push `dev` and `nbase` together.
 
-**Fail-closed by design.** The system blocks at step 3 (merge conflict) before
-any classification or guard runs. A real upstream bump almost always trips the
-merge conflict guard first, which is the intended behaviour. Reconciliation
-requires a PC and manual review rather than auto-pushing. The anchor advances
-**only** by a reviewed edit to `pins.env` after a new snapshot has landed —
-never by the workflow itself. The pins here still record `e09f49fa` / `c21ee8ac`;
-the first steady-state run is **expected to block**, because Nagram's current
-tip adds a new `BRANDING.md` (an unreviewed path). That block is the system
-working.
+**Fail-closed by design.** Merge conflicts at step 3 abort the sync before the
+guard runs. For syncs that pass the merge (no conflicts), the guard at step 4
+runs unattended and may block on unclassified deltas, protected-path violations,
+or other gates before reaching the atomic push at step 5. A real upstream bump
+almost always trips either the merge-conflict block or the guard's classification
+gates, which is the intended behaviour. Reconciliation requires a PC and manual
+review rather than auto-pushing. The anchor advances **only** by a reviewed edit
+to `pins.env` after a new snapshot has landed — never by the workflow itself.
+The pins here still record `e09f49fa` / `c21ee8ac`; the first steady-state run is
+**expected to block**, because Nagram's current tip adds a new `BRANDING.md` (an
+unreviewed path). That block is the system working.
 
 ## Files
 
@@ -126,14 +128,15 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   trunk first and is caught by a red build afterwards, not held back by the guard.
 
 Do not read the machine gate as "all 549 semantic gates ran." It did not. The
-typical sync path is **fail-closed at the merge step before the guard runs** —
-an upstream bump almost always creates conflicts or unclassified deltas that
-abort at step 3, requiring PC reconciliation. The rare case where no conflict
-occurs and the guard runs is when the upstream delta is sufficiently small and
-scoped to fork-layer-only paths. Even then, auto-push is justified only because
-an ordinary 3-way merge preserves `dev`'s delta when there is no conflict and no
-unclassified delta — not because the guard has comprehensively validated
-semantic correctness across all 627 shared-and-differing files.
+typical sync path blocks early: conflicts at the merge step (step 3) abort before
+the guard runs, and unclassified deltas are detected by the guard at step 4.
+An upstream bump almost always trips one of these blocking gates, requiring PC
+reconciliation. The rare case where the sync passes both the merge and the guard
+is when the upstream delta is sufficiently small and scoped to fork-layer-only
+paths. Even then, auto-push is justified only because an ordinary 3-way merge
+preserves `dev`'s delta when there is no conflict and no unclassified delta — not
+because the guard has comprehensively validated semantic correctness across all
+627 shared-and-differing files.
 
 ## Signer identity — certificate, subject, and key-entry type
 
