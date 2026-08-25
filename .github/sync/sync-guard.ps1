@@ -215,11 +215,18 @@ function Test-Partition([hashtable]$preBlobs, [hashtable]$candBlobs, [string[]]$
 # (+ <N>_COMMIT for a gitlink). $observed maps each pinned path to the git tree entry
 # actually present in the candidate (a {Mode;Type;Object} object, or $null if the
 # path is gone). Adding a component is a pins.env edit, not a code edit here.
+# Parse VENDORED_NATIVES once, here, so validation and consumption can never
+# disagree about which names are in the table. Trim, drop empties. A raw list
+# that is non-empty yet yields zero names (e.g. "," or " , ") comes back empty
+# and is rejected up front in the pins-validation loop, before anything indexes
+# the table.
+function Get-VendoredNames([hashtable]$pins) {
+    return @(($pins['VENDORED_NATIVES'] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
 function Get-VendoredPins([hashtable]$pins) {
     $rows = @()
-    foreach ($name in ($pins['VENDORED_NATIVES'] -split ',')) {
-        $n = $name.Trim()
-        if (-not $n) { continue }
+    foreach ($n in (Get-VendoredNames $pins)) {
         $rows += [pscustomobject]@{
             Name   = $n
             Path   = $pins["${n}_PATH"]
@@ -637,16 +644,26 @@ foreach ($k in $requiredPins) {
 foreach ($k in $numericPins) {
     if ($pins.ContainsKey($k) -and $pins[$k] -notmatch '^\d+$') { $pinProblems += "not numeric: $k = '$($pins[$k])'" }
 }
-# Vendored-native table (guard 10): every listed entry must carry PATH/MODE/TYPE,
-# and the shape must be exactly one of the two meaningful ones — a vendored tree
+# Vendored-native table (guard 10): the list must parse to at least one name,
+# with no duplicates. VENDORED_NATIVES is in $requiredPins so a blank value is
+# already caught above; this closes the subtler hole where a non-empty value
+# ("," or " , ") parses to zero names — which would turn Guard 10 into a silent
+# no-op and later throw when the self-test indexes an empty table. A duplicate
+# name silently halves coverage (one typo pins a component twice, another never),
+# so reject that too. Then every listed entry must carry PATH/MODE/TYPE, and the
+# shape must be exactly one of the two meaningful ones — a vendored tree
 # (040000/tree) or a submodule gitlink (160000/commit). Any other MODE/TYPE would
 # make Test-Gitmodules' equality check trivially satisfiable (the path is "pinned"
 # in name but never actually constrained — the exact libyuv/openh264 failure mode,
 # in table form), and such a row also silently drops out of both negative-test
 # loops. A gitlink needs a 40-hex _COMMIT; a tree must NOT carry a stray _COMMIT.
-if (-not [string]::IsNullOrWhiteSpace($pins['VENDORED_NATIVES'])) {
-    foreach ($nm in ($pins['VENDORED_NATIVES'] -split ',')) {
-        $n = $nm.Trim(); if (-not $n) { continue }
+$vendNames = @(Get-VendoredNames $pins)
+if ($vendNames.Count -lt 1) {
+    $pinProblems += "VENDORED_NATIVES lists no usable entries (got '$($pins['VENDORED_NATIVES'])')"
+} else {
+    $vendDupes = @($vendNames | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($vendDupes.Count) { $pinProblems += "VENDORED_NATIVES has duplicate name(s): $($vendDupes -join ', ')" }
+    foreach ($n in $vendNames) {
         foreach ($suf in 'PATH', 'MODE', 'TYPE') {
             if ([string]::IsNullOrWhiteSpace($pins["${n}_${suf}"])) { $pinProblems += "missing/empty: ${n}_${suf}" }
         }
