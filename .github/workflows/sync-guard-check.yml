@@ -69,9 +69,12 @@ jobs:
           }
           if ($active -notmatch 'workflow_dispatch:\s*\{\s*\}') { Write-Host '::error::workflow_dispatch is no longer input-less'; exit 1 }
           if ($active -match '(?m)^\s*inputs:') { Write-Host '::error::sync-upstream.yml declares workflow inputs; none are allowed'; exit 1 }
-          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch.'
+          # -AnchorOverride is the fixture-only escape hatch; the production sync must
+          # never use it, or it would prove ancestry against an attacker-chosen anchor.
+          if ($active -match '-AnchorOverride') { Write-Host '::error::sync-upstream.yml passes -AnchorOverride; that is fixture-only and must not appear in the real sync'; exit 1 }
+          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch, no anchor override.'
 
-      - name: Full real-candidate fixture (clean passes, tampered blocks)
+      - name: Full real-candidate fixture (clean passes, tampered/double-modified block)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -81,34 +84,51 @@ jobs:
           $env:GIT_COMMITTER_NAME='guard-check'; $env:GIT_COMMITTER_EMAIL='guard-check@dazegram.local'
 
           function Pin($k) { (((Get-Content .github/sync/pins.env | Select-String "^$k=") -split '=', 2)[1]).Trim() }
-          $anchor = Pin 'ANCHOR_SRC'
-          $nagram = Pin 'NAGRAM_REPO'
 
+          # This check is deliberately self-contained: it builds every fixture from
+          # our own clean synthetic anchor origin/nbase (c21ee8ac, tree byte-identical
+          # to the Nagram 12.10.0 anchor) and NEVER resolves or fetches the Nagram
+          # source commit. To prove that independence rather than assert it, point the
+          # `nagram` remote at an unreachable URL: if any path tried to reach upstream
+          # the run would fail here.
+          git remote add nagram https://invalid.invalid/does-not-exist.git 2>$null
+          git remote set-url nagram https://invalid.invalid/does-not-exist.git
+
+          # Fetch nbase and VERIFY the anchor is actually present and an ancestor —
+          # actions/checkout is shallow-capable, and a fixture that silently can't
+          # reach its anchor is this project's signature bug. c21ee8ac is nbase's tip.
           git fetch --no-tags origin nbase
           $oldNbase = (git rev-parse origin/nbase).Trim()
+          $pinNbase = Pin 'OLD_NBASE'
+          if ($oldNbase -ne $pinNbase) { Write-Host "::error::origin/nbase $oldNbase != pinned OLD_NBASE $pinNbase"; exit 1 }
+          git cat-file -e "$oldNbase^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::anchor $oldNbase not present after fetch (shallow?)"; exit 1 }
+          git merge-base --is-ancestor $oldNbase origin/nbase
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::anchor $oldNbase is not an ancestor of origin/nbase"; exit 1 }
 
-          # Fetch the anchor commit (its tree is the clean snapshot tree). Retry for
-          # transient network; a real fixture needs a real ancestor of the anchor.
-          git remote add nagram $nagram 2>$null; git remote set-url nagram $nagram
-          $fetched = $false
-          for ($i = 0; $i -lt 3 -and -not $fetched; $i++) {
-            git fetch --no-tags nagram $anchor
-            if ($LASTEXITCODE -eq 0) { $fetched = $true } else { Start-Sleep 5 }
-          }
-          if (-not $fetched) { Write-Host '::error::could not fetch the anchor commit from Nagram'; exit 1 }
+          # The fixture anchor is c21ee8ac itself; -AnchorOverride makes the guard
+          # prove ancestry against it instead of the pinned Nagram commit e09f49fa,
+          # so this check never resolves e09f49fa.
+          $anchor   = $oldNbase
+          $anchorTree = (git rev-parse "$anchor^{tree}").Trim()
+          $head     = (git rev-parse HEAD).Trim()
 
-          $head    = (git rev-parse HEAD).Trim()
-          $srcTree = (git rev-parse "$anchor^{tree}").Trim()
-          $snap    = (git commit-tree $srcTree -p $oldNbase -m "guard-check snapshot #infra").Trim()
+          # NewSrc: a source commit descending from the anchor (parent = anchor), tree
+          # = the anchor tree. A sibling of the snapshot, so it is not an ancestor of it.
+          $newSrc = (git commit-tree $anchorTree -p $anchor -m "guard-check source #infra").Trim()
+          $snap   = (git commit-tree $anchorTree -p $oldNbase -m "guard-check snapshot #infra").Trim()
 
           # Clean candidate: 3-way merge via plumbing (no branch switching).
           $mtOut = git merge-tree --write-tree $head $snap
-          if ($LASTEXITCODE -ne 0) { Write-Host '::error::fixture clean merge conflicted unexpectedly'; Write-Host $mtOut; exit 1 }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::error::fixture clean merge conflicted unexpectedly. If this branch was cut before the anchor merge landed, merge dev in first — the branch must contain the anchor merge.'
+            Write-Host $mtOut; exit 1
+          }
           $cleanTree = ($mtOut -split "`n")[0].Trim()
           $clean = (git commit-tree $cleanTree -p $head -p $snap -m "guard-check clean candidate #infra").Trim()
 
           Write-Host '--- running guard on KNOWN-CLEAN candidate (expect exit 0) ---'
-          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $clean
+          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $newSrc -NewDev $clean -AnchorOverride $anchor
           $cleanExit = $LASTEXITCODE
           if ($cleanExit -ne 0) { Write-Host "::error::guard BLOCKED a known-clean candidate (exit $cleanExit)"; exit 1 }
 
@@ -129,17 +149,16 @@ jobs:
           $bad = (git commit-tree $badTree -p $head -p $snap -m "guard-check tampered candidate #infra").Trim()
 
           Write-Host '--- running guard on TAMPERED candidate (expect exit 1) ---'
-          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $anchor -NewDev $bad
+          ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap -NewSrc $newSrc -NewDev $bad -AnchorOverride $anchor
           $badExit = $LASTEXITCODE
           if ($badExit -eq 0) { Write-Host '::error::guard PASSED a tampered candidate (keystore swapped)'; exit 1 }
 
-          # Double-modified candidate. The clean/tampered cases above snapshot the
-          # anchor tree, so OLD_NBASE..NEW_SNAPSHOT is empty and the fork-vs-upstream
+          # Double-modified candidate. The clean/tampered cases snapshot the anchor
+          # tree, so OLD_NBASE..NEW_SNAPSHOT is empty and the fork-vs-upstream
           # intersection (the whole C2 guard) is never exercised. Here the snapshot
-          # carries a GENUINE upstream change to a file the fork also modified, so
-          # the parent delta is non-empty and the guard must reject that path as
-          # DOUBLE-MODIFIED specifically — an exit code alone could be right for the
-          # wrong reason, so we assert on the reason string.
+          # carries a GENUINE change to a file the fork also modified, so the parent
+          # delta is non-empty and the guard must reject that path as DOUBLE-MODIFIED
+          # specifically — an exit code alone could be right for the wrong reason.
           $protected = @(Get-Content .github/sync/protected-paths.tsv | Select-Object -Skip 1 | ForEach-Object { ($_ -split "`t")[0] })
           $anchorFiles = @{}; git ls-tree -r --name-only $anchor | ForEach-Object { $anchorFiles[$_] = $true }
           $forkMod = @(git diff --name-only $oldNbase $head | Where-Object { $anchorFiles.ContainsKey($_) -and $_ -notin $protected -and $_ -match '\.(java|kt)$' })
@@ -154,7 +173,7 @@ jobs:
           $srcModBlob = (git hash-object -w -- $srcModFile).Trim()
           $sidx = Join-Path $env:RUNNER_TEMP 'gc-s.idx'; Remove-Item -LiteralPath $sidx -ErrorAction SilentlyContinue
           $env:GIT_INDEX_FILE = $sidx
-          git read-tree $srcTree; git update-index --cacheinfo "100644,$srcModBlob,$F"
+          git read-tree $anchorTree; git update-index --cacheinfo "100644,$srcModBlob,$F"
           $srcModTree = (git write-tree).Trim()
           Remove-Item Env:\GIT_INDEX_FILE
           $newSrc2 = (git commit-tree $srcModTree -p $anchor -m "guard-check upstream bump #infra").Trim()
@@ -177,13 +196,13 @@ jobs:
           # Capture ALL streams (*>&1): the guard reports via Write-Host, which 2>&1
           # does not capture, so the reason-string assertion below needs the merged
           # stream. -Width keeps the long path on one line so the match holds.
-          $dblOut = (& ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap2 -NewSrc $newSrc2 -NewDev $dbl *>&1 | Out-String -Width 8192)
+          $dblOut = (& ./.github/sync/sync-guard.ps1 -PreRef $head -OldNbase $oldNbase -NewSnapshot $snap2 -NewSrc $newSrc2 -NewDev $dbl -AnchorOverride $anchor *>&1 | Out-String -Width 8192)
           $dblExit = $LASTEXITCODE
           Write-Host $dblOut
           if ($dblExit -eq 0) { Write-Host '::error::guard PASSED a double-modified candidate'; exit 1 }
           if ($dblOut -notmatch 'DOUBLE-MODIFIED') { Write-Host '::error::guard blocked the double-modified candidate for the WRONG reason (no DOUBLE-MODIFIED)'; exit 1 }
           if ($dblOut -notmatch [regex]::Escape($F)) { Write-Host "::error::DOUBLE-MODIFIED did not name the expected file $F"; exit 1 }
 
-          Write-Host 'fixture OK: clean candidate passed; tampered and double-modified candidates blocked (the latter as DOUBLE-MODIFIED on a non-empty upstream delta), against the live manifests.'
+          Write-Host 'fixture OK: clean passed; tampered and double-modified blocked (the latter as DOUBLE-MODIFIED on a non-empty upstream delta), self-contained from origin/nbase with the nagram remote unreachable.'
           # The blocking runs intentionally left $LASTEXITCODE=1; end the step green.
           exit 0
