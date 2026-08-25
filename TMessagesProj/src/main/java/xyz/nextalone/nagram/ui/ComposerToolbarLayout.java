@@ -19,6 +19,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.LayoutHelper;
@@ -117,6 +118,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         startSlot = createCollapsingSlot(context);
         startSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        startSlot.setDebugSlotName("Leading");
 
         middleScrollView = new ComposerMiddleScrollView(context);
         middleScrollView.setHorizontalScrollBarEnabled(false);
@@ -137,13 +139,16 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
         middleLeadingSlot = createCollapsingSlot(context);
         middleLeadingSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        middleLeadingSlot.setDebugSlotName("MiddleLeading");
         orderedSlot = createCollapsingSlot(context);
         orderedSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        orderedSlot.setDebugSlotName("Middle");
         middle.addView(middleLeadingSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
         middle.addView(orderedSlot, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
 
         endSlot = createCollapsingSlot(context);
         endSlot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        endSlot.setDebugSlotName("Trailing");
 
         controls.setSlots(startSlot, middleScrollView, middle, endSlot);
         middle.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
@@ -1575,6 +1580,10 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     private static final class CollapsingLinearLayout extends SlidingLinearLayout {
         private View contextGroup;
+        private String debugSlotName = "unknown";
+        private final HashMap<View, String> debugChildStates = new HashMap<>();
+        private int debugInvalidationGeneration;
+        private int debugMeasuredGeneration;
         private final Runnable settleCheck = () -> {
             if (needsRelayout()) {
                 requestLayout();
@@ -1590,6 +1599,45 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // at it so isOccupied and the release path can look at its content instead.
         void setContextGroup(View view) {
             contextGroup = view;
+        }
+
+        void setDebugSlotName(String value) {
+            debugSlotName = value;
+        }
+
+        private static String visibilityToString(int visibility) {
+            if (visibility == VISIBLE) {
+                return "V";
+            } else if (visibility == INVISIBLE) {
+                return "I";
+            }
+            return "G";
+        }
+
+        private String childIdentity(View child, int index) {
+            if (child == contextGroup) {
+                return "contextGroup@" + index;
+            }
+            return child.getClass().getSimpleName() + "@" + index;
+        }
+
+        private void logChildTransitions(String source) {
+            for (int i = 0; i < getChildCount(); i++) {
+                View child = getChildAt(i);
+                String nextState = "vis=" + visibilityToString(child.getVisibility())
+                        + " alpha=" + String.format(java.util.Locale.US, "%.2f", child.getAlpha())
+                        + " occ=" + (isOccupied(child) ? "1" : "0")
+                        + " width=" + child.getWidth();
+                String prevState = debugChildStates.get(child);
+                if (prevState == null || !prevState.equals(nextState)) {
+                    FileLog.d("NAX_DIAG_COMPOSER_TOOLBAR #composer-toolbar slot=" + debugSlotName
+                            + " src=" + source
+                            + " child=" + childIdentity(child, i)
+                            + " state={" + nextState + "}"
+                            + (prevState == null ? "" : " prev={" + prevState + "}"));
+                    debugChildStates.put(child, nextState);
+                }
+            }
         }
 
         // A control claims its slot once its fade is past halfway and gives it up at the same point on
@@ -1623,8 +1671,33 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         @Override
+        protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            boolean expectingMeasureAfterInvalidate = debugMeasuredGeneration < debugInvalidationGeneration;
+            super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+            logChildTransitions("onMeasure");
+            if (expectingMeasureAfterInvalidate) {
+                debugMeasuredGeneration = debugInvalidationGeneration;
+                FileLog.d("NAX_DIAG_COMPOSER_TOOLBAR #composer-toolbar slot=" + debugSlotName
+                        + " src=onMeasure-after-invalidate"
+                        + " gen=" + debugMeasuredGeneration
+                        + " occupied=" + occupiedChildCount
+                        + "/" + getChildCount()
+                        + " measuredWidth=" + getMeasuredWidth());
+            }
+        }
+
+        @Override
         public void onDescendantInvalidated(View child, View target) {
             super.onDescendantInvalidated(child, target);
+            debugInvalidationGeneration++;
+            logChildTransitions("onDescendantInvalidated");
+            FileLog.d("NAX_DIAG_COMPOSER_TOOLBAR #composer-toolbar slot=" + debugSlotName
+                    + " src=onDescendantInvalidated"
+                    + " gen=" + debugInvalidationGeneration
+                    + " occupied=" + occupiedChildCount
+                    + "/" + getChildCount()
+                    + " child=" + (child == null ? "null" : child.getClass().getSimpleName())
+                    + " target=" + (target == null ? "null" : target.getClass().getSimpleName()));
             if (needsRelayout()) {
                 requestLayout();
                 scheduleSettleCheck();
