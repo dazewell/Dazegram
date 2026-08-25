@@ -13,6 +13,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewConfiguration;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
@@ -73,8 +74,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
     private static final int BOUNDS_SETTLE_DELAY = 48;
     private static final int BOUNDS_SETTLE_MAX = 150;
     private static final int CONFIGURATION_LONG_PRESS_MS = 1000;
-    // Has to outlast the longest control fade, otherwise the row gets re-measured mid-animation.
-    private static final int RELAYOUT_SETTLE_DELAY = 300;
 
     private final ControlsLayout controls;
     private final CollapsingLinearLayout startSlot;
@@ -704,6 +703,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private float pendingEndShift;
         private boolean resumingMidAnimation;
         private final Runnable boundsAnimationStarter = this::startBoundsAnimation;
+        private final ViewTreeObserver.OnPreDrawListener occupancyPreDrawListener = () -> {
+            if (checkSlotOccupancy(false)) {
+                requestLayout();
+            }
+            return true;
+        };
 
         ControlsLayout(Context context) {
             super(context);
@@ -816,6 +821,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
             computeEndSlotOccupancy();
             applyEndSlotGapMargins();
 
+            checkSlotOccupancy(true);
             startSlot.measure(unboundedWidthSpec, heightSpec);
             endSlot.measure(unboundedWidthSpec, heightSpec);
             // One icon inset of horizontal padding on the scrolling middle content so its first and last
@@ -872,6 +878,40 @@ public final class ComposerToolbarLayout extends FrameLayout {
             }
             measuredPanelWidth = panelWidth;
             setMeasuredDimension(panelWidth, height);
+        }
+
+        private boolean checkSlotOccupancy(boolean forceLayout) {
+            boolean changed = false;
+            if (startSlot != null && startSlot.occupancyChanged()) {
+                changed = true;
+                if (forceLayout) {
+                    startSlot.forceLayout();
+                }
+            }
+            if (endSlot != null && endSlot.occupancyChanged()) {
+                changed = true;
+                if (forceLayout) {
+                    endSlot.forceLayout();
+                }
+            }
+            if (middleContent != null) {
+                for (int i = 0; i < middleContent.getChildCount(); i++) {
+                    View child = middleContent.getChildAt(i);
+                    if (!(child instanceof CollapsingLinearLayout)) {
+                        continue;
+                    }
+                    CollapsingLinearLayout slot = (CollapsingLinearLayout) child;
+                    if (!slot.occupancyChanged()) {
+                        continue;
+                    }
+                    changed = true;
+                    if (forceLayout) {
+                        slot.forceLayout();
+                        middleContent.forceLayout();
+                    }
+                }
+            }
+            return changed;
         }
 
         // Which trailing groups occupy space this pass. Read straight off visibility/alpha so it can run
@@ -1297,7 +1337,17 @@ public final class ComposerToolbarLayout extends FrameLayout {
         }
 
         @Override
+        protected void onAttachedToWindow() {
+            super.onAttachedToWindow();
+            getViewTreeObserver().addOnPreDrawListener(occupancyPreDrawListener);
+        }
+
+        @Override
         protected void onDetachedFromWindow() {
+            ViewTreeObserver observer = getViewTreeObserver();
+            if (observer.isAlive()) {
+                observer.removeOnPreDrawListener(occupancyPreDrawListener);
+            }
             super.onDetachedFromWindow();
             cancelBoundsAnimation();
             resetBounds();
@@ -1575,11 +1625,6 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     private static final class CollapsingLinearLayout extends SlidingLinearLayout {
         private View contextGroup;
-        private final Runnable settleCheck = () -> {
-            if (needsRelayout()) {
-                requestLayout();
-            }
-        };
 
         CollapsingLinearLayout(Context context) {
             super(context);
@@ -1625,28 +1670,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         @Override
         public void onDescendantInvalidated(View child, View target) {
             super.onDescendantInvalidated(child, target);
-            if (needsRelayout()) {
-                requestLayout();
-                scheduleSettleCheck();
-            }
             invalidate();
-        }
-
-        // Asking from here only gets as far as the first parent that is already waiting on a layout, and if
-        // that parent's own measure is skipped its request never reaches the root, so nothing ever comes
-        // back down to this row. Opening the keyboard on the way into edit mode is long enough for every
-        // ask during a control's fade to land that way. Once the pass is over the chain is clear again, so
-        // a look from outside it gets through: this runs after the fade, and only asks again if the row
-        // still has not been measured.
-        private void scheduleSettleCheck() {
-            AndroidUtilities.cancelRunOnUIThread(settleCheck);
-            AndroidUtilities.runOnUIThread(settleCheck, RELAYOUT_SETTLE_DELAY);
-        }
-
-        @Override
-        protected void onDetachedFromWindow() {
-            super.onDetachedFromWindow();
-            AndroidUtilities.cancelRunOnUIThread(settleCheck);
         }
 
         // Occupancy changes reflow the row; a finished fade has to reflow too, otherwise the control that
@@ -1657,7 +1681,7 @@ public final class ComposerToolbarLayout extends FrameLayout {
         // was requested for it, and a request that got lost mid-pass left the count already updated. The
         // mismatch was gone, nothing asked again, and the control sat visible inside a zero-width box for
         // the rest of the session. Leaving the count alone keeps the mismatch until a measure clears it.
-        private boolean needsRelayout() {
+        boolean occupancyChanged() {
             int occupied = 0;
             boolean releasedChildVisible = false;
             for (int i = 0; i < getChildCount(); i++) {
