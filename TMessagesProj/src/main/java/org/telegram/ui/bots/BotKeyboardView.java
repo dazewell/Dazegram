@@ -129,6 +129,7 @@ public class BotKeyboardView extends LinearLayout implements InAppKeyboardInsetV
 
     public void setButtons(TLRPC.TL_replyKeyboardMarkup buttons) {
         if (TlUtils.tlEquals(buttons, botButtons)) {
+            scrollView.scrollTo(0, 0);
             return;
         }
 
