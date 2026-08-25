@@ -429,8 +429,8 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
 the PC by hand, resolving into the `dev` merge commit, then advance the anchor in
-`.github/sync/pins.env` in the same change. **Never** fast-forward the archived
-`source`/`base` into `dev`: that path is retired and bypasses the guard entirely.
+`.github/sync/pins.env` in the same change. **Never** fast-forward the `base`
+branch into `dev`: that path is retired and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
