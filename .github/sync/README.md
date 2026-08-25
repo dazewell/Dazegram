@@ -26,16 +26,22 @@ Direct-merging Nagram into `dev` is unusable: the merge base is `b206febda45b…
 and a dry run reports **503 conflicts**. That does not change, and this mechanism
 does not pretend to change it.
 
-Instead there is an **anchor** and an `nbase` chain:
+Instead there is an **anchor** and an `nbase` chain. The recorded anchor advances
+along that chain by a reviewed `pins.env` edit each time a new snapshot lands; it
+currently records Nagram **12.10.1**:
 
-- **Anchor source** `e09f49fa8c2dde…` — the Nagram 12.10.0 commit whose tree we
-  anchor on.
-- **Snapshot** `c21ee8ac2489…` (`origin/nbase`) — a **locally-authored** commit
-  whose tree is byte-identical to the anchor's (`5ecc658245…`), importing no
-  upstream author, message or committer. Its single parent is `b206febda45b…`.
-- **Anchor merge** — a `-s ours` merge that records `nbase` as a second parent of
-  `dev` while keeping `dev`'s tree byte-identical. After it,
-  `merge-base(dev, c21ee8ac) = c21ee8ac`.
+- **Anchor source** `941e30844e…` — the Nagram 12.10.1 commit whose tree the
+  current snapshot copies.
+- **Snapshot** `dc6d665f50…` (the new `origin/nbase`) — a **locally-authored**
+  commit whose tree is byte-identical to that anchor's (`06e811bc…`), importing no
+  upstream author, message or committer. Its single parent is the **previous**
+  snapshot `c21ee8ac…`.
+
+The chain was **bootstrapped** at 12.10.0: the first snapshot `c21ee8ac…` (tree
+`5ecc658245…`, byte-identical to the 12.10.0 anchor `e09f49fa8c…`) had parent
+`b206febda45b…`, and a `-s ours` **anchor merge** recorded it as a second parent of
+`dev` while keeping `dev`'s tree byte-identical, so `merge-base(dev, c21ee8ac) =
+c21ee8ac`. Each later snapshot chains onto the one before it.
 
 What the anchor buys: a **future snapshot** built on `nbase` (parent = `nbase`,
 tree = a newer Nagram tree) 3-way-merges into `dev` against the 12.10.0 base, so
@@ -71,9 +77,15 @@ almost always trips either the merge-conflict block or the guard's classificatio
 gates, which is the intended behaviour. Reconciliation requires a PC and manual
 review rather than auto-pushing. The anchor advances **only** by a reviewed edit
 to `pins.env` after a new snapshot has landed — never by the workflow itself.
-The pins here still record `e09f49fa` / `c21ee8ac`; the first steady-state run is
-**expected to block**, because Nagram's current tip adds a new `BRANDING.md` (an
-unreviewed path). That block is the system working.
+The pins now record `941e30844e` / `dc6d665f50` (Nagram 12.10.1). Those values were
+advanced ahead of `origin/nbase` on purpose, so until a human fast-forwards
+`origin/nbase` from `c21ee8ac` to `dc6d665f50`, `sync-guard-check`'s real-candidate
+fixture is **expected to block** at its `origin/nbase != OLD_NBASE` assertion. That
+transitional red is the system working; do not revert a pin to clear it. The
+ordering is: merge the 12.10.1 reconciliation PR → fast-forward `origin/nbase` to
+`dc6d665f50` → re-run the pins PR's checks (they go green) → merge it. Never push
+`nbase` *after* merging the pins PR, or the guard reds permanently instead of for a
+window.
 
 ## Files
 
