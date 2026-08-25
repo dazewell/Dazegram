@@ -650,8 +650,12 @@ foreach ($k in $numericPins) {
 # ("," or " , ") parses to zero names — which would turn Guard 10 into a silent
 # no-op and later throw when the self-test indexes an empty table. A duplicate
 # name silently halves coverage (one typo pins a component twice, another never),
-# so reject that too. Then every listed entry must carry PATH/MODE/TYPE, and the
-# shape must be exactly one of the two meaningful ones — a vendored tree
+# so reject that too — and reject two entries resolving to the same _PATH for the
+# same reason: a same-shape duplicate path (two 040000/tree entries pointing at one
+# path, the likely typo since every tree native is 040000/tree) validates that path
+# twice while the shadowed one goes unpinned, and the shape check can't catch it
+# because both shapes match. Then every listed entry must carry PATH/MODE/TYPE, and
+# the shape must be exactly one of the two meaningful ones — a vendored tree
 # (040000/tree) or a submodule gitlink (160000/commit). Any other MODE/TYPE would
 # make Test-Gitmodules' equality check trivially satisfiable (the path is "pinned"
 # in name but never actually constrained — the exact libyuv/openh264 failure mode,
@@ -663,9 +667,15 @@ if ($vendNames.Count -lt 1) {
 } else {
     $vendDupes = @($vendNames | Group-Object | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
     if ($vendDupes.Count) { $pinProblems += "VENDORED_NATIVES has duplicate name(s): $($vendDupes -join ', ')" }
+    $pathOwners = @{}
     foreach ($n in $vendNames) {
         foreach ($suf in 'PATH', 'MODE', 'TYPE') {
             if ([string]::IsNullOrWhiteSpace($pins["${n}_${suf}"])) { $pinProblems += "missing/empty: ${n}_${suf}" }
+        }
+        $p = $pins["${n}_PATH"]
+        if (-not [string]::IsNullOrWhiteSpace($p)) {
+            if ($pathOwners.ContainsKey($p)) { $pinProblems += "duplicate _PATH '$p' — ${n} and $($pathOwners[$p]) resolve to the same path (one shadows the other)" }
+            else { $pathOwners[$p] = $n }
         }
         $mode = $pins["${n}_MODE"]; $type = $pins["${n}_TYPE"]
         if ($mode -eq '040000' -and $type -eq 'tree') {
