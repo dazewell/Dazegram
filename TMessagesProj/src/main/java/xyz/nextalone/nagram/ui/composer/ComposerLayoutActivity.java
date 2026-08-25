@@ -597,7 +597,7 @@ public class ComposerLayoutActivity extends BaseFragment {
     /** Tap shortcut for Hidden <-> Scrolling: dragging across a long Hidden list is fiddly, so a plain
      * tap flips a row to the other side without needing to reach the row's spot at all. Start and End
      * stay drag-only - Start is capacity constrained and gates an incoming drop behind a dwell, End is
-     * trailing-pinned, in ways a blind tap-to-the-end can't express. */
+     * left drag-only so this shortcut stays focused on the common Hidden <-> Middle move. */
     private void toggleHiddenMiddle(int position) {
         if (position < 0 || position >= items.size()) {
             return;
@@ -778,8 +778,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 int position = viewHolder.getAdapterPosition();
                 if (position != RecyclerView.NO_POSITION) {
                     ComposerButtons.Button button = ComposerButtons.get(items.get(position).key);
-                    // Only light up for a button that is actually allowed in there; the absence of
-                    // the highlight is how a trailing-only button says "not here".
+                    // Every configurable button can land in Leading now; its 2-slot capacity gate is
+                    // enforced by canDropOver/setStartZoneArmed rather than by button type.
                     arm = button != null && button.canSitIn(ComposerButtons.ZONE_START);
                 }
             }
@@ -1098,7 +1098,6 @@ public class ComposerLayoutActivity extends BaseFragment {
             // the same backdrop it is composited against, or its translucency reads wrong.
             attachGlass(Theme.getCachedWallpaperNonBlocking());
 
-            String trailingKey = trailingKeyOf(zones.get(ComposerButtons.ZONE_END));
             for (int zone : PREVIEW_ZONES) {
                 List<String> keys = zones.get(zone);
                 for (int order = 0; order < keys.size(); order++) {
@@ -1122,7 +1121,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                         iconColor = ColorUtils.setAlphaComponent(iconColor, CONDITIONAL_PREVIEW_COLOR_ALPHA);
                     }
                     icon.setColorFilter(new PorterDuffColorFilter(iconColor, PorterDuff.Mode.SRC_IN));
-                    toolbar.addConfigurable(key, icon, zone, order, trailingKey);
+                    toolbar.addConfigurable(key, icon, zone, order);
                 }
             }
             addMockInput();
@@ -1194,18 +1193,6 @@ public class ComposerLayoutActivity extends BaseFragment {
             toolbar.attachGlass(
                     new BlurredBackgroundDrawableViewFactory(wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper)),
                     new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
-        }
-
-        /** Mirrors {@link ComposerLayout#trailingKey()} against the layout being dragged rather than
-         * the saved one, so the pinned trailing button is right mid gesture too. */
-        private static String trailingKeyOf(List<String> end) {
-            for (int i = end.size() - 1; i >= 0; i--) {
-                ComposerButtons.Button button = ComposerButtons.get(end.get(i));
-                if (button != null && button.stable) {
-                    return button.key;
-                }
-            }
-            return null;
         }
 
         /** The preview colours its own children at build time, so a live theme switch has to rebuild
