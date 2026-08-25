@@ -1280,7 +1280,7 @@ public class SelectAnimatedEmojiDialog extends FrameLayout implements Notificati
                     }
                     final int count = pack.expanded ? pack.documents.size() : Math.min(maxlen, pack.documents.size());
                     if (type == TYPE_CHAT_REACTIONS ? position >= startPosition && position < startPosition + 1 + count : position > startPosition && position <= startPosition + 1 + count) {
-                        emojiTabs.select((emojiTabs.recentTab != null ? 1 : 0) + (emojiTabs.isGiftsVisible() ? 1 : 0) + index);
+                        emojiTabs.select((emojiTabs.recentTab != null ? 1 : 0) + (emojiTabs.giftsTab != null ? 1 : 0) + index);
                         return;
                     }
                 }

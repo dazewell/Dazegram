@@ -2345,6 +2345,7 @@ public class ChatActivity extends BaseFragment implements
         @Override
         public void didPressStreamingStop() {
             BotForumHelper.getInstance(currentAccount).stopStreaming(dialog_id, (int) getTopicId());
+            checkSendButtonBlockedByTyping(true);
         }
 
         @Override
@@ -5257,9 +5258,13 @@ public class ChatActivity extends BaseFragment implements
         actionBar.setChatAvatarContainer(avatarContainer);
         avatarContainer.setActionBar(actionBar);
 
-        if (chatMode == MODE_WELCOME_MESSAGES) {
+        if (chatMode == MODE_PINNED) {
+            actionBar.setForcedMenuMinWidth(dp(46));
+        } else if (chatMode == MODE_WELCOME_MESSAGES) {
             actionBar.setForcedMenuWidth(dp(46));
             actionBar.doNotDrawGlassMenu = true;
+        } else if (isComments) {
+            actionBar.setForcedMenuMinWidth(dp(46));
         }
 
         chatInputViewsContainer = new ChatInputViewsContainer(context);
@@ -7807,7 +7812,31 @@ public class ChatActivity extends BaseFragment implements
             jumpToDate((int) (calendar.getTime().getTime() / 1000));
         });
 
-        if (currentChat != null) {
+        floatingDateView.setOnLongClickListener(view -> {
+            if (getParentActivity() == null) {
+                return false;
+            }
+            if (searchItem != null) {
+                AndroidUtilities.hideKeyboard(searchItem.getSearchField());
+            }
+            Calendar calendar = Calendar.getInstance();
+            calendar.setTimeInMillis((long) floatingDateView.getCustomDate() * 1000);
+            int year = calendar.get(Calendar.YEAR);
+            int monthOfYear = calendar.get(Calendar.MONTH);
+            int dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH);
+
+            calendar.clear();
+            calendar.set(year, monthOfYear, dayOfMonth);
+            Bundle bundle = new Bundle();
+            bundle.putLong("dialog_id", dialog_id);
+            bundle.putLong("topic_id", getTopicId());
+            bundle.putInt("type", CalendarActivity.TYPE_CHAT_ACTIVITY);
+            CalendarActivity calendarActivity = new CalendarActivity(bundle, SharedMediaLayout.FILTER_PHOTOS_AND_VIDEOS, (int) (calendar.getTime().getTime() / 1000));
+            presentFragment(calendarActivity);
+            return true;
+        });
+
+        if (currentChat != null && chatMode != MODE_WELCOME_MESSAGES) {
             pendingRequestsDelegate = new ChatActivityMemberRequestsDelegate(this, currentChat);
             topPanelLayout.addView(pendingRequestsDelegate.getView(), LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 40));
             topPanelLayout.setPriority(pendingRequestsDelegate.getView(), 3);
