@@ -344,7 +344,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
             }
             avatarImageIsHidden = parentFragment != null && (
                 parentFragment.isThreadChat() && !parentFragment.isReplyChatComment() ||
-                parentFragment.getChatMode() == ChatActivity.MODE_PINNED ||
+                parentFragment.getChatMode() == ChatActivity.MODE_PINNED && !isCentered() ||
                 parentFragment.getChatMode() == ChatActivity.MODE_QUICK_REPLIES ||
                 parentFragment.getChatMode() == ChatActivity.MODE_WELCOME_MESSAGES ||
                 parentFragment.getChatMode() == ChatActivity.MODE_EDIT_BUSINESS_LINK
