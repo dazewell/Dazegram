@@ -638,16 +638,29 @@ foreach ($k in $numericPins) {
     if ($pins.ContainsKey($k) -and $pins[$k] -notmatch '^\d+$') { $pinProblems += "not numeric: $k = '$($pins[$k])'" }
 }
 # Vendored-native table (guard 10): every listed entry must carry PATH/MODE/TYPE,
-# and any gitlink (160000 commit) needs a 40-hex _COMMIT. A malformed row would let
-# Test-Gitmodules compare against an empty string and silently pass.
+# and the shape must be exactly one of the two meaningful ones — a vendored tree
+# (040000/tree) or a submodule gitlink (160000/commit). Any other MODE/TYPE would
+# make Test-Gitmodules' equality check trivially satisfiable (the path is "pinned"
+# in name but never actually constrained — the exact libyuv/openh264 failure mode,
+# in table form), and such a row also silently drops out of both negative-test
+# loops. A gitlink needs a 40-hex _COMMIT; a tree must NOT carry a stray _COMMIT.
 if (-not [string]::IsNullOrWhiteSpace($pins['VENDORED_NATIVES'])) {
     foreach ($nm in ($pins['VENDORED_NATIVES'] -split ',')) {
         $n = $nm.Trim(); if (-not $n) { continue }
         foreach ($suf in 'PATH', 'MODE', 'TYPE') {
             if ([string]::IsNullOrWhiteSpace($pins["${n}_${suf}"])) { $pinProblems += "missing/empty: ${n}_${suf}" }
         }
-        if ($pins["${n}_TYPE"] -eq 'commit' -and $pins["${n}_COMMIT"] -notmatch '^[0-9a-f]{40}$') {
-            $pinProblems += "gitlink ${n} needs a 40-hex ${n}_COMMIT (got '$($pins["${n}_COMMIT"])')"
+        $mode = $pins["${n}_MODE"]; $type = $pins["${n}_TYPE"]
+        if ($mode -eq '040000' -and $type -eq 'tree') {
+            if (-not [string]::IsNullOrWhiteSpace($pins["${n}_COMMIT"])) {
+                $pinProblems += "tree ${n} must not carry ${n}_COMMIT (got '$($pins["${n}_COMMIT"])')"
+            }
+        } elseif ($mode -eq '160000' -and $type -eq 'commit') {
+            if ($pins["${n}_COMMIT"] -notmatch '^[0-9a-f]{40}$') {
+                $pinProblems += "gitlink ${n} needs a 40-hex ${n}_COMMIT (got '$($pins["${n}_COMMIT"])')"
+            }
+        } else {
+            $pinProblems += "vendored ${n} has shape ${mode}/${type}, must be 040000/tree or 160000/commit"
         }
     }
 }
