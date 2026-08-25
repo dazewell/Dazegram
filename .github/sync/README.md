@@ -6,9 +6,10 @@ touching `sync-upstream.yml`, `sync-guard.ps1`, or any pin.
 
 ## Provenance
 
-- **Original base fork:** `risin42/NagramX` — now **archived**. It is still the
-  `source` remote and the acknowledgment in the About screen credits it, but it
-  is no longer synced from. Those references are history, not live URLs.
+- **Original base fork:** `risin42/NagramX` — now **archived**. Historically this
+  was the base fork, and the app's About screen retains that attribution. The
+  `source` remote and the old sync flow through it are no longer configured; the
+  full history is preserved in `origin/base`.
 - **Current parent:** `NextAlone/Nagram` (`nagram` remote). This is where
   upstream changes now come from.
 - **This repo:** `dazewell/Dazegram` (renamed from `dazewell/NagramX`; the old
@@ -62,11 +63,15 @@ Every routine sync, on `workflow_dispatch` (no inputs):
 4. Run `sync-guard.ps1` from the trusted `dev` checkout.
 5. Only on a clean guard, **atomically** push `dev` and `nbase` together.
 
-The anchor advances **only** by a reviewed edit to `pins.env` after a new
-snapshot has landed — never by the workflow itself. The pins here still record
-`e09f49fa` / `c21ee8ac`; the first steady-state run is **expected to block**,
-because Nagram's current tip adds a new `BRANDING.md` (an unreviewed path). That
-block is the guard working.
+**Fail-closed by design.** The system blocks at step 3 (merge conflict) before
+any classification or guard runs. A real upstream bump almost always trips the
+merge conflict guard first, which is the intended behaviour. Reconciliation
+requires a PC and manual review rather than auto-pushing. The anchor advances
+**only** by a reviewed edit to `pins.env` after a new snapshot has landed —
+never by the workflow itself. The pins here still record `e09f49fa` / `c21ee8ac`;
+the first steady-state run is **expected to block**, because Nagram's current
+tip adds a new `BRANDING.md` (an unreviewed path). That block is the system
+working.
 
 ## Files
 
@@ -120,10 +125,15 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   already moved. So a guard-clean sync that breaks a fork call edge lands on the
   trunk first and is caught by a red build afterwards, not held back by the guard.
 
-Do not read the machine gate as "all 549 semantic gates ran." It did not. Auto
-push is justified only because an ordinary 3-way merge preserves `dev`'s delta
-when there is no conflict and no unclassified delta — and a real upstream bump
-almost always trips the new-path or conflict guard first, which is the point.
+Do not read the machine gate as "all 549 semantic gates ran." It did not. The
+typical sync path is **fail-closed at the merge step before the guard runs** —
+an upstream bump almost always creates conflicts or unclassified deltas that
+abort at step 3, requiring PC reconciliation. The rare case where no conflict
+occurs and the guard runs is when the upstream delta is sufficiently small and
+scoped to fork-layer-only paths. Even then, auto-push is justified only because
+an ordinary 3-way merge preserves `dev`'s delta when there is no conflict and no
+unclassified delta — not because the guard has comprehensively validated
+semantic correctness across all 627 shared-and-differing files.
 
 ## Signer identity — certificate, subject, and key-entry type
 

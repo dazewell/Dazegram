@@ -281,7 +281,7 @@ code are not.
    `README.md` is a stable pointer to `FEATURES.md`
    and does not change per feature. The only place the doc is separated from
    the code is the upstream `-pr` ceremony, which drops the one `FEATURES.md`
-   hunk (`git checkout source/dev -- FEATURES.md`) so the proposal stays
+   hunk (`git checkout nagram/dev -- FEATURES.md`) so the proposal stays
    code-only — see the `nagramx-branch-flow` skill.
 
 7. **Commit.**
