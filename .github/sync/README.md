@@ -91,9 +91,14 @@ block is the guard working.
   599 entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
   wired to the current version.
-- Signing: keystore + signing-config blobs pinned, **and** the alias exports the
-  pinned certificate SHA-256 (proven on the runner with `keytool`, password only
-  ever in a child-process env var).
+- Signing: keystore + signing-config blobs pinned, **and** the alias resolves to a
+  `PrivateKeyEntry` whose certificate exports the pinned SHA-256 and subject CN
+  (proven on the runner with `keytool`, password only ever in a child-process env
+  var).
+- **Executable Gradle build surface** (`build.gradle`, `settings.gradle`,
+  `gradle/wrapper/gradle-wrapper.properties`, `gradlew`, `gradlew.bat`,
+  `buildSrc/**`) stays in the fork delta, so an upstream-only change to it always
+  lands in the double-modified intersection and blocks (see `GRADLE_SURFACE`).
 - Snapshot ancestry: exactly one parent (current `nbase`), source descends from
   the recorded anchor, source not an ancestor of the snapshot.
 - No upstream commit imported into `dev`; no prohibited attribution in the
@@ -110,7 +115,10 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   did not — is semantically safe to take. The guard blocks the fork ∩ upstream
   *double-modified* intersection (the dangerous silent-revert case), but an
   upstream-only change auto-applies and its per-hunk correctness is not read here.
-- On-device behaviour. Nothing here proves the build runs on a phone.
+- On-device behaviour, **and compilation itself**. The guard gates the *push*;
+  `staging.yml` compiles the dual-package APK ~15 minutes *after* the refs have
+  already moved. So a guard-clean sync that breaks a fork call edge lands on the
+  trunk first and is caught by a red build afterwards, not held back by the guard.
 
 Do not read the machine gate as "all 549 semantic gates ran." It did not. Auto
 push is justified only because an ordinary 3-way merge preserves `dev`'s delta
@@ -157,12 +165,20 @@ matched specifically rather than blob-searched for the string.
 
 ## Known future block cause: the `generated with` token
 
-The attribution scan (guard 14) matches a small set of tokens case-insensitively,
-including `generated with`, in the source lines a sync adds. That phrase appears
-in some generated-code headers (`Generated with protoc`, and similar). Today it is
-latent — `git grep -i 'generated with'` finds zero matches across the source on
-`dev` and `nbase` — but a future upstream file carrying it will **block the sync**
-and route it to human review. That is the safe direction (it blocks rather than
-passing a possible violation), and a narrow fast lane that often routes to review
-is the intended behaviour. If you hit it, resolve on the PC; do **not** weaken the
-scan to make the sync pass.
+The attribution scan (guard 14) matches a small set of tokens against the source
+lines a sync adds. One of them targets the `generated with [assistant]` footer
+that AI tools append. The phrase `generated with` on its own is **common in
+vendored third-party sources** — an unscoped `git grep -i 'generated with'` finds
+dozens of files on `dev` (boringssl, sqlite, webrtc, openh264, and similar), and
+the strings `generated without` and `regenerated with` appear across those trees
+too. So the token is deliberately **narrowed** to fire only when `generated with`
+is followed by a markdown link or a known assistant name — not on bare
+`generated with protoc`, `generated without warranty`, or `regenerated with
+autoconf`. (The self-test asserts both directions: the assistant footer is
+caught, the three vendored phrases are not.)
+
+Even so, a future upstream delta touching those vendored trees could carry a real
+assistant footer and **block the sync** — that is a *resolve-on-the-PC* event, the
+safe direction (it blocks rather than passing a possible violation). If you hit
+it, reconcile on the PC; do **not** widen or weaken the token to make the sync
+pass — narrowing it further to dodge a real footer would defeat the guard.
