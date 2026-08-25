@@ -64,23 +64,6 @@ public final class ComposerLayout {
         return Integer.MAX_VALUE;
     }
 
-    /**
-     * The trailing zone button that holds the panel's trailing edge. Only a button that stays for the
-     * whole life of the toolbar qualifies: anchoring the edge to one that comes and goes leaves the
-     * capsule measuring against a zero width child.
-     */
-    public static synchronized String trailingKey() {
-        parse();
-        List<String> end = zones.get(ComposerButtons.ZONE_END);
-        for (int i = end.size() - 1; i >= 0; i--) {
-            ComposerButtons.Button button = ComposerButtons.get(end.get(i));
-            if (button != null && button.stable) {
-                return button.key;
-            }
-        }
-        return null;
-    }
-
     public static synchronized void save(List<List<String>> next) {
         StringBuilder builder = new StringBuilder();
         for (int i = 0; i < ComposerButtons.ZONE_COUNT; i++) {
@@ -188,11 +171,7 @@ public final class ComposerLayout {
         return result;
     }
 
-    /**
-     * Drops keys the build no longer knows, gives unmentioned buttons their default zone, pulls the
-     * trailing only buttons back to the trailing zone, trims the leading zone down to its capacity,
-     * and makes sure a stable button ends up holding the trailing edge.
-     */
+    /** Drops unknown keys, gives unmentioned buttons their default zone, and trims Leading to capacity. */
     public static List<List<String>> normalize(List<List<String>> input) {
         List<List<String>> result = emptyZones();
         HashSet<String> seen = new HashSet<>();
@@ -202,8 +181,7 @@ public final class ComposerLayout {
                 if (button == null || !seen.add(key)) {
                     continue;
                 }
-                int zone = button.canSitIn(i) ? i : ComposerButtons.ZONE_END;
-                result.get(zone).add(key);
+                result.get(i).add(key);
             }
         }
         for (ComposerButtons.Button button : ComposerButtons.all()) {
@@ -214,14 +192,6 @@ public final class ComposerLayout {
         List<String> start = result.get(ComposerButtons.ZONE_START);
         while (start.size() > ComposerButtons.START_CAPACITY) {
             result.get(ComposerButtons.ZONE_MIDDLE).add(0, start.remove(start.size() - 1));
-        }
-        List<String> end = result.get(ComposerButtons.ZONE_END);
-        for (int i = end.size() - 1; i >= 0; i--) {
-            ComposerButtons.Button button = ComposerButtons.get(end.get(i));
-            if (button != null && button.stable) {
-                end.add(end.remove(i));
-                break;
-            }
         }
         return result;
     }
