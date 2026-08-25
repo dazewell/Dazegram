@@ -65,6 +65,7 @@ public final class ComposerButtons {
         }
 
         public boolean canSitIn(int zone) {
+            // Kept as the placement gate call sites already use; unrestricted layout currently allows all zones.
             return true;
         }
     }

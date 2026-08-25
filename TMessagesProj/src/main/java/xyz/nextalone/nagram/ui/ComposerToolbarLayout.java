@@ -682,6 +682,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
         private float pendingEndShift;
         private boolean resumingMidAnimation;
         private final Runnable boundsAnimationStarter = this::startBoundsAnimation;
+        // A slot occupancy change should clear on the very next traversal: checkSlotOccupancy(true) runs
+        // before measuring slots and force-layouts the changed slot (and the middle strip host when needed),
+        // so this listener only needs to request one fresh pass when a mismatch is observed at pre-draw time.
         private final ViewTreeObserver.OnPreDrawListener occupancyPreDrawListener = () -> {
             if (checkSlotOccupancy(false)) {
                 requestLayout();
@@ -887,6 +890,9 @@ public final class ComposerToolbarLayout extends FrameLayout {
                     if (forceLayout) {
                         slot.forceLayout();
                         middleContent.forceLayout();
+                        if (middleScrollView != null) {
+                            middleScrollView.forceLayout();
+                        }
                     }
                 }
             }
