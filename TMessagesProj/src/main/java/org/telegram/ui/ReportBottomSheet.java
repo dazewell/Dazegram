@@ -910,7 +910,7 @@ public class ReportBottomSheet extends BottomSheet {
                     }
                 });
                 sheet.show();
-            } else if (response instanceof TLRPC.TL_reportResultReported || true) {
+            } else if (response instanceof TLRPC.TL_reportResultReported) {
                 AndroidUtilities.runOnUIThread(() -> {
                     if (!done[0] && whenDone != null) {
                         done[0] = true;

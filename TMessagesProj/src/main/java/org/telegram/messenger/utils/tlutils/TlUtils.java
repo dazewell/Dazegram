@@ -293,12 +293,14 @@ public class TlUtils {
             return false;
         }
 
+        NativeByteBuffer data1 = null;
+        NativeByteBuffer data2 = null;
         try {
-            NativeByteBuffer data1 = new NativeByteBuffer(size1);
+            data1 = new NativeByteBuffer(size1);
             object1.serializeToStream(data1);
             data1.rewind();
 
-            NativeByteBuffer data2 = new NativeByteBuffer(size2);
+            data2 = new NativeByteBuffer(size2);
             object2.serializeToStream(data2);
             data2.rewind();
 
@@ -319,8 +321,15 @@ public class TlUtils {
             }
 
             return true;
-        } catch (Throwable e) {
-            throw new RuntimeException(e);
+        } catch (Throwable ignore) {
+            return false;
+        } finally {
+            if (data1 != null) {
+                data1.reuse();
+            }
+            if (data2 != null) {
+                data2.reuse();
+            }
         }
     }
 }
