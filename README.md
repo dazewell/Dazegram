@@ -7,8 +7,8 @@ A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional featu
 ## Download
 
 Latest versions are available through:
-* [GitHub Actions](https://github.com/dazewell/NagramX/actions/workflows/staging.yml) (CI Artifacts)
-* [GitHub Releases](https://github.com/dazewell/NagramX/releases) (Latest Stable)
+* [GitHub Actions](https://github.com/dazewell/Dazegram/actions/workflows/staging.yml) (CI Artifacts)
+* [GitHub Releases](https://github.com/dazewell/Dazegram/releases) (Latest Stable)
 
 ## Package names
 
@@ -30,7 +30,7 @@ Both builds are signed with my certificate:
 1. Clone the repository with its submodules:
 
     ```bash
-    git clone --recursive --shallow-submodules https://github.com/dazewell/NagramX.git NagramX
+    git clone --recursive --shallow-submodules https://github.com/dazewell/Dazegram.git Dazegram
     ```
 
     If you already cloned the repository without submodules, run:

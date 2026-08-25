@@ -192,12 +192,12 @@ it does not mean reviewed — architect round 2 has not happened when you open i
 
 ```powershell
 gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
-gh api -X POST repos/dazewell/NagramX/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+gh api -X POST repos/dazewell/Dazegram/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
 ```
 
 `gh pr edit --add-reviewer @copilot` silently no-ops, and
 `gh pr view --json reviewRequests` hides bot reviewers; confirm with
-`gh api repos/dazewell/NagramX/pulls/<n>/requested_reviewers` and look for
+`gh api repos/dazewell/Dazegram/pulls/<n>/requested_reviewers` and look for
 `Copilot`.
 
 Opening the pull request, and every later push, triggers `staging.yml`, which
@@ -225,11 +225,11 @@ the other endpoint. Match case-insensitively on a wildcard instead.
 # filter in PowerShell, not in --jq: this shell strips the inner quotes out of a
 # jq string literal, so `--jq '...=="Copilot"'` fails with "function not defined"
 $pr = '<n>'
-$reviews = gh api "repos/dazewell/NagramX/pulls/$pr/reviews" | ConvertFrom-Json
+$reviews = gh api "repos/dazewell/Dazegram/pulls/$pr/reviews" | ConvertFrom-Json
 $reviews | Where-Object { $_.user.login -like '*copilot*' } |
   Select-Object -Last 1 | ForEach-Object { $_.state; $_.submitted_at; $_.body }
 
-$comments = gh api "repos/dazewell/NagramX/pulls/$pr/comments" | ConvertFrom-Json
+$comments = gh api "repos/dazewell/Dazegram/pulls/$pr/comments" | ConvertFrom-Json
 $comments | Where-Object { $_.user.login -like '*opilot*' } |
   Sort-Object created_at | Select-Object -Last 5 |
   ForEach-Object { "$($_.path):$($_.line)`n$($_.body)`n---" }
@@ -261,11 +261,11 @@ no `gh` porcelain for either. Verify none remain unresolved.
 ```powershell
 # reply in-thread; --body-file avoids this shell mangling backticks and $ in prose
 [System.IO.File]::WriteAllText("$env:TEMP\reply.md", $text, (New-Object System.Text.UTF8Encoding $false))
-gh api "repos/dazewell/NagramX/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
+gh api "repos/dazewell/Dazegram/pulls/$pr/comments/<comment-id>/replies" -F body=@"$env:TEMP\reply.md"
 
 # resolve. threadId is the PRRT_... node id, not the comment id
 $ids = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{id isResolved}}}}}'
-$t = gh api graphql -f query=$ids -F o=dazewell -F n=NagramX -F p=$pr | ConvertFrom-Json
+$t = gh api graphql -f query=$ids -F o=dazewell -F n=Dazegram -F p=$pr | ConvertFrom-Json
 $t.data.repository.pullRequest.reviewThreads.nodes | Where-Object { -not $_.isResolved }
 
 $m = 'mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'

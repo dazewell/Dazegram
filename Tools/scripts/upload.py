@@ -32,7 +32,14 @@ def find_apk(artifact_path: Path, abi: str) -> Path | None:
 def get_commit_info():
     commit_id_raw = os.environ.get("COMMIT_ID") or "unknown"
     commit_id = commit_id_raw[:7]
-    commit_url = os.environ.get("COMMIT_URL") or "https://github.com/risin42/NagramX/commits"
+    # Fall back to the specific commit when we know its id, so the "commit details"
+    # link opens the commit the caption names rather than the whole commits list.
+    default_url = (
+        f"https://github.com/dazewell/Dazegram/commit/{commit_id_raw}"
+        if commit_id_raw != "unknown"
+        else "https://github.com/dazewell/Dazegram/commits"
+    )
+    commit_url = os.environ.get("COMMIT_URL") or default_url
     commit_message = os.environ.get("COMMIT_MESSAGE") or "unknown"
     branch = os.environ.get("BRANCH") or "unknown"
     return commit_id, commit_url, commit_message, branch
