@@ -11575,7 +11575,6 @@ public class ChatActivityEnterView extends FrameLayout implements
                     audioVideoSendButton.setVisibility(View.VISIBLE);
                 }
                 recordIsCanceled = true;
-                isRecordingStateChanged();
                 AnimatorSet iconsAnimator = new AnimatorSet();
                 iconsAnimator.playTogether(
                         ObjectAnimator.ofFloat(emojiButton, EMOJI_BUTTON_SCALE, 1),
@@ -11868,33 +11867,20 @@ public class ChatActivityEnterView extends FrameLayout implements
             recordCircle.setVisibility(GONE);
         }
         runningAnimationAudio = null;
+        isRecordingStateChanged();
 //        if (recordedAudioBackground != null) {
 //            recordedAudioBackground.setAlpha(1f);
 //        }
         if (attachLayout != null) {
             attachLayoutTranslationX = 0;
-            if (!isRecordingOrReviewVisible()) {
-                // NagramX (#composer-toolbar): locked cancel can finish with attach alpha at zero from the record
-                // hide animation, so settle it back once recording/review is fully gone.
-                attachLayoutAlpha = 1f;
-                if (attachButton != null) {
-                    attachButton.setAlpha(attachButtonAlpha = 1.0f);
-                }
-            }
             updateAttachLayoutParams();
         }
         if (slideText != null) {
             slideText.setCancelToProgress(0f);
         }
-        isRecordingStateChanged();
 
         delegate.onAudioVideoInterfaceUpdated();
         updateSendAsButton();
-    }
-
-    private boolean isRecordingOrReviewVisible() {
-        return recordingAudioVideo || recordInterfaceState != 0
-                || recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE;
     }
 
     protected void isRecordingStateChanged() {
@@ -11903,7 +11889,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         }
         boolean wasReplacementVisible = toolbarReplacementVisible;
         boolean replacementVisible = botWebViewButton != null && botWebViewButton.getVisibility() == VISIBLE;
-        boolean recordingVisible = isRecordingOrReviewVisible();
+        boolean recordingVisible = recordingAudioVideo || recordInterfaceState != 0
+                || recordedAudioPanel != null && recordedAudioPanel.getVisibility() == VISIBLE;
         boolean replaceInput = replacementVisible || recordingVisible;
         composerToolbar.setControlsVisible(!replaceInput);
         // NagramX (#composer-toolbar): the record and review panels are shorter than the toolbar, so an empty
