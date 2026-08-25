@@ -52,7 +52,7 @@ jobs:
             echo "::error::SYNC_TOKEN is unset. This sync must not fall back to GITHUB_TOKEN:"
             echo "::error::the default token cannot push .github/workflows/ and its push would"
             echo "::error::skip the staging trigger, producing a sync that silently bypasses the"
-            echo "::error::build signal. Set SYNC_TOKEN (a PAT with contents:write + workflow)."
+            echo "::error::build signal. Set SYNC_TOKEN (a fine-grained PAT with Contents: write + Workflows: write)."
             exit 1
           fi
 
@@ -77,9 +77,9 @@ jobs:
           # A no-op dry-run push to dev exercises auth + push permission without
           # writing anything. The full workflow-file push permission is only
           # provable by the real atomic push below, which fails explicitly (not
-          # silently) if the token lacks `workflow` scope.
+          # silently) if the token lacks Workflows: write.
           if ! git push --dry-run origin "$PRE:refs/heads/dev"; then
-            echo "::error::SYNC_TOKEN cannot push dev. Its scope is insufficient for this sync."
+            echo "::error::SYNC_TOKEN cannot push dev. It needs Contents: write + Workflows: write."
             exit 1
           fi
           echo "ok=1" >> "$GITHUB_OUTPUT"

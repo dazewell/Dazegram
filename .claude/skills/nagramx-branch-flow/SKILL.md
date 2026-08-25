@@ -505,7 +505,7 @@ The first steady-state run is **expected to block** (Nagram's tip adds a new
 The anchor only advances by a reviewed edit to `.github/sync/pins.env`, never by
 the workflow itself. Full contract: `.github/sync/README.md`.
 
-**Push token — must have the `workflow` scope, and there is no fallback.** The
+**Push token — must have Contents: write + Workflows: write, and there is no fallback.** The
 snapshot carries `.github/workflows/*` (nbase legitimately holds Nagram's
 `debug.yml`/`pr.yml`/`release.yml`), and the built-in `GITHUB_TOKEN` is
 *structurally* forbidden from pushing under `.github/workflows/` — and it would
