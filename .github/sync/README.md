@@ -136,7 +136,7 @@ case where the sync passes both the merge and the guard is when the upstream
 delta is sufficiently small and scoped to fork-layer-only paths. Even then,
 auto-push is justified only because an ordinary 3-way merge preserves `dev`'s
 delta when there is no conflict and no unclassified delta — not because the
-guard has comprehensively validated semantic correctness across all 627
+guard has comprehensively validated semantic correctness across all
 shared-and-differing files.
 
 ## Signer identity — certificate, subject, and key-entry type
