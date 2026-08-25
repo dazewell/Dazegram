@@ -142,15 +142,8 @@ Remotes (as configured in this clone):
   `dazewell/NagramX` — the old name still redirects but is not something to build
   on, so every command and URL uses `dazewell/Dazegram`)
 - `nagram` → `NextAlone/Nagram` (the **live upstream parent**)
-- `source` → `risin42/NagramX` (the **former** base fork, now archived — kept for
-  history, no longer synced from)
-- `official` → `DrKLO/Telegram` (upstream Telegram; monitored, not merged)
 
-Upstream now flows from **`nagram`** through a snapshot, never from `source`. The
-old `source` → `base` → `dev` merge-forward is retired. The full topology (parent
-move, anchor, snapshot, the `nbase` chain) lives in **`.github/sync/README.md`**;
-the short version is in Automation below.
-
+Branches (on `origin`):
 - **`dev`** — the trunk / integration branch and the build source. `staging.yml`
   builds the dual APK from every push to `dev`. Never rebuilt, never
   force-pushed.
@@ -158,10 +151,14 @@ the short version is in Automation below.
   commits, each carrying a Nagram tree and parented on the previous snapshot. It
   is an ancestor of `dev` (the anchor merge made it one), **append-only**, never
   force-pushed, never deleted.
-- **`base`** — the frozen mirror of the former base fork. Retained (the brief
-  keeps it and the `source` remote untouched), but no longer part of the sync.
+- **`base`** — the frozen mirror of the risin42-era fork at commit a6c7d0ae, no
+  longer part of the sync, kept for historical reference only.
 - **`<YYYY-MM-DD>_<slug>`** — short-lived change branch. Cut from `dev`, PR'd in,
   deleted after merge (kept only for upstream candidates).
+
+Upstream now flows from **`nagram`** through a snapshot into `dev`. The full sync
+topology (anchor, snapshot, the `nbase` chain, and the guarded merge strategy)
+lives in **`.github/sync/README.md`**.
 
 ## Branch naming (mandatory — the date prefix is not optional)
 
@@ -432,8 +429,8 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
 the PC by hand, resolving into the `dev` merge commit, then advance the anchor in
-`.github/sync/pins.env` in the same change. **Never** fast-forward the archived
-`source`/`base` into `dev`: that path is retired and bypasses the guard entirely.
+`.github/sync/pins.env` in the same change. **Never** fast-forward the `base`
+branch into `dev`: that path is retired and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
