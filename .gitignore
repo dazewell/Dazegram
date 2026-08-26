@@ -15,3 +15,7 @@ TMessagesProj/jniRes/
 TMessagesProj/afat/
 *.session
 TMessagesProj/jni/ffmpeg/build_android
+
+# Raw README marketing screenshots stay local; only the composited docs/images/
+# outputs get committed.
+docs/screenshots/

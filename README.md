@@ -6,24 +6,25 @@ Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), whi
 
 This README covers the highlights. The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
 
-<!-- SCREENSHOT: hero -> docs/images/hero.png | per-chat time zone in a chat header with the cross-time-zone picker open; portrait ~1080x1920 | alt: "A chat header showing the other chat's local time, with a time conversion picker open and a selected time inserted into the message composer." -->
+![A time zone conversion sheet showing your time and the other person's side by side on an hour grid, with an Insert into message button.](docs/images/hero.png)
 
 ## Highlights
 
 - **Time zones:** Set a time zone on any chat or group and see their local time right in the header. Tap it to line up a moment across both zones and drop it straight into your message.
 - **Composer:** Reorder most of the composer's row: emoji, attachments, formatting, schedule, into the layout you actually reach for.
 
-  <!-- SCREENSHOT: composer -> docs/images/composer.png | the composer row layout editor mid-drag, reordering a button | alt: "The composer layout editor showing the row of buttons being reordered by dragging one into a new position." -->
+  ![The composer toolbar settings screen, showing size and spacing sliders and the buttons you can drag into the toolbar.](docs/images/composer.png)
 
 - **Everyday reliability:** The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.
 - **Privacy profiles:** Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
+
+  ![The auto-lock profile quick-switch menu, showing the Safe and Unsafe profiles you can switch between with a long-press.](docs/images/privacy-profiles.png)
+
 - **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
 
-  <!-- SCREENSHOT: video messages -> docs/images/video-messages.png | a round video message mid-recording past the stock time limit, with the warning buzz moment and a caption showing | alt: "A round video message recording past Telegram's usual limit, showing the warning indicator and a live caption." -->
+  ![The video message recording options menu, showing the Infinite Recording and External Microphone toggles.](docs/images/video-messages.png)
 
 - **Private chats:** Hide a chat's last message from the list, or lock the whole chat behind your passcode (which hides it too): your call, per chat.
-
-  <!-- SCREENSHOT: private chats -> docs/images/privacy-hide-lock.png | the chat list with one chat's last message hidden and another locked behind the passcode prompt | alt: "The chat list showing one chat with its last message hidden and another chat locked behind a passcode prompt." -->
 
 There's more: FEATURES.md has all of it, with what each one does and where to find it in the app.
 
