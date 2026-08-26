@@ -15,12 +15,14 @@ on:
       - '**.md'
       - '.github/**'
       - '!.github/workflows/staging.yml'
+      - 'docs/**'
   pull_request:
     types: [opened, reopened, synchronize]
     paths-ignore:
       - '**.md'
       - '.github/**'
       - '!.github/workflows/staging.yml'
+      - 'docs/**'
   workflow_dispatch:
 
 # Drop an older run on the same branch/PR rather than building it out: a few
