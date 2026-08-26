@@ -4219,20 +4219,6 @@ public class Theme {
             if ("NekoX".equals(theme)) {
                 theme = "Blue";
                 preferences.edit().putString("theme", theme).apply();
-            } else if ("Solid Light".equals(theme) && !themesDict.containsKey("Solid Light")) {
-                // NagramX: Solid Light was removed; move an active selection to its nearest
-                // equivalent instead of falling through to themesDict.get() returning null below.
-                // Gated on themesDict not already having this key so a user's own local custom
-                // theme that happens to be named "Solid Light" (ThemeInfo.getKey() is just name
-                // for a local theme) is never mistaken for the removed built-in.
-                theme = "Extera Light";
-                preferences.edit().putString("theme", theme).apply();
-            } else if ("Solid Dark".equals(theme) && !themesDict.containsKey("Solid Dark")) {
-                // NagramX: "theme" is the generic active-theme key, not just the day slot - with
-                // auto-night off the picker can persist "Solid Dark" here directly, so this key
-                // needs the same remap as "nighttheme" below, with the same local-custom-theme guard.
-                theme = "Extera Dark";
-                preferences.edit().putString("theme", theme).apply();
             }
             if ("Default".equals(theme)) {
                 applyingTheme = themesDict.get("Blue");
@@ -4250,12 +4236,6 @@ public class Theme {
             }
 
             theme = preferences.getString("nighttheme", null);
-            if ("Solid Dark".equals(theme) && !themesDict.containsKey("Solid Dark")) {
-                // NagramX: same removal remap as "theme" above, for the night side, with the
-                // same local-custom-theme guard.
-                theme = "Extera Dark";
-                preferences.edit().putString("nighttheme", theme).apply();
-            }
             if ("Default".equals(theme)) {
                 applyingTheme = themesDict.get("Blue");
                 applyingTheme.currentAccentId = DEFALT_THEME_ACCENT_ID;
@@ -4276,31 +4256,8 @@ public class Theme {
             }
 
             String lastDayTheme = themeConfig.getString("lastDayTheme", null);
-            String lastDarkTheme = themeConfig.getString("lastDarkTheme", null);
-            // NagramX: fold the Solid -> Extera remap for both remembered keys into the
-            // pre-existing NekoX -> Blue fixup, one batched edit for whichever key needs it.
-            // Neither remembered key is restricted to its "own" light/dark variant - e.g.
-            // ThemePreviewActivity's day-theme apply flow stores whatever theme was just applied
-            // into lastDayTheme with no isDark check - so a stored "Solid Dark" can end up under
-            // lastDayTheme (and "Solid Light" under lastDarkTheme) just as easily as the other way
-            // round. Check both Solid names against both keys. Same local-custom-theme guard as
-            // the "theme"/"nighttheme" remaps above.
-            String remappedLastDay = "NekoX".equals(lastDayTheme) ? "Blue"
-                    : "Solid Light".equals(lastDayTheme) && !themesDict.containsKey("Solid Light") ? "Extera Light"
-                    : "Solid Dark".equals(lastDayTheme) && !themesDict.containsKey("Solid Dark") ? "Extera Dark"
-                    : null;
-            String remappedLastDark = "Solid Dark".equals(lastDarkTheme) && !themesDict.containsKey("Solid Dark") ? "Extera Dark"
-                    : "Solid Light".equals(lastDarkTheme) && !themesDict.containsKey("Solid Light") ? "Extera Light"
-                    : null;
-            if (remappedLastDay != null || remappedLastDark != null) {
-                SharedPreferences.Editor editor = themeConfig.edit();
-                if (remappedLastDay != null) {
-                    editor.putString("lastDayTheme", remappedLastDay);
-                }
-                if (remappedLastDark != null) {
-                    editor.putString("lastDarkTheme", remappedLastDark);
-                }
-                editor.apply();
+            if ("NekoX".equals(lastDayTheme)) {
+                themeConfig.edit().putString("lastDayTheme", "Blue").apply();
             }
 
             SharedPreferences.Editor oldEditor = null;
