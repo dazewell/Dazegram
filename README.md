@@ -7,7 +7,7 @@ Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), whi
 This README covers the highlights. The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
 
 <p align="center">
-  <img width="640" src="docs/images/hero.png" alt="Three views of Dazegram's time zone tools: comparing hours side by side on an hour grid, picking a time range, and scheduling a message for the other person's time.">
+  <img width="640" src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: comparing hours side by side on an hour grid, picking a time range, scheduling a message for the other person's time, and the converted time showing up in the chat header and next to a message.">
 </p>
 
 ## Highlights
