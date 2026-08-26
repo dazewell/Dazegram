@@ -26,16 +26,22 @@ Direct-merging Nagram into `dev` is unusable: the merge base is `b206febda45b…
 and a dry run reports **503 conflicts**. That does not change, and this mechanism
 does not pretend to change it.
 
-Instead there is an **anchor** and an `nbase` chain:
+Instead there is an **anchor** and an `nbase` chain. The recorded anchor advances
+along that chain by a reviewed `pins.env` edit each time a new snapshot lands; it
+currently records Nagram **12.10.1**:
 
-- **Anchor source** `e09f49fa8c2dde…` — the Nagram 12.10.0 commit whose tree we
-  anchor on.
-- **Snapshot** `c21ee8ac2489…` (`origin/nbase`) — a **locally-authored** commit
-  whose tree is byte-identical to the anchor's (`5ecc658245…`), importing no
-  upstream author, message or committer. Its single parent is `b206febda45b…`.
-- **Anchor merge** — a `-s ours` merge that records `nbase` as a second parent of
-  `dev` while keeping `dev`'s tree byte-identical. After it,
-  `merge-base(dev, c21ee8ac) = c21ee8ac`.
+- **Anchor source** `941e30844e…` — the Nagram 12.10.1 commit whose tree the
+  current snapshot copies.
+- **Snapshot** `dc6d665f50…` (the new `origin/nbase`) — a **locally-authored**
+  commit whose tree is byte-identical to that anchor's (`06e811bc…`), importing no
+  upstream author, message or committer. Its single parent is the **previous**
+  snapshot `c21ee8ac…`.
+
+The chain was **bootstrapped** at 12.10.0: the first snapshot `c21ee8ac…` (tree
+`5ecc658245…`, byte-identical to the 12.10.0 anchor `e09f49fa8c…`) had parent
+`b206febda45b…`, and a `-s ours` **anchor merge** recorded it as a second parent of
+`dev` while keeping `dev`'s tree byte-identical, so `merge-base(dev, c21ee8ac) =
+c21ee8ac`. Each later snapshot chains onto the one before it.
 
 What the anchor buys: a **future snapshot** built on `nbase` (parent = `nbase`,
 tree = a newer Nagram tree) 3-way-merges into `dev` against the 12.10.0 base, so
@@ -71,15 +77,22 @@ almost always trips either the merge-conflict block or the guard's classificatio
 gates, which is the intended behaviour. Reconciliation requires a PC and manual
 review rather than auto-pushing. The anchor advances **only** by a reviewed edit
 to `pins.env` after a new snapshot has landed — never by the workflow itself.
-The pins here still record `e09f49fa` / `c21ee8ac`; the first steady-state run is
-**expected to block**, because Nagram's current tip adds a new `BRANDING.md` (an
-unreviewed path). That block is the system working.
+The pins now record `941e30844e` / `dc6d665f50` (Nagram 12.10.1). Those values were
+advanced ahead of `origin/nbase` on purpose, so until a human fast-forwards
+`origin/nbase` from `c21ee8ac` to `dc6d665f50`, `sync-guard-check`'s real-candidate
+fixture is **expected to block** where `origin/nbase` no longer equals the pinned
+`OLD_NBASE` (the log reads `origin/nbase … != pinned OLD_NBASE …`). That
+transitional red is the system working; do not revert a pin to clear it. The
+ordering is: merge the 12.10.1 reconciliation PR → fast-forward `origin/nbase` to
+`dc6d665f50` → re-run the pins PR's checks (they go green) → merge it. Never push
+`nbase` *after* merging the pins PR, or the guard reds permanently instead of for a
+window.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, BoringSSL entry, layer floors, Ayu schema. Read from PRE, never from a candidate. |
+| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
 | `workflow-manifest.tsv` | The approved `.github/workflows` set the snapshot may carry (Nagram's `debug`/`pr`/`release`). Any addition or change blocks. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. |
@@ -93,7 +106,11 @@ unreviewed path). That block is the system working.
 - The 49 protected blobs byte-identical in PRE and candidate.
 - The guard and its workflows unchanged by the candidate.
 - `.github/workflows` in the snapshot matches the approved manifest exactly.
-- `.gitmodules` blob unchanged; BoringSSL stays a vendored `040000 tree`.
+- `.gitmodules` blob unchanged; every vendored native keeps its pinned git object
+  shape — boringssl, libyuv, openh264 and tlottie_lib stay `040000 tree`, and the
+  tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`
+  (`VENDORED_NATIVES`), so a `040000 tree` silently turning into a `160000 commit`
+  submodule (as the 12.10.1 default merge did to libyuv and openh264) blocks.
 - Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 57, `strings_nax` ≥
   599 entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
@@ -104,8 +121,11 @@ unreviewed path). That block is the system working.
   var).
 - **Executable Gradle build surface** (`build.gradle`, `settings.gradle`,
   `gradle/wrapper/gradle-wrapper.properties`, `gradlew`, `gradlew.bat`,
-  `buildSrc/**`) stays in the fork delta, so an upstream-only change to it always
-  lands in the double-modified intersection and blocks (see `GRADLE_SURFACE`).
+  `buildSrc/**`, `gradle.properties`) stays in the fork delta, so an upstream-only
+  change to it always lands in the double-modified intersection and blocks (see
+  `GRADLE_SURFACE`). `gradle.properties` carries `APP_PACKAGE` and the APK version
+  inputs and is in neither `protected-paths.tsv` nor a blob pin, so this membership
+  is the only thing stopping an upstream-only edit to it from auto-applying.
 - Snapshot ancestry: exactly one parent (current `nbase`), source descends from
   the recorded anchor, source not an ancestor of the snapshot.
 - No upstream commit imported into `dev`; no prohibited attribution in the
