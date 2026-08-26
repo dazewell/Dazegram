@@ -44,6 +44,12 @@ param(
     [string]$WorkflowManifest = "$PSScriptRoot/workflow-manifest.tsv",
     # Run only the self-test (used by the always-on required check). No refs needed.
     [switch]$SelfTestOnly,
+    # Run only the no-op fast-path decision, from the resolved refs of a sync run,
+    # BEFORE any snapshot is built. Reads OLD_NBASE/OLD_NBASE_TREE from the trusted
+    # pins and needs -PreRef, -OldNbase and -NewSrc. Exit: 0 = proceed to the full
+    # path, 3 = up to date (skip the snapshot/push), 1 = blocked (equal tree but a
+    # stale pin — repin needed). No refs are written in this mode.
+    [switch]$FastPathOnly,
     # Assert every protected-paths pin matches the blob at this ref (the always-on
     # check passes HEAD, so a protected file changed without repinning fails at PR
     # time instead of blocking every future sync on drift). Works with -SelfTestOnly.
@@ -305,6 +311,50 @@ function Test-SnapshotTree([string]$snapTree, [string]$srcTree) {
     return @()
 }
 
+# No-op fast path decision. Run BEFORE any synthetic snapshot is built, on the
+# resolved facts of a run, and returns one of three decisions:
+#
+#   proceed  - the source tree differs from origin/nbase's tree, so there may be a
+#              real upstream delta. Nothing here changes the full path; the caller
+#              builds the snapshot, merges, guards, signs and atomically pushes.
+#   uptodate - the source tree equals origin/nbase's tree (nothing to import) AND
+#              the pins are current AND dev still contains nbase. The caller creates
+#              no commit and pushes no ref: the redundant snapshot is skipped.
+#   blocked  - the source tree equals origin/nbase's tree, but a precondition is
+#              stale (nbase pin, its tree pin, or the dev-contains-nbase topology).
+#
+# Why equal-tree-but-stale-pin BLOCKS rather than falling through to the full path:
+# an equal tree with a stale pin is exactly the state that needs a human, and it is
+# also self-perpetuating if handled silently. Falling through would build one more
+# snapshot whose parent is the live nbase and whose tree already equals it — another
+# redundant no-op commit, the very defect this fast path exists to stop — and, worse,
+# an early "up to date" success there would mask the stale pin forever. So the fast
+# path refuses: it fails loudly and tells the operator to repin. A tree with nothing
+# to import is only auto-safe when the recorded facts still describe reality.
+function Test-SyncFastPath([string]$srcTree, [string]$liveNbase, [string]$liveNbaseTree,
+                           [string]$pinnedOldNbase, [string]$pinnedOldNbaseTree, [bool]$devContainsNbase) {
+    if ($srcTree -ne $liveNbaseTree) {
+        return [pscustomobject]@{ Decision = 'proceed'
+            Reason = "source tree $srcTree != nbase tree $liveNbaseTree; a delta may exist, take the full path" }
+    }
+    # Trees equal: nothing to import. Equality alone is NOT enough to report success.
+    $problems = @()
+    if ($liveNbase -ne $pinnedOldNbase) {
+        $problems += "origin/nbase $liveNbase != pinned OLD_NBASE $pinnedOldNbase"
+    }
+    if ($liveNbaseTree -ne $pinnedOldNbaseTree) {
+        $problems += "origin/nbase tree $liveNbaseTree != pinned OLD_NBASE_TREE $pinnedOldNbaseTree"
+    }
+    if (-not $devContainsNbase) {
+        $problems += "origin/dev does not contain origin/nbase $liveNbase as an ancestor"
+    }
+    if ($problems.Count) {
+        return [pscustomobject]@{ Decision = 'blocked'; Reason = ($problems -join '; ') }
+    }
+    return [pscustomobject]@{ Decision = 'uptodate'
+        Reason = "source tree $srcTree equals nbase tree, pins current, dev contains nbase — nothing to import" }
+}
+
 # Guard 3/14: no upstream commits imported, and no prohibited attribution in the
 # full metadata of the commits this sync introduces (subject+body, author AND
 # committer name AND email) or in the source lines the sync adds.
@@ -384,6 +434,10 @@ function Assert-Passes([string]$name, $result, [ref]$log) {
     $items = @($result | Where-Object { $_ })
     if ($items.Count -eq 0) { $log.Value += "  ok  $name accepts good input`n"; return $true }
     $log.Value += "  XX  $name REJECTED a good input: $($items -join '; ')`n"; return $false
+}
+function Assert-Decision([string]$name, $result, [string]$expected, [ref]$log) {
+    if ($result.Decision -eq $expected) { $log.Value += "  ok  $name -> $expected`n"; return $true }
+    $log.Value += "  XX  $name expected $expected but got '$($result.Decision)' ($($result.Reason))`n"; return $false
 }
 
 function Invoke-SelfTest([hashtable]$pins) {
@@ -476,6 +530,20 @@ function Invoke-SelfTest([hashtable]$pins) {
     # Snapshot tree
     $ok = (Assert-Fails  'Test-SnapshotTree' (Test-SnapshotTree 'aaa' 'bbb') ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-SnapshotTree' (Test-SnapshotTree 'aaa' 'aaa') ([ref]$log)) -and $ok
+
+    # No-op fast path. Both directions, plus the stale-pin regression that today's
+    # redundant-snapshot bug would have skipped straight past. Pure string compares,
+    # so synthetic tokens stand in for the real trees/commits.
+    #   equal tree + current pins + dev-has-nbase -> uptodate (no commit, no push)
+    $ok = (Assert-Decision 'Test-SyncFastPath(uptodate)'    (Test-SyncFastPath 'TREE' 'NB' 'TREE' 'NB' 'TREE' $true)      'uptodate' ([ref]$log)) -and $ok
+    #   equal tree + STALE nbase pin -> blocked (the exact regression for this fix)
+    $ok = (Assert-Decision 'Test-SyncFastPath(stale-nbase)' (Test-SyncFastPath 'TREE' 'NB' 'TREE' 'NB_OLD' 'TREE' $true)  'blocked'  ([ref]$log)) -and $ok
+    #   equal tree + STALE tree pin -> blocked
+    $ok = (Assert-Decision 'Test-SyncFastPath(stale-tree)'  (Test-SyncFastPath 'TREE' 'NB' 'TREE' 'NB' 'TREE_OLD' $true)  'blocked'  ([ref]$log)) -and $ok
+    #   equal tree + dev no longer contains nbase -> blocked
+    $ok = (Assert-Decision 'Test-SyncFastPath(no-ancestor)' (Test-SyncFastPath 'TREE' 'NB' 'TREE' 'NB' 'TREE' $false)     'blocked'  ([ref]$log)) -and $ok
+    #   differing tree -> proceed down the full guard/signer/atomic path unchanged
+    $ok = (Assert-Decision 'Test-SyncFastPath(proceed)'     (Test-SyncFastPath 'TREE_NEW' 'NB' 'TREE' 'NB' 'TREE' $true)  'proceed'  ([ref]$log)) -and $ok
 
     # Guard 3/14 attribution — names, emails, message, and added lines
     $good = @([pscustomobject]@{ Sha='SNAP'; AuthorName='bot'; AuthorEmail='bot@x'; CommitterName='bot'; CommitterEmail='bot@x'; Message='snapshot #infra' })
@@ -751,6 +819,45 @@ if ($CheckPinsAgainst) {
 if ($SelfTestOnly) {
     Write-Host 'SELF-TEST ONLY: OK'
     exit 0
+}
+
+# No-op fast-path decision. Runs before any snapshot is built, so it only needs the
+# refs the workflow has already resolved: -PreRef (origin/dev), -OldNbase (live
+# origin/nbase) and -NewSrc (the resolved Nagram source). Pins are read from the
+# trusted PRE above, never from a candidate. The self-test that just passed already
+# proved Test-SyncFastPath can tell the three decisions apart.
+if ($FastPathOnly) {
+    foreach ($p in 'PreRef', 'OldNbase', 'NewSrc') {
+        if (-not (Get-Variable $p -ValueOnly)) { Write-Host "::error::fast path: missing required ref -$p"; exit 2 }
+    }
+    $srcTree = (git rev-parse "$NewSrc^{tree}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $srcTree) { Write-Host "::error::fast path: cannot resolve source tree of $NewSrc"; exit 2 }
+    $liveNbaseTree = (git rev-parse "$OldNbase^{tree}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $liveNbaseTree) { Write-Host "::error::fast path: cannot resolve nbase tree of $OldNbase"; exit 2 }
+    git merge-base --is-ancestor $OldNbase $PreRef
+    $devContainsNbase = ($LASTEXITCODE -eq 0)
+
+    $d = Test-SyncFastPath $srcTree $OldNbase $liveNbaseTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $devContainsNbase
+    switch ($d.Decision) {
+        'proceed' {
+            Write-Host "fast path: proceeding to the full sync path — $($d.Reason)."
+            exit 0
+        }
+        'uptodate' {
+            Write-Host "fast path: already up to date — $($d.Reason). No snapshot created, no ref pushed."
+            exit 3
+        }
+        'blocked' {
+            Write-Host "::error::fast path BLOCKED — $($d.Reason)."
+            Write-Host '::error::The source tree matches origin/nbase (nothing to import) but a pinned fact is stale.'
+            Write-Host '::error::This needs a human: repin OLD_NBASE / OLD_NBASE_TREE in .github/sync/pins.env to the current origin/nbase.'
+            Write-Host '::error::No snapshot created, no ref pushed.'
+            exit 1
+        }
+        default {
+            Write-Host "::error::fast path: unexpected decision '$($d.Decision)'"; exit 2
+        }
+    }
 }
 
 foreach ($p in 'PreRef', 'OldNbase', 'NewSnapshot', 'NewSrc', 'NewDev') {
