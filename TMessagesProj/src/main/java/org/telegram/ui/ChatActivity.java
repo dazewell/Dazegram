@@ -923,6 +923,7 @@ public class ChatActivity extends BaseFragment implements
 
     private MessageObject selectedObjectToEditCaption;
     private MessageObject selectedObject;
+    private RepostCopyDeleteBatch repostCopyDeleteBatch;
     public MessageObject.GroupedMessages selectedObjectGroup;
     private boolean forbidForwardingWithDismiss;
     public MessagePreviewParams messagePreviewParams;
@@ -3713,6 +3714,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        repostCopyDeleteBatch = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
         removeChatLockPasscodeView();
         if (messageMetricsView != null) {
@@ -15754,11 +15756,20 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
+        forwardMessages(arrayList, fromMyName, hideCaption, notify, scheduleDate, payStars, null);
+    }
+
+    // NagramX: tracked variant returns the send result and carries a repost-copy marker map so a drop-author
+    // forward can stamp each source, letting the delete offer fire once every source is confirmed sent.
+    // REPOST_COPY_FORWARD_NOT_DISPATCHED means the batch never reached messages.forwardMessages here.
+    private static final int REPOST_COPY_FORWARD_NOT_DISPATCHED = Integer.MIN_VALUE;
+
+    private int forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, long payStars, HashMap<String, HashMap<String, String>> repostMarkerParamsBySource) {
         if (arrayList == null || arrayList.isEmpty()) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
         if (!checkSlowModeAlert()) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
         if ((scheduleDate != 0) == (chatMode == MODE_SCHEDULED)) {
             waitingForSendingMessageLoad = true;
@@ -15767,9 +15778,9 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         if (forwardScheduledMessagesAsCopy(arrayList, dialog_id, hideCaption, notify, scheduleDate, payStars)) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
-        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), repostMarkerParamsBySource);
         AlertsCreator.showSendMediaAlert(result, this, themeDelegate);
         if (result != 0) {
             AndroidUtilities.runOnUIThread(() -> {
@@ -15777,6 +15788,7 @@ public class ChatActivity extends BaseFragment implements
                 hideFieldPanel(true);
             });
         }
+        return result;
     }
 
     // This method is used to forward messages to Saved Messages, or to multi Dialogs
@@ -24119,6 +24131,7 @@ public class ChatActivity extends BaseFragment implements
             ArrayList<Integer> markAsDeletedMessages = (ArrayList<Integer>) args[0];
             processDeletedMessages(markAsDeletedMessages, 0, false);
         } else if (id == NotificationCenter.messageReceivedByServer) {
+            handleRepostCopyDeleteServerSuccess(args);
             Boolean scheduled = (Boolean) args[6];
             if (scheduled != (chatMode == MODE_SCHEDULED)) {
                 return;
@@ -24268,6 +24281,7 @@ public class ChatActivity extends BaseFragment implements
         } else if (id == NotificationCenter.messageSendError) {
             Integer msgId = (Integer) args[0];
             MessageObject obj = messagesDict[0].get(msgId);
+            handleRepostCopyDeleteSendError(obj);
             if (obj != null) {
                 obj.messageOwner.send_state = MessageObject.MESSAGE_SEND_STATE_SEND_ERROR;
                 updateVisibleRows();
@@ -32043,6 +32057,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onPause() {
         super.onPause();
+        repostCopyDeleteBatch = null;
         if (chatLockPasscodeView != null) {
             chatLockPasscodeView.onPause();
         }
@@ -32686,6 +32701,11 @@ public class ChatActivity extends BaseFragment implements
             hideActionMode();
             updatePinnedMessageView(true);
         }, hideDimAfter ? () -> dimBehindView(false) : null, themeDelegate);
+    }
+
+    // NagramX: run Telegram's stock delete confirmation against an explicit source set built at fire time.
+    private void createRepostCopySourceDeleteAlert(SparseArray<MessageObject>[] sourceMessages) {
+        AlertsCreator.createDeleteMessagesAlert(this, currentUser, currentChat, currentEncryptedChat, chatInfo, mergeDialogId, null, sourceMessages, null, (int) getTopicId(), chatMode, null, () -> updatePinnedMessageView(true), null, themeDelegate);
     }
 
     public void hideActionMode() {
@@ -48076,6 +48096,247 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX: track exact source membership so the delete offer appears only after one confirmed copy per source.
+    private static final class RepostCopySourceIdentity {
+        final int slot;
+        final int messageId;
+
+        RepostCopySourceIdentity(int slot, int messageId) {
+            this.slot = slot;
+            this.messageId = messageId;
+        }
+    }
+
+    private static final class RepostCopyDeleteBatch {
+        final String nonce;
+        final int account;
+        final long dialogId;
+        final HashMap<String, RepostCopySourceIdentity> armedSources = new HashMap<>();
+        final HashSet<String> succeededSources = new HashSet<>();
+
+        RepostCopyDeleteBatch(String nonce, int account, long dialogId) {
+            this.nonce = nonce;
+            this.account = account;
+            this.dialogId = dialogId;
+        }
+    }
+
+    private static String buildRepostCopySourceValue(int slot, int messageId) {
+        return slot + ":" + messageId;
+    }
+
+    private boolean isRepostCopyDeleteEligible() {
+        return chatMode == MODE_DEFAULT && currentEncryptedChat == null;
+    }
+
+    private RepostCopySourceIdentity resolveRepostCopySourceIdentity(MessageObject source) {
+        if (source == null) {
+            return null;
+        }
+        int sourceId = source.getId();
+        // NagramX: refuse to arm what SendMessagesHelper's forward loop silently skips (a blurred/self-destruct
+        // preview, or a local-only id), or the source would never be marked and the batch would hang.
+        if (sourceId <= 0 || source.needDrawBluredPreview()) {
+            return null;
+        }
+        long sourceDialogId = source.getDialogId();
+        int sourceSlot;
+        if (sourceDialogId == dialog_id) {
+            sourceSlot = 0;
+        } else if (mergeDialogId != 0 && sourceDialogId == mergeDialogId) {
+            sourceSlot = 1;
+        } else {
+            return null;
+        }
+        return new RepostCopySourceIdentity(sourceSlot, sourceId);
+    }
+
+    private RepostCopyDeleteBatch armRepostCopyDeleteBatch(ArrayList<MessageObject> sources) {
+        repostCopyDeleteBatch = null;
+        if (!isRepostCopyDeleteEligible() || sources == null || sources.isEmpty()) {
+            return null;
+        }
+        String nonce = Long.toHexString(Utilities.random.nextLong()) + Long.toHexString(Utilities.random.nextLong());
+        RepostCopyDeleteBatch batch = new RepostCopyDeleteBatch(nonce, currentAccount, dialog_id);
+        for (int i = 0; i < sources.size(); i++) {
+            RepostCopySourceIdentity sourceIdentity = resolveRepostCopySourceIdentity(sources.get(i));
+            if (sourceIdentity == null) {
+                return null;
+            }
+            batch.armedSources.put(buildRepostCopySourceValue(sourceIdentity.slot, sourceIdentity.messageId), sourceIdentity);
+        }
+        if (batch.armedSources.isEmpty()) {
+            return null;
+        }
+        repostCopyDeleteBatch = batch;
+        return batch;
+    }
+
+    private HashMap<String, String> buildRepostCopyMarker(RepostCopyDeleteBatch batch, MessageObject source) {
+        RepostCopySourceIdentity sourceIdentity = resolveRepostCopySourceIdentity(source);
+        if (batch == null || sourceIdentity == null) {
+            return null;
+        }
+        String sourceValue = buildRepostCopySourceValue(sourceIdentity.slot, sourceIdentity.messageId);
+        if (!batch.armedSources.containsKey(sourceValue)) {
+            return null;
+        }
+        HashMap<String, String> markerParams = new HashMap<>();
+        markerParams.put(SendMessagesHelper.NAGRAMX_COPY_BATCH_PARAM, batch.nonce);
+        markerParams.put(SendMessagesHelper.NAGRAMX_COPY_SOURCE_PARAM, sourceValue);
+        return markerParams;
+    }
+
+    private HashMap<String, HashMap<String, String>> buildRepostCopyMarkerMap(RepostCopyDeleteBatch batch, ArrayList<MessageObject> sources) {
+        if (batch == null || sources == null) {
+            return null;
+        }
+        HashMap<String, HashMap<String, String>> markerMap = new HashMap<>();
+        for (int i = 0; i < sources.size(); i++) {
+            MessageObject source = sources.get(i);
+            String lookupKey = MessageHelper.buildRepostCopySourceLookupKey(source);
+            HashMap<String, String> marker = buildRepostCopyMarker(batch, source);
+            if (lookupKey == null || marker == null) {
+                return null;
+            }
+            markerMap.put(lookupKey, marker);
+        }
+        return markerMap;
+    }
+
+    private void finalizeRepostCopyDispatch(RepostCopyDeleteBatch batch, boolean sentAny, boolean allDispatched) {
+        if (batch == null || repostCopyDeleteBatch != batch) {
+            return;
+        }
+        if (!sentAny || !allDispatched) {
+            repostCopyDeleteBatch = null;
+        }
+    }
+
+    // NagramX: a "Repost as Copy" that falls through to a drop-author forward still gets the source-delete
+    // offer: arm the batch, stamp every forwarded source, and drop the arm unless the whole batch reached
+    // messages.forwardMessages. Plain Repost (fromMyName == false) forwards untracked and never prompts.
+    private void dispatchRepostCopyForward(ArrayList<MessageObject> messages, boolean fromMyName) {
+        if (!fromMyName) {
+            forwardMessages(messages, false, false, true, 0, 0);
+            return;
+        }
+        RepostCopyDeleteBatch repostBatch = armRepostCopyDeleteBatch(messages);
+        HashMap<String, HashMap<String, String>> markerMap = buildRepostCopyMarkerMap(repostBatch, messages);
+        int result = forwardMessages(messages, true, false, true, 0, 0, markerMap);
+        boolean dispatched = markerMap != null && result == 0;
+        finalizeRepostCopyDispatch(repostBatch, dispatched, dispatched);
+    }
+
+    private Pair<String, String> getRepostCopyMarker(HashMap<String, String> params) {
+        if (params == null) {
+            return null;
+        }
+        String nonce = params.get(SendMessagesHelper.NAGRAMX_COPY_BATCH_PARAM);
+        String sourceValue = params.get(SendMessagesHelper.NAGRAMX_COPY_SOURCE_PARAM);
+        if (TextUtils.isEmpty(nonce) || TextUtils.isEmpty(sourceValue)) {
+            return null;
+        }
+        return new Pair<>(nonce, sourceValue);
+    }
+
+    private void handleRepostCopyDeleteSendError(MessageObject obj) {
+        RepostCopyDeleteBatch batch = repostCopyDeleteBatch;
+        if (batch == null || obj == null || obj.messageOwner == null) {
+            return;
+        }
+        Pair<String, String> marker = getRepostCopyMarker(obj.messageOwner.params);
+        if (marker == null || !batch.nonce.equals(marker.first)) {
+            return;
+        }
+        if (batch.armedSources.containsKey(marker.second)) {
+            repostCopyDeleteBatch = null;
+        }
+    }
+
+    private void handleRepostCopyDeleteServerSuccess(Object... args) {
+        RepostCopyDeleteBatch batch = repostCopyDeleteBatch;
+        if (batch == null || args == null || args.length < 3) {
+            return;
+        }
+        TLRPC.Message newMessage = (TLRPC.Message) args[2];
+        if (newMessage == null) {
+            return;
+        }
+        // NagramX: the copy producer posts the local message (client params present), while the drop-author
+        // forward producer posts the raw server message (client params gone). When the marker is absent on the
+        // server message, fall back to the local placeholder still keyed under the old local id, before the
+        // outer messageReceivedByServer handler rekeys it. A miss on both means this send isn't ours.
+        Pair<String, String> marker = getRepostCopyMarker(newMessage.params);
+        if (marker == null && args[0] instanceof Integer) {
+            MessageObject localPlaceholder = messagesDict[0].get((Integer) args[0]);
+            if (localPlaceholder != null && localPlaceholder.messageOwner != null) {
+                marker = getRepostCopyMarker(localPlaceholder.messageOwner.params);
+            }
+        }
+        if (marker == null || !batch.nonce.equals(marker.first)) {
+            return;
+        }
+        if (!batch.armedSources.containsKey(marker.second)) {
+            repostCopyDeleteBatch = null;
+            return;
+        }
+        if (!batch.succeededSources.add(marker.second)) {
+            return;
+        }
+        if (batch.succeededSources.size() == batch.armedSources.size()) {
+            if (!showRepostCopyDeleteAlertIfSafe(batch)) {
+                repostCopyDeleteBatch = null;
+                return;
+            }
+            repostCopyDeleteBatch = null;
+        }
+    }
+
+    private boolean showRepostCopyDeleteAlertIfSafe(RepostCopyDeleteBatch batch) {
+        if (batch == null || repostCopyDeleteBatch != batch) {
+            return false;
+        }
+        if (batch.account != currentAccount || batch.dialogId != dialog_id || !isRepostCopyDeleteEligible()) {
+            return false;
+        }
+        // NagramX: keep visibleDialog fail-closed — showing here would dismiss the dialog the user has open.
+        if (paused || !isFullyVisible || isFinishing() || visibleDialog != null) {
+            return false;
+        }
+        INavigationLayout navigationLayout = getParentLayout();
+        if (navigationLayout == null || navigationLayout.getLastFragment() != this) {
+            return false;
+        }
+        // NagramX: mirror the preconditions showDialog itself checks, so a transition or swipe-back in progress
+        // makes us report failure and keep the batch cleared, instead of a silently-swallowed showDialog(null).
+        if (navigationLayout.isTransitionAnimationInProgress() || navigationLayout.isSwipeInProgress() || navigationLayout.checkTransitionAnimation()) {
+            return false;
+        }
+        Activity activity = getParentActivity();
+        if (activity == null || activity.isFinishing()) {
+            return false;
+        }
+        SparseArray<MessageObject>[] sourceMessages = new SparseArray[]{new SparseArray<>(), new SparseArray<>()};
+        for (RepostCopySourceIdentity sourceIdentity : batch.armedSources.values()) {
+            MessageObject source = messagesDict[sourceIdentity.slot].get(sourceIdentity.messageId);
+            if (source == null || source.getId() != sourceIdentity.messageId) {
+                return false;
+            }
+            if (!source.canDeleteMessage(chatMode == MODE_SCHEDULED, currentChat)
+                    || (threadMessageObjects != null && threadMessageObjects.contains(source))
+                    || (source.messageOwner != null && source.messageOwner.action instanceof TLRPC.TL_messageActionTopicCreate)) {
+                return false;
+            }
+            sourceMessages[sourceIdentity.slot].put(sourceIdentity.messageId, source);
+        }
+        if (sourceMessages[0].size() + sourceMessages[1].size() == 0) {
+            return false;
+        }
+        createRepostCopySourceDeleteAlert(sourceMessages);
+        return true;
+    }
+
     private void repeatMessage(boolean isLongClick, boolean isRepeatasCopy) {
         if (checkSlowMode(chatActivityEnterView.getSendButton())) {
             return;
@@ -48117,7 +48378,13 @@ public class ChatActivity extends BaseFragment implements
             MessageObject replyTo = ownReply != null ? ownReply : getThreadMessage();
             ReplyQuote sourceQuote = ownReply != null ? getMessageHelper().getOwnReplyQuote(selectedObject) : null;
             if (replyTo != null || noforwards) {
-                if (!getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), sourceQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+                ArrayList<MessageObject> source = new ArrayList<>(1);
+                source.add(selectedObject);
+                RepostCopyDeleteBatch repostBatch = armRepostCopyDeleteBatch(source);
+                HashMap<String, String> markerParams = buildRepostCopyMarker(repostBatch, selectedObject);
+                boolean sentAsCopy = getMessageHelper().sendMessageAsCopy(selectedObject, selectedObjectGroup, dialog_id, replyTo, getThreadMessage(), sourceQuote, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), markerParams);
+                finalizeRepostCopyDispatch(repostBatch, sentAsCopy, markerParams != null);
+                if (!sentAsCopy) {
                     boolean refusedType = !getMessageHelper().canSendMessageAsCopy(selectedObject, selectedObjectGroup);
                     BulletinFactory.of(this).createErrorBulletin(getString(refusedType ? R.string.RepeatAsCopyUnsupported : R.string.PleaseDownload), themeDelegate).show();
                 }
@@ -48125,7 +48392,11 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         if (selectedObject == null && noforwards) {
-            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
+            RepostCopyDeleteBatch repostBatch = armRepostCopyDeleteBatch(messages);
+            HashMap<String, HashMap<String, String>> markerMap = buildRepostCopyMarkerMap(repostBatch, messages);
+            MessageHelper.CopyDispatchResult copyDispatch = getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), markerMap);
+            finalizeRepostCopyDispatch(repostBatch, copyDispatch.sentAny, markerMap != null && copyDispatch.allDispatched);
+            if (!copyDispatch.sentAny) {
                 boolean refusedType = !getMessageHelper().canSendMessagesAsCopy(messages);
                 BulletinFactory.of(this).createErrorBulletin(getString(refusedType ? R.string.RepeatAsCopyUnsupported : R.string.PleaseDownload), themeDelegate).show();
             }
@@ -48137,12 +48408,16 @@ public class ChatActivity extends BaseFragment implements
         // to keep the reply; otherwise fall through to the same forward as before, so polls, locations
         // and un-cached media keep working untouched.
         if (isRepeatAsCopy && getMessageHelper().shouldRepostAsCopyPreservingReply(messages, dialog_id, getThreadMessage())) {
-            if (!getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams())) {
-                forwardMessages(messages, isRepeatAsCopy, false, true, 0, 0);
+            RepostCopyDeleteBatch repostBatch = armRepostCopyDeleteBatch(messages);
+            HashMap<String, HashMap<String, String>> markerMap = buildRepostCopyMarkerMap(repostBatch, messages);
+            MessageHelper.CopyDispatchResult copyDispatch = getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), markerMap);
+            finalizeRepostCopyDispatch(repostBatch, copyDispatch.sentAny, markerMap != null && copyDispatch.allDispatched);
+            if (!copyDispatch.sentAny) {
+                dispatchRepostCopyForward(messages, isLongClick || isRepeatAsCopy);
             }
             return;
         }
-        forwardMessages(messages, isLongClick || isRepeatAsCopy, false, true, 0, 0);
+        dispatchRepostCopyForward(messages, isLongClick || isRepeatAsCopy);
     }
 
     public void setScrollToMessage() {
