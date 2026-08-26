@@ -680,9 +680,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             return;
         }
         final boolean on = state == INFINITE_RECORDING_ON;
+        final boolean dark = isDarkAppearance();
         infiniteButton.setVisibility(VISIBLE);
-        infiniteButton.setBackground(on ? Theme.createCircleDrawable(dp(44), Color.WHITE) : null);
-        applyGlyphColor(infiniteButton, on ? Color.BLACK : glyphColor(isDarkAppearance()));
+        // NagramX: this cell is the row's right end, so its selected fill has to reproduce the parent
+        // pill's cap exactly (right corners rounded to match, left corners square against the flash cell)
+        // or a wedge of the light/dark panel shows through at the seam. Hardcoding the physical right side
+        // is safe because android:supportsRtl="false" in AndroidManifest.xml:120 keeps this row from
+        // mirroring.
+        final int fillColor = dark ? Color.WHITE : Color.BLACK;
+        final int glyphOnColor = dark ? Color.BLACK : Color.WHITE;
+        infiniteButton.setBackground(on ? Theme.createRoundRectDrawable(0, dp(21), dp(21), 0, fillColor) : null);
+        applyGlyphColor(infiniteButton, on ? glyphOnColor : glyphColor(dark));
         infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 

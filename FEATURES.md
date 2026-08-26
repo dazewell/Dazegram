@@ -211,9 +211,9 @@ If multiple providers are configured, the Retry option on a transcription become
 
 ## Appearance
 
-### Extera and Solid themes <!-- #extera-themes --> <!-- #solid-themes -->
+### Extera themes <!-- #extera-themes -->
 
-Extera Light and Extera Dark are dynamic Material You themes derived directly from [exteraGram](https://github.com/exteraSquad/exteraGram)'s exported palettes, providing a warmer, consistent cross-surface tint. Solid Light and Solid Dark provide identical palettes to the Extera themes, but use a flat, fully opaque surface for the chat composer and search inputs instead of a wallpaper-tinted one.
+Extera Light and Extera Dark are dynamic Material You themes derived directly from [exteraGram](https://github.com/exteraSquad/exteraGram)'s exported palettes, providing a warmer, consistent cross-surface tint.
 
 ### Monet wallpaper pattern <!-- #monet-pattern-tile -->
 
@@ -224,5 +224,6 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 <!-- #dazegram-icons -->
 <!-- #update-checks-off -->
 <!-- #metadata-channel-off -->
+<!-- #solid-themes -->
 <!-- The Transcription entries above were split from one commit tagged #transcribe-retry;
      #whisper-transcription and #groq-transcription-provider are new slugs for that split. -->
