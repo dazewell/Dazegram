@@ -58,7 +58,7 @@ Latest versions are available through:
 
 ## Updates
 
-App updates come via GitHub Releases (or GitHub Actions for bleeding-edge builds). In-app update checks are intentionally disabled because the upstream metadata source is abandoned. As a result, the "Update Channel" setting reads "Unavailable", manual check buttons will say checks aren't available, and (on a fresh install only) Emoji Sets will stay empty and the "Fix Link Preview" toggle will do nothing.
+App updates come through GitHub Releases, with test builds available from GitHub Actions. In-app checks are intentionally unavailable because the old inherited metadata source is no longer maintained. Update Channel and manual checks therefore show Unavailable; on a fresh install, the remote Emoji Sets catalog stays empty and Fix Link Preview has no remote rules to apply.
 
 ## Package names
 
