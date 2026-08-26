@@ -4227,6 +4227,12 @@ public class Theme {
                 // for a local theme) is never mistaken for the removed built-in.
                 theme = "Extera Light";
                 preferences.edit().putString("theme", theme).apply();
+            } else if ("Solid Dark".equals(theme) && !themesDict.containsKey("Solid Dark")) {
+                // NagramX: "theme" is the generic active-theme key, not just the day slot - with
+                // auto-night off the picker can persist "Solid Dark" here directly, so this key
+                // needs the same remap as "nighttheme" below, with the same local-custom-theme guard.
+                theme = "Extera Dark";
+                preferences.edit().putString("theme", theme).apply();
             }
             if ("Default".equals(theme)) {
                 applyingTheme = themesDict.get("Blue");
