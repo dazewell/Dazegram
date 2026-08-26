@@ -46,7 +46,7 @@ This README covers the highlights. The full list, with what each one does, is in
 </tr>
 </table>
 
-There's more: FEATURES.md has all of it, with what each one does and where to find it in the app.
+There's more: [FEATURES.md](FEATURES.md) has all of it, with what each one does and where to find it in the app.
 
 Two builds, two package names: see [Package names](#package-names) below for which one to pick.
 
