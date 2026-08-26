@@ -48134,7 +48134,9 @@ public class ChatActivity extends BaseFragment implements
             return null;
         }
         int sourceId = source.getId();
-        if (sourceId <= 0) {
+        // NagramX: refuse to arm what SendMessagesHelper's forward loop silently skips (a blurred/self-destruct
+        // preview, or a local-only id), or the source would never be marked and the batch would hang.
+        if (sourceId <= 0 || source.needDrawBluredPreview()) {
             return null;
         }
         long sourceDialogId = source.getDialogId();
