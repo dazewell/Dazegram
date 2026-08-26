@@ -56,6 +56,10 @@ Latest versions are available through:
 * [GitHub Actions](https://github.com/dazewell/Dazegram/actions/workflows/staging.yml) (CI Artifacts)
 * [GitHub Releases](https://github.com/dazewell/Dazegram/releases) (Latest Stable)
 
+## Updates
+
+App updates come via GitHub Releases (or GitHub Actions for bleeding-edge builds). In-app update checks are intentionally disabled because the upstream metadata source is abandoned. As a result, the "Update Channel" setting reads "Unavailable", manual check buttons will say checks aren't available, and (on a fresh install only) Emoji Sets will stay empty and the "Fix Link Preview" toggle will do nothing.
+
 ## Package names
 
 I ship two builds, and each one deliberately borrows another app's package name:
