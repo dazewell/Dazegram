@@ -834,8 +834,19 @@ if ($FastPathOnly) {
     if ($LASTEXITCODE -ne 0 -or -not $srcTree) { Write-Host "::error::fast path: cannot resolve source tree of $NewSrc"; exit 2 }
     $liveNbaseTree = (git rev-parse "$OldNbase^{tree}").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $liveNbaseTree) { Write-Host "::error::fast path: cannot resolve nbase tree of $OldNbase"; exit 2 }
-    git merge-base --is-ancestor $OldNbase $PreRef
-    $devContainsNbase = ($LASTEXITCODE -eq 0)
+    # Resolve PreRef to a commit before asking about ancestry, so an unresolvable
+    # dev ref fails as an error rather than folding into the ancestry answer.
+    $preCommit = (git rev-parse "$PreRef^{commit}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $preCommit) { Write-Host "::error::fast path: cannot resolve dev ref $PreRef to a commit"; exit 2 }
+    # merge-base --is-ancestor returns 0 (is ancestor), 1 (is not), or something
+    # else (128 for a bad/missing ref). Only 0 and 1 are answers; anything else is a
+    # resolution error and must fail as one — otherwise a missing object would be
+    # misread as a topology-stale block and route the operator to repin, which is
+    # the wrong remediation for a fetch/ref problem.
+    git merge-base --is-ancestor $OldNbase $preCommit
+    $mbExit = $LASTEXITCODE
+    if ($mbExit -ne 0 -and $mbExit -ne 1) { Write-Host "::error::fast path: git merge-base --is-ancestor failed (exit $mbExit) resolving $OldNbase vs $PreRef"; exit 2 }
+    $devContainsNbase = ($mbExit -eq 0)
 
     $d = Test-SyncFastPath $srcTree $OldNbase $liveNbaseTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $devContainsNbase
     switch ($d.Decision) {
