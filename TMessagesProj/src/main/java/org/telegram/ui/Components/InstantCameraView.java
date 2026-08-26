@@ -680,9 +680,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             return;
         }
         final boolean on = state == INFINITE_RECORDING_ON;
+        final boolean dark = isDarkAppearance();
         infiniteButton.setVisibility(VISIBLE);
-        infiniteButton.setBackground(on ? Theme.createCircleDrawable(dp(44), Color.WHITE) : null);
-        applyGlyphColor(infiniteButton, on ? Color.BLACK : glyphColor(isDarkAppearance()));
+        // NagramX: Light uses the darker fill because the panel itself is light, so the same white
+        // circle used in Dark would blend into it instead of standing out
+        infiniteButton.setBackground(on ? Theme.createCircleDrawable(dp(44), glyphColor(dark)) : null);
+        applyGlyphColor(infiniteButton, on ? (dark ? Color.BLACK : Color.WHITE) : glyphColor(dark));
         infiniteButton.setContentDescription(LocaleController.getString(on ? R.string.AccDescrInfiniteRecordingOff : R.string.AccDescrInfiniteRecordingOn));
     }
 
