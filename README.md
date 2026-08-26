@@ -21,12 +21,14 @@ This README covers the highlights. The full list, with what each one does, is in
 
 <table>
 <tr>
-<td width="50%" valign="top" align="center">
+<td colspan="2" valign="top" align="center">
 <img width="240" src="docs/images/composer.png" alt="The composer toolbar settings screen, showing size and spacing sliders and the buttons you can drag into the toolbar."><br>
 <sub>Your composer, your order</sub>
 </td>
-<td width="50%" valign="top" align="center">
-<img width="240" src="docs/images/video-messages.png" alt="The video message recording options menu, showing the Infinite Recording and External Microphone toggles."><br>
+</tr>
+<tr>
+<td colspan="2" valign="top" align="center">
+<img width="480" src="docs/images/video-messages.png" alt="Two views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, and the redesigned in-recording controls with the zoom slider, camera flip, and send."><br>
 <sub>Record past the limit</sub>
 </td>
 </tr>
