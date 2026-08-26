@@ -32,9 +32,12 @@ currently records Nagram **12.10.1**:
 
 - **Anchor source** `941e30844e…` — the Nagram 12.10.1 commit whose tree the
   current snapshot copies.
-- **Snapshot** `dc6d665f50…` (the new `origin/nbase`) — a **locally-authored**
-  commit whose tree is byte-identical to that anchor's (`06e811bc…`), importing no
-  upstream author, message or committer. Its single parent is the **previous**
+- **Snapshot chain tip** `58eaec2f…` (the current `origin/nbase`, pinned as
+  `OLD_NBASE`) — a **locally-authored** commit whose tree is byte-identical to the
+  anchor's (`06e811bc…`), importing no upstream author, message or committer. It is
+  a redundant no-op minted by a `sync-upstream` run (see "The no-op fast path"): its
+  single parent is the 12.10.1 reconciliation snapshot `dc6d665f50…`, whose tree it
+  copies unchanged, and that snapshot's single parent is in turn the **previous**
   snapshot `c21ee8ac…`.
 
 The chain was **bootstrapped** at 12.10.0: the first snapshot `c21ee8ac…` (tree
@@ -63,30 +66,67 @@ to merge; do not reuse `-s ours` for a sync that actually has a delta.
 Every routine sync, on `workflow_dispatch` (no inputs):
 
 1. Resolve Nagram/dev's tip and tree.
-2. Build a new locally-authored snapshot: tree = Nagram's tree, single parent =
+2. **No-op fast path.** Compare the resolved source tree against the live
+   `origin/nbase` tree. If they are equal there is nothing to import, so the run
+   skips straight to success — **no snapshot commit, no ref pushed** — but only
+   after it also confirms the recorded facts still describe reality: `origin/nbase`
+   equals the pinned `OLD_NBASE`, its tree equals `OLD_NBASE_TREE`, and `dev` still
+   contains `nbase` as an ancestor. If the trees are equal but any of those is
+   stale, it **blocks loudly** and asks for a repin rather than reporting up to date
+   (see below). If the trees differ, it falls through to the full path unchanged.
+3. Build a new locally-authored snapshot: tree = Nagram's tree, single parent =
    current `nbase`. This is the new `nbase`.
-3. 3-way merge the snapshot into `dev`. **Conflict aborts** — never auto-resolved.
-4. Run `sync-guard.ps1` from the trusted `dev` checkout.
-5. Only on a clean guard, **atomically** push `dev` and `nbase` together.
+4. 3-way merge the snapshot into `dev`. **Conflict aborts** — never auto-resolved.
+5. Run `sync-guard.ps1` from the trusted `dev` checkout.
+6. Only on a clean guard, **atomically** push `dev` and `nbase` together.
 
-**Fail-closed by design.** Merge conflicts at step 3 abort the sync before the
-guard runs. For syncs that pass the merge (no conflicts), the guard at step 4
+**Fail-closed by design.** Merge conflicts at step 4 abort the sync before the
+guard runs. For syncs that pass the merge (no conflicts), the guard at step 5
 runs unattended and may block on unclassified deltas, protected-path violations,
-or other gates before reaching the atomic push at step 5. A real upstream bump
+or other gates before reaching the atomic push at step 6. A real upstream bump
 almost always trips either the merge-conflict block or the guard's classification
 gates, which is the intended behaviour. Reconciliation requires a PC and manual
 review rather than auto-pushing. The anchor advances **only** by a reviewed edit
 to `pins.env` after a new snapshot has landed — never by the workflow itself.
-The pins now record `941e30844e` / `dc6d665f50` (Nagram 12.10.1). Those values were
-advanced ahead of `origin/nbase` on purpose, so until a human fast-forwards
-`origin/nbase` from `c21ee8ac` to `dc6d665f50`, `sync-guard-check`'s real-candidate
-fixture is **expected to block** where `origin/nbase` no longer equals the pinned
-`OLD_NBASE` (the log reads `origin/nbase … != pinned OLD_NBASE …`). That
-transitional red is the system working; do not revert a pin to clear it. The
-ordering is: merge the 12.10.1 reconciliation PR → fast-forward `origin/nbase` to
-`dc6d665f50` → re-run the pins PR's checks (they go green) → merge it. Never push
-`nbase` *after* merging the pins PR, or the guard reds permanently instead of for a
-window.
+The pins now record `941e30844e` (Nagram 12.10.1) with `OLD_NBASE=58eaec2f` and
+tree `06e811bc`, and those values **match** `origin/nbase`, so
+`sync-guard-check`'s real-candidate fixture passes rather than blocking on an
+`origin/nbase … != pinned OLD_NBASE …` assertion. There is no longer a
+transitional red window: the 12.10.1 reconciliation has fully landed.
+
+## The no-op fast path
+
+`origin/nbase` currently carries Nagram's tree with nothing outstanding to import,
+so a `sync-upstream` run has no delta to apply. Before this fast path existed the
+workflow still minted a snapshot and merged it every run, moving both refs for no
+reason — which is exactly how the redundant commits `58eaec2f` (a snapshot whose
+tree is identical to its parent's) and the `dev` merge `73455ee65e` (`dev`'s tree
+unchanged at `ee336875`) came to exist. **Those two commits are harmless historical
+no-ops. They are append-only history and are never to be rewritten or
+force-pushed** — the cost was one redundant commit on each ref, nothing more, and
+`origin/nbase` remains an ancestor of `origin/dev`.
+
+The decision lives in `Test-SyncFastPath` in `sync-guard.ps1` (a pure function, so
+it is unit-tested by the self-test) and the workflow calls it via
+`sync-guard.ps1 -FastPathOnly` before building any snapshot. It returns one of
+three outcomes:
+
+- **up to date** — the source tree equals `origin/nbase`'s tree **and** all three
+  preconditions hold (`origin/nbase == OLD_NBASE`, its tree `== OLD_NBASE_TREE`,
+  `dev` contains `nbase`). The run exits success with no commit and no push.
+- **blocked** — the source tree equals `origin/nbase`'s tree but a precondition is
+  stale. This is deliberately **not** a silent success: an equal tree with a stale
+  pin is precisely the state that needs a human, and reporting "up to date" there
+  would mask the drift forever. Worse, falling through to the full path would build
+  yet another redundant snapshot on top of the live `nbase` (the very defect this
+  fast path removes). So it fails loudly and asks the operator to repin
+  `OLD_NBASE` / `OLD_NBASE_TREE`.
+- **proceed** — the source tree differs, so a real delta may exist. Nothing about
+  the full snapshot → merge → guard → signer → atomic-push path changes.
+
+The self-test proves all three directions, including the equal-tree-but-stale-pin
+regression, so `-SelfTestOnly` (step 1 of every `sync-guard-check` run) fails if
+the decision ever stops discriminating them.
 
 ## Files
 
