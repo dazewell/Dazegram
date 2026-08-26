@@ -32,7 +32,7 @@ This README covers the highlights. The full list, with what each one does, is in
 </tr>
 <tr>
 <td colspan="2" valign="top" align="center">
-<img width="240" src="docs/images/privacy-profiles.png" alt="The auto-lock profile quick-switch menu, showing the Safe and Unsafe profiles you can switch between with a long-press."><br>
+<img width="480" src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them."><br>
 <sub>Switch profiles in one tap</sub>
 </td>
 </tr>
