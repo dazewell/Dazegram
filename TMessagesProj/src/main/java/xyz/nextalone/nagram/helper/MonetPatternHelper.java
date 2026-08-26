@@ -35,7 +35,7 @@ import java.io.InputStream;
 // ("monet_pattern.bin": header + PNG payload). AtomicFile gives the crash-safe swap,
 // so there's no sidecar pointer to keep in step, no temp/rename of our own, nothing
 // to roll back. The live Monet colour is re-read on every wallpaper reload, so the
-// pattern rides on whatever Monet/Extera/Solid variant and day/night mode is active.
+// pattern rides on whatever Monet/Extera variant and day/night mode is active.
 // Global, not per-account.
 public final class MonetPatternHelper {
 
@@ -65,7 +65,7 @@ public final class MonetPatternHelper {
 
     // NagramX: marker subclass identifies a pattern composite built by this helper (as
     // opposed to any other BitmapDrawable wallpaper source), so Theme.applyChatServiceMessageColor
-    // can opt only Extera/Solid Dark's built-in pattern out of the wallpaper-sampled service
+    // can opt only Extera Dark's built-in pattern out of the wallpaper-sampled service
     // gradient without touching custom images, presets, server wallpapers, or base Monet's own
     // pattern. suppressServiceGradient is decided once, at build time, from the exact ThemeInfo
     // that produced this composite (see buildComposite below) — never recomputed at render time.
@@ -361,10 +361,10 @@ public final class MonetPatternHelper {
             paint.setColorFilter(new PorterDuffColorFilter(AndroidUtilities.getPatternColor(backgroundColor), PorterDuff.Mode.SRC_IN));
             paint.setAlpha((int) (255 * tuple.intensity));
             canvas.drawBitmap(mask, null, new Rect(0, 0, width, height), paint);
-            // NagramX: suppression is Extera/Solid Dark only, decided from the exact ThemeInfo
+            // NagramX: suppression is Extera Dark only, decided from the exact ThemeInfo
             // that built this composite — never recomputed later from whatever theme happens
             // to be current when the drawable is rendered.
-            boolean suppressServiceGradient = theme.isExteraOrSolidFamily() && theme.isMonetDark();
+            boolean suppressServiceGradient = theme.isExteraFamily() && theme.isMonetDark();
             MonetPatternDrawable drawable = new MonetPatternDrawable(ApplicationLoader.applicationContext.getResources(), result, suppressServiceGradient);
             result = null; // ownership handed to the drawable; don't recycle below
             return drawable;
