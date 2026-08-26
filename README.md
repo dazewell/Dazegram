@@ -6,25 +6,37 @@ Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), whi
 
 This README covers the highlights. The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
 
-![A time zone conversion sheet showing your time and the other person's side by side on an hour grid, with an Insert into message button.](docs/images/hero.png)
+<p align="center">
+  <img width="640" src="docs/images/hero.png" alt="Three views of Dazegram's time zone tools: comparing hours side by side on an hour grid, picking a time range, and scheduling a message for the other person's time.">
+</p>
 
 ## Highlights
 
 - **Time zones:** Set a time zone on any chat or group and see their local time right in the header. Tap it to line up a moment across both zones and drop it straight into your message.
 - **Composer:** Reorder most of the composer's row: emoji, attachments, formatting, schedule, into the layout you actually reach for.
-
-  ![The composer toolbar settings screen, showing size and spacing sliders and the buttons you can drag into the toolbar.](docs/images/composer.png)
-
 - **Everyday reliability:** The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.
 - **Privacy profiles:** Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
-
-  ![The auto-lock profile quick-switch menu, showing the Safe and Unsafe profiles you can switch between with a long-press.](docs/images/privacy-profiles.png)
-
 - **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
-
-  ![The video message recording options menu, showing the Infinite Recording and External Microphone toggles.](docs/images/video-messages.png)
-
 - **Private chats:** Hide a chat's last message from the list, or lock the whole chat behind your passcode (which hides it too): your call, per chat.
+
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<img width="240" src="docs/images/composer.png" alt="The composer toolbar settings screen, showing size and spacing sliders and the buttons you can drag into the toolbar."><br>
+<sub>Your composer, your order</sub>
+</td>
+<td width="50%" valign="top" align="center">
+<img width="240" src="docs/images/video-messages.png" alt="The video message recording options menu, showing the Infinite Recording and External Microphone toggles."><br>
+<sub>Record past the limit</sub>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top" align="center">
+<img width="240" src="docs/images/privacy-profiles.png" alt="The auto-lock profile quick-switch menu, showing the Safe and Unsafe profiles you can switch between with a long-press."><br>
+<sub>Switch profiles in one tap</sub>
+</td>
+</tr>
+</table>
 
 There's more: FEATURES.md has all of it, with what each one does and where to find it in the app.
 
