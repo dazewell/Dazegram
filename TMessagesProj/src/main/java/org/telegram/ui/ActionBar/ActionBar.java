@@ -2265,12 +2265,22 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
     }
 
     private int forcedMenuWidth;
+    private int forcedMenuMinWidth;
     private boolean hasForcedMenuWidth;
+    private boolean hasForcedMenuMinWidth;
 
     public void setForcedMenuWidth(int width) {
         hasForcedMenuWidth = true;
         if (forcedMenuWidth != width) {
             forcedMenuWidth = width;
+            invalidate();
+        }
+    }
+
+    public void setForcedMenuMinWidth(int width) {
+        hasForcedMenuMinWidth = true;
+        if (forcedMenuMinWidth != width) {
+            forcedMenuMinWidth = width;
             invalidate();
         }
     }
@@ -2306,7 +2316,8 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         // Hug the bubble to its content only when the title is centered. Otherwise it stays
         // the full-width (back<->menu) bubble. Settings screens have no chatAvatarContainer.
         final boolean centeredTitle = chatAvatarContainer != null && chatAvatarContainer.isCenteredTitle();
-        final int menuWidth = hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor();
+        final int menuWidthA = hasForcedMenuWidth ? forcedMenuWidth : (int) animatorMenuItemsWidth.getFactor();
+        final int menuWidth = hasForcedMenuMinWidth ? Math.max((int) (forcedMenuMinWidth * (1f - searchFactor)), menuWidthA) : menuWidthA;
 
         final boolean hasBackButton = backButtonImageView != null && backButtonImageView.getVisibility() == View.VISIBLE;
 
@@ -2314,7 +2325,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         final int b = t + s + p * 2;
 
         if (glassDrawable != null && !glassOnlyBack) {
-            final int menuWidthWithPadding = menuWidth + (hasForcedMenuWidth ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
+            final int menuWidthWithPadding = menuWidth + ((hasForcedMenuWidth || hasForcedMenuMinWidth) ? (menuWidth > 0 ? p : 0) : (int) (p * animatorHasMenuItems.getFloatValue()));
             final int leftDefault = hasBackButton ? s + p : 0;
             final int avatarBubbleWidth = (int) (animatorAvatarContainerHasAvatar.getFloatValue() * (s + p));
             final int rightDefault = getWidth() - Math.max(menuWidthWithPadding, avatarBubbleWidth);
@@ -2354,7 +2365,7 @@ public class ActionBar extends FrameLayout implements FactorAnimator.Target, The
         }
         if (glassDrawableMenu != null && (menuWidth > 0 || animatorAvatarContainerHasAvatar.getFloatValue() > 0) && !glassOnlyBack && !doNotDrawGlassMenu) {
             glassDrawableMenu.setBounds(getWidth() - Math.max(s, menuWidth) - p * 2, t, getWidth(), b);
-            glassDrawableMenu.setAlpha(hasForcedMenuWidth || menuWidth == 0 ? (int) (255 * animatorAvatarContainerHasAvatar.getFloatValue()) : (int) (255 * animatorHasMenuItems.getFloatValue()));
+            glassDrawableMenu.setAlpha(hasForcedMenuWidth || hasForcedMenuMinWidth || menuWidth == 0 ? (int) (255 * animatorAvatarContainerHasAvatar.getFloatValue()) : (int) (255 * animatorHasMenuItems.getFloatValue()));
             glassDrawableMenu.draw(canvas);
         }
 
