@@ -99,6 +99,11 @@ public class MessageHelper extends BaseController {
     private static final MessageHelper[] Instance = new MessageHelper[UserConfig.MAX_ACCOUNT_COUNT];
     private static final CharsetDecoder utf8Decoder = StandardCharsets.UTF_8.newDecoder();
 
+    public static class CopyDispatchResult {
+        public boolean sentAny;
+        public boolean allDispatched = true;
+    }
+
     public MessageHelper(int num) {
         super(num);
     }
@@ -160,6 +165,36 @@ public class MessageHelper extends BaseController {
             }
         }
         return path != null && !path.endsWith("/cache") ? path : null;
+    }
+
+    public static String buildRepostCopySourceLookupKey(MessageObject messageObject) {
+        if (messageObject == null) {
+            return null;
+        }
+        return messageObject.getDialogId() + ":" + messageObject.getId();
+    }
+
+    private static HashMap<String, String> copyRepostMarkerParams(HashMap<String, String> markerParams) {
+        if (markerParams == null) {
+            return null;
+        }
+        HashMap<String, String> params = new HashMap<>();
+        String batch = markerParams.get(SendMessagesHelper.NAGRAMX_COPY_BATCH_PARAM);
+        if (!TextUtils.isEmpty(batch)) {
+            params.put(SendMessagesHelper.NAGRAMX_COPY_BATCH_PARAM, batch);
+        }
+        String source = markerParams.get(SendMessagesHelper.NAGRAMX_COPY_SOURCE_PARAM);
+        if (!TextUtils.isEmpty(source)) {
+            params.put(SendMessagesHelper.NAGRAMX_COPY_SOURCE_PARAM, source);
+        }
+        return params.isEmpty() ? null : params;
+    }
+
+    private static HashMap<String, String> resolveRepostMarkerParams(HashMap<String, HashMap<String, String>> markerParamsBySource, MessageObject messageObject) {
+        if (markerParamsBySource == null || messageObject == null) {
+            return null;
+        }
+        return copyRepostMarkerParams(markerParamsBySource.get(buildRepostCopySourceLookupKey(messageObject)));
     }
 
     public void resetMessageContent(long dialog_id, MessageObject messageObject) {
@@ -1288,16 +1323,21 @@ public class MessageHelper extends BaseController {
     }
 
     public boolean sendMessageAsCopy(MessageObject messageObject, MessageObject.GroupedMessages messageGroup, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        return sendMessageAsCopy(messageObject, messageGroup, targetDialogId, replyTo, replyToTopMsg, quote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams, null);
+    }
+
+    public boolean sendMessageAsCopy(MessageObject messageObject, MessageObject.GroupedMessages messageGroup, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams, HashMap<String, String> repostMarkerParams) {
         if (messageObject == null || messageObject.messageOwner == null) {
             return false;
         }
         SendMessageChatArguments sendMessageChatArguments = createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId);
+        HashMap<String, String> messageParams = copyRepostMarkerParams(repostMarkerParams);
         CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, messageGroup, null);
         if (caption == null && (messageObject.type == 0 || messageObject.isAnimatedEmoji())) {
             caption = ChatActivity.getMessageContent(messageObject, 0, false);
         }
         if ((messageObject.isSticker() || messageObject.isAnimatedSticker()) && messageObject.getDocument() != null) {
-            SendMessagesHelper.getInstance(currentAccount).sendSticker(messageObject.getDocument(), null, targetDialogId, null, null, replyTo, replyToTopMsg, null, quote, null, notify, scheduleDate, 0, false, null, sendMessageChatArguments, payStars, monoForumPeerId, suggestionParams);
+            SendMessagesHelper.getInstance(currentAccount).sendSticker(messageObject.getDocument(), null, targetDialogId, null, null, replyTo, replyToTopMsg, null, quote, null, notify, scheduleDate, 0, false, null, sendMessageChatArguments, payStars, monoForumPeerId, suggestionParams, false, messageParams);
             return true;
         }
         String path = getPathToMessage(messageObject, currentAccount);
@@ -1306,23 +1346,23 @@ public class MessageHelper extends BaseController {
             if (messageObject.isRoundVideo()) {
                 VideoEditedInfo info = messageObject.videoEditedInfo != null ? messageObject.videoEditedInfo : new VideoEditedInfo();
                 info.roundVideo = true;
-                SendMessagesHelper.prepareSendingVideo(getAccountInstance(), path, info, null, null, targetDialogId, replyTo, replyToTopMsg, null, quote, entities, messageObject.messageOwner.ttl, null, notify, scheduleDate, 0, false, messageObject.hasMediaSpoilers(), caption, sendMessageChatArguments, 0, payStars, monoForumPeerId, suggestionParams, messageObject.messageOwner.invert_media);
+                SendMessagesHelper.prepareSendingVideo(getAccountInstance(), path, info, null, null, targetDialogId, replyTo, replyToTopMsg, null, quote, entities, messageObject.messageOwner.ttl, null, notify, scheduleDate, 0, false, messageObject.hasMediaSpoilers(), caption, sendMessageChatArguments, 0, payStars, monoForumPeerId, suggestionParams, messageObject.messageOwner.invert_media, messageParams);
                 return true;
             } else if (messageObject.isPhoto() || messageObject.isVideo()) {
                 ArrayList<SendMessagesHelper.SendingMediaInfo> media = new ArrayList<>();
-                media.add(createSendingMediaInfo(messageObject, path, caption, entities));
+                media.add(createSendingMediaInfo(messageObject, path, caption, entities, messageParams));
                 SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, targetDialogId, replyTo, replyToTopMsg, null, quote, false, false, null, notify, scheduleDate, 0, mode, false, null, sendMessageChatArguments, 0, messageObject.messageOwner.invert_media, payStars, monoForumPeerId, suggestionParams);
                 return true;
             } else if (messageObject.getDocument() != null) {
                 ArrayList<String> paths = new ArrayList<>();
                 paths.add(path);
                 String mime = messageObject.getDocument().mime_type;
-                SendMessagesHelper.prepareSendingDocuments(getAccountInstance(), paths, paths, null, caption != null ? caption.toString() : null, entities, mime, targetDialogId, replyTo, replyToTopMsg, null, quote, null, notify, scheduleDate, 0, null, sendMessageChatArguments, 0, messageObject.messageOwner.invert_media, payStars, monoForumPeerId, suggestionParams);
+                SendMessagesHelper.prepareSendingDocuments(getAccountInstance(), paths, paths, null, caption != null ? caption.toString() : null, entities, mime, targetDialogId, replyTo, replyToTopMsg, null, quote, null, notify, scheduleDate, 0, null, sendMessageChatArguments, 0, messageObject.messageOwner.invert_media, payStars, monoForumPeerId, suggestionParams, messageParams);
                 return true;
             }
         }
         if (caption != null && (messageObject.type == 0 || messageObject.isAnimatedEmoji()) && !TextUtils.isEmpty(caption)) {
-            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(caption.toString(), targetDialogId, replyTo, replyToTopMsg, null, false, messageObject.messageOwner.entities, null, null, notify, scheduleDate, 0, null, false);
+            SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(caption.toString(), targetDialogId, replyTo, replyToTopMsg, null, false, messageObject.messageOwner.entities, null, messageParams, notify, scheduleDate, 0, null, false);
             params.replyQuote = quote;
             params.sendMessageChatArguments = sendMessageChatArguments;
             params.payStars = payStars;
@@ -1336,21 +1376,28 @@ public class MessageHelper extends BaseController {
 
 
     public boolean sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean preserveOwnReply, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        return sendMessagesAsCopy(messages, targetDialogId, replyTo, replyToTopMsg, quote, preserveOwnReply, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams, null).sentAny;
+    }
+
+    public CopyDispatchResult sendMessagesAsCopy(ArrayList<MessageObject> messages, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean preserveOwnReply, boolean hideCaption, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams, HashMap<String, HashMap<String, String>> repostMarkerParamsBySource) {
+        CopyDispatchResult result = new CopyDispatchResult();
         if (messages == null || messages.isEmpty()) {
-            return false;
+            result.allDispatched = false;
+            return result;
         }
         if (!canSendMessagesAsCopy(messages)) {
-            return false;
+            result.allDispatched = false;
+            return result;
         }
         for (int i = 0; i < messages.size(); i++) {
             MessageObject messageObject = messages.get(i);
             boolean needsFile = messageObject != null && messageObject.messageOwner != null && !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
                     (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
             if (needsFile && TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount))) {
-                return false;
+                result.allDispatched = false;
+                return result;
             }
         }
-        boolean sentAny = false;
         long currentGroupId = 0;
         boolean currentInvertMedia = false;
         ArrayList<SendMessagesHelper.SendingMediaInfo> media = null;
@@ -1361,6 +1408,10 @@ public class MessageHelper extends BaseController {
 
         for (int i = 0; i < messages.size(); i++) {
             MessageObject messageObject = messages.get(i);
+            HashMap<String, String> markerParams = resolveRepostMarkerParams(repostMarkerParamsBySource, messageObject);
+            if (repostMarkerParamsBySource != null && markerParams == null) {
+                result.allDispatched = false;
+            }
             boolean batchMedia = messageObject != null && messageObject.messageOwner != null && !messageObject.isRoundVideo() && (messageObject.isPhoto() || messageObject.isVideo());
             if (batchMedia) {
                 String path = getPathToMessage(messageObject, currentAccount);
@@ -1368,7 +1419,7 @@ public class MessageHelper extends BaseController {
                 boolean invertMedia = messageObject.messageOwner.invert_media;
                 if (media != null && (groupId == 0 || groupId != currentGroupId || invertMedia != currentInvertMedia)) {
                     flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-                    sentAny = true;
+                    result.sentAny = true;
                     media = null;
                 }
                 if (media == null) {
@@ -1383,11 +1434,11 @@ public class MessageHelper extends BaseController {
                 }
                 CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, null, null);
                 ArrayList<TLRPC.MessageEntity> entities = caption != null ? messageObject.messageOwner.entities : null;
-                media.add(createSendingMediaInfo(messageObject, path, caption, entities));
+                media.add(createSendingMediaInfo(messageObject, path, caption, entities, markerParams));
             } else {
                 if (media != null) {
                     flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-                    sentAny = true;
+                    result.sentAny = true;
                     media = null;
                     currentGroupId = 0;
                 }
@@ -1398,16 +1449,18 @@ public class MessageHelper extends BaseController {
                     messageReply = ownReply != null ? ownReply : replyToTopMsg;
                     messageQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
                 }
-                if (sendMessageAsCopy(messageObject, null, targetDialogId, messageReply, replyToTopMsg, messageQuote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams)) {
-                    sentAny = true;
+                if (sendMessageAsCopy(messageObject, null, targetDialogId, messageReply, replyToTopMsg, messageQuote, hideCaption, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, payStars, monoForumPeerId, suggestionParams, markerParams)) {
+                    result.sentAny = true;
+                } else {
+                    result.allDispatched = false;
                 }
             }
         }
         if (media != null) {
             flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-            sentAny = true;
+            result.sentAny = true;
         }
-        return sentAny;
+        return result;
     }
 
     // NagramX: a genuine messages.forwardMessages can't carry a reply header, so "Repost as Copy"
@@ -1572,7 +1625,7 @@ public class MessageHelper extends BaseController {
         return false;
     }
 
-    private SendMessagesHelper.SendingMediaInfo createSendingMediaInfo(MessageObject messageObject, String path, CharSequence caption, ArrayList<TLRPC.MessageEntity> entities) {
+    private SendMessagesHelper.SendingMediaInfo createSendingMediaInfo(MessageObject messageObject, String path, CharSequence caption, ArrayList<TLRPC.MessageEntity> entities, HashMap<String, String> repostMarkerParams) {
         SendMessagesHelper.SendingMediaInfo info = new SendMessagesHelper.SendingMediaInfo();
         info.path = path;
         info.isVideo = messageObject.isVideo();
@@ -1580,6 +1633,7 @@ public class MessageHelper extends BaseController {
         info.entities = entities;
         info.ttl = messageObject.messageOwner.ttl;
         info.hasMediaSpoilers = messageObject.hasMediaSpoilers();
+        info.params = copyRepostMarkerParams(repostMarkerParams);
         return info;
     }
 
