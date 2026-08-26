@@ -151,11 +151,11 @@ Repost and Repost as Copy live in a message's menu and on the selection bar. Pla
 
 **Repost as Copy** now keeps the reply. Rather than forwarding, it re-sends the message as a new one, which is what "as copy" has always meant: a message with no "Forwarded from". A fresh message can point at whatever the original replied to, quote included. The choice is made once for the whole selection. If every message in it can be re-sent this way and at least one really replies to something, it re-sends; otherwise it forwards as before, so a poll, a location, or a video you haven't downloaded still reposts and simply arrives without the reply. Re-sending re-uploads the file instead of reusing the copy already on Telegram, so reposting a reply that carries a large video pays for the upload again. Scheduled reposts and no-forwards chats already worked by re-sending, and they now carry the reply too. Repost as Copy is off by default; you switch it on in settings, and the long-press on the Repost row stays a shortcut to the same reconstruction.
 
+After a repost that re-sends as a copy fully succeeds, Telegram's own delete confirmation opens for the original source messages, so you can clean them up immediately with the normal controls (including the stock *Also delete for...* / *Delete for all members* checkbox when it's allowed). The prompt appears only for whole-batch success in an active default chat view where every source is still deletable in that chat: if any message in that repost fails, falls back to plain forward, cannot be matched exactly, is no longer deletable, runs in a secret chat, or the chat is no longer in a safe state to show a modal, nothing new appears and source deletion stays manual.
+
 There's also a way to get the reply and the "Forwarded from" header at once, and it costs nothing: select the message together with the one it replies to, then use plain Repost. With both in the same batch the link between them survives the forward.
 
 One place the reply can't come along is a forum's aggregate "View as messages": there's no single topic to anchor a reply to there, so reposting a reply as a copy from that view sends it without the reply. Open the actual topic and repost from inside it to keep the reply.
-
-Secret chats are expected to keep the reply through this path as well, though that isn't verified.
 
 ### Pin or number several messages at once <!-- #bulk-actions -->
 
