@@ -143,5 +143,6 @@ GPLv3 — see [LICENSE](LICENSE). Telegram for Android is GPL-2.0-or-later; this
 - [Dr4iv3rNope](https://github.com/Dr4iv3rNope/NotSoAndroidAyuGram)
 - [exteraGram](https://github.com/exteraSquad/exteraGram)
 - [Nagram](https://github.com/NextAlone/Nagram)
+- [NagramX](https://github.com/risin42/NagramX)
 - [Nekogram](https://github.com/Nekogram/Nekogram)
 - [OctoGram](https://github.com/OctoGramApp/OctoGram)
