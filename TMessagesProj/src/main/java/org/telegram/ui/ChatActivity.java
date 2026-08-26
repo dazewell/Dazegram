@@ -15756,11 +15756,20 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
+        forwardMessages(arrayList, fromMyName, hideCaption, notify, scheduleDate, payStars, null);
+    }
+
+    // NagramX: tracked variant returns the send result and carries a repost-copy marker map so a drop-author
+    // forward can stamp each source, letting the delete offer fire once every source is confirmed sent.
+    // REPOST_COPY_FORWARD_NOT_DISPATCHED means the batch never reached messages.forwardMessages here.
+    private static final int REPOST_COPY_FORWARD_NOT_DISPATCHED = Integer.MIN_VALUE;
+
+    private int forwardMessages(ArrayList<MessageObject> arrayList, boolean fromMyName, boolean hideCaption, boolean notify, int scheduleDate, long payStars, HashMap<String, HashMap<String, String>> repostMarkerParamsBySource) {
         if (arrayList == null || arrayList.isEmpty()) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
         if (!checkSlowModeAlert()) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
         if ((scheduleDate != 0) == (chatMode == MODE_SCHEDULED)) {
             waitingForSendingMessageLoad = true;
@@ -15769,9 +15778,9 @@ public class ChatActivity extends BaseFragment implements
             }
         }
         if (forwardScheduledMessagesAsCopy(arrayList, dialog_id, hideCaption, notify, scheduleDate, payStars)) {
-            return;
+            return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
-        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), repostMarkerParamsBySource);
         AlertsCreator.showSendMediaAlert(result, this, themeDelegate);
         if (result != 0) {
             AndroidUtilities.runOnUIThread(() -> {
@@ -15779,6 +15788,7 @@ public class ChatActivity extends BaseFragment implements
                 hideFieldPanel(true);
             });
         }
+        return result;
     }
 
     // This method is used to forward messages to Saved Messages, or to multi Dialogs
@@ -48201,6 +48211,21 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX: a "Repost as Copy" that falls through to a drop-author forward still gets the source-delete
+    // offer: arm the batch, stamp every forwarded source, and drop the arm unless the whole batch reached
+    // messages.forwardMessages. Plain Repost (fromMyName == false) forwards untracked and never prompts.
+    private void dispatchRepostCopyForward(ArrayList<MessageObject> messages, boolean fromMyName) {
+        if (!fromMyName) {
+            forwardMessages(messages, false, false, true, 0, 0);
+            return;
+        }
+        RepostCopyDeleteBatch repostBatch = armRepostCopyDeleteBatch(messages);
+        HashMap<String, HashMap<String, String>> markerMap = buildRepostCopyMarkerMap(repostBatch, messages);
+        int result = forwardMessages(messages, true, false, true, 0, 0, markerMap);
+        boolean dispatched = markerMap != null && result == 0;
+        finalizeRepostCopyDispatch(repostBatch, dispatched, dispatched);
+    }
+
     private Pair<String, String> getRepostCopyMarker(HashMap<String, String> params) {
         if (params == null) {
             return null;
@@ -48236,7 +48261,17 @@ public class ChatActivity extends BaseFragment implements
         if (newMessage == null) {
             return;
         }
+        // NagramX: the copy producer posts the local message (client params present), while the drop-author
+        // forward producer posts the raw server message (client params gone). When the marker is absent on the
+        // server message, fall back to the local placeholder still keyed under the old local id, before the
+        // outer messageReceivedByServer handler rekeys it. A miss on both means this send isn't ours.
         Pair<String, String> marker = getRepostCopyMarker(newMessage.params);
+        if (marker == null && args[0] instanceof Integer) {
+            MessageObject localPlaceholder = messagesDict[0].get((Integer) args[0]);
+            if (localPlaceholder != null && localPlaceholder.messageOwner != null) {
+                marker = getRepostCopyMarker(localPlaceholder.messageOwner.params);
+            }
+        }
         if (marker == null || !batch.nonce.equals(marker.first)) {
             return;
         }
@@ -48263,11 +48298,17 @@ public class ChatActivity extends BaseFragment implements
         if (batch.account != currentAccount || batch.dialogId != dialog_id || !isRepostCopyDeleteEligible()) {
             return false;
         }
+        // NagramX: keep visibleDialog fail-closed — showing here would dismiss the dialog the user has open.
         if (paused || !isFullyVisible || isFinishing() || visibleDialog != null) {
             return false;
         }
         INavigationLayout navigationLayout = getParentLayout();
         if (navigationLayout == null || navigationLayout.getLastFragment() != this) {
+            return false;
+        }
+        // NagramX: mirror the preconditions showDialog itself checks, so a transition or swipe-back in progress
+        // makes us report failure and keep the batch cleared, instead of a silently-swallowed showDialog(null).
+        if (navigationLayout.isTransitionAnimationInProgress() || navigationLayout.isSwipeInProgress() || navigationLayout.checkTransitionAnimation()) {
             return false;
         }
         Activity activity = getParentActivity();
@@ -48370,11 +48411,11 @@ public class ChatActivity extends BaseFragment implements
             MessageHelper.CopyDispatchResult copyDispatch = getMessageHelper().sendMessagesAsCopy(messages, dialog_id, null, getThreadMessage(), null, true, false, true, 0, chatMode, quickReplyShortcut, getQuickReplyId(), 0, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), markerMap);
             finalizeRepostCopyDispatch(repostBatch, copyDispatch.sentAny, markerMap != null && copyDispatch.allDispatched);
             if (!copyDispatch.sentAny) {
-                forwardMessages(messages, isRepeatAsCopy, false, true, 0, 0);
+                dispatchRepostCopyForward(messages, isLongClick || isRepeatAsCopy);
             }
             return;
         }
-        forwardMessages(messages, isLongClick || isRepeatAsCopy, false, true, 0, 0);
+        dispatchRepostCopyForward(messages, isLongClick || isRepeatAsCopy);
     }
 
     public void setScrollToMessage() {

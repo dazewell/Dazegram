@@ -2134,6 +2134,26 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         long monoForumPeerId,
         MessageSuggestionParams suggestionParams
     ) {
+        return sendMessage(messages, peer, forwardFromMyName, hideCaption, notify, scheduleDate, scheduleRepeatPeriod, replyToTopMsg, video_timestamp, payStars, monoForumPeerId, suggestionParams, null);
+    }
+
+    // NagramX: trailing marker map lets a tracked "Repost as Copy" drop-author forward stamp each source's
+    // correlation marker so the delete offer can fire after every forwarded source is confirmed by the server.
+    public int sendMessage(
+        ArrayList<MessageObject> messages,
+        final long peer,
+        boolean forwardFromMyName,
+        boolean hideCaption,
+        boolean notify,
+        int scheduleDate,
+        int scheduleRepeatPeriod,
+        MessageObject replyToTopMsg,
+        int video_timestamp,
+        long payStars,
+        long monoForumPeerId,
+        MessageSuggestionParams suggestionParams,
+        HashMap<String, HashMap<String, String>> repostMarkerParamsBySource
+    ) {
         if (messages == null || messages.isEmpty()) {
             return 0;
         }
@@ -2365,6 +2385,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 newMsg.params = new HashMap<>();
                 newMsg.params.put("fwd_id", "" + msgObj.getId());
                 newMsg.params.put("fwd_peer", "" + msgObj.getDialogId());
+                // NagramX: a drop-author forward posts the server message on success (client params gone), so
+                // stamp the source's repost-copy marker onto the local placeholder here to drive the delete offer.
+                copyNagramxCopyParams(repostMarkerParamsBySource == null ? null : repostMarkerParamsBySource.get(tw.nekomimi.nekogram.helpers.MessageHelper.buildRepostCopySourceLookupKey(msgObj)), newMsg.params);
                 if (!msgObj.messageOwner.restriction_reason.isEmpty()) {
                     newMsg.restriction_reason = msgObj.messageOwner.restriction_reason;
                     newMsg.flags |= 4194304;
