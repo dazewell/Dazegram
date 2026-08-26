@@ -157,6 +157,8 @@ There's also a way to get the reply and the "Forwarded from" header at once, and
 
 One place the reply can't come along is a forum's aggregate "View as messages": there's no single topic to anchor a reply to there, so reposting a reply as a copy from that view sends it without the reply. Open the actual topic and repost from inside it to keep the reply.
 
+Secret chats are expected to keep the reply through this path as well, though that isn't verified.
+
 ### Pin or number several messages at once <!-- #bulk-actions -->
 
 Select a few messages and the selection bar's ⋯ menu gets two new actions. *Pin all* pins everything you picked using the same dialog a single message gives you (the notify option, and pin-for-both in a private chat), applying that one choice to the whole selection; it pins oldest to newest so the latest lands on top of the stack. *Reply with numbers* posts a short reply to each selected message, numbered in order. A reply is the one reference Telegram maps to the other person's side, so unlike a link to a private-chat message it doubles as a table of contents the peer can tap through to jump between the messages. Before sending it asks for the number to start counting from (1 by default), so you can carry on an index across several batches. Those replies go out silently, so a long index doesn't ping them once per entry. Both actions run one message at a time rather than all at once, to hold the order and stay under Telegram's flood limits. *Pin all* appears wherever you're allowed to pin; *Reply with numbers* wherever you can send.

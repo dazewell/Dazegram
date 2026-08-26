@@ -10952,7 +10952,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             ArrayList<Uri> sendAsDocumentsUri = null;
             ArrayList<String> sendAsDocumentsCaptions = null;
             ArrayList<ArrayList<TLRPC.MessageEntity>> sendAsDocumentsEntities = null;
-            ArrayList<HashMap<String, String>> sendAsDocumentsParams = null;
+            final ArrayList<HashMap<String, String>> sendAsDocumentsParams = new ArrayList<>();
 
             String extension = null;
             int mediaCount = 0;
@@ -11448,7 +11448,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 sendAsDocumentsCaptions = new ArrayList<>();
                                 sendAsDocumentsEntities = new ArrayList<>();
                                 sendAsDocumentsUri = new ArrayList<>();
-                                sendAsDocumentsParams = new ArrayList<>();
                             }
                             sendAsDocuments.add(info.path);
                             sendAsDocumentsOriginal.add(info.path);
@@ -11538,7 +11537,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 sendAsDocumentsCaptions = new ArrayList<>();
                                 sendAsDocumentsEntities = new ArrayList<>();
                                 sendAsDocumentsUri = new ArrayList<>();
-                                sendAsDocumentsParams = new ArrayList<>();
                             }
                             sendAsDocuments.add(tempPath);
                             sendAsDocumentsOriginal.add(originalPath);
@@ -11672,6 +11670,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                                 sendAsDocumentsUri.add(info.uri);
                                 sendAsDocumentsCaptions.add(info.caption);
                                 sendAsDocumentsEntities.add(info.entities);
+                                sendAsDocumentsParams.add(info.params);
                             }
                         }
                     }
@@ -11692,7 +11691,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                         mediaCount = 0;
                     }
                     mediaCount++;
-                    HashMap<String, String> messageParams = sendAsDocumentsParams != null && a < sendAsDocumentsParams.size() ? sendAsDocumentsParams.get(a) : null;
+                    HashMap<String, String> messageParams = sendAsDocumentsParams.size() == sendAsDocuments.size() ? sendAsDocumentsParams.get(a) : null;
                     int error = prepareSendingDocumentInternal(accountInstance, sendAsDocuments.get(a), sendAsDocumentsOriginal.get(a), sendAsDocumentsUri.get(a), extension, dialogId, replyToMsg, replyToTopMsg, storyItem, quote, sendAsDocumentsEntities.get(a), editingMessageObject, groupId2, mediaCount == 10 || a == documentsCount - 1, sendAsDocumentsCaptions.get(a), notify, scheduleDate, 0, null, forceDocument, sendMessageChatArguments, effectId, invertMedia, payStars, monoForumPeerId, suggestionParams, null, -1, messageParams);
                     handleError(error, accountInstance);
                 }
