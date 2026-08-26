@@ -213,7 +213,7 @@ If multiple providers are configured, the Retry option on a transcription become
 
 ### Extera themes <!-- #extera-themes -->
 
-Extera Light and Extera Dark are dynamic Material You themes derived directly from [exteraGram](https://github.com/exteraSquad/exteraGram)'s exported palettes, providing a warmer, consistent cross-surface tint.
+Extera Light and Extera Dark bring exteraGram's look to Dazegram. They were recreated from [exteraGram](https://github.com/exteraSquad/exteraGram), with credit to its authors.
 
 ### Monet wallpaper pattern <!-- #monet-pattern-tile -->
 
