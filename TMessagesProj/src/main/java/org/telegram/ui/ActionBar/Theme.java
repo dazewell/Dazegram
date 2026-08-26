@@ -4279,17 +4279,26 @@ public class Theme {
             String lastDarkTheme = themeConfig.getString("lastDarkTheme", null);
             // NagramX: fold the Solid -> Extera remap for both remembered keys into the
             // pre-existing NekoX -> Blue fixup, one batched edit for whichever key needs it.
-            // Same local-custom-theme guard as the "theme"/"nighttheme" remaps above.
-            boolean remapLastDay = "NekoX".equals(lastDayTheme)
-                    || ("Solid Light".equals(lastDayTheme) && !themesDict.containsKey("Solid Light"));
-            boolean remapLastDark = "Solid Dark".equals(lastDarkTheme) && !themesDict.containsKey("Solid Dark");
-            if (remapLastDay || remapLastDark) {
+            // Neither remembered key is restricted to its "own" light/dark variant - e.g.
+            // ThemePreviewActivity's day-theme apply flow stores whatever theme was just applied
+            // into lastDayTheme with no isDark check - so a stored "Solid Dark" can end up under
+            // lastDayTheme (and "Solid Light" under lastDarkTheme) just as easily as the other way
+            // round. Check both Solid names against both keys. Same local-custom-theme guard as
+            // the "theme"/"nighttheme" remaps above.
+            String remappedLastDay = "NekoX".equals(lastDayTheme) ? "Blue"
+                    : "Solid Light".equals(lastDayTheme) && !themesDict.containsKey("Solid Light") ? "Extera Light"
+                    : "Solid Dark".equals(lastDayTheme) && !themesDict.containsKey("Solid Dark") ? "Extera Dark"
+                    : null;
+            String remappedLastDark = "Solid Dark".equals(lastDarkTheme) && !themesDict.containsKey("Solid Dark") ? "Extera Dark"
+                    : "Solid Light".equals(lastDarkTheme) && !themesDict.containsKey("Solid Light") ? "Extera Light"
+                    : null;
+            if (remappedLastDay != null || remappedLastDark != null) {
                 SharedPreferences.Editor editor = themeConfig.edit();
-                if (remapLastDay) {
-                    editor.putString("lastDayTheme", "NekoX".equals(lastDayTheme) ? "Blue" : "Extera Light");
+                if (remappedLastDay != null) {
+                    editor.putString("lastDayTheme", remappedLastDay);
                 }
-                if (remapLastDark) {
-                    editor.putString("lastDarkTheme", "Extera Dark");
+                if (remappedLastDark != null) {
+                    editor.putString("lastDarkTheme", remappedLastDark);
                 }
                 editor.apply();
             }
