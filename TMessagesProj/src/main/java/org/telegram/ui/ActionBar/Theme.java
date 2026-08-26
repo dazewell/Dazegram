@@ -4219,9 +4219,12 @@ public class Theme {
             if ("NekoX".equals(theme)) {
                 theme = "Blue";
                 preferences.edit().putString("theme", theme).apply();
-            } else if ("Solid Light".equals(theme)) {
+            } else if ("Solid Light".equals(theme) && !themesDict.containsKey("Solid Light")) {
                 // NagramX: Solid Light was removed; move an active selection to its nearest
                 // equivalent instead of falling through to themesDict.get() returning null below.
+                // Gated on themesDict not already having this key so a user's own local custom
+                // theme that happens to be named "Solid Light" (ThemeInfo.getKey() is just name
+                // for a local theme) is never mistaken for the removed built-in.
                 theme = "Extera Light";
                 preferences.edit().putString("theme", theme).apply();
             }
@@ -4241,8 +4244,9 @@ public class Theme {
             }
 
             theme = preferences.getString("nighttheme", null);
-            if ("Solid Dark".equals(theme)) {
-                // NagramX: same removal remap as "theme" above, for the night side.
+            if ("Solid Dark".equals(theme) && !themesDict.containsKey("Solid Dark")) {
+                // NagramX: same removal remap as "theme" above, for the night side, with the
+                // same local-custom-theme guard.
                 theme = "Extera Dark";
                 preferences.edit().putString("nighttheme", theme).apply();
             }
@@ -4269,8 +4273,10 @@ public class Theme {
             String lastDarkTheme = themeConfig.getString("lastDarkTheme", null);
             // NagramX: fold the Solid -> Extera remap for both remembered keys into the
             // pre-existing NekoX -> Blue fixup, one batched edit for whichever key needs it.
-            boolean remapLastDay = "NekoX".equals(lastDayTheme) || "Solid Light".equals(lastDayTheme);
-            boolean remapLastDark = "Solid Dark".equals(lastDarkTheme);
+            // Same local-custom-theme guard as the "theme"/"nighttheme" remaps above.
+            boolean remapLastDay = "NekoX".equals(lastDayTheme)
+                    || ("Solid Light".equals(lastDayTheme) && !themesDict.containsKey("Solid Light"));
+            boolean remapLastDark = "Solid Dark".equals(lastDarkTheme) && !themesDict.containsKey("Solid Dark");
             if (remapLastDay || remapLastDark) {
                 SharedPreferences.Editor editor = themeConfig.edit();
                 if (remapLastDay) {
