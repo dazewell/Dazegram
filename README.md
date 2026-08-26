@@ -1,8 +1,33 @@
 # Dazegram
-[![Crowdin](https://badges.crowdin.net/NagramX/localized.svg)](https://crowdin.com/project/NagramX)  
-A variant of [Nagram](https://github.com/NextAlone/Nagram) with additional features.
 
-**This is a personal fork** by [@dazewell](https://github.com/dazewell) with a bunch of extras on top of [NagramX](https://github.com/risin42/NagramX). The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
+Telegram, tuned for the everyday details stock Telegram skips: time zones that show up right in the chat, and privacy that isn't all-or-nothing.
+
+Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), which is no longer maintained. It now tracks [Nagram](https://github.com/NextAlone/Nagram) for updates, with NagramX's extras carried forward and built on top. It's maintained by [@dazewell](https://github.com/dazewell).
+
+This README covers the highlights. The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
+
+<!-- SCREENSHOT: hero -> docs/images/hero.png | per-chat time zone in a chat header with the cross-time-zone picker open; portrait ~1080x1920 | alt: "A chat header showing the other chat's local time, with a time conversion picker open and a selected time inserted into the message composer." -->
+
+## Highlights
+
+- **Time zones:** Set a time zone on any chat or group and see their local time right in the header. Tap it to line up a moment across both zones and drop it straight into your message.
+- **Composer:** Reorder most of the composer's row: emoji, attachments, formatting, schedule, into the layout you actually reach for.
+
+  <!-- SCREENSHOT: composer -> docs/images/composer.png | the composer row layout editor mid-drag, reordering a button | alt: "The composer layout editor showing the row of buttons being reordered by dragging one into a new position." -->
+
+- **Everyday reliability:** The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.
+- **Privacy profiles:** Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
+- **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
+
+  <!-- SCREENSHOT: video messages -> docs/images/video-messages.png | a round video message mid-recording past the stock time limit, with the warning buzz moment and a caption showing | alt: "A round video message recording past Telegram's usual limit, showing the warning indicator and a live caption." -->
+
+- **Private chats:** Hide a chat's last message from the list, or lock the whole chat behind your passcode (which hides it too): your call, per chat.
+
+  <!-- SCREENSHOT: private chats -> docs/images/privacy-hide-lock.png | the chat list with one chat's last message hidden and another locked behind the passcode prompt | alt: "The chat list showing one chat with its last message hidden and another chat locked behind a passcode prompt." -->
+
+There's more: FEATURES.md has all of it, with what each one does and where to find it in the app.
+
+Two builds, two package names: see [Package names](#package-names) below for which one to pick.
 
 ## Download
 
@@ -85,6 +110,10 @@ Both builds are signed with my certificate:
    - `HELPER_BOT_TARGET`: Primary Telegram chat ID (e.g., `777000`)
 
 4. Trigger the Staging build workflow (or push to `dev`).
+
+## License
+
+GPLv3 — see [LICENSE](LICENSE). Telegram for Android is GPL-2.0-or-later; this fork ships under GPLv3.
 
 ## Acknowledgments
 
