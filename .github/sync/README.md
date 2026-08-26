@@ -80,7 +80,8 @@ to `pins.env` after a new snapshot has landed — never by the workflow itself.
 The pins now record `941e30844e` / `dc6d665f50` (Nagram 12.10.1). Those values were
 advanced ahead of `origin/nbase` on purpose, so until a human fast-forwards
 `origin/nbase` from `c21ee8ac` to `dc6d665f50`, `sync-guard-check`'s real-candidate
-fixture is **expected to block** at its `origin/nbase != OLD_NBASE` assertion. That
+fixture is **expected to block** where `origin/nbase` no longer equals the pinned
+`OLD_NBASE` (the log reads `origin/nbase … != pinned OLD_NBASE …`). That
 transitional red is the system working; do not revert a pin to clear it. The
 ordering is: merge the 12.10.1 reconciliation PR → fast-forward `origin/nbase` to
 `dc6d665f50` → re-run the pins PR's checks (they go green) → merge it. Never push
