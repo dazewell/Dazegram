@@ -429,12 +429,12 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
 the PC by hand, then land it in three ordered steps: a PR, a fast-forward, then a
-second PR. Folding the anchor advance into the reconciliation PR looks tempting
-but is a guaranteed red `sync-guard-check` on that very PR: the guard's fixture
-builds its synthetic upstream delta from `origin/nbase`, and until `nbase`
-moves, the reconciliation's own touched files have nothing upstream to compare
-against, so they classify as unclassified modifications and the merge commit as
-an unexpected import.
+second PR. Folding the anchor advance into the reconciliation PR — or otherwise
+advancing `.github/sync/pins.env` before step 2 has actually moved
+`origin/nbase` — is a guaranteed red `sync-guard-check`: its fixture
+unconditionally fetches the live `origin/nbase` and asserts it equals the
+`OLD_NBASE` pinned in the candidate's own `pins.env`; advance that pin first and
+the assertion fails immediately, before any guard classification even runs.
 
 1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
@@ -446,17 +446,18 @@ an unexpected import.
 3. **Cut a branch from post-merge `dev`** (after step 1 landed, not the
    pre-merge tip) and advance the anchor values in `.github/sync/pins.env`
    there. PR it, confirm `sync-guard-check` is green, merge. Branching from the
-   pre-merge tip instead reproduces the same failure this sequence exists to
-   avoid.
+   pre-merge tip instead reproduces the reconciliation's own files as
+   `UNCLASSIFIED` plus a `guard14: unexpected commit imported`, because that
+   branch's `dev` history is missing the reconciliation commit the new anchor
+   now expects.
 
-Between step 1 landing and step 3 landing, expect **every** branch and PR in the
-repo to show a red `sync-guard-check` — before step 2 for the same reason as
-above (the reconciliation's files have no upstream delta to classify against
-yet), and after step 2 because `dev`'s pins still name the old anchor while
-`origin/nbase` has already moved past it. That's the known shape of the gap, not
-a break — keep the window short and don't trigger the phone sync while it's
-open. **Never** fast-forward the `base` branch into `dev`: that path is retired
-and bypasses the guard entirely.
+Between step 2 landing and step 3 landing, expect **every** branch and PR in the
+repo to show a red `sync-guard-check`: the same pin assertion above, now failing
+for everyone rather than just the anchor PR, because `dev`'s pins still name the
+old anchor while `origin/nbase` has already moved past it. That's the known
+shape of the gap, not a break — keep the window short and don't trigger the
+phone sync while it's open. **Never** fast-forward the `base` branch into `dev`:
+that path is retired and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
