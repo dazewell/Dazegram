@@ -1560,7 +1560,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (fragment == null) {
             fragment = LaunchActivity.getLastFragment();
         }
-        if (fragment == null) {
+        if (fragment == null || fragment.getParentActivity() == null) {
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -2969,6 +2969,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                         cameraView.setFpsLimit(30);
                         cameraView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
                     }
+                    destroyCameraViewWhenNoTile();
                 }
             });
             animatorSet.start();
@@ -2997,6 +2998,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 cameraView.setFpsLimit(30);
                 cameraView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
             }
+            destroyCameraViewWhenNoTile();
             if (gridView != null) {
                 gridView.invalidate();
             }
@@ -3009,6 +3011,20 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!LiteMode.isEnabled(LiteMode.FLAGS_CHAT) && cameraView != null) {
             cameraView.showTexture(false, animated);
         }
+    }
+
+    // NagramX: with disableInstantCamera on there is no grid tile behind the camera, so a
+    // closed-but-undestroyed cameraView keeps capturing at 30fps with nothing on screen (privacy dot lit).
+    private void destroyCameraViewWhenNoTile() {
+        if (!NekoConfig.disableInstantCamera.Bool() || cameraView == null) {
+            return;
+        }
+        final CameraViewInternal cv = cameraView;
+        cameraView = null;
+        isCameraFrontfaceBeforeEnteringEditMode = cv.isFrontface();
+        cv.setDelegate(null);
+        cv.destroy(true, null);
+        parentAlert.getContainer().removeView(cv);
     }
 
     float animationClipTop;
