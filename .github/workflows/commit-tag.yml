@@ -33,7 +33,7 @@ jobs:
             case "$subject" in
               "Revert "*|"fixup! "*|"squash! "*|"amend! "*) continue ;;
             esac
-            if git log -1 --format=%B "$sha" | grep -Eq '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*'; then
+            if git log -1 --format=%B "$sha" | grep -Eq '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)'; then
               continue
             fi
             echo "::error::commit $sha is missing a #<slug> change tag: $subject"
@@ -47,8 +47,11 @@ jobs:
 
           # Every feature slug used in the PR must be catalogued in FEATURES.md
           # (marked with <!-- #slug -->). Category tags and *-fix tags are exempt.
+          # A hashtag is only harvested as a slug if it contains at least one
+          # letter, so a purely numeric hashtag such as a PR reference (#204)
+          # is never treated as a feature slug requiring a FEATURES.md entry.
           missing=0
-          slugs=$(git log --format=%B "$BASE_SHA".."$HEAD_SHA" | grep -oE '#[a-z0-9][a-z0-9-]*' | sort -u)
+          slugs=$(git log --format=%B "$BASE_SHA".."$HEAD_SHA" | grep -oE '#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)' | sort -u)
           for tag in $slugs; do
             slug="${tag#\#}"
             case "$slug" in
