@@ -451,13 +451,13 @@ the assertion fails immediately, before any guard classification even runs.
    branch's `dev` history is missing the reconciliation commit the new anchor
    now expects.
 
-Between step 2 landing and step 3 landing, expect **every** branch and PR in the
-repo to show a red `sync-guard-check`: the same pin assertion above, now failing
-for everyone rather than just the anchor PR, because `dev`'s pins still name the
-old anchor while `origin/nbase` has already moved past it. That's the known
-shape of the gap, not a break — keep the window short and don't trigger the
-phone sync while it's open. **Never** fast-forward the `base` branch into `dev`:
-that path is retired and bypasses the guard entirely.
+Between step 2 landing and step 3 landing, expect a red `sync-guard-check` on
+every branch and PR that still names the old anchor in its `pins.env` — that's
+everything except the step-3 branch itself once it makes that edit — because
+`dev`'s pins still name the old anchor while `origin/nbase` has already moved
+past it. That's the known shape of the gap, not a break — keep the window short
+and don't trigger the phone sync while it's open. **Never** fast-forward the
+`base` branch into `dev`: that path is retired and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
