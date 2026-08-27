@@ -22,9 +22,11 @@ case "$subject" in
   "Merge "*|"Revert "*|"fixup! "*|"squash! "*|"amend! "*) exit 0 ;;
 esac
 
-# A hashtag token: # followed by a lowercase letter/digit, then letters/digits/-,
+# A hashtag token: # followed by lowercase letters/digits/-, with at least one
+# letter somewhere in the token — a purely numeric hashtag such as a PR
+# reference (#204) is not a change tag and must not satisfy this check — and
 # not glued to a preceding word character (so URLs / anchors don't count).
-if grep -Eq '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*' "$msg_file"; then
+if grep -Eq '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)' "$msg_file"; then
   exit 0
 fi
 
