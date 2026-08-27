@@ -50,10 +50,14 @@ jobs:
           # A hashtag is only harvested as a slug if it contains at least one
           # letter, so a purely numeric hashtag such as a PR reference (#204)
           # is never treated as a feature slug requiring a FEATURES.md entry.
+          # Same leading-boundary guard as the presence check above, so a URL
+          # anchor glued to a word (e.g. docs#permissions) is never harvested
+          # either — the match may carry that boundary character, so strip
+          # everything up to and including the last '#' to recover the slug.
           missing=0
-          slugs=$(git log --format=%B "$BASE_SHA".."$HEAD_SHA" | grep -oE '#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)' | sort -u)
+          slugs=$(git log --format=%B "$BASE_SHA".."$HEAD_SHA" | grep -oE '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)' | sort -u)
           for tag in $slugs; do
-            slug="${tag#\#}"
+            slug="${tag##*#}"
             case "$slug" in
               ci|docs|build|chore|infra|deps|test|release|slug|tag|chatlock) continue ;;
               *-fix) continue ;;
