@@ -3020,11 +3020,13 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             return;
         }
         final CameraViewInternal cv = cameraView;
-        cameraView = null;
         isCameraFrontfaceBeforeEnteringEditMode = cv.isFrontface();
         cv.setDelegate(null);
         cv.destroy(true, null);
+        // remove the view before nulling the field, so the inner class's onDetachedFromWindow ->
+        // Bulletin.removeDelegate(cameraView) still sees this instance and clears its delegate (matches hideCamera).
         parentAlert.getContainer().removeView(cv);
+        cameraView = null;
     }
 
     float animationClipTop;
