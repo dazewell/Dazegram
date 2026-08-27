@@ -155,6 +155,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     private GridLayoutManager layoutManager;
     private PhotoAttachAdapter adapter;
     private EmptyTextProgressView progressView;
+    private FragmentFloatingButton cameraFloatingButton;
     private RecyclerViewItemRangeSelector itemRangeSelector;
     private int gridExtraSpace;
     private boolean shouldSelect;
@@ -835,7 +836,8 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         gridView.getFastScroll().setAlpha(0f);
         gridView.getFastScroll().usePadding = false;
         gridView.getFastScroll().topOffset = ActionBar.getCurrentActionBarHeight(); // + AndroidUtilities.statusBarHeight;
-        gridView.setAdapter(adapter = new PhotoAttachAdapter(context, needCamera));
+        // NagramX: disableInstantCamera means no live feed will ever exist, so the grid reserves no tile for one; the floating camera button is the entry point instead
+        gridView.setAdapter(adapter = new PhotoAttachAdapter(context, !NekoConfig.disableInstantCamera.Bool() && needCamera));
         gridView.addItemDecoration(cameraViewItemDecoration = new CameraViewItemDecoration(gridView));
         adapter.createCache();
         gridView.setClipToPadding(false);
@@ -909,10 +911,10 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         layoutManager.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
             @Override
             public int getSpanSize(int position) {
-                if (position == adapter.itemsCount - 1 || (noGalleryPermissions || noCameraPermissions) && position == 0) {
+                if (position == adapter.itemsCount - 1 || (noGalleryPermissions || (adapter.needCamera && selectedAlbumEntry == galleryAlbumEntry && noCameraPermissions)) && position == 0) {
                     return layoutManager.getSpanCount();
                 }
-                if (noCameraPermissions) {
+                if (adapter.needCamera && selectedAlbumEntry == galleryAlbumEntry && noCameraPermissions) {
                     position--;
                 }
                 return itemSize + (position % itemsPerRow != itemsPerRow - 1 ? dp(GAP) : 0);
@@ -963,11 +965,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 return;
             }
 
-            if (position != 0 || !needCamera || selectedAlbumEntry != galleryAlbumEntry) {
+            if (position != 0 || !adapter.needCamera || selectedAlbumEntry != galleryAlbumEntry) {
                 if (adapter.hasCameraSpaceRow && position > itemsPerRow) {
                     position--;
                 }
-                if (selectedAlbumEntry == galleryAlbumEntry && needCamera) {
+                if (selectedAlbumEntry == galleryAlbumEntry && adapter.needCamera) {
                     position--;
                 }
                 if (showAvatarConstructor) {
@@ -1092,7 +1094,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (parentAlert.storyMediaPicker) {
                 return false;
             }
-            if (position == 0 && selectedAlbumEntry == galleryAlbumEntry) {
+            if (adapter.needCamera && position == 0 && selectedAlbumEntry == galleryAlbumEntry) {
                 if (parentAlert.delegate != null) {
                     parentAlert.delegate.didPressedButton(0, false, true, 0, 0, 0, parentAlert.isCaptionAbove(), false, 0);
                 }
@@ -1151,6 +1153,21 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             progressView.showProgress();
         } else {
             progressView.showTextView();
+        }
+
+        if (needCamera && NekoConfig.disableInstantCamera.Bool()) {
+            cameraFloatingButton = new FragmentFloatingButton(getContext(), resourcesProvider);
+            cameraFloatingButton.setContentDescription(LocaleController.getString(R.string.AccDescrInstantCamera));
+            cameraFloatingButton.setImageResource(R.drawable.camera);
+            cameraFloatingButton.setOnClickListener(view -> openCameraWithPermissionCheck());
+            cameraFloatingButton.setOnLongClickListener(view -> {
+                if (parentAlert.delegate != null) {
+                    parentAlert.delegate.didPressedButton(0, false, true, 0, 0, 0, parentAlert.isCaptionAbove(), false, 0);
+                    return true;
+                }
+                return false;
+            });
+            addView(cameraFloatingButton, FragmentFloatingButton.createDefaultLayoutParams());
         }
 
         Paint recordPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -1539,10 +1556,17 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     }
 
     private void openCameraWithPermissionCheck() {
+        BaseFragment fragment = parentAlert.baseFragment;
+        if (fragment == null) {
+            fragment = LaunchActivity.getLastFragment();
+        }
+        if (fragment == null || fragment.getParentActivity() == null) {
+            return;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(parentAlert.baseFragment.getParentActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            if (ContextCompat.checkSelfPermission(fragment.getParentActivity(), Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 try {
-                    parentAlert.baseFragment.getParentActivity().requestPermissions(new String[]{Manifest.permission.CAMERA}, 18);
+                    fragment.getParentActivity().requestPermissions(new String[]{Manifest.permission.CAMERA}, 18);
                 } catch (Exception ignore) {
                 }
                 return;
@@ -1561,6 +1585,21 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
             if (parentAlert.delegate != null) {
                 parentAlert.delegate.didPressedButton(0, false, true, 0, 0, 0, parentAlert.isCaptionAbove(), false, 0);
             }
+        }
+    }
+
+    public void updateCameraButton() {
+        if (cameraFloatingButton == null) return;
+        var show = getSelectedItemsCount() == 0;
+        if (show) {
+            var typeButtons = parentAlert.buttonsRecyclerViewWrapper;
+            var progress = typeButtons.getVisibility() != VISIBLE ? 0f : typeButtons.getAlpha();
+            var offsetY = progress * parentAlert.getTypeButtonsHeight() + AndroidUtilities.navigationBarHeight;
+            cameraFloatingButton.setTranslationY(-offsetY);
+        }
+        var currentlyVisible = cameraFloatingButton.getButtonVisible();
+        if (currentlyVisible != show) {
+            cameraFloatingButton.setButtonVisible(show, true);
         }
     }
 
@@ -2508,14 +2547,18 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         AndroidUtilities.setLightNavigationBar(parentAlert, false);
         parentAlert.getWindow().addFlags(FLAG_KEEP_SCREEN_ON);
         if (animated) {
-            setCameraOpenProgress(0);
+            setCameraOpenProgress(NekoConfig.disableInstantCamera.Bool() ? 1f : 0);
             cameraAnimationInProgress = true;
             if (gridView != null) {
                 gridView.invalidate();
             }
             notificationsLocker.lock();
             ArrayList<Animator> animators = new ArrayList<>();
-            animators.add(ObjectAnimator.ofFloat(this, "cameraOpenProgress", 0.0f, 1.0f));
+            if (!NekoConfig.disableInstantCamera.Bool()) {
+                animators.add(ObjectAnimator.ofFloat(this, "cameraOpenProgress", 0.0f, 1.0f));
+            } else if (cameraView.isInited()) {
+                animators.add(ObjectAnimator.ofFloat(cameraView, View.ALPHA, 0.0f, 1.0f));
+            }
             animators.add(ObjectAnimator.ofFloat(cameraPanel, View.ALPHA, 1.0f));
             animators.add(ObjectAnimator.ofFloat(counterTextView, View.ALPHA, 1.0f));
             animators.add(ObjectAnimator.ofFloat(cameraPhotoRecyclerView, View.ALPHA, 1.0f));
@@ -2874,7 +2917,11 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 gridView.invalidate();
             }
             ArrayList<Animator> animators = new ArrayList<>();
-            animators.add(ObjectAnimator.ofFloat(this, "cameraOpenProgress", 0.0f));
+            if (!NekoConfig.disableInstantCamera.Bool()) {
+                animators.add(ObjectAnimator.ofFloat(this, "cameraOpenProgress", 0.0f));
+            } else {
+                animators.add(ObjectAnimator.ofFloat(cameraView, View.ALPHA, 0.0f));
+            }
             animators.add(ObjectAnimator.ofFloat(cameraPanel, View.ALPHA, 0.0f));
             animators.add(ObjectAnimator.ofFloat(zoomControlView, View.ALPHA, 0.0f));
             animators.add(ObjectAnimator.ofFloat(counterTextView, View.ALPHA, 0.0f));
@@ -2922,6 +2969,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                         cameraView.setFpsLimit(30);
                         cameraView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
                     }
+                    destroyCameraViewWhenNoTile();
                 }
             });
             animatorSet.start();
@@ -2950,6 +2998,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
                 cameraView.setFpsLimit(30);
                 cameraView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
             }
+            destroyCameraViewWhenNoTile();
             if (gridView != null) {
                 gridView.invalidate();
             }
@@ -2962,6 +3011,22 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         if (!LiteMode.isEnabled(LiteMode.FLAGS_CHAT) && cameraView != null) {
             cameraView.showTexture(false, animated);
         }
+    }
+
+    // NagramX: with disableInstantCamera on there is no grid tile behind the camera, so a
+    // closed-but-undestroyed cameraView keeps capturing at 30fps with nothing on screen (privacy dot lit).
+    private void destroyCameraViewWhenNoTile() {
+        if (!NekoConfig.disableInstantCamera.Bool() || cameraView == null) {
+            return;
+        }
+        final CameraViewInternal cv = cameraView;
+        isCameraFrontfaceBeforeEnteringEditMode = cv.isFrontface();
+        cv.setDelegate(null);
+        cv.destroy(true, null);
+        // remove the view before nulling the field, so the inner class's onDetachedFromWindow ->
+        // Bulletin.removeDelegate(cameraView) still sees this instance and clears its delegate (matches hideCamera).
+        parentAlert.getContainer().removeView(cv);
+        cameraView = null;
     }
 
     float animationClipTop;
@@ -3576,6 +3641,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
         } else {
             parentAlert.selectedMenuItem.hideSubItem(stars);
         }
+        updateCameraButton();
     }
 
     private void updateStarsItem() {
@@ -3808,6 +3874,7 @@ public class ChatAttachAlertPhotoLayout extends ChatAttachAlert.AttachAlertLayou
     @Override
     public void onButtonsTranslationYUpdated() {
         checkCameraViewPosition();
+        updateCameraButton();
         invalidate();
     }
 

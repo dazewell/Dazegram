@@ -67,6 +67,7 @@ import android.util.SparseArray;
 import android.util.SparseIntArray;
 import android.util.StateSet;
 import android.view.View;
+import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -2202,6 +2203,10 @@ public class Theme {
             // used only in PeerColorActivity
             // support in other implementations to use
             return Theme.isCurrentThemeDark();
+        }
+
+        default boolean isMonet() {
+            return Theme.isCurrentThemeMonet();
         }
 
         default void applyServiceShaderMatrix(int w, int h, float translationX, float translationY) {
@@ -6592,6 +6597,25 @@ public class Theme {
 
     public static boolean isCurrentThemeDark() {
         return currentTheme.isDark();
+    }
+
+    public static boolean isCurrentThemeMonet() {
+        return currentTheme.isMonet();
+    }
+
+    public static boolean isCurrentThemeMonet(ResourcesProvider resourcesProvider) {
+        return resourcesProvider != null ? resourcesProvider.isMonet() : isCurrentThemeMonet();
+    }
+
+    public static void applyThemeMonetColor(ImageView view, ResourcesProvider resourcesProvider, boolean white) {
+        if (view == null) {
+            return;
+        }
+        if (Theme.isCurrentThemeMonet(resourcesProvider)) {
+            view.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_chats_actionIcon, resourcesProvider), PorterDuff.Mode.SRC_IN));
+        } else if (white) {
+            view.setColorFilter(new PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN));
+        }
     }
 
     public static ThemeInfo getActiveTheme() {
