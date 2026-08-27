@@ -428,12 +428,13 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 ```
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
-the PC by hand, then land it in three ordered steps, each its own PR. Folding the
-anchor advance into the reconciliation PR looks tempting but is a guaranteed red
-`sync-guard-check` on that very PR: the guard's fixture builds its synthetic
-upstream delta from `origin/nbase`, and until `nbase` moves, the reconciliation's
-own touched files have nothing upstream to compare against, so they classify as
-unclassified modifications and the merge commit as an unexpected import.
+the PC by hand, then land it in three ordered steps: a PR, a fast-forward, then a
+second PR. Folding the anchor advance into the reconciliation PR looks tempting
+but is a guaranteed red `sync-guard-check` on that very PR: the guard's fixture
+builds its synthetic upstream delta from `origin/nbase`, and until `nbase`
+moves, the reconciliation's own touched files have nothing upstream to compare
+against, so they classify as unclassified modifications and the merge commit as
+an unexpected import.
 
 1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
@@ -449,11 +450,13 @@ unclassified modifications and the merge commit as an unexpected import.
    avoid.
 
 Between step 1 landing and step 3 landing, expect **every** branch and PR in the
-repo to show a red `sync-guard-check`: `dev`'s pins still name the old anchor
-while `origin/nbase` has already moved past it. That's the known shape of the
-gap, not a break — keep the window short and don't trigger the phone sync while
-it's open. **Never** fast-forward the `base` branch into `dev`: that path is
-retired and bypasses the guard entirely.
+repo to show a red `sync-guard-check` — before step 2 for the same reason as
+above (the reconciliation's files have no upstream delta to classify against
+yet), and after step 2 because `dev`'s pins still name the old anchor while
+`origin/nbase` has already moved past it. That's the known shape of the gap, not
+a break — keep the window short and don't trigger the phone sync while it's
+open. **Never** fast-forward the `base` branch into `dev`: that path is retired
+and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
