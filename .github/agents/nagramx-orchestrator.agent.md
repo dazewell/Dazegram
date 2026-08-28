@@ -141,7 +141,14 @@ it is small. If you find yourself reading code to work out how to write
 something, you have already crossed the line: stop and delegate.
 
 Trivial work still follows the rules: cut a `<YYYY-MM-DD>_<slug>` branch and
-commit with a `#docs` / `#ci` / `#build` tag. If your worktree is sitting on
+commit with a category tag — `#docs` / `#ci` / `#build` / `#infra` (sync and
+build tooling uses `#infra`); the full exempt set is in `nagramx-branch-flow`,
+and a descriptive tag outside it is read as a feature slug and fails CI. When
+you write an implementer's brief, **check the tag you specify against that
+set** — once pushed, a wrong tag can't be reworded without a force-push, and
+every remaining remedy is bad (a real `FEATURES.md` entry lies about what
+shipped; a parked marker is honest but leaves permanent catalog debt). In
+practice it costs a fresh branch and PR. If your worktree is sitting on
 `dev` or `base`, cut the branch first. **There is no path where you commit to
 `dev`.**
 

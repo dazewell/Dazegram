@@ -19,9 +19,10 @@ name: Sync upstream
 # Nothing is pushed until sync-guard.ps1 — run from the trusted dev checkout, not
 # from the incoming candidate — classifies every tree delta and passes. Any new
 # path, protected-blob change, signing/workflow/schema/layer change or ANY
-# unclassified delta blocks the run: it pushes nothing and pings Telegram so the
-# reconciliation is finished on the PC. There is deliberately no branch input and
-# no bypass input.
+# unclassified delta blocks the run: there is no dev, nbase or src push (a blocked
+# run may still publish the snapshot to a scratch refs/sync/* ref, never a branch)
+# and it pings Telegram so the reconciliation is finished on the PC. There is
+# deliberately no branch input and no bypass input.
 #
 # The first steady-state run is EXPECTED to block (Nagram's tip adds BRANDING.md,
 # an unreviewed new path). That block is the mechanism working, not a failure.
@@ -83,6 +84,25 @@ jobs:
             exit 1
           fi
           echo "ok=1" >> "$GITHUB_OUTPUT"
+
+      - name: Prune stale refs/sync/* scratch refs (start of run only)
+        run: |
+          set -e
+          # Pruned at the START of the run, never the end: pruning after this run's
+          # own publish step (below) could delete the very ref a PC is mid-
+          # reconciliation on. Fetching mirrors every refs/sync/* ref into the local
+          # namespace so each one's commit date is inspectable without one API call
+          # per ref; a fetch failure here (e.g. no refs/sync/* exist yet) is not fatal.
+          git fetch origin '+refs/sync/*:refs/sync/*' || true
+          CUTOFF=$(( $(date -u +%s) - 30*24*3600 ))
+          git for-each-ref --format='%(refname) %(committerdate:unix)' refs/sync/ | \
+          while read -r ref ts; do
+            [ -z "$ref" ] && continue
+            if [ -n "$ts" ] && [ "$ts" -lt "$CUTOFF" ]; then
+              echo "pruning stale scratch ref: $ref (committed $(date -u -d "@$ts" +%FT%TZ 2>/dev/null || echo "@$ts"))"
+              git push origin --delete "$ref" || echo "::warning::failed to delete $ref (already gone?)"
+            fi
+          done
 
       - name: Load pins from the trusted PRE
         id: pins
@@ -203,10 +223,32 @@ jobs:
           set -e
           git switch -c _sync_candidate "${{ steps.refs.outputs.pre }}"
           if ! git merge --no-edit --no-ff "${{ steps.snapshot.outputs.new_snap }}"; then
+            # Capture the conflict detail BEFORE the abort: once `git merge --abort`
+            # runs the conflicted index is gone, so a later `if: failure()` step has
+            # nothing left to read. diff --diff-filter=U lists only unmerged paths.
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U || true)
+            CONFLICT_COUNT=$(printf '%s\n' "$CONFLICT_FILES" | grep -c . || true)
+            {
+              echo "### Merge conflict (${CONFLICT_COUNT} file(s))"
+              echo ""
+              echo "| file | conflict hunks |"
+              echo "| --- | --- |"
+            } >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r f; do
+              [ -z "$f" ] && continue
+              HUNKS=$(grep -c '^<<<<<<<' "$f" 2>/dev/null || echo 0)
+              echo "| \`$f\` | $HUNKS |" >> "$GITHUB_STEP_SUMMARY"
+            done <<< "$CONFLICT_FILES"
+            {
+              echo "conflict=1"
+              echo "conflict_count=$CONFLICT_COUNT"
+              echo "conflict_files<<CONFLICT_EOF"
+              printf '%s\n' "$CONFLICT_FILES"
+              echo "CONFLICT_EOF"
+            } >> "$GITHUB_OUTPUT"
             git merge --abort || true
             git switch dev
             echo "::error::3-way merge of the snapshot into dev conflicts. Never auto-resolved."
-            echo "conflict=1" >> "$GITHUB_OUTPUT"
             exit 1
           fi
           NEW_DEV=$(git rev-parse HEAD)
@@ -220,15 +262,54 @@ jobs:
         shell: pwsh
         run: |
           # dev is checked out here, so .github/sync/sync-guard.ps1 is the PRE copy.
+          # Tee the guard's own Write-Host reporting to a log file — this step
+          # declares no outputs upstream of this change, so the violation list
+          # otherwise exists only in the raw run log. Piping through Tee-Object
+          # does not clear $LASTEXITCODE from the script's own `exit N` (the same
+          # pattern sync-guard-check.yml already relies on for its fixture runs).
+          $log = Join-Path $env:RUNNER_TEMP 'guard-output.log'
           ./.github/sync/sync-guard.ps1 `
             -PreRef      '${{ steps.refs.outputs.pre }}' `
             -OldNbase    '${{ steps.refs.outputs.old_nbase }}' `
             -NewSnapshot '${{ steps.snapshot.outputs.new_snap }}' `
             -NewSrc      '${{ steps.refs.outputs.new_src }}' `
-            -NewDev      '${{ steps.merge.outputs.new_dev }}'
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "::error::guard blocked the candidate (exit $LASTEXITCODE). Pushing nothing."
-            exit $LASTEXITCODE
+            -NewDev      '${{ steps.merge.outputs.new_dev }}' `
+            *>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # Extract only the bullets under the guard's own "BLOCKED — N guard
+            # violation(s):" header, not any bullet in the log — sync-guard.ps1
+            # prints the same "  - <reason>" shape for unrelated failures too
+            # (PINS INCOMPLETE, PROTECTED PINS STALE), and those are not guard
+            # violations against the candidate; grabbing every bullet would
+            # misreport those reasons as classified violations here and in the
+            # Telegram ping. Scan for the violation header, then take bullets
+            # until the guard's blank line after the block ends it.
+            $violations = @()
+            $inViolationBlock = $false
+            foreach ($line in (Get-Content $log)) {
+              if ($line -match 'guard violation\(s\):\s*$') { $inViolationBlock = $true; continue }
+              if ($inViolationBlock) {
+                if ($line -match '^\s*-\s+\S') { $violations += $line.Trim().TrimStart('-').Trim() }
+                else { $inViolationBlock = $false }
+              }
+            }
+            # @(...), not a bare {...} script block: a script block is not invoked
+            # by redirection alone (it would print its literal text), while an
+            # array expression evaluates and flattens each statement's output.
+            @(
+              "### Guard blocked the candidate"
+              ""
+              "$($violations.Count) classified violation(s):"
+              ""
+              $violations | ForEach-Object { "- $_" }
+            ) >> $env:GITHUB_STEP_SUMMARY
+            "violations<<GUARD_EOF" >> $env:GITHUB_OUTPUT
+            if ($violations.Count -gt 0) { $violations >> $env:GITHUB_OUTPUT }
+            "GUARD_EOF" >> $env:GITHUB_OUTPUT
+            "violation_count=$($violations.Count)" >> $env:GITHUB_OUTPUT
+            Write-Host "::error::guard blocked the candidate (exit $code). dev/nbase not pushed."
+            exit $code
           }
 
       - name: Prove signer certificate identity (guard 13, in-memory password)
@@ -347,6 +428,48 @@ jobs:
           [ "$(git rev-parse origin/nbase)" = "${{ steps.snapshot.outputs.new_snap }}" ] || { echo "::error::nbase did not land"; exit 1; }
           echo "dev and nbase updated atomically. The push to dev triggers staging.yml (dual APK + Telegram upload); this step confirms the refs, not the downstream run."
 
+      - name: Publish blocked snapshot to a scratch ref (never a branch)
+        id: publish
+        if: always() && steps.snapshot.outputs.new_snap != '' && steps.push.outputs.pushed != '1'
+        run: |
+          set -e
+          NEW_SNAP="${{ steps.snapshot.outputs.new_snap }}"
+          SHORT="$(git rev-parse --short "${{ steps.refs.outputs.new_src }}")"
+          SNAP_REF="refs/sync/snapshot-${SHORT}"
+          # refs/sync/* is a non-branch, non-tag namespace: GitHub's `push` event
+          # only fires for refs/heads/* and refs/tags/*, so this can never trigger
+          # sync-guard-check.yml (which would hard-fail with no
+          # .github/sync/sync-guard.ps1 checked out on Nagram's tree) or
+          # staging.yml's unfiltered pull_request trigger. It also never appears in
+          # the branch list, branch picker, or any PR head/base dropdown.
+          # Publish the SNAPSHOT only, never the merge candidate: the candidate is
+          # the guard-rejected shape dev would take, the one object here a tired
+          # human could push straight to dev and bypass every gate. The snapshot
+          # cannot do that, and re-merging it reproduces the same conflicts
+          # deterministically, so the candidate is trivially re-derivable and buys
+          # nothing extra.
+          # --force: a retriggered run on the same still-blocked source names the
+          # same SNAP_REF (it derives only from the source SHA) but mints a new
+          # snapshot commit each time (commit-tree stamps the current committer
+          # date), so the two are siblings, not ancestor/descendant — a plain push
+          # would be rejected as non-fast-forward. This ref is scratch-only, has no
+          # append-only guarantee, and this workflow's own concurrency group
+          # already serializes runs, so there is no concurrent writer to race.
+          git push --force origin "${NEW_SNAP}:${SNAP_REF}"
+          {
+            echo "### Blocked snapshot published"
+            echo ""
+            echo "Snapshot commit \`${NEW_SNAP}\` pushed to \`${SNAP_REF}\` so the PC does not"
+            echo "have to reconstruct it by hand with \`git commit-tree\`. Finish the"
+            echo "reconciliation with:"
+            echo ""
+            echo '```'
+            echo "git fetch origin '+refs/sync/*:refs/sync/*'"
+            echo "git merge ${SNAP_REF}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "snapshot_ref=$SNAP_REF" >> "$GITHUB_OUTPUT"
+
       - name: Notify on any failure
         if: failure()
         env:
@@ -359,6 +482,11 @@ jobs:
           NEW_DEV: ${{ steps.merge.outputs.new_dev }}
           NEW_SNAP: ${{ steps.snapshot.outputs.new_snap }}
           CONFLICT: ${{ steps.merge.outputs.conflict }}
+          CONFLICT_COUNT: ${{ steps.merge.outputs.conflict_count }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflict_files }}
+          GUARD_VIOLATIONS: ${{ steps.guard.outputs.violations }}
+          GUARD_VIOLATION_COUNT: ${{ steps.guard.outputs.violation_count }}
+          SNAPSHOT_REF: ${{ steps.publish.outputs.snapshot_ref }}
           PUSHED: ${{ steps.push.outputs.pushed }}
         run: |
           if [ -z "$HELPER_BOT_TOKEN" ] || [ -z "$HELPER_BOT_TARGET" ]; then
@@ -375,13 +503,76 @@ jobs:
           else
             REASON="guard/topology/token/atomic-push"
             [ -n "$CONFLICT" ] && REASON="merge conflict"
-            TEXT="⚠️ Dazegram sync blocked (${REASON}). Nothing pushed.
+            if [ -n "$GUARD_VIOLATION_COUNT" ] && [ "$GUARD_VIOLATION_COUNT" != "0" ]; then
+              REASON="guard blocked (${GUARD_VIOLATION_COUNT} violation(s))"
+            fi
+
+            # Cap each list to ~10 entries + "+N more" — the full lists always live
+            # in the job summary behind RUN_URL. Echo the guard's own classified
+            # list, never a raw step log.
+            DETAIL=""
+            if [ -n "$CONFLICT_FILES" ]; then
+              MORE=$(( ${CONFLICT_COUNT:-0} - 10 ))
+              DETAIL="${DETAIL}
+          conflicting files (${CONFLICT_COUNT:-0}):
+          $(printf '%s\n' "$CONFLICT_FILES" | head -n 10)"
+              [ "$MORE" -gt 0 ] && DETAIL="${DETAIL}
+          ...+${MORE} more (see job summary)"
+            fi
+            if [ -n "$GUARD_VIOLATIONS" ]; then
+              GMORE=$(( ${GUARD_VIOLATION_COUNT:-0} - 10 ))
+              DETAIL="${DETAIL}
+          guard violations (${GUARD_VIOLATION_COUNT:-0}):
+          $(printf '%s\n' "$GUARD_VIOLATIONS" | head -n 10)"
+              [ "$GMORE" -gt 0 ] && DETAIL="${DETAIL}
+          ...+${GMORE} more (see job summary)"
+            fi
+
+            SNAP_DETAIL=""
+            if [ -n "$SNAPSHOT_REF" ]; then
+              SNAP_DETAIL="
+          snapshot published: ${SNAPSHOT_REF}
+          PC: git fetch origin '+refs/sync/*:refs/sync/*' && git merge ${SNAPSHOT_REF}"
+            fi
+
+            # HEAD and TAIL carry the two pieces that make this message actionable —
+            # the published snapshot ref (in SNAP_DETAIL) and the run URL — so they
+            # must never be cut. Only DETAIL (the conflict/violation lists, each
+            # already capped to ~10 entries but not to a character count) is
+            # truncated, to whatever budget is left under Telegram's 4096-char
+            # sendMessage limit.
+            HEAD="⚠️ Dazegram sync blocked (${REASON}). dev/nbase not pushed.
           PRE: ${PRE:-unknown}
           anchor: ${ANCHOR:-unknown}
-          source: ${NEW_SRC:-unresolved}
+          source: ${NEW_SRC:-unresolved}${SNAP_DETAIL}"
+            TAIL="
           run: ${RUN_URL}
           Finish the reconciliation on the PC."
+            TRUNC_MARKER="
+          ...(truncated — full detail in the job summary)"
+            BUDGET=$(( 4096 - ${#HEAD} - ${#TAIL} - ${#TRUNC_MARKER} ))
+            [ "$BUDGET" -lt 0 ] && BUDGET=0
+            if [ "${#DETAIL}" -gt "$BUDGET" ]; then
+              DETAIL="${DETAIL:0:$BUDGET}${TRUNC_MARKER}"
+            fi
+
+            TEXT="${HEAD}${DETAIL}${TAIL}"
           fi
-          curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
+          # --fail so an HTTP error (expired token, wrong chat_id, oversized text)
+          # surfaces instead of silently vanishing behind curl's own exit 0. A failed
+          # send is reported as a warning, not a step failure — the job is already
+          # red for the sync failure above; a notification-delivery problem must not
+          # additionally flip that conclusion (or hide it behind a second, unrelated
+          # red for the wrong reason).
+          if ! curl -sS --fail "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
-            --data-urlencode "text=${TEXT}" >/dev/null
+            --data-urlencode "text=${TEXT}" >/dev/null; then
+            echo "::warning::Telegram notification failed to send — check for an expired HELPER_BOT_TOKEN or a wrong HELPER_BOT_TARGET. The run is red for the sync failure above, not for this."
+            {
+              echo ""
+              echo "### Telegram notification failed to send"
+              echo ""
+              echo "curl exited non-zero contacting the Telegram API. This does not change why the run is red."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
