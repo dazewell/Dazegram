@@ -7312,7 +7312,7 @@ public class ChatActivityEnterView extends FrameLayout implements
         boolean show = canShowExpandInputButton();
         int animationId = ++expandInputButtonAnimationId;
         expandInputButton.animate().cancel();
-        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.baseline_fullscreen_exit_24 : R.drawable.nax_composer_expand);
+        expandInputButton.setImageResource(messageEditExpanded ? R.drawable.nax_composer_collapse : R.drawable.nax_composer_expand);
         updateExpandInputButtonColor();
         expandInputButton.setContentDescription(getString(messageEditExpanded ? R.string.CollapseMessageField : R.string.ExpandMessageField));
         if (shownExpandInputButton == show) {
