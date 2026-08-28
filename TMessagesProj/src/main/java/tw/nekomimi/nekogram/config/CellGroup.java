@@ -20,6 +20,10 @@ public class CellGroup {
     public static final int ITEM_TYPE_CHECK2 = 8;
     public static final int ITEM_TYPE_CHECK_BOX = 9;
     public static final int ITEM_TYPE_TEXT_CHECK_PAGE = 10;
+    // NagramX: a select-box row that also carries a grey description line -- bound to TextCell (title +
+    // subtitle + trailing value all native), never TextSettingsCell (single-line title, fixed dp(50)
+    // measure, no subtitle view at all)
+    public static final int ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE = 11;
 
     public BaseFragment thisFragment;
     public RecyclerListView listView;

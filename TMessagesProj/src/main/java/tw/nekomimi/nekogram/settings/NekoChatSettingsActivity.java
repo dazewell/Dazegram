@@ -179,13 +179,27 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.VideoMessagesVibrationLight),
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
-    }, null));
+    }, null, getString(R.string.VideoMessagesWarningVibrationNotice), null));
     private final AbstractConfigCell videoMessagesCutVibrationRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoMessagesCutVibration", NaConfig.INSTANCE.getVideoMessagesCutVibration(), new String[]{
             getString(R.string.VideoMessagesVibrationOff),
             getString(R.string.VideoMessagesVibrationLight),
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
-    }, null));
+    }, null, getString(R.string.VideoMessagesCutVibrationNotice), null));
+    // NagramX: 1 minute == 1 segment only while a round video segment cuts at 60s (the t >= 59500 rollover
+    // check in ChatActivityEnterView) -- if the per-segment cap ever becomes configurable, these labels are
+    // the one place that must change with it. Never offer 1 here, whatever the list starts at: a
+    // ceiling of 1 would leave infiniteVideoSegments < ceiling - 1 permanently false, i.e. a toggle that
+    // turns on in the camera popup and silently does nothing. 0 is Unlimited (see
+    // ChatActivityEnterView.getInfiniteVideoMaxSegments()).
+    private final AbstractConfigCell infiniteRecordingCeilingRow = cellGroup.appendCell(new ConfigCellSelectBox(null, NaConfig.INSTANCE.getInfiniteRecordingCeiling(), new String[]{
+            getString(R.string.InfiniteRecordingCeiling10Min),
+            getString(R.string.InfiniteRecordingCeiling15Min),
+            getString(R.string.InfiniteRecordingCeiling20Min),
+            getString(R.string.InfiniteRecordingCeiling30Min),
+            getString(R.string.InfiniteRecordingCeiling60Min),
+            getString(R.string.InfiniteRecordingCeilingUnlimited)
+    }, new int[]{10, 15, 20, 30, 60, 0}, getString(R.string.InfiniteRecordingCeilingNotice), null));
     private final AbstractConfigCell dividerCamera = cellGroup.appendCell(new ConfigCellDivider());
 
     // Media

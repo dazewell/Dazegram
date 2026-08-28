@@ -8,6 +8,7 @@ import android.view.View;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.FileLog;
+import org.telegram.ui.Cells.TextCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 
 import kotlin.Unit;
@@ -22,15 +23,22 @@ public class ConfigCellSelectBox extends AbstractConfigCell implements WithBindC
     private final String[] selectList; // split by \n
     private final int[] selectValues;
     private final String title;
+    private final String subtitle;
     private final Runnable onClickCustom;
     private final String key;
 
     // default: customTitle=null customOnClick=null
     public ConfigCellSelectBox(String key, ConfigItem bind, Object selectList_s, Runnable customOnClick) {
-        this(key, bind, selectList_s, null, customOnClick);
+        this(key, bind, selectList_s, null, null, customOnClick);
     }
 
     public ConfigCellSelectBox(String key, ConfigItem bind, Object selectList_s, int[] selectValues, Runnable customOnClick) {
+        this(key, bind, selectList_s, selectValues, null, customOnClick);
+    }
+
+    // NagramX: subtitle != null routes this row to TextCell instead of TextSettingsCell (see getType() /
+    // onBindViewHolder below) -- TextSettingsCell has no subtitle view at all
+    public ConfigCellSelectBox(String key, ConfigItem bind, Object selectList_s, int[] selectValues, String subtitle, Runnable customOnClick) {
         this.bindConfig = bind;
         String key1 = key;
         if (key == null) {
@@ -43,12 +51,13 @@ public class ConfigCellSelectBox extends AbstractConfigCell implements WithBindC
             case null, default -> this.selectList = null;
         }
         this.selectValues = selectValues;
+        this.subtitle = subtitle;
         title = getString(this.key);
         this.onClickCustom = customOnClick;
     }
 
     public int getType() {
-        return CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL;
+        return subtitle != null ? CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE : CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL;
     }
 
     public ConfigItem getBindConfig() {
@@ -64,13 +73,24 @@ public class ConfigCellSelectBox extends AbstractConfigCell implements WithBindC
     }
 
     public void onBindViewHolder(RecyclerView.ViewHolder holder) {
-        TextSettingsCell cell = (TextSettingsCell) holder.itemView;
         String valueText = "";
         int selectedIndex = getSelectedIndex(bindConfig.Int());
         if (selectList != null && selectedIndex >= 0 && selectedIndex < selectList.length) {
             valueText = selectList[selectedIndex];
         }
-        cell.setTextAndValue(title, valueText, false, cellGroup.needSetDivider(this), true);
+        if (subtitle != null) {
+            // NagramX: recycled view -- text, subtitle and heightDp must all be set on every bind, there's
+            // no "clear" step between rows of the same view type. heightDp=60 is the same value upstream
+            // uses for its own two-line TextCell rows (ThemeActivity.java:2698-2699) -- the default 50 is
+            // sized for a single line and would squeeze title+subtitle together.
+            TextCell cell = (TextCell) holder.itemView;
+            cell.setTextAndValue(title, valueText, false, cellGroup.needSetDivider(this));
+            cell.setSubtitle(subtitle);
+            cell.heightDp = 60;
+        } else {
+            TextSettingsCell cell = (TextSettingsCell) holder.itemView;
+            cell.setTextAndValue(title, valueText, false, cellGroup.needSetDivider(this), true);
+        }
     }
 
     public void onClick(View view) {

@@ -1015,6 +1015,14 @@ object NaConfig {
             ConfigItem.configTypeInt,
             2 // 0: off; 1: light; 2: medium; 3: strong
         )
+    val infiniteRecordingCeiling =
+        addConfig(
+            "InfiniteRecordingCeiling",
+            ConfigItem.configTypeInt,
+            // persisted minutes; 0 is the settings row's Unlimited sentinel -- see
+            // ChatActivityEnterView.getInfiniteVideoMaxSegments() for how it's read
+            10
+        )
     val messageColoredBackground =
         addConfig(
             "MessageColoredBackground",
