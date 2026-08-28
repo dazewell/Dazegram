@@ -535,13 +535,44 @@ jobs:
           PC: git fetch origin '+refs/sync/*:refs/sync/*' && git merge ${SNAPSHOT_REF}"
             fi
 
-            TEXT="⚠️ Dazegram sync blocked (${REASON}). dev/nbase not pushed.
+            # HEAD and TAIL carry the two pieces that make this message actionable —
+            # the published snapshot ref (in SNAP_DETAIL) and the run URL — so they
+            # must never be cut. Only DETAIL (the conflict/violation lists, each
+            # already capped to ~10 entries but not to a character count) is
+            # truncated, to whatever budget is left under Telegram's 4096-char
+            # sendMessage limit.
+            HEAD="⚠️ Dazegram sync blocked (${REASON}). dev/nbase not pushed.
           PRE: ${PRE:-unknown}
           anchor: ${ANCHOR:-unknown}
-          source: ${NEW_SRC:-unresolved}${SNAP_DETAIL}${DETAIL}
+          source: ${NEW_SRC:-unresolved}${SNAP_DETAIL}"
+            TAIL="
           run: ${RUN_URL}
           Finish the reconciliation on the PC."
+            TRUNC_MARKER="
+          ...(truncated — full detail in the job summary)"
+            BUDGET=$(( 4096 - ${#HEAD} - ${#TAIL} - ${#TRUNC_MARKER} ))
+            [ "$BUDGET" -lt 0 ] && BUDGET=0
+            if [ "${#DETAIL}" -gt "$BUDGET" ]; then
+              DETAIL="${DETAIL:0:$BUDGET}${TRUNC_MARKER}"
+            fi
+
+            TEXT="${HEAD}${DETAIL}${TAIL}"
           fi
-          curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
+          # --fail so an HTTP error (expired token, wrong chat_id, oversized text)
+          # surfaces instead of silently vanishing behind curl's own exit 0. A failed
+          # send is reported as a warning, not a step failure — the job is already
+          # red for the sync failure above; a notification-delivery problem must not
+          # additionally flip that conclusion (or hide it behind a second, unrelated
+          # red for the wrong reason).
+          if ! curl -sS --fail "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
-            --data-urlencode "text=${TEXT}" >/dev/null
+            --data-urlencode "text=${TEXT}" >/dev/null; then
+            echo "::warning::Telegram notification failed to send — check for an expired HELPER_BOT_TOKEN or a wrong HELPER_BOT_TARGET. The run is red for the sync failure above, not for this."
+            {
+              echo ""
+              echo "### Telegram notification failed to send"
+              echo ""
+              echo "curl exited non-zero contacting the Telegram API. This does not change why the run is red."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
