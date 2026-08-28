@@ -302,9 +302,19 @@ jobs:
           conclusion=""
           while [ "$(date +%s)" -lt "$deadline" ]; do
             run=$(gh api "repos/$R/actions/workflows/sync-guard-check.yml/runs?head_sha=$SHA&event=pull_request&per_page=1" \
-              --jq '.workflow_runs[0] | (.status) + " " + ((.conclusion) // "")' 2>/dev/null || true)
-            status=$(printf '%s' "$run" | cut -d' ' -f1)
-            concl=$(printf '%s' "$run" | cut -d' ' -f2)
+              --jq '.workflow_runs[0] | (.head_sha) + " " + (.status) + " " + ((.conclusion) // "")' 2>/dev/null || true)
+            run_sha=$(printf '%s' "$run" | cut -d' ' -f1)
+            status=$(printf '%s' "$run" | cut -d' ' -f2)
+            concl=$(printf '%s' "$run" | cut -d' ' -f3)
+            # Only trust a run whose head_sha is exactly the pins PR head. head_sha is a
+            # supported server-side filter here, but re-checking it means that if the API
+            # ever stopped honouring the filter and handed back some other PR's run, this
+            # times out and fails closed rather than passing on an unrelated green run.
+            if [ -n "$run_sha" ] && [ "$run_sha" != "$SHA" ]; then
+              echo "  ignoring run on unrelated head ${run_sha}"
+              sleep 30
+              continue
+            fi
             echo "  status=${status:-none} conclusion=${concl:-none}"
             if [ "$status" = "completed" ]; then conclusion="$concl"; break; fi
             sleep 30
