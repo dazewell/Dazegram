@@ -515,10 +515,10 @@ hand git from steps 2 and 3.
    non-force), then opens a PR that advances the anchor pins (step 3). Pass the
    snapshot explicitly with `-f snapshot=<sha>` — that is the primary contract and
    always works. The no-argument form reads the snapshot from
-   `refs/sync/snapshot-<srcshort>` as a convenience, but that depends on the
-   snapshot-publishing change (`2026-08-28_sync-snapshot-publish`) having landed on
-   `dev`; until it does, nothing publishes that ref and the zero-arg form finds
-   nothing, so give the SHA. Before it moves any ref it runs
+   `refs/sync/snapshot-<srcshort>`, which `sync-upstream.yml` publishes when a run
+   blocks; prefer the explicit SHA when you have it, since the scratch refs are
+   pruned by age and a stale or absent ref makes the zero-arg form fail. Before it
+   moves any ref it runs
    `sync-guard.ps1 -LandCheckOnly`, which re-derives — live from upstream — the
    commit whose tree the snapshot copies and blocks unless the snapshot is a
    faithful, locally-authored, anchor-descended copy whose single parent is the

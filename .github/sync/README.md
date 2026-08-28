@@ -240,9 +240,9 @@ force-pushed. So the realistic partial failure — fast-forward lands, PR creati
 trips — is fixed by pressing the button again. Pass the snapshot explicitly with
 `snapshot=<sha>` — the primary contract. The zero-input form reads
 `refs/sync/snapshot-<srcshort>` (a non-branch ref namespace that fires no Actions
-runs), but that only works once the snapshot-publishing change
-(`2026-08-28_sync-snapshot-publish`) has landed on `dev` to publish it; until
-then, give the SHA. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
+runs) and is published by `sync-upstream.yml` whenever a run blocks. Prefer the
+explicit SHA when you have it: those scratch refs are pruned by age, and a stale
+or absent one makes the zero-input form fail. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
 snapshot tree carries `.github/workflows/`) **+ Pull requests: write**.
 `sync-land.yml` is in `SELF_PROTECT`, so an incoming snapshot can never rewrite
 the workflow that holds this credential.
