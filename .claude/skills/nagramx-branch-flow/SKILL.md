@@ -428,9 +428,36 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 ```
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
-the PC by hand, resolving into the `dev` merge commit, then advance the anchor in
-`.github/sync/pins.env` in the same change. **Never** fast-forward the `base`
-branch into `dev`: that path is retired and bypasses the guard entirely.
+the PC by hand, then land it in three ordered steps: a PR, a fast-forward, then a
+second PR. Folding the anchor advance into the reconciliation PR — or otherwise
+advancing `.github/sync/pins.env` before step 2 has actually moved
+`origin/nbase` — is a guaranteed red `sync-guard-check`: its fixture
+unconditionally fetches the live `origin/nbase` and asserts it equals the
+`OLD_NBASE` pinned in the candidate's own `pins.env`; advance that pin first and
+the assertion fails immediately, before any guard classification even runs.
+
+1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
+   inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
+   own. Leave `.github/sync/pins.env` untouched in this PR. Merge it.
+2. **Fast-forward `origin/nbase`** to the reconciliation's snapshot commit,
+   non-force. Verify first that the old `nbase` tip is an ancestor of the
+   snapshot *and* the snapshot is reachable from `dev`; only then push. This
+   must happen before step 3 — it's what the guard's fixture reads.
+3. **Cut a branch from post-merge `dev`** (after step 1 landed, not the
+   pre-merge tip) and advance the anchor values in `.github/sync/pins.env`
+   there. PR it, confirm `sync-guard-check` is green, merge. Branching from the
+   pre-merge tip instead reproduces the reconciliation's own files as
+   `UNCLASSIFIED` plus a `guard14: unexpected commit imported`, because that
+   branch's `dev` history is missing the reconciliation commit the new anchor
+   now expects.
+
+Between step 2 landing and step 3 landing, expect a red `sync-guard-check` on
+every branch and PR that still names the old anchor in its `pins.env` — that's
+everything except the step-3 branch itself once it makes that edit — because
+`dev`'s pins still name the old anchor while `origin/nbase` has already moved
+past it. That's the known shape of the gap, not a break — keep the window short
+and don't trigger the phone sync while it's open. **Never** fast-forward the
+`base` branch into `dev`: that path is retired and bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
