@@ -242,10 +242,34 @@ trips — is fixed by pressing the button again. Pass the snapshot explicitly wi
 `refs/sync/snapshot-<srcshort>` (a non-branch ref namespace that fires no Actions
 runs) and is published by `sync-upstream.yml` whenever a run blocks. Prefer the
 explicit SHA when you have it: those scratch refs are pruned by age, and a stale
-or absent one makes the zero-input form fail. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
-snapshot tree carries `.github/workflows/`) **+ Pull requests: write**.
+or absent one makes the zero-input form fail. See [SYNC_TOKEN
+configuration](#sync_token-configuration) below for the permissions this needs.
 `sync-land.yml` is in `SELF_PROTECT`, so an incoming snapshot can never rewrite
 the workflow that holds this credential.
+
+## SYNC_TOKEN configuration
+
+Both `sync-upstream.yml` and `sync-land.yml` push refs and open PRs as one identity: a
+GitHub fine-grained personal access token, stored as the `SYNC_TOKEN` repository
+secret, scoped to `dazewell/Dazegram` only. To recreate it from scratch, grant exactly
+these three repository permissions:
+
+| Permission | Why |
+| --- | --- |
+| Contents: write | push `dev` (steady-state sync) and `nbase` (both workflows fast-forward or merge onto it). |
+| Workflows: write | the snapshot tree carries `.github/workflows/`, so any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
+| Pull requests: write | `sync-land.yml` opens the pins PR with `SYNC_TOKEN` rather than `GITHUB_TOKEN`, so `sync-guard-check` actually runs on it (see above) — a PR opened by the default token would arrive with that check missing. |
+
+Missing any one of these fails a run, but not all three are provable up front.
+`sync-upstream.yml`'s "Verify SYNC_TOKEN can push dev" step and `sync-land.yml`'s
+"Verify SYNC_TOKEN can push" step each prove Contents: write with a non-mutating
+dry-run push before any ref moves; `sync-land.yml`'s "Verify SYNC_TOKEN can open pull
+requests" step proves Pull requests: write the same way, before a real PR is opened.
+Workflows: write is not provable by a dry-run — GitHub only enforces it on a real push
+whose diff touches a workflow file — so it stays unverified until the real snapshot
+push later in the run, which fails explicitly (not silently) if the token lacks it.
+Where a permission is proven up front, the failure names it precisely rather than
+surfacing only a generic auth error after a ref has already moved.
 
 ## Files
 
