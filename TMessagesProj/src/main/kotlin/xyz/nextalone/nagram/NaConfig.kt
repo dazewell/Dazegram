@@ -1019,8 +1019,8 @@ object NaConfig {
         addConfig(
             "InfiniteRecordingCeiling",
             ConfigItem.configTypeInt,
-            // minutes == segments while a segment is 60s (see ChatActivityEnterView's rollover check);
-            // 0 means Unlimited, translated to Integer.MAX_VALUE at the single read site that uses it
+            // persisted minutes; 0 is the settings row's Unlimited sentinel -- see
+            // ChatActivityEnterView.getInfiniteVideoMaxSegments() for how it's read
             10
         )
     val messageColoredBackground =

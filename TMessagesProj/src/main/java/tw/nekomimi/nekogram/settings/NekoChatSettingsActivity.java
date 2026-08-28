@@ -186,6 +186,11 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
     }, null, getString(R.string.VideoMessagesCutVibrationNotice), null));
+    // NagramX: 1 minute == 1 segment only while a round video segment cuts at 60s (the t >= 59500 rollover
+    // check in ChatActivityEnterView) -- if the per-segment cap ever becomes configurable, these labels are
+    // the one place that must change with it. The minimum offered here is 2, never 1: a ceiling of 1 would
+    // leave infiniteVideoSegments < ceiling - 1 permanently false, i.e. a toggle that turns on in the camera
+    // popup and silently does nothing. 0 is Unlimited (see ChatActivityEnterView.getInfiniteVideoMaxSegments()).
     private final AbstractConfigCell infiniteRecordingCeilingRow = cellGroup.appendCell(new ConfigCellSelectBox(null, NaConfig.INSTANCE.getInfiniteRecordingCeiling(), new String[]{
             getString(R.string.InfiniteRecordingCeiling2Min),
             getString(R.string.InfiniteRecordingCeiling5Min),

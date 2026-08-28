@@ -79,11 +79,14 @@ public class ConfigCellSelectBox extends AbstractConfigCell implements WithBindC
             valueText = selectList[selectedIndex];
         }
         if (subtitle != null) {
-            // NagramX: recycled view -- both text and subtitle must be set on every bind, there's no
-            // "clear" step between rows of the same view type
+            // NagramX: recycled view -- text, subtitle and heightDp must all be set on every bind, there's
+            // no "clear" step between rows of the same view type. heightDp=60 is the same value upstream
+            // uses for its own two-line TextCell rows (ThemeActivity.java:2698-2699) -- the default 50 is
+            // sized for a single line and would squeeze title+subtitle together.
             TextCell cell = (TextCell) holder.itemView;
             cell.setTextAndValue(title, valueText, false, cellGroup.needSetDivider(this));
             cell.setSubtitle(subtitle);
+            cell.heightDp = 60;
         } else {
             TextSettingsCell cell = (TextSettingsCell) holder.itemView;
             cell.setTextAndValue(title, valueText, false, cellGroup.needSetDivider(this), true);
