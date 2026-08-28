@@ -177,7 +177,7 @@ When camera mode is set to Ask, the camera choice popup has an External Micropho
 
 ### Infinite video message <!-- #infinite-video -->
 
-With camera mode set to Ask, the popup offers an *Infinite Recording* toggle to seamlessly stitch together 60-second video message segments up to a 10-minute ceiling. It is OFF by default at the start of every recording, and greyed out during slow mode, paid messages, scheduled sends, secret chats, and when view-once is armed.
+Infinite Recording stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the button on the camera overlay while recording (with camera mode set to Ask, the camera-choice popup offers the same toggle before you start) -- it's OFF by default at the start of every recording, and greyed out during slow mode, paid messages, scheduled sends, secret chats, and when view-once is armed. N-Settings → Chat → Camera → *Infinite recording ceiling* controls how long it's allowed to run before it stops itself: 2, 5, 10 (the default, matching the old fixed ceiling), 15, 20, 30 minutes, or Unlimited.
 
 ### Warning before a round video message hits its limit <!-- #video-limit-warning -->
 

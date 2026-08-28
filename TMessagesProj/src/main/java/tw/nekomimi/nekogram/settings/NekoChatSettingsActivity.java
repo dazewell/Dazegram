@@ -186,6 +186,15 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
     }, null));
+    private final AbstractConfigCell infiniteRecordingCeilingRow = cellGroup.appendCell(new ConfigCellSelectBox(null, NaConfig.INSTANCE.getInfiniteRecordingCeiling(), new String[]{
+            getString(R.string.InfiniteRecordingCeiling2Min),
+            getString(R.string.InfiniteRecordingCeiling5Min),
+            getString(R.string.InfiniteRecordingCeiling10Min),
+            getString(R.string.InfiniteRecordingCeiling15Min),
+            getString(R.string.InfiniteRecordingCeiling20Min),
+            getString(R.string.InfiniteRecordingCeiling30Min),
+            getString(R.string.InfiniteRecordingCeilingUnlimited)
+    }, new int[]{2, 5, 10, 15, 20, 30, 0}, getString(R.string.InfiniteRecordingCeilingNotice), null));
     private final AbstractConfigCell dividerCamera = cellGroup.appendCell(new ConfigCellDivider());
 
     // Media

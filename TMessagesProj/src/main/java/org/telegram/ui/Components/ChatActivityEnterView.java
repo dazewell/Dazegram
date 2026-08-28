@@ -950,7 +950,6 @@ public class ChatActivityEnterView extends FrameLayout implements
     private Boolean pendingCameraFront = null; // nax
 
     // NagramX: infinite video message. Session-only on purpose, so it never carries over to the next recording.
-    private static final int INFINITE_VIDEO_MAX_SEGMENTS = 10;
     private boolean infiniteVideoMessage;
     private int infiniteVideoSegments;
 
@@ -16846,7 +16845,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         warnedInternal = true;
                         fireLimitWarningVibration();
                         setRecordingLimitWarningActive(true);
-                        if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+                        if (infiniteVideoMessage && infiniteVideoSegments < getInfiniteVideoMaxSegments() - 1) {
                             // NagramX: the rollover decision below reads isInfiniteVideoAvailable() exactly
                             // once, at the cutoff -- if that's the dialog's first contact-blocked lookup ever,
                             // it's a cache miss that answers "allowed" while the real result loads in the
@@ -16866,7 +16865,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                         // must land the stop it actually requested, not a rollover. This is the decision
                         // that matters -- the read above only primes the cache it depends on.
                         if (isRunning) {
-                            if (infiniteVideoMessage && infiniteVideoSegments < INFINITE_VIDEO_MAX_SEGMENTS - 1 && isInfiniteVideoAvailable()) {
+                            if (infiniteVideoMessage && infiniteVideoSegments < getInfiniteVideoMaxSegments() - 1 && isInfiniteVideoAvailable()) {
                                 infiniteVideoSegments++;
                                 startedDraggingX = -1;
                                 delegate.needStartRecordVideo(6, true, 0, 0, voiceOnce ? 0x7FFFFFFF : 0, effectId, 0);
@@ -18499,10 +18498,20 @@ public class ChatActivityEnterView extends FrameLayout implements
                 && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
     }
 
+    // NagramX: infinite video message: the persisted ceiling, in segments (60s each -- see the t >= 59500
+    // cutoff above; the two only line up 1:1 while a segment stays 60s). 0 is the settings row's Unlimited
+    // sentinel; translated to MAX_VALUE here and only here, so the three comparisons above and below never
+    // special-case it. The minimum selectable value in settings is 2 -- a ceiling of 1 would leave
+    // infiniteVideoSegments < ceiling - 1 permanently false, i.e. a toggle that turns on and does nothing.
+    private int getInfiniteVideoMaxSegments() {
+        int ceiling = NaConfig.INSTANCE.getInfiniteRecordingCeiling().Int();
+        return ceiling <= 0 ? Integer.MAX_VALUE : ceiling;
+    }
+
     // NagramX: infinite video message: what the button on the camera overlay shows. The last allowed segment
     // reads as unavailable because there is no rollover left to arm.
     public int getInfiniteRecordingState() {
-        if (!isInfiniteVideoAvailable() || infiniteVideoSegments >= INFINITE_VIDEO_MAX_SEGMENTS - 1) {
+        if (!isInfiniteVideoAvailable() || infiniteVideoSegments >= getInfiniteVideoMaxSegments() - 1) {
             return InstantCameraView.INFINITE_RECORDING_UNAVAILABLE;
         }
         return infiniteVideoMessage ? InstantCameraView.INFINITE_RECORDING_ON : InstantCameraView.INFINITE_RECORDING_OFF;
