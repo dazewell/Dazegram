@@ -19,9 +19,10 @@ name: Sync upstream
 # Nothing is pushed until sync-guard.ps1 — run from the trusted dev checkout, not
 # from the incoming candidate — classifies every tree delta and passes. Any new
 # path, protected-blob change, signing/workflow/schema/layer change or ANY
-# unclassified delta blocks the run: it pushes nothing and pings Telegram so the
-# reconciliation is finished on the PC. There is deliberately no branch input and
-# no bypass input.
+# unclassified delta blocks the run: there is no dev, nbase or src push (a blocked
+# run may still publish the snapshot to a scratch refs/sync/* ref, never a branch)
+# and it pings Telegram so the reconciliation is finished on the PC. There is
+# deliberately no branch input and no bypass input.
 #
 # The first steady-state run is EXPECTED to block (Nagram's tip adds BRANDING.md,
 # an unreviewed new path). That block is the mechanism working, not a failure.
