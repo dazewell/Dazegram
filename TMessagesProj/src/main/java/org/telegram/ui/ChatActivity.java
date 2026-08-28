@@ -48295,7 +48295,7 @@ public class ChatActivity extends BaseFragment implements
             return;
         }
         if (batch.succeededSources.size() == batch.armedSources.size()) {
-            if (!showRepostCopyDeleteAlertIfSafe(batch)) {
+            if (!showRepostCopyDeleteOfferIfSafe(batch)) {
                 repostCopyDeleteBatch = null;
                 return;
             }
@@ -48351,11 +48351,12 @@ public class ChatActivity extends BaseFragment implements
         return sourceMessages;
     }
 
-    private boolean showRepostCopyDeleteAlertIfSafe(RepostCopyDeleteBatch batch) {
-        if (resolveRepostCopyDeleteSources(batch) == null) {
+    private boolean showRepostCopyDeleteOfferIfSafe(RepostCopyDeleteBatch batch) {
+        SparseArray<MessageObject>[] sourceMessages = resolveRepostCopyDeleteSources(batch);
+        if (sourceMessages == null) {
             return false;
         }
-        showRepostCopyDeleteBulletin(batch);
+        showRepostCopyDeleteBulletin(batch, sourceMessages);
         return true;
     }
 
@@ -48363,7 +48364,7 @@ public class ChatActivity extends BaseFragment implements
     // chat before deciding. The batch is captured directly by the button-click lambda below, never mirrored
     // into a field, so repostCopyDeleteBatch can keep getting cleared right after this call (as it already
     // does, win or lose) without touching this already-fired offer (#repost-reply).
-    private void showRepostCopyDeleteBulletin(RepostCopyDeleteBatch batch) {
+    private void showRepostCopyDeleteBulletin(RepostCopyDeleteBatch batch, SparseArray<MessageObject>[] sourceMessages) {
         if (repostCopyDeleteBulletin != null) {
             repostCopyDeleteBulletin.hide(false, 0);
             repostCopyDeleteBulletin = null;
@@ -48379,6 +48380,36 @@ public class ChatActivity extends BaseFragment implements
         });
         repostCopyDeleteBulletin = bulletin;
         bulletin.show();
+        // NagramX: selection was cleared synchronously at tap time (clearSelectionMode, well before this
+        // async server ack), so the only way left to show which messages are on the line is a one-shot pulse
+        // of the already-shipped highlight animation on whichever sources are currently on screen. Purely
+        // decorative: no checkbox, no selection state, not interactive (#repost-reply).
+        pulseRepostCopyDeleteSources(sourceMessages);
+    }
+
+    // NagramX: identity-based, not id-only, because message ids repeat across dialog_id and mergeDialogId
+    // (the same slotting resolveRepostCopyDeleteSources and updateVisibleRows already use). A bare id match
+    // would risk pulsing a same-id message from the wrong slot that isn't actually in the batch (#repost-reply).
+    private void pulseRepostCopyDeleteSources(SparseArray<MessageObject>[] sourceMessages) {
+        if (chatListView == null || sourceMessages == null) {
+            return;
+        }
+        int count = chatListView.getChildCount();
+        for (int a = 0; a < count; a++) {
+            View view = chatListView.getChildAt(a);
+            if (!(view instanceof ChatMessageCell)) {
+                continue;
+            }
+            ChatMessageCell cell = (ChatMessageCell) view;
+            MessageObject messageObject = cell.getMessageObject();
+            if (messageObject == null) {
+                continue;
+            }
+            int idx = messageObject.getDialogId() == dialog_id ? 0 : 1;
+            if (sourceMessages[idx].get(messageObject.getId()) == messageObject && !cell.isHighlighted()) {
+                cell.setHighlightedAnimated();
+            }
+        }
     }
 
     // NagramX: runs on Delete-tap. Re-resolves every armed source from messagesDict at this exact moment
