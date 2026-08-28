@@ -11,9 +11,9 @@
     <string name="VideoMessagesHalSmoothZoomUnsupported">This device doesn\'t support hardware smooth zoom, the usual zoom is kept</string>
     <string name="VideoMessagesHalSmoothZoomCheckFailed">Couldn\'t check the camera right now, try again with the camera closed</string>
     <string name="VideoMessagesWarningVibration">Recording limit warning buzz</string>
-    <string name="VideoMessagesWarningVibrationNotice">How hard the phone buzzes about 5 seconds before a round video message hits its limit and stops.</string>
+    <string name="VideoMessagesWarningVibrationNotice">Buzzes 5 seconds before the limit hits.</string>
     <string name="VideoMessagesCutVibration">Recording limit cutoff buzz</string>
-    <string name="VideoMessagesCutVibrationNotice">How hard the phone buzzes at the exact moment the recording stops.</string>
+    <string name="VideoMessagesCutVibrationNotice">Buzzes the moment the limit hits.</string>
     <string name="InfiniteRecordingCeiling">Infinite recording ceiling</string>
     <string name="InfiniteRecordingCeilingNotice">How long Infinite Recording keeps going.</string>
     <string name="InfiniteRecordingCeiling2Min">2 minutes</string>
