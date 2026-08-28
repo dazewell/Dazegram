@@ -603,4 +603,7 @@
     <!-- Repost reply preservation #repost-reply -->
     <string name="RepeatAsCopyUnsupported">Can\'t repost this as a copy</string>
     <string name="RepeatAsCopyConfirmText">Are you sure you want to repost this as a copy?</string>
+    <string name="RepeatAsCopyDeleteHint_one">Reposted as a copy. The original message is still here.</string>
+    <string name="RepeatAsCopyDeleteHint_other">Reposted as a copy. %1$d original messages are still here.</string>
+    <string name="RepeatAsCopyDeleteUnavailable">Can\'t delete the originals anymore</string>
 </resources>

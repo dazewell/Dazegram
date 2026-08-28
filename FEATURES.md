@@ -139,7 +139,7 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 ### Keep the reply when reposting as a copy <!-- #repost-reply -->
 
-Repost as Copy (off by default, turn it on in settings) re-sends a message without a "Forwarded from" header, which lets it carry the original reply target and quote. Reposting media this way re-uploads the file, so you pay for the data upload again. After a repost as a copy fully succeeds, Telegram's own delete-confirmation dialog opens for the original messages so you can clean them up right away. Alternatively, select both the message and its reply target and use plain Repost to keep both the reply and "Forwarded from" header without re-uploading. In a forum's "View as messages", reposting drops the reply.
+Repost as Copy (off by default, turn it on in settings) re-sends a message without a "Forwarded from" header, which lets it carry the original reply target and quote. Reposting media this way re-uploads the file, so you pay for the data upload again. After a repost as a copy fully succeeds, a notice offers to delete the original messages: tap Delete to bring up Telegram's own delete-confirmation dialog, or leave it and it clears itself after 15 seconds, leaving the originals untouched. Alternatively, select both the message and its reply target and use plain Repost to keep both the reply and "Forwarded from" header without re-uploading. In a forum's "View as messages", reposting drops the reply.
 
 ### Pin or number several messages at once <!-- #bulk-actions -->
 

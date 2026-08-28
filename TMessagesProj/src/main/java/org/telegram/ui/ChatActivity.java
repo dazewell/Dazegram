@@ -924,6 +924,10 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject selectedObjectToEditCaption;
     private MessageObject selectedObject;
     private RepostCopyDeleteBatch repostCopyDeleteBatch;
+    // NagramX: tracks the on-demand repost-as-copy delete offer bulletin so onPause can cancel it; cleared
+    // by identity via repostCopyDeleteBulletinTag, mirroring the pinBulletin/pinBullerinTag pattern (#repost-reply).
+    private Bulletin repostCopyDeleteBulletin;
+    private int repostCopyDeleteBulletinTag;
     public MessageObject.GroupedMessages selectedObjectGroup;
     private boolean forbidForwardingWithDismiss;
     public MessagePreviewParams messagePreviewParams;
@@ -32058,6 +32062,12 @@ public class ChatActivity extends BaseFragment implements
     public void onPause() {
         super.onPause();
         repostCopyDeleteBatch = null;
+        // NagramX: cancel the delete offer the moment the chat stops being live and visible (leaving, or the
+        // app backgrounding), matching today's arm-window behaviour instead of leaving it counting down unseen.
+        if (repostCopyDeleteBulletin != null) {
+            repostCopyDeleteBulletin.hide(false, 0);
+            repostCopyDeleteBulletin = null;
+        }
         if (chatLockPasscodeView != null) {
             chatLockPasscodeView.onPause();
         }
@@ -48293,48 +48303,96 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    private boolean showRepostCopyDeleteAlertIfSafe(RepostCopyDeleteBatch batch) {
-        if (batch == null || repostCopyDeleteBatch != batch) {
-            return false;
+    // NagramX: the one guard set for the repost-as-copy delete offer, run both right after the batch fully
+    // succeeds (to decide whether to show the bulletin at all) and again at Delete-tap time (to decide
+    // whether the modal may still open). All-or-nothing: any vanished or now-undeletable source refuses the
+    // whole offer, same as before the bulletin existed (#repost-reply).
+    private SparseArray<MessageObject>[] resolveRepostCopyDeleteSources(RepostCopyDeleteBatch batch) {
+        if (batch == null) {
+            return null;
         }
         if (batch.account != currentAccount || batch.dialogId != dialog_id || !isRepostCopyDeleteEligible()) {
-            return false;
+            return null;
         }
         // NagramX: keep visibleDialog fail-closed — showing here would dismiss the dialog the user has open.
         if (paused || !isFullyVisible || isFinishing() || visibleDialog != null) {
-            return false;
+            return null;
         }
         INavigationLayout navigationLayout = getParentLayout();
         if (navigationLayout == null || navigationLayout.getLastFragment() != this) {
-            return false;
+            return null;
         }
         // NagramX: mirror the preconditions showDialog itself checks, so a transition or swipe-back in progress
-        // makes us report failure and keep the batch cleared, instead of a silently-swallowed showDialog(null).
+        // fails the resolve instead of a silently-swallowed showDialog(null) (or, at tap time, a dismissed
+        // dialog the user already had open).
         if (navigationLayout.isTransitionAnimationInProgress() || navigationLayout.isSwipeInProgress() || navigationLayout.checkTransitionAnimation()) {
-            return false;
+            return null;
         }
         Activity activity = getParentActivity();
         if (activity == null || activity.isFinishing()) {
-            return false;
+            return null;
         }
         SparseArray<MessageObject>[] sourceMessages = new SparseArray[]{new SparseArray<>(), new SparseArray<>()};
         for (RepostCopySourceIdentity sourceIdentity : batch.armedSources.values()) {
             MessageObject source = messagesDict[sourceIdentity.slot].get(sourceIdentity.messageId);
             if (source == null || source.getId() != sourceIdentity.messageId) {
-                return false;
+                return null;
             }
             if (!source.canDeleteMessage(chatMode == MODE_SCHEDULED, currentChat)
                     || (threadMessageObjects != null && threadMessageObjects.contains(source))
                     || (source.messageOwner != null && source.messageOwner.action instanceof TLRPC.TL_messageActionTopicCreate)) {
-                return false;
+                return null;
             }
             sourceMessages[sourceIdentity.slot].put(sourceIdentity.messageId, source);
         }
         if (sourceMessages[0].size() + sourceMessages[1].size() == 0) {
+            return null;
+        }
+        return sourceMessages;
+    }
+
+    private boolean showRepostCopyDeleteAlertIfSafe(RepostCopyDeleteBatch batch) {
+        if (resolveRepostCopyDeleteSources(batch) == null) {
             return false;
         }
-        createRepostCopySourceDeleteAlert(sourceMessages);
+        showRepostCopyDeleteBulletin(batch);
         return true;
+    }
+
+    // NagramX: demoted from an auto-opened modal to a 15s undo-style bulletin, so the user can look at the
+    // chat before deciding. The batch is captured directly by the button-click lambda below, never mirrored
+    // into a field, so repostCopyDeleteBatch can keep getting cleared right after this call (as it already
+    // does, win or lose) without touching this already-fired offer (#repost-reply).
+    private void showRepostCopyDeleteBulletin(RepostCopyDeleteBatch batch) {
+        if (repostCopyDeleteBulletin != null) {
+            repostCopyDeleteBulletin.hide(false, 0);
+            repostCopyDeleteBulletin = null;
+        }
+        int tag = ++repostCopyDeleteBulletinTag;
+        CharSequence hint = LocaleController.formatPluralString("RepeatAsCopyDeleteHint", batch.armedSources.size());
+        Bulletin bulletin = BulletinFactory.of(this).createSimpleBulletin(R.raw.forward, hint, getString(R.string.Delete), 15000,
+                () -> onRepostCopyDeleteBulletinDelete(batch));
+        bulletin.setOnHideListener(() -> {
+            if (tag == repostCopyDeleteBulletinTag) {
+                repostCopyDeleteBulletin = null;
+            }
+        });
+        repostCopyDeleteBulletin = bulletin;
+        bulletin.show();
+    }
+
+    // NagramX: runs on Delete-tap. Re-resolves every armed source from messagesDict at this exact moment
+    // (never a stale snapshot from when the bulletin was shown) and re-runs the full guard set; only then
+    // opens the real, unmodified delete-confirmation modal. A tap that can't open the modal must show visible
+    // feedback instead of silently doing nothing — see the all-or-nothing refusal at
+    // resolveRepostCopyDeleteSources (#repost-reply).
+    private void onRepostCopyDeleteBulletinDelete(RepostCopyDeleteBatch batch) {
+        SparseArray<MessageObject>[] sourceMessages = resolveRepostCopyDeleteSources(batch);
+        if (sourceMessages == null) {
+            BulletinFactory.of(this).createErrorBulletin(getString(R.string.RepeatAsCopyDeleteUnavailable), themeDelegate).show();
+            return;
+        }
+        createRepostCopySourceDeleteAlert(sourceMessages);
     }
 
     private void repeatMessage(boolean isLongClick, boolean isRepeatasCopy) {
