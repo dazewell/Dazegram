@@ -116,7 +116,15 @@ subject or body — e.g. `add chat lock #chatlock`. Rules:
 
 - Feature commits use the **feature slug**; a fix weeks later reuses the *same*
   slug so the whole change is one `git log --grep` away.
-- Infra/chore commits use a **category tag**: `#ci`, `#docs`, `#build`.
+- Infra/chore commits use a **category tag**. The exempt set is fixed by
+  `commit-tag.yml` and is exactly: `#ci`, `#docs`, `#build`, `#chore`, `#infra`,
+  `#deps`, `#test`, `#release`, `#slug`, `#tag`, `#chatlock` — plus any tag
+  ending `-fix`. Anything outside that set is treated as a *feature* slug and
+  demands a `FEATURES.md` entry, so picking a descriptive-sounding tag like
+  `#sync-land` for infrastructure work fails CI. **Sync and build tooling uses
+  `#infra`** — that is the established convention, not a fallback: of the
+  commits touching `.github/sync/` and the sync workflows, 27 use `#infra`,
+  16 `#docs`, 3 `#ci`, and none use a feature-style slug.
 - Merge commits are exempt (they're auto-generated).
 - Put the tag **inline**, not alone at the start of a line — a line beginning
   with `#` can be stripped as a comment by git's editor cleanup.
@@ -130,8 +138,11 @@ line:
   in it lacks a tag.
 - **Catalogued:** a *feature* slug must also appear in `FEATURES.md`, marked
   `<!-- #slug -->` beside its entry heading; `commit-tag.yml` fails a PR whose
-  feature slug isn't catalogued. Category tags (`#ci`, `#docs`, `#build`, …) and
-  `*-fix` tags are exempt.
+  feature slug isn't catalogued. Only the category tags listed above and `*-fix`
+  tags are exempt. Note the harvest scans the **whole** `base..head` range and
+  every commit's full message body, so a wrong tag cannot be corrected by a
+  later commit on an append-only branch — the only remedy is a fresh branch and
+  a new PR. Pick the tag right the first time.
 
 Bypass (`--no-verify`) only in a genuine emergency.
 

@@ -231,7 +231,9 @@ and still be wrong for this repo.
   `Co-Authored-By`, no "Generated with," no assistant-flavored comment. Any such
   mention is an automatic **Critical**.
 - **Every non-merge commit carries its `#<slug>` tag** (feature slug, or a
-  category tag `#ci`/`#docs`/`#build`). A user-visible feature's slug must be
+  category tag `#ci`/`#docs`/`#build`/`#chore`/`#infra`/`#deps`/`#test`/
+  `#release`, `#infra` for sync and build tooling; the full exempt set is in
+  `nagramx-branch-flow`). A user-visible feature's slug must be
   catalogued in `FEATURES.md` (`<!-- #slug -->`). Missing tag or missing catalog
   entry = blocking; `commit-msg` hook and `commit-tag.yml` enforce it anyway, so
   catch it here first.

@@ -166,7 +166,11 @@ verify it's gone, and list it in the process ledger in your report.
   request number — e.g. `add per-chat require-password lock #require-password`.
 - **Every commit carries its inline `#<slug>` tag**, placed in the subject or
   body but never at the start of a line. The feature slug for feature work, a
-  category tag (`#ci`, `#docs`, `#build`) for chores. A hook and a CI check
+  category tag (`#ci`, `#docs`, `#build`, `#chore`, `#infra`, `#deps`, `#test`,
+  `#release`; sync and build tooling uses `#infra`) for chores — the full
+  exempt set is in `nagramx-branch-flow`. If a brief hands you a tag outside
+  that set for work that is not a catalogued feature, say so before you commit:
+  it cannot be corrected later on an append-only branch. A hook and a CI check
   enforce it.
 - A body only when there is a non-obvious *why* — a trade-off, a constraint that
   shaped the design. Do not restate the diff.
