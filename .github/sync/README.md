@@ -260,11 +260,16 @@ these three repository permissions:
 | Workflows: write | the snapshot tree carries `.github/workflows/`, so any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
 | Pull requests: write | `sync-land.yml` opens the pins PR with `SYNC_TOKEN` rather than `GITHUB_TOKEN`, so `sync-guard-check` actually runs on it (see above) — a PR opened by the default token would arrive with that check missing. |
 
-Missing any one of these fails a run — `sync-upstream.yml`'s "Verify SYNC_TOKEN can
-push dev" step, and `sync-land.yml`'s "Verify SYNC_TOKEN can push" and "Verify
-SYNC_TOKEN can open pull requests" steps, each probe their respective permission
-non-mutating and before any ref moves, and name the specific missing permission in the
-failure rather than surfacing only a generic auth error after a ref has already moved.
+Missing any one of these fails a run, but not all three are provable up front.
+`sync-upstream.yml`'s "Verify SYNC_TOKEN can push dev" step and `sync-land.yml`'s
+"Verify SYNC_TOKEN can push" step each prove Contents: write with a non-mutating
+dry-run push before any ref moves; `sync-land.yml`'s "Verify SYNC_TOKEN can open pull
+requests" step proves Pull requests: write the same way, before a real PR is opened.
+Workflows: write is not provable by a dry-run — GitHub only enforces it on a real push
+whose diff touches a workflow file — so it stays unverified until the real snapshot
+push later in the run, which fails explicitly (not silently) if the token lacks it.
+Where a permission is proven up front, the failure names it precisely rather than
+surfacing only a generic auth error after a ref has already moved.
 
 ## Files
 

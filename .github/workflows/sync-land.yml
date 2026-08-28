@@ -149,7 +149,7 @@ jobs:
           # the fast-forward step below does for real and fails explicitly (not
           # silently) if the token lacks it.
           if ! git push --dry-run origin "$PRE:refs/heads/dev"; then
-            echo "::error::SYNC_TOKEN cannot push (dry-run failed). It needs 'Contents: write' at minimum."
+            echo "::error::SYNC_TOKEN dry-run push failed. Cannot confirm 'Contents: write' -- see the git output above for the actual reason (it is not necessarily a missing permission)."
             echo "::error::Configure the SYNC_TOKEN fine-grained PAT -- see .github/sync/README.md."
             exit 1
           fi
@@ -166,9 +166,12 @@ jobs:
           # permission check, with HTTP 403 "Resource not accessible by personal access
           # token" -- exactly what run 33202926738 logged when it reached the real
           # "Open or reuse the pins PR" step below. 403 vs 422 discriminates permission
-          # from validation without ever creating a PR. This authenticates explicitly as
-          # SYNC_TOKEN (GH_TOKEN above), never the job's default GITHUB_TOKEN, because
-          # SYNC_TOKEN's permission is what is being proved.
+          # from validation without ever creating a PR -- but a 403 alone is not proof:
+          # GitHub also returns 403 for rate limiting and org/SAML policy restrictions,
+          # so the body is checked below for the exact permission-error shape before
+          # naming the missing permission. This authenticates explicitly as SYNC_TOKEN
+          # (GH_TOKEN above), never the job's default GITHUB_TOKEN, because SYNC_TOKEN's
+          # permission is what is being proved.
           BODY=$(mktemp)
           set +e
           HTTP_CODE=$(curl -s -o "$BODY" -w '%{http_code}' \
@@ -192,10 +195,23 @@ jobs:
               echo "SYNC_TOKEN has 'Pull requests: write' (probe rejected at validation, HTTP 422, as expected; no PR created)."
               ;;
             403)
-              echo "::error::SYNC_TOKEN lacks 'Pull requests: write' (HTTP 403, the exact failure run 33202926738 logged)."
-              echo "::error::Grant 'Pull requests: write' to the SYNC_TOKEN fine-grained PAT for ${R}."
-              echo "::error::Configure the SYNC_TOKEN fine-grained PAT -- see .github/sync/README.md."
-              exit 1
+              # A 403 alone is not proof of a missing permission: GitHub also returns 403
+              # for primary/secondary rate limiting and for org/SAML policy restrictions.
+              # Only claim the specific missing permission when the body actually matches
+              # the established fine-grained-PAT permission-error shape; otherwise this
+              # would send someone to change a token setting that was already correct.
+              MSG=$(jq -r '.message // empty' "$BODY" 2>/dev/null || true)
+              if [ "$MSG" = "Resource not accessible by personal access token" ]; then
+                echo "::error::SYNC_TOKEN lacks 'Pull requests: write' (HTTP 403 '$MSG', the exact failure run 33202926738 logged)."
+                echo "::error::Grant 'Pull requests: write' to the SYNC_TOKEN fine-grained PAT for ${R}."
+                echo "::error::Configure the SYNC_TOKEN fine-grained PAT -- see .github/sync/README.md."
+                exit 1
+              else
+                echo "::error::Pull request permission probe returned HTTP 403, but the body does not match the fine-grained-PAT permission-error shape (message: '${MSG:-<none>}')."
+                echo "::error::This can also be GitHub rate limiting or an org/SAML policy restriction, not necessarily a missing permission."
+                echo "::error::Cannot confirm SYNC_TOKEN has 'Pull requests: write'; failing closed rather than guessing which permission is missing."
+                exit 1
+              fi
               ;;
             *)
               echo "::error::Pull request permission probe returned unexpected HTTP $HTTP_CODE (expected 422 or 403)."
