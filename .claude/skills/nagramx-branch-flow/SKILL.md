@@ -450,6 +450,19 @@ the assertion fails immediately, before any guard classification even runs.
 1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
    own. Leave `.github/sync/pins.env` untouched in this PR. Merge it.
+
+   **Resolving the conflicts: anything listed in `.github/sync/protected-paths.tsv`
+   is resolved pure-ours — never merged.** Those ~50 entries (the signing key,
+   Firebase config, branding, the launcher icons, and the `.attheme` themes
+   including `monet_dark`, `monet_light` and `amoled`) are defined by
+   `.github/sync/README.md` as fork-owned paths that must stay **byte-identical to
+   `dev`**, and the guard blocks on any of them moving. Taking even one
+   upstream-only line into such a file makes its pin stale and trips
+   `PROTECTED PINS STALE`. **Do not "fix" that by repinning.** The guard's
+   suggestion to repin is aimed at a feature branch that deliberately restyles a
+   protected asset; inside a sync it would launder upstream content into a
+   fork-owned file and defeat the protection. Repin only when dazewell has
+   deliberately changed the asset himself, never to unblock a sync.
 2. **Fast-forward `origin/nbase`** to the reconciliation's snapshot commit,
    non-force. Verify first that the old `nbase` tip is an ancestor of the
    snapshot *and* the snapshot is reachable from `dev`; only then push. This
