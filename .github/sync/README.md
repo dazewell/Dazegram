@@ -94,6 +94,47 @@ tree `06e811bc`, and those values **match** `origin/nbase`, so
 `origin/nbase … != pinned OLD_NBASE …` assertion. There is no longer a
 transitional red window: the 12.10.1 reconciliation has fully landed.
 
+## When it blocks: the published snapshot ref
+
+`sync-upstream.yml` pushes nothing on a block — that part never changes. But a
+block that reaches the snapshot step (i.e. not a token failure and not the
+no-op fast path) also publishes that snapshot commit to a scratch ref, so the
+PC starts reconciliation from the snapshot instead of reconstructing it by
+hand with `git commit-tree`:
+
+```powershell
+git fetch origin '+refs/sync/*:refs/sync/*'
+git merge refs/sync/snapshot-<srcshort>
+```
+
+The exact ref name (`refs/sync/snapshot-<srcshort>`, `<srcshort>` being the
+short SHA of the resolved Nagram source commit) is named in both the job
+summary and the Telegram ping, along with the conflicting-file list (with
+per-file conflict-hunk counts) or the guard's classified violation list,
+whichever applies — capped to about ten entries in the Telegram message, with
+the full list always in the job summary.
+
+`refs/sync/*` is deliberately not a branch. GitHub's `push` event only fires
+for `refs/heads/*` and `refs/tags/*`, so a push to this namespace can never
+trigger `sync-guard-check.yml` (which would hard-fail — it checks out the
+pushed tree looking for `.github/sync/sync-guard.ps1`, and a bare Nagram tree
+doesn't have one) or `staging.yml`'s unfiltered `pull_request` trigger. It also
+never shows up in the branch list, the branch picker, or any PR head/base
+dropdown, so it cannot be mistaken for a reviewed branch or merged by habit.
+
+Only the **snapshot** is ever published, never the merge candidate that the
+guard rejected. The candidate is the exact shape `dev` would take if pushed —
+the one object in this whole design that could be pushed straight to
+`refs/heads/dev` and skip every gate. The snapshot cannot do that, and
+re-merging it into `dev` reproduces the same conflicts deterministically, so
+the candidate is trivially re-derivable from the snapshot and buys nothing
+extra.
+
+Scratch refs older than 30 days are pruned at the **start** of each run (never
+the end — pruning after this run's own publish step could delete the ref a PC
+is mid-reconciliation on). A stale one simply falls out of the next run's
+prune pass; there is nothing to clean up by hand.
+
 ## The no-op fast path
 
 `origin/nbase` currently carries Nagram's tree with nothing outstanding to import,
@@ -256,3 +297,33 @@ assistant footer and **block the sync** — that is a *resolve-on-the-PC* event,
 safe direction (it blocks rather than passing a possible violation). If you hit
 it, reconcile on the PC; do **not** widen or weaken the token to make the sync
 pass — narrowing it further to dodge a real footer would defeat the guard.
+
+## Rejected proposals
+
+Recorded here so they aren't re-proposed from scratch.
+
+- **`.gitattributes` / `merge=union` merge drivers for append-only fork
+  surfaces** (`strings_na.xml`, `NaConfig.kt`). Rejected. It buys **zero**
+  unattended completions: `Test-Partition` in `sync-guard.ps1` blocks the
+  entire fork-intersect-upstream double-modified set independent of whether
+  the merge left a visible delta, and a union hunk can only arise where both
+  sides changed the file — which puts that file in that set by construction.
+  So union converts a *conflict* block into a *guard* block; it does not avoid
+  either. Three further reasons: `.gitattributes` applies to local PC merges
+  too, where nothing re-checks the union output; the layer floors in
+  `pins.env` are MINIMUMS, so a duplicated or misordered key from a union
+  merge can only push counts up and is structurally uncatchable; and any
+  custom (non-built-in) merge driver is a silent no-op on any machine lacking
+  the matching `merge.<name>.driver` git config — a rule that looks like it is
+  in force and is not.
+- **Relaxing `sync-guard-check.yml`'s real-candidate fixture to accept a
+  descendant of the pinned `OLD_NBASE`**, to shrink the red-check window on
+  unrelated PRs between a reconciliation's fast-forward (branch-flow step 2)
+  and its anchor-pin update (step 3). Rejected. On a real-delta sync the guard
+  receives `-OldNbase` from *live* `origin/nbase`, not from the pin; the
+  pinned `OLD_NBASE` is consulted only by the fast path, which runs only when
+  the trees are already equal. That check is therefore the **sole** detector
+  of a stale `OLD_NBASE` when there is a delta. Relaxing it to tolerate a
+  descendant would delete a check with no backup anywhere else in the system —
+  it would keep passing right through the window where the pin actually is
+  stale, which is the one case it exists to catch.
