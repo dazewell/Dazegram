@@ -451,18 +451,22 @@ hand git from steps 2 and 3.
    gh workflow run sync-land.yml --repo dazewell/Dazegram
    ```
    It fast-forwards `origin/nbase` onto the reconciliation snapshot (step 2,
-   non-force), then opens a PR that advances the anchor pins (step 3). It reads
-   the snapshot from `refs/sync/snapshot-<srcshort>` (published there by the
-   blocked sync run) by default; pass `-f snapshot=<sha>` when the reconciliation
-   was done fully by hand and no such ref exists. Before it moves any ref it runs
+   non-force), then opens a PR that advances the anchor pins (step 3). Pass the
+   snapshot explicitly with `-f snapshot=<sha>` — that is the primary contract and
+   always works. The no-argument form reads the snapshot from
+   `refs/sync/snapshot-<srcshort>` as a convenience, but that depends on the
+   snapshot-publishing change (`2026-08-28_sync-snapshot-publish`) having landed on
+   `dev`; until it does, nothing publishes that ref and the zero-arg form finds
+   nothing, so give the SHA. Before it moves any ref it runs
    `sync-guard.ps1 -LandCheckOnly`, which re-derives — live from upstream — the
    commit whose tree the snapshot copies and blocks unless the snapshot is a
-   faithful, locally-authored, anchor-descended copy that fast-forwards the live
-   `nbase`. It never pushes `dev` and never force-pushes. Then **review and merge
-   the one auto-drafted pins PR**: it is created with `SYNC_TOKEN` so
-   `sync-guard-check` actually runs on it, and the run asserts that check reported
-   before it declares the PR ready. The PR body prints the evidence (the resolved
-   upstream commit, its tree, the snapshot tree, and the equality verdict) so
+   faithful, locally-authored, anchor-descended copy whose single parent is the
+   pinned `OLD_NBASE` and which is already an ancestor of `dev`. It never pushes
+   `dev` and never force-pushes. Then **review and merge the one auto-drafted pins
+   PR**: it is created with `SYNC_TOKEN` so `sync-guard-check` actually runs on it,
+   and the run asserts that check reported before it declares the PR ready. The PR
+   body prints the evidence (the resolved upstream commit, its tree, the snapshot
+   tree, and the equality verdict) so
    review confirms shown facts instead of rubber-stamping hex.
 
 The workflow is idempotent — safe to re-run after a partial failure. If
@@ -568,9 +572,11 @@ When `sync-upstream` blocks and the reconciliation is finished by hand on the PC
 this manually-dispatched workflow automates steps 2 and 3 of the land (see "Sync
 onto a new upstream" above). One button fast-forwards `origin/nbase` onto the
 reconciliation snapshot and opens the anchor-advance pins PR; the operator reviews
-and merges that one PR. No inputs are required — it reads the snapshot from
-`refs/sync/snapshot-<srcshort>` by default — but it accepts an explicit
-`snapshot=<sha>` for a fully-hand reconciliation with no such ref.
+and merges that one PR. Give the snapshot explicitly with `-f snapshot=<sha>` —
+that is the primary contract. The zero-input form reads the snapshot from
+`refs/sync/snapshot-<srcshort>`, but that convenience only works once the
+snapshot-publishing change (`2026-08-28_sync-snapshot-publish`) has landed on
+`dev`; until then nothing publishes that ref, so pass the SHA.
 
 Its safety rests on three things, all fail-closed:
 - **`sync-guard.ps1 -LandCheckOnly` before any ref moves.** The two obvious

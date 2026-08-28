@@ -27,18 +27,17 @@ and a dry run reports **503 conflicts**. That does not change, and this mechanis
 does not pretend to change it.
 
 Instead there is an **anchor** and an `nbase` chain. The recorded anchor advances
-along that chain by a reviewed `pins.env` edit each time a new snapshot lands; it
-currently records Nagram **12.10.1**:
+along that chain by a reviewed `pins.env` edit each time a new snapshot lands. The
+live values are in [`pins.env`](pins.env), which is the source of truth — read
+them there, not here, because this file would go stale the moment the next
+snapshot lands:
 
-- **Anchor source** `941e30844e…` — the Nagram 12.10.1 commit whose tree the
-  current snapshot copies.
-- **Snapshot chain tip** `58eaec2f…` (the current `origin/nbase`, pinned as
-  `OLD_NBASE`) — a **locally-authored** commit whose tree is byte-identical to the
-  anchor's (`06e811bc…`), importing no upstream author, message or committer. It is
-  a redundant no-op minted by a `sync-upstream` run (see "The no-op fast path"): its
-  single parent is the 12.10.1 reconciliation snapshot `dc6d665f50…`, whose tree it
-  copies unchanged, and that snapshot's single parent is in turn the **previous**
-  snapshot `c21ee8ac…`.
+- **`ANCHOR_SRC`** is the upstream Nagram commit whose tree the current snapshot
+  copies.
+- **`OLD_NBASE`** is the current `origin/nbase` (tree `OLD_NBASE_TREE`) — a
+  **locally-authored** commit whose tree is byte-identical to that anchor's,
+  importing no upstream author, message or committer. It is the tip of the chain,
+  and its single parent is the snapshot before it, back to the bootstrap below.
 
 The chain was **bootstrapped** at 12.10.0: the first snapshot `c21ee8ac…` (tree
 `5ecc658245…`, byte-identical to the 12.10.0 anchor `e09f49fa8c…`) had parent
@@ -88,11 +87,12 @@ almost always trips either the merge-conflict block or the guard's classificatio
 gates, which is the intended behaviour. Reconciliation requires a PC and manual
 review rather than auto-pushing. The anchor advances **only** by a reviewed edit
 to `pins.env` after a new snapshot has landed — never by the workflow itself.
-The pins now record `941e30844e` (Nagram 12.10.1) with `OLD_NBASE=58eaec2f` and
-tree `06e811bc`, and those values **match** `origin/nbase`, so
-`sync-guard-check`'s real-candidate fixture passes rather than blocking on an
-`origin/nbase … != pinned OLD_NBASE …` assertion. There is no longer a
-transitional red window: the 12.10.1 reconciliation has fully landed.
+When `pins.env`'s `ANCHOR_SRC` / `OLD_NBASE` / `OLD_NBASE_TREE` **match** live
+`origin/nbase` — the steady state — `sync-guard-check`'s real-candidate fixture
+passes rather than blocking on an `origin/nbase … != pinned OLD_NBASE …`
+assertion, and there is no transitional red window. That window opens only between
+a reconciliation landing on `dev` and its pins PR merging, and `sync-land.yml`
+shrinks it to minutes (see below).
 
 ## The no-op fast path
 
@@ -196,10 +196,12 @@ It is **idempotent**: if `origin/nbase` already equals the snapshot the
 fast-forward is skipped (success, not error); if the pins branch or its open PR
 already exists they are reused rather than duplicated; `nbase` is never
 force-pushed. So the realistic partial failure — fast-forward lands, PR creation
-trips — is fixed by pressing the button again. The snapshot is read from
-`refs/sync/snapshot-<srcshort>` by default (a non-branch ref namespace that fires
-no Actions runs), or from an explicit `snapshot=<sha>` input for a fully-hand
-reconciliation. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
+trips — is fixed by pressing the button again. Pass the snapshot explicitly with
+`snapshot=<sha>` — the primary contract. The zero-input form reads
+`refs/sync/snapshot-<srcshort>` (a non-branch ref namespace that fires no Actions
+runs), but that only works once the snapshot-publishing change
+(`2026-08-28_sync-snapshot-publish`) has landed on `dev` to publish it; until
+then, give the SHA. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
 snapshot tree carries `.github/workflows/`) **+ Pull requests: write**.
 `sync-land.yml` is in `SELF_PROTECT`, so an incoming snapshot can never rewrite
 the workflow that holds this credential.

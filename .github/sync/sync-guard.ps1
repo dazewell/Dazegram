@@ -387,17 +387,21 @@ function Test-SyncFastPath([string]$srcTree, [string]$liveNbase, [string]$liveNb
 # byte-identical to an actual upstream commit ($srcTree, resolved live from the
 # upstream repo), and that upstream commit must descend from the recorded anchor.
 #
-#   $snapParents          parents of the snapshot (must be exactly [live nbase])
-#   $liveNbase            origin/nbase right now (the one parent the snapshot may have)
-#   $revMinusOld          rev-list SNAP ^liveNbase (must be exactly [SNAP])
+#   $snapParents          parents of the snapshot (must be exactly [pinned OLD_NBASE])
+#   $expectedOldNbase     the pinned OLD_NBASE — the one parent the snapshot may have.
+#                         Keyed to the pin, not to live origin/nbase, so the proof holds
+#                         identically on an idempotent re-run after nbase already moved.
+#   $revMinusOld          rev-list SNAP ^expectedOldNbase (must be exactly [SNAP])
 #   $newSnapshot          the snapshot commit
 #   $snapTree             SNAP^{tree}
 #   $srcTree              tree of the upstream commit the snapshot claims to copy
 #   $srcDescendsAnchor    that upstream commit descends from the pinned ANCHOR_SRC
-#   $liveNbaseTree        origin/nbase^{tree} right now
+#   $expectedOldNbaseTree pinned OLD_NBASE^{tree}
 #   $pinnedAnchorTree     tree of the currently-pinned ANCHOR_SRC (live-resolved)
 #   $pinnedOldNbase       pins.env OLD_NBASE
 #   $pinnedOldNbaseTree   pins.env OLD_NBASE_TREE
+#   $snapDescendsDev      the snapshot is an ancestor of origin/dev — proof the
+#                         reconciliation was merged before nbase advances onto it
 function Test-LandCheck([string[]]$snapParents, [string]$expectedOldNbase,
                         [string[]]$revMinusOld, [string]$newSnapshot,
                         [string]$snapTree, [string]$srcTree, [bool]$srcDescendsAnchor,

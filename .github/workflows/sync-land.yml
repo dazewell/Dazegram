@@ -391,10 +391,30 @@ jobs:
           run: ${RUN_URL}
           If the pins PR was not opened, just re-run this workflow — the fast-forward is idempotent and resumes at the pins PR. If it opened but its sync-guard-check is red, fix it on the PC."
           else
-            TEXT="⚠️ Dazegram sync-land blocked before moving nbase (snapshot resolution or land check). Nothing pushed.
+            # nbase_at_snap is a runner-local flag set one line after the push, so a lost
+            # push response or a cancel in that gap leaves it empty even though the ref
+            # advanced. The only ground truth for "did the world change" is the live ref, so
+            # before telling the operator nothing was pushed, check it. This cannot invent
+            # the opposite lie: it reclassifies only when origin/nbase genuinely equals the
+            # snapshot, and the action it then recommends (idempotent re-run) is safe whoever
+            # moved the ref, because the LIVE == SNAP skip catches it. The fetch must never
+            # abort this notifier under set -e — it has to reach exit 0.
+            MOVED_LIVE=0
+            if [ -n "$SNAP" ] && git fetch origin nbase 2>/dev/null; then
+              [ "$(git rev-parse origin/nbase)" = "$SNAP" ] && MOVED_LIVE=1
+            fi
+            if [ "$MOVED_LIVE" = "1" ]; then
+              TEXT="⚠️ Dazegram sync-land: origin/nbase has ALREADY advanced to ${SNAP} but a later step failed (pins PR or its guard-check).
+          old nbase: ${OLD_NBASE}
+          pins PR:   ${PRN:-not created}
+          run: ${RUN_URL}
+          If the pins PR was not opened, just re-run this workflow — the fast-forward is idempotent and resumes at the pins PR. If it opened but its sync-guard-check is red, fix it on the PC."
+            else
+              TEXT="⚠️ Dazegram sync-land blocked before moving nbase (snapshot resolution or land check). Nothing pushed.
           snapshot: ${SNAP:-unresolved}
           run: ${RUN_URL}
           Finish the reconciliation on the PC."
+            fi
           fi
           curl -s "https://api.telegram.org/bot${HELPER_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${HELPER_BOT_TARGET}" \
