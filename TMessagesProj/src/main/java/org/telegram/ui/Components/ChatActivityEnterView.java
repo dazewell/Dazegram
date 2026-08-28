@@ -18500,9 +18500,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     // NagramX: infinite video message: the persisted ceiling, in segments. 0 is the settings row's Unlimited
     // sentinel, translated to MAX_VALUE here and only here, so the three comparisons above and below never
-    // special-case it. Any other out-of-range value (negative, or 1 -- below the settings row's own minimum
-    // of 2, see the choice list in NekoChatSettingsActivity) is floored to 2 rather than silently read as
-    // Unlimited or as a ceiling that never rolls over.
+    // special-case it. Anything below 2 is floored to 2: at a ceiling of 1, infiniteVideoSegments < ceiling - 1
+    // is permanently false, i.e. a toggle that arms and never rolls over. The floor is the feature's own
+    // minimum, not the settings list's -- a value the list no longer offers, like an older 2 or 5, is still a
+    // valid ceiling and keeps working.
     private int getInfiniteVideoMaxSegments() {
         int ceiling = NaConfig.INSTANCE.getInfiniteRecordingCeiling().Int();
         return ceiling == 0 ? Integer.MAX_VALUE : Math.max(ceiling, 2);

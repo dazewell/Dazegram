@@ -14,14 +14,13 @@
     <string name="VideoMessagesWarningVibrationNotice">Buzzes 5 seconds before cutoff.</string>
     <string name="VideoMessagesCutVibration">Recording limit cutoff buzz</string>
     <string name="VideoMessagesCutVibrationNotice">Buzzes the moment the limit hits.</string>
-    <string name="InfiniteRecordingCeiling">Infinite recording ceiling</string>
-    <string name="InfiniteRecordingCeilingNotice">Infinite Recording time limit.</string>
-    <string name="InfiniteRecordingCeiling2Min">2 minutes</string>
-    <string name="InfiniteRecordingCeiling5Min">5 minutes</string>
+    <string name="InfiniteRecordingCeiling">Infinite Recording cap</string>
+    <string name="InfiniteRecordingCeilingNotice">How long it can keep going.</string>
     <string name="InfiniteRecordingCeiling10Min">10 minutes</string>
     <string name="InfiniteRecordingCeiling15Min">15 minutes</string>
     <string name="InfiniteRecordingCeiling20Min">20 minutes</string>
     <string name="InfiniteRecordingCeiling30Min">30 minutes</string>
+    <string name="InfiniteRecordingCeiling60Min">60 minutes</string>
     <string name="InfiniteRecordingCeilingUnlimited">Unlimited</string>
     <string name="VideoMessagesVibrationOff">Off</string>
     <string name="VideoMessagesVibrationLight">Light</string>
