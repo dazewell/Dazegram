@@ -158,16 +158,21 @@ opaque hex strings, and the pins PR is genuinely gated:
   the one failure mode where careless automation could make a wrong land *easier*
   than the manual dance. So the mode re-derives, **live from `NAGRAM_REPO`**, the
   upstream commit whose tree the snapshot copies, and asserts: exactly one parent
-  equal to the live `nbase`; the snapshot is the only commit `rev-list`ed over the
-  old `nbase`; `snapshot^{tree}` equals that upstream commit's tree; the upstream
-  commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC` really is
-  `nbase`'s current tree (the anchor-tree identity nothing else checks); and the
-  snapshot's author **and** committer are the sync identity (`SYNC_IDENTITY_NAME` /
-  `SYNC_IDENTITY_EMAIL`, reusing the same attribution scan as the steady-state
-  guard). These live in `sync-guard.ps1` behind one self-tested mode, so there is
-  no second, weaker copy of snapshot-ancestry logic in a workflow to drift out of
-  step. The mode writes its evidence to a file that the workflow prints into the
-  pins PR body.
+  equal to the pinned `OLD_NBASE`; the snapshot is the only commit `rev-list`ed
+  over that pinned old `nbase`; `snapshot^{tree}` equals that upstream commit's
+  tree; the upstream commit descends from the pinned `ANCHOR_SRC`; the pinned
+  `ANCHOR_SRC` really is `nbase`'s current tree (the anchor-tree identity nothing
+  else checks); the snapshot **is an ancestor of `dev`** (proof the reconciliation
+  was actually merged before `nbase` advances onto it — else the button pressed
+  too early would fast-forward over changes that never landed and drop them
+  silently); and the snapshot's author **and** committer are the sync identity
+  (`SYNC_IDENTITY_NAME` / `SYNC_IDENTITY_EMAIL`, reusing the same attribution scan
+  as the steady-state guard). Every one is keyed to the *pinned* `OLD_NBASE`, not
+  to the live ref, so the same facts hold on a first run and on a re-run after the
+  fast-forward already landed. These live in `sync-guard.ps1` behind one
+  self-tested mode, so there is no second, weaker copy of snapshot-ancestry logic
+  in a workflow to drift out of step. The mode writes its evidence to a file that
+  the workflow prints into the pins PR body.
 - **The pins PR is created with `SYNC_TOKEN`, never `GITHUB_TOKEN`.** A PR opened
   by the built-in token does not trigger `pull_request` workflows, so
   `sync-guard-check` would be *missing* on it — and an absent required check is
@@ -180,10 +185,12 @@ opaque hex strings, and the pins PR is genuinely gated:
   to prove it never contacts upstream.
 - **Shared `sync-refs` concurrency and a re-lease before the push.** `sync-land`
   and `sync-upstream` share one `concurrency: sync-refs` lane. `sync-land` also
-  re-reads `origin/nbase` immediately before pushing and aborts unless it still
-  equals the value the land check verified against, so a phone tap that mints a
-  snapshot on the old `nbase` mid-land fails safe. The push is non-force with an
-  explicit refspec (`<snap>:refs/heads/nbase`); `dev` is never a push target.
+  re-reads `origin/nbase` immediately before pushing: if it already equals the
+  snapshot the move is skipped (an already-landed re-run), otherwise it aborts
+  unless `nbase` still equals the pinned `OLD_NBASE` the land check proved the
+  snapshot chains onto, so a phone tap that mints a snapshot on the old `nbase`
+  mid-land fails safe. The push is non-force with an explicit refspec
+  (`<snap>:refs/heads/nbase`); `dev` is never a push target.
 
 It is **idempotent**: if `origin/nbase` already equals the snapshot the
 fast-forward is skipped (success, not error); if the pins branch or its open PR

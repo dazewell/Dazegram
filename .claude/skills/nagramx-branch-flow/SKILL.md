@@ -584,8 +584,15 @@ Its safety rests on three things, all fail-closed:
   `nbase`; the snapshot tree equals that upstream commit's tree; the upstream
   commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC` really is
   `nbase`'s current tree; and the snapshot's author *and* committer are the sync
-  identity. It shares one self-tested implementation with the rest of the guard,
-  so there is no second, weaker copy of that logic to drift.
+  identity. It also asserts the snapshot **is an ancestor of `dev`** — proof the
+  reconciliation was actually merged before `nbase` advances onto it; without it,
+  the button pressed too early would fast-forward `nbase` over changes that never
+  landed and drop them silently, forever. Every one of these is keyed to the
+  *pinned* `OLD_NBASE`, not to wherever `origin/nbase` points at run time, so the
+  same facts hold on a first run and on an idempotent re-run after the
+  fast-forward has already landed. It shares one self-tested implementation with
+  the rest of the guard, so there is no second, weaker copy of that logic to
+  drift.
 - **The pins PR is created with `SYNC_TOKEN`, never `GITHUB_TOKEN`.** A PR opened
   by the built-in token does not trigger `pull_request` workflows, so
   `sync-guard-check` would be *missing* on it — and an absent required check reads
@@ -596,10 +603,12 @@ Its safety rests on three things, all fail-closed:
   facts, not opaque hex.
 - **Shared `sync-refs` concurrency and a re-lease before the push.** `sync-land`
   and `sync-upstream` share one `concurrency: sync-refs` lane, and `sync-land`
-  re-reads `origin/nbase` immediately before pushing and aborts unless it still
-  equals the value the land check verified — so a phone-tapped sync in the land
-  window fails safe instead of getting overwritten. The push is non-force with an
-  explicit refspec; `dev` is never a target.
+  re-reads `origin/nbase` immediately before pushing: if it already equals the
+  snapshot the move is skipped (an already-landed re-run), and otherwise it aborts
+  unless `nbase` still equals the pinned `OLD_NBASE` the land check proved the
+  snapshot chains onto — so a phone-tapped sync in the land window fails safe
+  instead of getting overwritten. The push is non-force with an explicit refspec;
+  `dev` is never a target.
 
 It is idempotent: if `origin/nbase` already equals the snapshot the fast-forward
 is skipped, if the pins branch or its PR already exists they are reused, so a
