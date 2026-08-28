@@ -20,7 +20,7 @@ Guidance for working in this repository. These instructions override default beh
 
 **Every GitHub review point is closed before handoff:** reply with the fix, or explicitly explain why it will not be changed, then resolve the review thread. Verify that no review threads remain unresolved.
 
-**Every commit carries a `#<slug>` tag** placed inline in the subject or body, so all commits for a change stay greppable (`git log --grep '#chatlock'`) after its short-lived branch is deleted — the feature slug for features, a category tag (`#ci`, `#docs`, `#build`) otherwise. Merge commits are exempt. Enforced by `.githooks/commit-msg` (run `git config core.hooksPath .githooks` once per clone) and the `commit-tag.yml` CI check. Details in the `nagramx-branch-flow` skill.
+**Every commit carries a `#<slug>` tag** placed inline in the subject or body, so all commits for a change stay greppable (`git log --grep '#chatlock'`) after its short-lived branch is deleted — the feature slug for features, a category tag (`#ci`, `#docs`, `#build`) otherwise. Merge commits are exempt. A bare numeric hashtag such as a PR reference (`#204`) neither satisfies the required `#<slug>` tag nor is ever harvested as a feature slug — it's safe to include alongside a real change tag, but a commit whose only hashtag is a numeric one still fails as untagged, so it is not a substitute for one. Enforced by `.githooks/commit-msg` (run `git config core.hooksPath .githooks` once per clone) and the `commit-tag.yml` CI check. Details in the `nagramx-branch-flow` skill.
 
 ## Keep the docs current
 
