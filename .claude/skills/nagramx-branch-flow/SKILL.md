@@ -580,19 +580,19 @@ Its safety rests on three things, all fail-closed:
   any upstream commit, so every future 3-way merge would compute the wrong delta,
   silently, forever. So the mode additionally re-derives, live from upstream, the
   commit whose tree the snapshot copies, and asserts: exactly one parent equal to
-  the live `nbase`; the snapshot is the only commit `rev-list`ed over the old
-  `nbase`; the snapshot tree equals that upstream commit's tree; the upstream
-  commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC` really is
-  `nbase`'s current tree; and the snapshot's author *and* committer are the sync
-  identity. It also asserts the snapshot **is an ancestor of `dev`** — proof the
-  reconciliation was actually merged before `nbase` advances onto it; without it,
-  the button pressed too early would fast-forward `nbase` over changes that never
-  landed and drop them silently, forever. Every one of these is keyed to the
-  *pinned* `OLD_NBASE`, not to wherever `origin/nbase` points at run time, so the
-  same facts hold on a first run and on an idempotent re-run after the
-  fast-forward has already landed. It shares one self-tested implementation with
-  the rest of the guard, so there is no second, weaker copy of that logic to
-  drift.
+  the pinned `OLD_NBASE`; the snapshot is the only commit `rev-list`ed over that
+  pinned old `nbase`; the snapshot tree equals that upstream commit's tree; the
+  upstream commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC`
+  really is that old `nbase`'s tree; and the snapshot's author *and* committer are
+  the sync identity. It also asserts the snapshot **is an ancestor of `dev`** —
+  proof the reconciliation was actually merged before `nbase` advances onto it;
+  without it, the button pressed too early would fast-forward `nbase` over changes
+  that never landed and drop them silently, forever. The parent and `rev-list`
+  facts are keyed to the *pinned* `OLD_NBASE`, not to wherever `origin/nbase`
+  points at run time, so the same facts hold on a first run and on an idempotent
+  re-run after the fast-forward has already landed. It shares one self-tested
+  implementation with the rest of the guard, so there is no second, weaker copy of
+  that logic to drift.
 - **The pins PR is created with `SYNC_TOKEN`, never `GITHUB_TOKEN`.** A PR opened
   by the built-in token does not trigger `pull_request` workflows, so
   `sync-guard-check` would be *missing* on it — and an absent required check reads
