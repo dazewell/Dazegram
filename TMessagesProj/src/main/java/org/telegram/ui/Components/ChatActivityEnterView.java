@@ -18593,6 +18593,13 @@ public class ChatActivityEnterView extends FrameLayout implements
             return;
         }
 
+        // NagramX: infinite video message: reset here, before the toggle row below reads infiniteVideoMessage.
+        // The long-press path resets in recordAudioVideoRunnable before this runs, but the attach-menu path
+        // reaches this popup without going through that runnable, so without this a stale flag from the last
+        // recording would show the switch pre-armed. Both popup callers pass through here.
+        infiniteVideoMessage = false;
+        infiniteVideoSegments = 0;
+
         final boolean[] cameraSelected = {false};
 
         ActionBarPopupWindow.ActionBarPopupWindowLayout popupLayout = new ActionBarPopupWindow.ActionBarPopupWindowLayout(parentActivity, R.drawable.popup_fixed_alert4, resourcesProvider);
