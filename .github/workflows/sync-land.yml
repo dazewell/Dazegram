@@ -40,7 +40,15 @@ name: Sync land
 #
 # SYNC_TOKEN scope required: Contents: write (move nbase; the snapshot tree carries
 # .github/workflows/, so Workflows: write is also required) and Pull requests: write
-# (open the pins PR). Same identity as sync-upstream.
+# (open the pins PR). Same identity as sync-upstream. Full rebuild instructions live in
+# .github/sync/README.md.
+#
+# A non-mutating permission preflight proves both scopes before nbase is touched (see
+# the two "Verify SYNC_TOKEN can ..." steps below). This exists because run 33202926738
+# fast-forwarded nbase — the safety-critical, hard-to-undo part — and only THEN
+# discovered the token lacked Pull requests: write, at the pins-PR step. The preflight
+# moves that discovery ahead of the fast-forward and names the exact missing permission
+# instead of a generic auth error.
 #
 # Idempotent by design — safe to re-run after a partial failure. The land check always
 # runs and is keyed to the PINNED OLD_NBASE, so it proves the snapshot's intrinsic
@@ -127,6 +135,74 @@ jobs:
           # the same values rather than a second hardcoded copy that could drift.
           git config user.name  "${{ steps.pins.outputs.sync_identity_name }}"
           git config user.email "${{ steps.pins.outputs.sync_identity_email }}"
+
+      - name: Verify SYNC_TOKEN can push (Contents write probe)
+        run: |
+          set -e
+          PRE=$(git rev-parse HEAD)
+          # Same probe as sync-upstream.yml's "Verify SYNC_TOKEN can push dev" step,
+          # reused rather than reinvented: a no-op dry-run push to dev exercises the
+          # token's Contents: write bit -- the same repo-scoped permission that gates
+          # the real fast-forward push to nbase further down -- without writing
+          # anything. A dry-run cannot fully prove Workflows: write; GitHub only
+          # enforces that bit on a real push whose diff touches a workflow file, which
+          # the fast-forward step below does for real and fails explicitly (not
+          # silently) if the token lacks it.
+          if ! git push --dry-run origin "$PRE:refs/heads/dev"; then
+            echo "::error::SYNC_TOKEN cannot push (dry-run failed). It needs 'Contents: write' at minimum."
+            echo "::error::Configure the SYNC_TOKEN fine-grained PAT -- see .github/sync/README.md."
+            exit 1
+          fi
+
+      - name: Verify SYNC_TOKEN can open pull requests (Pull requests write probe)
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          R: ${{ github.repository }}
+        run: |
+          set -e
+          # head == base is rejected by GitHub's PR validation BEFORE a PR is created --
+          # verified live against this repo: it returns HTTP 422 and leaves nothing
+          # behind. A token missing Pull requests: write is rejected earlier, at the
+          # permission check, with HTTP 403 "Resource not accessible by personal access
+          # token" -- exactly what run 33202926738 logged when it reached the real
+          # "Open or reuse the pins PR" step below. 403 vs 422 discriminates permission
+          # from validation without ever creating a PR. This authenticates explicitly as
+          # SYNC_TOKEN (GH_TOKEN above), never the job's default GITHUB_TOKEN, because
+          # SYNC_TOKEN's permission is what is being proved.
+          BODY=$(mktemp)
+          set +e
+          HTTP_CODE=$(curl -s -o "$BODY" -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${R}/pulls" \
+            -d '{"title":"sync-land permission probe (rejected by validation, never created)","head":"dev","base":"dev"}')
+          CURL_STATUS=$?
+          set -e
+          if [ "$CURL_STATUS" -ne 0 ]; then
+            echo "::error::curl failed (exit $CURL_STATUS) probing the pull-request permission. Failing closed -- cannot confirm 'Pull requests: write'."
+            exit 1
+          fi
+          echo "::group::Pull request permission probe (HTTP $HTTP_CODE)"
+          cat "$BODY"; echo
+          echo "::endgroup::"
+          case "$HTTP_CODE" in
+            422)
+              echo "SYNC_TOKEN has 'Pull requests: write' (probe rejected at validation, HTTP 422, as expected; no PR created)."
+              ;;
+            403)
+              echo "::error::SYNC_TOKEN lacks 'Pull requests: write' (HTTP 403, the exact failure run 33202926738 logged)."
+              echo "::error::Grant 'Pull requests: write' to the SYNC_TOKEN fine-grained PAT for ${R}."
+              echo "::error::Configure the SYNC_TOKEN fine-grained PAT -- see .github/sync/README.md."
+              exit 1
+              ;;
+            *)
+              echo "::error::Pull request permission probe returned unexpected HTTP $HTTP_CODE (expected 422 or 403)."
+              echo "::error::Cannot confirm SYNC_TOKEN has 'Pull requests: write'; failing closed rather than assuming success."
+              exit 1
+              ;;
+          esac
 
       - name: nbase must exist (deletion protection)
         run: |
