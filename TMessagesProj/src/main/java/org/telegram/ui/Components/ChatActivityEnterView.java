@@ -18500,12 +18500,14 @@ public class ChatActivityEnterView extends FrameLayout implements
 
     // NagramX: infinite video message: the persisted ceiling, in segments (60s each -- see the t >= 59500
     // cutoff above; the two only line up 1:1 while a segment stays 60s). 0 is the settings row's Unlimited
-    // sentinel; translated to MAX_VALUE here and only here, so the three comparisons above and below never
-    // special-case it. The minimum selectable value in settings is 2 -- a ceiling of 1 would leave
-    // infiniteVideoSegments < ceiling - 1 permanently false, i.e. a toggle that turns on and does nothing.
+    // sentinel, and only 0 -- translated to MAX_VALUE here and only here, so the three comparisons above and
+    // below never special-case it. The minimum selectable value in settings is 2 -- a ceiling of 1 would leave
+    // infiniteVideoSegments < ceiling - 1 permanently false, i.e. a toggle that turns on and does nothing --
+    // so any other out-of-range value (negative, or 1 from a corrupted pref) is floored to that same 2,
+    // rather than silently read as Unlimited or as a broken ceiling.
     private int getInfiniteVideoMaxSegments() {
         int ceiling = NaConfig.INSTANCE.getInfiniteRecordingCeiling().Int();
-        return ceiling <= 0 ? Integer.MAX_VALUE : ceiling;
+        return ceiling == 0 ? Integer.MAX_VALUE : Math.max(ceiling, 2);
     }
 
     // NagramX: infinite video message: what the button on the camera overlay shows. The last allowed segment
