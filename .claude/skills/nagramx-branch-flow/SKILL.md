@@ -463,14 +463,30 @@ the assertion fails immediately, before any guard classification even runs.
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
    own. Leave `.github/sync/pins.env` untouched in this PR. Merge it.
 
-   **Resolving the conflicts: anything listed in `.github/sync/protected-paths.tsv`
-   is resolved pure-ours — never merged.** Those ~50 entries (the signing key,
-   Firebase config, branding, the launcher icons, and the `.attheme` themes
-   including `monet_dark`, `monet_light` and `amoled`) are defined by
+   **Anything listed in `.github/sync/protected-paths.tsv` ends the merge
+   pure-ours — never merged.** Those ~50 entries (the signing key, Firebase
+   config, branding, the launcher icons, and the `.attheme` themes including
+   `monet_dark`, `monet_light` and `amoled`) are defined by
    `.github/sync/README.md` as fork-owned paths that must stay **byte-identical to
-   `dev`**, and the guard blocks on any of them moving. Taking even one
-   upstream-only line into such a file makes its pin stale and trips
-   `PROTECTED PINS STALE`. **Do not "fix" that by repinning.** The guard's
+   `dev`**, and the guard blocks on any of them moving.
+
+   **This is not conflict-only guidance — the dangerous case is the one git
+   never flags.** A protected file that upstream also touched can be
+   *auto-merged cleanly*, with no conflict marker and nothing to resolve, and
+   still come out non-identical to `dev`. `.attheme` files are plain `key=value`
+   text, so they merge silently and successfully; that is exactly how
+   `monet_dark` drifted once. So the check is on the **merge outcome, not the
+   conflict list**: after resolving, verify every protected path against `dev`
+   and restore any that moved, whether or not git asked you about it.
+
+       git diff --name-only origin/dev -- $(tail -n +2 .github/sync/protected-paths.tsv | cut -f1)
+
+   Anything that prints is a protected file the merge changed; restore it with
+   `git checkout origin/dev -- <path>`. An empty result is the only passing
+   state.
+
+   Taking even one upstream-only line into such a file makes its pin stale and
+   trips `PROTECTED PINS STALE`. **Do not "fix" that by repinning.** The guard's
    suggestion to repin is aimed at a feature branch that deliberately restyles a
    protected asset; inside a sync it would launder upstream content into a
    fork-owned file and defeat the protection. Repin only when dazewell has
