@@ -294,7 +294,7 @@ jobs:
             if ($violations.Count -gt 0) { $violations >> $env:GITHUB_OUTPUT }
             "GUARD_EOF" >> $env:GITHUB_OUTPUT
             "violation_count=$($violations.Count)" >> $env:GITHUB_OUTPUT
-            Write-Host "::error::guard blocked the candidate (exit $code). Pushing nothing."
+            Write-Host "::error::guard blocked the candidate (exit $code). dev/nbase not pushed."
             exit $code
           }
 
@@ -521,7 +521,7 @@ jobs:
           PC: git fetch origin '+refs/sync/*:refs/sync/*' && git merge ${SNAPSHOT_REF}"
             fi
 
-            TEXT="⚠️ Dazegram sync blocked (${REASON}). Nothing pushed.
+            TEXT="⚠️ Dazegram sync blocked (${REASON}). dev/nbase not pushed.
           PRE: ${PRE:-unknown}
           anchor: ${ANCHOR:-unknown}
           source: ${NEW_SRC:-unresolved}${SNAP_DETAIL}${DETAIL}

@@ -96,11 +96,11 @@ transitional red window: the 12.10.1 reconciliation has fully landed.
 
 ## When it blocks: the published snapshot ref
 
-`sync-upstream.yml` pushes nothing on a block — that part never changes. But a
-block that reaches the snapshot step (i.e. not a token failure and not the
-no-op fast path) also publishes that snapshot commit to a scratch ref, so the
-PC starts reconciliation from the snapshot instead of reconstructing it by
-hand with `git commit-tree`:
+`sync-upstream.yml` never pushes to `dev` or `nbase` on a block — that part
+never changes. But a block that reaches the snapshot step (i.e. not a token
+failure and not the no-op fast path) publishes that snapshot commit to a
+scratch ref, so the PC starts reconciliation from the snapshot instead of
+reconstructing it by hand with `git commit-tree`:
 
 ```powershell
 git fetch origin '+refs/sync/*:refs/sync/*'
