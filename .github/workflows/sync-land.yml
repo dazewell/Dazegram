@@ -91,11 +91,6 @@ jobs:
           persist-credentials: true
           token: ${{ secrets.SYNC_TOKEN }}
 
-      - name: Configure local git identity
-        run: |
-          git config user.name  "dazegram-sync"
-          git config user.email "sync@dazegram.local"
-
       - name: Load pins from the trusted PRE
         id: pins
         run: |
@@ -110,7 +105,18 @@ jobs:
             echo "nagram_repo=$(need NAGRAM_REPO)"
             echo "nagram_branch=$(need NAGRAM_BRANCH)"
             echo "old_nbase_pin=$(need OLD_NBASE)"
+            echo "sync_identity_name=$(need SYNC_IDENTITY_NAME)"
+            echo "sync_identity_email=$(need SYNC_IDENTITY_EMAIL)"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Configure local git identity from pins
+        run: |
+          set -e
+          # pins.env is the single source of truth for the sync identity; the guard's
+          # land check asserts the snapshot carries it, so the pins-PR commit must use
+          # the same values rather than a second hardcoded copy that could drift.
+          git config user.name  "${{ steps.pins.outputs.sync_identity_name }}"
+          git config user.email "${{ steps.pins.outputs.sync_identity_email }}"
 
       - name: nbase must exist (deletion protection)
         run: |
