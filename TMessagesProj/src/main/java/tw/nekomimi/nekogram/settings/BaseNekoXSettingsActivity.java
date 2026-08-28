@@ -508,8 +508,16 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
                 case CellGroup.ITEM_TYPE_TEXT -> new TextInfoPrivacyCell(mContext);
                 case CellGroup.ITEM_TYPE_TEXT_CHECK_ICON -> new TextCell(mContext);
                 // NagramX: leftPadding 21 to match TextSettingsCell's neighbouring rows in this screen
-                // (TextCell's own default is 23) -- see ConfigCellSelectBox's subtitle path
-                case CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE -> new TextCell(mContext, 21, false, false, null);
+                // (TextCell's own default is 23) -- see ConfigCellSelectBox's subtitle path. TextCell paints
+                // no background of its own -- the rows above get theirs from this fragment's
+                // FLAG_CELLBACKGROUNDCOLOR ThemeDescription (below), whose Class[] doesn't list TextCell --
+                // so set it explicitly here, same as BaseNekoSettingsActivity's own TextCell row does
+                // (BaseNekoSettingsActivity.java:376-377).
+                case CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE -> {
+                    TextCell cell = new TextCell(mContext, 21, false, false, null);
+                    cell.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
+                    yield cell;
+                }
                 default -> null;
             };
         }
