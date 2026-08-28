@@ -10,10 +10,10 @@
     <string name="VideoMessagesHalSmoothZoomSupported">Smooth zoom is supported on this device</string>
     <string name="VideoMessagesHalSmoothZoomUnsupported">This device doesn\'t support hardware smooth zoom, the usual zoom is kept</string>
     <string name="VideoMessagesHalSmoothZoomCheckFailed">Couldn\'t check the camera right now, try again with the camera closed</string>
-    <string name="VideoMessagesWarningVibration">Recording limit warning buzz</string>
-    <string name="VideoMessagesWarningVibrationNotice">Buzzes 5 seconds before cutoff.</string>
-    <string name="VideoMessagesCutVibration">Recording limit cutoff buzz</string>
-    <string name="VideoMessagesCutVibrationNotice">Buzzes the moment the limit hits.</string>
+    <string name="VideoMessagesWarningVibration">Video message warning buzz</string>
+    <string name="VideoMessagesWarningVibrationNotice">Buzzes 5 seconds before it ends.</string>
+    <string name="VideoMessagesCutVibration">Video message cutoff buzz</string>
+    <string name="VideoMessagesCutVibrationNotice">Buzzes the moment it ends.</string>
     <string name="InfiniteRecordingCeiling">Infinite Recording cap</string>
     <string name="InfiniteRecordingCeilingNotice">How long it can keep going.</string>
     <string name="InfiniteRecordingCeiling10Min">10 minutes</string>
