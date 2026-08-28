@@ -276,10 +276,23 @@ jobs:
             *>&1 | Tee-Object -FilePath $log
           $code = $LASTEXITCODE
           if ($code -ne 0) {
-            # The guard reports each violation as "  - <reason>" (see the
-            # "BLOCKED — N guard violation(s):" block in sync-guard.ps1). Extract
-            # those lines rather than echoing the raw log.
-            $violations = @(Get-Content $log | Where-Object { $_ -match '^\s*-\s+\S' } | ForEach-Object { $_.Trim().TrimStart('-').Trim() })
+            # Extract only the bullets under the guard's own "BLOCKED — N guard
+            # violation(s):" header, not any bullet in the log — sync-guard.ps1
+            # prints the same "  - <reason>" shape for unrelated failures too
+            # (PINS INCOMPLETE, PROTECTED PINS STALE), and those are not guard
+            # violations against the candidate; grabbing every bullet would
+            # misreport those reasons as classified violations here and in the
+            # Telegram ping. Scan for the violation header, then take bullets
+            # until the guard's blank line after the block ends it.
+            $violations = @()
+            $inViolationBlock = $false
+            foreach ($line in (Get-Content $log)) {
+              if ($line -match 'guard violation\(s\):\s*$') { $inViolationBlock = $true; continue }
+              if ($inViolationBlock) {
+                if ($line -match '^\s*-\s+\S') { $violations += $line.Trim().TrimStart('-').Trim() }
+                else { $inViolationBlock = $false }
+              }
+            }
             # @(...), not a bare {...} script block: a script block is not invoked
             # by redirection alone (it would print its literal text), while an
             # array expression evaluates and flattens each statement's output.
