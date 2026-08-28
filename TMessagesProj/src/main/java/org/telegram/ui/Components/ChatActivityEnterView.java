@@ -8976,6 +8976,17 @@ public class ChatActivityEnterView extends FrameLayout implements
             return true;
         }
         if (isInScheduleMode()) {
+            // NagramX: infinite video message: a scheduled infinite segment already has its slot -- send it
+            // straight at that time instead of asking again. The infiniteVideoMessage term keeps a stale base
+            // from a prior recording from rerouting an ordinary scheduled round video (which has none armed);
+            // slot != 0 stays load-bearing because the sheet's cancel runnable deliberately leaves
+            // infiniteVideoMessage set. Direct return matches the plain else below, leaving no preview undismissed.
+            if (videoToSendMessageObject != null && infiniteVideoMessage) {
+                final int slot = infiniteSegmentScheduleDate(infiniteVideoSegments);
+                if (slot != 0) {
+                    return sendMessageInternal(infiniteVideoNotify, slot, 0, 0, true);
+                }
+            }
             AlertsCreator.createScheduleDatePickerDialog(parentActivity, parentFragment.getDialogId(), new AlertsCreator.ScheduleDatePickerDelegate() {
                 @Override
                 public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
@@ -18462,6 +18473,49 @@ public class ChatActivityEnterView extends FrameLayout implements
             pendingCameraFront = null;
             return;
         }
+        // NagramX: infinite video message: in a scheduled chat, ask for segment 0's send time before the
+        // camera starts, so the 60s segment clock cannot tick behind the open sheet. The rest of the
+        // recording start becomes the sheet's confirm continuation; dismissing it disarms via the cancel
+        // runnable. Gated on infiniteVideoMessage, which the Ask popup toggled on just before this ran, so
+        // it only fires in Ask mode -- the overlay toggle stays hidden in schedule mode.
+        if (isInScheduleMode() && infiniteVideoMessage) {
+            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.showScheduleSheet(
+                    parentActivity, dialog_id,
+                    (notify, scheduleDate) -> {
+                        // The single writer of the base. Anything that is not a plain future date -- a past
+                        // time, a cleared value, or the 0x7ffffffe "send when online" sentinel (a live send
+                        // that also overflows int once spaced +120s) -- leaves the base at 0 and disarms
+                        // infinite, degrading to an ordinary scheduled round video that gets the picker at the end.
+                        if (scheduleDate <= 0 || scheduleDate >= 0x7ffffffe) {
+                            infiniteVideoBaseDate = 0;
+                            infiniteVideoMessage = false;
+                        } else {
+                            infiniteVideoBaseDate = scheduleDate;
+                            infiniteVideoNotify = notify;
+                        }
+                        // delegate/parentActivity can go null while the sheet sits open; the guards above ran
+                        // before it, so re-check before touching them in the continuation.
+                        if (delegate == null || parentActivity == null) {
+                            pendingCameraFront = null;
+                            return;
+                        }
+                        startVideoRecordingSession();
+                    },
+                    () -> {
+                        pendingCameraFront = null;
+                        // load-bearing on the attach-menu path (it does not clear this before showing the
+                        // popup, unlike the long-press path); redundant but harmless on the long-press path.
+                        calledRecordRunnable = false;
+                        infiniteVideoBaseDate = 0;
+                        infiniteVideoNotify = true;
+                    },
+                    resourcesProvider);
+            return;
+        }
+        startVideoRecordingSession();
+    }
+
+    private void startVideoRecordingSession() {
         isInVideoMode = true;
         setMessageEditExpanded(false); // NagramX: same reason as in recordAudioVideoRunnable, this path skips it in camera-ask mode
         // initialize state that would have been set in recordAudioVideoRunnable
@@ -18501,21 +18555,30 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX: infinite video message: the scheduled send time for the segment at segmentIndex, or 0 when this
     // is not a scheduled infinite recording. Computed on the UI thread at dispatch and passed by value into
     // SendOptions, so the send path never reads a mutable field after the dispatch that armed it. 0 while no
-    // base is captured, which is every recording until commit 3 wires the sheet.
+    // base is captured, which stays the case in a live (non-scheduled) chat and until the sheet captures one.
     private int infiniteSegmentScheduleDate(int segmentIndex) {
         if (infiniteVideoBaseDate == 0) {
             return 0;
         }
-        return infiniteVideoBaseDate + 120 * segmentIndex;
+        return com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.segmentDate(currentAccount, infiniteVideoBaseDate, segmentIndex);
+    }
+
+    // NagramX: infinite video message: the gates that make a segment sendable unattended, minus the schedule
+    // term. The Ask popup's toggle row uses this: at that point no base has been captured yet, so the schedule
+    // term below cannot be evaluated, and offering the toggle is precisely what leads to capturing one.
+    private boolean canOfferInfiniteVideo() {
+        return slowModeTimer <= 0 && !voiceOnce
+                && !DialogObject.isEncryptedDialog(dialog_id)
+                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
     }
 
     // NagramX: infinite video message: the conditions under which a segment can be sent without the
-    // user looking at it. Checked when the toggle is offered and again at every rollover, because
-    // view-once can be armed and a slow mode countdown can start while the recording is still running.
+    // user looking at it. Checked at every rollover, because view-once can be armed and a slow mode
+    // countdown can start while the recording is still running. In a scheduled chat a segment can only
+    // roll over once a base time has been captured -- without one it would reach the send path with
+    // scheduleDate 0 and go out live, so gate the scheduled case on the base existing.
     private boolean isInfiniteVideoAvailable() {
-        return !isInScheduleMode() && slowModeTimer <= 0 && !voiceOnce
-                && !DialogObject.isEncryptedDialog(dialog_id)
-                && !AlertsCreator.needsPaidMessageAlert(currentAccount, dialog_id);
+        return canOfferInfiniteVideo() && (!isInScheduleMode() || infiniteVideoBaseDate != 0);
     }
 
     // NagramX: infinite video message: the persisted ceiling, in segments. 0 is the settings row's Unlimited
@@ -18530,9 +18593,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     }
 
     // NagramX: infinite video message: what the button on the camera overlay shows. The last allowed segment
-    // reads as unavailable because there is no rollover left to arm.
+    // reads as unavailable because there is no rollover left to arm. The overlay toggle stays hidden in a
+    // scheduled chat -- v1 arms scheduled infinite recording only through the Ask popup, never the overlay.
     public int getInfiniteRecordingState() {
-        if (!isInfiniteVideoAvailable() || infiniteVideoSegments >= getInfiniteVideoMaxSegments() - 1) {
+        if (isInScheduleMode() || !isInfiniteVideoAvailable() || infiniteVideoSegments >= getInfiniteVideoMaxSegments() - 1) {
             return InstantCameraView.INFINITE_RECORDING_UNAVAILABLE;
         }
         return infiniteVideoMessage ? InstantCameraView.INFINITE_RECORDING_ON : InstantCameraView.INFINITE_RECORDING_OFF;
@@ -18656,8 +18720,10 @@ public class ChatActivityEnterView extends FrameLayout implements
 
         // NagramX: infinite video message toggle. Deliberately not persisted: it keeps sending until you
         // stop, so it has to be an explicit choice every time. Dead where a segment couldn't be sent
-        // unattended anyway (slow mode, paid messages, scheduling, view-once).
-        final boolean infiniteAvailable = isInfiniteVideoAvailable();
+        // unattended anyway (slow mode, paid messages, view-once). Offered in a scheduled chat too --
+        // that is the only place scheduled infinite recording can be armed, and toggling it on is what
+        // makes proceedWithVideoRecording() ask for the first segment's time.
+        final boolean infiniteAvailable = canOfferInfiniteVideo();
         Switch infiniteSwitch = new Switch(getContext(), resourcesProvider);
         infiniteSwitch.setColors(Theme.key_switchTrack, Theme.key_switchTrackChecked, Theme.key_windowBackgroundWhite, Theme.key_windowBackgroundWhite);
         infiniteSwitch.setChecked(infiniteVideoMessage, false);

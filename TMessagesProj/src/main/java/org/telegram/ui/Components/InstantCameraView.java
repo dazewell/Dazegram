@@ -3722,7 +3722,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         videoEditedInfo.originalPath = videoFile.getAbsolutePath();
                         final VideoEditedInfo info = videoEditedInfo;
                         if (send == ENCODER_SEND_SEND) {
-                            if (delegate.isInScheduleMode()) {
+                            // NagramX: infinite video message: a scheduled segment arrives with its slot already
+                            // frozen into sendOptions, so skip the picker and send it directly at that time (the
+                            // else branch consumes sendOptions.scheduleDate). Ordinary scheduled round video still
+                            // has scheduleDate 0 here and gets the picker. A scheduled infinite ceiling-stop passes
+                            // this point twice (state 4 via the preview send), and both passes take the else branch.
+                            if (delegate.isInScheduleMode() && (sendOptions == null || sendOptions.scheduleDate == 0)) {
                                 AlertsCreator.createScheduleDatePickerDialog(delegate.getParentActivity(), delegate.getDialogId(), (notify, scheduleDate, scheduleRepeatPeriod) -> {
                                     MediaController.PhotoEntry entry = new MediaController.PhotoEntry(0, 0, 0, videoFile.getAbsolutePath(), 0, true, 0, 0, 0);
                                     if (sendOptions != null) {
