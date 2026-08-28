@@ -225,7 +225,7 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 ### Tab indicator outline <!-- #tab-style -->
 
-The active tab indicator can be drawn as a thin outline that traces the tab's text colour instead of the default filled pill. Turn on *Tab indicator outline* in Nagram Settings > General, under the folder tab options. It's off by default, so tabs keep the filled look unless you switch it on.
+The active tab indicator can be drawn with a thin outline in the tab's text colour over a translucent fill, instead of the solid filled pill. Turn on *Tab indicator outline* in Nagram Settings > General, under the folder tab options. It's off by default, so tabs keep the solid fill unless you switch it on.
 
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
