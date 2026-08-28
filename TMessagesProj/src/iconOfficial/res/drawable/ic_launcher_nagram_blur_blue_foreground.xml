@@ -5,17 +5,13 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
   <path
-      android:pathData="M153,153 L153,359"
-      android:strokeWidth="45"
-      android:fillColor="#00000000"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round">
-    <aapt:attr name="android:strokeColor">
+      android:pathData="M139.4,263.5L225.4,225.8L292.1,284.5L294.0,195.6L370.7,162.0L331.2,350.0L261.6,299.2L222.2,329.3L222.2,272.9Z">
+    <aapt:attr name="android:fillColor">
       <gradient
           android:startX="256"
-          android:startY="130.5"
+          android:startY="162.0"
           android:endX="256"
-          android:endY="381.5"
+          android:endY="350.0"
           android:type="linear">
         <item android:offset="0" android:color="#FFFFFFFF"/>
         <item android:offset="1" android:color="#FF9FD0FF"/>
@@ -23,35 +19,6 @@
     </aapt:attr>
   </path>
   <path
-      android:pathData="M153,153 C 290.5,153 359,197.3 359,256 C 359,314.7 290.5,359 233.6,359"
-      android:strokeWidth="45"
-      android:fillColor="#00000000"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round">
-    <aapt:attr name="android:strokeColor">
-      <gradient
-          android:startX="256"
-          android:startY="130.5"
-          android:endX="256"
-          android:endY="381.5"
-          android:type="linear">
-        <item android:offset="0" android:color="#FFFFFFFF"/>
-        <item android:offset="1" android:color="#FF9FD0FF"/>
-      </gradient>
-    </aapt:attr>
-  </path>
-  <path
-      android:pathData="M153,153 L153,359"
-      android:strokeWidth="17"
-      android:fillColor="#00000000"
-      android:strokeColor="#4DFFFFFF"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"/>
-  <path
-      android:pathData="M153,153 C 290.5,153 359,197.3 359,256 C 359,314.7 290.5,359 233.6,359"
-      android:strokeWidth="17"
-      android:fillColor="#00000000"
-      android:strokeColor="#4DFFFFFF"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round"/>
+      android:pathData="M292.1,284.5L294.0,195.6L370.7,162.0L331.2,350.0L261.6,299.2Z"
+      android:fillColor="#2E000000"/>
 </vector>
