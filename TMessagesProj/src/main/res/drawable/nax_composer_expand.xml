@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- NagramX: wide double chevron, wings pulling apart to grow the input. Replaces a corner-bracket
+     glyph that read as a near-twin of nax_formatting_select_all.xml in the same toolbar row.
+
+     Built on the outgoing glyph's own 4/9/15/20 grid so the bounding box lands identical to it,
+     which is why the row's iconScale(EXPAND, ...) entry in ComposerButtons.java needs no change.
+     Its collapsed twin is nax_composer_collapse.xml, matched to the same figures on purpose so the
+     button does not change apparent size when it toggles.
+
+     Measured: 11.16% ink, bounding box 73.44 x 73.44% of the canvas, ink centre 50.00 / 50.00. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
@@ -6,7 +15,7 @@
     android:viewportHeight="24">
     <path
         android:fillColor="@android:color/transparent"
-        android:pathData="M4,9 L4,4 L9,4 M15,4 L20,4 L20,9 M20,15 L20,20 L15,20 M9,20 L4,20 L4,15"
+        android:pathData="M4,9 L12,4 L20,9 M4,15 L12,20 L20,15"
         android:strokeColor="#ff000000"
         android:strokeWidth="1.6"
         android:strokeLineCap="round"

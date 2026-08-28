@@ -210,7 +210,7 @@ public final class ComposerButtons {
         iconScale(AI, 1.1782f);         // 12.92% ink, 70.70 x 68.07 - AiButtonDrawable, not input_ai_star
         iconScale("italic", 1.3521f);   // 12.58% ink, 54.20 x 58.40
         iconScale("spoiler", 1.3554f);  // 12.52% ink, 60.64 x 58.40
-        iconScale(EXPAND, 1.1343f);     // 12.41% ink, 73.44 x 73.44
+        iconScale(EXPAND, 1.1343f);     // 11.16% ink, 73.44 x 73.44
         iconScale("code", 1.1482f);     // 10.62% ink, 77.73 x 62.50 - held by the area floor
         iconScale("mono", 1.1031f);     // 10.39% ink, 83.40 x 50.00 - held by the width cap
         iconScale(RICH, 1.2731f);       // 10.18% ink, 65.43 x 65.43

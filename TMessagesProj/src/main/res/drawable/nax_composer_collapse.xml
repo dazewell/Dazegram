@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- NagramX: wide double chevron, wings pinching together to shrink the input back down. This is
+     the expanded-state twin of nax_composer_expand.xml - together they are the two faces of the one
+     ExpandMessageField/CollapseMessageField button at ChatActivityEnterView.java:7315.
+
+     Forked as a new fork-owned asset rather than redrawing baseline_fullscreen_exit_24.xml in place:
+     that file is upstream-owned and byte-identical between nagram/main and origin/base, and this fork
+     forks an asset only to move ink, never redraws one that already ships correctly for its own sake.
+
+     Deliberately matched to the same 4/9/15/20 grid and figures as nax_composer_expand.xml so the
+     button does not change apparent size when it toggles between the two states.
+
+     Measured: 11.16% ink, bounding box 73.44 x 73.44% of the canvas, ink centre 50.00 / 50.00. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4,4 L12,9 L20,4 M4,20 L12,15 L20,20"
+        android:strokeColor="#ff000000"
+        android:strokeWidth="1.6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
