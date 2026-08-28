@@ -128,6 +128,75 @@ The self-test proves all three directions, including the equal-tree-but-stale-pi
 regression, so `-SelfTestOnly` (step 1 of every `sync-guard-check` run) fails if
 the decision ever stops discriminating them.
 
+## Landing a reconciliation (`sync-land.yml`)
+
+When `sync-upstream` blocks, the reconciliation is finished by hand on the PC and
+then **landed in three ordered steps**: (1) a human PR merges the resolved merge
+into `dev`; (2) `origin/nbase` is fast-forwarded onto the reconciliation snapshot;
+(3) a PR advances the anchor pins in `pins.env`. The manually-dispatched
+`sync-land.yml` automates steps 2 and 3 — the operator's job becomes merge the
+reconciliation PR, press one button, review and merge one auto-drafted pins PR.
+
+**The three steps still cannot collapse into one, and the automation does not
+change that.** `sync-guard-check` unconditionally fetches the live `origin/nbase`
+and asserts it equals the `OLD_NBASE` pinned in the candidate's own `pins.env`.
+`origin/nbase` cannot move until the reconciliation is on `dev`, and the pins PR
+cannot be green until `origin/nbase` has moved, so no single-PR ordering is ever
+green. `sync-land` preserves that ordering; it removes only the hand git.
+
+The **anchor still advances only by a reviewed `pins.env` edit** (see The anchor,
+above) — `sync-land` drafts that edit, it does not bypass the review. What it adds
+is that the review is now backed by machine-verified evidence rather than three
+opaque hex strings, and the pins PR is genuinely gated:
+
+- **`sync-guard.ps1 -LandCheckOnly` runs before any ref moves.** The two obvious
+  ancestry facts — old `nbase` is an ancestor of the snapshot, and the snapshot is
+  reachable from `dev` — both pass for a snapshot whose *tree was hand-edited
+  during reconciliation* (conflicts resolved into the snapshot instead of into
+  `dev`). Such a snapshot's tree is no longer byte-identical to any upstream
+  commit, so every future 3-way merge base would be wrong, silently, forever —
+  the one failure mode where careless automation could make a wrong land *easier*
+  than the manual dance. So the mode re-derives, **live from `NAGRAM_REPO`**, the
+  upstream commit whose tree the snapshot copies, and asserts: exactly one parent
+  equal to the live `nbase`; the snapshot is the only commit `rev-list`ed over the
+  old `nbase`; `snapshot^{tree}` equals that upstream commit's tree; the upstream
+  commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC` really is
+  `nbase`'s current tree (the anchor-tree identity nothing else checks); and the
+  snapshot's author **and** committer are the sync identity (`SYNC_IDENTITY_NAME` /
+  `SYNC_IDENTITY_EMAIL`, reusing the same attribution scan as the steady-state
+  guard). These live in `sync-guard.ps1` behind one self-tested mode, so there is
+  no second, weaker copy of snapshot-ancestry logic in a workflow to drift out of
+  step. The mode writes its evidence to a file that the workflow prints into the
+  pins PR body.
+- **The pins PR is created with `SYNC_TOKEN`, never `GITHUB_TOKEN`.** A PR opened
+  by the built-in token does not trigger `pull_request` workflows, so
+  `sync-guard-check` would be *missing* on it — and an absent required check is
+  indistinguishable from a passing one. The whole safety argument for the pins PR
+  is that `sync-guard-check` still gates it, so `sync-land` polls and asserts that
+  check actually reported on the PR head SHA before it declares the PR ready, and
+  fails closed if it never reports within the timeout. This anchor-tree identity
+  check stays in `sync-land.yml` and is deliberately **not** added to
+  `sync-guard-check.yml`, which points its `nagram` remote at an unreachable URL
+  to prove it never contacts upstream.
+- **Shared `sync-refs` concurrency and a re-lease before the push.** `sync-land`
+  and `sync-upstream` share one `concurrency: sync-refs` lane. `sync-land` also
+  re-reads `origin/nbase` immediately before pushing and aborts unless it still
+  equals the value the land check verified against, so a phone tap that mints a
+  snapshot on the old `nbase` mid-land fails safe. The push is non-force with an
+  explicit refspec (`<snap>:refs/heads/nbase`); `dev` is never a push target.
+
+It is **idempotent**: if `origin/nbase` already equals the snapshot the
+fast-forward is skipped (success, not error); if the pins branch or its open PR
+already exists they are reused rather than duplicated; `nbase` is never
+force-pushed. So the realistic partial failure — fast-forward lands, PR creation
+trips — is fixed by pressing the button again. The snapshot is read from
+`refs/sync/snapshot-<srcshort>` by default (a non-branch ref namespace that fires
+no Actions runs), or from an explicit `snapshot=<sha>` input for a fully-hand
+reconciliation. `SYNC_TOKEN` needs **Contents: write + Workflows: write** (the
+snapshot tree carries `.github/workflows/`) **+ Pull requests: write**.
+`sync-land.yml` is in `SELF_PROTECT`, so an incoming snapshot can never rewrite
+the workflow that holds this credential.
+
 ## Files
 
 | File | Purpose |
@@ -135,7 +204,7 @@ the decision ever stops discriminating them.
 | `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
 | `workflow-manifest.tsv` | The approved `.github/workflows` set the snapshot may carry (Nagram's `debug`/`pr`/`release`). Any addition or change blocks. |
-| `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. |
+| `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. Also runs the pre-land snapshot check for `sync-land.yml` (`-LandCheckOnly`). |
 
 ## What the guard checks per sync — and what it cannot
 

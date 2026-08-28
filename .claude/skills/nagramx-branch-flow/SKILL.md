@@ -428,36 +428,60 @@ gh workflow run sync-upstream.yml --repo dazewell/Dazegram
 ```
 If the guard blocks — a new upstream path, a fork-sensitive double-modified file,
 a conflict — it pushes nothing and pings Telegram. Finish that reconciliation on
-the PC by hand, then land it in three ordered steps: a PR, a fast-forward, then a
-second PR. Folding the anchor advance into the reconciliation PR — or otherwise
-advancing `.github/sync/pins.env` before step 2 has actually moved
-`origin/nbase` — is a guaranteed red `sync-guard-check`: its fixture
-unconditionally fetches the live `origin/nbase` and asserts it equals the
-`OLD_NBASE` pinned in the candidate's own `pins.env`; advance that pin first and
-the assertion fails immediately, before any guard classification even runs.
+the PC by hand. Landing it is still **three ordered steps** — a PR, a
+fast-forward, then a second PR — but only step 1 is hand work now: steps 2 and 3
+are automated by `sync-land.yml`, so the shape is two buttons, not hand git.
+
+The three steps cannot collapse into one, and that constraint is unchanged by the
+automation. Folding the anchor advance into the reconciliation PR — or otherwise
+advancing `.github/sync/pins.env` before `origin/nbase` has actually moved — is a
+guaranteed red `sync-guard-check`: it unconditionally fetches the live
+`origin/nbase` and asserts it equals the `OLD_NBASE` pinned in the candidate's own
+`pins.env`. `origin/nbase` cannot move until the reconciliation is on `dev`, and
+the pins PR cannot be green until `origin/nbase` has moved, so no single-PR
+ordering is ever green. The automation keeps that ordering; it only removes the
+hand git from steps 2 and 3.
 
 1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
-   own. Leave `.github/sync/pins.env` untouched in this PR. Merge it.
-2. **Fast-forward `origin/nbase`** to the reconciliation's snapshot commit,
-   non-force. Verify first that the old `nbase` tip is an ancestor of the
-   snapshot *and* the snapshot is reachable from `dev`; only then push. This
-   must happen before step 3 — it's what the guard's fixture reads.
-3. **Cut a branch from post-merge `dev`** (after step 1 landed, not the
-   pre-merge tip) and advance the anchor values in `.github/sync/pins.env`
-   there. PR it, confirm `sync-guard-check` is green, merge. Branching from the
-   pre-merge tip instead reproduces the reconciliation's own files as
-   `UNCLASSIFIED` plus a `guard14: unexpected commit imported`, because that
-   branch's `dev` history is missing the reconciliation commit the new anchor
-   now expects.
+   own. Leave `.github/sync/pins.env` untouched in this PR. Merge it. (Human. This
+   step stays a human PR.)
+2. **and 3. Dispatch `sync-land.yml`** — the one button that does the rest:
+   ```powershell
+   gh workflow run sync-land.yml --repo dazewell/Dazegram
+   ```
+   It fast-forwards `origin/nbase` onto the reconciliation snapshot (step 2,
+   non-force), then opens a PR that advances the anchor pins (step 3). It reads
+   the snapshot from `refs/sync/snapshot-<srcshort>` (published there by the
+   blocked sync run) by default; pass `-f snapshot=<sha>` when the reconciliation
+   was done fully by hand and no such ref exists. Before it moves any ref it runs
+   `sync-guard.ps1 -LandCheckOnly`, which re-derives — live from upstream — the
+   commit whose tree the snapshot copies and blocks unless the snapshot is a
+   faithful, locally-authored, anchor-descended copy that fast-forwards the live
+   `nbase`. It never pushes `dev` and never force-pushes. Then **review and merge
+   the one auto-drafted pins PR**: it is created with `SYNC_TOKEN` so
+   `sync-guard-check` actually runs on it, and the run asserts that check reported
+   before it declares the PR ready. The PR body prints the evidence (the resolved
+   upstream commit, its tree, the snapshot tree, and the equality verdict) so
+   review confirms shown facts instead of rubber-stamping hex.
 
-Between step 2 landing and step 3 landing, expect a red `sync-guard-check` on
-every branch and PR that still names the old anchor in its `pins.env` — that's
-everything except the step-3 branch itself once it makes that edit — because
-`dev`'s pins still name the old anchor while `origin/nbase` has already moved
-past it. That's the known shape of the gap, not a break — keep the window short
-and don't trigger the phone sync while it's open. **Never** fast-forward the
-`base` branch into `dev`: that path is retired and bypasses the guard entirely.
+The workflow is idempotent — safe to re-run after a partial failure. If
+`origin/nbase` already equals the snapshot it skips the fast-forward; if the pins
+branch or its PR already exists it reuses them rather than making a second. So the
+realistic partial failure (fast-forward lands, PR creation trips) is fixed by
+pressing the button again, not by hand surgery.
+
+Between the fast-forward landing and the pins PR merging, expect a red
+`sync-guard-check` on every branch and PR that still names the old anchor in its
+`pins.env` — everything except the pins PR itself — because `dev`'s pins still
+name the old anchor while `origin/nbase` has already moved past it. That's the
+known shape of the gap, not a break; the automation shrinks it from "whenever
+someone writes the pins PR" to minutes. Don't trigger the phone sync while it's
+open — `sync-land` and `sync-upstream` share one `sync-refs` concurrency lane and
+`sync-land` re-leases `origin/nbase` immediately before its push, so a concurrent
+tap fails safe rather than corrupting the land, but there is no reason to invite
+it. **Never** fast-forward the `base` branch into `dev`: that path is retired and
+bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
 Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
@@ -538,6 +562,51 @@ secret (a fine-grained PAT with **Contents: write + Workflows: write** on
 `dazewell/Dazegram`) and fails loudly if it is missing, rather than degrading to
 `GITHUB_TOKEN`. If a sync fails on the push with `without 'workflows' permission`,
 `SYNC_TOKEN` is missing or under-scoped — fix the secret.
+
+### Landing a reconciliation (`sync-land.yml`)
+When `sync-upstream` blocks and the reconciliation is finished by hand on the PC,
+this manually-dispatched workflow automates steps 2 and 3 of the land (see "Sync
+onto a new upstream" above). One button fast-forwards `origin/nbase` onto the
+reconciliation snapshot and opens the anchor-advance pins PR; the operator reviews
+and merges that one PR. No inputs are required — it reads the snapshot from
+`refs/sync/snapshot-<srcshort>` by default — but it accepts an explicit
+`snapshot=<sha>` for a fully-hand reconciliation with no such ref.
+
+Its safety rests on three things, all fail-closed:
+- **`sync-guard.ps1 -LandCheckOnly` before any ref moves.** The two obvious
+  ancestry facts (old `nbase` is an ancestor of the snapshot; the snapshot is
+  reachable from `dev`) both pass for a snapshot whose *tree was hand-edited during
+  reconciliation* — and that snapshot's tree would no longer be byte-identical to
+  any upstream commit, so every future 3-way merge would compute the wrong delta,
+  silently, forever. So the mode additionally re-derives, live from upstream, the
+  commit whose tree the snapshot copies, and asserts: exactly one parent equal to
+  the live `nbase`; the snapshot is the only commit `rev-list`ed over the old
+  `nbase`; the snapshot tree equals that upstream commit's tree; the upstream
+  commit descends from the pinned `ANCHOR_SRC`; the pinned `ANCHOR_SRC` really is
+  `nbase`'s current tree; and the snapshot's author *and* committer are the sync
+  identity. It shares one self-tested implementation with the rest of the guard,
+  so there is no second, weaker copy of that logic to drift.
+- **The pins PR is created with `SYNC_TOKEN`, never `GITHUB_TOKEN`.** A PR opened
+  by the built-in token does not trigger `pull_request` workflows, so
+  `sync-guard-check` would be *missing* on it — and an absent required check reads
+  the same as a passing one. The whole point of the pins PR is that
+  `sync-guard-check` still gates it, so the workflow polls and asserts that check
+  reported on the PR head before it declares the PR ready, and fails closed if it
+  never does. The PR body prints the land-check evidence so review confirms shown
+  facts, not opaque hex.
+- **Shared `sync-refs` concurrency and a re-lease before the push.** `sync-land`
+  and `sync-upstream` share one `concurrency: sync-refs` lane, and `sync-land`
+  re-reads `origin/nbase` immediately before pushing and aborts unless it still
+  equals the value the land check verified — so a phone-tapped sync in the land
+  window fails safe instead of getting overwritten. The push is non-force with an
+  explicit refspec; `dev` is never a target.
+
+It is idempotent: if `origin/nbase` already equals the snapshot the fast-forward
+is skipped, if the pins branch or its PR already exists they are reused, so a
+partial failure (fast-forward lands, PR creation trips) is fixed by re-running,
+not hand surgery. Token scope is `SYNC_TOKEN` with **Contents: write + Workflows:
+write** (the snapshot tree carries `.github/workflows/`) **+ Pull requests:
+write** (open the pins PR).
 
 ### Telegram → GitHub trigger (optional)
 A bot command (or shortcut) that POSTs to
