@@ -179,13 +179,13 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
             getString(R.string.VideoMessagesVibrationLight),
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
-    }, null));
+    }, null, getString(R.string.VideoMessagesWarningVibrationNotice), null));
     private final AbstractConfigCell videoMessagesCutVibrationRow = cellGroup.appendCell(new ConfigCellSelectBox("VideoMessagesCutVibration", NaConfig.INSTANCE.getVideoMessagesCutVibration(), new String[]{
             getString(R.string.VideoMessagesVibrationOff),
             getString(R.string.VideoMessagesVibrationLight),
             getString(R.string.VideoMessagesVibrationMedium),
             getString(R.string.VideoMessagesVibrationStrong)
-    }, null));
+    }, null, getString(R.string.VideoMessagesCutVibrationNotice), null));
     private final AbstractConfigCell infiniteRecordingCeilingRow = cellGroup.appendCell(new ConfigCellSelectBox(null, NaConfig.INSTANCE.getInfiniteRecordingCeiling(), new String[]{
             getString(R.string.InfiniteRecordingCeiling2Min),
             getString(R.string.InfiniteRecordingCeiling5Min),
