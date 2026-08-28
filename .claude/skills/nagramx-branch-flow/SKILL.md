@@ -140,9 +140,21 @@ line:
   `<!-- #slug -->` beside its entry heading; `commit-tag.yml` fails a PR whose
   feature slug isn't catalogued. Only the category tags listed above and `*-fix`
   tags are exempt. Note the harvest scans the **whole** `base..head` range and
-  every commit's full message body, so a wrong tag cannot be corrected by a
-  later commit on an append-only branch — the only remedy is a fresh branch and
-  a new PR. Pick the tag right the first time.
+  every commit's full message body, so once a wrong tag is pushed it stays in
+  the range. Be precise about what that does and does not mean:
+
+  - You **cannot reword it** — that needs an amend and a force-push, which the
+    append-only rule forbids.
+  - You **can still make CI pass**, by cataloguing the slug in `FEATURES.md`:
+    a real entry if the work genuinely is a user-visible feature, or a bare
+    `<!-- #slug -->` in the parked-slug block near the bottom otherwise.
+  - But for chore work both remedies are bad. A real entry lies about what
+    shipped and corrupts the catalog; a parked marker is honest but leaves
+    permanent catalog debt for what was only a typo. If the work has not landed
+    yet, a fresh branch is cleaner than either.
+
+  So the tag is effectively immutable once pushed, and every way out costs
+  something. Pick it right the first time.
 
 Bypass (`--no-verify`) only in a genuine emergency.
 

@@ -145,8 +145,10 @@ commit with a category tag — `#docs` / `#ci` / `#build` / `#infra` (sync and
 build tooling uses `#infra`); the full exempt set is in `nagramx-branch-flow`,
 and a descriptive tag outside it is read as a feature slug and fails CI. When
 you write an implementer's brief, **check the tag you specify against that
-set** — a wrong tag cannot be fixed by a later commit on an append-only branch
-and costs the whole PR. If your worktree is sitting on
+set** — once pushed, a wrong tag can't be reworded without a force-push, and
+every remaining remedy is bad (a real `FEATURES.md` entry lies about what
+shipped; a parked marker is honest but leaves permanent catalog debt). In
+practice it costs a fresh branch and PR. If your worktree is sitting on
 `dev` or `base`, cut the branch first. **There is no path where you commit to
 `dev`.**
 

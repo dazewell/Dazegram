@@ -170,7 +170,9 @@ verify it's gone, and list it in the process ledger in your report.
   `#release`; sync and build tooling uses `#infra`) for chores — the full
   exempt set is in `nagramx-branch-flow`. If a brief hands you a tag outside
   that set for work that is not a catalogued feature, say so before you commit:
-  it cannot be corrected later on an append-only branch. A hook and a CI check
+  once pushed it can't be reworded without a force-push, and the only way left
+  to make CI pass is cataloguing the slug in `FEATURES.md` — which either lies
+  about what shipped or leaves permanent catalog debt. A hook and a CI check
   enforce it.
 - A body only when there is a non-obvious *why* — a trade-off, a constraint that
   shaped the design. Do not restate the diff.
