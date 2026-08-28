@@ -479,11 +479,20 @@ the assertion fails immediately, before any guard classification even runs.
    conflict list**: after resolving, verify every protected path against `dev`
    and restore any that moved, whether or not git asked you about it.
 
+   In PowerShell (the reconciliation machine):
+
+       $paths = Get-Content .github\sync\protected-paths.tsv | Select-Object -Skip 1 |
+                ForEach-Object { ($_ -split "`t")[0] }
+       git diff --name-only origin/dev -- $paths
+
+   Or in Git Bash / WSL:
+
        git diff --name-only origin/dev -- $(tail -n +2 .github/sync/protected-paths.tsv | cut -f1)
 
-   Anything that prints is a protected file the merge changed; restore it with
-   `git checkout origin/dev -- <path>`. An empty result is the only passing
-   state.
+   Both skip the `path	dev_blob_sha` header row, which git would otherwise
+   take as a literal pathspec. Anything that prints is a protected file the
+   merge changed; restore it with `git checkout origin/dev -- <path>`. An empty
+   result is the only passing state.
 
    Taking even one upstream-only line into such a file makes its pin stale and
    trips `PROTECTED PINS STALE`. **Do not "fix" that by repinning.** The guard's
