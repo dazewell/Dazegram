@@ -306,7 +306,9 @@ code are not.
      subject or body — e.g. `add chat lock #chatlock`. A fix found a
      week later reuses the *same* slug, so the whole change is one
      `git log --grep '#chatlock'` away even after the branch is deleted.
-     Chores use a category tag (`#ci`, `#docs`, `#build`). The
+     Chores use a category tag (`#ci`, `#docs`, `#build`, `#chore`, `#infra`,
+     `#deps`, `#test`, `#release`; sync and build tooling uses `#infra`) — see
+     the full exempt set in `nagramx-branch-flow`. The
      `.githooks/commit-msg` hook and `commit-tag.yml` enforce this. See the
      `nagramx-branch-flow` skill.
    - **One change = one short-lived branch, append-only.** A change's commits

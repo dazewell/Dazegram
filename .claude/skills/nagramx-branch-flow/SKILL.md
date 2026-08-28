@@ -116,7 +116,15 @@ subject or body — e.g. `add chat lock #chatlock`. Rules:
 
 - Feature commits use the **feature slug**; a fix weeks later reuses the *same*
   slug so the whole change is one `git log --grep` away.
-- Infra/chore commits use a **category tag**: `#ci`, `#docs`, `#build`.
+- Infra/chore commits use a **category tag**. The exempt set is fixed by
+  `commit-tag.yml` and is exactly: `#ci`, `#docs`, `#build`, `#chore`, `#infra`,
+  `#deps`, `#test`, `#release`, `#slug`, `#tag`, `#chatlock` — plus any tag
+  ending `-fix`. Anything outside that set is treated as a *feature* slug and
+  demands a `FEATURES.md` entry, so picking a descriptive-sounding tag like
+  `#sync-land` for infrastructure work fails CI. **Sync and build tooling uses
+  `#infra`** — that is the established convention, not a fallback: of the
+  commits touching `.github/sync/` and the sync workflows, 27 use `#infra`,
+  16 `#docs`, 3 `#ci`, and none use a feature-style slug.
 - Merge commits are exempt (they're auto-generated).
 - Put the tag **inline**, not alone at the start of a line — a line beginning
   with `#` can be stripped as a comment by git's editor cleanup.
@@ -130,8 +138,23 @@ line:
   in it lacks a tag.
 - **Catalogued:** a *feature* slug must also appear in `FEATURES.md`, marked
   `<!-- #slug -->` beside its entry heading; `commit-tag.yml` fails a PR whose
-  feature slug isn't catalogued. Category tags (`#ci`, `#docs`, `#build`, …) and
-  `*-fix` tags are exempt.
+  feature slug isn't catalogued. Only the category tags listed above and `*-fix`
+  tags are exempt. Note the harvest scans the **whole** `base..head` range and
+  every commit's full message body, so once a wrong tag is pushed it stays in
+  the range. Be precise about what that does and does not mean:
+
+  - You **cannot reword it** — that needs an amend and a force-push, which the
+    append-only rule forbids.
+  - You **can still make CI pass**, by cataloguing the slug in `FEATURES.md`:
+    a real entry if the work genuinely is a user-visible feature, or a bare
+    `<!-- #slug -->` in the parked-slug block near the bottom otherwise.
+  - But for chore work both remedies are bad. A real entry lies about what
+    shipped and corrupts the catalog; a parked marker is honest but leaves
+    permanent catalog debt for what was only a typo. If the work has not landed
+    yet, a fresh branch is cleaner than either.
+
+  So the tag is effectively immutable once pushed, and every way out costs
+  something. Pick it right the first time.
 
 Bypass (`--no-verify`) only in a genuine emergency.
 
@@ -439,6 +462,44 @@ the assertion fails immediately, before any guard classification even runs.
 1. **Reconcile and merge into `dev`.** PR the resolved merge commit — plus any
    inline fixes and a `FEATURES.md` entry if user-visible — into `dev` on its
    own. Leave `.github/sync/pins.env` untouched in this PR. Merge it.
+
+   **Anything listed in `.github/sync/protected-paths.tsv` ends the merge
+   pure-ours — never merged.** Those ~50 entries (the signing key, Firebase
+   config, branding, the launcher icons, and the `.attheme` themes including
+   `monet_dark`, `monet_light` and `amoled`) are defined by
+   `.github/sync/README.md` as fork-owned paths that must stay **byte-identical to
+   `dev`**, and the guard blocks on any of them moving.
+
+   **This is not conflict-only guidance — the dangerous case is the one git
+   never flags.** A protected file that upstream also touched can be
+   *auto-merged cleanly*, with no conflict marker and nothing to resolve, and
+   still come out non-identical to `dev`. `.attheme` files are plain `key=value`
+   text, so they merge silently and successfully; that is exactly how
+   `monet_dark` drifted once. So the check is on the **merge outcome, not the
+   conflict list**: after resolving, verify every protected path against `dev`
+   and restore any that moved, whether or not git asked you about it.
+
+   In PowerShell (the reconciliation machine):
+
+       $paths = Get-Content .github\sync\protected-paths.tsv | Select-Object -Skip 1 |
+                ForEach-Object { ($_ -split "`t")[0] }
+       git diff --name-only origin/dev -- $paths
+
+   Or in Git Bash / WSL:
+
+       git diff --name-only origin/dev -- $(tail -n +2 .github/sync/protected-paths.tsv | cut -f1)
+
+   Both skip the `path	dev_blob_sha` header row, which git would otherwise
+   take as a literal pathspec. Anything that prints is a protected file the
+   merge changed; restore it with `git checkout origin/dev -- <path>`. An empty
+   result is the only passing state.
+
+   Taking even one upstream-only line into such a file makes its pin stale and
+   trips `PROTECTED PINS STALE`. **Do not "fix" that by repinning.** The guard's
+   suggestion to repin is aimed at a feature branch that deliberately restyles a
+   protected asset; inside a sync it would launder upstream content into a
+   fork-owned file and defeat the protection. Repin only when dazewell has
+   deliberately changed the asset himself, never to unblock a sync.
 2. **Fast-forward `origin/nbase`** to the reconciliation's snapshot commit,
    non-force. Verify first that the old `nbase` tip is an ancestor of the
    snapshot *and* the snapshot is reachable from `dev`; only then push. This
