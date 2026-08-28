@@ -2,10 +2,12 @@ name: Staging build
 
 # The single build + Telegram-upload pipeline. Runs on every push to dev and
 # on pull requests into dev (a PR run builds the dev + branch merge ref, so it
-# doubles as the on-device preview). Doc-only and .github-only changes are
-# skipped. Upload always happens — there is no skip switch. A newer push
-# supersedes an older in-flight run on the same branch or PR (see the
-# workflow-level concurrency group).
+# doubles as the on-device preview). Doc-only, .github-only and git-hook-only
+# changes are skipped — a hook is a local developer-machine script, never
+# compiled or packaged, so it cannot affect the built APK. Upload always
+# happens — there is no skip switch. A newer push supersedes an older
+# in-flight run on the same branch or PR (see the workflow-level concurrency
+# group).
 
 on:
   push:
@@ -16,6 +18,7 @@ on:
       - '.github/**'
       - '!.github/workflows/staging.yml'
       - 'docs/**'
+      - '.githooks/**'
   pull_request:
     types: [opened, reopened, synchronize]
     paths-ignore:
@@ -23,6 +26,7 @@ on:
       - '.github/**'
       - '!.github/workflows/staging.yml'
       - 'docs/**'
+      - '.githooks/**'
   workflow_dispatch:
 
 # Drop an older run on the same branch/PR rather than building it out: a few
