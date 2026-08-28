@@ -223,8 +223,15 @@ Extera Light and Extera Dark bring exteraGram's look to Dazegram. They were recr
 
 You can apply a chat pattern over your live Material You color. Turn it off by opening the tile and clearing the pattern.
 
-<!-- Retired entries. The behaviour still ships; it is documented in README instead of here.
+### Tab indicator outline <!-- #tab-style -->
+
+The active tab indicator can be drawn with a thin outline in the tab's text colour over a translucent fill, instead of the solid filled pill. Turn on *Tab indicator outline* in Nagram Settings > General, under the folder tab options. It's off by default, so tabs keep the solid fill unless you switch it on.
+
+<!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
+     The behaviour still ships; it is documented in README instead of here.
      Slugs kept so old commits stay greppable and the catalog check keeps passing. -->
+<!-- #nagram-sync -->
+<!-- #tab-outline -->
 <!-- #dazegram-icons -->
 <!-- #update-checks-off -->
 <!-- #metadata-channel-off -->

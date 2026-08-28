@@ -1629,6 +1629,12 @@ object NaConfig {
             ConfigItem.configTypeString,
             ""
         )
+    val tabStyleStroke =
+        addConfig(
+            "TabStyleStroke",
+            ConfigItem.configTypeBool,
+            false
+        )
 
     val preferredTranslateTargetLangList = ArrayList<String>()
     fun updatePreferredTranslateTargetLangList() {
