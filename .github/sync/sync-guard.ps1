@@ -63,13 +63,16 @@ param(
     # whether ancestry is proved; it is not a bypass.
     [string]$AnchorOverride,
     # Run only the land-check decision used by sync-land.yml before it fast-forwards
-    # origin/nbase onto a reconciliation snapshot. Needs -OldNbase (live origin/nbase)
-    # and -NewSnapshot (the snapshot commit). Reads ANCHOR_SRC / OLD_NBASE /
-    # OLD_NBASE_TREE / NAGRAM_BRANCH / SYNC_IDENTITY_* from the trusted pins, resolves
-    # the upstream commit whose tree the snapshot copies live from the fetched
-    # `nagram` remote, and blocks unless every land invariant holds. No ref is written
-    # in this mode. Exit: 0 = safe to fast-forward, 1 = blocked, 2 = a resolution
-    # error (bad/missing ref, upstream not fetched).
+    # origin/nbase onto a reconciliation snapshot. Needs -OldNbase (the pinned OLD_NBASE,
+    # so the snapshot's ancestry is proved against the pins and the check holds on a
+    # re-run after the fast-forward already landed), -NewSnapshot (the snapshot commit),
+    # and -NewDev (the current dev tip — the snapshot must be reachable from it, i.e. the
+    # reconciliation is merged). Reads ANCHOR_SRC / OLD_NBASE / OLD_NBASE_TREE /
+    # NAGRAM_BRANCH / SYNC_IDENTITY_* from the trusted pins, resolves the upstream commit
+    # whose tree the snapshot copies live from the fetched `nagram` remote, and blocks
+    # unless every land invariant holds. No ref is written in this mode. Exit: 0 = safe
+    # to fast-forward, 1 = blocked, 2 = a resolution error (bad/missing ref, upstream not
+    # fetched).
     [switch]$LandCheckOnly,
     # In -LandCheckOnly mode, also write the resolved evidence (the upstream commit,
     # its tree, the snapshot tree, the equality verdict, old/new nbase) as KEY=VALUE
@@ -395,20 +398,35 @@ function Test-SyncFastPath([string]$srcTree, [string]$liveNbase, [string]$liveNb
 #   $pinnedAnchorTree     tree of the currently-pinned ANCHOR_SRC (live-resolved)
 #   $pinnedOldNbase       pins.env OLD_NBASE
 #   $pinnedOldNbaseTree   pins.env OLD_NBASE_TREE
-function Test-LandCheck([string[]]$snapParents, [string]$liveNbase,
+function Test-LandCheck([string[]]$snapParents, [string]$expectedOldNbase,
                         [string[]]$revMinusOld, [string]$newSnapshot,
                         [string]$snapTree, [string]$srcTree, [bool]$srcDescendsAnchor,
-                        [string]$liveNbaseTree, [string]$pinnedAnchorTree,
-                        [string]$pinnedOldNbase, [string]$pinnedOldNbaseTree) {
+                        [string]$expectedOldNbaseTree, [string]$pinnedAnchorTree,
+                        [string]$pinnedOldNbase, [string]$pinnedOldNbaseTree,
+                        [bool]$snapDescendsDev) {
     $f = @()
-    # Single parent, and it is the live nbase — the snapshot chains onto exactly the
-    # ref we are about to move, so the fast-forward is append-only.
-    if ($snapParents.Count -ne 1 -or $snapParents[0] -ne $liveNbase) {
-        $f += "land: snapshot parents [$($snapParents -join ',')] != [single live origin/nbase $liveNbase]"
+    # Single parent, and it is the pinned old nbase — the snapshot chains onto exactly
+    # the ref we are moving from, so the fast-forward is append-only. This check is keyed
+    # to the pinned OLD_NBASE, never to wherever origin/nbase points right now, so it
+    # proves the snapshot's intrinsic validity identically on a first run and on a re-run
+    # after the fast-forward has already landed (where live origin/nbase already equals
+    # the snapshot). Whether the live ref is where we expect is the fast-forward step's
+    # job, checked immediately before the push, not here.
+    if ($snapParents.Count -ne 1 -or $snapParents[0] -ne $expectedOldNbase) {
+        $f += "land: snapshot parents [$($snapParents -join ',')] != [single expected old nbase $expectedOldNbase]"
     }
-    # Nothing but the snapshot itself is new relative to the live nbase.
+    # Nothing but the snapshot itself is new relative to the pinned old nbase.
     if ($revMinusOld.Count -ne 1 -or $revMinusOld[0] -ne $newSnapshot) {
-        $f += "land: rev-list SNAP ^origin/nbase returned [$($revMinusOld -join ',')], expected only the snapshot"
+        $f += "land: rev-list SNAP ^$expectedOldNbase returned [$($revMinusOld -join ',')], expected only the snapshot"
+    }
+    # The reconciliation must already be merged into dev before nbase advances onto its
+    # snapshot. Without this, pressing the button before the reconciliation PR lands
+    # fast-forwards nbase over a reconciliation that never merged; every later sync then
+    # treats those upstream changes as already applied and drops them silently and
+    # permanently. Keyed to the pinned old nbase above, this also rejects a re-run fired
+    # with a different snapshot SHA, because such a snapshot is not reachable from dev.
+    if (-not $snapDescendsDev) {
+        $f += "land: snapshot $newSnapshot is not an ancestor of origin/dev — the reconciliation has not been merged into dev; refusing to advance nbase over an unmerged reconciliation"
     }
     # The one that a hand-edited reconciliation trips: the snapshot's tree must be
     # byte-identical to a real upstream commit, or nbase would carry a tree that
@@ -421,18 +439,20 @@ function Test-LandCheck([string[]]$snapParents, [string]$liveNbase,
     if (-not $srcDescendsAnchor) {
         $f += "land: the upstream commit the snapshot copies does not descend from the currently-pinned ANCHOR_SRC"
     }
-    # The recorded anchor is genuinely the commit whose tree nbase carries right now.
+    # The recorded anchor is genuinely the commit whose tree the pinned old nbase carries.
     # Nothing else machine-checks this, so a reviewer reading the auto pins PR has no
     # way to confirm it by hand — assert it here and print it as evidence.
-    if ($pinnedAnchorTree -ne $liveNbaseTree) {
-        $f += "land: pinned ANCHOR_SRC tree $pinnedAnchorTree != live origin/nbase tree $liveNbaseTree — the recorded anchor is not the commit nbase carries"
+    if ($pinnedAnchorTree -ne $expectedOldNbaseTree) {
+        $f += "land: pinned ANCHOR_SRC tree $pinnedAnchorTree != expected old nbase tree $expectedOldNbaseTree — the recorded anchor is not the commit nbase carries"
     }
-    # The pins still describe the live refs we are moving from.
-    if ($liveNbase -ne $pinnedOldNbase) {
-        $f += "land: live origin/nbase $liveNbase != pinned OLD_NBASE $pinnedOldNbase"
+    # The base the snapshot's ancestry is proved against must be the pinned OLD_NBASE, so
+    # a caller that handed this mode the wrong base (e.g. the live ref on a re-run instead
+    # of the pin) fails closed rather than proving ancestry against the wrong commit.
+    if ($expectedOldNbase -ne $pinnedOldNbase) {
+        $f += "land: expected old nbase $expectedOldNbase != pinned OLD_NBASE $pinnedOldNbase"
     }
-    if ($liveNbaseTree -ne $pinnedOldNbaseTree) {
-        $f += "land: live origin/nbase tree $liveNbaseTree != pinned OLD_NBASE_TREE $pinnedOldNbaseTree"
+    if ($expectedOldNbaseTree -ne $pinnedOldNbaseTree) {
+        $f += "land: expected old nbase tree $expectedOldNbaseTree != pinned OLD_NBASE_TREE $pinnedOldNbaseTree"
     }
     return $f
 }
@@ -646,21 +666,29 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Decision 'Test-SyncFastPath(proceed)'     (Test-SyncFastPath 'TREE_NEW' 'NB' 'TREE' 'NB' 'TREE' $true)  'proceed'  ([ref]$log)) -and $ok
 
     # Land-check (sync-land). Pure string compares, so synthetic tokens stand in for
-    # the real trees/commits. The GOOD row: single parent = live nbase, only the
-    # snapshot is new, snapshot tree == upstream source tree, source descends the
-    # anchor, and the pins describe the live refs. Each BAD row violates exactly one
-    # invariant so a regression that stops discriminating it turns this red.
-    #                                    parents  live rev-list snap tree src  desc  nbTree anchTree pinNb  pinNbTree
-    $ok = (Assert-Passes 'Test-LandCheck'            (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true  'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(2parents)'  (Test-LandCheck @('OLD','X') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(parent)'    (Test-LandCheck @('Y') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(revlist)'   (Test-LandCheck @('OLD') 'OLD' @('SNAP','X') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
+    # the real trees/commits. The GOOD row: single parent = the pinned old nbase, only
+    # the snapshot is new, snapshot tree == upstream source tree, source descends the
+    # anchor, the snapshot is merged into dev, and -OldNbase equals the pins. Each BAD
+    # row violates exactly one invariant so a regression that stops discriminating it
+    # turns this red.
+    #                                    parents  expOld rev-list snap tree src  desc  oldTree anchTree pinNb  pinNbTree dev
+    $ok = (Assert-Passes 'Test-LandCheck'            (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true  'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    # Re-run after the fast-forward already landed: the land check is keyed to the pinned
+    # old nbase, not the live ref, so it is handed the exact same facts as a first run
+    # and must still pass. This is the newly-reachable path the idempotency fix buys.
+    $ok = (Assert-Passes 'Test-LandCheck(rerun)'     (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true  'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(2parents)'  (Test-LandCheck @('OLD','X') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(parent)'    (Test-LandCheck @('Y') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(revlist)'   (Test-LandCheck @('OLD') 'OLD' @('SNAP','X') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
     # The hand-edited-tree case: snapshot tree matches no upstream commit.
-    $ok = (Assert-Fails  'Test-LandCheck(treeedit)'  (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T2' $true 'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(nodesc)'    (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $false 'NBT' 'NBT' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(anchtree)'  (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'OTHER' 'OLD' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(pinnb)'     (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD2' 'NBT') ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LandCheck(pinnbtree)' (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT2') ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(treeedit)'  (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T2' $true 'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(nodesc)'    (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $false 'NBT' 'NBT' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(anchtree)'  (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'OTHER' 'OLD' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(pinnb)'     (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD2' 'NBT' $true) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheck(pinnbtree)' (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT2' $true) ([ref]$log)) -and $ok
+    # Snapshot not merged into dev: pressing the button before the reconciliation PR
+    # landed. Must fail closed, or nbase advances over a reconciliation that never merged.
+    $ok = (Assert-Fails  'Test-LandCheck(nodev)'     (Test-LandCheck @('OLD') 'OLD' @('SNAP') 'SNAP' 'T' 'T' $true 'NBT' 'NBT' 'OLD' 'NBT' $false) ([ref]$log)) -and $ok
 
     # Land-check identity half: both author and committer must be the sync identity.
     $ok = (Assert-Passes 'Test-SnapshotIdentity'          (Test-SnapshotIdentity 'sync' 's@x' 'sync' 's@x' 'sync' 's@x') ([ref]$log)) -and $ok
@@ -995,28 +1023,44 @@ if ($FastPathOnly) {
 }
 
 # Land-check decision for sync-land.yml. Runs before origin/nbase is fast-forwarded
-# onto a reconciliation snapshot minted by hand on the PC. Needs the live nbase
-# (-OldNbase) and the snapshot (-NewSnapshot); reads the anchor pins and the sync
-# identity from the trusted PRE pins above. The upstream `nagram` remote must already
-# be fetched by the caller — this mode resolves, live, the upstream commit whose tree
-# the snapshot copies, so it never trusts an operator-supplied source SHA. No ref is
-# written here. The self-test that already passed proved Test-LandCheck and
-# Test-SnapshotIdentity can tell good land facts from bad.
+# onto a reconciliation snapshot minted by hand on the PC. Keyed to the pinned
+# OLD_NBASE (-OldNbase), not to wherever origin/nbase points now, so the same facts
+# hold on a first run and on an idempotent re-run after the fast-forward has already
+# landed; -NewSnapshot is the snapshot, -NewDev is the current dev tip (the snapshot
+# must be reachable from it, i.e. the reconciliation is merged). Reads the anchor pins
+# and the sync identity from the trusted PRE pins above. The upstream `nagram` remote
+# must already be fetched by the caller — this mode resolves, live, the upstream commit
+# whose tree the snapshot copies, so it never trusts an operator-supplied source SHA.
+# No ref is written here. Whether the live ref is still where we expect is the
+# fast-forward step's own re-lease, not this check's. The self-test that already passed
+# proved Test-LandCheck and Test-SnapshotIdentity can tell good land facts from bad.
 if ($LandCheckOnly) {
-    foreach ($p in 'OldNbase', 'NewSnapshot') {
+    foreach ($p in 'OldNbase', 'NewSnapshot', 'NewDev') {
         if (-not (Get-Variable $p -ValueOnly)) { Write-Host "::error::land check: missing required ref -$p"; exit 2 }
     }
 
-    # Resolve the live nbase and the snapshot to concrete commits + trees. A bad or
-    # unfetched ref must fail as a resolution error (exit 2), not fold into a verdict.
-    $liveNbase = (git rev-parse "$OldNbase^{commit}").Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $liveNbase) { Write-Host "::error::land check: cannot resolve origin/nbase $OldNbase"; exit 2 }
-    $liveNbaseTree = (git rev-parse "$OldNbase^{tree}").Trim()
-    if ($LASTEXITCODE -ne 0 -or -not $liveNbaseTree) { Write-Host "::error::land check: cannot resolve nbase tree of $OldNbase"; exit 2 }
+    # Resolve the expected (pinned) old nbase and the snapshot to concrete commits +
+    # trees. A bad or unfetched ref must fail as a resolution error (exit 2), not fold
+    # into a verdict.
+    $expectedOldNbase = (git rev-parse "$OldNbase^{commit}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $expectedOldNbase) { Write-Host "::error::land check: cannot resolve expected old nbase $OldNbase"; exit 2 }
+    $expectedOldNbaseTree = (git rev-parse "$OldNbase^{tree}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $expectedOldNbaseTree) { Write-Host "::error::land check: cannot resolve old nbase tree of $OldNbase"; exit 2 }
     $snap = (git rev-parse "$NewSnapshot^{commit}").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $snap) { Write-Host "::error::land check: cannot resolve snapshot $NewSnapshot (is it fetched?)"; exit 2 }
     $snapTree = (git rev-parse "$NewSnapshot^{tree}").Trim()
     if ($LASTEXITCODE -ne 0 -or -not $snapTree) { Write-Host "::error::land check: cannot resolve snapshot tree of $NewSnapshot"; exit 2 }
+    $newDev = (git rev-parse "$NewDev^{commit}").Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $newDev) { Write-Host "::error::land check: cannot resolve dev ref $NewDev to a commit"; exit 2 }
+
+    # Is the snapshot merged into dev? merge-base --is-ancestor answers 0 (yes) or 1
+    # (no); anything else (128 for a bad/missing object) is a resolution error, not a
+    # verdict — otherwise an unfetched dev would be misread as an unmerged reconciliation
+    # and route the operator to the wrong remediation. Mirrors the fast-path discipline.
+    git merge-base --is-ancestor $snap $newDev
+    $devExit = $LASTEXITCODE
+    if ($devExit -ne 0 -and $devExit -ne 1) { Write-Host "::error::land check: git merge-base --is-ancestor failed (exit $devExit) resolving snapshot $snap vs dev $NewDev"; exit 2 }
+    $snapDescendsDev = ($devExit -eq 0)
 
     # Snapshot topology and metadata.
     $snapParents = @((git rev-list --parents -n 1 $snap) -split '\s+' | Select-Object -Skip 1)
@@ -1075,8 +1119,8 @@ if ($LandCheckOnly) {
     if (-not $anchorSrcNew) {
         $failures += "land: the snapshot tree $snapTree matches no commit in nagram/$branch — it is not a faithful copy of any upstream commit"
     }
-    $failures += Test-LandCheck $snapParents $liveNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
-        $liveNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE']
+    $failures += Test-LandCheck $snapParents $expectedOldNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
+        $expectedOldNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $snapDescendsDev
     $failures += Test-SnapshotIdentity $an $ae $cn $ce $pins['SYNC_IDENTITY_NAME'] $pins['SYNC_IDENTITY_EMAIL']
     # Reuse the existing, self-tested attribution scan: no imported commit, no
     # prohibited attribution token in the snapshot's metadata.
@@ -1090,17 +1134,20 @@ if ($LandCheckOnly) {
     $treesMatch = ($srcTree -and $snapTree -eq $srcTree)
     Write-Host ''
     Write-Host '=== land check evidence ==='
-    Write-Host "old origin/nbase        : $liveNbase (tree $liveNbaseTree)"
+    Write-Host "expected old nbase (pin): $expectedOldNbase (tree $expectedOldNbaseTree)"
     Write-Host "snapshot (new nbase)    : $snap (tree $snapTree)"
+    Write-Host "dev tip (must contain)  : $newDev (snapshot is ancestor: $snapDescendsDev)"
     Write-Host "pinned ANCHOR_SRC       : $($pins['ANCHOR_SRC']) (tree $pinnedAnchorTree)"
     Write-Host "resolved upstream source: $(if ($anchorSrcNew) { $anchorSrcNew } else { '(none — tree matches no upstream commit)' }) (tree $srcTree)"
     Write-Host "snapshot tree == upstream source tree: $treesMatch"
     if ($EvidenceOut) {
         $ev = @(
-            "old_nbase=$liveNbase"
-            "old_nbase_tree=$liveNbaseTree"
+            "old_nbase=$expectedOldNbase"
+            "old_nbase_tree=$expectedOldNbaseTree"
             "snapshot=$snap"
             "snapshot_tree=$snapTree"
+            "dev_tip=$newDev"
+            "snapshot_in_dev=$snapDescendsDev"
             "pinned_anchor_src=$($pins['ANCHOR_SRC'])"
             "pinned_anchor_tree=$pinnedAnchorTree"
             "anchor_src_new=$(if ($anchorSrcNew) { $anchorSrcNew } else { '' })"
@@ -1119,7 +1166,7 @@ if ($LandCheckOnly) {
         exit 1
     }
     Write-Host ''
-    Write-Host 'LAND CLEAN — the snapshot faithfully copies an upstream commit that descends from the anchor, is locally authored, and chains onto the live nbase. Safe to fast-forward.'
+    Write-Host 'LAND CLEAN — the snapshot faithfully copies an upstream commit that descends from the anchor, is locally authored, chains onto the pinned old nbase, and is already merged into dev. Safe to fast-forward.'
     exit 0
 }
 
