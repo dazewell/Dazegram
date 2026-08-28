@@ -382,7 +382,10 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
     @Override
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         ArrayList<ThemeDescription> themeDescriptions = new ArrayList<>();
-        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{EmptyCell.class, TextSettingsCell.class, TextCheckCell.class, HeaderCell.class, TextDetailSettingsCell.class, NotificationsCheckCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
+        // NagramX: TextCell.class added so the subtitle settings row (and the pre-existing plain TextCell
+        // rows in this screen) re-paint white on a live theme change too, not just at initial construction
+        // -- see createDefaultViewByType()'s ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE case below.
+        themeDescriptions.add(new ThemeDescription(listView, ThemeDescription.FLAG_CELLBACKGROUNDCOLOR, new Class[]{EmptyCell.class, TextSettingsCell.class, TextCheckCell.class, HeaderCell.class, TextDetailSettingsCell.class, NotificationsCheckCell.class, TextCell.class}, null, null, null, Theme.key_windowBackgroundWhite));
         themeDescriptions.add(new ThemeDescription(fragmentView, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_windowBackgroundGray));
 
         themeDescriptions.add(new ThemeDescription(actionBar, ThemeDescription.FLAG_BACKGROUND, null, null, null, null, Theme.key_avatar_backgroundActionBarBlue));
@@ -509,10 +512,10 @@ public class BaseNekoXSettingsActivity extends BaseFragment {
                 case CellGroup.ITEM_TYPE_TEXT_CHECK_ICON -> new TextCell(mContext);
                 // NagramX: leftPadding 21 to match TextSettingsCell's neighbouring rows in this screen
                 // (TextCell's own default is 23) -- see ConfigCellSelectBox's subtitle path. TextCell paints
-                // no background of its own -- the rows above get theirs from this fragment's
-                // FLAG_CELLBACKGROUNDCOLOR ThemeDescription (below), whose Class[] doesn't list TextCell --
-                // so set it explicitly here, same as BaseNekoSettingsActivity's own TextCell row does
-                // (BaseNekoSettingsActivity.java:376-377).
+                // no background of its own, so set it once here for the initial render (same as
+                // BaseNekoSettingsActivity's own TextCell row, BaseNekoSettingsActivity.java:376-377) --
+                // TextCell is also added to the FLAG_CELLBACKGROUNDCOLOR ThemeDescription below so a live
+                // theme change (day/night, custom theme) re-applies it without needing the fragment rebuilt.
                 case CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL_SUBTITLE -> {
                     TextCell cell = new TextCell(mContext, 21, false, false, null);
                     cell.setBackgroundColor(getThemedColor(Theme.key_windowBackgroundWhite));
