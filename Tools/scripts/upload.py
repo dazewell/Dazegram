@@ -5,6 +5,7 @@ from asyncio import sleep
 import html
 from pathlib import Path
 from sys import argv
+from urllib.parse import quote as urlquote
 
 from pyrogram import Client
 from pyrogram.errors import FloodPremiumWait, FloodWait
@@ -13,11 +14,24 @@ from pyrogram.types import InputMediaDocument
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
 artifacts_root = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
+build_type = argv[3] if len(argv) > 3 else None
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 VARIANTS = (
     ("Official", "org.telegram.messenger.beta"),
     ("Unofficial", "nekox.messenger"),
 )
+
+# staging.yml passes "staging" for a push/dispatch build and "test" for a
+# labeled PR preview. Anything else (or a missing value, e.g. a local run)
+# falls back to the staging rocket rather than leaving the caption headless.
+BUILD_EMOJI = {
+    "staging": "🚀",
+    "test": "🧪",
+}
+
+# A pathologically long PR title or commit subject must not eat the whole
+# caption budget on its own; this is a fixed, small share of it.
+HEADER_TITLE_BUDGET = 120
 
 # Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
 # which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
@@ -34,17 +48,33 @@ def get_commit_info():
     commit_id = commit_id_raw[:7]
     # Fall back to the specific commit when we know its id, so the "commit details"
     # link opens the commit the caption names rather than the whole commits list.
-    default_url = (
+    default_commit_url = (
         f"https://github.com/dazewell/Dazegram/commit/{commit_id_raw}"
         if commit_id_raw != "unknown"
         else "https://github.com/dazewell/Dazegram/commits"
     )
-    commit_url = os.environ.get("COMMIT_URL") or default_url
+    commit_url = os.environ.get("COMMIT_URL") or default_commit_url
     commit_message = os.environ.get("COMMIT_MESSAGE") or "unknown"
     branch = os.environ.get("BRANCH") or "unknown"
-    return commit_id, commit_url, commit_message, branch
+    # Git branch names can legally contain '#', '?' and spaces, none of which
+    # are safe unencoded in a URL path -- '#' in particular truncates the URL
+    # at a fragment, so the link would resolve to the wrong (or no) page. '/'
+    # is kept unescaped since it's a legitimate path separator (e.g.
+    # "feature/x"); the workflow no longer builds this URL itself so encoding
+    # always happens exactly once, here.
+    default_branch_url = (
+        f"https://github.com/dazewell/Dazegram/tree/{urlquote(branch, safe='/')}"
+        if branch != "unknown"
+        else "https://github.com/dazewell/Dazegram"
+    )
+    branch_url = os.environ.get("BRANCH_URL") or default_branch_url
+    pr_number = (os.environ.get("PR_NUMBER") or "").strip()
+    pr_title = os.environ.get("PR_TITLE") or ""
+    default_pr_url = f"https://github.com/dazewell/Dazegram/pull/{pr_number}" if pr_number else ""
+    pr_url = os.environ.get("PR_URL") or default_pr_url
+    return commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url
 
-def truncate_text(text: str, budget: int) -> str:
+def truncate_text(text: str, budget: int, escaped: bool = False) -> str:
     if budget <= 0:
         return ""
     if tg_len(text) <= budget:
@@ -53,22 +83,62 @@ def truncate_text(text: str, budget: int) -> str:
     text = text.rstrip()
     while text and tg_len(text + suffix) > budget:
         text = text[:-1]
-    return text.rstrip() + suffix
+    text = text.rstrip()
+    if escaped:
+        # A cut can land mid HTML-entity (html.escape() turns "&" into
+        # "&amp;"): a truncated "&am" has no ";" and is invalid HTML, which
+        # makes Telegram reject the whole caption with "can't parse entities".
+        # Only safe to check on already-escaped text -- unescaped text can
+        # legitimately end in a bare "&" that was never an entity to begin with.
+        entity_start = text.rfind("&")
+        if entity_start != -1 and ";" not in text[entity_start:]:
+            text = text[:entity_start].rstrip()
+    return text + suffix
+
+def get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_url) -> str:
+    emoji = BUILD_EMOJI.get(build_type, "🚀")
+    if pr_number and pr_title:
+        # Escape before truncating, not after: tg_len() (which truncate_text
+        # relies on) strips anything that looks like an HTML tag, so
+        # truncating raw text first would under-count a title containing a
+        # literal "<...>" and let it through untruncated, only for the
+        # subsequent escape to make it longer than the intended budget again.
+        title = truncate_text(html.escape(pr_title), HEADER_TITLE_BUDGET, escaped=True)
+        headline = f'{emoji} <b><a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}</b>'
+    else:
+        # No associated PR (a dispatch on a branch with no PR, or a direct
+        # push) — fall back to the commit subject instead of printing a bare
+        # "#" or the word "unknown".
+        subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
+        subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET, escaped=True)
+        headline = f"{emoji} <b>{subject}</b>" if subject else emoji
+    # The meta line links the short commit id -- the branch name used to be
+    # shown alongside it, but that duplicated the PR number/title already in
+    # the headline above and cluttered a tight 1024-unit caption. Removed
+    # temporarily; the commit link below is unchanged, and restoring the branch
+    # means threading branch/branch_url back into get_header() (get_commit_info
+    # still returns both) and appending the link to this line.
+    meta = f'<b>Commit:</b> <a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
+    return headline + "\n" + meta
 
 def get_caption(commit_msg_budget=None) -> str:
-    commit_id, commit_url, commit_message, branch = get_commit_info()
-    # Trimming the plain-text commit message (never the assembled HTML) keeps
-    # the caption valid while leaving room for the AI summary.
-    if commit_msg_budget is not None:
-        commit_message = truncate_text(commit_message, commit_msg_budget)
+    commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url = get_commit_info()
+    # The header is measured against the full commit message (never the
+    # commit_msg_budget-trimmed copy below) so it stays a fixed width across
+    # both the overhead-measurement call and the final call — otherwise a
+    # budget=0 probe would shrink the fallback subject line and understate
+    # the real overhead.
+    header = get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_url)
+    # Escape once, then measure/truncate the escaped text -- escaping AFTER
+    # truncating (the previous order) let tg_len() undercount raw "<...>"
+    # substrings as stripped tags, pass them through untruncated, and only
+    # then expand them back into far more visible characters than the budget
+    # allowed (a message full of literal "<tag>" text could blow the caption
+    # past 1024 and get the whole post rejected by Telegram).
     escaped_commit_message = html.escape(commit_message)
-    caption = ""
-    for build_label, package_name in VARIANTS:
-        caption += f"{build_label} package: <code>{package_name}</code>\n"
-    caption += "\n"
-    caption += f"Commit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>\n\n"
-    caption += f"See commit details [{commit_id}]({commit_url}) on <code>{html.escape(branch)}</code>"
-    return caption
+    if commit_msg_budget is not None:
+        escaped_commit_message = truncate_text(escaped_commit_message, commit_msg_budget, escaped=True)
+    return f"{header}\n\n<b>Commit Message:</b>\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
 def get_document() -> list["InputMediaDocument"]:
     documents = []
@@ -86,8 +156,11 @@ def get_document() -> list["InputMediaDocument"]:
     limit = 1024
     overhead = tg_len(get_caption(commit_msg_budget=0))
     content_budget = max(0, limit - overhead)
-    commit_message = get_commit_info()[2]
-    msg_reserve = min(tg_len(commit_message), content_budget // 2)
+    # Measure the same escaped string the caption will actually carry, so the
+    # reserve and the final trim (both in get_caption, both escaped-then-cut)
+    # agree with each other instead of one working off unescaped text.
+    escaped_commit_message = html.escape(get_commit_info()[2])
+    msg_reserve = min(tg_len(escaped_commit_message), content_budget // 2)
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
