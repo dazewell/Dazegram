@@ -82,10 +82,20 @@ public class ComposerLayoutActivity extends BaseFragment {
      * the Leading header answer with a slider's sentinel zone.
      */
     private static final int TYPE_SLIDER_HEADER = 7;
+    /**
+     * Own type rather than sharing TYPE_SLIDER_HEADER's sibling slider types: TYPE_SCALE and
+     * TYPE_SPACING already split for this exact reason (see TYPE_SPACING's note), and these two
+     * never call setMinValueAllowed, so a shared pool with either would leave a recycled row
+     * carrying a stale floor from a scale/spacing bind.
+     */
+    private static final int TYPE_GLASS_LIGHT = 8;
+    private static final int TYPE_GLASS_DARK = 9;
 
-    /** Sentinel "zones" for the two slider groups, so one header/footer lookup serves both. */
+    /** Sentinel "zones" for the four slider groups, so one header/footer lookup serves all of them. */
     private static final int GROUP_SCALE = -1;
     private static final int GROUP_SPACING = -2;
+    private static final int GROUP_GLASS_LIGHT = -3;
+    private static final int GROUP_GLASS_DARK = -4;
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
@@ -118,6 +128,24 @@ public class ComposerLayoutActivity extends BaseFragment {
      * still one anchor, which leaves a detent every five percent along a one-percent track.
      */
     private static final int SPACING_BETWEEN_STEPS = 5;
+
+    /**
+     * Pass-through percent, not opacity - higher shows more wallpaper through the panel. 25%
+     * (opacity 0.75) sits a hair under the fixed 0.76 base alpha this used to ship with whenever
+     * Liquid Glass mode was off, so the default is a near no-op for most users (see
+     * NaConfig.composerGlassAlpha for the pass-through -> opacity conversion). With Liquid Glass on,
+     * the old fixed default was 0.85 (15% pass-through, no way to change it); these sliders now
+     * apply the same configurable value regardless of that flag, so a Liquid Glass user's composer
+     * glass gets visibly more transparent than before at this default - deliberate, since they can
+     * now dial it back down to 15% or lower themselves. Same eleven-stop count as the toolbar-size
+     * slider, one sub-step needed since every anchor is already a whole percent.
+     */
+    private static final int GLASS_MIN = 0;
+    private static final int GLASS_MAX = 50;
+    private static final int GLASS_DEFAULT = 25;
+    private static final int[] GLASS_STEPS = {
+            0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50
+    };
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
@@ -280,6 +308,12 @@ public class ComposerLayoutActivity extends BaseFragment {
         items.add(new Item(TYPE_SLIDER_HEADER, GROUP_SPACING, null));
         items.add(new Item(TYPE_SPACING, GROUP_SPACING, null));
         items.add(new Item(TYPE_INFO, GROUP_SPACING, null));
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_GLASS_LIGHT, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_INFO, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_DARK, null));
+        items.add(new Item(TYPE_GLASS_DARK, GROUP_GLASS_DARK, null));
+        items.add(new Item(TYPE_INFO, GROUP_GLASS_DARK, null));
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
@@ -402,6 +436,8 @@ public class ComposerLayoutActivity extends BaseFragment {
         ComposerLayout.reset();
         NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(100);
         NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(100);
+        NaConfig.INSTANCE.getComposerGlassLight().setConfigInt(GLASS_DEFAULT);
+        NaConfig.INSTANCE.getComposerGlassDark().setConfigInt(GLASS_DEFAULT);
         lastSaved = ComposerLayout.snapshot();
         buildItems(lastSaved);
         if (adapter != null) {
@@ -457,6 +493,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_SCALE:
                 case TYPE_SPACING:
+                case TYPE_GLASS_LIGHT:
+                case TYPE_GLASS_DARK:
                     view = new SlideIntChooseView(context, null);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
@@ -546,9 +584,32 @@ public class ComposerLayoutActivity extends BaseFragment {
                     // still null, so the order is what makes the floor stick.
                     spacingView.setMinValueAllowed(spacingFloor());
                     break;
+                case TYPE_GLASS_LIGHT:
+                    SlideIntChooseView glassLightView = (SlideIntChooseView) holder.itemView;
+                    glassLightView.setLabel(LocaleController.getString(R.string.ComposerGlassLightAccDescr));
+                    glassLightView.set(currentGlassLight(), glassOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerGlassLight().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerGlassLight().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
+                    break;
+                case TYPE_GLASS_DARK:
+                    SlideIntChooseView glassDarkView = (SlideIntChooseView) holder.itemView;
+                    glassDarkView.setLabel(LocaleController.getString(R.string.ComposerGlassDarkAccDescr));
+                    glassDarkView.set(currentGlassDark(), glassOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerGlassDark().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerGlassDark().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
+                    break;
                 case TYPE_SLIDER_HEADER:
-                    ((HeaderCell) holder.itemView).setText(LocaleController.getString(
-                            item.zone == GROUP_SPACING ? R.string.ComposerSpacing : R.string.ComposerScale));
+                    ((HeaderCell) holder.itemView).setText(LocaleController.getString(sliderHeaderText(item.zone)));
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -579,6 +640,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return R.string.ComposerScaleInfo;
             case GROUP_SPACING:
                 return R.string.ComposerSpacingInfo;
+            case GROUP_GLASS_LIGHT:
+                return R.string.ComposerGlassLightInfo;
+            case GROUP_GLASS_DARK:
+                return R.string.ComposerGlassDarkInfo;
             case ComposerButtons.ZONE_START:
                 return R.string.ComposerZoneLeadingInfo;
             case ComposerButtons.ZONE_MIDDLE:
@@ -587,6 +652,21 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return R.string.ComposerZoneTrailingInfo;
             default:
                 return R.string.ComposerLayoutInfo;
+        }
+    }
+
+    /** One lookup for every TYPE_SLIDER_HEADER row - a binary ternary worked while there were only
+     * two slider groups, but stopped being able to tell four apart. */
+    private static int sliderHeaderText(int zone) {
+        switch (zone) {
+            case GROUP_SPACING:
+                return R.string.ComposerSpacing;
+            case GROUP_GLASS_LIGHT:
+                return R.string.ComposerGlassLight;
+            case GROUP_GLASS_DARK:
+                return R.string.ComposerGlassDark;
+            default:
+                return R.string.ComposerScale;
         }
     }
 
@@ -854,6 +934,21 @@ public class ComposerLayoutActivity extends BaseFragment {
         return RecyclerView.NO_POSITION;
     }
 
+    private static SlideIntChooseView.Options glassOptions() {
+        return SlideIntChooseView.Options.make(0, GLASS_STEPS, 1,
+                (type, value) -> value + "%");
+    }
+
+    private static int currentGlassLight() {
+        int percent = NaConfig.INSTANCE.getComposerGlassLight().Int();
+        return Math.max(GLASS_MIN, Math.min(GLASS_MAX, percent));
+    }
+
+    private static int currentGlassDark() {
+        int percent = NaConfig.INSTANCE.getComposerGlassDark().Int();
+        return Math.max(GLASS_MIN, Math.min(GLASS_MAX, percent));
+    }
+
     /**
      * A {@link HeaderCell} that can also show the same drag-armed wash {@link ButtonRowCell} rows
      * use. Only Leading's header is ever actually armed (see setStartZoneArmed) - every other
@@ -1053,7 +1148,8 @@ public class ComposerLayoutActivity extends BaseFragment {
     /**
      * Shows the arrangement being edited as the real thing: an actual {@link ComposerToolbarLayout}
      * with its glass capsule, on the user's chat wallpaper, at the size the scale slider is set to.
-     * A schematic row of flat icons could not show what the two settings on this screen actually do.
+     * A schematic row of flat icons could not show what the settings on this screen actually do,
+     * glass transparency included.
      */
     private static class PreviewCell extends FrameLayout {
 
@@ -1065,6 +1161,9 @@ public class ComposerLayoutActivity extends BaseFragment {
         private List<List<String>> zones;
         private Drawable backgroundDrawable;
         private BlurredBackgroundSourceBitmap glassSource;
+        /** Retained so addMockInput can glass the placeholder pill with the same wallpaper sample the
+         * toolbar bubbles use, rather than the flat GradientDrawable it painted before. */
+        private BlurredBackgroundDrawableViewFactory glassFactory;
 
         PreviewCell(Context context) {
             super(context);
@@ -1138,11 +1237,14 @@ public class ComposerLayoutActivity extends BaseFragment {
             input.setClickable(false);
             input.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
 
-            GradientDrawable bodyBackground = new GradientDrawable();
-            bodyBackground.setColor(Theme.getColor(Theme.key_chat_messagePanelBackground));
-            bodyBackground.setCornerRadius(dp(PREVIEW_INPUT_HEIGHT / 2f));
+            // NagramX: glassed with the same wallpaper sample the toolbar bubbles use, fed the
+            // slider-configured pass-through for whichever theme is currently running, instead of the
+            // flat panel color this used to paint - otherwise the two sliders below would have no
+            // visible effect anywhere in this preview.
+            BlurredBackgroundColorProviderThemed bodyGlassColor = new BlurredBackgroundColorProviderThemed(
+                    null, Theme.key_chat_messagePanelBackground, NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark()));
             FrameLayout body = new FrameLayout(getContext());
-            body.setBackground(bodyBackground);
+            body.setBackground(glassFactory.create(body, bodyGlassColor).setRadius(dp(PREVIEW_INPUT_HEIGHT / 2f)));
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1211,9 +1313,15 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 glassSource = null;
             }
+            glassFactory = new BlurredBackgroundDrawableViewFactory(source);
+            // NagramX: must stay fed the same NaConfig.composerGlassAlpha value as the mock pill's
+            // provider in addMockInput() below, or the two preview surfaces disagree with each other
+            // (and with the real chat, where both read the one live-overridden provider) the moment the
+            // slider moves off its default.
             toolbar.attachGlass(
-                    new BlurredBackgroundDrawableViewFactory(source),
-                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
+                    glassFactory,
+                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground,
+                            NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark())));
         }
 
         @Override

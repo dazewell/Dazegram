@@ -1449,6 +1449,30 @@ object NaConfig {
             ConfigItem.configTypeInt,
             100 // percent; slider range 85..100 in 1% steps, tighter-only (see ComposerToolbarLayout)
         )
+    val composerGlassLight =
+        addConfig(
+            "ComposerGlassLight",
+            ConfigItem.configTypeInt,
+            25 // percent pass-through; slider range 0..50 in 5% steps (see ComposerLayoutActivity)
+        )
+    val composerGlassDark =
+        addConfig(
+            "ComposerGlassDark",
+            ConfigItem.configTypeInt,
+            25 // percent pass-through; slider range 0..50 in 5% steps (see ComposerLayoutActivity)
+        )
+
+    /**
+     * Converts the stored pass-through percent (higher = more wallpaper visible) into the opacity
+     * Theme.multAlpha expects (higher = more opaque, i.e. less wallpaper visible) - the field the
+     * composer glass provider actually multiplies the panel color's own alpha by.
+     */
+    @JvmStatic
+    fun composerGlassAlpha(dark: Boolean): Float {
+        val percent = (if (dark) composerGlassDark else composerGlassLight).Int().coerceIn(0, 50)
+        return 1f - percent / 100f
+    }
+
     val inputTextSize =
         addConfig(
             "InputTextSize",
