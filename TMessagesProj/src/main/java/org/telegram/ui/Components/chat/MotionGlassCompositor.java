@@ -34,9 +34,11 @@ public class MotionGlassCompositor {
     // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/
     // setPatternColorFilter/setAlpha all change the rendered output while moving neither bitmap's
     // generation id, so the trackers cannot see them. The notification-driven refresh therefore
-    // passes force=true to recomposite unconditionally while resumed and attached; the attach path
-    // (where the return value gates a reprime and a stale composite is harmless) passes force=false
-    // and keeps the tracker skip.
+    // passes force=true to recomposite unconditionally while resumed and attached. The attach path
+    // passes force=false so the tracker skip avoids a redundant recomposite at attach time; its
+    // callers do not read the return value (WallpaperBitmapProvider discards it and ChatActivity's
+    // onUpdateBackgroundDrawable reprimes the render nodes unconditionally), so on that path the
+    // boolean only decides whether the draw happens, not whether a reprime follows.
 
     private Bitmap composite;
     private Canvas compositeCanvas;
