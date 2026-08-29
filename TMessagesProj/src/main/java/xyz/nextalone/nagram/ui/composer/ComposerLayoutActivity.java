@@ -1304,7 +1304,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
             toolbar.attachGlass(
                     new BlurredBackgroundDrawableViewFactory(source),
-                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
+                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground));
         }
 
         @Override
