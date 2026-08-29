@@ -3755,6 +3755,13 @@ public class ChatActivity extends BaseFragment implements
         if (chatActivityEnterView != null) {
             chatActivityEnterView.onDestroy();
         }
+        if (instantCameraView != null) {
+            // NagramX (#video-draft-guard): terminal teardown (back, swipe-back, predictive back, header finish all
+            // route here). The back-guard skips cancel() when a finished draft is pending, so release the preview
+            // player and its ~60 Hz timer here or they outlive the fragment. Never deletes the clip -- that stays
+            // only in cancel().
+            instantCameraView.abandonPreview();
+        }
         if (avatarContainer != null) {
             avatarContainer.onDestroy();
         }
@@ -8541,6 +8548,12 @@ public class ChatActivity extends BaseFragment implements
         // a producer's audioDidSent is posted via runOnUIThread, so the two can't interleave: the bump always
         // precedes admission. Also fires on first creation -- a harmless no-op with nothing in flight.
         videoDraftToken++;
+        // NagramX (#video-draft-guard): the passcode rebuild discards this InstantCameraView without an
+        // onFragmentDestroy, so release its preview player and 60 Hz timer here before the reference is dropped,
+        // or they leak for the life of the process. Never deletes the clip; the draft persists and restores by id.
+        if (instantCameraView != null) {
+            instantCameraView.abandonPreview();
+        }
         instantCameraView = null;
 
         chatActivityEnterView = new ChatActivityEnterView(getParentActivity(), contentView, this, chatMode != MODE_EDIT_BUSINESS_LINK, themeDelegate, chatMode != MODE_EDIT_BUSINESS_LINK) {
@@ -37250,8 +37263,9 @@ public class ChatActivity extends BaseFragment implements
             if (instantCameraView != null && !(chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend())) {
                 // NagramX: cancel(false) deletes cameraFile, which in state (b) is the finished unsent round
                 // video shown in the preview strip -- an accidental back would silently destroy it. Skip the
-                // cancel when one exists so the finished clip is not deleted; fragment teardown frees the camera
-                // without deleting the file.
+                // cancel when one exists so the finished clip is not deleted; onFragmentDestroy then calls
+                // abandonPreview() to release the preview playback resources (player + progress timer) without
+                // touching the file.
                 instantCameraView.cancel(false);
             }
         }

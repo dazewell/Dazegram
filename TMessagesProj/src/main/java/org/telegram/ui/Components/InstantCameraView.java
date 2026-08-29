@@ -170,6 +170,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     @Nullable
     private VideoEditedInfo videoEditedInfo;
     private VideoPlayer videoPlayer;
+    // NagramX (#video-draft-guard): set when the fragment is torn down (or rebuilt by a passcode lock) while a
+    // finished draft still sits in the preview. The back-guard skips cancel() to avoid deleting that clip, so the
+    // looping preview player and its ~60 Hz progress timer would otherwise outlive the view and pile up. This flag
+    // also guards setupVideoPlayer against a runnable already queued on the UI thread landing after abandonment.
+    // Non-volatile on purpose: every reader and writer runs on the UI thread, so the only hazard is a same-thread
+    // queued post, not a cross-thread data race -- do not add volatile or synchronization.
+    private boolean previewAbandoned;
     private Bitmap lastBitmap;
     private int recordingGuid;
 
@@ -1498,6 +1505,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         MediaController.getInstance().requestRecordAudioFocus(false);
         startAnimation(false, false);
         invalidate();
+    }
+
+    // NagramX (#video-draft-guard): release only the preview player and its progress timer, never the clip.
+    // cancel() releases these too, but it also deletes cameraFile and unlocks it (:1490-1497); this narrow variant
+    // exists so fragment teardown and the passcode rebuild can stop the leaking player/timer without touching the
+    // finished draft. hideCamera() / destroy() / cancel() are deliberately not called here -- they route to encoder
+    // cancellation and file deletion, which is exactly the deletion path this feature must never introduce.
+    public void abandonPreview() {
+        previewAbandoned = true;
+        stopProgressTimer();
+        if (videoPlayer != null) {
+            videoPlayer.releasePlayer(true);
+            videoPlayer = null;
+        }
     }
 
     public View getButtonsLayout() {
@@ -3624,6 +3645,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         private void setupVideoPlayer(File file) {
+            // NagramX (#video-draft-guard): a runnable posted before the fragment was abandoned can still land here
+            // after abandonPreview() ran on the same UI thread. Skip re-acquiring the preview player, the ~60 Hz
+            // timer and the controls fade -- but let the EGL teardown below run unconditionally, since an early
+            // return would trade the player leak this fix removes for an EGL surface/context leak. Guarding inside
+            // the method rather than at the call sites keeps the naxDraftId mint and the audioDidSent post that
+            // follow each call intact, so an abandoned-but-finished draft still persists.
+            if (!previewAbandoned) {
             videoPlayer = new VideoPlayer();
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
                 @Override
@@ -3667,6 +3695,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             animatorSet.setDuration(180);
             animatorSet.setInterpolator(new DecelerateInterpolator());
             animatorSet.start();
+            }
 
             EGL14.eglDestroySurface(eglDisplay, eglSurface);
             eglSurface = EGL14.EGL_NO_SURFACE;
