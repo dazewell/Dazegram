@@ -1,6 +1,6 @@
 ---
 name: nagramx-workflow
-description: "Dazewell's process for adding or changing anything in the NagramX repo (NagramX, a personal Telegram-for-Android fork, GitHub dazewell/Dazegram). Trigger this whenever work touches that repo: adding a feature, fixing a bug, touching README.md there, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when dazewell gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: what NagramX is and its legacy-Java constraints, the reuse-first / minimal-footprint hook style with concrete hook points and config systems, the two review rounds (plan review before coding, code review after), the compile gate and its staging-build fallback when no local toolchain exists, coding conventions, commit/history conventions (no AI mentions in git logs or source, ever), README style, on-device testing, dual-package CI, and when a PR actually gets opened."
+description: "Dazewell's process for adding or changing anything in the NagramX repo (NagramX, a personal Telegram-for-Android fork, GitHub dazewell/Dazegram). Trigger this whenever work touches that repo: adding a feature, fixing a bug, touching README.md there, preparing a commit or PR for it, or when dazewell references \"the usual process\" for NagramX. Also trigger when dazewell gives new or corrected guidance about how this workflow should run — this file is meant to be edited, not just read. Covers: what NagramX is and its legacy-Java constraints, the reuse-first / minimal-footprint hook style with concrete hook points and config systems, the two review rounds (plan review before coding, code review after), the compile gate (`ci.yml`) and its CI fallback when no local toolchain exists, coding conventions, commit/history conventions (no AI mentions in git logs or source, ever), README style, on-device testing, dual-package CI, and when a PR actually gets opened."
 ---
 
 # NagramX contribution workflow
@@ -217,17 +217,17 @@ code are not.
    building an artifact to dazewell on a faster machine (see the machine note
    above).
 
-   The fallback is the **staging build**: push the branch and open the PR into
-   `dev` (step 9), and `staging.yml` compiles it on every push to the PR. That
-   run *is* the compile gate in that case — read its result and fix what it
-   reports, same as a local failure. Say plainly in the PR body that the change
-   is unverified locally and that CI is the gate, so nothing is installed on a
-   phone on the assumption it compiled. Everything else in the loop is unchanged:
-   round-2 review still happens, and a red staging build blocks landing exactly
-   as a red local compile would.
+   The fallback is **`ci.yml`**: push the branch and open the PR into `dev`
+   (step 9), and `ci.yml` compiles it on every push. That run *is* the compile
+   gate in that case — read its result and fix what it reports, same as a local
+   failure. Say plainly in the PR body that the change is unverified locally and
+   that CI is the gate, so nothing is installed on a phone on the assumption it
+   compiled. Everything else in the loop is unchanged: round-2 review still
+   happens, and a red `ci.yml` run blocks landing exactly as a red local compile
+   would.
 
 5. **Code review with the Chief Architect (round 2 of 2).** Once it
-   compiles — or once it's pushed, when the staging build is the gate — take
+   compiles — or once it's pushed, when `ci.yml` is the gate — take
    the implemented diff back through review — the chief
    Android architect persona again, now reviewing real code, not a plan.
    Address the comments, re-review. This is a distinct second pass from the
@@ -334,15 +334,19 @@ code are not.
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
    something to wait to be told: once it passes the compile gate (locally, or
-   on CI once pushed) and round-2 review, **commit → push → open the PR** so dazewell always has a test build to
+   on `ci.yml` once pushed) and round-2 review, **commit → push → open the PR** so dazewell always has a way to get a test build to
    install. The build dazewell
    tests on-device must be **`dev` + the change** (on top of the current fork
    state, alongside everything already landed). Open a PR from
    `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
-   triggers `staging.yml`, which builds the PR **merge ref** (`dev` merged with
-   the branch) as the release-signed **dual-package** APK and uploads it to
-   Telegram (labelled a *test* build). dazewell installs the Unofficial variant
-   over the daily app and tests from the uploaded artifact. `commit-tag.yml`
+   triggers `ci.yml` (the fast Java/Kotlin validation gate — no APK). To get the
+   on-device build, apply the **`build-apk`** label to the PR (or dispatch
+   `staging.yml` against the branch), which builds the PR **merge ref** (`dev`
+   merged with the branch) as the release-signed **dual-package** APK and uploads
+   it to Telegram (labelled a *test* build). The label is auto-removed at the
+   start of the run, so re-applying it requests a fresh build. dazewell installs
+   the Unofficial variant over the daily app and tests from the uploaded
+   artifact. `commit-tag.yml`
    also runs and blocks the PR if any commit lacks its `#tag`.
 
    **Request a Copilot review when the PR opens.** `gh pr edit <n> --add-reviewer
@@ -425,23 +429,23 @@ code are not.
    re-requesting only adds passes. The round-2 architect review and the
    final-state passes (step 5), not this machine loop, are the real quality gate.
 
-   Iterate by pushing to the branch (each push rebuilds + re-uploads, and
-   supersedes a build still running on that PR rather than adding to it). On a
-   no-go, fix it and push another commit describing that fix.
-   `staging.yml` path-ignores pure doc / `.github`
-   pushes,
-   so a `FEATURES.md`-only tweak won't rebuild. It's the same pipeline that
-   runs on `dev` after landing — there is no separate debug build and no
-   skip-upload switch.
+   Iterate by pushing to the branch (each push re-runs `ci.yml`, the fast
+   validation gate, and supersedes a run still going on that PR rather than adding
+   to it). On a no-go, fix it and push another commit describing that fix.
+   `ci.yml` path-ignores pure doc / hook / agent-and-skill
+   pushes, so a `FEATURES.md`-only tweak won't run the gate. The release-signed
+   APK is a separate, on-request step (the `build-apk` label or a dispatch) — the
+   push no longer builds or uploads one.
 
-   **Batch a review round's fixes into a single push.** Every push triggers a
-   dual-package staging build and a Telegram upload; `staging.yml` already
-   cancels a superseded run via its concurrency group, so the actual cost comes
-   from choosing to push separately rather than from the workflow itself. Work
-   through all of one review round's findings locally, then push once — don't
-   push a fix, wait for its build, then push the next. Batching bounds the cost
-   *within* a cycle; the round cap above bounds the *number* of cycles — they're
-   two different limits and you want both. If you genuinely need a build
+   **Batch a review round's fixes, and request an APK once per round.** A push
+   now only costs a fast `ci.yml` run, so pushing per fix is cheap — but each
+   time you apply the `build-apk` label you trigger a dual-package build and a
+   Telegram upload, and enough of those in a row trips the bot's flood limit.
+   Work through a review round's findings, push them (the gate re-runs and
+   supersedes itself via its concurrency group), and request the APK once, at the
+   end, so the build dazewell installs reflects the whole round. Batching bounds
+   the cost *within* a cycle; the round cap above bounds the *number* of cycles —
+   they're two different limits and you want both. If you genuinely need an APK
    mid-round to check something, say so and take it as a deliberate exception.
 
    **Absorb mid-flight scope growth cheaply — don't re-review after each
@@ -474,14 +478,14 @@ code are not.
 ### Commit/PR by default vs. ask first
 
 - **A user-visible feature is committed and PR'd by default** — don't wait to
-  be told. Finish the pipeline (compile gate — local or staging, round-2
+  be told. Finish the pipeline (compile gate — local or `ci.yml`, round-2
   review), then commit, push, and
   open the PR into `dev` with a Copilot review requested (step 9). That's how
   dazewell gets the on-device test build; making it a standing step is the point.
 - **CI/workflow tweaks, bug fixes, and small/chore items keep the lighter
   touch** — commit only when asked, and a PR is optional (they can land via a
   local merge into `dev`, or be shortcut entirely). Don't force a full
-  branch+PR ceremony on a one-liner unless dazewell wants the staging build.
+  branch+PR ceremony on a one-liner unless dazewell wants the on-request APK build.
 - Either way, still **only push to shared branches when that's the intent** —
   the default-PR rule is about not re-asking for *feature* work, not about
   pushing chores nobody requested.
@@ -544,14 +548,17 @@ contains custom resource values, but the feature is disabled." Firebase:
 `TMessagesProj/google-services.json` needs a client entry per
 `package_name`.
 
-**One pipeline for everything.** `staging.yml` runs on push to `dev`, on
-pull requests into `dev` (building the `dev`+branch merge ref as the on-device
-preview), and manually. Both event types produce the same release-signed
-dual-package artifact — there is no separate debug pipeline, no `[skip upload]`,
-and the old `pr.yml` / `canary.yml` / `release.yml` workflows have been
-removed. The upload step also posts an AI commit summary to Telegram (GitHub
-Models via `GITHUB_TOKEN`); set the optional `AI_MODEL` repo variable to
-override the default model.
+**One publish pipeline, one validation gate.** `ci.yml` runs on every push to
+`dev` and every PR into `dev` and compiles Java/Kotlin only — the fast gate that
+gives intermediate work a quick signal. `staging.yml` is the sole thing that
+signs, builds the native dual-package APK, and uploads to Telegram; it runs
+unconditionally on push to `dev` (post-land delivery) and on request for a PR
+(the `build-apk` label, or a manual dispatch). There is no separate debug
+pipeline and no `[skip upload]`; the old `pr.yml` / `canary.yml` / `release.yml`
+workflows are still gone — this split adds a validation gate, it does not restore
+a second publish path. The upload step also posts an AI commit summary to
+Telegram (GitHub Models via `GITHUB_TOKEN`); set the optional `AI_MODEL` repo
+variable to override the default model.
 
 ## Keeping this current
 

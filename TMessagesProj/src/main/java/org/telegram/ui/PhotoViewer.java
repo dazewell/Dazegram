@@ -5029,7 +5029,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                 showDownloadAlert();
                             }
                         } else if (f != null && f.exists()) {
-                            MediaController.saveFile(f.toString(), parentActivity, isVideo ? 1 : 0, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, isVideo, 0xf9222222, 0xffffffff).show());
+                            // NagramX: pass the message for date-based naming only; folder routing stays as before (saveFileForNaming keeps the folder object null)
+                            MediaController.saveFileForNaming(currentMessageObject, f.toString(), parentActivity, isVideo ? 1 : 0, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, isVideo, 0xf9222222, 0xffffffff).show());
                         } else {
                             showDownloadAlert();
                         }
@@ -5087,7 +5088,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                             showDownloadAlert();
                                         }
                                     } else if (f != null && f.exists()) {
-                                        MediaController.saveFile(f.toString(), parentActivity, isThisVideo ? 1 : 0, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, isThisVideo, 0xf9222222, 0xffffffff).show());
+                                        // NagramX: pass the message for date-based naming only; folder routing stays as before (saveFileForNaming keeps the folder object null)
+                                        MediaController.saveFileForNaming(currentMessageObject, f.toString(), parentActivity, isThisVideo ? 1 : 0, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, isThisVideo, 0xf9222222, 0xffffffff).show());
                                     } else {
                                         showDownloadAlert();
                                     }
@@ -5137,7 +5139,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                                             }
                                         } else if (!isThisLivePhoto && f != null && f.exists()) {
                                             count[0]++;
-                                            MediaController.saveFile(f.toString(), parentActivity, isThisVideo ? 1 : 0, null, null, uri -> AndroidUtilities.runOnUIThread(bulletin));
+                                            // NagramX: pass the album loop's own message for naming only (not the displayed one); folder routing stays as before (saveFileForNaming keeps the folder object null)
+                                            MediaController.saveFileForNaming(msg, f.toString(), parentActivity, isThisVideo ? 1 : 0, null, null, uri -> AndroidUtilities.runOnUIThread(bulletin));
                                         }
                                     }
                                 })
@@ -6039,7 +6042,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 f = FileLoader.getInstance(currentAccount).getPathToAttach(document, null, true, true);
             }
             if (f != null && f.exists()) {
-                MediaController.saveFile(f.toString(), parentActivity, 1, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, true, 0xf9222222, 0xffffffff).show());
+                // NagramX: pass the message for naming only; folder routing stays as before (saveFileForNaming keeps the folder object null)
+                MediaController.saveFileForNaming(messageObject, f.toString(), parentActivity, 1, null, null, uri -> BulletinFactory.createSaveToGalleryBulletin(containerView, true, 0xf9222222, 0xffffffff).show());
             } else {
                 ArrayList<MessageObject> messageObjects = new ArrayList<>();
                 messageObject.qualityToSave = document;

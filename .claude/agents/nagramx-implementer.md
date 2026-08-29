@@ -1,6 +1,6 @@
 ---
 name: nagramx-implementer
-description: Implements one focused change on NagramX, from empty branch to a pull request ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to the staging build, writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, and resolves every review thread. Use for the coding half of a change, one branch per change. Owns its branch through to a green build and never merges.
+description: Implements one focused change on NagramX, from empty branch to a pull request ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to CI (`ci.yml`), writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, and resolves every review thread. Use for the coding half of a change, one branch per change. Owns its branch through to a green build and never merges.
 model: sonnet
 ---
 

@@ -2709,7 +2709,7 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.cancel(state == 2);
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
-                    instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
+                    instantCameraView.rollOverSegment(notify, scheduleDate, ttl, effectId, stars);
                 }
             }
         }
@@ -18729,6 +18729,13 @@ public class ChatActivity extends BaseFragment implements
             if (chatInputViewsContainer != null) {
                 chatInputViewsContainer.invalidate();
             }
+            // NagramX: a wallpaper change from inside the chat swaps the bitmap/shader baked into
+            // the glass render nodes' display lists at record time, so a plain View.invalidate()
+            // leaves the composer glass on the stale capture until an unrelated redraw. Force the
+            // cached lists to re-record with the new wallpaper. Nested ChatActivityContainer chats
+            // keep their own render nodes and are not reached from here — out of scope, they only
+            // matter if the wallpaper is changed with the hashtag-search pager open.
+            reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
             checkSystemBarColors();
         }
@@ -38402,14 +38409,14 @@ public class ChatActivity extends BaseFragment implements
     // (the round-camera visibility flip, beforeMessageSend, the delayed close animation): the recorder
     // is still running, so treating this as the end of the session would kill it mid-flight.
     @Override
-    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, long stars) {
         if (photoEntry == null) {
             return;
         }
         if (photoEntry.path != null) {
             keepRecordingSegmentPaths.add(photoEntry.path);
         }
-        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, getMessageChatSendParams(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, scheduleDate, 0, false, photoEntry.hasSpoiler, photoEntry.caption, getMessageChatSendParams(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         afterMessageSend();
     }
 
@@ -51271,13 +51278,22 @@ public class ChatActivity extends BaseFragment implements
         }
         if (expandedInputGlassReprimePending && inputIslandHeightCurrent == inputIslandHeightTarget) {
             expandedInputGlassReprimePending = false;
-            if (glassBackgroundSourceRenderNode != null) {
-                glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
-            }
-            if (glassBackgroundSourceFrostedRenderNode != null) {
-                glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
-            }
+            reprimeGlassRenderNodes();
             invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_POSITIONS);
+        }
+    }
+
+    // NagramX: re-record the glass render nodes' cached display lists. The wallpaper leg of the
+    // list is baked in at record time (a RecordingCanvas copies the BitmapShader Paint), so a
+    // trigger that changes the wallpaper content has to force a re-record or the composer keeps
+    // showing the old capture. Both guards matter: glassBackgroundSourceRenderNode is null unless
+    // FLAG_LIQUID_GLASS is on, and both are null below SDK 31 or with chat blur off.
+    private void reprimeGlassRenderNodes() {
+        if (glassBackgroundSourceRenderNode != null) {
+            glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
+        }
+        if (glassBackgroundSourceFrostedRenderNode != null) {
+            glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
         }
     }
 
