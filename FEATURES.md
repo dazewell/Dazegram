@@ -59,7 +59,7 @@ Send and the mic sit inside the text pill, drawn slightly in from its rounded en
 
 ### Wallpaper pattern shows through the composer glass <!-- #glass-pattern -->
 
-If your chat wallpaper is a built-in gradient with a pattern on it, the pattern now reads through the glass composer panels, not just the gradient behind them. It shows as soft light and dark texture rather than a crisp motif, since the glass blurs whatever sits under it, and it follows the gradient as it rotates on send and fades in with the pattern when a chat opens.
+If your chat wallpaper is a built-in gradient with a pattern on it, the pattern now reads through the glass composer panels, not just the gradient behind them. The glass samples a small proxy of the wallpaper rather than the wallpaper itself, so the pattern reads as soft, enlarged texture rather than a crisp motif - and the more transparent you set the composer glass, the more of it shows. It follows the gradient as it rotates on send and fades in with the pattern when a chat opens. The dimmed backdrop behind a round video recording shows the pattern too.
 
 ### Composer toolbar layout editor <!-- #composer-layout --> <!-- #composer-layout-tap-toggle --> <!-- #composer-leading-2slot -->
 

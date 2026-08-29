@@ -156,7 +156,6 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceWrapped;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
@@ -184,6 +183,10 @@ import tw.nekomimi.nekogram.utils.ProxyUtil;
 public class ChannelAdminLogActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
+    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
+    // gradient-only proxy; render-node surfaces keep navbarContentSourceWallpaper, the pattern composite.
+    // The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
+    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
     private final @Nullable BlurredBackgroundSourceRenderNode glassBackgroundSourceRenderNode;
@@ -350,7 +353,8 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
     public ChannelAdminLogActivity(TLRPC.Chat chat) {
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
+        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
@@ -1018,10 +1022,11 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 int widthSize = MeasureSpec.getSize(widthMeasureSpec);
                 int heightSize = MeasureSpec.getSize(heightMeasureSpec);
 
-                if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                    ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
-                        .setParentSize(widthSize, heightSize, 0);
-                }
+                // NagramX: size both the composite and the plain bitmap source via the provider, whether
+                // or not each is currently installed — a wallpaper switch installs a source without a
+                // fresh measure pass, so an unsized one would draw its mesh 1:1 in the top-left corner of
+                // the fade bands until an unrelated relayout. Identical-dims calls are free.
+                wallpaperBitmapProvider.setParentSize(widthSize, heightSize, 0);
 
                 setMeasuredDimension(widthSize, heightSize);
                 heightSize -= getPaddingTop();
@@ -1070,6 +1075,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 // shouldHaveLightNavigationBarIcons = isDark;
 
                 navbarContentSourceWallpaper.setSource(source);
+                navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
                 if (chatActivityFadeView != null) {
                     chatActivityFadeView.invalidate();
                 }

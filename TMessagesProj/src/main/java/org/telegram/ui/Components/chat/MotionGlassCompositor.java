@@ -23,22 +23,30 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
  * Not thread-safe by design: every caller is on the UI thread (the background wallpaper drawable is
  * only ever drawn there), so the retained bitmap is never touched off the main thread and no locking
  * is needed.
+ *
+ * Scope: this proxy is the wallpaper layer of the glass surfaces that keep the composite — the
+ * refracted composer pills (as the render node's setUnderSource) and, drawn bare, the round-video
+ * recording backdrop. Nothing blurs the wallpaper on any glass path — the Liquid Glass shader is a
+ * single {@code img.eval(uv)} tap that displaces and tints but cannot soften, and the raw wallpaper
+ * layer beneath it is drawn unblurred — so the proxy's only softening is the cover-scale upscale, which
+ * turns the pattern into a coarse, enlarged, and geometrically approximate impression. Which surfaces
+ * take this composite versus WallpaperBitmapProvider's gradient-only plain source, and why, is decided
+ * there; see that class for the split.
  */
 public class MotionGlassCompositor {
 
-    // Downsampled proxy: the glass upscales it, and its only softening is that upscale, so the long
-    // edge is matched to the liquid-glass content blur rather than the screen. Screen aspect (not the
-    // parent view's) so the pattern's cover-scale matches the wallpaper drawn right above the panel.
-    private static final int TARGET_LONG_EDGE_PX = 248;
-
-    // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/
-    // setPatternColorFilter/setAlpha all change the rendered output while moving neither bitmap's
-    // generation id, so the trackers cannot see them. The notification-driven refresh therefore
-    // passes force=true to recomposite unconditionally while resumed and attached. The attach path
-    // passes force=false so the tracker skip avoids a redundant recomposite at attach time; its
-    // callers do not read the return value (WallpaperBitmapProvider discards it and ChatActivity's
-    // onUpdateBackgroundDrawable reprimes the render nodes unconditionally), so on that path the
-    // boolean only decides whether the draw happens, not whether a reprime follows.
+    // Downsampled proxy: the glass upscales it, and its only softening is that upscale (nothing blurs
+    // the wallpaper on any path), so the pattern is only ever as sharp as this bitmap. Screen aspect
+    // (not the parent view's) so the pattern's cover-scale matches the wallpaper drawn right above the
+    // panel. At 248 the pattern rasterised ~114px wide and cover-scaled ~9.5x on a 1080-wide screen,
+    // which on device showed as visibly rough, pixelated pattern edges through the pill rather than as
+    // soft texture. 768 puts the long edge at ~354px on that screen, roughly a 3x upscale, which reads
+    // as texture rather than stair-stepped line-art. Cost is ~1MB per chat activity plus a bigger
+    // off-screen composite on each recomposite, the accepted trade for legible pattern edges. The pill
+    // is the surface whose needs bound this number: the round-video recording backdrop also samples this
+    // composite, but it is a near-opaque scrim where upscale artefacts barely show, so raising the
+    // resolution further only spends memory on detail the refracted, tinted pill cannot resolve.
+    private static final int TARGET_LONG_EDGE_PX = 768;
 
     private Bitmap composite;
     private Canvas compositeCanvas;
@@ -52,8 +60,15 @@ public class MotionGlassCompositor {
      * Records the drawable into the retained composite and points {@code target} at it. Returns true
      * when it actually re-composited (a new bitmap instance was set, or the content changed), so the
      * caller can reprime the glass render nodes; false when nothing moved and the call was a no-op.
-     * When {@code force} is set the content check is skipped and it always re-records, because the
-     * alpha/colour-filter setters change the output without moving a generation id. UI thread only.
+     *
+     * The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/
+     * setPatternColorFilter/setAlpha all change the rendered output while moving neither bitmap's
+     * generation id, so the trackers cannot see them. Pass {@code force} to skip the content check and
+     * re-record unconditionally: the notification-driven refresh does (while resumed and attached), the
+     * attach path does not, so its tracker skip avoids a redundant recomposite at attach time. On the
+     * attach path the callers ignore the return value — WallpaperBitmapProvider discards it and
+     * ChatActivity reprimes the render nodes unconditionally — so there the boolean only decides whether
+     * the draw happens, not whether a reprime follows. UI thread only.
      */
     public boolean compose(BlurredBackgroundSourceBitmap target, MotionBackgroundDrawable motion, boolean force) {
         final int targetW = targetWidth();

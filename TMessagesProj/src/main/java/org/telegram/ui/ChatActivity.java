@@ -530,7 +530,16 @@ public class ChatActivity extends BaseFragment implements
     private final @NonNull BlurredBackgroundDrawableViewFactory glassBackgroundDrawableFactoryFrosted;
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
+    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
+    // gradient-only proxy; render-node surfaces (the composer pills) and the round-video recording
+    // backdrop (roundVideoBackgroundDrawableFactory) keep navbarContentSourceWallpaper, the pattern
+    // composite. The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
+    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
+    // NagramX: the round-video recording backdrop. Wraps navbarContentSourceWallpaper (the composite)
+    // directly, no render node — a full-screen near-opaque scrim that keeps the pattern (see the source
+    // comment above and roundVideoRecordBackground's creation).
+    private final @NonNull BlurredBackgroundDrawableViewFactory roundVideoBackgroundDrawableFactory;
 
     private Dialog closeChatDialog;
     private boolean showCloseChatDialogLater;
@@ -2928,6 +2937,7 @@ public class ChatActivity extends BaseFragment implements
         super(args);
 
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
+        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
 
@@ -2962,13 +2972,16 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
             glassBackgroundDrawableFactoryFrosted = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         }
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
+        roundVideoBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         navbarContentDrawableFactory.setLinkedViewsRef(glassAttachedViews);
+        roundVideoBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactoryFrosted.setLinkedViewsRef(glassAttachedViews);
         scrimBlur3Factory.setLinkedViewsRef(new ReferenceList<>());
 
         navbarContentDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
+        roundVideoBackgroundDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
         glassBackgroundDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
         glassBackgroundDrawableFactoryFrosted.setLinkedDrawablesRef(glassAttachedDrawables);
         scrimBlur3Factory.setLinkedDrawablesRef(glassAttachedDrawables);
@@ -5252,6 +5265,7 @@ public class ChatActivity extends BaseFragment implements
         glassBackgroundDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
         glassBackgroundDrawableFactoryFrosted.setSourceRootView(viewPositionWatcher, parentView);
         navbarContentDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
+        roundVideoBackgroundDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
         scrimBlur3Factory.setSourceRootView(viewPositionWatcher, parentView);
 
         if (headerItem != null) {
@@ -8428,6 +8442,7 @@ public class ChatActivity extends BaseFragment implements
                             }
                         };
                         container.chatActivity.navbarContentSourceWallpaper.setSource(navbarContentSourceWallpaper);
+                        container.chatActivity.navbarContentSourceWallpaperPlain.setSource(navbarContentSourceWallpaperPlain);
                         container.chatActivity.parentThemeDelegate = themeDelegate;
                         container.chatActivity.parentChatActivity = ChatActivity.this;
                         container.chatActivity.chatActivityDelegate = new ChatActivityDelegate() {
@@ -8806,7 +8821,10 @@ public class ChatActivity extends BaseFragment implements
 
         roundVideoRecordBackground = new View(context);
         roundVideoRecordBackground.setVisibility(View.GONE);
-        BlurredBackgroundDrawable d = navbarContentDrawableFactory.create(roundVideoRecordBackground);
+        // NagramX: draw from the composite (pattern) source, not the plain proxy — this is a full-screen
+        // near-opaque scrim covering everything, so there is no adjacent real wallpaper for the pattern to
+        // smear against, and at TARGET_LONG_EDGE_PX = 768 its cover-scale is mild.
+        BlurredBackgroundDrawable d = roundVideoBackgroundDrawableFactory.create(roundVideoRecordBackground);
         d.setAlpha(232);
         roundVideoRecordBackground.setBackground(d);
 
@@ -18656,6 +18674,7 @@ public class ChatActivity extends BaseFragment implements
                         }
                         progressView.setTranslationY(y / 2);
                         contentView.setBackgroundTranslation((int) y);
+                        updateGlassBackgroundTranslation((int) y);
                         if (instantCameraView != null) {
                             instantCameraView.onPanTranslationUpdate(y);
                         }
@@ -18753,6 +18772,7 @@ public class ChatActivity extends BaseFragment implements
             shouldHaveLightNavigationBarIcons = navigationBarBrightness <= 0.9f;
 
             navbarContentSourceWallpaper.setSource(source);
+            navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
             if (chatActivityFadeView != null) {
                 chatActivityFadeView.invalidate();
             }
@@ -19771,10 +19791,12 @@ public class ChatActivity extends BaseFragment implements
 
             int heightSize = allHeight;
 
-            if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
-                    .setParentSize(widthSize, heightSize, 0);
-            }
+            // NagramX: size both the composite and the plain bitmap source via the provider, whether or
+            // not each is the one currently installed. A wallpaper switch installs a source without
+            // forcing a measure pass, so an unsized one would draw its mesh 1:1 in the top-left corner
+            // (the fade bands, round-video backdrop) until an unrelated relayout. Covers the wrapper's
+            // current source too, since it is one of these; identical-dims calls are free.
+            wallpaperBitmapProvider.setParentSize(widthSize, heightSize, 0);
             if (lastWidth != widthSize) {
                 globalIgnoreLayout = false;
                 lastWidth = widthMeasureSpec;
@@ -20180,6 +20202,7 @@ public class ChatActivity extends BaseFragment implements
             contentPanTranslation = 0;
             contentPanTranslationT = 0;
             contentView.setBackgroundTranslation(0);
+            updateGlassBackgroundTranslation(0);
             if (contentView != null) {
                 contentView.updateBlurContent();
             }
@@ -51359,6 +51382,20 @@ public class ChatActivity extends BaseFragment implements
         if (glassBackgroundSourceFrostedRenderNode != null) {
             glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
         }
+    }
+
+    // NagramX: the keyboard pans the wallpaper (backgroundTranslationY); the composer glass samples a
+    // separate composite proxy of it, so the proxy has to shift by the same amount or the pattern behind
+    // the composer sits still while the wallpaper slides under it. Push the shift onto the composite
+    // source's matrix and re-record the glass display lists so they re-read it (the shader matrix is
+    // baked in at record time). Wallpaper parallax adds a continuous sensor-driven offset this does not
+    // follow, so the pattern would drift while tilting if parallax were enabled — known and accepted.
+    // Any new setBackgroundTranslation call site must be paired with this: the two are kept in step only
+    // by adjacency, and if a future merge adds a third the pattern silently misaligns with nothing failing.
+    private void updateGlassBackgroundTranslation(int translationY) {
+        wallpaperBitmapProvider.setBackgroundTranslationY(translationY);
+        reprimeGlassRenderNodes();
+        invalidateAllGlassAttachedViews();
     }
 
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
