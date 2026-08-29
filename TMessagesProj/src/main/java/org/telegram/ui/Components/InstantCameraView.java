@@ -3305,6 +3305,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
+            // NagramX: capture the pin into a local before the async boundary, same idiom as capturedGeneration
+            // in handleStopRecording -- the post must carry the generation pinned here, not re-read the field at
+            // lambda-run time.
+            final int capturedFinalizeGeneration = finalizeGeneration;
             AndroidUtilities.runOnUIThread(() -> {
                 videoEditedInfo = new VideoEditedInfo();
                 videoEditedInfo.roundVideo = true;
@@ -3321,7 +3325,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, finalizeGeneration);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
 
@@ -3764,6 +3768,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } else {
                 if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
                     sentMedia = true;
+                    // NagramX: capture the pin into a local before the async boundary, same idiom as
+                    // capturedGeneration below -- the post must carry the generation pinned when the stop
+                    // sequence started, not re-read the field at lambda-run time.
+                    final int capturedFinalizeGeneration = finalizeGeneration;
                     AndroidUtilities.runOnUIThread(() -> {
                         if (videoEditedInfo == null) {
                             videoEditedInfo = new VideoEditedInfo();
@@ -3831,7 +3839,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
-                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, finalizeGeneration);
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });
                 }
