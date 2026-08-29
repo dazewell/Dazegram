@@ -115,8 +115,9 @@ def get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_ur
     # The meta line links the short commit id -- the branch name used to be
     # shown alongside it, but that duplicated the PR number/title already in
     # the headline above and cluttered a tight 1024-unit caption. Removed
-    # temporarily; the link target below is unchanged, so the branch can come
-    # back with a one-line edit.
+    # temporarily; the commit link below is unchanged, and restoring the branch
+    # means threading branch/branch_url back into get_header() (get_commit_info
+    # still returns both) and appending the link to this line.
     meta = f'<b>Commit:</b> <a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
     return headline + "\n" + meta
 
