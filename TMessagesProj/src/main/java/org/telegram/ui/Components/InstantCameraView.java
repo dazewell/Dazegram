@@ -3327,7 +3327,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // NagramX (#video-draft-guard): track whether finishMovie() actually completed (returned without
             // throwing), the same positive signal finishMuxer uses on the stop path. Set inside the write runnable
             // before countDown, so the await below happens-after it and the read is safe. A broken finalize must
-            // not be minted a draft id, or it would persist and unlock the previous good record's file.
+            // not be minted a draft id, or it would persist and unlock the previous good record's file. finishMovie
+            // succeeding doesn't prove the file has video either, so the mint below also requires videoTrackIndex.
             final boolean[] finalizeSuccess = {false};
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
@@ -3355,7 +3356,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 }
             }
-            final boolean finalizeOk = finalizeSuccess[0];
+            // videoTrackIndex (-5 sentinel unless a video track was added) is read here on the encoder thread that
+            // writes it, folded into finalizeOk before the async UI post -- never read across the thread boundary.
+            final boolean finalizeOk = finalizeSuccess[0] && videoTrackIndex != -5;
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
             // NagramX: capture the pin into a local before the async boundary, same idiom as capturedGeneration
             // in handleStopRecording -- the post must carry the generation pinned here, not re-read the field at
@@ -3805,9 +3808,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // computes this -- true iff finishMovie() didn't throw / the write wasn't interrupted). A broken mp4
             // must not be minted a draft id below, or it would persist, supersede the previous good record and
             // unlock its file. mediaMuxer == null means nothing was finalized here, so treat that as not-ok too.
+            // finishMuxer proves the muxer closed cleanly, not that the file has video -- an audio-only clip (video
+            // encoder never emitted a format, e.g. a camera glitch or a near-instant stop) finalizes fine but must
+            // not be persisted either. videoTrackIndex stays at its -5 sentinel unless a video track was added, and
+            // it's written on this (encoder) thread, so reading it here -- not in the UI post below -- is same-thread.
             final boolean finalizeOk;
             if (mediaMuxer != null) {
-                finalizeOk = finishMuxer();
+                finalizeOk = finishMuxer() && videoTrackIndex != -5;
             } else {
                 finalizeOk = false;
             }
