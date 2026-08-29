@@ -530,15 +530,10 @@ public class ChatActivity extends BaseFragment implements
     private final @NonNull BlurredBackgroundDrawableViewFactory glassBackgroundDrawableFactoryFrosted;
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
-    // NagramX: surfaces that show the bare wallpaper (drawn straight from the wrapper, no render node)
-    // take this gradient-only proxy instead of the pattern composite, which smears when cover-scaled.
-    // Surfaces that composite blurred message content over the wallpaper keep navbarContentSourceWallpaper
-    // — the composite is only ever their setUnderSource, not what fills the surface. The split is by
-    // source, not by size: navbarContentDrawableFactory (the bare-wallpaper factory) reads this;
-    // the render-node factories keep the composite. The one bare-wallpaper surface that still draws the
-    // composite is the round-video recording backdrop (roundVideoBackgroundDrawableFactory): it is a
-    // near-opaque full-screen scrim with no adjacent real wallpaper to smear against, so it keeps the
-    // pattern. See WallpaperBitmapProvider.
+    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
+    // gradient-only proxy; render-node surfaces (the composer pills) and the round-video recording
+    // backdrop (roundVideoBackgroundDrawableFactory) keep navbarContentSourceWallpaper, the pattern
+    // composite. The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
     // NagramX: the round-video recording backdrop. Wraps navbarContentSourceWallpaper (the composite)
@@ -51395,6 +51390,8 @@ public class ChatActivity extends BaseFragment implements
     // source's matrix and re-record the glass display lists so they re-read it (the shader matrix is
     // baked in at record time). Wallpaper parallax adds a continuous sensor-driven offset this does not
     // follow, so the pattern would drift while tilting if parallax were enabled — known and accepted.
+    // Any new setBackgroundTranslation call site must be paired with this: the two are kept in step only
+    // by adjacency, and if a future merge adds a third the pattern silently misaligns with nothing failing.
     private void updateGlassBackgroundTranslation(int translationY) {
         wallpaperBitmapProvider.setBackgroundTranslationY(translationY);
         reprimeGlassRenderNodes();

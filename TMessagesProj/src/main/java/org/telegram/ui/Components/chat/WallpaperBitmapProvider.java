@@ -26,12 +26,23 @@ public class WallpaperBitmapProvider {
     private final BlurredBackgroundSourceBitmap sourceBitmap = new BlurredBackgroundSourceBitmap();
     private final MotionGlassCompositor motionGlassCompositor = new MotionGlassCompositor();
 
-    // NagramX: the composited source (gradient + pattern) is a small screen-aspect proxy the glass
-    // cover-scales several times over with nothing softening it (see MotionGlassCompositor). That reads
-    // fine behind a small refracted composer pill but smears the pattern into coarse, enlarged blocks on
-    // a full-screen surface. Full-screen consumers take this "plain" source instead: the pre-#230
-    // gradient-only mesh (or flat black when intensity<0), which upscales invisibly because it has no
-    // line-art to smear.
+    // NagramX: THE SPLIT — this class is the single home for the rationale; the copies in ChatActivity,
+    // ChannelAdminLogActivity and MotionGlassCompositor point here.
+    // The composited source (gradient + pattern) is a small screen-aspect proxy the glass cover-scales
+    // several times over with nothing softening it (see MotionGlassCompositor). That reads fine behind a
+    // small refracted composer pill, but a surface that draws the bare wallpaper straight from a source
+    // shows the pattern smeared into coarse, enlarged blocks wherever it sits beside the real wallpaper.
+    // So the split is by source, not by size: surfaces that composite blurred message content over the
+    // wallpaper (the render-node factories — the composer pills) keep the composite; surfaces that draw
+    // the bare wallpaper (navbarContentDrawableFactory — the fade bands and the search list) take this
+    // "plain" source: the pre-#230 gradient-only mesh (or flat black when intensity<0), which has no
+    // line-art to smear and upscales invisibly. One bare-wallpaper surface deliberately keeps the
+    // composite: the round-video recording backdrop, a near-opaque full-screen scrim with no adjacent
+    // wallpaper to smear against.
+    //
+    // plainSourceColor and sourceColor must stay separate objects and never be merged: sourceColor holds
+    // a colour wallpaper's fill and plainSourceColor an intensity<0 motion wallpaper's flat black, and one
+    // field cannot carry both without cross-writing them.
     private final BlurredBackgroundSourceColor plainSourceColor = new BlurredBackgroundSourceColor();
     private final BlurredBackgroundSourceBitmap plainSourceBitmap = new BlurredBackgroundSourceBitmap();
     private BlurredBackgroundSource plainSource;
@@ -44,8 +55,8 @@ public class WallpaperBitmapProvider {
     // cover matrix inside setBitmap()/setParentSize() without telling us and setParentSize early-returns
     // on identical dims, so we can never assume whether a rebuild happened: detect it by value (below)
     // and always recompute base + current shift from scratch, which is idempotent and cannot double-
-    // apply or lose the shift. The plain source is deliberately left alone (see getPlainSource): the
-    // gradient it carries is smooth low-frequency colour where a few px of vertical drift is invisible.
+    // apply or lose the shift. Only the composite (sourceBitmap) is shifted here; what that means for the
+    // plain source depends on the wallpaper type — see setBackgroundTranslationY.
     private final Matrix compositeBaseMatrix = new Matrix();
     private final Matrix compositeShiftedMatrix = new Matrix();
     private final float[] compositeLiveValues = new float[9];
@@ -100,6 +111,10 @@ public class WallpaperBitmapProvider {
                 plainSourceColor.setColor(Color.BLACK);
                 plainSource = plainSourceColor;
             } else {
+                // NagramX: setBitmap here aliases the drawable's live mesh on purpose. getBitmap() returns
+                // currentBitmap, allocated once in the drawable's init and thereafter mutated in place by
+                // generateGradient, so the plain source animates for free. A defensive Bitmap copy here
+                // would silently freeze the gradient behind the fade bands.
                 plainSourceBitmap.setBitmap(motionDrawable.getBitmap());
                 plainSource = plainSourceBitmap;
             }
@@ -137,6 +152,10 @@ public class WallpaperBitmapProvider {
      * recent {@link #updateSourceFromBackgroundViewDrawable} call. For a motion wallpaper this is the
      * gradient-only mesh (or flat black), never the pattern composite; for every other drawable type
      * it is the same object that call returned.
+     *
+     * Not every bare-wallpaper surface routes here: GiftMessageBottomSheet, NekoDelegateFragment (both
+     * sites) and ComposerLayoutActivity deliberately draw the composite (navbarContentSourceWallpaper)
+     * full-screen and keep the pattern, so don't "finish the job" by pointing them at the plain source.
      */
     public BlurredBackgroundSource getPlainSource() {
         return plainSource;
@@ -161,8 +180,14 @@ public class WallpaperBitmapProvider {
     /**
      * Vertical offset the keyboard pan applies to the wallpaper (SizeNotifierFrameLayout's
      * backgroundTranslationY). The composite glass proxy is a separate bitmap and must shift by the same
-     * amount so the pattern behind the composer tracks the real wallpaper. Applied to the composite
-     * source only; the plain full-screen source is left alone (its gradient hides the drift).
+     * amount so the pattern behind the composer tracks the real wallpaper. This shifts the composite
+     * source (sourceBitmap). What happens to the plain source depends on the wallpaper type: for a motion
+     * wallpaper the plain source is a separate gradient bitmap (or flat black), left unshifted because a
+     * few px of vertical drift is invisible in smooth low-frequency colour. For a photo or other
+     * wallpaper there is no separate plain proxy — plainSource is sourceBitmap, the same object shifted
+     * here — so those bare-wallpaper surfaces pan with the wallpaper too. That is correct:
+     * SizeNotifierFrameLayout pans a photo wallpaper by the same backgroundTranslationY, so the fade
+     * bands now track it where before they did not.
      */
     public void setBackgroundTranslationY(int translationY) {
         backgroundTranslationY = translationY;

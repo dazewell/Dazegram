@@ -183,12 +183,9 @@ import tw.nekomimi.nekogram.utils.ProxyUtil;
 public class ChannelAdminLogActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
-    // NagramX: surfaces that show the bare wallpaper (drawn straight from the wrapper, no render node)
-    // take this gradient-only proxy instead of the pattern composite, which smears when cover-scaled.
-    // Surfaces that composite blurred message content over the wallpaper keep navbarContentSourceWallpaper
-    // — the composite is only ever their setUnderSource. The split is by source, not by size: only
-    // navbarContentDrawableFactory reads this; the render-node factories keep the composite. See
-    // WallpaperBitmapProvider.
+    // NagramX: bare-wallpaper surfaces (drawn straight from the wrapper, no render node) take this plain
+    // gradient-only proxy; render-node surfaces keep navbarContentSourceWallpaper, the pattern composite.
+    // The split is by source, not by size — the full rationale lives in WallpaperBitmapProvider.
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
