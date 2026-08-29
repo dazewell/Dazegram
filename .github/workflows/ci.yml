@@ -114,7 +114,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          fetch-depth: 1
+          # Full history: on a push with several commits, paths-filter diffs
+          # against the before-SHA using local git, and a shallow clone can miss
+          # a build-file change and wrongly skip the deep job. PR events use the
+          # API and don't need it, but push events do.
+          fetch-depth: 0
       - name: Filter paths
         id: filter
         uses: dorny/paths-filter@v3

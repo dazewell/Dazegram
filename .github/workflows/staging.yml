@@ -56,7 +56,10 @@ jobs:
   unlabel:
     name: Remove build-apk label
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'build-apk'
+    # Same-repo only: a fork PR gets a read-only token, so the label DELETE below
+    # would 403. dazewell's flow is all same-repo branches, so this never fires on
+    # a legitimate request — it just keeps a stray fork PR from a doomed run.
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       pull-requests: write
     steps:
@@ -86,7 +89,7 @@ jobs:
       (
         github.event_name == 'push' ||
         github.event_name == 'workflow_dispatch' ||
-        (github.event_name == 'pull_request' && github.event.label.name == 'build-apk')
+        (github.event_name == 'pull_request' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository)
       )
     strategy:
       fail-fast: false
