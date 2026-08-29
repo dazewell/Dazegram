@@ -831,6 +831,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 startAnimation(false, false);
                 MediaController.getInstance().requestRecordAudioFocus(false);
             } else {
+                // NagramX (#video-draft-guard): pin the draft generation before requesting the pause finalize,
+                // symmetric with the stop path. handlePauseRecording snapshots it into finalizeGeneration and the
+                // async audioDidSent post carries that, so a finalize superseded by a newer recording -- or by a
+                // passcode-lock rebuild bumping the token -- is dropped at the enter-view gate instead of landing
+                // an unsendable paused preview on the fresh instance. videoEncoder is non-null here (pause()
+                // dereferences it next).
+                videoEncoder.finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
                 videoEncoder.pause();
             }
         } else if (videoEncoder != null) {
@@ -852,6 +859,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
     public boolean isPaused() {
         return !recording;
+    }
+
+    // NagramX: true only while a round video is actively capturing -- live with the finger down (a) or
+    // hands-free/locked (c). Positive liveness, not isPaused()'s !recording, which also reads true when
+    // nothing was ever started. onPause uses this to finalize a still-capturing recording before the app
+    // backgrounds. Read on the UI thread only, like every other reader of `recording`.
+    public boolean isRecording() {
+        return recording;
     }
 
     // flips between the front and back camera; also reached from the zoom control's flip button.
@@ -1280,6 +1295,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             MediaController.getInstance().requestRecordAudioFocus(false);
         } else {
+            if (videoEncoder != null) {
+                // NagramX: pin the draft generation this stop finalizes. The recorder snapshots it into
+                // finalizeGeneration when the stop sequence begins, so the async audioDidSent post carries the
+                // request-time value even if a newer recording bumps the token before the post runs.
+                videoEncoder.finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
+            }
             cancelled = recordedTime < 800;
             recording = false;
             flashing = false;
@@ -2572,6 +2593,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private long prevAudioLast = -1;
         private long audioDiff;
         private boolean audioStopedByTime;
+        // NagramX: true once the audio encoder has been handed an end-of-stream input -- either the normal
+        // one queued in feedAudioToEncoder or the forced one in handleStopRecording. Gates the forced EOS so
+        // it can't signal twice (queueing input after EOS throws). Encoder-thread only, like the rest of the
+        // audio pipeline it guards; reset per fresh recording in prepareEncoder.
+        private boolean audioEosSignaled;
 
         private int drawProgram;
         private int vertexMatrixHandle;
@@ -2721,6 +2747,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // can reuse this instance and move recordingToken on in the gap between the two calls. Stashed once,
         // on the first call, while running is still true and no new recording can have started yet.
         private int stoppedGeneration;
+        // NagramX: the draft generation a round-video finalize belongs to, written on the UI thread when a stop
+        // or pause is requested (send()/togglePause, via this recorder). ChatActivity bumps its counter when a
+        // new recording starts and when a passcode-lock rebuild recreates the view. This is the live value only:
+        // this recorder instance is reused across stop/restart (see the field comment at recordingToken), so a
+        // later request would overwrite it -- it's snapshotted into finalizeGeneration once per sequence and the
+        // delivery post reads that, never this. volatile: UI write, encoder-thread read.
+        private volatile int finalizeDraftToken;
+        // NagramX: finalizeDraftToken pinned once when this stop/pause sequence begins, same discipline as
+        // stoppedGeneration -- the audioDidSent finalize post runs async off the encoder thread and must carry
+        // the generation requested at that instant, not whatever a newer recording reusing this instance has
+        // since written into finalizeDraftToken.
+        private int finalizeGeneration;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
             recordingToken = ++InstantCameraView.this.recordingGeneration;
@@ -3013,6 +3051,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     audioLastDt = time - audioLast;
                     audioLast = time;
                     audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                    if (isLast) {
+                        audioEosSignaled = true; // NagramX: normal EOS went in; handleStopRecording must not force a second
+                    }
                 }
             } catch (Throwable e) {
                 FileLog.e(e);
@@ -3202,6 +3243,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         private void handlePauseRecording() {
+            // NagramX: pin the finalize's draft generation at request time -- before drainEncoder/finishMovie --
+            // so the async audioDidSent post at the tail carries it, not whatever the live field was overwritten
+            // to by a later recording reusing this instance. Runs once per pause (unlike the stop path), so it
+            // needs no running-guard.
+            finalizeGeneration = finalizeDraftToken;
             pauseRecorder = true;
             if (previewFile != null) {
                 previewFile.delete();
@@ -3259,6 +3305,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
+            // NagramX: capture the pin into a local before the async boundary, same idiom as capturedGeneration
+            // in handleStopRecording -- the post must carry the generation pinned here, not re-read the field at
+            // lambda-run time.
+            final int capturedFinalizeGeneration = finalizeGeneration;
             AndroidUtilities.runOnUIThread(() -> {
                 videoEditedInfo = new VideoEditedInfo();
                 videoEditedInfo.roundVideo = true;
@@ -3275,7 +3325,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
 
@@ -3589,6 +3639,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // has a stable value to compare against instead of reading recordingToken fresh at that point.
             if (running) {
                 stoppedGeneration = recordingToken;
+                // NagramX: pin the finalize's draft generation at the same instant as stoppedGeneration so the
+                // two guards can't drift. The delivery post below reads this snapshot, never the live field,
+                // which a newer recording reusing this instance may have moved on by post time.
+                finalizeGeneration = finalizeDraftToken;
             }
             final boolean runDone;
             if (send == ENCODER_SEND_SEND && (videoEditedInfo == null || !videoEditedInfo.needConvert()) && !delegate.isInScheduleMode()) {
@@ -3630,6 +3684,36 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 sendWhenDoneOptions = sendOptions;
                 running = false;
                 return;
+            }
+            // NagramX: guarantee the audio encoder gets an end-of-stream input before the final drain. Two
+            // documented paths in feedAudioToEncoder can drop the .last-flagged buffer before it is queued
+            // as EOS -- the stall-bound break (no free input slot for ~500ms) and the partial-buffer split
+            // that strands the last buffer in buffersToWrite for a next call the already-exited recorder
+            // thread never makes. With no EOS input, drainEncoder(true)'s audio loop below never sees an EOS
+            // output and hot-spins. This is the second handleStopRecording call (re-posted from
+            // recorderRunnable after its loop exited), so the recorder thread is provably dead and there is
+            // no concurrent producer -- this forced EOS is the last input, after everything already queued.
+            // The condition is the exact negation of that audio loop's break terms: force iff the loop could
+            // not otherwise break. Skipped for the paused stop and the cancel path (which deletes the file).
+            // Bounded by wall clock; on timeout we fall through without the flag and the deadline backstop in
+            // drainEncoder ends the loop instead.
+            if (!audioEosSignaled && audioEncoder != null && !running && sendWhenDone != ENCODER_SEND_CANCEL && !pauseRecorder) {
+                long eosDeadline = SystemClock.elapsedRealtime() + 100;
+                try {
+                    while (SystemClock.elapsedRealtime() < eosDeadline) {
+                        int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
+                        if (inputBufferIndex >= 0) {
+                            audioEncoder.queueInputBuffer(inputBufferIndex, 0, 0, Math.max(0, audioLast), MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            audioEosSignaled = true;
+                            break;
+                        }
+                        // NagramX: single output pass to free an input slot, not drainEncoder(false) -- that
+                        // would run the ~10ms video dequeue and re-enter this loop.
+                        drainAudioEncoderOutput(0);
+                    }
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
             }
             try {
                 FileLog.d("InstantCamera handleStopRecording drain encoders");
@@ -3684,6 +3768,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             } else {
                 if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
                     sentMedia = true;
+                    // NagramX: capture the pin into a local before the async boundary, same idiom as
+                    // capturedGeneration below -- the post must carry the generation pinned when the stop
+                    // sequence started, not re-read the field at lambda-run time.
+                    final int capturedFinalizeGeneration = finalizeGeneration;
                     AndroidUtilities.runOnUIThread(() -> {
                         if (videoEditedInfo == null) {
                             videoEditedInfo = new VideoEditedInfo();
@@ -3751,7 +3839,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
-                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs);
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });
                 }
@@ -3859,6 +3947,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     prevVideoLast = -1;
                     prevAudioLast = -1;
                     currentTimestamp = 0;
+                    audioEosSignaled = false; // NagramX: fresh recording, no EOS handed to the audio encoder yet
                 }
                 lastTimestamp = -1;
                 lastCommitedFrameTime = 0;
@@ -4188,10 +4277,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
 
+            // NagramX: backstop for the endOfStream drain only. Part 1 in handleStopRecording forces an EOS
+            // input so this loop normally breaks at the EOS output below, but a wedged codec that never
+            // frees an input slot (the same failure the :2939 stall bound documents) can leave Part 1 unable
+            // to queue that EOS -- and then none of the break terms above can fire. Bound it by wall clock so
+            // a silent codec can't pin this thread. Gated on the endOfStream parameter, so it applies only to
+            // the single final-stop drainEncoder(true) call, never a rollover/steady drainEncoder(false)
+            // where cutting the drain would displace audio across a segment boundary. At the final stop the
+            // muxer closes right after with no next segment, so a truncated tail is only a shorter valid
+            // file, never misplaced data.
+            long audioDrainDeadline = endOfStream ? SystemClock.elapsedRealtime() + 100 : 0;
             while (true) {
                 int encoderStatus = drainAudioEncoderOutput(0);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder) {
+                    if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder || SystemClock.elapsedRealtime() > audioDrainDeadline) {
                         break;
                     }
                 } else if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
@@ -4822,6 +4921,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         Activity getParentActivity();
         int getClassGuid();
         long getDialogId();
+
+        // NagramX: current draft-guard generation, bumped by the host when a new recording starts or a
+        // passcode-lock rebuild recreates the view. send() snapshots it so a stale finalize can be rejected
+        // at delivery.
+        default int getVideoDraftToken() {
+            return 0;
+        }
 
         default boolean isSecretChat() {
             return false;
