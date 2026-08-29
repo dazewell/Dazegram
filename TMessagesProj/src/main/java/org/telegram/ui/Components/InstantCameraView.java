@@ -2572,6 +2572,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         private long prevAudioLast = -1;
         private long audioDiff;
         private boolean audioStopedByTime;
+        // NagramX: true once the audio encoder has been handed an end-of-stream input -- either the normal
+        // one queued in feedAudioToEncoder or the forced one in handleStopRecording. Gates the forced EOS so
+        // it can't signal twice (queueing input after EOS throws). Encoder-thread only, like the rest of the
+        // audio pipeline it guards; reset per fresh recording in prepareEncoder.
+        private boolean audioEosSignaled;
 
         private int drawProgram;
         private int vertexMatrixHandle;
@@ -3013,6 +3018,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     audioLastDt = time - audioLast;
                     audioLast = time;
                     audioEncoder.queueInputBuffer(inputBufferIndex, 0, inputBuffer.position(), time, isLast ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                    if (isLast) {
+                        audioEosSignaled = true; // NagramX: normal EOS went in; handleStopRecording must not force a second
+                    }
                 }
             } catch (Throwable e) {
                 FileLog.e(e);
@@ -3631,6 +3639,36 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 running = false;
                 return;
             }
+            // NagramX: guarantee the audio encoder gets an end-of-stream input before the final drain. Two
+            // documented paths in feedAudioToEncoder can drop the .last-flagged buffer before it is queued
+            // as EOS -- the stall-bound break (no free input slot for ~500ms) and the partial-buffer split
+            // that strands the last buffer in buffersToWrite for a next call the already-exited recorder
+            // thread never makes. With no EOS input, drainEncoder(true)'s audio loop below never sees an EOS
+            // output and hot-spins. This is the second handleStopRecording call (re-posted from
+            // recorderRunnable after its loop exited), so the recorder thread is provably dead and there is
+            // no concurrent producer -- this forced EOS is the last input, after everything already queued.
+            // The condition is the exact negation of that audio loop's break terms: force iff the loop could
+            // not otherwise break. Skipped for the paused stop and the cancel path (which deletes the file).
+            // Bounded by wall clock; on timeout we fall through without the flag and the deadline backstop in
+            // drainEncoder ends the loop instead.
+            if (!audioEosSignaled && audioEncoder != null && !running && sendWhenDone != ENCODER_SEND_CANCEL && !pauseRecorder) {
+                long eosDeadline = SystemClock.elapsedRealtime() + 100;
+                try {
+                    while (SystemClock.elapsedRealtime() < eosDeadline) {
+                        int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
+                        if (inputBufferIndex >= 0) {
+                            audioEncoder.queueInputBuffer(inputBufferIndex, 0, 0, audioLast, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            audioEosSignaled = true;
+                            break;
+                        }
+                        // NagramX: single output pass to free an input slot, not drainEncoder(false) -- that
+                        // would run the ~10ms video dequeue and re-enter this loop.
+                        drainAudioEncoderOutput(0);
+                    }
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
             try {
                 FileLog.d("InstantCamera handleStopRecording drain encoders");
                 drainEncoder(true);
@@ -3854,6 +3892,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     prevVideoLast = -1;
                     prevAudioLast = -1;
                     currentTimestamp = 0;
+                    audioEosSignaled = false; // NagramX: fresh recording, no EOS handed to the audio encoder yet
                 }
                 lastTimestamp = -1;
                 lastCommitedFrameTime = 0;
@@ -4183,10 +4222,20 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 }
             }
 
+            // NagramX: backstop for the endOfStream drain only. Part 1 in handleStopRecording forces an EOS
+            // input so this loop normally breaks at the EOS output below, but a wedged codec that never
+            // frees an input slot (the same failure the :2939 stall bound documents) can leave Part 1 unable
+            // to queue that EOS -- and then none of the break terms above can fire. Bound it by wall clock so
+            // a silent codec can't pin this thread. Gated on the endOfStream parameter, so it applies only to
+            // the single final-stop drainEncoder(true) call, never a rollover/steady drainEncoder(false)
+            // where cutting the drain would displace audio across a segment boundary. At the final stop the
+            // muxer closes right after with no next segment, so a truncated tail is only a shorter valid
+            // file, never misplaced data.
+            long audioDrainDeadline = endOfStream ? SystemClock.elapsedRealtime() + 100 : 0;
             while (true) {
                 int encoderStatus = drainAudioEncoderOutput(0);
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder) {
+                    if (!endOfStream || !running && sendWhenDone == ENCODER_SEND_CANCEL || pauseRecorder || SystemClock.elapsedRealtime() > audioDrainDeadline) {
                         break;
                     }
                 } else if (encoderStatus >= 0 && (audioBufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
