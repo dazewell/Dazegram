@@ -18719,6 +18719,21 @@ public class ChatActivity extends BaseFragment implements
                 ((MotionBackgroundDrawable) drawable).setFastRenderAllowed();
             }
 
+            // NagramX: drive the glass-composite refresh (see refreshGlassComposite) from the drawable
+            // that actually animates. A per-chat wallpaper arrives wrapped in a ChatBackgroundDrawable,
+            // which the instanceof above misses, so unwrap it. Setting postInvalidateParent makes the
+            // wallpaper self-post invalidateMotionBackground on every animating frame, after the gradient
+            // is regenerated. Accepted side effects: the flag is sticky on a drawable shared app-wide
+            // (ThemePreviewActivity's handler sees extra posts during rotations) and the animation becomes
+            // self-driving via the 16ms re-post; both are behaviours upstream already runs for animated
+            // bubble gradients, and neither changes speed (progress is dt-proportional; the nested
+            // updateAnimation() returns at dt<=1, and it stops re-posting once posAnimationProgress hits 1).
+            Drawable wallpaperMotion = drawable instanceof ChatBackgroundDrawable
+                    ? ((ChatBackgroundDrawable) drawable).getDrawable(false) : drawable;
+            if (wallpaperMotion instanceof MotionBackgroundDrawable) {
+                ((MotionBackgroundDrawable) wallpaperMotion).setPostInvalidateParent(true);
+            }
+
             final BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
             final int statusBarColor = wallpaperBitmapProvider.getStatusBarColor(source);
             final float statusBarBrightness = AndroidUtilities.computePerceivedBrightness(statusBarColor);
@@ -23599,6 +23614,11 @@ public class ChatActivity extends BaseFragment implements
             if (messageEnterTransitionContainer != null) {
                 messageEnterTransitionContainer.invalidate();
             }
+            // NagramX: coalesce a glass-composite refresh onto the next UI frame. Posted rather than run
+            // here so it never re-composites inside the wallpaper's own draw pass, and cancel+re-post
+            // collapses a burst of animating-frame posts to at most one refresh per frame.
+            AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
+            AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
         } else if (id == NotificationCenter.loadingMessagesFailed) {
             if ((Integer) args[0] == classGuid && args[2] instanceof TLRPC.TL_error) {
                 TLRPC.TL_error e = (TLRPC.TL_error) args[2];
@@ -31844,6 +31864,12 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onResume() {
         super.onResume();
+        // NagramX: a glass-composite refresh requested while backgrounded was deferred; run it now that
+        // the wallpaper may have rotated or its pattern arrived while we were paused.
+        if (glassCompositeDirty) {
+            glassCompositeDirty = false;
+            refreshGlassComposite();
+        }
         // NagramX: re-cover a "require password" chat if backgrounding cleared its unlock, and drive the
         // cover's lifecycle so it auto-prompts fingerprint like the app lock
         showChatLockPasscodeView();
@@ -51300,6 +51326,35 @@ public class ChatActivity extends BaseFragment implements
         }
         if (glassBackgroundSourceFrostedRenderNode != null) {
             glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
+        }
+    }
+
+    // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
+    // only re-samples on a reprime, so it has to be refreshed whenever the wallpaper's content moves: a
+    // gradient rotation on send, or the pattern arriving/fading in after chat open. Driven by the posted,
+    // coalesced runnable below off invalidateMotionBackground. Skipped while paused (marked dirty so
+    // onResume runs it once) because a backgrounded chat's glass is off screen.
+    private boolean glassCompositeDirty;
+    private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
+
+    private void refreshGlassComposite() {
+        if (isPaused) {
+            glassCompositeDirty = true;
+            return;
+        }
+        if (contentView == null) {
+            return;
+        }
+        Drawable wallpaper = contentView.getBackgroundImage();
+        if (wallpaper instanceof ChatBackgroundDrawable) {
+            wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
+        }
+        if (!(wallpaper instanceof MotionBackgroundDrawable)) {
+            return;
+        }
+        if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper)) {
+            reprimeGlassRenderNodes();
+            invalidateAllGlassAttachedViews();
         }
     }
 
