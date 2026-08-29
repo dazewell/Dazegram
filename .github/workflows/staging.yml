@@ -82,10 +82,14 @@ jobs:
     needs:
       - unlabel
     # Build on a push to dev, a manual dispatch, or a build-apk labelling. The
-    # unlabel job is skipped on the first two, so gate on always() plus the event
-    # rather than on its result — a skipped need would otherwise skip this job.
+    # unlabel job is skipped on the first two, so gate on !cancelled() plus the
+    # event rather than on its result — a skipped need would otherwise skip this
+    # job. !cancelled() (not always()) is deliberate: always() would keep the
+    # build going after the concurrency group cancels a superseded run, which is
+    # the flood the group exists to stop. A skipped or failed unlabel is not a
+    # cancellation, so !cancelled() still runs here in both those cases.
     if: >-
-      always() &&
+      !cancelled() &&
       (
         github.event_name == 'push' ||
         github.event_name == 'workflow_dispatch' ||
