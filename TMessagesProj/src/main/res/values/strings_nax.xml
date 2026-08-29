@@ -5,12 +5,12 @@
     <string name="CustomFileNames">Custom File Names</string>
     <string name="CustomFileNamesSwitch">Rename saved videos, voice and round messages</string>
     <string name="CustomFileNamesHint">{date}_{time}</string>
-    <string name="CustomFileNamesDescription">{date} and {time} are the message\'s send date. {name} is the sender\'s file name - usually blank for voice, round messages, and most videos. Anything else you type stays as is; an unknown {placeholder} is dropped.</string>
+    <string name="CustomFileNamesDescription">{date} and {time} are the message\'s send date. {name} is the sender\'s file name — usually blank for voice, round messages, and most videos. Anything else you type stays as is; an unknown {placeholder} is dropped.</string>
     <string name="CustomFileNamesOff">Off</string>
     <string name="CustomFileNamesOnExample">On — for example %1$s</string>
     <string name="CustomFileNamesReset">Reset</string>
-    <string name="CustomFileNamesPreview">Saves as %1$s</string>
-    <string name="CustomFileNamesPreviewInvalid">This can save with no name for voice and round messages - add some fixed text, or reset.</string>
+    <string name="CustomFileNamesPreview">For a video, saves as %1$s</string>
+    <string name="CustomFileNamesPreviewInvalid">This can save with no name for voice and round messages — add some fixed text, or reset.</string>
     <string name="VideoMessagesPlayAll">Play all video messages</string>
     <string name="AccDescrZoomControl">Zoom</string>
     <string name="VideoMessagesResetZoomOnSwitch">Reset zoom when switching cameras</string>
