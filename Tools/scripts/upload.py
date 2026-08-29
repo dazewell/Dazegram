@@ -104,7 +104,7 @@ def get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_ur
         # literal "<...>" and let it through untruncated, only for the
         # subsequent escape to make it longer than the intended budget again.
         title = truncate_text(html.escape(pr_title), HEADER_TITLE_BUDGET, escaped=True)
-        headline = f'{emoji} <a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}'
+        headline = f'{emoji} <b><a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}</b>'
     else:
         # No associated PR (a dispatch on a branch with no PR, or a direct
         # push) — fall back to the commit subject instead of printing a bare
@@ -115,9 +115,9 @@ def get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_ur
     # The meta line links the short commit id -- the branch name used to be
     # shown alongside it, but that duplicated the PR number/title already in
     # the headline above and cluttered a tight 1024-unit caption. Removed
-    # temporarily; the link target and structure below are unchanged so it
-    # can come back with a one-line revert.
-    meta = f'<a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
+    # temporarily; the link target below is unchanged, so the branch can come
+    # back with a one-line edit.
+    meta = f'<b>Commit:</b> <a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
     return headline + "\n" + meta
 
 def get_caption(commit_msg_budget=None) -> str:
@@ -137,7 +137,7 @@ def get_caption(commit_msg_budget=None) -> str:
     escaped_commit_message = html.escape(commit_message)
     if commit_msg_budget is not None:
         escaped_commit_message = truncate_text(escaped_commit_message, commit_msg_budget, escaped=True)
-    return f"{header}\n\nCommit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>"
+    return f"{header}\n\n<b>Commit Message:</b>\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
 def get_document() -> list["InputMediaDocument"]:
     documents = []
