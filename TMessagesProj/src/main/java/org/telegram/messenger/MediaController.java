@@ -5349,24 +5349,31 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                                 document = message.qualityToSave;
                             }
                             String name = FileLoader.getDocumentFileName(document);
-                            File destFile = new File(dir, name);
-                            if (destFile.exists()) {
-                                int idx = name.lastIndexOf('.');
-                                for (int a = 0; a < 10; a++) {
-                                    String newName;
-                                    if (idx != -1) {
-                                        newName = name.substring(0, idx) + "(" + (a + 1) + ")" + name.substring(idx);
-                                    } else {
-                                        newName = name + "(" + (a + 1) + ")";
-                                    }
-                                    destFile = new File(dir, newName);
-                                    if (!destFile.exists()) {
-                                        break;
+                            File destFile;
+                            // NagramX: rename saved video/voice/round to the configured pattern, atomically claimed; null keeps the stock name and its dedupe loop below (feature-off unchanged)
+                            String claimed = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyBulkClaim(dir, message, name, message.getMimeType());
+                            if (claimed != null) {
+                                destFile = new File(dir, claimed);
+                            } else {
+                                destFile = new File(dir, name);
+                                if (destFile.exists()) {
+                                    int idx = name.lastIndexOf('.');
+                                    for (int a = 0; a < 10; a++) {
+                                        String newName;
+                                        if (idx != -1) {
+                                            newName = name.substring(0, idx) + "(" + (a + 1) + ")" + name.substring(idx);
+                                        } else {
+                                            newName = name + "(" + (a + 1) + ")";
+                                        }
+                                        destFile = new File(dir, newName);
+                                        if (!destFile.exists()) {
+                                            break;
+                                        }
                                     }
                                 }
-                            }
-                            if (!destFile.exists()) {
-                                destFile.createNewFile();
+                                if (!destFile.exists()) {
+                                    destFile.createNewFile();
+                                }
                             }
                             String path = message.messageOwner.attachPath;
                             if (message.qualityToSave != null) {
@@ -5721,11 +5728,13 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                         if (type == 0) {
                             destFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), folderName);
                             destFile.mkdirs();
-                            destFile = new File(destFile, AndroidUtilities.generateFileName(0, FileLoader.getFileExtension(sourceFile)));
+                            // NagramX: rename saved voice/round here (photos excluded by the guard), atomically claimed so same-second saves can't collide
+                            destFile = new File(destFile, tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyName(destFile, selectedObject, sourceFile, name, mime, 0));
                         } else if (type == 1) {
                             destFile = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), folderName);
                             destFile.mkdirs();
-                            destFile = new File(destFile, AndroidUtilities.generateFileName(1, FileLoader.getFileExtension(sourceFile)));
+                            // NagramX: rename saved video here, atomically claimed so two same-second saves can't render to the same file and overwrite
+                            destFile = new File(destFile, tw.nekomimi.nekogram.helpers.SaveFileNameHelper.legacyName(destFile, selectedObject, sourceFile, name, mime, 1));
                         } else {
                             File dir;
                             if (type == 2) {
@@ -6016,6 +6025,8 @@ public class MediaController implements AudioManager.OnAudioFocusChangeListener,
                 String chatFolderName = ChatsHelper.getChatFolderName(messageObject);
                 folderName = folderName + File.separator + chatFolderName;
             }
+            // NagramX: rename saved video/voice/round messages to the configured pattern before the type branches; photos, documents and music keep the incoming name
+            filename = tw.nekomimi.nekogram.helpers.SaveFileNameHelper.apply(filename, sourceFile, mimeType, messageObject);
             if (selectedType == 0) {
                 if (filename == null) {
                     filename = AndroidUtilities.generateFileName(0, extension);

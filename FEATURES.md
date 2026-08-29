@@ -199,6 +199,10 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 With Disable Instant Camera on (the default), the photo attach sheet no longer keeps a live-preview camera cell at the front of the grid. Your photos start at the first slot, and a round camera button floats in the corner instead. Tapping it opens the camera the same way the old cell did, asking for camera permission the first time. Turn Disable Instant Camera off under N-Settings → Chat → Camera and the in-grid live camera tile comes back with no floating button, exactly as before.
 
+### Custom file names for saved media <!-- #custom-file-names -->
+
+When you save a video, voice or round message to your gallery, Telegram normally gives the file an uninformative name like `video.mp4`, then `video (1).mp4` for the next one. Turn on Custom File Names under N-Settings → General → Storage and saved files are named from the date and time the message was sent instead — `20260101_173812.mp4` by default. The setting row opens a small dialog where you flip the feature on and, if you like, change the pattern: `{date}` and `{time}` are when the message was sent, and `{name}` is the sender's original file name without its extension (blank for voice and round messages, which don't carry one). Anything else you type is kept as you typed it, and the right extension is always added for you. Two messages saved from the same second get a ` (1)` suffix instead of overwriting each other. Saved photos are left exactly as they are today.
+
 ## Transcription
 
 ### Whisper transcription controls <!-- #whisper-transcription -->
