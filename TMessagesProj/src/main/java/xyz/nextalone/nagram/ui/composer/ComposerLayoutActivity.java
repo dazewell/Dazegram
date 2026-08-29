@@ -201,6 +201,26 @@ public class ComposerLayoutActivity extends BaseFragment {
     private boolean rebuildPending;
     private boolean startZoneArmed;
 
+    /**
+     * Bumped once per finished theme transition (see getThemeDescriptions()) so getItemViewType()
+     * can hand the four slider rows a view type RecyclerView has never bound before. A view-type
+     * mismatch between what an already bound/cached/pooled holder reports and what the adapter now
+     * returns for that position is exactly what makes RecyclerView treat that holder as unusable and
+     * fall through to onCreateViewHolder instead of reusing it - see
+     * RecyclerView.Recycler#validateViewHolderForOffsetPosition, which covers the scrap/cache path,
+     * not just the shared pool. A real recreation, not a rebind, is required because of where
+     * SlideIntChooseView (upstream, not ours to edit) puts its colours: minText and valueText -
+     * both AnimatedTextView, which ThemeDescription#processViewColor has no case for at all - are
+     * coloured once, in the constructor, and nothing in SlideIntChooseView ever re-colours them
+     * afterwards (updateTexts only re-colours maxText). Neither a rebind nor any ThemeDescription
+     * can reach those two fields from outside, so only a genuine onCreateViewHolder repaints them.
+     * (The row background is not in the same boat - this file paints it in onCreateViewHolder below,
+     * and it would be reachable the ordinary way by adding SlideIntChooseView.class to the
+     * FLAG_CELLBACKGROUNDCOLOR listClasses further down; it just rides along with the same fix.)
+     */
+    private int sliderThemeGeneration = 0;
+    private static final int SLIDER_TYPE_GENERATION_STRIDE = 1000;
+
     private static final class Item {
         final int type;
         final int zone;
@@ -472,14 +492,23 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public int getItemViewType(int position) {
-            return items.get(position).type;
+            int type = items.get(position).type;
+            // Shifted so a bumped generation is a view type RecyclerView has never seen before -
+            // see sliderThemeGeneration's javadoc for why that's what forces a real recreation.
+            // Other row types never change shape across a theme flip, so they're left alone.
+            if (isSliderRowType(type)) {
+                return type + sliderThemeGeneration * SLIDER_TYPE_GENERATION_STRIDE;
+            }
+            return type;
         }
 
         @NonNull
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View view;
-            switch (viewType) {
+            // Non-slider types are always below the stride and are never shifted, so this recovers
+            // the real type for both a shifted slider view type and an ordinary one unchanged.
+            switch (viewType % SLIDER_TYPE_GENERATION_STRIDE) {
                 case TYPE_HEADER:
                     view = new ArmableHeaderCell(context);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
@@ -491,6 +520,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 case TYPE_INFO:
                     view = new TextInfoPrivacyCell(context);
                     break;
+                // Keep in step with isSliderRowType() below - a slider type added here but not
+                // there silently skips the theme-refresh fix for it, with no compile error.
                 case TYPE_SCALE:
                 case TYPE_SPACING:
                 case TYPE_GLASS_LIGHT:
@@ -1422,21 +1453,80 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
+    private static boolean isSliderRowType(int type) {
+        return type == TYPE_SCALE || type == TYPE_SPACING || type == TYPE_GLASS_LIGHT || type == TYPE_GLASS_DARK;
+    }
+
+    /**
+     * Bumps sliderThemeGeneration and notifies every slider row so RecyclerView re-asks the adapter
+     * for each one's view type. Looked up by item type rather than by walking listView's attached
+     * children: a slider row scrolled off-screen when the theme flips is just as stale, and by the
+     * time this runs it may already be sitting in the cache or the recycled view pool rather than
+     * attached to listView, so a child walk alone would miss it - scanning items by type doesn't.
+     * notifyItemChanged (not a structural remove+insert) is enough here: the generation bump alone
+     * is what makes the existing holder unusable (see sliderThemeGeneration's javadoc), so this
+     * reruns the exact bind path (including TYPE_SPACING's set()-then-setMinValueAllowed() order) a
+     * fresh entry would. Correctness does not depend on it, but this needs no pool clear of its own
+     * either way: RecyclerView.Recycler#validateViewHolderForOffsetPosition rejects a holder purely
+     * on a view-type mismatch, regardless of what is sitting in the pool at the time - and the
+     * FLAG_CELLBACKGROUNDCOLOR description added for this same listView below
+     * (HeaderCell/ButtonRowCell/PlaceholderCell) has listClasses set, so ThemeDescription#setColor's
+     * listClasses != null branch already calls recyclerListView.getRecycledViewPool().clear() on
+     * that listView on every setColor() it makes, including the terminal frame this runs on - one
+     * fewer reason, not the reason, a second clear here would be redundant.
+     */
+    private void refreshSliderRowsForThemeChange() {
+        if (adapter == null) {
+            return;
+        }
+        // onAnimationProgress(1f) is delivered from an animator update callback, which normally runs
+        // well before RecyclerView's own layout pass for that frame - but notifyItemChanged() asserts
+        // it is not, and throws if it is. Deferring to the next frame here costs nothing in the
+        // common case and removes any doubt in the uncommon one, rather than relying on that ordering.
+        if (listView != null && listView.isComputingLayout()) {
+            listView.post(this::refreshSliderRowsForThemeChange);
+            return;
+        }
+        sliderThemeGeneration++;
+        for (int i = 0; i < items.size(); i++) {
+            if (isSliderRowType(items.get(i).type)) {
+                adapter.notifyItemChanged(i);
+            }
+        }
+    }
+
     @Override
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         ArrayList<ThemeDescription> descriptions = new ArrayList<>();
 
-        ThemeDescription.ThemeDescriptionDelegate delegate = () -> {
-            if (listView != null) {
-                for (int i = 0; i < listView.getChildCount(); i++) {
-                    View child = listView.getChildAt(i);
-                    if (child instanceof ButtonRowCell) {
-                        ((ButtonRowCell) child).applyTheme();
+        ThemeDescription.ThemeDescriptionDelegate delegate = new ThemeDescription.ThemeDescriptionDelegate() {
+            @Override
+            public void didSetColor() {
+                if (listView != null) {
+                    for (int i = 0; i < listView.getChildCount(); i++) {
+                        View child = listView.getChildAt(i);
+                        if (child instanceof ButtonRowCell) {
+                            ((ButtonRowCell) child).applyTheme();
+                        }
                     }
                 }
+                if (previewCell != null) {
+                    previewCell.applyTheme();
+                }
             }
-            if (previewCell != null) {
-                previewCell.applyTheme();
+
+            @Override
+            public void onAnimationProgress(float progress) {
+                // didSetColor() above runs every frame of the theme transition (or once, for an
+                // instant change) and is fine with that - applyTheme() is idempotent. Rebuilding the
+                // slider rows is not: it must happen exactly once per transition, at its settled
+                // end, not on every intermediate frame - see ActionBarLayout#setThemeAnimationValue,
+                // which calls onAnimationProgress with the live interpolated value on every frame of
+                // an animated change and once with 1f for an instant one. Gating on progress reaching
+                // 1f covers both paths with one rebuild and avoids baking in a half-way colour.
+                if (progress >= 1f) {
+                    refreshSliderRowsForThemeChange();
+                }
             }
         };
 
