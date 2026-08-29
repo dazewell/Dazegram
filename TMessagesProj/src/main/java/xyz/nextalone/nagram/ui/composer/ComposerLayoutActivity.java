@@ -208,9 +208,15 @@ public class ComposerLayoutActivity extends BaseFragment {
      * returns for that position is exactly what makes RecyclerView treat that holder as unusable and
      * fall through to onCreateViewHolder instead of reusing it - see
      * RecyclerView.Recycler#validateViewHolderForOffsetPosition, which covers the scrap/cache path,
-     * not just the shared pool. That matters here because SlideIntChooseView (upstream, not ours to
-     * edit) bakes its row background and its min/value text colours in once, at construction, with
-     * no way to repaint them from outside - a plain rebind can't reach them, only a real recreation.
+     * not just the shared pool. A real recreation, not a rebind, is required because of where
+     * SlideIntChooseView (upstream, not ours to edit) puts its colours: minText and valueText -
+     * both AnimatedTextView, which ThemeDescription#processViewColor has no case for at all - are
+     * coloured once, in the constructor, and nothing in SlideIntChooseView ever re-colours them
+     * afterwards (updateTexts only re-colours maxText). Neither a rebind nor any ThemeDescription
+     * can reach those two fields from outside, so only a genuine onCreateViewHolder repaints them.
+     * (The row background is not in the same boat - this file paints it in onCreateViewHolder below,
+     * and it would be reachable the ordinary way by adding SlideIntChooseView.class to the
+     * FLAG_CELLBACKGROUNDCOLOR listClasses further down; it just rides along with the same fix.)
      */
     private int sliderThemeGeneration = 0;
     private static final int SLIDER_TYPE_GENERATION_STRIDE = 1000;
@@ -514,6 +520,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                 case TYPE_INFO:
                     view = new TextInfoPrivacyCell(context);
                     break;
+                // Keep in step with isSliderRowType() below - a slider type added here but not
+                // there silently skips the theme-refresh fix for it, with no compile error.
                 case TYPE_SCALE:
                 case TYPE_SPACING:
                 case TYPE_GLASS_LIGHT:
@@ -1458,11 +1466,14 @@ public class ComposerLayoutActivity extends BaseFragment {
      * notifyItemChanged (not a structural remove+insert) is enough here: the generation bump alone
      * is what makes the existing holder unusable (see sliderThemeGeneration's javadoc), so this
      * reruns the exact bind path (including TYPE_SPACING's set()-then-setMinValueAllowed() order) a
-     * fresh entry would, with no extra pool clear needed here - the FLAG_CELLBACKGROUNDCOLOR
-     * description added for this same listView below (HeaderCell/ButtonRowCell/PlaceholderCell)
-     * has listClasses set, and ThemeDescription#setColor's listClasses != null branch calls
-     * recyclerListView.getRecycledViewPool().clear() on that listView on every setColor() it makes -
-     * i.e. every frame of the theme animation, including the terminal one this runs on.
+     * fresh entry would. Correctness does not depend on it, but this needs no pool clear of its own
+     * either way: RecyclerView.Recycler#validateViewHolderForOffsetPosition rejects a holder purely
+     * on a view-type mismatch, regardless of what is sitting in the pool at the time - and the
+     * FLAG_CELLBACKGROUNDCOLOR description added for this same listView below
+     * (HeaderCell/ButtonRowCell/PlaceholderCell) has listClasses set, so ThemeDescription#setColor's
+     * listClasses != null branch already calls recyclerListView.getRecycledViewPool().clear() on
+     * that listView on every setColor() it makes, including the terminal frame this runs on - one
+     * fewer reason, not the reason, a second clear here would be redundant.
      */
     private void refreshSliderRowsForThemeChange() {
         if (adapter == null) {
