@@ -36,8 +36,11 @@ on:
 # only queues a superseded run behind the one already going, so every push still
 # built and uploaded eventually. Cancelling at the run level takes the whole
 # matrix and the upload job with it, which is what "keep the latest only" means.
+# For a labelled PR the group also carries the label name, so only another
+# build-apk labelling supersedes a build-apk build — adding some unrelated label
+# mid-build lands in its own group and can't cancel the APK the user asked for.
 concurrency:
-  group: staging-${{ github.event.pull_request.number || github.ref }}
+  group: staging-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && format('-{0}', github.event.label.name) || '' }}
   cancel-in-progress: true
 
 permissions:

@@ -447,9 +447,6 @@ code are not.
    the cost *within* a cycle; the round cap above bounds the *number* of cycles —
    they're two different limits and you want both. If you genuinely need an APK
    mid-round to check something, say so and take it as a deliberate exception.
-   *within* a cycle; the round cap above bounds the *number* of cycles — they're
-   two different limits and you want both. If you genuinely need a build
-   mid-round to check something, say so and take it as a deliberate exception.
 
    **Absorb mid-flight scope growth cheaply — don't re-review after each
    addition.** A change legitimately grows while it's in flight (a hotfix, then
