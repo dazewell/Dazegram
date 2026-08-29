@@ -17,10 +17,15 @@ on:
   push:
     branches:
       - dev
+    # paths-ignore does not support '!' re-includes (that only works in paths),
+    # so a merge touching only staging.yml, docs, or .github does NOT self-trigger
+    # a publish build. That is deliberate: converting this to a paths allowlist
+    # would rewrite the one trigger we can't test before merge (push:dev, the
+    # non-negotiable delivery channel). To verify a pipeline change, dispatch it
+    # manually instead.
     paths-ignore:
       - '**.md'
       - '.github/**'
-      - '!.github/workflows/staging.yml'
       - 'docs/**'
       - '.githooks/**'
   pull_request:
@@ -30,17 +35,22 @@ on:
     types: [labeled]
   workflow_dispatch:
 
-# Drop an older run on the same branch/PR rather than building it out: a few
-# rounds of review each shipped their own pair of APKs, which is what trips the
-# bot's flood limit. The group is workflow-level on purpose — a job-level group
-# only queues a superseded run behind the one already going, so every push still
-# built and uploaded eventually. Cancelling at the run level takes the whole
-# matrix and the upload job with it, which is what "keep the latest only" means.
-# For a labelled PR the group also carries the label name, so only another
-# build-apk labelling supersedes a build-apk build — adding some unrelated label
-# mid-build lands in its own group and can't cancel the APK the user asked for.
+# Drop an older run on the same branch rather than building it out: a few rounds
+# of review each shipped their own pair of APKs, which is what trips the bot's
+# flood limit. The group is workflow-level on purpose — a job-level group only
+# queues a superseded run behind the one already going, so every push still built
+# and uploaded eventually. Cancelling at the run level takes the whole matrix and
+# the upload job with it, which is what "keep the latest only" means.
+#
+# The key is the branch (github.head_ref on a PR, github.ref_name otherwise), so
+# every build-producing event on one branch — push, dispatch, and a build-apk
+# labelling — shares a group and only the latest survives. The suffix applies
+# ONLY to an unrelated label event, which is a no-op run (every job skips): it
+# lands in its own group so it can't cancel a real build in flight. A build-apk
+# label carries no suffix, so it correctly collides with a dispatch on the same
+# branch instead of running a second time.
 concurrency:
-  group: staging-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && format('-{0}', github.event.label.name) || '' }}
+  group: staging-${{ github.head_ref || github.ref_name }}${{ (github.event_name == 'pull_request' && github.event.label.name != 'build-apk') && format('-{0}', github.event.label.name) || '' }}
   cancel-in-progress: true
 
 permissions:

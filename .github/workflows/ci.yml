@@ -135,6 +135,9 @@ jobs:
               - 'gradle.properties'
               - 'settings.gradle'
               - 'buildSrc/**'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
               - '**/AndroidManifest.xml'
 
   deep:
