@@ -195,6 +195,12 @@ The preview you get after recording a round video message has a playback cursor 
 
 The pause button and the view-once "(1)" toggle are larger and lifted slightly higher off the send button to prevent accidental sends.
 
+### Don't lose an unsent video message <!-- #video-draft-guard -->
+
+A round video message you've recorded but not sent yet used to be easy to lose. A stray back gesture deleted it, and minimizing the app dropped it for good — worst with passcode lock set to Immediately, which locks and rebuilds the chat the moment you leave. Now the finished clip is kept: backing out leaves it sitting in the preview instead of discarding it, and if the app is minimized or locked the clip is saved and comes back in the preview strip next time you open the chat, ready to send, for up to a day afterwards.
+
+If a recording can't be turned into a playable file at all, you get a short warning to record it again rather than a preview that quietly sends nothing.
+
 ### Floating camera button in the attach sheet <!-- #camera-fab -->
 
 With Disable Instant Camera on (the default), the photo attach sheet no longer keeps a live-preview camera cell at the front of the grid. Your photos start at the first slot, and a round camera button floats in the corner instead. Tapping it opens the camera the same way the old cell did, asking for camera permission the first time. Turn Disable Instant Camera off under N-Settings → Chat → Camera and the in-grid live camera tile comes back with no floating button, exactly as before.
