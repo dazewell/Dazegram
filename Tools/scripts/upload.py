@@ -120,11 +120,15 @@ def get_caption(commit_msg_budget=None) -> str:
     # budget=0 probe would shrink the fallback subject line and understate
     # the real overhead.
     header = get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url)
-    # Trimming the plain-text commit message (never the assembled HTML) keeps
-    # the caption valid while leaving room for the AI summary.
-    if commit_msg_budget is not None:
-        commit_message = truncate_text(commit_message, commit_msg_budget)
+    # Escape once, then measure/truncate the escaped text -- escaping AFTER
+    # truncating (the previous order) let tg_len() undercount raw "<...>"
+    # substrings as stripped tags, pass them through untruncated, and only
+    # then expand them back into far more visible characters than the budget
+    # allowed (a message full of literal "<tag>" text could blow the caption
+    # past 1024 and get the whole post rejected by Telegram).
     escaped_commit_message = html.escape(commit_message)
+    if commit_msg_budget is not None:
+        escaped_commit_message = truncate_text(escaped_commit_message, commit_msg_budget, escaped=True)
     return f"{header}\n\nCommit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
 def get_document() -> list["InputMediaDocument"]:
@@ -143,8 +147,11 @@ def get_document() -> list["InputMediaDocument"]:
     limit = 1024
     overhead = tg_len(get_caption(commit_msg_budget=0))
     content_budget = max(0, limit - overhead)
-    commit_message = get_commit_info()[2]
-    msg_reserve = min(tg_len(commit_message), content_budget // 2)
+    # Measure the same escaped string the caption will actually carry, so the
+    # reserve and the final trim (both in get_caption, both escaped-then-cut)
+    # agree with each other instead of one working off unescaped text.
+    escaped_commit_message = html.escape(get_commit_info()[2])
+    msg_reserve = min(tg_len(escaped_commit_message), content_budget // 2)
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
