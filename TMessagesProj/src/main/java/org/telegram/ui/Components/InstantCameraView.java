@@ -188,6 +188,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private long recordStartTime;
     private long recordPlusTime;
     private boolean recording;
+    // NagramX (#video-draft-guard): true when a restored round-video draft's file has been adopted into this
+    // instance (see adoptRestoredDraft). A rebuilt instance restoring a draft never opened its camera, so
+    // textureView is null and send()'s textureView==null guard would drop the send -- this flag lets the
+    // state==4 send through for exactly that adopted case. A fresh recording clears it (showCamera).
+    private boolean sendAdoptedDraft;
     private long recordedTime;
     private boolean cancelled;
 
@@ -869,6 +874,29 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return recording;
     }
 
+    // NagramX (#video-draft-guard): wire a restored round-video draft's on-disk file into this instance so the
+    // normal state==4 send path can re-upload and send it, without re-opening the camera. Refuses when a live
+    // session is present (recording, or a same-session finalize already holds its own cameraFile) so it can
+    // never clobber a real recording's file -- in that case the object is already shared and native trim wins.
+    // The passed info carries the persisted trim + draft id and becomes this instance's videoEditedInfo, so
+    // send(4) reads the exact cut. Locks the file for the life of the send.
+    public void adoptRestoredDraft(File file, long fileSize, VideoEditedInfo info) {
+        if (recording || videoEncoder != null || cameraThread != null) {
+            return;
+        }
+        if (cameraFile != null && cameraFile.exists()) {
+            return;
+        }
+        if (file == null || !file.exists() || info == null) {
+            return;
+        }
+        cameraFile = file;
+        size = fileSize;
+        videoEditedInfo = info;
+        sendAdoptedDraft = true;
+        AutoDeleteMediaTask.lockFile(file);
+    }
+
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {
@@ -976,6 +1004,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         if (!fromPaused) {
             cameraFile = generateCameraFile();
+            sendAdoptedDraft = false; // NagramX (#video-draft-guard): a fresh recording owns a live cameraFile; drop any restored-draft send state
         }
 
         SharedConfig.saveConfig();
@@ -1240,7 +1269,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
-        if (textureView == null) {
+        if (textureView == null && !(sendAdoptedDraft && state == 4)) {
+            // NagramX (#video-draft-guard): a restored draft (a rebuilt instance that only adopted a file, never
+            // opened the camera) has no textureView, but its cameraFile/videoEditedInfo are set up by
+            // adoptRestoredDraft, so let the state==4 send through instead of silently dropping the message.
             return;
         }
         stopProgressTimer();
@@ -3325,6 +3357,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
+                // NagramX (#video-draft-guard): same draft-identity stamp as the stop producer, so a paused-then-
+                // previewed clip persists and restores by id like a fully-stopped one.
+                videoEditedInfo.naxDraftId = xyz.nextalone.nagram.helper.VideoDraftStore.newId();
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
@@ -3839,6 +3874,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
+                            // NagramX (#video-draft-guard): stamp a fresh draft identity onto the finished-but-unsent
+                            // clip before it's posted to the composer, so persist / restore / clear can match this exact
+                            // draft by id across a process boundary, never by chat slot.
+                            info.naxDraftId = xyz.nextalone.nagram.helper.VideoDraftStore.newId();
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });
