@@ -894,6 +894,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         size = fileSize;
         videoEditedInfo = info;
         sendAdoptedDraft = true;
+        // NagramX (#video-draft-guard): force the normal upload flow for this file. send(4)'s untrimmed branch
+        // copies these fields straight onto videoEditedInfo without nulling them (only the trimmed branch clears
+        // them), so any leftover upload material on this instance would otherwise ride along with the restored
+        // draft as a stale InputFile / encryption key. A fresh instance holds nulls already; clear them anyway so
+        // the adopted send never depends on that. Use this.file -- the java.io.File parameter shadows the field.
+        this.file = null;
+        encryptedFile = null;
+        key = null;
+        iv = null;
         AutoDeleteMediaTask.lockFile(file);
     }
 
