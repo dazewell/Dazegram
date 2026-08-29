@@ -8552,9 +8552,10 @@ public class ChatActivity extends BaseFragment implements
         // onFragmentDestroy, so release its preview player and 60 Hz timer here before the reference is dropped,
         // or they leak for the life of the process. Never deletes the clip. This is also the site that opens the
         // race: bumping videoDraftToken just above and abandoning here can beat a queued finalize, which then mints
-        // and posts but is rejected at the enter-view token gate (ChatActivityEnterView:16029-16033) before the
-        // save at onVideoDraftReady (:38582). So the draft persists and restores by id only when the finalize was
-        // admitted before this bump; a finalize that loses that race is left as a locked on-disk orphan, not restored.
+        // and posts but is rejected at the enter-view token gate in ChatActivityEnterView's audioDidSent handler
+        // before the save at ChatActivity.onVideoDraftReady. So the draft persists and restores by id only when the
+        // finalize was admitted before this bump; a finalize that loses that race is left as a locked on-disk orphan,
+        // not restored.
         if (instantCameraView != null) {
             instantCameraView.abandonPreview();
         }

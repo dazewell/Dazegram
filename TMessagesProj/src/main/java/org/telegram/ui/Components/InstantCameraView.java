@@ -1508,10 +1508,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     // NagramX (#video-draft-guard): release only the preview player and its progress timer, never the clip.
-    // cancel() releases these too, but it also deletes cameraFile and unlocks it (:1490-1497); this narrow variant
-    // exists so fragment teardown and the passcode rebuild can stop the leaking player/timer without touching the
-    // finished draft. hideCamera() / destroy() / cancel() are deliberately not called here -- they route to encoder
-    // cancellation and file deletion, which is exactly the deletion path this feature must never introduce.
+    // cancel() releases these too, but it also deletes cameraFile and unlocks it in its delete-and-unlock block;
+    // this narrow variant exists so fragment teardown and the passcode rebuild can stop the leaking player/timer
+    // without touching the finished draft. hideCamera() / destroy() / cancel() are deliberately not called here --
+    // they route to encoder cancellation and file deletion, which is exactly the deletion path this feature must
+    // never introduce.
     public void abandonPreview() {
         previewAbandoned = true;
         stopProgressTimer();
@@ -3652,9 +3653,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // the method rather than at the call sites is what keeps the naxDraftId mint and the audioDidSent post
             // that follow each call intact -- call-site guarding would have suppressed them on every abandonment.
             // That is all this guard does; it does not itself guarantee the draft persists. Persistence past the
-            // post depends on the token gate in ChatActivityEnterView's audioDidSent handler (:16029-16033): a
-            // finalize that lost the race to a rebuild, which already bumped videoDraftToken, is rejected there
-            // before onVideoDraftReady's save (ChatActivity:38582) and so survives only as a locked orphan on disk.
+            // post depends on the token gate in ChatActivityEnterView's audioDidSent handler: a finalize that lost
+            // the race to a rebuild, which already bumped videoDraftToken, is rejected there before
+            // ChatActivity.onVideoDraftReady's save and so survives only as a locked orphan on disk.
             if (!previewAbandoned) {
             videoPlayer = new VideoPlayer();
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
