@@ -307,7 +307,7 @@ jobs:
           if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$HEAD_SHA" ]; then
             COMPARE=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/compare/$LAST_SHA...$HEAD_SHA")
+              "https://api.github.com/repos/$REPO/compare/$LAST_SHA...$HEAD_SHA") || COMPARE=""
             # Same reasoning as the associated-PRs lookup above: a network
             # blip or a well-formed error object (e.g. the rebased-branch
             # 404 this endpoint returns when LAST_SHA is no longer
