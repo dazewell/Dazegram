@@ -215,6 +215,8 @@ jobs:
         id: prepare
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_ENDPOINT: ${{ vars.AI_ENDPOINT }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -321,6 +323,20 @@ jobs:
           [ -n "$MODEL_ID" ] || MODEL_ID="openai/gpt-4.1"
           echo "model: $MODEL_ID"
 
+          # GitHub Models was retired (this endpoint now returns HTTP 410 --
+          # every recent staging run has hit it, so the summary below is
+          # currently always empty; that's a ::warning:: only, by design --
+          # a cosmetic summary must never block the APK upload). Set the
+          # "AI_ENDPOINT" repo variable and "AI_API_KEY" repo secret to point
+          # this at a live OpenAI-compatible provider (Azure AI Foundry,
+          # OpenAI, OpenRouter, ...) to revive it; both fall back to the
+          # (dead) GitHub Models endpoint/token below when unset, so this is
+          # a no-op until someone sets them.
+          MODEL_ENDPOINT="$AI_ENDPOINT"
+          [ -n "$MODEL_ENDPOINT" ] || MODEL_ENDPOINT="https://models.github.ai/inference/chat/completions"
+          MODEL_KEY="$AI_API_KEY"
+          [ -n "$MODEL_KEY" ] || MODEL_KEY="$GITHUB_TOKEN"
+
           PROMPT=$(cat << 'EOP'
           Summarize this app update for the person about to install the build, using Telegram HTML formatting (not Markdown).
           You are given the pull request title and description (the primary source, stating what the change is for) followed by
@@ -351,9 +367,9 @@ jobs:
           PAYLOAD=$(jq -n --arg content "$CONTENT" --arg model "$MODEL_ID" '{messages:[{role:"user",content:$content}],model:$model}')
 
           BODY=$(mktemp)
-          HTTP_CODE=$(curl -s -o "$BODY" -w "%{http_code}" "https://models.github.ai/inference/chat/completions" \
+          HTTP_CODE=$(curl -s -o "$BODY" -w "%{http_code}" "$MODEL_ENDPOINT" \
              -H "Content-Type: application/json" \
-             -H "Authorization: Bearer $GITHUB_TOKEN" \
+             -H "Authorization: Bearer $MODEL_KEY" \
              -d "$PAYLOAD")
           echo "::group::GitHub Models response (HTTP $HTTP_CODE)"
           cat "$BODY"; echo
