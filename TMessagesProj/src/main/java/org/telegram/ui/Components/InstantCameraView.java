@@ -1278,11 +1278,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
-        if (textureView == null && !sendAdoptedDraft) {
+        if (textureView == null && !(sendAdoptedDraft && state == 4)) {
             // NagramX (#video-draft-guard): a draft restored into a rebuilt instance (passcode unlock / late
             // finalize) never opened the camera, so textureView is null -- but adoptRestoredDraft has set up
-            // cameraFile/size/videoEditedInfo, and the state==4 branch below never dereferences textureView,
-            // so let that send through. Without this the preview vanishes and the message is silently dropped.
+            // cameraFile/size/videoEditedInfo, and only the state==4 branch below is safe without textureView,
+            // so let just that send through. Other states still bail (they assume a live camera thread).
+            // Without this the preview vanishes and the message is silently dropped.
             return;
         }
         stopProgressTimer();
