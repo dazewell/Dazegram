@@ -2709,7 +2709,7 @@ public class ChatActivity extends BaseFragment implements
                     instantCameraView.cancel(state == 2);
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
-                    instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
+                    instantCameraView.rollOverSegment(notify, scheduleDate, ttl, effectId, stars);
                 }
             }
         }
@@ -38447,14 +38447,14 @@ public class ChatActivity extends BaseFragment implements
     // (the round-camera visibility flip, beforeMessageSend, the delayed close animation): the recorder
     // is still running, so treating this as the end of the session would kill it mid-flight.
     @Override
-    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, long stars) {
+    public void sendMediaKeepRecording(MediaController.PhotoEntry photoEntry, VideoEditedInfo videoEditedInfo, boolean notify, int scheduleDate, long stars) {
         if (photoEntry == null) {
             return;
         }
         if (photoEntry.path != null) {
             keepRecordingSegmentPaths.add(photoEntry.path);
         }
-        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, 0, 0, false, photoEntry.hasSpoiler, photoEntry.caption, getMessageChatSendParams(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+        SendMessagesHelper.prepareSendingVideo(getAccountInstance(), photoEntry.path, videoEditedInfo, photoEntry.coverPath, photoEntry.coverPhoto, dialog_id, replyingMessageObject, getThreadMessage(), null, replyingQuote, photoEntry.entities, photoEntry.ttl, editingMessageObject, notify, scheduleDate, 0, false, photoEntry.hasSpoiler, photoEntry.caption, getMessageChatSendParams(), photoEntry.effectId, stars, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
         afterMessageSend();
     }
 

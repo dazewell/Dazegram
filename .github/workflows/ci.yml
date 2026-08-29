@@ -1,0 +1,196 @@
+name: CI
+
+# The fast validation gate. Runs on every push to dev and every pull request
+# into dev, and only compiles Java/Kotlin — no native (NDK/CMake) build, no
+# signing, no packaging, no Telegram upload. It exists so intermediate pushes
+# get a quick green/red signal without shipping an APK. The release-signed
+# dual-package build that actually lands in Telegram is staging.yml, requested
+# on demand (the build-apk label or a manual dispatch) and still automatic on a
+# push to dev. Doc-only, hook-only and agent/skill-only changes are skipped, but
+# workflow edits are deliberately NOT skipped so a change to this file validates
+# itself on its own PR.
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.githooks/**'
+      - '.claude/**'
+      - '.github/agents/**'
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.githooks/**'
+      - '.claude/**'
+      - '.github/agents/**'
+
+# Keep only the latest run per branch/PR; supersede an older in-flight one.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    name: Compile (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: nekox.messenger
+          - package: org.telegram.messenger.beta
+    env:
+      # SKIP disables every cmake/jni task, so no native code is compiled here.
+      # AGP still provisions the configured NDK at configuration time — the hosted
+      # runner ships it pre-cached, so that costs seconds, not the ~9 min a native
+      # build would. javac does not depend on the native build, so this compiles
+      # the whole Java/Kotlin surface (generated R.jar and BuildConfig included).
+      NATIVE_TARGET: "SKIP"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: false
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Set up Android SDK Tools
+        uses: android-actions/setup-android@v4
+        with:
+          # Platform + build-tools only — we don't request the NDK. AGP still
+          # auto-installs the configured ndkVersion at config time from the
+          # runner's pre-cached SDK (~seconds), but with SKIP no cmake/jni task
+          # runs, so native code is never actually compiled.
+          packages: "build-tools;36.0.0 platforms;android-37.0"
+      - name: Configure Android SDK Path
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" >> local.properties
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Compile Java/Kotlin
+        # No BUILD_TIMESTAMP/COMMIT_ID here on purpose: build.gradle reads both
+        # at configuration time, and a per-run value would invalidate the
+        # configuration cache and dirty generateDebugBuildConfig -> javac every
+        # run, discarding the --build-cache hit on the most expensive task.
+        run: |
+          ./gradlew :TMessagesProj:compileDebugJavaWithJavac \
+            -PAPP_PACKAGE=${{ matrix.package }} --build-cache
+      - name: Assert javac produced class files
+        # A disabled task is reported SKIPPED inside a SUCCESSFUL build, so a
+        # green exit code is not proof anything compiled. Assert real output
+        # instead: if the native-skip hatch or a future task rename ever silences
+        # javac, this fails the job where the exit code would not.
+        run: |
+          COUNT=$(find TMessagesProj/build/intermediates/javac/debug -name '*.class' 2>/dev/null | wc -l)
+          echo "javac emitted $COUNT .class files"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::No .class files under TMessagesProj/build/intermediates/javac/debug — javac did not run"
+            exit 1
+          fi
+
+  # Escalation for the surface the fast gate is blind to. A change to R8 rules,
+  # the module or root build scripts, gradle.properties, settings, buildSrc or
+  # any manifest must not reach dev without R8 and resource shrinking having run.
+  # R8 and the shrinker consume class files and merged resources, not .so, so the
+  # deep job below runs them without pulling in a single cmake task. Single
+  # package: R8/shrink behaviour is package-independent, and the per-package
+  # resource-dir swap is already covered by the 2-package compile job above.
+  changes:
+    name: Detect deep-validation paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      deep: ${{ steps.filter.outputs.deep }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history: on a push with several commits, paths-filter diffs
+          # against the before-SHA using local git, and a shallow clone can miss
+          # a build-file change and wrongly skip the deep job. PR events use the
+          # API and don't need it, but push events do.
+          fetch-depth: 0
+      - name: Filter paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            deep:
+              - 'TMessagesProj/proguard-rules.pro'
+              - 'TMessagesProj/build.gradle'
+              - 'build.gradle'
+              - 'gradle.properties'
+              - 'settings.gradle'
+              - 'buildSrc/**'
+              - 'gradle/**'
+              - 'gradlew'
+              - 'gradlew.bat'
+              - '**/AndroidManifest.xml'
+
+  deep:
+    name: R8 + resource shrink
+    needs: changes
+    if: needs.changes.outputs.deep == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: false
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Set up Android SDK Tools
+        uses: android-actions/setup-android@v4
+        with:
+          # The NDK is installed but no native code is built here — see the run
+          # step. AGP validates ndkVersion against an installed NDK at
+          # configuration time whenever externalNativeBuild is present, so the
+          # SDK has to carry it even though not one cmake task runs.
+          packages: "build-tools;36.0.0 platforms;android-37.0 ndk;27.2.12479018"
+      - name: Configure Android SDK Path
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" >> local.properties
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Run R8 and resource shrinking
+        # staging is a minifyEnabled + shrinkResources build type. Target the R8
+        # and resource-shrink tasks directly rather than assembleStaging: the
+        # latter also signs (no keystore in CI) and packages native libs. R8 and
+        # the shrinker run before packaging and depend on class files and merged
+        # resources, not on .so, so no cmake task is pulled in and the ~9-minute
+        # native build never happens — the NDK above is only there to satisfy the
+        # configuration-time check.
+        #
+        # Do NOT set NATIVE_TARGET=SKIP here. On the debug compile job that switch
+        # is fine, but on the staging variant it disables tasks the R8/resource
+        # pipeline needs and the build dies on a missing compatible-screens
+        # manifest and an unresolved R. Leaving native enabled but simply not
+        # asking for a native task is the reliable path.
+        run: |
+          ./gradlew :TMessagesProj:minifyStagingWithR8 :TMessagesProj:optimizeStagingResources \
+            -PAPP_PACKAGE=nekox.messenger --build-cache
+      - name: Assert R8 produced a mapping
+        run: |
+          MAPPING=TMessagesProj/build/outputs/mapping/staging/mapping.txt
+          if [ ! -f "$MAPPING" ]; then
+            echo "::error::$MAPPING missing — R8 did not run"
+            exit 1
+          fi
+          echo "R8 mapping present: $MAPPING"
