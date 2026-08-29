@@ -12,6 +12,7 @@ import android.view.inputmethod.EditorInfo;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -63,7 +64,7 @@ public final class SaveFileNameDialog {
         EditTextBoldCursor editText = new EditTextBoldCursor(context);
         editText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
         editText.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, resourcesProvider));
-        editText.setHintTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteHintText, resourcesProvider));
+        editText.setHintTextColor(Theme.getColor(Theme.key_dialogTextHint, resourcesProvider));
         editText.setHandlesColor(Theme.getColor(Theme.key_chat_TextSelectionCursor, resourcesProvider));
         editText.setFocusable(true);
         editText.setBackground(null);
@@ -72,6 +73,12 @@ public final class SaveFileNameDialog {
         // A pasted newline used to be accepted and grow the field, breaking the one-line underline look.
         editText.setSingleLine(true);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        // Matches AlertsCreator's own theme-name dialog: without this, DONE's keyboard-dismissal
+        // depends on the IME implementation rather than being guaranteed.
+        editText.setOnEditorActionListener((v, actionId, event) -> {
+            AndroidUtilities.hideKeyboard(v);
+            return false;
+        });
         editText.setText(NaConfig.INSTANCE.getCustomFileNamesPattern().String());
         editText.setHint(getString(R.string.CustomFileNamesHint));
         linearLayout.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 24, 8, 24, 4));
