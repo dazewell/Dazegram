@@ -367,17 +367,27 @@ jobs:
           PAYLOAD=$(jq -n --arg content "$CONTENT" --arg model "$MODEL_ID" '{messages:[{role:"user",content:$content}],model:$model}')
 
           BODY=$(mktemp)
+          # curl -s only suppresses the progress meter, not a non-zero exit on
+          # a transport failure (DNS, refused connection, timeout) -- and
+          # under `set -e` that would abort this whole step, which must never
+          # happen for a cosmetic summary. Fall back to HTTP_CODE="000" (curl's
+          # own convention for "no response") so the block below still runs
+          # and degrades to an empty-summary warning instead of failing the job.
           HTTP_CODE=$(curl -s -o "$BODY" -w "%{http_code}" "$MODEL_ENDPOINT" \
              -H "Content-Type: application/json" \
              -H "Authorization: Bearer $MODEL_KEY" \
-             -d "$PAYLOAD")
+             -d "$PAYLOAD") || HTTP_CODE="000"
           echo "::group::GitHub Models response (HTTP $HTTP_CODE)"
           cat "$BODY"; echo
           echo "::endgroup::"
 
-          SUMMARY=$(jq -r '.choices[0].message.content // empty' < "$BODY")
+          # Same reasoning for jq: an empty/non-JSON body (possible on a
+          # transport failure, or a provider that doesn't reply with the
+          # expected shape) must degrade to an empty summary, not abort the step.
+          SUMMARY=$(jq -r '.choices[0].message.content // empty' < "$BODY" 2>/dev/null) || SUMMARY=""
           if [ -z "$SUMMARY" ]; then
-            echo "::warning::AI summary empty (HTTP $HTTP_CODE): $(jq -r '.error.message // "no content in response"' < "$BODY")"
+            ERROR_MSG=$(jq -r '.error.message // "no content in response"' < "$BODY" 2>/dev/null) || ERROR_MSG="no content in response"
+            echo "::warning::AI summary empty (HTTP $HTTP_CODE): $ERROR_MSG"
           fi
 
           if [ -n "$LAST_SHA" ] && [ "$LAST_SHA" != "$HEAD_SHA" ]; then
