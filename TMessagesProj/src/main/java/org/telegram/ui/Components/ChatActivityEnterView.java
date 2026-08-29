@@ -12895,6 +12895,17 @@ public class ChatActivityEnterView extends FrameLayout implements
         return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftId : 0;
     }
 
+    // NagramX (#video-draft-guard): the owning (dialog, topic) of the currently bound round-video preview, read
+    // before a send/discard so the persisted record is cleared by its origin slot, never by the composer's live
+    // topic (which a forum tab switch can change under the preview). 0 when nothing round-video is bound.
+    public long getBoundVideoDraftDialogId() {
+        return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftDialogId : 0;
+    }
+
+    public long getBoundVideoDraftTopicId() {
+        return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftTopicId : 0;
+    }
+
     public void setSelection(int start) {
         if (messageEditText == null) {
             return;

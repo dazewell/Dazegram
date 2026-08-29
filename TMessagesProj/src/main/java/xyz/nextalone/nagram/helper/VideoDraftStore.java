@@ -126,7 +126,11 @@ public final class VideoDraftStore {
         String k = key(dialogId, topicId);
         SharedPreferences p = prefs(account);
         Entry cur = Entry.fromString(p.getString(k, null));
-        Entry next = new Entry(id, path, duration, startTime, endTime, voiceOnce, System.currentTimeMillis());
+        // NagramX (#video-draft-guard): a same-id trim update must keep the ORIGINAL createdAt so the 24h expiry
+        // tracks recording time, not the last edit -- otherwise trimming a draft repeatedly could keep it alive
+        // past the day the FEATURES copy promises. Only a genuinely new / superseding record starts the clock.
+        long createdAt = (cur != null && cur.id == id) ? cur.createdAt : System.currentTimeMillis();
+        Entry next = new Entry(id, path, duration, startTime, endTime, voiceOnce, createdAt);
         if (cur != null && cur.id == id) {
             if (cur.contentEquals(next)) {
                 return;
@@ -157,7 +161,9 @@ public final class VideoDraftStore {
         if (cur == null || cur.id != id) {
             return;
         }
-        Entry next = new Entry(id, path, duration, startTime, endTime, voiceOnce, System.currentTimeMillis());
+        // NagramX (#video-draft-guard): keep the original createdAt (same reason as save's same-id branch) so a
+        // trim never restarts the expiry clock.
+        Entry next = new Entry(id, path, duration, startTime, endTime, voiceOnce, cur.createdAt);
         if (cur.contentEquals(next)) {
             return;
         }

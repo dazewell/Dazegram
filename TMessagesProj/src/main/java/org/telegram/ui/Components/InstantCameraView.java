@@ -879,16 +879,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // session is present (recording, or a same-session finalize already holds its own cameraFile) so it can
     // never clobber a real recording's file -- in that case the object is already shared and native trim wins.
     // The passed info carries the persisted trim + draft id and becomes this instance's videoEditedInfo, so
-    // send(4) reads the exact cut. Locks the file for the life of the send.
-    public void adoptRestoredDraft(File file, long fileSize, VideoEditedInfo info) {
+    // send(4) reads the exact cut. Locks the file for the life of the send. Returns true only when it actually
+    // took ownership (assigned cameraFile/size/videoEditedInfo and locked); false on every refusal so the caller
+    // can decline to bind a preview this instance can't send.
+    public boolean adoptRestoredDraft(File file, long fileSize, VideoEditedInfo info) {
         if (recording || videoEncoder != null || cameraThread != null) {
-            return;
+            return false;
         }
         if (cameraFile != null && cameraFile.exists()) {
-            return;
+            return false;
         }
         if (file == null || !file.exists() || info == null) {
-            return;
+            return false;
         }
         cameraFile = file;
         size = fileSize;
@@ -904,6 +906,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         key = null;
         iv = null;
         AutoDeleteMediaTask.lockFile(file);
+        return true;
     }
 
     // flips between the front and back camera; also reached from the zoom control's flip button.
@@ -3321,12 +3324,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 //                    FileLog.e(e);
 //                }
 //            }
+            // NagramX (#video-draft-guard): track whether finishMovie() actually completed (returned without
+            // throwing), the same positive signal finishMuxer uses on the stop path. Set inside the write runnable
+            // before countDown, so the await below happens-after it and the read is safe. A broken finalize must
+            // not be minted a draft id, or it would persist and unlock the previous good record's file.
+            final boolean[] finalizeSuccess = {false};
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
                     fileWriteQueue.postRunnable(() -> {
                         try {
                             mediaMuxer.finishMovie(previewFile);
+                            finalizeSuccess[0] = true;
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -3340,11 +3349,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 } else {
                     try {
                         mediaMuxer.finishMovie(previewFile);
+                        finalizeSuccess[0] = true;
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
                 }
             }
+            final boolean finalizeOk = finalizeSuccess[0];
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
             // NagramX: capture the pin into a local before the async boundary, same idiom as capturedGeneration
             // in handleStopRecording -- the post must carry the generation pinned here, not re-read the field at
@@ -3367,8 +3378,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
                 // NagramX (#video-draft-guard): same draft-identity stamp as the stop producer, so a paused-then-
-                // previewed clip persists and restores by id like a fully-stopped one.
-                videoEditedInfo.naxDraftId = xyz.nextalone.nagram.helper.VideoDraftStore.newId();
+                // previewed clip persists and restores by id like a fully-stopped one. Only when finalize succeeded;
+                // a 0 id leaves the clip previewable but unpersisted (save()'s reject sentinel), superseding nothing.
+                videoEditedInfo.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
@@ -3789,8 +3801,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewFile.delete();
                 previewFile = null;
             }
+            // NagramX (#video-draft-guard): capture whether finalization actually succeeded (finishMuxer already
+            // computes this -- true iff finishMovie() didn't throw / the write wasn't interrupted). A broken mp4
+            // must not be minted a draft id below, or it would persist, supersede the previous good record and
+            // unlock its file. mediaMuxer == null means nothing was finalized here, so treat that as not-ok too.
+            final boolean finalizeOk;
             if (mediaMuxer != null) {
-                finishMuxer();
+                finalizeOk = finishMuxer();
+            } else {
+                finalizeOk = false;
             }
             if (send != 2) {
                 DispatchQueue queue = generateKeyframeThumbsQueue;
@@ -3885,8 +3904,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                             info.estimatedDuration = recordedTime;
                             // NagramX (#video-draft-guard): stamp a fresh draft identity onto the finished-but-unsent
                             // clip before it's posted to the composer, so persist / restore / clear can match this exact
-                            // draft by id across a process boundary, never by chat slot.
-                            info.naxDraftId = xyz.nextalone.nagram.helper.VideoDraftStore.newId();
+                            // draft by id across a process boundary, never by chat slot. Only when finalize succeeded --
+                            // a 0 id leaves save() a no-op (its reject sentinel), so a broken clip still previews but is
+                            // never persisted, superseding nothing.
+                            info.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });

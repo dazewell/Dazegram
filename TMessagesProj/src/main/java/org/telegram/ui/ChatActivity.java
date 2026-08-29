@@ -748,6 +748,11 @@ public class ChatActivity extends BaseFragment implements
     // rebuild recreates the view (createView), and snapshotted into each finalize request, so a finalize that
     // completes after being superseded is dropped instead of overwriting the current draft. UI thread only.
     public int videoDraftToken;
+    // NagramX (#video-draft-guard): the topic that owned the round-video recording at the moment it started.
+    // A forum's topic can switch in place (topicsTabs) under an in-flight recording, so capturing it at record
+    // start and stamping it onto the finished draft keeps persist / clear resolving the ORIGIN topic's slot, not
+    // whatever topic is showing when the finalize lands. UI thread only. The dialog never drifts within a fragment.
+    private long videoDraftOwnerTopicId;
     private View overlayView;
     private boolean currentFloatingDateOnScreen;
     private boolean currentFloatingTopicOnScreen;
@@ -2710,20 +2715,25 @@ public class ChatActivity extends BaseFragment implements
                 // No-ops if nothing is bound (id 0) or the slot no longer holds this id. State 3 (onPause finalize)
                 // CREATES the draft via the admission gate and must not clear here.
                 long draftId = chatActivityEnterView != null ? chatActivityEnterView.getBoundVideoDraftId() : 0;
+                // NagramX (#video-draft-guard): resolve the store slot from the bound draft's OWNER (dialog, topic),
+                // not the composer's live topic -- a topic switch under a bound preview must not clear the wrong slot.
+                long draftDialogId = chatActivityEnterView != null ? chatActivityEnterView.getBoundVideoDraftDialogId() : 0;
+                long draftTopicId = chatActivityEnterView != null ? chatActivityEnterView.getBoundVideoDraftTopicId() : 0;
                 if (state == 0) {
                     videoDraftToken++; // NagramX: a new recording session supersedes any still-in-flight finalize from a previous one
+                    videoDraftOwnerTopicId = getTopicId(); // NagramX (#video-draft-guard): pin the origin topic for this recording
                     instantCameraView.showCamera(false);
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
                 } else if (state == 1 || state == 3 || state == 4) {
                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
                     if ((state == 1 || state == 4) && draftId != 0) {
-                        VideoDraftStore.clearOnSend(currentAccount, dialog_id, getTopicId(), draftId);
+                        VideoDraftStore.clearOnSend(currentAccount, draftDialogId, draftTopicId, draftId);
                     }
                 } else if (state == 2 || state == 5) {
                     instantCameraView.cancel(state == 2);
                     if (draftId != 0) {
-                        VideoDraftStore.discard(currentAccount, dialog_id, getTopicId(), draftId);
+                        VideoDraftStore.discard(currentAccount, draftDialogId, draftTopicId, draftId);
                     }
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
@@ -38548,13 +38558,22 @@ public class ChatActivity extends BaseFragment implements
         if (info == null || path == null || dialog_id == 0 || info.naxDraftId == 0) {
             return;
         }
+        // NagramX (#video-draft-guard): stamp the owning (dialog, topic) onto the shared payload before the mode
+        // gate, so the bound object always names its origin slot even if persist is gated off. Topic owner is the
+        // recording-start topic pinned in needStartRecordVideo; dialog is the fragment's, which never drifts.
+        info.naxDraftDialogId = dialog_id;
+        info.naxDraftTopicId = videoDraftOwnerTopicId;
         if (!canRestoreVideoDraft()) {
             return;
         }
-        VideoDraftStore.save(currentAccount, dialog_id, getTopicId(), info.naxDraftId, path,
+        VideoDraftStore.save(currentAccount, info.naxDraftDialogId, info.naxDraftTopicId, info.naxDraftId, path,
                 (int) info.estimatedDuration, info.startTime, info.endTime, voiceOnce);
         File file = new File(path);
         checkInstantCameraView();
+        // NagramX (#video-draft-guard): the gate already bound this live finalize's preview, and this instance
+        // backs it -- adoptRestoredDraft returns false here precisely because cameraFile is already set (the file
+        // just recorded), which is correct. So its result must NOT gate the bind, or every live finalize would
+        // unbind. The boolean return is consumed at the RESTORE site, where a refusal means no send backing exists.
         if (instantCameraView != null) {
             instantCameraView.adoptRestoredDraft(file, file.length(), info);
         }
@@ -38566,7 +38585,9 @@ public class ChatActivity extends BaseFragment implements
         if (info == null || path == null || dialog_id == 0 || info.naxDraftId == 0) {
             return;
         }
-        VideoDraftStore.updateTrim(currentAccount, dialog_id, getTopicId(), info.naxDraftId, path,
+        // NagramX (#video-draft-guard): persist the trim to the draft's OWNER slot carried on the payload, not the
+        // composer's live topic -- a trim after a topic switch must still land in the slot the draft was minted in.
+        VideoDraftStore.updateTrim(currentAccount, info.naxDraftDialogId, info.naxDraftTopicId, info.naxDraftId, path,
                 (int) info.estimatedDuration, info.startTime, info.endTime, voiceOnce);
     }
 
@@ -38597,17 +38618,33 @@ public class ChatActivity extends BaseFragment implements
         if (size == 0) {
             return;
         }
+        // NagramX (#video-draft-guard): re-take the lock on restore, independent of adoption. usingFilePaths is an
+        // in-memory set that is empty after a process restart, so a draft that survived a passcode-lock rebuild has
+        // no live lock until this runs. Locking here -- not only inside adoptRestoredDraft -- keeps the file
+        // protected even when adoption is skipped (no camera view) or refused, so the 24h sweep can't take a draft
+        // we still persist and may restore later. Idempotent with the lock adoptRestoredDraft also takes (a set add).
+        org.telegram.messenger.AutoDeleteMediaTask.lockFile(entry.path);
         VideoEditedInfo info = VideoDraftStore.buildInfo(entry, size);
+        // NagramX (#video-draft-guard): the slot this was loaded from IS the owner; stamp it so a later trim /
+        // send / discard on the restored preview resolves the same slot even if the topic switches under it.
+        info.naxDraftDialogId = dialog_id;
+        info.naxDraftTopicId = getTopicId();
         checkInstantCameraView();
         if (instantCameraView == null) {
             // NagramX (#video-draft-guard): checkInstantCameraView bails when the camera is disallowed or the
             // context is gone, so there is no view to send through. Don't surface a preview the send path can't
             // service -- needStartRecordVideo no-ops without instantCameraView, and if the user cancels the stuck
-            // preview discard() deletes the file. Leave the record persisted+locked; it restores on a later open.
+            // preview discard() deletes the file. The record stays persisted and locked (locked above, so the
+            // sweep can't take it); it restores on a later open once the camera is available again.
             return;
         }
-        instantCameraView.adoptRestoredDraft(file, size, info);
-        chatActivityEnterView.setVideoDraft(info, entry.path, entry.duration, entry.voiceOnce);
+        // NagramX (#video-draft-guard): bind the preview ONLY when the instance actually took ownership of the
+        // file. A refusal (a live session, an already-set cameraFile, or the file vanishing in the race since
+        // load) means this instance can't send it -- binding then would show a preview backed by nothing, and a
+        // discard would delete the wrong bytes. Leave the record persisted + locked; it restores on a later open.
+        if (instantCameraView.adoptRestoredDraft(file, size, info)) {
+            chatActivityEnterView.setVideoDraft(info, entry.path, entry.duration, entry.voiceOnce);
+        }
     }
 
     // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
