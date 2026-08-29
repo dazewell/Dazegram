@@ -32,9 +32,11 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
  * turns the pattern into a coarse, enlarged, and geometrically approximate impression of the wallpaper.
  * That reads fine refracted and tinted inside a pill, but a surface that draws the bare wallpaper
  * straight from the source (no render node capturing content over it) shows that impression plainly,
- * and the pattern smears into blocks that do not line up with the wallpaper beside it. Those
- * bare-wallpaper surfaces take WallpaperBitmapProvider's gradient-only plain source instead, which has
- * no line-art to smear and upscales invisibly. The split is by source, not by surface size.
+ * and where it sits beside the real wallpaper the pattern smears into blocks that do not line up with
+ * it. Those bare-wallpaper surfaces take WallpaperBitmapProvider's gradient-only plain source instead,
+ * which has no line-art to smear and upscales invisibly. The one exception is the round-video recording
+ * backdrop: it is a near-opaque full-screen scrim with no adjacent wallpaper to compare against, so it
+ * draws this composite bare and keeps the pattern. The split is by source, not by surface size.
  */
 public class MotionGlassCompositor {
 

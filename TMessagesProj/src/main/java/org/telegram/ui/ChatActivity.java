@@ -534,10 +534,17 @@ public class ChatActivity extends BaseFragment implements
     // take this gradient-only proxy instead of the pattern composite, which smears when cover-scaled.
     // Surfaces that composite blurred message content over the wallpaper keep navbarContentSourceWallpaper
     // — the composite is only ever their setUnderSource, not what fills the surface. The split is by
-    // source, not by size: only navbarContentDrawableFactory (the bare-wallpaper factory) reads this;
-    // the render-node factories keep the composite. See WallpaperBitmapProvider.
+    // source, not by size: navbarContentDrawableFactory (the bare-wallpaper factory) reads this;
+    // the render-node factories keep the composite. The one bare-wallpaper surface that still draws the
+    // composite is the round-video recording backdrop (roundVideoBackgroundDrawableFactory): it is a
+    // near-opaque full-screen scrim with no adjacent real wallpaper to smear against, so it keeps the
+    // pattern. See WallpaperBitmapProvider.
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
+    // NagramX: the round-video recording backdrop. Wraps navbarContentSourceWallpaper (the composite)
+    // directly, no render node — a full-screen near-opaque scrim that keeps the pattern (see the source
+    // comment above and roundVideoRecordBackground's creation).
+    private final @NonNull BlurredBackgroundDrawableViewFactory roundVideoBackgroundDrawableFactory;
 
     private Dialog closeChatDialog;
     private boolean showCloseChatDialogLater;
@@ -2971,12 +2978,15 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactoryFrosted = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         }
         navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
+        roundVideoBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         navbarContentDrawableFactory.setLinkedViewsRef(glassAttachedViews);
+        roundVideoBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactoryFrosted.setLinkedViewsRef(glassAttachedViews);
         scrimBlur3Factory.setLinkedViewsRef(new ReferenceList<>());
 
         navbarContentDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
+        roundVideoBackgroundDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
         glassBackgroundDrawableFactory.setLinkedDrawablesRef(glassAttachedDrawables);
         glassBackgroundDrawableFactoryFrosted.setLinkedDrawablesRef(glassAttachedDrawables);
         scrimBlur3Factory.setLinkedDrawablesRef(glassAttachedDrawables);
@@ -5260,6 +5270,7 @@ public class ChatActivity extends BaseFragment implements
         glassBackgroundDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
         glassBackgroundDrawableFactoryFrosted.setSourceRootView(viewPositionWatcher, parentView);
         navbarContentDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
+        roundVideoBackgroundDrawableFactory.setSourceRootView(viewPositionWatcher, parentView);
         scrimBlur3Factory.setSourceRootView(viewPositionWatcher, parentView);
 
         if (headerItem != null) {
@@ -8815,7 +8826,10 @@ public class ChatActivity extends BaseFragment implements
 
         roundVideoRecordBackground = new View(context);
         roundVideoRecordBackground.setVisibility(View.GONE);
-        BlurredBackgroundDrawable d = navbarContentDrawableFactory.create(roundVideoRecordBackground);
+        // NagramX: draw from the composite (pattern) source, not the plain proxy — this is a full-screen
+        // near-opaque scrim covering everything, so there is no adjacent real wallpaper for the pattern to
+        // smear against, and at TARGET_LONG_EDGE_PX = 768 its cover-scale is mild.
+        BlurredBackgroundDrawable d = roundVideoBackgroundDrawableFactory.create(roundVideoRecordBackground);
         d.setAlpha(232);
         roundVideoRecordBackground.setBackground(d);
 
