@@ -131,10 +131,14 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     /**
      * Pass-through percent, not opacity - higher shows more wallpaper through the panel. 25%
-     * (opacity 0.75) sits a hair under today's fixed 0.76 base alpha, so shipping the default
-     * changes nothing visible (see NaConfig.composerGlassAlpha for the pass-through -> opacity
-     * conversion). Same eleven-stop count as the toolbar-size slider, one sub-step needed since
-     * every anchor is already a whole percent.
+     * (opacity 0.75) sits a hair under the fixed 0.76 base alpha this used to ship with whenever
+     * Liquid Glass mode was off, so the default is a near no-op for most users (see
+     * NaConfig.composerGlassAlpha for the pass-through -> opacity conversion). With Liquid Glass on,
+     * the old fixed default was 0.85 (15% pass-through, no way to change it); these sliders now
+     * apply the same configurable value regardless of that flag, so a Liquid Glass user's composer
+     * glass gets visibly more transparent than before at this default - deliberate, since they can
+     * now dial it back down to 15% or lower themselves. Same eleven-stop count as the toolbar-size
+     * slider, one sub-step needed since every anchor is already a whole percent.
      */
     private static final int GLASS_MIN = 0;
     private static final int GLASS_MAX = 50;
