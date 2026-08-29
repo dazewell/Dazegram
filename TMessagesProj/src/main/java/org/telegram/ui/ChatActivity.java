@@ -19778,16 +19778,12 @@ public class ChatActivity extends BaseFragment implements
 
             int heightSize = allHeight;
 
-            if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
-                    .setParentSize(widthSize, heightSize, 0);
-            }
-            // NagramX: the plain full-screen source builds its cover matrix from setParentSize too;
-            // without this it draws the mesh 1:1 in the top-left corner of the fade bands.
-            if (navbarContentSourceWallpaperPlain.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaperPlain.getSource())
-                    .setParentSize(widthSize, heightSize, 0);
-            }
+            // NagramX: size both the composite and the plain bitmap source via the provider, whether or
+            // not each is the one currently installed. A wallpaper switch installs a source without
+            // forcing a measure pass, so an unsized one would draw its mesh 1:1 in the top-left corner
+            // (the fade bands, round-video backdrop) until an unrelated relayout. Covers the wrapper's
+            // current source too, since it is one of these; identical-dims calls are free.
+            wallpaperBitmapProvider.setParentSize(widthSize, heightSize, 0);
             if (lastWidth != widthSize) {
                 globalIgnoreLayout = false;
                 lastWidth = widthMeasureSpec;

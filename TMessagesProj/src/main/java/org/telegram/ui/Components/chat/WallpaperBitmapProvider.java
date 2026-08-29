@@ -107,6 +107,19 @@ public class WallpaperBitmapProvider {
         return plainSource;
     }
 
+    /**
+     * Sizes both internal bitmap sources (composite and plain) so each has a valid cover matrix even
+     * when it is not the one currently installed on a wrapper. A wallpaper switch installs whichever
+     * source the new drawable maps to but does not force a fresh measure pass, so an unsized source
+     * would otherwise draw its mesh 1:1 in the top-left corner until an unrelated relayout. Sizing both
+     * unconditionally closes that for a bitmap-to-motion (plain) and a colour-to-motion (composite)
+     * switch alike; the identical-dims early-return in setParentSize makes the redundant call free.
+     */
+    public void setParentSize(int width, int height, int actionBarHeight) {
+        sourceBitmap.setParentSize(width, height, actionBarHeight);
+        plainSourceBitmap.setParentSize(width, height, actionBarHeight);
+    }
+
     public int getNavigationBarColor(BlurredBackgroundSource source) {
         if (source instanceof BlurredBackgroundSourceColor) {
             return ((BlurredBackgroundSourceColor) source).getColor();

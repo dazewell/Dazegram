@@ -156,7 +156,6 @@ import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.DownscaleScrollableNoiseSuppressor;
 import org.telegram.ui.Components.blur3.drawable.color.impl.BlurredBackgroundProviderImpl;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
-import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceRenderNode;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceWrapped;
 import org.telegram.ui.Components.chat.ViewPositionWatcher;
@@ -1023,16 +1022,11 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 int widthSize = MeasureSpec.getSize(widthMeasureSpec);
                 int heightSize = MeasureSpec.getSize(heightMeasureSpec);
 
-                if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                    ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
-                        .setParentSize(widthSize, heightSize, 0);
-                }
-                // NagramX: the plain full-screen source builds its cover matrix from setParentSize too;
-                // without this it draws the mesh 1:1 in the top-left corner of the fade bands.
-                if (navbarContentSourceWallpaperPlain.getSource() instanceof BlurredBackgroundSourceBitmap) {
-                    ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaperPlain.getSource())
-                        .setParentSize(widthSize, heightSize, 0);
-                }
+                // NagramX: size both the composite and the plain bitmap source via the provider, whether
+                // or not each is currently installed — a wallpaper switch installs a source without a
+                // fresh measure pass, so an unsized one would draw its mesh 1:1 in the top-left corner of
+                // the fade bands until an unrelated relayout. Identical-dims calls are free.
+                wallpaperBitmapProvider.setParentSize(widthSize, heightSize, 0);
 
                 setMeasuredDimension(widthSize, heightSize);
                 heightSize -= getPaddingTop();
