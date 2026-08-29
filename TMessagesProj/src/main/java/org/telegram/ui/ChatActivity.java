@@ -4080,26 +4080,6 @@ public class ChatActivity extends BaseFragment implements
                 final boolean dark = themeDelegate != null ? themeDelegate.isDark() : Theme.isCurrentThemeDark();
                 return Theme.multAlpha(getThemedColor(Theme.key_chat_messagePanelBackground), NaConfig.composerGlassAlpha(dark));
             }
-
-            // NagramX: the base class only computes these three in its constructor and caches them, so making
-            // getBackgroundColor() above live without also freeing these would repaint the panel for a theme flip
-            // while leaving stroke/shadow keyed to whatever theme was active when the provider was built - swapping
-            // one mismatch (stale background) for another (background vs. stroke). isDark() itself already reads
-            // the current theme's color live on every call; only the cached fields were the problem.
-            @Override
-            public int getShadowColor() {
-                return isDark() ? 0 : 0x20000000;
-            }
-
-            @Override
-            public int getStrokeColorTop() {
-                return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
-            }
-
-            @Override
-            public int getStrokeColorBottom() {
-                return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
-            }
         };
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
             @Override
