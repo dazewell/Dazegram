@@ -108,6 +108,11 @@ public class MotionBackgroundDrawable extends Drawable {
 
     private float indeterminateSpeedScale = 1f;
     private boolean isIndeterminateAnimation;
+    // NagramX: when set, draw() renders but skips its trailing updateAnimation() call. The composer
+    // glass composites this drawable off-screen; that draw must not advance the animation clock or post
+    // invalidateMotionBackground, or the forced refresh would re-post and loop as fast as the queue
+    // drains. Only ever set around MotionGlassCompositor's own draw, cleared in a finally there.
+    private boolean suppressAnimationAdvance;
     private int bitmapWidth = 60;
     private int bitmapHeight = 80;
 
@@ -224,6 +229,12 @@ public class MotionBackgroundDrawable extends Drawable {
 
     public void setPostInvalidateParent(boolean value) {
         postInvalidateParent = value;
+    }
+
+    // NagramX: see suppressAnimationAdvance. Set true only around an off-screen proxy composite and
+    // cleared in a finally, so a throw cannot leave the real wallpaper animation frozen.
+    public void setSuppressAnimationAdvance(boolean value) {
+        suppressAnimationAdvance = value;
     }
 
     public void rotatePreview(boolean back) {
@@ -651,7 +662,11 @@ public class MotionBackgroundDrawable extends Drawable {
         }
         canvas.restore();
 
-        updateAnimation();
+        // NagramX: skip the animation advance when compositing the off-screen glass proxy — see
+        // suppressAnimationAdvance. On the real on-screen draw this runs as upstream intends.
+        if (!suppressAnimationAdvance) {
+            updateAnimation();
+        }
     }
 
     public void setAnimationProgressProvider(GenericProvider<MotionBackgroundDrawable, Float> animationProgressProvider) {

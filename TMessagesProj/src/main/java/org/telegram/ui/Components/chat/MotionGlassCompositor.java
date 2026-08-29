@@ -87,8 +87,17 @@ public class MotionGlassCompositor {
         composite.eraseColor(Color.BLACK);
         savedBounds.set(motion.getBounds());
         motion.setBounds(0, 0, targetW, targetH);
-        motion.draw(compositeCanvas);
-        motion.setBounds(savedBounds);
+        // Suppress the drawable's trailing updateAnimation() for this off-screen draw: it would advance
+        // the animation clock and post invalidateMotionBackground, which drives another forced composite
+        // and loops as fast as the queue drains. finally so a throw can't leave the flag stuck and freeze
+        // the real wallpaper animation.
+        motion.setSuppressAnimationAdvance(true);
+        try {
+            motion.draw(compositeCanvas);
+        } finally {
+            motion.setSuppressAnimationAdvance(false);
+            motion.setBounds(savedBounds);
+        }
 
         gradientTracker.set(gradient);
         patternTracker.set(pattern);
