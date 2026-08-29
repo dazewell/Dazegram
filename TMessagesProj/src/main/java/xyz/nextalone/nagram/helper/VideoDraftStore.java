@@ -143,12 +143,15 @@ public final class VideoDraftStore {
             p.edit().putString(k, next.toString()).commit();
             return;
         }
-        p.edit().putString(k, next.toString()).commit();
+        boolean written = p.edit().putString(k, next.toString()).commit();
         AutoDeleteMediaTask.lockFile(path);
-        // NagramX (#video-draft-guard): only unlock the superseded file, never the one we just locked. If a newer
-        // recording somehow reuses the old path, unlockFile (a set remove) would strip the lock off the live draft
-        // and the sweep could eat it. Recordings write unique paths today, so this guard is normally a no-op.
-        if (cur != null && !cur.path.equals(path)) {
+        // NagramX (#video-draft-guard): only unlock the superseded file, and only once the superseding write has
+        // actually landed. If the write failed, prefs still point at the old record, so unlocking its file would let
+        // the sweep delete the clip the store still references -- and a failed commit() and an aggressive sweep both
+        // happen under disk pressure, so they correlate rather than being independently rare. On failure we keep the
+        // old file locked (an extra orphan is the accepted over-retention direction) and leave the record restorable.
+        // The path check stays too: never unlock a path we just locked, in case a new recording reused it.
+        if (written && cur != null && !cur.path.equals(path)) {
             AutoDeleteMediaTask.unlockFile(cur.path);
         }
     }
