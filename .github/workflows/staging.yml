@@ -172,6 +172,12 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    # The default success() here would inherit the skip of unlabel through the
+    # needs chain (unlabel is skipped on push and workflow_dispatch), which would
+    # silently drop the Telegram upload on exactly the two paths that must always
+    # publish. Gate on build's own result instead so upload runs whenever the
+    # build did, and keep !cancelled() so a superseded run still stops.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
