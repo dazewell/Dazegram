@@ -88,10 +88,12 @@ public final class InfiniteVideoScheduleHelper {
      * <p>The clamps are defence in depth. A past-due slot is pushed to {@code now + 60}; a slot past
      * the 1-year limit is pinned to it. Successive segments are recorded ~60s apart, so their clamp
      * evaluations run ~60s apart too and {@code max(slot, now + 60)} can never fold two segments onto
-     * one slot. At the far end several trailing segments may share the maximum — that degenerate case
-     * is unreachable in practice (it needs the base at the 1-year maximum plus ~720 further segments,
-     * i.e. 12h+ of unbroken recording on the Unlimited ceiling), and even if reached, equal
-     * schedule_dates dispatch in submission order, which is recording order, so ordering survives.
+     * one slot. At the far end several trailing segments could share the maximum, but that degenerate
+     * case is unreachable in practice -- it needs the base at the 1-year maximum plus ~720 further
+     * segments, i.e. 12h+ of unbroken recording on the Unlimited ceiling. Unreachability is the actual
+     * guarantee: segments pinned to the same maximum would carry equal schedule_dates, and nothing here
+     * establishes their relative send order, so the design keeps two segments off one slot rather than
+     * relying on how the server breaks a tie.
      */
     public static int segmentDate(int currentAccount, int baseDate, int segmentIndex) {
         long slot = (long) baseDate + (long) SEGMENT_INTERVAL_SECONDS * segmentIndex;

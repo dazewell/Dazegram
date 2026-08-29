@@ -375,7 +375,7 @@
     <string name="AccDescrInfiniteRecordingOff">Turn off infinite recording</string>
     <string name="InfiniteRecordingScheduleTitle">Schedule first message</string>
     <string name="InfiniteRecordingScheduleHint">Every segment after this one is scheduled 2 minutes later.</string>
-    <string name="InfiniteRecordingScheduleOrderingHint">Telegram can send a minute or two late, so segments may still go out of order</string>
+    <string name="InfiniteRecordingScheduleOrderingHint">Telegram can send a minute or two late, so segments may still go out of order.</string>
     <string name="CameraSettings">Camera</string>
     <string name="ContactNotes">Notes</string>
     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>
