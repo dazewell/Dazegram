@@ -15927,11 +15927,12 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (guid != recordingGuid) {
                 return;
             }
-            // NagramX: drop a round-video finalize that completed after the chat was rebuilt (passcode unlock)
-            // and superseded by a newer recording -- its snapshotted draft token no longer matches
-            // the current one, so landing it would overwrite the live preview. recordingGuid can't catch this:
-            // it's the fragment's classGuid and is unchanged across the rebuild. Only video posts carry the
-            // token (args[4]); a voice post or an older post without it is never dropped here.
+            // NagramX: drop a round-video finalize whose generation is stale -- either a newer recording bumped
+            // the token, or a passcode-lock rebuild bumped it in ChatActivity.createView. Its snapshotted token
+            // no longer matches the current one, so landing it would overwrite the live preview or drop an
+            // unsendable clip onto a rebuilt instance. recordingGuid can't catch this: it's the fragment's
+            // classGuid and is unchanged across the rebuild. Both round-video producers (stop and pause) carry
+            // the token (args[4]); a voice post without it is never dropped here.
             if (args[1] instanceof VideoEditedInfo && args.length > 4 && parentFragment != null
                     && (Integer) args[4] != parentFragment.getVideoDraftToken()) {
                 return;

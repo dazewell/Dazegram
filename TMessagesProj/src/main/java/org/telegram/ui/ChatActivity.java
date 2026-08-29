@@ -743,9 +743,9 @@ public class ChatActivity extends BaseFragment implements
     private ChatActionCell infoTopView;
     private int hideDateDelay = 500;
     public InstantCameraView instantCameraView;
-    // NagramX: draft-guard generation. Bumped when a new round video recording begins, and snapshotted into each
-    // finalize request, so a finalize that completes after a passcode-lock rebuild superseded it is dropped
-    // instead of overwriting the current draft. UI thread only.
+    // NagramX: draft-guard generation. Bumped when a new round video recording begins and when a passcode-lock
+    // rebuild recreates the view (createView), and snapshotted into each finalize request, so a finalize that
+    // completes after being superseded is dropped instead of overwriting the current draft. UI thread only.
     public int videoDraftToken;
     private View overlayView;
     private boolean currentFloatingDateOnScreen;
@@ -8515,6 +8515,15 @@ public class ChatActivity extends BaseFragment implements
         overlayView.setVisibility(View.GONE);
         contentView.setClipChildren(false);
 
+        // NagramX (#video-draft-guard): a passcode-lock rebuild recreates this view here (createView) while the
+        // old InstantCameraView's onPause finalize (send(3), token snapshotted at InstantCameraView:1297) may
+        // still be in flight on its encoder thread. Bump the draft generation now -- before the fresh enter
+        // view is built just below and can observe audioDidSent -- so that late finalize becomes a deterministic
+        // reject at the enter-view token gate instead of admitting an unsendable preview onto a rebuilt instance
+        // (send(4) silently no-ops on textureView == null). createView runs on the UI thread and a producer's
+        // audioDidSent is posted via runOnUIThread, so the two can't interleave: the bump always precedes
+        // admission. Also fires on first creation -- a harmless no-op with nothing in flight.
+        videoDraftToken++;
         instantCameraView = null;
 
         chatActivityEnterView = new ChatActivityEnterView(getParentActivity(), contentView, this, chatMode != MODE_EDIT_BUSINESS_LINK, themeDelegate, chatMode != MODE_EDIT_BUSINESS_LINK) {

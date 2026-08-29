@@ -184,11 +184,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean deviceHasGoodCamera;
     private boolean requestingPermissions;
     private File cameraFile;
-    // NagramX: token of the draft generation this finalize belongs to, snapshotted on the UI thread when the
-    // stop is requested and echoed back through audioDidSent. ChatActivity bumps its counter when a new
-    // recording starts, so a finalize that completes after the view was rebuilt and superseded by a newer
-    // recording is dropped at delivery instead of clobbering the current preview. volatile: set on the UI
-    // thread, read on the encoder thread that posts the completion.
+    // NagramX: token of the draft generation this finalize belongs to, snapshotted on the UI thread when a
+    // stop or pause is requested and echoed back through audioDidSent. ChatActivity bumps its counter when a
+    // new recording starts and when a passcode-lock rebuild recreates the view, so a finalize that completes
+    // after being superseded is dropped at delivery instead of clobbering the current preview or landing an
+    // unsendable clip on a rebuilt instance. volatile: set on the UI thread, read on the encoder thread that
+    // posts the completion.
     private volatile int finalizeDraftToken;
     private File previewFile;
     private long recordStartTime;
@@ -837,6 +838,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 startAnimation(false, false);
                 MediaController.getInstance().requestRecordAudioFocus(false);
             } else {
+                // NagramX (#video-draft-guard): snapshot the draft generation before requesting the pause
+                // finalize, symmetric with the stop path (finalizeDraftToken assignment in send()). The pause
+                // producer posts audioDidSent asynchronously from the encoder thread; without a token the
+                // enter-view gate can't reject it, so after a passcode-lock rebuild it would land an unsendable
+                // paused preview on the fresh instance. Written on the UI thread before pause() enqueues
+                // MSG_PAUSE_RECORDING, so the encoder thread reads this value (finalizeDraftToken is volatile).
+                finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
                 videoEncoder.pause();
             }
         } else if (videoEncoder != null) {
@@ -3298,7 +3306,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, finalizeDraftToken);
             });
         }
 
@@ -4887,8 +4895,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         int getClassGuid();
         long getDialogId();
 
-        // NagramX: current draft-guard generation, bumped by the host when a new recording starts. send()
-        // snapshots it so a stale finalize can be rejected at delivery.
+        // NagramX: current draft-guard generation, bumped by the host when a new recording starts or a
+        // passcode-lock rebuild recreates the view. send() snapshots it so a stale finalize can be rejected
+        // at delivery.
         default int getVideoDraftToken() {
             return 0;
         }
