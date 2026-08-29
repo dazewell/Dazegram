@@ -2,7 +2,6 @@ package org.telegram.ui.Components.chat;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
@@ -21,8 +20,17 @@ public class WallpaperBitmapProvider {
 
     private final BlurredBackgroundSourceColor sourceColor = new BlurredBackgroundSourceColor();
     private final BlurredBackgroundSourceBitmap sourceBitmap = new BlurredBackgroundSourceBitmap();
+    private final MotionGlassCompositor motionGlassCompositor = new MotionGlassCompositor();
 
     private static final Rect tmpRect = new Rect();
+
+    /**
+     * Re-runs the motion-wallpaper composite (gradient + pattern) for an already-attached drawable.
+     * Returns true when the proxy changed and the caller should reprime its glass render nodes.
+     */
+    public boolean refreshMotionComposite(MotionBackgroundDrawable motionDrawable) {
+        return motionGlassCompositor.compose(sourceBitmap, motionDrawable);
+    }
 
     public BlurredBackgroundSource updateSourceFromBackgroundViewDrawable(
         Drawable drawable
@@ -35,11 +43,11 @@ public class WallpaperBitmapProvider {
 
         if (drawable instanceof MotionBackgroundDrawable) {
             final MotionBackgroundDrawable motionDrawable = (MotionBackgroundDrawable) drawable;
-            if (motionDrawable.getIntensity() < 0) {
-                sourceColor.setColor(Color.BLACK);
-                return sourceColor;
-            }
-            sourceBitmap.setBitmap(motionDrawable.getBitmap());
+            // NagramX: getBitmap() is the gradient mesh only and the intensity<0 branch returns flat
+            // black — neither carries the wallpaper pattern, so the glass behind the composer never
+            // shows it. Composite the drawable's actual output (gradient + pattern, including the
+            // intensity<0 mask) into a retained bitmap and hand that to the glass. See MotionGlassCompositor.
+            motionGlassCompositor.compose(sourceBitmap, motionDrawable);
             return sourceBitmap;
         }
 
