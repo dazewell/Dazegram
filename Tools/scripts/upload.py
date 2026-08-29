@@ -31,6 +31,10 @@ BUILD_EMOJI = {
 # A pathologically long PR title or commit subject must not eat the whole
 # caption budget on its own; this is a fixed, small share of it.
 HEADER_TITLE_BUDGET = 120
+# Same idea for the branch name shown in the meta line -- comfortably clear
+# of a normal "<YYYY-MM-DD>_<slug>" branch so real branches never truncate,
+# while still bounding how much an unusual one can inflate the header.
+HEADER_BRANCH_BUDGET = 60
 
 # Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
 # which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
@@ -105,8 +109,14 @@ def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_num
         subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
         subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET, escaped=True)
         headline = f"{emoji} <b>{subject}</b>" if subject else emoji
+    # The branch label shown in <code> is bounded so an unusually long branch
+    # name can't inflate the header past what content_budget clamping in
+    # get_document() can undo (that would silently starve both blockquotes to
+    # a bare ellipsis). The link keeps the untruncated branch name -- only the
+    # visible text is capped, so the link still resolves to the real branch.
+    branch_display = truncate_text(html.escape(branch), HEADER_BRANCH_BUDGET, escaped=True)
     meta = (
-        f'<a href="{html.escape(branch_url)}"><code>{html.escape(branch)}</code></a>'
+        f'<a href="{html.escape(branch_url)}"><code>{branch_display}</code></a>'
         f" · "
         f'<a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
     )
