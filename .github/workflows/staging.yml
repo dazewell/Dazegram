@@ -1,42 +1,56 @@
 name: Staging build
 
-# The single build + Telegram-upload pipeline. Runs on every push to dev and
-# on pull requests into dev (a PR run builds the dev + branch merge ref, so it
-# doubles as the on-device preview). Doc-only, .github-only and git-hook-only
-# changes are skipped — a hook is a local developer-machine script, never
-# compiled or packaged, so it cannot affect the built APK. Upload always
-# happens — there is no skip switch. A newer push supersedes an older
-# in-flight run on the same branch or PR (see the workflow-level concurrency
-# group).
+# The publish-on-request build + Telegram-upload pipeline. Runs and uploads on:
+#   - every push to dev (the post-land dual-package delivery — unconditional);
+#   - a pull request that gets the build-apk label (an on-demand preview);
+#   - a manual workflow_dispatch.
+# It builds the release-signed dual-package APK (native included) and uploads it
+# to Telegram — there is no skip switch. Intermediate PR pushes no longer build
+# here; the fast Java/Kotlin gate is ci.yml, and an APK is produced only when
+# explicitly requested, so Telegram only sees builds worth installing. The
+# build-apk label is auto-removed at the start of each run so re-applying it acts
+# as a repeatable button. Doc-only, .github-only and git-hook-only pushes to dev
+# are skipped (a hook is a local script, never packaged). A newer run supersedes
+# an older in-flight one on the same branch or PR (see the concurrency group).
 
 on:
   push:
     branches:
       - dev
+    # paths-ignore does not support '!' re-includes (that only works in paths),
+    # so a merge touching only staging.yml, docs, or .github does NOT self-trigger
+    # a publish build. That is deliberate: converting this to a paths allowlist
+    # would rewrite the one trigger we can't test before merge (push:dev, the
+    # non-negotiable delivery channel). To verify a pipeline change, dispatch it
+    # manually instead.
     paths-ignore:
       - '**.md'
       - '.github/**'
-      - '!.github/workflows/staging.yml'
       - 'docs/**'
       - '.githooks/**'
   pull_request:
-    types: [opened, reopened, synchronize]
-    paths-ignore:
-      - '**.md'
-      - '.github/**'
-      - '!.github/workflows/staging.yml'
-      - 'docs/**'
-      - '.githooks/**'
+    # No paths-ignore here on purpose: a build the user explicitly requested via
+    # the label is relevant by definition, even on a doc-only PR. Path filtering
+    # would apply to the labeled trigger too and silently drop that request.
+    types: [labeled]
   workflow_dispatch:
 
-# Drop an older run on the same branch/PR rather than building it out: a few
-# rounds of review each shipped their own pair of APKs, which is what trips the
-# bot's flood limit. The group is workflow-level on purpose — a job-level group
-# only queues a superseded run behind the one already going, so every push still
-# built and uploaded eventually. Cancelling at the run level takes the whole
-# matrix and the upload job with it, which is what "keep the latest only" means.
+# Drop an older run on the same branch rather than building it out: a few rounds
+# of review each shipped their own pair of APKs, which is what trips the bot's
+# flood limit. The group is workflow-level on purpose — a job-level group only
+# queues a superseded run behind the one already going, so every push still built
+# and uploaded eventually. Cancelling at the run level takes the whole matrix and
+# the upload job with it, which is what "keep the latest only" means.
+#
+# The key is the branch (github.head_ref on a PR, github.ref_name otherwise), so
+# every build-producing event on one branch — push, dispatch, and a build-apk
+# labelling — shares a group and only the latest survives. The suffix applies
+# ONLY to an unrelated label event, which is a no-op run (every job skips): it
+# lands in its own group so it can't cancel a real build in flight. A build-apk
+# label carries no suffix, so it correctly collides with a dispatch on the same
+# branch instead of running a second time.
 concurrency:
-  group: staging-${{ github.event.pull_request.number || github.ref }}
+  group: staging-${{ github.head_ref || github.ref_name }}${{ (github.event_name == 'pull_request' && github.event.label.name != 'build-apk') && format('-{0}', github.event.label.name) || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -45,9 +59,55 @@ permissions:
   models: read
 
 jobs:
+  # Remove the build-apk label at the start of a labeled run so re-applying it
+  # re-triggers a build — the label behaves as a repeatable button. Kept as its
+  # own single job (not folded into the matrix, where it would run once per
+  # package and the second DELETE would 404 and fail the leg). Job-level write
+  # scope keeps the token narrow; the DELETE tolerates a 404 (already removed, or
+  # a re-run). The build job orders after this via needs but does not depend on
+  # its success.
+  unlabel:
+    name: Remove build-apk label
+    runs-on: ubuntu-latest
+    # Same-repo only: a fork PR gets a read-only token, so the label DELETE below
+    # would 403. dazewell's flow is all same-repo branches, so this never fires on
+    # a legitimate request — it just keeps a stray fork PR from a doomed run.
+    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Remove label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/build-apk")
+          echo "DELETE label -> HTTP $CODE"
+          # 200 removed, 404 already gone — both fine. Anything else is a real error.
+          if [ "$CODE" != "200" ] && [ "$CODE" != "404" ]; then
+            exit 1
+          fi
   build:
     name: Gradle Build (${{ matrix.package }})
     runs-on: ubuntu-latest
+    needs:
+      - unlabel
+    # Build on a push to dev, a manual dispatch, or a build-apk labelling. The
+    # unlabel job is skipped on the first two, so gate on !cancelled() plus the
+    # event rather than on its result — a skipped need would otherwise skip this
+    # job. !cancelled() (not always()) is deliberate: always() would keep the
+    # build going after the concurrency group cancels a superseded run, which is
+    # the flood the group exists to stop. A skipped or failed unlabel is not a
+    # cancellation, so !cancelled() still runs here in both those cases.
+    if: >-
+      !cancelled() &&
+      (
+        github.event_name == 'push' ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository)
+      )
     strategy:
       fail-fast: false
       matrix:
@@ -81,16 +141,6 @@ jobs:
           append-timestamp: false
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-disabled: true
-      - name: Set up Gradle cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.gradle
-          key: gradle-${{ hashFiles('**/*.gradle') }}
-          # Without a fallback, editing any build file means a cold cache and a
-          # full dependency re-download.
-          restore-keys: gradle-
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
@@ -135,6 +185,12 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    # The default success() here would inherit the skip of unlabel through the
+    # needs chain (unlabel is skipped on push and workflow_dispatch), which would
+    # silently drop the Telegram upload on exactly the two paths that must always
+    # publish. Gate on build's own result instead so upload runs whenever the
+    # build did, and keep !cancelled() so a superseded run still stops.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
