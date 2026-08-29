@@ -3716,7 +3716,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     while (SystemClock.elapsedRealtime() < eosDeadline) {
                         int inputBufferIndex = audioEncoder.dequeueInputBuffer(0);
                         if (inputBufferIndex >= 0) {
-                            audioEncoder.queueInputBuffer(inputBufferIndex, 0, 0, audioLast, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                            audioEncoder.queueInputBuffer(inputBufferIndex, 0, 0, Math.max(0, audioLast), MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                             audioEosSignaled = true;
                             break;
                         }
