@@ -51,7 +51,7 @@ Clear Message Database now removes only the media this install has database rows
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->
 
-The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text.
+The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text. The composer glass now lets the same amount of wallpaper through in light theme as it always did in dark theme, instead of sitting noticeably more opaque.
 
 ### Send and mic inside the input <!-- #composer-input -->
 
