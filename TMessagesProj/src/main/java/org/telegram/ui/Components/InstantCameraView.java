@@ -184,13 +184,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean deviceHasGoodCamera;
     private boolean requestingPermissions;
     private File cameraFile;
-    // NagramX: token of the draft generation this finalize belongs to, snapshotted on the UI thread when a
-    // stop or pause is requested and echoed back through audioDidSent. ChatActivity bumps its counter when a
-    // new recording starts and when a passcode-lock rebuild recreates the view, so a finalize that completes
-    // after being superseded is dropped at delivery instead of clobbering the current preview or landing an
-    // unsendable clip on a rebuilt instance. volatile: set on the UI thread, read on the encoder thread that
-    // posts the completion.
-    private volatile int finalizeDraftToken;
     private File previewFile;
     private long recordStartTime;
     private long recordPlusTime;
@@ -838,13 +831,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 startAnimation(false, false);
                 MediaController.getInstance().requestRecordAudioFocus(false);
             } else {
-                // NagramX (#video-draft-guard): snapshot the draft generation before requesting the pause
-                // finalize, symmetric with the stop path (finalizeDraftToken assignment in send()). The pause
-                // producer posts audioDidSent asynchronously from the encoder thread; without a token the
-                // enter-view gate can't reject it, so after a passcode-lock rebuild it would land an unsendable
-                // paused preview on the fresh instance. Written on the UI thread before pause() enqueues
-                // MSG_PAUSE_RECORDING, so the encoder thread reads this value (finalizeDraftToken is volatile).
-                finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
+                // NagramX (#video-draft-guard): pin the draft generation before requesting the pause finalize,
+                // symmetric with the stop path. handlePauseRecording snapshots it into finalizeGeneration and the
+                // async audioDidSent post carries that, so a finalize superseded by a newer recording -- or by a
+                // passcode-lock rebuild bumping the token -- is dropped at the enter-view gate instead of landing
+                // an unsendable paused preview on the fresh instance. videoEncoder is non-null here (pause()
+                // dereferences it next).
+                videoEncoder.finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
                 videoEncoder.pause();
             }
         } else if (videoEncoder != null) {
@@ -1302,7 +1295,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             MediaController.getInstance().requestRecordAudioFocus(false);
         } else {
-            finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0; // NagramX: pin the draft generation this stop finalizes so a late completion can be matched at delivery
+            if (videoEncoder != null) {
+                // NagramX: pin the draft generation this stop finalizes. The recorder snapshots it into
+                // finalizeGeneration when the stop sequence begins, so the async audioDidSent post carries the
+                // request-time value even if a newer recording bumps the token before the post runs.
+                videoEncoder.finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0;
+            }
             cancelled = recordedTime < 800;
             recording = false;
             flashing = false;
@@ -2749,6 +2747,18 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // can reuse this instance and move recordingToken on in the gap between the two calls. Stashed once,
         // on the first call, while running is still true and no new recording can have started yet.
         private int stoppedGeneration;
+        // NagramX: the draft generation a round-video finalize belongs to, written on the UI thread when a stop
+        // or pause is requested (send()/togglePause, via this recorder). ChatActivity bumps its counter when a
+        // new recording starts and when a passcode-lock rebuild recreates the view. This is the live value only:
+        // this recorder instance is reused across stop/restart (see the field comment at recordingToken), so a
+        // later request would overwrite it -- it's snapshotted into finalizeGeneration once per sequence and the
+        // delivery post reads that, never this. volatile: UI write, encoder-thread read.
+        private volatile int finalizeDraftToken;
+        // NagramX: finalizeDraftToken pinned once when this stop/pause sequence begins, same discipline as
+        // stoppedGeneration -- the audioDidSent finalize post runs async off the encoder thread and must carry
+        // the generation requested at that instant, not whatever a newer recording reusing this instance has
+        // since written into finalizeDraftToken.
+        private int finalizeGeneration;
 
         public void startRecording(File outputFile, android.opengl.EGLContext sharedContext) {
             recordingToken = ++InstantCameraView.this.recordingGeneration;
@@ -3233,6 +3243,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         private void handlePauseRecording() {
+            // NagramX: pin the finalize's draft generation at request time -- before drainEncoder/finishMovie --
+            // so the async audioDidSent post at the tail carries it, not whatever the live field was overwritten
+            // to by a later recording reusing this instance. Runs once per pause (unlike the stop path), so it
+            // needs no running-guard.
+            finalizeGeneration = finalizeDraftToken;
             pauseRecorder = true;
             if (previewFile != null) {
                 previewFile.delete();
@@ -3306,7 +3321,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
-                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, finalizeDraftToken);
+                NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, finalizeGeneration);
             });
         }
 
@@ -3620,6 +3635,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // has a stable value to compare against instead of reading recordingToken fresh at that point.
             if (running) {
                 stoppedGeneration = recordingToken;
+                // NagramX: pin the finalize's draft generation at the same instant as stoppedGeneration so the
+                // two guards can't drift. The delivery post below reads this snapshot, never the live field,
+                // which a newer recording reusing this instance may have moved on by post time.
+                finalizeGeneration = finalizeDraftToken;
             }
             final boolean runDone;
             if (send == ENCODER_SEND_SEND && (videoEditedInfo == null || !videoEditedInfo.needConvert()) && !delegate.isInScheduleMode()) {
@@ -3812,7 +3831,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
-                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, finalizeDraftToken);
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, finalizeGeneration);
                         }
                     });
                 }

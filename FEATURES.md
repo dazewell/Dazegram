@@ -197,7 +197,7 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 ### Don't lose an unsent video message <!-- #video-draft-guard -->
 
-A round video message you've recorded but haven't sent is easy to lose by accident. A stray back gesture used to delete the finished clip for good — now backing out of a chat leaves it alone. And switching away from the app while one is still recording finalizes the clip into the preview instead of throwing it away, so it's waiting for you when you come back to the chat.
+A round video message you've recorded but haven't sent is easy to lose by accident. A stray back gesture used to delete the finished clip for good — now backing out of a chat leaves it alone. And switching away from the app mid-recording no longer throws away what you'd captured: the clip is finished off and left in the preview, ready to send when you come back. If the chat itself gets torn down while you're away — which is what a passcode set to lock immediately does — the preview won't be there on return.
 
 ### Floating camera button in the attach sheet <!-- #camera-fab -->
 
