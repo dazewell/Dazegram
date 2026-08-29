@@ -748,6 +748,13 @@ public class ChatActivity extends BaseFragment implements
     // restored, and snapshotted into each finalize request, so a finalize that completes after a passcode-lock
     // rebuild superseded it is dropped instead of overwriting the current draft. UI thread only.
     public int videoDraftToken;
+    // NagramX (#video-draft-guard): set by onRoundVideoRecordingFailed when the just-finished round video
+    // could not be finalized (unusable mp4). The failed recorder still lands a preview and still fires the
+    // audioDidSent finalize, so without this flag onVideoDraftReady would persist the broken file -- and a
+    // later restore + send of it is another silent drop, the exact thing this feature prevents. The failed
+    // callback is queued (InstantCameraView.java:3792) before the finalize notification (:3800/:3862) on the
+    // same main handler, so this is always set before onVideoDraftReady reads it. UI thread only.
+    private boolean roundVideoFinalizeFailed;
     private View overlayView;
     private boolean currentFloatingDateOnScreen;
     private boolean currentFloatingTopicOnScreen;
@@ -2706,6 +2713,7 @@ public class ChatActivity extends BaseFragment implements
             if (instantCameraView != null) {
                 if (state == 0) {
                     videoDraftToken++; // NagramX: a new recording session supersedes any still-in-flight finalize from a previous one
+                    roundVideoFinalizeFailed = false; // NagramX (#video-draft-guard): clear any stale failure flag from a send that finalized-failed without landing a preview
                     instantCameraView.showCamera(false);
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
@@ -32543,6 +32551,13 @@ public class ChatActivity extends BaseFragment implements
         if (path == null || dialog_id == 0) {
             return;
         }
+        // NagramX (#video-draft-guard): the recorder just reported this finalize as failed. The file is
+        // unusable, so don't persist it -- and don't discard here either, since save() overwrites this dialog's
+        // single entry and an earlier good draft (kept because it was never sent) is still the current one.
+        if (roundVideoFinalizeFailed) {
+            roundVideoFinalizeFailed = false;
+            return;
+        }
         VideoDraftStore.save(currentAccount, dialog_id, getTopicId(), path, duration, voiceOnce);
         File file = new File(path);
         checkInstantCameraView();
@@ -38516,6 +38531,10 @@ public class ChatActivity extends BaseFragment implements
     // letting the empty preview read as a successful send. #video-draft-guard
     @Override
     public void onRoundVideoRecordingFailed() {
+        // NagramX (#video-draft-guard): mark first, before the getParentActivity() gate. When the app is
+        // backgrounded the bulletin can't show (parentActivity is null) -- that is precisely the case where the
+        // draft must NOT be persisted, so the flag has to be set even when we can't warn.
+        roundVideoFinalizeFailed = true;
         if (getParentActivity() == null) {
             return;
         }
