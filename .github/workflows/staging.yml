@@ -247,12 +247,16 @@ jobs:
           echo "event=$EVENT_NAME branch=$BRANCH head=$HEAD_SHA"
 
           # Emit a GITHUB_OUTPUT entry the multiline-safe way (a title or an AI
-          # summary can contain characters that would break a plain key=value line).
+          # summary can contain characters that would break a plain key=value
+          # line). The delimiter includes a random suffix, not just the key
+          # name, so a value that happens to contain a line like
+          # "OUTEOF_ai_summary" on its own can't truncate/corrupt the output.
           write_output() {
+            local delim="OUTEOF_${1}_${RANDOM}${RANDOM}"
             {
-              echo "$1<<OUTEOF_$1"
+              echo "$1<<$delim"
               printf '%s\n' "$2"
-              echo "OUTEOF_$1"
+              echo "$delim"
             } >> "$GITHUB_OUTPUT"
           }
 
@@ -270,9 +274,13 @@ jobs:
             PR_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls")
-            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
-            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r '.[0].title // empty')
-            RES_PR_BODY=$(echo "$PR_JSON" | jq -r '.[0].body // empty')
+            # A non-array response (rate limit, auth failure, transient error)
+            # must resolve to "no PR found" rather than aborting the whole
+            # upload under set -e -- jq erroring here would silently drop a
+            # real Telegram upload over an unrelated API hiccup.
+            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].number // empty) else empty end')
+            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].title // empty) else empty end')
+            RES_PR_BODY=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].body // empty) else empty end')
           fi
           # jq -r renders a JSON null body as the literal string "null".
           [ "$RES_PR_BODY" != "null" ] || RES_PR_BODY=""
