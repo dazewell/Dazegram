@@ -12857,6 +12857,25 @@ public class ChatActivityEnterView extends FrameLayout implements
         if (videoTimelineView == null) {
             return;
         }
+        // NagramX (#video-draft-guard): a passcode rebuild hands us a fresh enter view with none of the
+        // recording UI state primed, so updateRecordInterface would early-return and leave the preview
+        // invisible while the send button still arms. Establish that state the same way the persisted-voice
+        // restore does in the audioDidSent handler: prime the in-memory video mode (false = don't persist,
+        // so we don't flip the saved mic-vs-camera default), build the recording UI, mark it entered, and
+        // force the controls circle to full scale. That last set is what keeps the *next* recording's
+        // pause/lock/once controls visible -- otherwise controlsScale stays 0 and they draw invisible but
+        // still clickable. resetLockTranslation must run before the scale set because it zeroes controlsScale.
+        setRecordVideoButtonVisible(true, false);
+        createRecordCircle();
+        createRecordPanel();
+        createRecordAudioPanel();
+        recordInterfaceState = 1;
+        recordCircle.resetLockTranslation(false);
+        recordControlsCircleScale.set(recordCircle, 1f);
+        if (controlsView != null) {
+            controlsView.setVisibility(VISIBLE);
+            controlsView.setAlpha(1f);
+        }
         voiceOnce = once;
         if (controlsView != null) {
             controlsView.periodDrawable.setValue(1, voiceOnce, true);
@@ -12873,7 +12892,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             videoTimelineView.setLeftRightProgress(left, right);
         }
         isRecordingStateChanged();
-        updateRecordInterface(RECORD_STATE_PREPARING, true);
+        updateRecordInterface(RECORD_STATE_PREPARING, false);
         checkSendButton(false);
     }
 
