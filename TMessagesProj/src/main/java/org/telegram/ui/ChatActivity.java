@@ -18735,6 +18735,13 @@ public class ChatActivity extends BaseFragment implements
             if (chatInputViewsContainer != null) {
                 chatInputViewsContainer.invalidate();
             }
+            // NagramX: a wallpaper change from inside the chat swaps the bitmap/shader baked into
+            // the glass render nodes' display lists at record time, so a plain View.invalidate()
+            // leaves the composer glass on the stale capture until an unrelated redraw. Force the
+            // cached lists to re-record with the new wallpaper. Nested ChatActivityContainer chats
+            // keep their own render nodes and are not reached from here — out of scope, they only
+            // matter if the wallpaper is changed with the hashtag-search pager open.
+            reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
             checkSystemBarColors();
         }
@@ -51277,13 +51284,22 @@ public class ChatActivity extends BaseFragment implements
         }
         if (expandedInputGlassReprimePending && inputIslandHeightCurrent == inputIslandHeightTarget) {
             expandedInputGlassReprimePending = false;
-            if (glassBackgroundSourceRenderNode != null) {
-                glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
-            }
-            if (glassBackgroundSourceFrostedRenderNode != null) {
-                glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
-            }
+            reprimeGlassRenderNodes();
             invalidateMergedVisibleBlurredPositionsAndSources(BLUR_INVALIDATE_FLAG_POSITIONS);
+        }
+    }
+
+    // NagramX: re-record the glass render nodes' cached display lists. The wallpaper leg of the
+    // list is baked in at record time (a RecordingCanvas copies the BitmapShader Paint), so a
+    // trigger that changes the wallpaper content has to force a re-record or the composer keeps
+    // showing the old capture. Both guards matter: glassBackgroundSourceRenderNode is null unless
+    // FLAG_LIQUID_GLASS is on, and both are null below SDK 31 or with chat blur off.
+    private void reprimeGlassRenderNodes() {
+        if (glassBackgroundSourceRenderNode != null) {
+            glassBackgroundSourceRenderNode.invalidateDisplayListForDrawables();
+        }
+        if (glassBackgroundSourceFrostedRenderNode != null) {
+            glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
         }
     }
 
