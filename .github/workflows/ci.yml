@@ -48,9 +48,11 @@ jobs:
           - package: nekox.messenger
           - package: org.telegram.messenger.beta
     env:
-      # SKIP disables every cmake/jni task, so no NDK is ever needed. javac does
-      # not depend on the native build, so this compiles the whole Java/Kotlin
-      # surface (including generated R.jar and BuildConfig) without it.
+      # SKIP disables every cmake/jni task, so no native code is compiled here.
+      # AGP still provisions the configured NDK at configuration time — the hosted
+      # runner ships it pre-cached, so that costs seconds, not the ~9 min a native
+      # build would. javac does not depend on the native build, so this compiles
+      # the whole Java/Kotlin surface (generated R.jar and BuildConfig included).
       NATIVE_TARGET: "SKIP"
     steps:
       - name: Checkout
@@ -66,8 +68,10 @@ jobs:
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
-          # Platform + build-tools only. No NDK, no nasm: this gate never builds
-          # native code, and pulling the NDK would add minutes for nothing.
+          # Platform + build-tools only — we don't request the NDK. AGP still
+          # auto-installs the configured ndkVersion at config time from the
+          # runner's pre-cached SDK (~seconds), but with SKIP no cmake/jni task
+          # runs, so native code is never actually compiled.
           packages: "build-tools;36.0.0 platforms;android-37.0"
       - name: Configure Android SDK Path
         run: |
