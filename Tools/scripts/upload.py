@@ -13,11 +13,24 @@ from pyrogram.types import InputMediaDocument
 api_id = os.environ.get("APP_ID")
 api_hash = os.environ.get("APP_HASH")
 artifacts_root = Path(os.environ.get("ARTIFACTS_PATH") or "artifacts")
+build_type = argv[3] if len(argv) > 3 else None
 metadata_chat_id = argv[4] if len(argv) > 4 else None
 VARIANTS = (
     ("Official", "org.telegram.messenger.beta"),
     ("Unofficial", "nekox.messenger"),
 )
+
+# staging.yml passes "staging" for a push/dispatch build and "test" for a
+# labeled PR preview. Anything else (or a missing value, e.g. a local run)
+# falls back to the staging rocket rather than leaving the caption headless.
+BUILD_EMOJI = {
+    "staging": "🚀",
+    "test": "🧪",
+}
+
+# A pathologically long PR title or commit subject must not eat the whole
+# caption budget on its own; this is a fixed, small share of it.
+HEADER_TITLE_BUDGET = 120
 
 # Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
 # which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
@@ -34,15 +47,25 @@ def get_commit_info():
     commit_id = commit_id_raw[:7]
     # Fall back to the specific commit when we know its id, so the "commit details"
     # link opens the commit the caption names rather than the whole commits list.
-    default_url = (
+    default_commit_url = (
         f"https://github.com/dazewell/Dazegram/commit/{commit_id_raw}"
         if commit_id_raw != "unknown"
         else "https://github.com/dazewell/Dazegram/commits"
     )
-    commit_url = os.environ.get("COMMIT_URL") or default_url
+    commit_url = os.environ.get("COMMIT_URL") or default_commit_url
     commit_message = os.environ.get("COMMIT_MESSAGE") or "unknown"
     branch = os.environ.get("BRANCH") or "unknown"
-    return commit_id, commit_url, commit_message, branch
+    default_branch_url = (
+        f"https://github.com/dazewell/Dazegram/tree/{branch}"
+        if branch != "unknown"
+        else "https://github.com/dazewell/Dazegram"
+    )
+    branch_url = os.environ.get("BRANCH_URL") or default_branch_url
+    pr_number = (os.environ.get("PR_NUMBER") or "").strip()
+    pr_title = os.environ.get("PR_TITLE") or ""
+    default_pr_url = f"https://github.com/dazewell/Dazegram/pull/{pr_number}" if pr_number else ""
+    pr_url = os.environ.get("PR_URL") or default_pr_url
+    return commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url
 
 def truncate_text(text: str, budget: int) -> str:
     if budget <= 0:
@@ -55,20 +78,39 @@ def truncate_text(text: str, budget: int) -> str:
         text = text[:-1]
     return text.rstrip() + suffix
 
+def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url) -> str:
+    emoji = BUILD_EMOJI.get(build_type, "🚀")
+    if pr_number and pr_title:
+        title = html.escape(truncate_text(pr_title, HEADER_TITLE_BUDGET))
+        headline = f'{emoji} <a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}'
+    else:
+        # No associated PR (a dispatch on a branch with no PR, or a direct
+        # push) — fall back to the commit subject instead of printing a bare
+        # "#" or the word "unknown".
+        subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
+        subject = html.escape(truncate_text(subject, HEADER_TITLE_BUDGET))
+        headline = f"{emoji} <b>{subject}</b>" if subject else emoji
+    meta = (
+        f'<a href="{html.escape(branch_url)}"><code>{html.escape(branch)}</code></a>'
+        f" · "
+        f'<a href="{html.escape(commit_url)}"><code>{commit_id}</code></a>'
+    )
+    return headline + "\n" + meta
+
 def get_caption(commit_msg_budget=None) -> str:
-    commit_id, commit_url, commit_message, branch = get_commit_info()
+    commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url = get_commit_info()
+    # The header is measured against the full commit message (never the
+    # commit_msg_budget-trimmed copy below) so it stays a fixed width across
+    # both the overhead-measurement call and the final call — otherwise a
+    # budget=0 probe would shrink the fallback subject line and understate
+    # the real overhead.
+    header = get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url)
     # Trimming the plain-text commit message (never the assembled HTML) keeps
     # the caption valid while leaving room for the AI summary.
     if commit_msg_budget is not None:
         commit_message = truncate_text(commit_message, commit_msg_budget)
     escaped_commit_message = html.escape(commit_message)
-    caption = ""
-    for build_label, package_name in VARIANTS:
-        caption += f"{build_label} package: <code>{package_name}</code>\n"
-    caption += "\n"
-    caption += f"Commit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>\n\n"
-    caption += f"See commit details [{commit_id}]({commit_url}) on <code>{html.escape(branch)}</code>"
-    return caption
+    return f"{header}\n\nCommit Message:\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
 def get_document() -> list["InputMediaDocument"]:
     documents = []

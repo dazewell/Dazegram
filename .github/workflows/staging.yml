@@ -191,6 +191,15 @@ jobs:
     # publish. Gate on build's own result instead so upload runs whenever the
     # build did, and keep !cancelled() so a superseded run still stops.
     if: ${{ !cancelled() && needs.build.result == 'success' }}
+    # A job-level permissions block replaces the workflow-level one entirely,
+    # so everything the workflow-level block granted (used by the Models call
+    # and the workflow-runs lookup below) has to be re-listed here alongside
+    # the pull-requests read this job needs for the associated-PRs lookup.
+    permissions:
+      contents: read
+      actions: read
+      models: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -209,7 +218,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
           REPO: ${{ github.repository }}
           PUSH_SHA: ${{ github.sha }}
           PUSH_BRANCH: ${{ github.ref_name }}
@@ -235,14 +246,43 @@ jobs:
           fi
           echo "event=$EVENT_NAME branch=$BRANCH head=$HEAD_SHA"
 
-          # Emit the ai_summary output (multiline-safe) and return.
-          write_summary() {
+          # Emit a GITHUB_OUTPUT entry the multiline-safe way (a title or an AI
+          # summary can contain characters that would break a plain key=value line).
+          write_output() {
             {
-              echo "ai_summary<<SUMEOF"
-              printf '%s\n' "$1"
-              echo "SUMEOF"
+              echo "$1<<OUTEOF_$1"
+              printf '%s\n' "$2"
+              echo "OUTEOF_$1"
             } >> "$GITHUB_OUTPUT"
           }
+
+          # Resolve the PR this build belongs to. On a pull_request run the
+          # payload already has it; on a push or a manual dispatch, ask the
+          # associated-PRs API (dazewell squash-merges, so the squashed commit
+          # on dev correctly maps back to its PR). No match is a normal case
+          # here (a dispatch on a branch with no PR, or a direct push) — not
+          # an error, and handled downstream by upload.py's header fallback.
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            RES_PR_NUMBER="$PR_NUMBER"
+            RES_PR_TITLE="$PR_TITLE"
+            RES_PR_BODY="$PR_BODY"
+          else
+            PR_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls")
+            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number // empty')
+            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r '.[0].title // empty')
+            RES_PR_BODY=$(echo "$PR_JSON" | jq -r '.[0].body // empty')
+          fi
+          # jq -r renders a JSON null body as the literal string "null".
+          [ "$RES_PR_BODY" != "null" ] || RES_PR_BODY=""
+          echo "resolved PR: number=${RES_PR_NUMBER:-<none>} title=${RES_PR_TITLE:-<none>}"
+          write_output pr_number "$RES_PR_NUMBER"
+          write_output pr_title "$RES_PR_TITLE"
+
+          # Plenty for model context; keeps a long description from blowing up
+          # the request. Only feeds the prompt below, never the Telegram caption.
+          RES_PR_BODY="${RES_PR_BODY:0:4000}"
 
           LAST_SHA=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -263,7 +303,7 @@ jobs:
 
           if [ -z "$COMMIT_TEXT" ]; then
             echo "no commit text available; skipping AI summary."
-            write_summary ""
+            write_output ai_summary ""
             exit 0
           fi
 
@@ -272,21 +312,32 @@ jobs:
           echo "model: $MODEL_ID"
 
           PROMPT=$(cat << 'EOP'
-          Please summarize the Git commit messages between the last CI build and the current build using Telegram HTML formatting (not Markdown):
+          Summarize this app update for the person about to install the build, using Telegram HTML formatting (not Markdown).
+          You are given the pull request title and description (the primary source, stating what the change is for) followed by
+          its commit messages (secondary — use them only to identify which part of the app was touched, not as the thing to summarize).
+          - Ground the summary in what the pull request description says changed for the user. Do not paraphrase commit subjects
+            one-for-one, and do not surface internal refactoring or low-level implementation detail unless it changes behavior.
+          - If no pull request context is given below, fall back to summarizing the commit messages the same way.
           - Output strictly valid HTML supported by Telegram (e.g., <b>, <i>, <u>, <s>, <code>, <pre>, <a href="...">, <blockquote>).
           - Do NOT use Markdown, code fences, or backticks. No triple backticks.
           - Telegram does NOT support <br>; use a real line break (an actual newline character) for every new line. Never emit <br>.
           - Group by type with HTML headers: <b>✨ Features</b>, <b>🐛 Fixes</b>, <b>♻️ Refactors</b>, <b>⚠️ Breaking Changes</b>, <b>🧹 Others</b>.
+            Omit a header entirely when it has no items.
           - Put exactly one blank line (one empty line) between each header section.
           - Under each header, put each item on its own line separated by a newline and start each item with • (bullet), keep each item one line, max 20 total items across all sections.
-          - Escape any &, <, > characters from commit messages as &amp;, &lt;, &gt;.
-          - Aggressively ignore trivial commits (merge commits, formatting, chore/version bumps, bump-deps, docs-only). Only surface user-facing changes, bug fixes, refactors affecting behavior, or notable internal changes.
-          Here are the commit messages:
+          - Escape any &, <, > characters as &amp;, &lt;, &gt;.
+          - Aggressively ignore trivial commits (merge commits, formatting, chore/version bumps, bump-deps, docs-only) when they don't map to a described user-facing change.
           EOP
           )
-          # printf so the prompt and commit list are joined by a real newline
+          if [ -n "$RES_PR_TITLE" ]; then
+            CONTEXT=$(printf 'Pull request title: %s\n\nPull request description:\n%s\n\nCommit messages (secondary context):\n%s' \
+              "$RES_PR_TITLE" "${RES_PR_BODY:-(no description provided)}" "$COMMIT_TEXT")
+          else
+            CONTEXT=$(printf 'No pull request found. Commit messages:\n%s' "$COMMIT_TEXT")
+          fi
+          # printf so the prompt and context are joined by a real newline
           # (a double-quoted "\n" stays a literal backslash-n and confuses the model).
-          CONTENT=$(printf '%s\n%s' "$PROMPT" "$COMMIT_TEXT")
+          CONTENT=$(printf '%s\n\n%s' "$PROMPT" "$CONTEXT")
           PAYLOAD=$(jq -n --arg content "$CONTENT" --arg model "$MODEL_ID" '{messages:[{role:"user",content:$content}],model:$model}')
 
           BODY=$(mktemp)
@@ -313,7 +364,7 @@ jobs:
           COMBINED=""
           [ -n "$SUMMARY" ] && COMBINED="Changes since last build:\n\n$SUMMARY\n\n"
           COMBINED="$COMBINED<a href=\"$DIFF_URL\"><b>Full changes</b></a>"
-          write_summary "$COMBINED"
+          write_output ai_summary "$COMBINED"
       - name: Send to Telegram
         env:
           APP_ID: ${{ secrets.APP_ID }}
@@ -327,6 +378,8 @@ jobs:
           PUSH_BRANCH: ${{ github.ref_name }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
+          PR_NUMBER: ${{ steps.prepare.outputs.pr_number }}
+          PR_TITLE: ${{ steps.prepare.outputs.pr_title }}
         run: |
           set -e
           # A pull_request run is checked out at the merge ref, so fetch the real
@@ -344,6 +397,10 @@ jobs:
           export COMMIT_ID="$SHA"
           export COMMIT_URL="$SERVER_URL/$REPO/commit/$SHA"
           export COMMIT_MESSAGE=$(git log -1 --pretty=%B "$SHA")
+          export BRANCH_URL="$SERVER_URL/$REPO/tree/$BRANCH"
+          if [ -n "$PR_NUMBER" ]; then
+            export PR_URL="$SERVER_URL/$REPO/pull/$PR_NUMBER"
+          fi
           # Send both package variants as one Telegram album.
           python -m pip install -r Tools/scripts/requirements.txt
           export ARTIFACTS_PATH="artifacts"
