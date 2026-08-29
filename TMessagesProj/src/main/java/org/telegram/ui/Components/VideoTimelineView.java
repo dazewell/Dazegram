@@ -122,6 +122,16 @@ public class VideoTimelineView extends View {
         minProgressDiff = value;
     }
 
+    // NagramX (#video-draft-guard): seed both handles when restoring a trimmed round-video draft so the
+    // preview's cut markers match what send() will actually cut. Clamped to [0,1] with left <= right; an
+    // untrimmed record seeds 0/1 (the default), never a negative from the -1 trim sentinel (N2). Purely
+    // cosmetic -- the object's startTime/endTime already carry the cut; this only aligns the visible handles.
+    public void setLeftRightProgress(float left, float right) {
+        progressLeft = Math.max(0f, Math.min(1f, left));
+        progressRight = Math.max(progressLeft, Math.min(1f, right));
+        invalidate();
+    }
+
     public void setMaxProgressDiff(float value) {
         maxProgressDiff = value;
         if (progressRight - progressLeft > maxProgressDiff) {
