@@ -631,6 +631,10 @@ Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the dat
                   child renames to this with `rename_branch` before touching a file)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
+On-device APK:  required | not required   (decided here, at the gate, so the
+                  implementer never builds twice — dazewell's requirement 4. If
+                  required, request exactly one publish build on the final head;
+                  if not, request none.)
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
                   round trip, memory, a slower rare path — stated explicitly so
                   the implementer doesn't default to optimizing and then defend
@@ -781,7 +785,11 @@ Confirm, one by one:
   if `Upload staging` succeeded, uploaded. Confirm the upload step before you
   write that the APK is on Telegram.
   (c) **publish requested and red** — blocking, same as a red build always was.
-  (d) **doc/`.github`-only** — legitimately no publish build to read.
+  (d) **doc/`.github`-only, and no publish was requested** — legitimately no
+  publish build to read. But note the label trigger has **no path filter**: once
+  `build-apk` was applied (or a dispatch fired), a publish *was* requested, so
+  absence is no longer healthy — require a matching successful build **and**
+  `Upload staging` on the head commit regardless of what paths changed.
   A build dazewell installs on-device requires case (b); do not tell him an APK
   is ready on the strength of case (a).
 - The missing-tag query returns nothing. **Any output is blocking.**

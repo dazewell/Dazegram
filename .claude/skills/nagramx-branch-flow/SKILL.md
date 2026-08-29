@@ -358,9 +358,11 @@ git worktree prune                                      # tidy stale metadata (i
 ### Test before landing (preview build)
 Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `ci.yml` compiles the
 change on every push (the fast Java/Kotlin gate — no APK). To get an on-device
-preview, apply the **`build-apk`** label (or dispatch `staging.yml` against the
-branch): that builds the **merge ref** (`dev` + the branch) as the release-signed
-dual-package APK and uploads it to Telegram (labelled a *test* build). The label
+preview, apply the **`build-apk`** label or dispatch `staging.yml` against the
+branch. The two build different refs: the **label** (a `pull_request` event)
+builds the **merge ref** (`dev` + the branch), while a **dispatch** builds the
+branch head **as-is** (not merged with `dev`). Either way it's the release-signed
+dual-package APK, uploaded to Telegram (labelled a *test* build). The label
 is auto-removed at the start of the run, so re-applying it requests a fresh
 build. This is the same artifact users get, not a separate debug build. The fast
 gate doubles as the compile gate whenever the change was written without a local
@@ -576,8 +578,11 @@ Two workflows, split by purpose:
 - **`ci.yml` — the fast validation gate.** Runs on every push to `dev` and every
   pull request into `dev`. It compiles Java/Kotlin only
   (`:TMessagesProj:compileDebugJavaWithJavac`) with `NATIVE_TARGET=SKIP`, across a
-  2-package matrix, with `setup-gradle` caching — no NDK, no signing, no
-  packaging, no Telegram. It exists so intermediate pushes get a quick green/red
+  2-package matrix, with `setup-gradle` caching — no native compilation, no
+  signing, no packaging, no Telegram. (AGP still provisions the configured
+  `ndkVersion` at configuration time even under `SKIP` — ~29s from the runner's
+  pre-cache — so this skips the native *build*, not the NDK download.) It exists
+  so intermediate pushes get a quick green/red
   signal without cutting an APK. A post-compile step asserts javac actually
   emitted `.class` files, so a skipped task can't report false-green, and a
   conditional `deep` job runs R8 + resource shrinking when a change to a build
@@ -600,15 +605,23 @@ it works as a repeatable button) and a manual `workflow_dispatch` are the two
 supported ways to request a build; a `/build` comment trigger was considered and
 rejected as unnecessary, since the label already does the job.
 
-`staging.yml`'s push-to-`dev` build still skips doc-only and `.github`-only pushes
-via `paths-ignore` (with an exception so edits to `staging.yml` itself still
-build); the labelled PR trigger deliberately carries **no** `paths-ignore`, since
-a build the user explicitly asked for is relevant even on a doc-only PR. A push
-onto a branch or PR that already has a run going **supersedes** it: both
-workflows carry a **workflow-level** `concurrency` group keyed on the branch/PR
-with `cancel-in-progress` (workflow-level, not the per-package job-level group an
-earlier version of this note described). In `staging.yml` only the build is
-cancellable, so a run that already reached the upload step finishes posting.
+`staging.yml`'s push-to-`dev` build skips doc-only and `.github`-only pushes via
+`paths-ignore`. Because `paths-ignore` can't re-include a path (the `!` prefix
+only works in `paths`), a merge touching **only** `staging.yml` — or only docs or
+`.github` — does not self-trigger a publish build; verify a pipeline change with a
+manual `workflow_dispatch` instead. This is deliberate: a `paths` allowlist would
+rewrite the one trigger that can't be tested before merge (push-to-`dev`, the
+non-negotiable delivery channel) to buy a self-test that dispatch already gives.
+The labelled PR trigger deliberately carries **no** `paths-ignore`, since a build
+the user explicitly asked for is relevant even on a doc-only PR. A newer run on
+the same branch **supersedes** an older one: both workflows carry a
+**workflow-level** `concurrency` group with `cancel-in-progress`, keyed on the
+branch (`github.head_ref || github.ref_name`) so every build-producing event on a
+branch — push, dispatch, and a `build-apk` labelling — shares one group and only
+the latest survives. An *unrelated* label event is a no-op run (all jobs skip) and
+gets a label-name suffix so it lands in its own group and can't cancel a real
+build. Cancellation takes the **whole superseded run**, upload included — that's
+the point, since a stale APK pair is exactly the flood the group prevents.
 Nothing is lost from the changelog either: the AI summary spans commits since the
 last *successful* run, so a superseded build's commits fold into the next one.
 The upload step also posts an **AI commit summary** (GitHub Models via

@@ -216,11 +216,15 @@ those changes there is legitimately no gate run to read — say which of the two
 happened rather than implying it passed.
 
 The release-signed dual-package APK that dazewell installs is a **separate,
-on-request** build: apply the `build-apk` label to the PR (or dispatch
-`staging.yml` against the branch), which builds `dev` + your branch and uploads
+on-request** build, and whether this change needs one is decided **in your brief**
+(`On-device APK: required | not required`) — you don't decide it mid-flight, and
+you build at most once. When it's required, request it exactly once on the final
+head: apply the `build-apk` label to the PR, or dispatch `staging.yml` against
+the branch. The two differ in what they build: the **label** (a `pull_request`
+event) builds the synthetic `dev`+branch **merge ref**; a **dispatch** builds the
+selected ref **as-is** (your branch head, not merged with `dev`). Both upload
 both variants to Telegram. The label is auto-removed at the start of the run, so
-re-applying it requests a fresh build. Request it once a round of fixes is
-stable, not on every push.
+re-applying it requests a fresh build.
 
 **Each push costs only a fast `ci.yml` run — but every `build-apk` request costs
 a dual-package build and a Telegram upload**, and enough of those in a row trips
