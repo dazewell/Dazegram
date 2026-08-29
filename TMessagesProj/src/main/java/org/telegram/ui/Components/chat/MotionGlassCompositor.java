@@ -24,15 +24,17 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
  * only ever drawn there), so the retained bitmap is never touched off the main thread and no locking
  * is needed.
  *
- * Scope: this proxy is for the small refracted composer pills only. Nothing blurs the wallpaper on
- * any glass path — the Liquid Glass shader is a single {@code img.eval(uv)} tap that displaces and
- * tints but cannot soften, and the raw wallpaper layer beneath it is drawn unblurred. So the proxy's
- * only softening is the cover-scale upscale, which turns the pattern into a coarse, enlarged, and
- * geometrically approximate impression of the wallpaper. That reads fine inside a small tinted pill
- * but is wrong for any surface that must visually continue the real wallpaper (the round-video
- * backdrop, the top/bottom fade bands): there the pattern smears into huge blocks that do not line up
- * with the wallpaper beside them. Those full-screen consumers take WallpaperBitmapProvider's
- * gradient-only plain source instead, which has no line-art to smear and upscales invisibly.
+ * Scope: this proxy is the wallpaper layer (the render node's setUnderSource) of every glass surface
+ * that composites blurred message content over the wallpaper — the refracted composer pills and the
+ * other render-node panels. Nothing blurs the wallpaper on any glass path — the Liquid Glass shader is
+ * a single {@code img.eval(uv)} tap that displaces and tints but cannot soften, and the raw wallpaper
+ * layer beneath it is drawn unblurred. So the proxy's only softening is the cover-scale upscale, which
+ * turns the pattern into a coarse, enlarged, and geometrically approximate impression of the wallpaper.
+ * That reads fine refracted and tinted inside a pill, but a surface that draws the bare wallpaper
+ * straight from the source (no render node capturing content over it) shows that impression plainly,
+ * and the pattern smears into blocks that do not line up with the wallpaper beside it. Those
+ * bare-wallpaper surfaces take WallpaperBitmapProvider's gradient-only plain source instead, which has
+ * no line-art to smear and upscales invisibly. The split is by source, not by surface size.
  */
 public class MotionGlassCompositor {
 
@@ -40,9 +42,10 @@ public class MotionGlassCompositor {
     // the wallpaper on any path), so the long edge is matched to the liquid-glass content blur rather
     // than the screen. Screen aspect (not the parent view's) so the pattern's cover-scale matches the
     // wallpaper drawn right above the panel. At 248px this is a lossy, geometrically approximate
-    // impression of the wallpaper — fine for a small tinted, refracted pill, wrong for any surface
-    // that must continue the wallpaper, which is why the full-screen consumers take the gradient-only
-    // plain source. Raising this sharpens the mismatch there rather than fixing it.
+    // impression of the wallpaper — which is all a small tinted, refracted pill needs, and the pill is
+    // now the only surface that samples this composite (bare-wallpaper surfaces take the gradient-only
+    // plain source). Do not raise it: the pill refracts and tints this proxy, so extra resolution buys
+    // no visible sharpness there while costing memory and a bigger off-screen composite every frame.
     private static final int TARGET_LONG_EDGE_PX = 248;
 
     // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/

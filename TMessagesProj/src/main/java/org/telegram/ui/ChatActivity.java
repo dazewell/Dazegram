@@ -530,9 +530,12 @@ public class ChatActivity extends BaseFragment implements
     private final @NonNull BlurredBackgroundDrawableViewFactory glassBackgroundDrawableFactoryFrosted;
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
-    // NagramX: full-screen glass surfaces (round-video backdrop, the top/bottom fade bands) take a
-    // gradient-only proxy instead of the pattern composite, which smears at full-screen scale. Only
-    // navbarContentDrawableFactory reads this; every other factory keeps navbarContentSourceWallpaper.
+    // NagramX: surfaces that show the bare wallpaper (drawn straight from the wrapper, no render node)
+    // take this gradient-only proxy instead of the pattern composite, which smears when cover-scaled.
+    // Surfaces that composite blurred message content over the wallpaper keep navbarContentSourceWallpaper
+    // — the composite is only ever their setUnderSource, not what fills the surface. The split is by
+    // source, not by size: only navbarContentDrawableFactory (the bare-wallpaper factory) reads this;
+    // the render-node factories keep the composite. See WallpaperBitmapProvider.
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
