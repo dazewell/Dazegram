@@ -144,6 +144,9 @@ public final class VideoDraftStore {
             return;
         }
         boolean written = p.edit().putString(k, next.toString()).commit();
+        // NagramX (#video-draft-guard): locked unconditionally on purpose. On a failed write this clip is still the
+        // one live in the preview, so gating the lock on the write would leave it sweepable exactly when disk
+        // pressure made that write fail. A failed-write orphan (locked but untracked) clears on process restart.
         AutoDeleteMediaTask.lockFile(path);
         // NagramX (#video-draft-guard): only unlock the superseded file, and only once the superseding write has
         // actually landed. If the write failed, prefs still point at the old record, so unlocking its file would let
