@@ -24,6 +24,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ImageLoader;
 import org.telegram.messenger.ImageLocation;
 import org.telegram.messenger.ImageReceiver;
+import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.UserConfig;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.EmojiThemes;
@@ -112,6 +113,11 @@ public class ChatBackgroundDrawable extends Drawable {
                 if (parent != null) {
                     parent.invalidate();
                 }
+                // NagramX: setPatternBitmap posts no invalidation of its own and parent.invalidate() only
+                // redraws the wallpaper view, never re-consulting the glass wallpaper proxy — so the composer
+                // glass would stay gradient-only until the next send. Post invalidateMotionBackground so the
+                // glass composite refresh picks the pattern up once it has decoded.
+                NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground);
             });
         } else {
             String imageFilter;

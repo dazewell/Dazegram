@@ -47,6 +47,8 @@ import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
+import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
+import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.chat.WallpaperBitmapProvider;
 
 import xyz.nextalone.nagram.NaConfig;
@@ -1062,6 +1064,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         private ComposerToolbarLayout toolbar;
         private List<List<String>> zones;
         private Drawable backgroundDrawable;
+        private BlurredBackgroundSourceBitmap glassSource;
 
         PreviewCell(Context context) {
             super(context);
@@ -1190,9 +1193,43 @@ public class ComposerLayoutActivity extends BaseFragment {
         /** Points the capsule's glass at whatever the chat wallpaper currently is. A null wallpaper
          * still yields a usable source, so the capsule is never left unpainted. */
         private void attachGlass(Drawable wallpaper) {
+            BlurredBackgroundSource source = wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper);
+            // NagramX: the motion-wallpaper proxy now carries the pattern, so the glass has to sample it at
+            // the preview's own aspect or the pattern reads as a stretched 1:1 fragment. Retain the source
+            // and feed it the preview cell's measured size; before the first measure (the setLayout-time
+            // attach) fall back to the screen aspect the compositor renders at, then onSizeChanged replaces
+            // it with the real, wide-and-shallow cell dimensions once they are known.
+            if (source instanceof BlurredBackgroundSourceBitmap) {
+                glassSource = (BlurredBackgroundSourceBitmap) source;
+                int w = getMeasuredWidth();
+                int h = getMeasuredHeight();
+                if (w <= 0 || h <= 0) {
+                    w = AndroidUtilities.displaySize.x;
+                    h = AndroidUtilities.displaySize.y;
+                }
+                glassSource.setParentSize(w, h, 0);
+            } else {
+                glassSource = null;
+            }
             toolbar.attachGlass(
-                    new BlurredBackgroundDrawableViewFactory(wallpaperProvider.updateSourceFromBackgroundViewDrawable(wallpaper)),
+                    new BlurredBackgroundDrawableViewFactory(source),
                     new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelVoiceLockBackground));
+        }
+
+        @Override
+        protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+            super.onSizeChanged(w, h, oldw, oldh);
+            // NagramX: attachGlass runs before the cell is measured, so the source starts sized to the
+            // screen. Once the real preview dimensions arrive, re-point the source's centre-crop matrix at
+            // them and reprime the baked glass display lists, or the pattern samples as a full-screen
+            // fragment in this wide, shallow cell.
+            if (glassSource != null && w > 0 && h > 0) {
+                glassSource.setParentSize(w, h, 0);
+                if (toolbar != null) {
+                    toolbar.reprimeGlass();
+                }
+                invalidate();
+            }
         }
 
         /** The preview colours its own children at build time, so a live theme switch has to rebuild

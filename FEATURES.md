@@ -57,6 +57,10 @@ The separate glass text pill holds Send or mic at its trailing end. A row of act
 
 Send and the mic sit inside the text pill, drawn slightly in from its rounded end so a thin ring of glass shows around them.
 
+### Wallpaper pattern shows through the composer glass <!-- #glass-pattern -->
+
+If your chat wallpaper is a built-in gradient with a pattern on it, the pattern now reads through the glass composer panels, not just the gradient behind them. It shows as soft light and dark texture rather than a crisp motif, since the glass blurs whatever sits under it, and it follows the gradient as it rotates on send and fades in with the pattern when a chat opens.
+
 ### Composer toolbar layout editor <!-- #composer-layout --> <!-- #composer-layout-tap-toggle --> <!-- #composer-leading-2slot -->
 
 The button row under the compose box is yours to arrange via chat settings. You can place any action in any zone (Leading, Middle, Trailing, Hidden). The Leading zone is capped at two slots. Tapping a row in Hidden or Middle toggles it straight to the other section without dragging. Hold any button on the live toolbar for about one second to open this editor directly.

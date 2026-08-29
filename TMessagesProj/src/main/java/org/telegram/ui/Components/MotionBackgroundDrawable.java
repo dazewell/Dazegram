@@ -108,6 +108,11 @@ public class MotionBackgroundDrawable extends Drawable {
 
     private float indeterminateSpeedScale = 1f;
     private boolean isIndeterminateAnimation;
+    // NagramX: when set, draw() renders but skips its trailing updateAnimation() call. The composer
+    // glass composites this drawable off-screen; that draw must not advance the animation clock or post
+    // invalidateMotionBackground, or the forced refresh would re-post and loop as fast as the queue
+    // drains. Only ever set around MotionGlassCompositor's own draw, cleared in a finally there.
+    private boolean suppressAnimationAdvance;
     private int bitmapWidth = 60;
     private int bitmapHeight = 80;
 
@@ -224,6 +229,12 @@ public class MotionBackgroundDrawable extends Drawable {
 
     public void setPostInvalidateParent(boolean value) {
         postInvalidateParent = value;
+    }
+
+    // NagramX: see suppressAnimationAdvance. Set true only around an off-screen proxy composite and
+    // cleared in a finally, so a throw cannot leave the real wallpaper animation frozen.
+    public void setSuppressAnimationAdvance(boolean value) {
+        suppressAnimationAdvance = value;
     }
 
     public void rotatePreview(boolean back) {
@@ -349,8 +360,15 @@ public class MotionBackgroundDrawable extends Drawable {
         if (postInvalidateParent) {
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground);
             updateAnimation();
-            AndroidUtilities.cancelRunOnUIThread(updateAnimationRunnable);
-            AndroidUtilities.runOnUIThread(updateAnimationRunnable, 16);
+            // NagramX: only self-drive the 16ms repost for determinate animation. Indeterminate mode
+            // resets posAnimationProgress to 0 every cycle (see updateAnimation), so the repost would
+            // never stop — after leaving a still-loading chat this app-wide cached drawable would keep
+            // generating frames and global cross-account notifications off screen, a real battery drain.
+            // Attached rendering already advances the indeterminate animation through normal invalidation.
+            if (!isIndeterminateAnimation) {
+                AndroidUtilities.cancelRunOnUIThread(updateAnimationRunnable);
+                AndroidUtilities.runOnUIThread(updateAnimationRunnable, 16);
+            }
         }
     }
 
@@ -432,6 +450,10 @@ public class MotionBackgroundDrawable extends Drawable {
 
     public void onDetachedFromWindow() {
         isAttached = false;
+        // NagramX: stop the self-driving 16ms repost when the wallpaper detaches, so leaving a chat
+        // whose wallpaper is still animating (e.g. indeterminate skeleton load) cannot keep the cached
+        // drawable generating frames and global notifications while it is off screen.
+        AndroidUtilities.cancelRunOnUIThread(updateAnimationRunnable);
         if (giftImageReceiver != null) {
             giftImageReceiver.onDetachedFromWindow();
         }
@@ -640,7 +662,11 @@ public class MotionBackgroundDrawable extends Drawable {
         }
         canvas.restore();
 
-        updateAnimation();
+        // NagramX: skip the animation advance when compositing the off-screen glass proxy — see
+        // suppressAnimationAdvance. On the real on-screen draw this runs as upstream intends.
+        if (!suppressAnimationAdvance) {
+            updateAnimation();
+        }
     }
 
     public void setAnimationProgressProvider(GenericProvider<MotionBackgroundDrawable, Float> animationProgressProvider) {
