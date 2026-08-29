@@ -39,14 +39,17 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
 public class MotionGlassCompositor {
 
     // Downsampled proxy: the glass upscales it, and its only softening is that upscale (nothing blurs
-    // the wallpaper on any path), so the long edge is matched to the liquid-glass content blur rather
-    // than the screen. Screen aspect (not the parent view's) so the pattern's cover-scale matches the
-    // wallpaper drawn right above the panel. At 248px this is a lossy, geometrically approximate
-    // impression of the wallpaper — which is all a small tinted, refracted pill needs, and the pill is
-    // now the only surface that samples this composite (bare-wallpaper surfaces take the gradient-only
-    // plain source). Do not raise it: the pill refracts and tints this proxy, so extra resolution buys
-    // no visible sharpness there while costing memory and a bigger off-screen composite every frame.
-    private static final int TARGET_LONG_EDGE_PX = 248;
+    // the wallpaper on any path), so the pattern is only ever as sharp as this bitmap. Screen aspect
+    // (not the parent view's) so the pattern's cover-scale matches the wallpaper drawn right above the
+    // panel. At 248 the pattern rasterised ~114px wide and cover-scaled ~9.5x on a 1080-wide screen,
+    // which on device showed as visibly rough, pixelated pattern edges through the pill rather than as
+    // soft texture. 768 puts the long edge at ~354px on that screen, roughly a 3x upscale, which reads
+    // as texture rather than stair-stepped line-art. Cost is ~1MB per chat activity plus a bigger
+    // off-screen composite on each recomposite, the accepted trade for legible pattern edges. The pill
+    // is the only surface that samples this composite (bare-wallpaper surfaces take the gradient-only
+    // plain source), so this number is bounded by what the pill needs: raising it further only spends
+    // memory on detail the refracted, tinted pill cannot resolve.
+    private static final int TARGET_LONG_EDGE_PX = 768;
 
     // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/
     // setPatternColorFilter/setAlpha all change the rendered output while moving neither bitmap's

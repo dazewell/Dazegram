@@ -18665,6 +18665,7 @@ public class ChatActivity extends BaseFragment implements
                         }
                         progressView.setTranslationY(y / 2);
                         contentView.setBackgroundTranslation((int) y);
+                        updateGlassBackgroundTranslation((int) y);
                         if (instantCameraView != null) {
                             instantCameraView.onPanTranslationUpdate(y);
                         }
@@ -20192,6 +20193,7 @@ public class ChatActivity extends BaseFragment implements
             contentPanTranslation = 0;
             contentPanTranslationT = 0;
             contentView.setBackgroundTranslation(0);
+            updateGlassBackgroundTranslation(0);
             if (contentView != null) {
                 contentView.updateBlurContent();
             }
@@ -51371,6 +51373,18 @@ public class ChatActivity extends BaseFragment implements
         if (glassBackgroundSourceFrostedRenderNode != null) {
             glassBackgroundSourceFrostedRenderNode.invalidateDisplayListForDrawables();
         }
+    }
+
+    // NagramX: the keyboard pans the wallpaper (backgroundTranslationY); the composer glass samples a
+    // separate composite proxy of it, so the proxy has to shift by the same amount or the pattern behind
+    // the composer sits still while the wallpaper slides under it. Push the shift onto the composite
+    // source's matrix and re-record the glass display lists so they re-read it (the shader matrix is
+    // baked in at record time). Wallpaper parallax adds a continuous sensor-driven offset this does not
+    // follow, so the pattern would drift while tilting if parallax were enabled — known and accepted.
+    private void updateGlassBackgroundTranslation(int translationY) {
+        wallpaperBitmapProvider.setBackgroundTranslationY(translationY);
+        reprimeGlassRenderNodes();
+        invalidateAllGlassAttachedViews();
     }
 
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
