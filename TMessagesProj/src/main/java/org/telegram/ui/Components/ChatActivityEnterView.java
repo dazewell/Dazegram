@@ -959,6 +959,10 @@ public class ChatActivityEnterView extends FrameLayout implements
     // plain recording is unaffected.
     private int infiniteVideoBaseDate;
     private boolean infiniteVideoNotify = true;
+    // NagramX: the open "Schedule first message" sheet, retained so onDestroy can dismiss it rather than
+    // leave it showing over a dead chat and let its confirm continuation start recording on a detached
+    // composer. Null whenever no sheet is open; cleared on confirm, on cancel, and on destroy.
+    private org.telegram.ui.ActionBar.BottomSheet.Builder infiniteVideoScheduleSheet;
 
     private Runnable onFinishInitCameraRunnable = new Runnable() {
         @Override
@@ -8060,6 +8064,14 @@ public class ChatActivityEnterView extends FrameLayout implements
             cameraSelectionPopup.dismiss();
             cameraSelectionPopup = null;
             pendingCameraFront = null;
+        }
+        // NagramX: dismiss an open scheduled-infinite sheet so it can't sit over a dead chat and let its
+        // confirm continuation start recording on a detached composer. Dismissing without a confirmed date
+        // runs the sheet's cancel path, which resets pendingCameraFront/calledRecordRunnable/base/notify.
+        if (infiniteVideoScheduleSheet != null) {
+            final org.telegram.ui.ActionBar.BottomSheet.Builder sheet = infiniteVideoScheduleSheet;
+            infiniteVideoScheduleSheet = null;
+            sheet.getDismissRunnable().run();
         }
     }
 
@@ -18479,9 +18491,10 @@ public class ChatActivityEnterView extends FrameLayout implements
         // runnable. Gated on infiniteVideoMessage, which the Ask popup toggled on just before this ran, so
         // it only fires in Ask mode -- the overlay toggle stays hidden in schedule mode.
         if (isInScheduleMode() && infiniteVideoMessage) {
-            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.showScheduleSheet(
+            infiniteVideoScheduleSheet = com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.showScheduleSheet(
                     parentActivity, dialog_id,
                     (notify, scheduleDate) -> {
+                        infiniteVideoScheduleSheet = null;
                         // The single writer of the base. Anything that is not a plain future date -- a past
                         // time, a cleared value, or the 0x7ffffffe "send when online" sentinel (a live send
                         // that also overflows int once spaced +120s) -- leaves the base at 0 and disarms
@@ -18493,15 +18506,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                             infiniteVideoBaseDate = scheduleDate;
                             infiniteVideoNotify = notify;
                         }
-                        // delegate/parentActivity can go null while the sheet sits open; the guards above ran
-                        // before it, so re-check before touching them in the continuation.
-                        if (delegate == null || parentActivity == null) {
+                        // delegate/parentActivity can go null while the sheet sits open, and onDestroy sets
+                        // destroyed without nulling them -- so a null-only check would still start recording on
+                        // a destroyed composer. Reject on lifecycle state too before touching anything.
+                        if (delegate == null || parentActivity == null || destroyed) {
                             pendingCameraFront = null;
                             return;
                         }
                         startVideoRecordingSession();
                     },
                     () -> {
+                        infiniteVideoScheduleSheet = null;
                         pendingCameraFront = null;
                         // load-bearing on the attach-menu path (it does not clear this before showing the
                         // popup, unlike the long-press path); redundant but harmless on the long-press path.

@@ -11,9 +11,12 @@ import android.widget.TextView;
 
 import org.telegram.messenger.R;
 import org.telegram.tgnet.ConnectionsManager;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Components.AlertsCreator;
 import org.telegram.ui.Components.LayoutHelper;
+
+import java.util.Calendar;
 
 /**
  * Scheduled infinite video messages (#infinite-video). When infinite recording is armed in a
@@ -40,9 +43,9 @@ public final class InfiniteVideoScheduleHelper {
     public static final int MIN_LEAD_SECONDS = 180;
 
     /**
-     * Telegram only schedules up to ~1 year out (the day picker maxes at 365).
+     * The schedule picker's day wheel maxes at this many days out (AlertsCreator: dayPicker.setMaxValue).
      */
-    private static final long MAX_SCHEDULE_SECONDS = 365L * 24 * 60 * 60;
+    private static final int MAX_SCHEDULE_DAYS = 365;
 
     private InfiniteVideoScheduleHelper() {
     }
@@ -62,9 +65,9 @@ public final class InfiniteVideoScheduleHelper {
      *
      * @param onCancel runs when the sheet is dismissed without a choice — the caller uses it to disarm.
      */
-    public static void showScheduleSheet(Context context, long dialogId, FirstSegmentDelegate delegate,
+    public static BottomSheet.Builder showScheduleSheet(Context context, long dialogId, FirstSegmentDelegate delegate,
                                          Runnable onCancel, Theme.ResourcesProvider resourcesProvider) {
-        AlertsCreator.createScheduleDatePickerDialog(
+        return AlertsCreator.createScheduleDatePickerDialog(
                 context,
                 getString(R.string.InfiniteRecordingScheduleTitle),
                 dialogId,
@@ -81,25 +84,32 @@ public final class InfiniteVideoScheduleHelper {
     }
 
     /**
-     * The schedule time for segment {@code segmentIndex}, clamped into the valid scheduling window
-     * against server time (not the device clock, which can be skewed). Segment 0 gets the base as
-     * chosen; each later segment adds {@link #SEGMENT_INTERVAL_SECONDS}.
+     * The schedule time for segment {@code segmentIndex}, clamped into the valid scheduling window.
+     * Segment 0 gets the base as chosen; each later segment adds {@link #SEGMENT_INTERVAL_SECONDS}.
      *
-     * <p>The clamps are defence in depth. A past-due slot is pushed to {@code now + 60}; a slot past
-     * the 1-year limit is pinned to it. Successive segments are recorded ~60s apart, so their clamp
-     * evaluations run ~60s apart too and {@code max(slot, now + 60)} can never fold two segments onto
-     * one slot. At the far end several trailing segments could share the maximum, but that degenerate
-     * case is unreachable in practice -- it needs the base at the 1-year maximum plus ~720 further
-     * segments, i.e. 12h+ of unbroken recording on the Unlimited ceiling. Unreachability is the actual
-     * guarantee: segments pinned to the same maximum would carry equal schedule_dates, and nothing here
-     * establishes their relative send order, so the design keeps two segments off one slot rather than
-     * relying on how the server breaks a tie.
+     * <p>Invariant: the result is monotonically non-decreasing in {@code segmentIndex} -- no later
+     * segment ever carries an earlier date than an earlier one. Two things hold it. The upper clamp
+     * uses {@link #pickerMaxScheduleSeconds()}, which is greater than or equal to any instant the
+     * picker can return, so the base (segment 0) is never clamped down and later segments only ever
+     * clamp up to a bound that is at least the base. The lower clamp uses a non-decreasing server
+     * {@code now} across the ~60s-apart per-segment evaluations, so a pause-driven past-due push
+     * can't invert two segments either. Keep both bounds satisfying this -- loosening either can
+     * silently reintroduce an ordering inversion.
+     *
+     * <p>The clamps are otherwise defence in depth against the device clock being skewed: a past-due
+     * slot is pushed to {@code now + 60}; a slot past the 1-year window is pinned to the maximum.
+     * Successive segments are recorded ~60s apart, so {@code max(slot, now + 60)} can't fold two
+     * segments onto one slot. At the far end several trailing segments could share the maximum, but
+     * that is unreachable in practice -- it needs the base at the 1-year maximum plus ~720 further
+     * segments (12h+ of unbroken recording on the Unlimited ceiling). Even in that degenerate case,
+     * equal schedule_dates dispatch in submission order and segments are submitted in recording
+     * order, so the send order the invariant protects survives regardless.
      */
     public static int segmentDate(int currentAccount, int baseDate, int segmentIndex) {
         long slot = (long) baseDate + (long) SEGMENT_INTERVAL_SECONDS * segmentIndex;
         final long now = ConnectionsManager.getInstance(currentAccount).getCurrentTime();
         final long min = now + 60;
-        final long max = now + MAX_SCHEDULE_SECONDS;
+        final long max = pickerMaxScheduleSeconds();
         if (slot < min) {
             slot = min;
         }
@@ -107,6 +117,24 @@ public final class InfiniteVideoScheduleHelper {
             slot = max;
         }
         return (int) slot;
+    }
+
+    /**
+     * The latest instant the schedule sheet can produce: today + 365 days at 23:59, on the device
+     * clock, mirroring AlertsCreator's Done button (now + DAY_OF_YEAR 365, HOUR_OF_DAY 23, MINUTE 59).
+     * The base comes straight from that picker on the same clock, so deriving the upper clamp this
+     * way -- rather than from {@code serverNow + 365*24h}, which can fall up to a day short when the
+     * user picks a late time on the final day -- guarantees the base is never above the clamp and so
+     * segment 0 is never pulled earlier than a later segment.
+     */
+    private static long pickerMaxScheduleSeconds() {
+        final Calendar c = Calendar.getInstance();
+        c.add(Calendar.DAY_OF_YEAR, MAX_SCHEDULE_DAYS);
+        c.set(Calendar.HOUR_OF_DAY, 23);
+        c.set(Calendar.MINUTE, 59);
+        c.set(Calendar.SECOND, 59);
+        c.set(Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis() / 1000L;
     }
 
     /**
