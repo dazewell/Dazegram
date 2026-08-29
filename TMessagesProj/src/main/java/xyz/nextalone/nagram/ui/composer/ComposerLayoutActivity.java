@@ -1148,7 +1148,8 @@ public class ComposerLayoutActivity extends BaseFragment {
     /**
      * Shows the arrangement being edited as the real thing: an actual {@link ComposerToolbarLayout}
      * with its glass capsule, on the user's chat wallpaper, at the size the scale slider is set to.
-     * A schematic row of flat icons could not show what the two settings on this screen actually do.
+     * A schematic row of flat icons could not show what the settings on this screen actually do,
+     * glass transparency included.
      */
     private static class PreviewCell extends FrameLayout {
 

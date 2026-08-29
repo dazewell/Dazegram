@@ -79,7 +79,7 @@ The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets
 
 ### Composer glass transparency <!-- #composer-transparency -->
 
-Light and dark theme each get their own slider in the layout editor for how much wallpaper shows through the composer's glass — the message field, its icon row, the button clusters beside it, and the instant-camera controls — from 0 to 50% in 5% steps. Both default to 25%, close to what the glass already did in the common case, though if you have Liquid Glass mode on this reads a bit more transparent than its old fixed default, since that default is now this same configurable value like everywhere else. Takes effect when you leave the editor. The live preview above the sliders only reflects whichever theme is currently running, and nothing changes while chat blur is off.
+Light and dark theme each get their own slider in the layout editor for how much wallpaper shows through the composer's glass — the message field, its icon row, the button clusters beside it, the instant-camera controls, the floating buttons over the message list (page down, mentions, reactions), and a channel's bottom bar — from 0 to 50% in 5% steps. Both default to 25%, close to what the glass already did in the common case, though if you have Liquid Glass mode on this reads a bit more transparent than its old fixed default, since the composer now uses this one configurable value across both themes instead of a fixed one. Takes effect when you leave the editor. The live preview above the sliders only reflects whichever theme is currently running, and nothing changes while chat blur is off.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
