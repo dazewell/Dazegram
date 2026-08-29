@@ -61,6 +61,10 @@ public class VideoEditedInfo {
     public long estimatedSize;
     public long estimatedDuration;
     public boolean roundVideo;
+    // NagramX (#video-draft-guard): identity of a persisted round-video draft, minted by the producer and
+    // carried on this shared payload so the persist/restore/clear paths match a draft by id across a process
+    // boundary, never by chat slot. 0 means "no draft identity" (the default and the store's reject sentinel).
+    public long naxDraftId;
     public boolean muted;
     public float volume = 1f;
     public long originalDuration;
