@@ -38599,9 +38599,14 @@ public class ChatActivity extends BaseFragment implements
         }
         VideoEditedInfo info = VideoDraftStore.buildInfo(entry, size);
         checkInstantCameraView();
-        if (instantCameraView != null) {
-            instantCameraView.adoptRestoredDraft(file, size, info);
+        if (instantCameraView == null) {
+            // NagramX (#video-draft-guard): checkInstantCameraView bails when the camera is disallowed or the
+            // context is gone, so there is no view to send through. Don't surface a preview the send path can't
+            // service -- needStartRecordVideo no-ops without instantCameraView, and if the user cancels the stuck
+            // preview discard() deletes the file. Leave the record persisted+locked; it restores on a later open.
+            return;
         }
+        instantCameraView.adoptRestoredDraft(file, size, info);
         chatActivityEnterView.setVideoDraft(info, entry.path, entry.duration, entry.voiceOnce);
     }
 
