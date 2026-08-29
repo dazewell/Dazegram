@@ -134,6 +134,7 @@ import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.InstantZoomControlView;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
+import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -190,6 +191,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     // superseded is dropped at delivery instead of clobbering the current draft. volatile: set on the UI
     // thread, read on the encoder thread that posts the completion.
     private volatile int finalizeDraftToken;
+    // NagramX (#video-draft-guard): set when a restored round-video draft's file has been adopted into this
+    // instance (see adoptRestoredDraft). A rebuilt instance never had its camera opened, so textureView is
+    // null and send()'s :1242 guard would bail silently -- this flag is the positive signal that lets the
+    // headless send through. Never inferred from cameraFile being null.
+    private boolean sendAdoptedDraft;
     private File previewFile;
     private long recordStartTime;
     private long recordPlusTime;
@@ -868,6 +874,38 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return recording;
     }
 
+    // NagramX (#video-draft-guard): rehydrate the send path for a round-video draft restored after this view
+    // was rebuilt (passcode unlock / re-entry) or landed from a superseded recorder. send(4) needs an intact
+    // cameraFile, size and a round-video videoEditedInfo; a rebuilt instance has none of them and its :1258
+    // fallback builds a bare (non-round) VideoEditedInfo, so we set them up explicitly here. file/key/iv stay
+    // null -- that's the normal "background upload not started yet" state, identical to tapping Send before a
+    // live upload finishes, and the send path re-uploads from the file.
+    //
+    // Refuses in two cases, both to protect existing state rather than to infer intent from absence:
+    //   - a live recording session (recording || videoEncoder != null) -- a disk restore racing a late
+    //     finalize must not replace the cameraFile that cancel()/:1446 would then delete.
+    //   - an instance that already holds a finalized draft (cameraFile present and on disk) -- that came from
+    //     a native same-session finalize, which keeps the user's trim; clobbering it would lose that. When
+    //     refused for this reason the instance is already sendable natively (textureView was created), so
+    //     refusing never leaves an unsendable state.
+    public void adoptRestoredDraft(File file, long fileSize, int duration) {
+        if (recording || videoEncoder != null) {
+            FileLog.d("InstantCamera adoptRestoredDraft ignored: recording session live");
+            return;
+        }
+        if (cameraFile != null && cameraFile.exists()) {
+            return;
+        }
+        if (file == null || !file.exists()) {
+            return;
+        }
+        cameraFile = file;
+        size = fileSize;
+        videoEditedInfo = VideoDraftStore.buildInfo(file.getAbsolutePath(), fileSize, duration);
+        sendAdoptedDraft = true;
+        AutoDeleteMediaTask.lockFile(file);
+    }
+
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {
@@ -975,6 +1013,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         if (!fromPaused) {
             cameraFile = generateCameraFile();
+            sendAdoptedDraft = false; // NagramX (#video-draft-guard): a fresh recording owns a live cameraFile; drop any restored-draft state
         }
 
         SharedConfig.saveConfig();
@@ -1239,7 +1278,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
-        if (textureView == null) {
+        if (textureView == null && !sendAdoptedDraft) {
+            // NagramX (#video-draft-guard): a draft restored into a rebuilt instance (passcode unlock / late
+            // finalize) never opened the camera, so textureView is null -- but adoptRestoredDraft has set up
+            // cameraFile/size/videoEditedInfo, and the state==4 branch below never dereferences textureView,
+            // so let that send through. Without this the preview vanishes and the message is silently dropped.
             return;
         }
         stopProgressTimer();

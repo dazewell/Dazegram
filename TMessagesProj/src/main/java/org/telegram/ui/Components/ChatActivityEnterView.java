@@ -250,6 +250,7 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
+import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -12803,6 +12804,39 @@ public class ChatActivityEnterView extends FrameLayout implements
         MediaController.getInstance().prepareResumedRecording(currentAccount, draft, dialog_id, replyingMessageObject, getThreadMessage(), storyItem, recordingGuid, parentFragment != null ? parentFragment.getMessageChatSendParams() : null, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
     }
 
+    // NagramX (#video-draft-guard): land a restored round-video draft as state (b) -- the finished-but-unsent
+    // preview -- rebuilt from disk instead of a live finalize. Mirrors the audioDidSent video branch minus the
+    // keyframe thumbs (setVideoPath re-extracts them from the file via its own MediaMetadataRetriever). The
+    // matching InstantCameraView.adoptRestoredDraft has already made the send path viable. Trim is not
+    // restored: send(4) rebuilds a full-range VideoEditedInfo, so a restored draft sends its whole length --
+    // honouring trim would mean forking send(4)'s construction, which the design deliberately avoids.
+    public void setVideoDraft(String path, int duration, boolean once) {
+        if (path == null) {
+            return;
+        }
+        File f = new File(path);
+        if (!f.exists()) {
+            return;
+        }
+        voiceOnce = once;
+        if (controlsView != null) {
+            controlsView.periodDrawable.setValue(1, voiceOnce, true);
+        }
+        videoToSendMessageObject = VideoDraftStore.buildInfo(path, f.length(), duration);
+        audioToSendPath = path;
+        millisecondsRecorded = duration;
+        if (videoTimelineView != null) {
+            videoTimelineView.setVideoPath(path);
+            videoTimelineView.setVisibility(VISIBLE);
+            if (duration > 0) {
+                videoTimelineView.setMinProgressDiff(1000.0f / duration);
+            }
+            isRecordingStateChanged();
+        }
+        updateRecordInterface(RECORD_STATE_PREPARING, false);
+        checkSendButton(false);
+    }
+
     public void setSelection(int start) {
         if (messageEditText == null) {
             return;
@@ -15922,6 +15956,11 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 updateRecordInterface(RECORD_STATE_PREPARING, true);
                 checkSendButton(false);
+                // NagramX (#video-draft-guard): this finalize is the finished-but-unsent clip. Persist it and
+                // make sure a rebuilt InstantCameraView can still send it (see ChatActivity.onVideoDraftReady).
+                if (parentFragment != null && audioToSendPath != null && videoToSendMessageObject.roundVideo) {
+                    parentFragment.onVideoDraftReady(audioToSendPath, (int) millisecondsRecorded, voiceOnce);
+                }
             } else {
                 audioToSend = (TLRPC.TL_document) args[1];
                 audioToSendPath = (String) args[2];

@@ -422,6 +422,7 @@ import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.ToggleResult;
 import xyz.nextalone.nagram.helper.BookmarksHelper;
 import xyz.nextalone.nagram.helper.DoubleTap;
+import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 @SuppressWarnings("unchecked")
 public class ChatActivity extends BaseFragment implements
@@ -2710,8 +2711,17 @@ public class ChatActivity extends BaseFragment implements
                     chatAdapter.updateRowsSafe();
                 } else if (state == 1 || state == 3 || state == 4) {
                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
+                    if (state != 3) {
+                        // NagramX (#video-draft-guard): state 3 is the onPause finalize that *creates* the draft;
+                        // states 1/4 send it, so the persisted record is consumed. Drop it without unlocking --
+                        // the outgoing-message machinery owns the file from here.
+                        VideoDraftStore.clearOnSend(currentAccount, dialog_id, getTopicId());
+                    }
                 } else if (state == 2 || state == 5) {
                     instantCameraView.cancel(state == 2);
+                    // NagramX (#video-draft-guard): user discarded the preview -- drop the record and delete the
+                    // file, since a rebuilt instance's cancel() bails before deleting it.
+                    VideoDraftStore.discard(currentAccount, dialog_id, getTopicId());
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
                     instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
@@ -32489,6 +32499,50 @@ public class ChatActivity extends BaseFragment implements
                     updateBottomOverlay();
                 }
             }
+        }
+
+        restoreVideoDraftMaybe();
+    }
+
+    // NagramX (#video-draft-guard): restore a persisted round-video draft on chat open, so a clip lost to
+    // backgrounding / a passcode-lock rebuild reappears in the preview strip and can be sent. Idempotent:
+    // skips when a preview is already showing or a recording is live, and load() self-invalidates a record
+    // whose file is gone or older than 24h. Sweeps this account's expired records first so their locked
+    // orphan files don't accumulate.
+    private void restoreVideoDraftMaybe() {
+        if (chatActivityEnterView == null || instantCameraView != null && instantCameraView.isRecording()) {
+            return;
+        }
+        if (chatActivityEnterView.hasVideoToSend()) {
+            return;
+        }
+        VideoDraftStore.sweepExpired(currentAccount);
+        VideoDraftStore.Entry entry = VideoDraftStore.load(currentAccount, dialog_id, getTopicId());
+        if (entry == null) {
+            return;
+        }
+        videoDraftToken++; // a restored draft is the current generation; supersede any still-in-flight finalize
+        File file = new File(entry.path);
+        checkInstantCameraView();
+        if (instantCameraView != null) {
+            instantCameraView.adoptRestoredDraft(file, file.length(), entry.duration);
+        }
+        chatActivityEnterView.setVideoDraft(entry.path, entry.duration, entry.voiceOnce);
+    }
+
+    // NagramX (#video-draft-guard): a round-video finalize just landed in the preview. Persist it, and if this
+    // view was rebuilt (a fresh, camera-never-opened InstantCameraView) rehydrate its send path so the Send tap
+    // doesn't silently drop the message. adoptRestoredDraft refuses when the instance already holds a live or
+    // finalized draft, so the common same-session case (which keeps the user's trim) is left untouched.
+    public void onVideoDraftReady(String path, int duration, boolean voiceOnce) {
+        if (path == null || dialog_id == 0) {
+            return;
+        }
+        VideoDraftStore.save(currentAccount, dialog_id, getTopicId(), path, duration, voiceOnce);
+        File file = new File(path);
+        checkInstantCameraView();
+        if (instantCameraView != null) {
+            instantCameraView.adoptRestoredDraft(file, file.length(), duration);
         }
     }
 
