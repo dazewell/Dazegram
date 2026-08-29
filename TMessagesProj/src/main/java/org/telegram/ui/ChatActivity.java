@@ -2718,10 +2718,15 @@ public class ChatActivity extends BaseFragment implements
                         VideoDraftStore.clearOnSend(currentAccount, dialog_id, getTopicId());
                     }
                 } else if (state == 2 || state == 5) {
+                    // NagramX (#video-draft-guard): capture BEFORE cancel() -- only a state-(b) preview discard
+                    // should drop the persisted record. state 2/5 also fire for slide-to-cancel of a live
+                    // recording, where any persisted entry belongs to an earlier finished draft that must be
+                    // kept, not deleted. hasVideoToSend() is true only when a finished preview is present.
+                    boolean discardingPreview = chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend();
                     instantCameraView.cancel(state == 2);
-                    // NagramX (#video-draft-guard): user discarded the preview -- drop the record and delete the
-                    // file, since a rebuilt instance's cancel() bails before deleting it.
-                    VideoDraftStore.discard(currentAccount, dialog_id, getTopicId());
+                    if (discardingPreview) {
+                        VideoDraftStore.discard(currentAccount, dialog_id, getTopicId());
+                    }
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
                     instantCameraView.rollOverSegment(notify, ttl, effectId, stars);
