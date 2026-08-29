@@ -1468,6 +1468,14 @@ public class ComposerLayoutActivity extends BaseFragment {
         if (adapter == null) {
             return;
         }
+        // onAnimationProgress(1f) is delivered from an animator update callback, which normally runs
+        // well before RecyclerView's own layout pass for that frame - but notifyItemChanged() asserts
+        // it is not, and throws if it is. Deferring to the next frame here costs nothing in the
+        // common case and removes any doubt in the uncommon one, rather than relying on that ordering.
+        if (listView != null && listView.isComputingLayout()) {
+            listView.post(this::refreshSliderRowsForThemeChange);
+            return;
+        }
         sliderThemeGeneration++;
         for (int i = 0; i < items.size(); i++) {
             if (isSliderRowType(items.get(i).type)) {
