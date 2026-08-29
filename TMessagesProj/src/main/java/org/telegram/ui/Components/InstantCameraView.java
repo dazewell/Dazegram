@@ -3649,8 +3649,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // after abandonPreview() ran on the same UI thread. Skip re-acquiring the preview player, the ~60 Hz
             // timer and the controls fade -- but let the EGL teardown below run unconditionally, since an early
             // return would trade the player leak this fix removes for an EGL surface/context leak. Guarding inside
-            // the method rather than at the call sites keeps the naxDraftId mint and the audioDidSent post that
-            // follow each call intact, so an abandoned-but-finished draft still persists.
+            // the method rather than at the call sites is what keeps the naxDraftId mint and the audioDidSent post
+            // that follow each call intact -- call-site guarding would have suppressed them on every abandonment.
+            // That is all this guard does; it does not itself guarantee the draft persists. Persistence past the
+            // post depends on the token gate in ChatActivityEnterView's audioDidSent handler (:16029-16033): a
+            // finalize that lost the race to a rebuild, which already bumped videoDraftToken, is rejected there
+            // before onVideoDraftReady's save (ChatActivity:38582) and so survives only as a locked orphan on disk.
             if (!previewAbandoned) {
             videoPlayer = new VideoPlayer();
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
