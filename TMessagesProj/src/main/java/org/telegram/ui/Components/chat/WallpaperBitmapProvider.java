@@ -29,7 +29,7 @@ public class WallpaperBitmapProvider {
      * Returns true when the proxy changed and the caller should reprime its glass render nodes.
      */
     public boolean refreshMotionComposite(MotionBackgroundDrawable motionDrawable) {
-        return motionGlassCompositor.compose(sourceBitmap, motionDrawable);
+        return motionGlassCompositor.compose(sourceBitmap, motionDrawable, true);
     }
 
     public BlurredBackgroundSource updateSourceFromBackgroundViewDrawable(
@@ -47,7 +47,7 @@ public class WallpaperBitmapProvider {
             // black — neither carries the wallpaper pattern, so the glass behind the composer never
             // shows it. Composite the drawable's actual output (gradient + pattern, including the
             // intensity<0 mask) into a retained bitmap and hand that to the glass. See MotionGlassCompositor.
-            motionGlassCompositor.compose(sourceBitmap, motionDrawable);
+            motionGlassCompositor.compose(sourceBitmap, motionDrawable, false);
             return sourceBitmap;
         }
 

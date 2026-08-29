@@ -4,7 +4,6 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Rect;
-import android.os.SystemClock;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
@@ -32,17 +31,18 @@ public class MotionGlassCompositor {
     // parent view's) so the pattern's cover-scale matches the wallpaper drawn right above the panel.
     private static final int TARGET_LONG_EDGE_PX = 248;
 
-    // The pattern fades in over ~250ms by ramping alpha, which moves neither bitmap's generation id,
-    // so the trackers can't see it. For a short window after the pattern instance changes we
-    // re-composite every driven frame to follow the fade.
-    private static final long PATTERN_FADE_MS = 300;
+    // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/
+    // setPatternColorFilter/setAlpha all change the rendered output while moving neither bitmap's
+    // generation id, so the trackers cannot see them. The notification-driven refresh therefore
+    // passes force=true to recomposite unconditionally while resumed and attached; the attach path
+    // (where the return value gates a reprime and a stale composite is harmless) passes force=false
+    // and keeps the tracker skip.
 
     private Bitmap composite;
     private Canvas compositeCanvas;
 
     private final BitmapChangeTracker gradientTracker = new BitmapChangeTracker();
     private final BitmapChangeTracker patternTracker = new BitmapChangeTracker();
-    private long patternFadeUntil;
 
     private final Rect savedBounds = new Rect();
 
@@ -50,9 +50,10 @@ public class MotionGlassCompositor {
      * Records the drawable into the retained composite and points {@code target} at it. Returns true
      * when it actually re-composited (a new bitmap instance was set, or the content changed), so the
      * caller can reprime the glass render nodes; false when nothing moved and the call was a no-op.
-     * UI thread only.
+     * When {@code force} is set the content check is skipped and it always re-records, because the
+     * alpha/colour-filter setters change the output without moving a generation id. UI thread only.
      */
-    public boolean compose(BlurredBackgroundSourceBitmap target, MotionBackgroundDrawable motion) {
+    public boolean compose(BlurredBackgroundSourceBitmap target, MotionBackgroundDrawable motion, boolean force) {
         final int targetW = targetWidth();
         final int targetH = targetHeight();
         if (targetW <= 0 || targetH <= 0) {
@@ -66,12 +67,8 @@ public class MotionGlassCompositor {
         final Bitmap pattern = motion.getPatternBitmap();
         final boolean gradientChanged = gradientTracker.isInvalidated(gradient);
         final boolean patternChanged = patternTracker.isInvalidated(pattern);
-        if (patternChanged) {
-            patternFadeUntil = SystemClock.elapsedRealtime() + PATTERN_FADE_MS;
-        }
-        final boolean inFadeWindow = SystemClock.elapsedRealtime() < patternFadeUntil;
 
-        if (!realloc && !gradientChanged && !patternChanged && !inFadeWindow
+        if (!force && !realloc && !gradientChanged && !patternChanged
                 && target.getBitmap() == composite) {
             return false;
         }

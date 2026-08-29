@@ -51332,17 +51332,16 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
     // only re-samples on a reprime, so it has to be refreshed whenever the wallpaper's content moves: a
     // gradient rotation on send, or the pattern arriving/fading in after chat open. Driven by the posted,
-    // coalesced runnable below off invalidateMotionBackground. Skipped while paused (marked dirty so
-    // onResume runs it once) because a backgrounded chat's glass is off screen.
+    // coalesced runnable below off invalidateMotionBackground, which recomposites unconditionally so the
+    // alpha/colour-filter fades (which move no generation id) are followed. Skipped and marked dirty when
+    // paused, detached, or before contentView exists — a chat that is off screen or not laid in does no
+    // work, and onResume runs it once to catch up.
     private boolean glassCompositeDirty;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
     private void refreshGlassComposite() {
-        if (isPaused) {
+        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
             glassCompositeDirty = true;
-            return;
-        }
-        if (contentView == null) {
             return;
         }
         Drawable wallpaper = contentView.getBackgroundImage();
