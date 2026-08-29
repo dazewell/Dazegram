@@ -1422,6 +1422,10 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
+    private static boolean isSliderRowType(int type) {
+        return type == TYPE_SCALE || type == TYPE_SPACING || type == TYPE_GLASS_LIGHT || type == TYPE_GLASS_DARK;
+    }
+
     /**
      * SlideIntChooseView (upstream, not ours to edit) bakes its row background and its min/value
      * text colours in once - at construction and, for the value text, only on a value change - and
@@ -1449,25 +1453,31 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         ThemeDescription.ThemeDescriptionDelegate delegate = () -> {
             if (listView != null) {
-                ArrayList<Integer> staleSliderPositions = null;
                 for (int i = 0; i < listView.getChildCount(); i++) {
                     View child = listView.getChildAt(i);
                     if (child instanceof ButtonRowCell) {
                         ((ButtonRowCell) child).applyTheme();
-                    } else if (child instanceof SlideIntChooseView) {
-                        int position = listView.getChildAdapterPosition(child);
-                        if (position != RecyclerView.NO_POSITION) {
-                            if (staleSliderPositions == null) {
-                                staleSliderPositions = new ArrayList<>();
-                            }
-                            staleSliderPositions.add(position);
-                        }
                     }
                 }
-                // Collected first, then applied: rebuilding a row while this loop is still walking
-                // listView's live children would shift the very list it is iterating over.
-                if (staleSliderPositions != null) {
-                    for (int position : staleSliderPositions) {
+                // Looked up by item type rather than by walking listView's attached children: a
+                // slider row scrolled off-screen when the theme flips is just as stale, and by the
+                // time this delegate runs it may already be sitting in the recycled view pool rather
+                // than attached to listView, so a child walk alone would miss it. The pool is cleared
+                // first so a pooled instance from before the flip can't be handed straight back to
+                // whichever position asks for a view next, then every slider row - on-screen or not -
+                // goes through the same remove+reinsert.
+                ArrayList<Integer> sliderPositions = null;
+                for (int i = 0; i < items.size(); i++) {
+                    if (isSliderRowType(items.get(i).type)) {
+                        if (sliderPositions == null) {
+                            sliderPositions = new ArrayList<>();
+                        }
+                        sliderPositions.add(i);
+                    }
+                }
+                if (sliderPositions != null) {
+                    listView.getRecycledViewPool().clear();
+                    for (int position : sliderPositions) {
                         refreshSliderRow(position);
                     }
                 }
