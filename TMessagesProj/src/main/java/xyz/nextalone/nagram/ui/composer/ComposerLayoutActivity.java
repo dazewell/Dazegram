@@ -1156,6 +1156,9 @@ public class ComposerLayoutActivity extends BaseFragment {
         private List<List<String>> zones;
         private Drawable backgroundDrawable;
         private BlurredBackgroundSourceBitmap glassSource;
+        /** Retained so addMockInput can glass the placeholder pill with the same wallpaper sample the
+         * toolbar bubbles use, rather than the flat GradientDrawable it painted before. */
+        private BlurredBackgroundDrawableViewFactory glassFactory;
 
         PreviewCell(Context context) {
             super(context);
@@ -1229,11 +1232,14 @@ public class ComposerLayoutActivity extends BaseFragment {
             input.setClickable(false);
             input.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
 
-            GradientDrawable bodyBackground = new GradientDrawable();
-            bodyBackground.setColor(Theme.getColor(Theme.key_chat_messagePanelBackground));
-            bodyBackground.setCornerRadius(dp(PREVIEW_INPUT_HEIGHT / 2f));
+            // NagramX: glassed with the same wallpaper sample the toolbar bubbles use, fed the
+            // slider-configured pass-through for whichever theme is currently running, instead of the
+            // flat panel color this used to paint - otherwise the two sliders below would have no
+            // visible effect anywhere in this preview.
+            BlurredBackgroundColorProviderThemed bodyGlassColor = new BlurredBackgroundColorProviderThemed(
+                    null, Theme.key_chat_messagePanelBackground, NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark()));
             FrameLayout body = new FrameLayout(getContext());
-            body.setBackground(bodyBackground);
+            body.setBackground(glassFactory.create(body, bodyGlassColor).setRadius(dp(PREVIEW_INPUT_HEIGHT / 2f)));
             body.setFocusable(false);
             body.setClickable(false);
             body.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
@@ -1302,8 +1308,9 @@ public class ComposerLayoutActivity extends BaseFragment {
             } else {
                 glassSource = null;
             }
+            glassFactory = new BlurredBackgroundDrawableViewFactory(source);
             toolbar.attachGlass(
-                    new BlurredBackgroundDrawableViewFactory(source),
+                    glassFactory,
                     new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground));
         }
 
