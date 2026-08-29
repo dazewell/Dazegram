@@ -67,7 +67,7 @@ def get_commit_info():
     pr_url = os.environ.get("PR_URL") or default_pr_url
     return commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url
 
-def truncate_text(text: str, budget: int) -> str:
+def truncate_text(text: str, budget: int, escaped: bool = False) -> str:
     if budget <= 0:
         return ""
     if tg_len(text) <= budget:
@@ -76,7 +76,17 @@ def truncate_text(text: str, budget: int) -> str:
     text = text.rstrip()
     while text and tg_len(text + suffix) > budget:
         text = text[:-1]
-    return text.rstrip() + suffix
+    text = text.rstrip()
+    if escaped:
+        # A cut can land mid HTML-entity (html.escape() turns "&" into
+        # "&amp;"): a truncated "&am" has no ";" and is invalid HTML, which
+        # makes Telegram reject the whole caption with "can't parse entities".
+        # Only safe to check on already-escaped text -- unescaped text can
+        # legitimately end in a bare "&" that was never an entity to begin with.
+        entity_start = text.rfind("&")
+        if entity_start != -1 and ";" not in text[entity_start:]:
+            text = text[:entity_start].rstrip()
+    return text + suffix
 
 def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url) -> str:
     emoji = BUILD_EMOJI.get(build_type, "🚀")
@@ -86,14 +96,14 @@ def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_num
         # truncating raw text first would under-count a title containing a
         # literal "<...>" and let it through untruncated, only for the
         # subsequent escape to make it longer than the intended budget again.
-        title = truncate_text(html.escape(pr_title), HEADER_TITLE_BUDGET)
+        title = truncate_text(html.escape(pr_title), HEADER_TITLE_BUDGET, escaped=True)
         headline = f'{emoji} <a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}'
     else:
         # No associated PR (a dispatch on a branch with no PR, or a direct
         # push) — fall back to the commit subject instead of printing a bare
         # "#" or the word "unknown".
         subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
-        subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET)
+        subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET, escaped=True)
         headline = f"{emoji} <b>{subject}</b>" if subject else emoji
     meta = (
         f'<a href="{html.escape(branch_url)}"><code>{html.escape(branch)}</code></a>'

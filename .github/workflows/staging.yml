@@ -274,13 +274,15 @@ jobs:
             PR_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls")
-            # A non-array response (rate limit, auth failure, transient error)
-            # must resolve to "no PR found" rather than aborting the whole
-            # upload under set -e -- jq erroring here would silently drop a
-            # real Telegram upload over an unrelated API hiccup.
-            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].number // empty) else empty end')
-            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].title // empty) else empty end')
-            RES_PR_BODY=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].body // empty) else empty end')
+            # A non-array JSON response (rate limit, auth failure, transient
+            # error) or outright unparseable body (empty/garbled from a
+            # network hiccup) must resolve to "no PR found" rather than
+            # aborting the whole upload under set -e -- the "|| true" catches
+            # jq itself failing to parse, the "if type == array" guard catches
+            # a well-formed-but-wrong-shaped JSON error object.
+            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].number // empty) else empty end') || true
+            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].title // empty) else empty end') || true
+            RES_PR_BODY=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].body // empty) else empty end') || true
           fi
           # jq -r renders a JSON null body as the literal string "null".
           [ "$RES_PR_BODY" != "null" ] || RES_PR_BODY=""
