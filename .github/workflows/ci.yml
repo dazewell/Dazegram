@@ -98,10 +98,10 @@ jobs:
   # Escalation for the surface the fast gate is blind to. A change to R8 rules,
   # the module or root build scripts, gradle.properties, settings, buildSrc or
   # any manifest must not reach dev without R8 and resource shrinking having run.
-  # R8 consumes class files, not .so, so it runs fine under NATIVE_TARGET=SKIP
-  # without the NDK. Single package: R8/shrink behaviour is package-independent,
-  # and the per-package resource-dir swap is already covered by the 2-package
-  # compile job above.
+  # R8 and the shrinker consume class files and merged resources, not .so, so the
+  # deep job below runs them without pulling in a single cmake task. Single
+  # package: R8/shrink behaviour is package-independent, and the per-package
+  # resource-dir swap is already covered by the 2-package compile job above.
   changes:
     name: Detect deep-validation paths
     runs-on: ubuntu-latest
@@ -138,8 +138,6 @@ jobs:
     needs: changes
     if: needs.changes.outputs.deep == 'true'
     runs-on: ubuntu-latest
-    env:
-      NATIVE_TARGET: "SKIP"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -154,7 +152,11 @@ jobs:
       - name: Set up Android SDK Tools
         uses: android-actions/setup-android@v4
         with:
-          packages: "build-tools;36.0.0 platforms;android-37.0"
+          # The NDK is installed but no native code is built here — see the run
+          # step. AGP validates ndkVersion against an installed NDK at
+          # configuration time whenever externalNativeBuild is present, so the
+          # SDK has to carry it even though not one cmake task runs.
+          packages: "build-tools;36.0.0 platforms;android-37.0 ndk;27.2.12479018"
       - name: Configure Android SDK Path
         run: |
           echo "sdk.dir=${ANDROID_HOME}" >> local.properties
@@ -164,10 +166,18 @@ jobs:
         # staging is a minifyEnabled + shrinkResources build type. Target the R8
         # and resource-shrink tasks directly rather than assembleStaging: the
         # latter also signs (no keystore in CI) and packages native libs. R8 and
-        # the shrinker both run before packaging, so this exercises them without
-        # secrets or the NDK.
+        # the shrinker run before packaging and depend on class files and merged
+        # resources, not on .so, so no cmake task is pulled in and the ~9-minute
+        # native build never happens — the NDK above is only there to satisfy the
+        # configuration-time check.
+        #
+        # Do NOT set NATIVE_TARGET=SKIP here. On the debug compile job that switch
+        # is fine, but on the staging variant it disables tasks the R8/resource
+        # pipeline needs and the build dies on a missing compatible-screens
+        # manifest and an unresolved R. Leaving native enabled but simply not
+        # asking for a native task is the reliable path.
         run: |
-          ./gradlew :TMessagesProj:minifyStagingWithR8 :TMessagesProj:shrinkStagingRes \
+          ./gradlew :TMessagesProj:minifyStagingWithR8 :TMessagesProj:optimizeStagingResources \
             -PAPP_PACKAGE=nekox.messenger --build-cache
       - name: Assert R8 produced a mapping
         run: |
