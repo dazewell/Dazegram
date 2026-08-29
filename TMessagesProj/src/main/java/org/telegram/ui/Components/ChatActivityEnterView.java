@@ -12843,9 +12843,9 @@ public class ChatActivityEnterView extends FrameLayout implements
     // NagramX (#video-draft-guard): rebuild the round-video preview strip from a restored draft, mirroring what
     // the audioDidSent bind does for a live finalize but sourced from the persisted record. The passed info
     // already carries the persisted trim (absolute ms) and draft id and becomes the bound object, so the same
-    // object the timeline delegate writes and send(4) reads is shared (the §0 same-object invariant). Keyframe
+    // object the timeline delegate writes and send(4) reads is one and the same. Keyframe
     // thumbs aren't restored -- setVideoPath re-extracts them from the file. The visible trim handles are seeded
-    // to match the persisted cut (N2: the -1 sentinel maps to 0.0/1.0, never a negative quotient).
+    // to match the persisted cut (the -1 sentinel maps to 0.0/1.0, never a negative quotient).
     public void setVideoDraft(VideoEditedInfo info, String path, int duration, boolean once) {
         if (info == null || path == null) {
             return;
@@ -16009,7 +16009,7 @@ public class ChatActivityEnterView extends FrameLayout implements
             // the guid filter above already rejects the four other VideoEditedInfo construction sites (their posts
             // don't reach here today), but that is an accident of upstream defaults in files that don't know this
             // gate depends on them -- the positive proof here is what actually guarantees correctness. A voice post
-            // (not VideoEditedInfo) is unaffected and binds as before (N6).
+            // (not VideoEditedInfo) is unaffected and binds as before.
             if (args[1] instanceof VideoEditedInfo) {
                 if (parentFragment == null || !parentFragment.isCurrentEnterView(this)
                         || args.length <= 4 || !(args[4] instanceof Integer)
@@ -16037,7 +16037,7 @@ public class ChatActivityEnterView extends FrameLayout implements
                 checkSendButton(false);
                 // NagramX (#video-draft-guard): the gate proved this finished clip belongs to the current composer.
                 // Persist it so a background / passcode-lock teardown doesn't lose it. onVideoDraftReady is
-                // mode-gated (P16) and adopts the file onto the send path only when this instance didn't record it.
+                // mode-gated and adopts the file onto the send path only when this instance didn't record it.
                 if (parentFragment != null && audioToSendPath != null && videoToSendMessageObject.roundVideo) {
                     parentFragment.onVideoDraftReady(videoToSendMessageObject, audioToSendPath, voiceOnce);
                 }

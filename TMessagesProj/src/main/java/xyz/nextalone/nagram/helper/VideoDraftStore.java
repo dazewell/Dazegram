@@ -116,7 +116,7 @@ public final class VideoDraftStore {
     //   - slot empty            -> write + lockFile
     //   - same id, same content -> no-op (a duplicate / leaked admission writes nothing)
     //   - same id, diff content -> trim update: rewrite, same file, no lock change
-    //   - different id          -> a newer recording supersedes: rewrite + lock new + UNLOCK old (N7), so the
+    //   - different id          -> a newer recording supersedes: rewrite + lock new + unlock the old file, so the
     //                              orphaned old file stays sweepable. Unlock is not a delete; this path removes
     //                              no file -- supersede-delete is deferred to the 24h expiry.
     public static void save(int account, long dialogId, long topicId, long id, String path, int duration, long startTime, long endTime, boolean voiceOnce) {
@@ -135,10 +135,15 @@ public final class VideoDraftStore {
             if (cur.contentEquals(next)) {
                 return;
             }
-            p.edit().putString(k, next.toString()).apply();
+            // NagramX (#video-draft-guard): commit(), not apply(), on the record-WRITE paths. We persist from
+            // onPause (the live finalize is a send(3)) and at drag-end, AFTER the framework's pause/stop flush
+            // barrier has already run -- an apply() write would sit queued while backgrounded and be lost to a
+            // process kill in exactly the window this feature exists for. A synchronous ~1-5ms write to a small
+            // per-account prefs file is the accepted cost; it will trip StrictMode in debug, which is fine.
+            p.edit().putString(k, next.toString()).commit();
             return;
         }
-        p.edit().putString(k, next.toString()).apply();
+        p.edit().putString(k, next.toString()).commit();
         AutoDeleteMediaTask.lockFile(path);
         // NagramX (#video-draft-guard): only unlock the superseded file, never the one we just locked. If a newer
         // recording somehow reuses the old path, unlockFile (a set remove) would strip the lock off the live draft
@@ -148,7 +153,7 @@ public final class VideoDraftStore {
         }
     }
 
-    // Update-only (P17 trim re-persist). Never creates, never supersedes: writes only when a record with THIS
+    // Update-only trim re-persist. Never creates, never supersedes: writes only when a record with THIS
     // id already occupies the slot and its content differs. A slot that is empty (persist mode-gated off) or
     // holds a different id (already superseded) is a no-op, so this trigger needs no separate mode gate.
     public static void updateTrim(int account, long dialogId, long topicId, long id, String path, int duration, long startTime, long endTime, boolean voiceOnce) {
@@ -167,7 +172,10 @@ public final class VideoDraftStore {
         if (cur.contentEquals(next)) {
             return;
         }
-        p.edit().putString(k, next.toString()).apply();
+        // NagramX (#video-draft-guard): commit(), not apply() -- this trim re-persist runs from onPause
+        // (persistVideoTrimIfBound), after the pause/stop flush barrier, same durability reasoning as save's
+        // write paths. A queued apply() here would be lost to a kill while backgrounded.
+        p.edit().putString(k, next.toString()).commit();
     }
 
     // Self-validating read: a record whose id didn't parse, whose file is gone/empty, or older than 24h is

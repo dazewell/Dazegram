@@ -8533,13 +8533,13 @@ public class ChatActivity extends BaseFragment implements
         contentView.setClipChildren(false);
 
         // NagramX (#video-draft-guard): a passcode-lock rebuild recreates this view here (createView) while the
-        // old InstantCameraView's onPause finalize (send(3), token snapshotted at InstantCameraView:1297) may
-        // still be in flight on its encoder thread. Bump the draft generation now -- before the fresh enter
-        // view is built just below and can observe audioDidSent -- so that late finalize becomes a deterministic
-        // reject at the enter-view token gate instead of admitting an unsendable preview onto a rebuilt instance
-        // (send(4) silently no-ops on textureView == null). createView runs on the UI thread and a producer's
-        // audioDidSent is posted via runOnUIThread, so the two can't interleave: the bump always precedes
-        // admission. Also fires on first creation -- a harmless no-op with nothing in flight.
+        // old InstantCameraView's onPause finalize (send(3), whose token is snapshotted when the finalize is
+        // requested) may still be in flight on its encoder thread. Bump the draft generation now -- before the
+        // fresh enter view is built just below and can observe audioDidSent -- so that late finalize becomes a
+        // deterministic reject at the enter-view token gate instead of admitting an unsendable preview onto a
+        // rebuilt instance (send(4) silently no-ops on textureView == null). createView runs on the UI thread and
+        // a producer's audioDidSent is posted via runOnUIThread, so the two can't interleave: the bump always
+        // precedes admission. Also fires on first creation -- a harmless no-op with nothing in flight.
         videoDraftToken++;
         instantCameraView = null;
 
@@ -38537,10 +38537,9 @@ public class ChatActivity extends BaseFragment implements
     }
 
     // NagramX (#video-draft-guard): whether this fragment is in a mode a video draft can be restored into --
-    // the mode terms of applyDraftMaybe's own guards (:32386 minus its chatActivityEnterView==null disjunct,
-    // plus the MODE_SUGGESTIONS guard :32389), so persist and restore agree on eligibility (P16). Does NOT
-    // fold in the field-text or voice-precedence suppressors -- those are non-destructive and checked at the
-    // restore site (N5).
+    // the mode terms of applyDraftMaybe's own guards (minus its chatActivityEnterView==null disjunct, plus the
+    // MODE_SUGGESTIONS guard), so persist and restore agree on which modes are eligible. Does NOT fold in the
+    // field-text or voice-precedence suppressors -- those are non-destructive and are checked at the restore site.
     public boolean canRestoreVideoDraft() {
         if (chatMode != 0 && chatMode != MODE_SUGGESTIONS && (chatMode != MODE_SAVED || getUserConfig().getClientUserId() != getSavedDialogId())) {
             return false;
@@ -38593,8 +38592,8 @@ public class ChatActivity extends BaseFragment implements
 
     // NagramX (#video-draft-guard): on chat open, sweep expired records, then restore a persisted round-video
     // preview if the composer is idle. Skips when a live/restored preview is already shown, the field has text,
-    // or a voice draft exists (N5 -- non-destructive precedence; the video record stays locked, not consumed).
-    // Reads the token, never bumps it (P9): the current gate's identity term already rejects leaked observers.
+    // or a voice draft exists -- non-destructive precedence: the video record stays locked, not consumed. Reads
+    // the recording token, never bumps it: the current gate's identity term already rejects leaked observers.
     private void restoreVideoDraftMaybe() {
         if (chatActivityEnterView == null || dialog_id == 0) {
             return;
