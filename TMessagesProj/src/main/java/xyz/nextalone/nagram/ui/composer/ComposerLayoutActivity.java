@@ -1313,9 +1313,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
+            // NagramX: must stay fed the same NaConfig.composerGlassAlpha value as the mock pill's
+            // provider in addMockInput() below, or the two preview surfaces disagree with each other
+            // (and with the real chat, where both read the one live-overridden provider) the moment the
+            // slider moves off its default.
             toolbar.attachGlass(
                     glassFactory,
-                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground));
+                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground,
+                            NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark())));
         }
 
         @Override
