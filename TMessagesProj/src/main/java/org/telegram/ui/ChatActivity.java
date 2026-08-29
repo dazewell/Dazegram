@@ -4076,10 +4076,7 @@ public class ChatActivity extends BaseFragment implements
                     return ColorUtils.setAlphaComponent(getThemedColor(Theme.key_chat_messagePanelBackground), 255);
                 }
 
-                final boolean isThemeLight = themeDelegate != null && !themeDelegate.isDark();
-                if (isThemeLight) {
-                    return ColorUtils.setAlphaComponent(super.getBackgroundColor(), 216);
-                }
+                // NagramX: dropped upstream's light-theme alpha 216 override — light now shares dark theme's base formula, like most other glass surfaces (PeerStoriesView's composer intentionally stays at its own 0.8f)
                 return super.getBackgroundColor();
             }
         };
@@ -4090,10 +4087,7 @@ public class ChatActivity extends BaseFragment implements
                     return ColorUtils.setAlphaComponent(getThemedColor(Theme.key_windowBackgroundWhite), 255);
                 }
 
-                final boolean isThemeLight = themeDelegate != null && !themeDelegate.isDark();
-                if (isThemeLight) {
-                    return ColorUtils.setAlphaComponent(super.getBackgroundColor(), 216);
-                }
+                // NagramX: dropped upstream's light-theme alpha 216 override — light now shares dark theme's base formula, like most other glass surfaces (PeerStoriesView's composer intentionally stays at its own 0.8f)
                 return super.getBackgroundColor();
             }
         };
