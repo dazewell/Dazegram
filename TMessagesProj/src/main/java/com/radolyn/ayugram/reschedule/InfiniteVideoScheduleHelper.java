@@ -99,11 +99,17 @@ public final class InfiniteVideoScheduleHelper {
      * <p>The clamps are otherwise defence in depth against the device clock being skewed: a past-due
      * slot is pushed to {@code now + 60}; a slot past the 1-year window is pinned to the maximum.
      * Successive segments are recorded ~60s apart, so {@code max(slot, now + 60)} can't fold two
-     * segments onto one slot. At the far end several trailing segments could share the maximum, but
-     * that is unreachable in practice -- it needs the base at the 1-year maximum plus ~720 further
-     * segments (12h+ of unbroken recording on the Unlimited ceiling). Even in that degenerate case,
-     * equal schedule_dates dispatch in submission order and segments are submitted in recording
-     * order, so the send order the invariant protects survives regardless.
+     * segments onto one slot. At the far end, once the base sits late enough on the last pickable
+     * day, trailing segments start sharing the maximum. How soon that happens is whatever headroom
+     * is left in that final day: base at day 365 @ 23:59 leaves ~59s, so segment 1 already pins;
+     * at 23:00 leaves ~1h, pinning near segment 30; at 12:00 leaves ~12h, near segment 360; any base
+     * on day 364 or earlier has a full day of headroom, so nothing pins until segment ~720 or later.
+     * When several segments do share the maximum, nothing in this tree establishes the order the
+     * server sends them in -- schedule_date is only ever written onto the outgoing request and the
+     * dispatch at the due instant is entirely server-side -- so that pinned tail is accepted as
+     * best-effort, which is exactly what the sheet's red caveat tells the user. Don't lean on a
+     * submission-order tie-break; the monotonic invariant above is what keeps ordinary sequences
+     * correct, and the tail is the one place it degrades to best-effort by design.
      */
     public static int segmentDate(int currentAccount, int baseDate, int segmentIndex) {
         long slot = (long) baseDate + (long) SEGMENT_INTERVAL_SECONDS * segmentIndex;
