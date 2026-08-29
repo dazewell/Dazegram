@@ -82,10 +82,20 @@ public class ComposerLayoutActivity extends BaseFragment {
      * the Leading header answer with a slider's sentinel zone.
      */
     private static final int TYPE_SLIDER_HEADER = 7;
+    /**
+     * Own type rather than sharing TYPE_SLIDER_HEADER's sibling slider types: TYPE_SCALE and
+     * TYPE_SPACING already split for this exact reason (see TYPE_SPACING's note), and these two
+     * never call setMinValueAllowed, so a shared pool with either would leave a recycled row
+     * carrying a stale floor from a scale/spacing bind.
+     */
+    private static final int TYPE_GLASS_LIGHT = 8;
+    private static final int TYPE_GLASS_DARK = 9;
 
-    /** Sentinel "zones" for the two slider groups, so one header/footer lookup serves both. */
+    /** Sentinel "zones" for the four slider groups, so one header/footer lookup serves all of them. */
     private static final int GROUP_SCALE = -1;
     private static final int GROUP_SPACING = -2;
+    private static final int GROUP_GLASS_LIGHT = -3;
+    private static final int GROUP_GLASS_DARK = -4;
 
     private static final int SCALE_MIN = 75;
     private static final int SCALE_MAX = 125;
@@ -118,6 +128,20 @@ public class ComposerLayoutActivity extends BaseFragment {
      * still one anchor, which leaves a detent every five percent along a one-percent track.
      */
     private static final int SPACING_BETWEEN_STEPS = 5;
+
+    /**
+     * Pass-through percent, not opacity - higher shows more wallpaper through the panel. 25%
+     * (opacity 0.75) sits a hair under today's fixed 0.76 base alpha, so shipping the default
+     * changes nothing visible (see NaConfig.composerGlassAlpha for the pass-through -> opacity
+     * conversion). Same eleven-stop count as the toolbar-size slider, one sub-step needed since
+     * every anchor is already a whole percent.
+     */
+    private static final int GLASS_MIN = 0;
+    private static final int GLASS_MAX = 50;
+    private static final int GLASS_DEFAULT = 25;
+    private static final int[] GLASS_STEPS = {
+            0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50
+    };
 
     /** Header text plus the breathing room above and below the capsule, in dp. */
     private static final int PREVIEW_HEADER_HEIGHT = 40;
@@ -280,6 +304,12 @@ public class ComposerLayoutActivity extends BaseFragment {
         items.add(new Item(TYPE_SLIDER_HEADER, GROUP_SPACING, null));
         items.add(new Item(TYPE_SPACING, GROUP_SPACING, null));
         items.add(new Item(TYPE_INFO, GROUP_SPACING, null));
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_GLASS_LIGHT, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_INFO, GROUP_GLASS_LIGHT, null));
+        items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_DARK, null));
+        items.add(new Item(TYPE_GLASS_DARK, GROUP_GLASS_DARK, null));
+        items.add(new Item(TYPE_INFO, GROUP_GLASS_DARK, null));
         for (int zone : ZONE_ORDER) {
             items.add(new Item(TYPE_HEADER, zone, null));
             List<String> keys = zones.get(zone);
@@ -402,6 +432,8 @@ public class ComposerLayoutActivity extends BaseFragment {
         ComposerLayout.reset();
         NaConfig.INSTANCE.getComposerToolbarScale().setConfigInt(100);
         NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(100);
+        NaConfig.INSTANCE.getComposerGlassLight().setConfigInt(GLASS_DEFAULT);
+        NaConfig.INSTANCE.getComposerGlassDark().setConfigInt(GLASS_DEFAULT);
         lastSaved = ComposerLayout.snapshot();
         buildItems(lastSaved);
         if (adapter != null) {
@@ -457,6 +489,8 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_SCALE:
                 case TYPE_SPACING:
+                case TYPE_GLASS_LIGHT:
+                case TYPE_GLASS_DARK:
                     view = new SlideIntChooseView(context, null);
                     view.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundWhite));
                     break;
@@ -546,9 +580,32 @@ public class ComposerLayoutActivity extends BaseFragment {
                     // still null, so the order is what makes the floor stick.
                     spacingView.setMinValueAllowed(spacingFloor());
                     break;
+                case TYPE_GLASS_LIGHT:
+                    SlideIntChooseView glassLightView = (SlideIntChooseView) holder.itemView;
+                    glassLightView.setLabel(LocaleController.getString(R.string.ComposerGlassLightAccDescr));
+                    glassLightView.set(currentGlassLight(), glassOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerGlassLight().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerGlassLight().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
+                    break;
+                case TYPE_GLASS_DARK:
+                    SlideIntChooseView glassDarkView = (SlideIntChooseView) holder.itemView;
+                    glassDarkView.setLabel(LocaleController.getString(R.string.ComposerGlassDarkAccDescr));
+                    glassDarkView.set(currentGlassDark(), glassOptions(), value -> {
+                        if (value == NaConfig.INSTANCE.getComposerGlassDark().Int()) {
+                            return;
+                        }
+                        NaConfig.INSTANCE.getComposerGlassDark().setConfigInt(value);
+                        rebuildPending = true;
+                        updatePreview();
+                    });
+                    break;
                 case TYPE_SLIDER_HEADER:
-                    ((HeaderCell) holder.itemView).setText(LocaleController.getString(
-                            item.zone == GROUP_SPACING ? R.string.ComposerSpacing : R.string.ComposerScale));
+                    ((HeaderCell) holder.itemView).setText(LocaleController.getString(sliderHeaderText(item.zone)));
                     break;
                 default:
                     ComposerButtons.Button button = ComposerButtons.get(item.key);
@@ -579,6 +636,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return R.string.ComposerScaleInfo;
             case GROUP_SPACING:
                 return R.string.ComposerSpacingInfo;
+            case GROUP_GLASS_LIGHT:
+                return R.string.ComposerGlassLightInfo;
+            case GROUP_GLASS_DARK:
+                return R.string.ComposerGlassDarkInfo;
             case ComposerButtons.ZONE_START:
                 return R.string.ComposerZoneLeadingInfo;
             case ComposerButtons.ZONE_MIDDLE:
@@ -587,6 +648,21 @@ public class ComposerLayoutActivity extends BaseFragment {
                 return R.string.ComposerZoneTrailingInfo;
             default:
                 return R.string.ComposerLayoutInfo;
+        }
+    }
+
+    /** One lookup for every TYPE_SLIDER_HEADER row - a binary ternary worked while there were only
+     * two slider groups, but stopped being able to tell four apart. */
+    private static int sliderHeaderText(int zone) {
+        switch (zone) {
+            case GROUP_SPACING:
+                return R.string.ComposerSpacing;
+            case GROUP_GLASS_LIGHT:
+                return R.string.ComposerGlassLight;
+            case GROUP_GLASS_DARK:
+                return R.string.ComposerGlassDark;
+            default:
+                return R.string.ComposerScale;
         }
     }
 
@@ -852,6 +928,21 @@ public class ComposerLayoutActivity extends BaseFragment {
             }
         }
         return RecyclerView.NO_POSITION;
+    }
+
+    private static SlideIntChooseView.Options glassOptions() {
+        return SlideIntChooseView.Options.make(0, GLASS_STEPS, 1,
+                (type, value) -> value + "%");
+    }
+
+    private static int currentGlassLight() {
+        int percent = NaConfig.INSTANCE.getComposerGlassLight().Int();
+        return Math.max(GLASS_MIN, Math.min(GLASS_MAX, percent));
+    }
+
+    private static int currentGlassDark() {
+        int percent = NaConfig.INSTANCE.getComposerGlassDark().Int();
+        return Math.max(GLASS_MIN, Math.min(GLASS_MAX, percent));
     }
 
     /**
