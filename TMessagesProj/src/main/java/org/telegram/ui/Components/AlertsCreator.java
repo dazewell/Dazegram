@@ -4701,7 +4701,7 @@ public class AlertsCreator {
 
         // NagramX: on the scheduled-infinite sheet, explain the +2min spacing and the best-effort ordering caveat.
         if (minLeadSeconds > 0) {
-            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor);
+            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
         }
 
         // NagramX: no delay slider on a reschedule sheet — dragging it rewrites the global default

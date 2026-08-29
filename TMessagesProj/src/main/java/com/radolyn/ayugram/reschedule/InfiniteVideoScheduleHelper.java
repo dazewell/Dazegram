@@ -113,7 +113,7 @@ public final class InfiniteVideoScheduleHelper {
      * Appends the two explainer lines under the pickers: what the +2min spacing does, and a red
      * caveat that Telegram's scheduler is best-effort so tightly spaced sends can run out of order.
      */
-    public static void installHints(Context context, LinearLayout container, int textColor) {
+    public static void installHints(Context context, LinearLayout container, int textColor, Theme.ResourcesProvider resourcesProvider) {
         final TextView spacing = new TextView(context);
         spacing.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         spacing.setTextColor(Theme.multAlpha(textColor, 0.75f));
@@ -126,7 +126,7 @@ public final class InfiniteVideoScheduleHelper {
         ordering.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
         ordering.setGravity(Gravity.CENTER_HORIZONTAL);
         ordering.setPadding(dp(22), 0, dp(22), 0);
-        ordering.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+        ordering.setTextColor(Theme.getColor(Theme.key_text_RedRegular, resourcesProvider));
         ordering.setText(getString(R.string.InfiniteRecordingScheduleOrderingHint));
         container.addView(ordering, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 6));
     }
