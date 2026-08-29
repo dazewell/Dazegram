@@ -26,11 +26,12 @@ public class WallpaperBitmapProvider {
     private final BlurredBackgroundSourceBitmap sourceBitmap = new BlurredBackgroundSourceBitmap();
     private final MotionGlassCompositor motionGlassCompositor = new MotionGlassCompositor();
 
-    // NagramX: the composited source (gradient + pattern) is a tiny screen-aspect proxy the glass
-    // cover-scales ~9x with nothing softening it (see MotionGlassCompositor). That reads fine behind a
-    // small refracted composer pill but smears the pattern into enormous blocks on a full-screen
-    // surface. Full-screen consumers take this "plain" source instead: the pre-#230 gradient-only mesh
-    // (or flat black when intensity<0), which upscales invisibly because it has no line-art to smear.
+    // NagramX: the composited source (gradient + pattern) is a small screen-aspect proxy the glass
+    // cover-scales several times over with nothing softening it (see MotionGlassCompositor). That reads
+    // fine behind a small refracted composer pill but smears the pattern into coarse, enlarged blocks on
+    // a full-screen surface. Full-screen consumers take this "plain" source instead: the pre-#230
+    // gradient-only mesh (or flat black when intensity<0), which upscales invisibly because it has no
+    // line-art to smear.
     private final BlurredBackgroundSourceColor plainSourceColor = new BlurredBackgroundSourceColor();
     private final BlurredBackgroundSourceBitmap plainSourceBitmap = new BlurredBackgroundSourceBitmap();
     private BlurredBackgroundSource plainSource;
