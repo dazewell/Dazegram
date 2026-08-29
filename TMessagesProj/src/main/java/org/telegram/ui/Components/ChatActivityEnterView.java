@@ -15571,6 +15571,12 @@ public class ChatActivityEnterView extends FrameLayout implements
         return audioToSendMessageObject != null || videoToSendMessageObject != null;
     }
 
+    // NagramX: video-only slice of hasAudioToSend() -- the back-press guard must not react to a pending
+    // voice message, only to a finished-but-unsent round video sitting in the preview strip (state b).
+    public boolean hasVideoToSend() {
+        return videoToSendMessageObject != null;
+    }
+
     public void openKeyboard() {
         if (hasBotWebView() && botCommandsMenuIsShowing() || BaseFragment.hasSheets(parentFragment)) {
             return;
@@ -15887,6 +15893,15 @@ public class ChatActivityEnterView extends FrameLayout implements
         } else if (id == NotificationCenter.audioDidSent) {
             int guid = (Integer) args[0];
             if (guid != recordingGuid) {
+                return;
+            }
+            // NagramX: drop a round-video finalize that completed after the chat was rebuilt (passcode unlock)
+            // and superseded by a newer recording or a restore -- its snapshotted draft token no longer matches
+            // the current one, so landing it would overwrite the live preview. recordingGuid can't catch this:
+            // it's the fragment's classGuid and is unchanged across the rebuild. Only video posts carry the
+            // token (args[4]); a voice post or an older post without it is never dropped here.
+            if (args[1] instanceof VideoEditedInfo && args.length > 4 && parentFragment != null
+                    && (Integer) args[4] != parentFragment.getVideoDraftToken()) {
                 return;
             }
             millisecondsRecorded = 0;

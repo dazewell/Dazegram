@@ -184,6 +184,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private boolean deviceHasGoodCamera;
     private boolean requestingPermissions;
     private File cameraFile;
+    // NagramX: token of the draft generation this finalize belongs to, snapshotted on the UI thread when the
+    // stop is requested and echoed back through audioDidSent. ChatActivity bumps its counter when a new
+    // recording starts or a restore is applied, so a finalize that completes after the view was rebuilt and
+    // superseded is dropped at delivery instead of clobbering the current draft. volatile: set on the UI
+    // thread, read on the encoder thread that posts the completion.
+    private volatile int finalizeDraftToken;
     private File previewFile;
     private long recordStartTime;
     private long recordPlusTime;
@@ -854,6 +860,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return !recording;
     }
 
+    // NagramX: true only while a round video is actively capturing -- live with the finger down (a) or
+    // hands-free/locked (c). Positive liveness, not isPaused()'s !recording, which also reads true when
+    // nothing was ever started. onPause uses this to finalize a still-capturing recording before the app
+    // backgrounds. Read on the UI thread only, like every other reader of `recording`.
+    public boolean isRecording() {
+        return recording;
+    }
+
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {
@@ -1280,6 +1294,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             MediaController.getInstance().requestRecordAudioFocus(false);
         } else {
+            finalizeDraftToken = delegate != null ? delegate.getVideoDraftToken() : 0; // NagramX: pin the draft generation this stop finalizes so a late completion can be matched at delivery
             cancelled = recordedTime < 800;
             recording = false;
             flashing = false;
@@ -3784,7 +3799,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
-                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs);
+                            NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, finalizeDraftToken);
                         }
                     });
                 }
@@ -4866,6 +4881,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         Activity getParentActivity();
         int getClassGuid();
         long getDialogId();
+
+        // NagramX: current draft-guard generation, bumped by the host when a new recording starts or a
+        // restore is applied. send() snapshots it so a stale finalize can be rejected at delivery.
+        default int getVideoDraftToken() {
+            return 0;
+        }
 
         default boolean isSecretChat() {
             return false;

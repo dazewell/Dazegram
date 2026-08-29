@@ -743,6 +743,10 @@ public class ChatActivity extends BaseFragment implements
     private ChatActionCell infoTopView;
     private int hideDateDelay = 500;
     public InstantCameraView instantCameraView;
+    // NagramX: draft-guard generation. Bumped when a new round video recording begins or a persisted draft is
+    // restored, and snapshotted into each finalize request, so a finalize that completes after a passcode-lock
+    // rebuild superseded it is dropped instead of overwriting the current draft. UI thread only.
+    public int videoDraftToken;
     private View overlayView;
     private boolean currentFloatingDateOnScreen;
     private boolean currentFloatingTopicOnScreen;
@@ -2700,6 +2704,7 @@ public class ChatActivity extends BaseFragment implements
             checkInstantCameraView();
             if (instantCameraView != null) {
                 if (state == 0) {
+                    videoDraftToken++; // NagramX: a new recording session supersedes any still-in-flight finalize from a previous one
                     instantCameraView.showCamera(false);
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
@@ -32094,6 +32099,13 @@ public class ChatActivity extends BaseFragment implements
         // edit or scheduled-compose text (neither has a draft to fall back on) so the old field's live Editable isn't held across the rebuild
         CharSequence fieldText = chatActivityEnterView != null && (editingMessageObject != null || chatMode == MODE_SCHEDULED) ? chatActivityEnterView.getFieldText() : null;
         textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
+        // NagramX: a round video that's still capturing -- live with the finger down, or hands-free/locked --
+        // would be lost if the app backgrounds now (worst with passcode lock set to Immediately, which rebuilds
+        // the chat on unlock). Finalize it into the preview strip so its file and prefs record survive. send(3)
+        // only posts the stop request; the muxer close runs on the encoder thread, so this never blocks pause.
+        if (instantCameraView != null && instantCameraView.isRecording()) {
+            instantCameraView.send(3, true, 0, 0, 0, 0, 0);
+        }
         if (chatAttachAlert != null) {
             if (!ignoreAttachOnPause) {
                 chatAttachAlert.onPause();
@@ -37159,7 +37171,11 @@ public class ChatActivity extends BaseFragment implements
                 parentLayout.addFragmentToStack(backToPreviousFragment, parentLayout.getFragmentStack().size() - 1);
                 backToPreviousFragment = null;
             }
-            if (instantCameraView != null) {
+            if (instantCameraView != null && !(chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend())) {
+                // NagramX: cancel(false) deletes cameraFile, which in state (b) is the finished unsent round
+                // video shown in the preview strip -- an accidental back would silently destroy it. Skip the
+                // cancel when one exists; the clip stays on disk (its prefs record was written when the preview
+                // appeared) and is restored on re-entry. Fragment teardown frees the camera without deleting.
                 instantCameraView.cancel(false);
             }
         }
@@ -38429,6 +38445,12 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public int toggleInfiniteRecording() {
         return chatActivityEnterView == null ? InstantCameraView.INFINITE_RECORDING_UNAVAILABLE : chatActivityEnterView.toggleInfiniteRecording();
+    }
+
+    // NagramX: draft-guard generation the recorder snapshots into a finalize request; see videoDraftToken.
+    @Override
+    public int getVideoDraftToken() {
+        return videoDraftToken;
     }
 
     // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
