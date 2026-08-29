@@ -250,7 +250,6 @@ import tw.nekomimi.nekogram.utils.AndroidUtil;
 import tw.nekomimi.nekogram.utils.StringUtils;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
-import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 public class ChatActivityEnterView extends FrameLayout implements
     NotificationCenter.NotificationCenterDelegate,
@@ -12896,7 +12895,8 @@ public class ChatActivityEnterView extends FrameLayout implements
         return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftId : 0;
     }
 
-    public void setSelection(int start) {        if (messageEditText == null) {
+    public void setSelection(int start) {
+        if (messageEditText == null) {
             return;
         }
         messageEditText.setSelection(start, messageEditText.length());
