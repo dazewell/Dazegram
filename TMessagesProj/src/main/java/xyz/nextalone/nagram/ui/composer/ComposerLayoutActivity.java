@@ -1422,16 +1422,53 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
+    /**
+     * SlideIntChooseView (upstream, not ours to edit) bakes its row background and its min/value
+     * text colours in once - at construction and, for the value text, only on a value change - and
+     * exposes no way to repaint them from outside. A plain rebind can't reach them, so the only way
+     * to make a slider row match a fresh entry into this screen after a theme flip is to force the
+     * adapter to actually rebuild it. Removing then reinserting the same item at its own position
+     * does that: the removed row's holder isn't eligible for reuse until its exit animation finishes,
+     * so the insert that follows has nothing to recycle and has to go through onCreateViewHolder,
+     * which reruns the exact bind path (including TYPE_SPACING's set()-then-setMinValueAllowed()
+     * order) a fresh entry would.
+     */
+    private void refreshSliderRow(int position) {
+        if (adapter == null || position < 0 || position >= items.size()) {
+            return;
+        }
+        Item item = items.remove(position);
+        adapter.notifyItemRemoved(position);
+        items.add(position, item);
+        adapter.notifyItemInserted(position);
+    }
+
     @Override
     public ArrayList<ThemeDescription> getThemeDescriptions() {
         ArrayList<ThemeDescription> descriptions = new ArrayList<>();
 
         ThemeDescription.ThemeDescriptionDelegate delegate = () -> {
             if (listView != null) {
+                ArrayList<Integer> staleSliderPositions = null;
                 for (int i = 0; i < listView.getChildCount(); i++) {
                     View child = listView.getChildAt(i);
                     if (child instanceof ButtonRowCell) {
                         ((ButtonRowCell) child).applyTheme();
+                    } else if (child instanceof SlideIntChooseView) {
+                        int position = listView.getChildAdapterPosition(child);
+                        if (position != RecyclerView.NO_POSITION) {
+                            if (staleSliderPositions == null) {
+                                staleSliderPositions = new ArrayList<>();
+                            }
+                            staleSliderPositions.add(position);
+                        }
+                    }
+                }
+                // Collected first, then applied: rebuilding a row while this loop is still walking
+                // listView's live children would shift the very list it is iterating over.
+                if (staleSliderPositions != null) {
+                    for (int position : staleSliderPositions) {
+                        refreshSliderRow(position);
                     }
                 }
             }
