@@ -12872,10 +12872,6 @@ public class ChatActivityEnterView extends FrameLayout implements
         recordInterfaceState = 1;
         recordCircle.resetLockTranslation(false);
         recordControlsCircleScale.set(recordCircle, 1f);
-        if (controlsView != null) {
-            controlsView.setVisibility(VISIBLE);
-            controlsView.setAlpha(1f);
-        }
         voiceOnce = once;
         if (controlsView != null) {
             controlsView.periodDrawable.setValue(1, voiceOnce, true);
