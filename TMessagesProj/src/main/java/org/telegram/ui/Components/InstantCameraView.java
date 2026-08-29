@@ -170,6 +170,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     @Nullable
     private VideoEditedInfo videoEditedInfo;
     private VideoPlayer videoPlayer;
+    // NagramX (#video-draft-guard): set when the fragment is torn down (or rebuilt by a passcode lock) while a
+    // finished draft still sits in the preview. The back-guard skips cancel() to avoid deleting that clip, so the
+    // looping preview player and its ~60 Hz progress timer would otherwise outlive the view and pile up. This flag
+    // also guards setupVideoPlayer against a runnable already queued on the UI thread landing after abandonment.
+    // Non-volatile on purpose: every reader and writer runs on the UI thread, so the only hazard is a same-thread
+    // queued post, not a cross-thread data race -- do not add volatile or synchronization.
+    private boolean previewAbandoned;
     private Bitmap lastBitmap;
     private int recordingGuid;
 
@@ -188,6 +195,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private long recordStartTime;
     private long recordPlusTime;
     private boolean recording;
+    // NagramX (#video-draft-guard): true when a restored round-video draft's file has been adopted into this
+    // instance (see adoptRestoredDraft). A rebuilt instance restoring a draft never opened its camera, so
+    // textureView is null and send()'s textureView==null guard would drop the send -- this flag lets the
+    // state==4 send through for exactly that adopted case. A fresh recording clears it (showCamera).
+    private boolean sendAdoptedDraft;
     private long recordedTime;
     private boolean cancelled;
 
@@ -869,6 +881,41 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return recording;
     }
 
+    // NagramX (#video-draft-guard): wire a restored round-video draft's on-disk file into this instance so the
+    // normal state==4 send path can re-upload and send it, without re-opening the camera. Refuses when a live
+    // session is present (recording, or a same-session finalize already holds its own cameraFile) so it can
+    // never clobber a real recording's file -- in that case the object is already shared and native trim wins.
+    // The passed info carries the persisted trim + draft id and becomes this instance's videoEditedInfo, so
+    // send(4) reads the exact cut. Locks the file for the life of the send. Returns true only when it actually
+    // took ownership (assigned cameraFile/size/videoEditedInfo and locked); false on every refusal so the caller
+    // can decline to bind a preview this instance can't send.
+    public boolean adoptRestoredDraft(File file, long fileSize, VideoEditedInfo info) {
+        if (recording || videoEncoder != null || cameraThread != null) {
+            return false;
+        }
+        if (cameraFile != null && cameraFile.exists()) {
+            return false;
+        }
+        if (file == null || !file.exists() || info == null) {
+            return false;
+        }
+        cameraFile = file;
+        size = fileSize;
+        videoEditedInfo = info;
+        sendAdoptedDraft = true;
+        // NagramX (#video-draft-guard): force the normal upload flow for this file. send(4)'s untrimmed branch
+        // copies these fields straight onto videoEditedInfo without nulling them (only the trimmed branch clears
+        // them), so any leftover upload material on this instance would otherwise ride along with the restored
+        // draft as a stale InputFile / encryption key. A fresh instance holds nulls already; clear them anyway so
+        // the adopted send never depends on that. Use this.file -- the java.io.File parameter shadows the field.
+        this.file = null;
+        encryptedFile = null;
+        key = null;
+        iv = null;
+        AutoDeleteMediaTask.lockFile(file);
+        return true;
+    }
+
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {
@@ -976,6 +1023,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         if (!fromPaused) {
             cameraFile = generateCameraFile();
+            sendAdoptedDraft = false; // NagramX (#video-draft-guard): a fresh recording owns a live cameraFile; drop any restored-draft send state
         }
 
         SharedConfig.saveConfig();
@@ -1240,7 +1288,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
-        if (textureView == null) {
+        if (textureView == null && !(sendAdoptedDraft && state == 4)) {
+            // NagramX (#video-draft-guard): a restored draft (a rebuilt instance that only adopted a file, never
+            // opened the camera) has no textureView, but its cameraFile/videoEditedInfo are set up by
+            // adoptRestoredDraft, so let the state==4 send through instead of silently dropping the message.
             return;
         }
         stopProgressTimer();
@@ -1454,6 +1505,21 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         MediaController.getInstance().requestRecordAudioFocus(false);
         startAnimation(false, false);
         invalidate();
+    }
+
+    // NagramX (#video-draft-guard): release only the preview player and its progress timer, never the clip.
+    // cancel() releases these too, but it also deletes cameraFile and unlocks it in its delete-and-unlock block;
+    // this narrow variant exists so fragment teardown and the passcode rebuild can stop the leaking player/timer
+    // without touching the finished draft. hideCamera() / destroy() / cancel() are deliberately not called here --
+    // they route to encoder cancellation and file deletion, which is exactly the deletion path this feature must
+    // never introduce.
+    public void abandonPreview() {
+        previewAbandoned = true;
+        stopProgressTimer();
+        if (videoPlayer != null) {
+            videoPlayer.releasePlayer(true);
+            videoPlayer = null;
+        }
     }
 
     public View getButtonsLayout() {
@@ -3280,12 +3346,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 //                    FileLog.e(e);
 //                }
 //            }
+            // NagramX (#video-draft-guard): track whether finishMovie() actually completed (returned without
+            // throwing), the same positive signal finishMuxer uses on the stop path. Set inside the write runnable
+            // before countDown, so the await below happens-after it and the read is safe. A broken finalize must
+            // not be minted a draft id, or it would persist and unlock the previous good record's file. finishMovie
+            // succeeding doesn't prove the file has video either, so the mint below also requires videoTrackIndex.
+            final boolean[] finalizeSuccess = {false};
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
                     fileWriteQueue.postRunnable(() -> {
                         try {
                             mediaMuxer.finishMovie(previewFile);
+                            finalizeSuccess[0] = true;
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
@@ -3299,11 +3372,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 } else {
                     try {
                         mediaMuxer.finishMovie(previewFile);
+                        finalizeSuccess[0] = true;
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
                 }
             }
+            // videoTrackIndex (-5 sentinel unless a video track was added) is read here on the encoder thread that
+            // writes it, folded into finalizeOk before the async UI post -- never read across the thread boundary.
+            final boolean finalizeOk = finalizeSuccess[0] && videoTrackIndex != -5;
 //            FileLoader.getInstance(currentAccount).cancelFileUpload(videoFile.getAbsolutePath(), false);
             // NagramX: capture the pin into a local before the async boundary, same idiom as capturedGeneration
             // in handleStopRecording -- the post must carry the generation pinned here, not re-read the field at
@@ -3325,6 +3402,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 videoEditedInfo.originalPath = previewFile.getAbsolutePath();
                 setupVideoPlayer(previewFile);
                 videoEditedInfo.estimatedDuration = recordedTime;
+                // NagramX (#video-draft-guard): same draft-identity stamp as the stop producer, so a paused-then-
+                // previewed clip persists and restores by id like a fully-stopped one. Only when finalize succeeded;
+                // a 0 id leaves the clip previewable but unpersisted (save()'s reject sentinel), superseding nothing.
+                videoEditedInfo.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
                 NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, videoEditedInfo, previewFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
             });
         }
@@ -3565,6 +3646,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         }
 
         private void setupVideoPlayer(File file) {
+            // NagramX (#video-draft-guard): a runnable posted before the fragment was abandoned can still land here
+            // after abandonPreview() ran on the same UI thread. Skip re-acquiring the preview player, the ~60 Hz
+            // timer and the controls fade -- but let the EGL teardown below run unconditionally, since an early
+            // return would trade the player leak this fix removes for an EGL surface/context leak. Guarding inside
+            // the method rather than at the call sites is what keeps the naxDraftId mint and the audioDidSent post
+            // that follow each call intact -- call-site guarding would have suppressed them on every abandonment.
+            // That is all this guard does; it does not itself guarantee the draft persists. Persistence past the
+            // post depends on the token gate in ChatActivityEnterView's audioDidSent handler: a finalize that lost
+            // the race to a rebuild, which already bumped videoDraftToken, is rejected there before
+            // ChatActivity.onVideoDraftReady's save and so survives only as a locked orphan on disk.
+            if (!previewAbandoned) {
             videoPlayer = new VideoPlayer();
             videoPlayer.setDelegate(new VideoPlayer.VideoPlayerDelegate() {
                 @Override
@@ -3608,6 +3700,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             animatorSet.setDuration(180);
             animatorSet.setInterpolator(new DecelerateInterpolator());
             animatorSet.start();
+            }
 
             EGL14.eglDestroySurface(eglDisplay, eglSurface);
             eglSurface = EGL14.EGL_NO_SURFACE;
@@ -3745,8 +3838,19 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewFile.delete();
                 previewFile = null;
             }
+            // NagramX (#video-draft-guard): capture whether finalization actually succeeded (finishMuxer already
+            // computes this -- true iff finishMovie() didn't throw / the write wasn't interrupted). A broken mp4
+            // must not be minted a draft id below, or it would persist, supersede the previous good record and
+            // unlock its file. mediaMuxer == null means nothing was finalized here, so treat that as not-ok too.
+            // finishMuxer proves the muxer closed cleanly, not that the file has video -- an audio-only clip (video
+            // encoder never emitted a format, e.g. a camera glitch or a near-instant stop) finalizes fine but must
+            // not be persisted either. videoTrackIndex stays at its -5 sentinel unless a video track was added, and
+            // it's written on this (encoder) thread, so reading it here -- not in the UI post below -- is same-thread.
+            final boolean finalizeOk;
             if (mediaMuxer != null) {
-                finishMuxer();
+                finalizeOk = finishMuxer() && videoTrackIndex != -5;
+            } else {
+                finalizeOk = false;
             }
             if (send != 2) {
                 DispatchQueue queue = generateKeyframeThumbsQueue;
@@ -3839,6 +3943,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         } else {
                             setupVideoPlayer(videoFile);
                             info.estimatedDuration = recordedTime;
+                            // NagramX (#video-draft-guard): stamp a fresh draft identity onto the finished-but-unsent
+                            // clip before it's posted to the composer, so persist / restore / clear can match this exact
+                            // draft by id across a process boundary, never by chat slot. Only when finalize succeeded --
+                            // a 0 id leaves save() a no-op (its reject sentinel), so a broken clip still previews but is
+                            // never persisted, superseding nothing.
+                            info.naxDraftId = finalizeOk ? xyz.nextalone.nagram.helper.VideoDraftStore.newId() : 0;
                             NotificationCenter.getInstance(currentAccount).postNotificationName(NotificationCenter.audioDidSent, recordingGuid, info, videoFile.getAbsolutePath(), keyframeThumbs, capturedFinalizeGeneration);
                         }
                     });

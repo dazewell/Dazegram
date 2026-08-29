@@ -4478,6 +4478,11 @@ public class ChatActivityEnterView extends FrameLayout implements
             @Override
             public void didStopDragging() {
                 delegate.needChangeVideoPreviewState(0, 0);
+                // NagramX (#video-draft-guard): the trim handles just settled, so the bound object holds the user's
+                // final cut. Persist it (update-only) so a passcode lock / background after trimming restores the
+                // same cut, not the pre-trim state. Discrete, once per gesture -- deliberately not the continuous
+                // onLeftProgressChanged / onRightProgressChanged callbacks, which fire per drag frame.
+                persistVideoTrimIfBound();
             }
         });
         recordedAudioPanel.addView(videoTimelineView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.CENTER_VERTICAL | Gravity.LEFT, 56, 0, 8, 0));
@@ -12835,6 +12840,87 @@ public class ChatActivityEnterView extends FrameLayout implements
         MediaController.getInstance().prepareResumedRecording(currentAccount, draft, dialog_id, replyingMessageObject, getThreadMessage(), storyItem, recordingGuid, parentFragment != null ? parentFragment.getMessageChatSendParams() : null, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
     }
 
+    // NagramX (#video-draft-guard): rebuild the round-video preview strip from a restored draft, mirroring what
+    // the audioDidSent bind does for a live finalize but sourced from the persisted record. The passed info
+    // already carries the persisted trim (absolute ms) and draft id and becomes the bound object, so the same
+    // object the timeline delegate writes and send(4) reads is one and the same. Keyframe
+    // thumbs aren't restored -- setVideoPath re-extracts them from the file. The visible trim handles are seeded
+    // to match the persisted cut (the -1 sentinel maps to 0.0/1.0, never a negative quotient).
+    public void setVideoDraft(VideoEditedInfo info, String path, int duration, boolean once) {
+        if (info == null || path == null) {
+            return;
+        }
+        if (!new File(path).exists()) {
+            return;
+        }
+        createRecordAudioPanel();
+        if (videoTimelineView == null) {
+            return;
+        }
+        // NagramX (#video-draft-guard): a passcode rebuild hands us a fresh enter view with none of the
+        // recording UI state primed, so updateRecordInterface would early-return and leave the preview
+        // invisible while the send button still arms. Establish that state the same way the persisted-voice
+        // restore does in the audioDidSent handler: prime the in-memory video mode (false = don't persist,
+        // so we don't flip the saved mic-vs-camera default), build the recording UI, mark it entered, and
+        // force the controls circle to full scale. That last set is what keeps the *next* recording's
+        // pause/lock/once controls visible -- otherwise controlsScale stays 0 and they draw invisible but
+        // still clickable. resetLockTranslation must run before the scale set because it zeroes controlsScale.
+        setRecordVideoButtonVisible(true, false);
+        createRecordCircle();
+        createRecordPanel();
+        createRecordAudioPanel();
+        recordInterfaceState = 1;
+        recordCircle.resetLockTranslation(false);
+        recordControlsCircleScale.set(recordCircle, 1f);
+        voiceOnce = once;
+        if (controlsView != null) {
+            controlsView.periodDrawable.setValue(1, voiceOnce, true);
+        }
+        videoToSendMessageObject = info;
+        audioToSendPath = path;
+        millisecondsRecorded = duration;
+        videoTimelineView.setVideoPath(path);
+        videoTimelineView.setVisibility(VISIBLE);
+        if (duration > 0) {
+            videoTimelineView.setMinProgressDiff(1000.0f / duration);
+            float left = info.startTime > 0 ? Math.min(1f, (float) info.startTime / duration) : 0f;
+            float right = info.endTime > 0 && info.endTime < duration ? (float) info.endTime / duration : 1f;
+            videoTimelineView.setLeftRightProgress(left, right);
+        }
+        isRecordingStateChanged();
+        updateRecordInterface(RECORD_STATE_PREPARING, false);
+        checkSendButton(false);
+    }
+
+    // NagramX (#video-draft-guard): re-persist the current trim of a bound round-video draft. Called on
+    // handle-release (primary) and as an onPause backstop (non-delivery insurance). Update-only downstream --
+    // a no-op if nothing round-video is bound or the store slot doesn't hold this draft id.
+    public void persistVideoTrimIfBound() {
+        if (parentFragment == null || videoToSendMessageObject == null
+                || !videoToSendMessageObject.roundVideo || audioToSendPath == null
+                || videoToSendMessageObject.naxDraftId == 0) {
+            return;
+        }
+        parentFragment.onVideoDraftTrimChanged(videoToSendMessageObject, audioToSendPath, voiceOnce);
+    }
+
+    // NagramX (#video-draft-guard): the draft id of the currently bound round-video preview, or 0 if none.
+    // Read before a send/discard so the persisted record is cleared by identity, never by chat slot.
+    public long getBoundVideoDraftId() {
+        return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftId : 0;
+    }
+
+    // NagramX (#video-draft-guard): the owning (dialog, topic) of the currently bound round-video preview, read
+    // before a send/discard so the persisted record is cleared by its origin slot, never by the composer's live
+    // topic (which a forum tab switch can change under the preview). 0 when nothing round-video is bound.
+    public long getBoundVideoDraftDialogId() {
+        return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftDialogId : 0;
+    }
+
+    public long getBoundVideoDraftTopicId() {
+        return videoToSendMessageObject != null ? videoToSendMessageObject.naxDraftTopicId : 0;
+    }
+
     public void setSelection(int start) {
         if (messageEditText == null) {
             return;
@@ -15927,15 +16013,24 @@ public class ChatActivityEnterView extends FrameLayout implements
             if (guid != recordingGuid) {
                 return;
             }
-            // NagramX: drop a round-video finalize whose generation is stale -- either a newer recording bumped
-            // the token, or a passcode-lock rebuild bumped it in ChatActivity.createView. Its snapshotted token
-            // no longer matches the current one, so landing it would overwrite the live preview or drop an
-            // unsendable clip onto a rebuilt instance. recordingGuid can't catch this: it's the fragment's
-            // classGuid and is unchanged across the rebuild. Both round-video producers (stop and pause) carry
-            // the token (args[4]); a voice post without it is never dropped here.
-            if (args[1] instanceof VideoEditedInfo && args.length > 4 && parentFragment != null
-                    && (Integer) args[4] != parentFragment.getVideoDraftToken()) {
-                return;
+            // NagramX (#video-draft-guard): a round-video finalize is admitted only on POSITIVE proof it belongs to
+            // the current, live composer -- absence of any proof is rejection, never fall-through. Two independent
+            // properties must both hold: (1) receiver identity -- this enter view is still the fragment's current
+            // one (a passcode unlock rebuilds the fragment and leaves the PREVIOUS enter view registered as a
+            // strong audioDidSent observer; recordingGuid can't catch it -- it's the fragment's classGuid, unchanged
+            // across the rebuild); and (2) token freshness -- the generation the producer captured at record start
+            // (args[4]) still matches, so a newer recording or a rebuild that bumped the token can't land a stale
+            // clip. Both round-video producers (stop and pause) carry the token. Defence in depth, NOT relied on:
+            // the guid filter above already rejects the four other VideoEditedInfo construction sites (their posts
+            // don't reach here today), but that is an accident of upstream defaults in files that don't know this
+            // gate depends on them -- the positive proof here is what actually guarantees correctness. A voice post
+            // (not VideoEditedInfo) is unaffected and binds as before.
+            if (args[1] instanceof VideoEditedInfo) {
+                if (parentFragment == null || !parentFragment.isCurrentEnterView(this)
+                        || args.length <= 4 || !(args[4] instanceof Integer)
+                        || (Integer) args[4] != parentFragment.getVideoDraftToken()) {
+                    return;
+                }
             }
             millisecondsRecorded = 0;
             Object audio = args[1];
@@ -15955,6 +16050,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 }
                 updateRecordInterface(RECORD_STATE_PREPARING, true);
                 checkSendButton(false);
+                // NagramX (#video-draft-guard): the gate proved this finished clip belongs to the current composer.
+                // Persist it so a background / passcode-lock teardown doesn't lose it. onVideoDraftReady is
+                // mode-gated and adopts the file onto the send path only when this instance didn't record it.
+                if (parentFragment != null && audioToSendPath != null && videoToSendMessageObject.roundVideo) {
+                    parentFragment.onVideoDraftReady(videoToSendMessageObject, audioToSendPath, voiceOnce);
+                }
             } else {
                 audioToSend = (TLRPC.TL_document) args[1];
                 audioToSendPath = (String) args[2];

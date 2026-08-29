@@ -61,6 +61,17 @@ public class VideoEditedInfo {
     public long estimatedSize;
     public long estimatedDuration;
     public boolean roundVideo;
+    // NagramX (#video-draft-guard): identity of a persisted round-video draft, minted by the producer and
+    // carried on this shared payload so the persist/restore/clear paths match a draft by id across a process
+    // boundary, never by chat slot. 0 means "no draft identity" (the default and the store's reject sentinel).
+    public long naxDraftId;
+    // NagramX (#video-draft-guard): the (dialog, topic) slot that OWNS this draft, captured when it is minted /
+    // bound and carried on the payload so persist / trim / clear / discard resolve the slot from the owner, not
+    // from the composer's live topic. A forum's topic can switch in place under a bound preview, so re-reading
+    // getTopicId() at each call could persist into or clear the wrong topic's slot. 0 topic is a valid slot
+    // (non-forum chats). Dialog never drifts within a fragment; carried anyway so the object fully names its slot.
+    public long naxDraftDialogId;
+    public long naxDraftTopicId;
     public boolean muted;
     public float volume = 1f;
     public long originalDuration;
