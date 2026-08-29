@@ -51,7 +51,7 @@ Clear Message Database now removes only the media this install has database rows
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->
 
-The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text. The composer glass now lets the same amount of wallpaper through in light theme as it always did in dark theme, instead of sitting noticeably more opaque.
+The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text. Light and dark theme share one base transparency formula for this glass; how much wallpaper shows through each is set separately (see Composer glass transparency below), rather than light theme carrying its own fixed, noticeably more opaque override.
 
 ### Send and mic inside the input <!-- #composer-input -->
 
@@ -76,6 +76,10 @@ Cut, Copy, and Paste are available as composer toolbar buttons, added through th
 ### Composer toolbar size <!-- #composer-scale --> <!-- #composer-spacing -->
 
 The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. At small toolbar sizes, the tightest spacing steps will grey out to prevent icons from overlapping.
+
+### Composer glass transparency <!-- #composer-transparency -->
+
+Light and dark theme each get their own slider in the layout editor for how much wallpaper shows through the composer's glass — the message field, its icon row, and the button clusters beside it — from 0 to 50% in 5% steps. Both default to 25%, matching what the glass already did before this slider existed. Takes effect when you leave the editor. The live preview above the sliders only reflects whichever theme is currently running, and nothing changes while chat blur is off.
 
 ### Quick schedule button <!-- #quick-schedule -->
 
