@@ -1458,9 +1458,11 @@ public class ComposerLayoutActivity extends BaseFragment {
      * notifyItemChanged (not a structural remove+insert) is enough here: the generation bump alone
      * is what makes the existing holder unusable (see sliderThemeGeneration's javadoc), so this
      * reruns the exact bind path (including TYPE_SPACING's set()-then-setMinValueAllowed() order) a
-     * fresh entry would, with no extra pool clear needed - the FLAG_CELLBACKGROUNDCOLOR description
-     * for this same listView (see below) already clears it every frame the theme is animating,
-     * including the terminal one this runs on.
+     * fresh entry would, with no extra pool clear needed here - the FLAG_CELLBACKGROUNDCOLOR
+     * description added for this same listView below (HeaderCell/ButtonRowCell/PlaceholderCell)
+     * has listClasses set, and ThemeDescription#setColor's listClasses != null branch calls
+     * recyclerListView.getRecycledViewPool().clear() on that listView on every setColor() it makes -
+     * i.e. every frame of the theme animation, including the terminal one this runs on.
      */
     private void refreshSliderRowsForThemeChange() {
         if (adapter == null) {
