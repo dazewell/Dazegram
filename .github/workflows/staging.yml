@@ -275,7 +275,7 @@ jobs:
           else
             PR_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls")
+              "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls") || PR_JSON="[]"
             # A non-array JSON response (rate limit, auth failure, transient
             # error) or outright unparseable body (empty/garbled from a
             # network hiccup) must resolve to "no PR found" rather than
@@ -298,7 +298,8 @@ jobs:
 
           LAST_SHA=$(curl -s -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO/actions/workflows/staging.yml/runs?status=completed&conclusion=success&branch=$BRANCH&per_page=1" | jq -r '.workflow_runs[0].head_sha // empty')
+            "https://api.github.com/repos/$REPO/actions/workflows/staging.yml/runs?status=completed&conclusion=success&branch=$BRANCH&per_page=1" \
+            | jq -r 'if type == "object" then (.workflow_runs[0].head_sha // empty) else empty end') || true
           echo "last successful build: ${LAST_SHA:-<none>}"
 
           COMMIT_TEXT=""
@@ -307,8 +308,16 @@ jobs:
             COMPARE=$(curl -s -H "Accept: application/vnd.github+json" \
               -H "Authorization: Bearer $GITHUB_TOKEN" \
               "https://api.github.com/repos/$REPO/compare/$LAST_SHA...$HEAD_SHA")
-            TOTAL_COMMITS=$(echo "$COMPARE" | jq -r '.total_commits // 0')
-            COMMIT_TEXT=$(echo "$COMPARE" | jq -r '[.commits[].commit.message] | join("\n\n")')
+            # Same reasoning as the associated-PRs lookup above: a network
+            # blip or a well-formed error object (e.g. the rebased-branch
+            # 404 this endpoint returns when LAST_SHA is no longer
+            # reachable) must degrade to "no comparison data", not abort
+            # the step under set -e. ".commits" is null on an error object,
+            # and null[] raises a jq runtime error, not just a parse one --
+            # so this needs a type guard, not only "|| true".
+            TOTAL_COMMITS=$(echo "$COMPARE" | jq -r 'if type == "object" then (.total_commits // 0) else 0 end') || true
+            [[ "$TOTAL_COMMITS" =~ ^[0-9]+$ ]] || TOTAL_COMMITS=0
+            COMMIT_TEXT=$(echo "$COMPARE" | jq -r 'if (.commits | type) == "array" then ([.commits[].commit.message] | join("\n\n")) else empty end') || true
           fi
           [ -n "$COMMIT_TEXT" ] || COMMIT_TEXT="$HEAD_MSG"
           echo "commits since last build: $TOTAL_COMMITS"
