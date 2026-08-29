@@ -613,10 +613,10 @@
     <string name="ComposerSpacingInfo">Sets how close together the icons sit, without changing their size. Takes effect when you leave this screen. Tighter steps need room to work, so at a small toolbar size some of them are greyed out until you make the toolbar bigger.</string>
     <string name="ComposerGlassLight">Transparency in light theme</string>
     <string name="ComposerGlassLightAccDescr">Transparency in light theme</string>
-    <string name="ComposerGlassLightInfo">Sets how much wallpaper shows through the composer\'s glass surfaces in light theme — the message field, its icon row, and the button clusters beside it. Takes effect when you leave this screen. The preview above only shows this while light theme is active. Has no effect while chat blur is off.</string>
+    <string name="ComposerGlassLightInfo">Sets how much wallpaper shows through the composer\'s glass surfaces in light theme — the message field, its icon row, the button clusters beside it, and the instant-camera controls. Takes effect when you leave this screen. The preview above only shows this while light theme is active. Has no effect while chat blur is off.</string>
     <string name="ComposerGlassDark">Transparency in dark theme</string>
     <string name="ComposerGlassDarkAccDescr">Transparency in dark theme</string>
-    <string name="ComposerGlassDarkInfo">Sets how much wallpaper shows through the composer\'s glass surfaces in dark theme — the message field, its icon row, and the button clusters beside it. Takes effect when you leave this screen. The preview above only shows this while dark theme is active. Has no effect while chat blur is off.</string>
+    <string name="ComposerGlassDarkInfo">Sets how much wallpaper shows through the composer\'s glass surfaces in dark theme — the message field, its icon row, the button clusters beside it, and the instant-camera controls. Takes effect when you leave this screen. The preview above only shows this while dark theme is active. Has no effect while chat blur is off.</string>
     <!-- Passcode setup safety #passcode-setup-safety -->
     <string name="PasscodePanicCodeConfirm">Re-enter your Panic Code</string>
     <string name="PasscodeSetForAccount">Set passcode for %1$s</string>
