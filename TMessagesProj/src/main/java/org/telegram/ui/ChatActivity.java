@@ -38507,6 +38507,16 @@ public class ChatActivity extends BaseFragment implements
         return videoDraftToken;
     }
 
+    // NagramX: recorder reports the just-finished round video could not be finalized. Warn instead of
+    // letting the empty preview read as a successful send. #video-draft-guard
+    @Override
+    public void onRoundVideoRecordingFailed() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.VideoDraftRecordingFailed), themeDelegate).show();
+    }
+
     // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the
     // send animation is only ever classified once per message.
     private boolean isKeepRecordingSegment(MessageObject obj) {

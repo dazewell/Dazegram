@@ -3757,9 +3757,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewFile.delete();
                 previewFile = null;
             }
+            // NagramX: keep finishMuxer's success flag instead of discarding it. A false result, or a
+            // segment that never got a video track (videoTrackIndex still -5 at completion, so no frame
+            // was ever encoded), means the mp4 on disk is unusable. We warn the user below rather than
+            // landing a preview that looks sendable but carries nothing. #video-draft-guard
+            boolean muxerFinishedOk = true;
             if (mediaMuxer != null) {
-                finishMuxer();
+                muxerFinishedOk = finishMuxer();
             }
+            final boolean finalizeFailed = !muxerFinishedOk || videoTrackIndex == -5;
             if (send != 2) {
                 DispatchQueue queue = generateKeyframeThumbsQueue;
                 if (queue != null) {
@@ -3778,6 +3784,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     videoFile.delete();
                 } catch (Throwable ignore) {}
             } else {
+                if (finalizeFailed) {
+                    // NagramX: the file is unusable; tell the user so the recording isn't silently dropped.
+                    // The existing preview still lands so nothing is torn down mid-finalize; the warning is
+                    // what stops a wrong-back or a black preview from reading as a clean send. #video-draft-guard
+                    AndroidUtilities.runOnUIThread(() -> {
+                        if (delegate != null) {
+                            delegate.onRoundVideoRecordingFailed();
+                        }
+                    });
+                }
                 if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
                     sentMedia = true;
                     AndroidUtilities.runOnUIThread(() -> {
@@ -4933,6 +4949,11 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         default boolean isSecretChat() {
             return false;
+        }
+
+        // NagramX: the round video just finished but could not be finalized into a playable file. The host
+        // surfaces a warning so the recording is never silently lost. #video-draft-guard
+        default void onRoundVideoRecordingFailed() {
         }
 
         default boolean isInScheduleMode() {
