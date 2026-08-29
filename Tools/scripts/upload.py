@@ -32,10 +32,6 @@ BUILD_EMOJI = {
 # A pathologically long PR title or commit subject must not eat the whole
 # caption budget on its own; this is a fixed, small share of it.
 HEADER_TITLE_BUDGET = 120
-# Same idea for the branch name shown in the meta line -- comfortably clear
-# of a normal "<YYYY-MM-DD>_<slug>" branch so real branches never truncate,
-# while still bounding how much an unusual one can inflate the header.
-HEADER_BRANCH_BUDGET = 60
 
 # Pyrogram only rides out a FloodWait shorter than the client's sleep_threshold,
 # which defaults to 10 seconds (i.e. nothing, once a run of builds has the bot
@@ -99,7 +95,7 @@ def truncate_text(text: str, budget: int, escaped: bool = False) -> str:
             text = text[:entity_start].rstrip()
     return text + suffix
 
-def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url) -> str:
+def get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_url) -> str:
     emoji = BUILD_EMOJI.get(build_type, "🚀")
     if pr_number and pr_title:
         # Escape before truncating, not after: tg_len() (which truncate_text
@@ -116,17 +112,12 @@ def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_num
         subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
         subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET, escaped=True)
         headline = f"{emoji} <b>{subject}</b>" if subject else emoji
-    # The branch label shown in <code> is bounded so an unusually long branch
-    # name can't inflate the header past what content_budget clamping in
-    # get_document() can undo (that would silently starve both blockquotes to
-    # a bare ellipsis). The link keeps the untruncated branch name -- only the
-    # visible text is capped, so the link still resolves to the real branch.
-    branch_display = truncate_text(html.escape(branch), HEADER_BRANCH_BUDGET, escaped=True)
-    meta = (
-        f'<a href="{html.escape(branch_url)}"><code>{branch_display}</code></a>'
-        f" · "
-        f'<a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
-    )
+    # The meta line links the short commit id -- the branch name used to be
+    # shown alongside it, but that duplicated the PR number/title already in
+    # the headline above and cluttered a tight 1024-unit caption. Removed
+    # temporarily; the link target and structure below are unchanged so it
+    # can come back with a one-line revert.
+    meta = f'<a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
     return headline + "\n" + meta
 
 def get_caption(commit_msg_budget=None) -> str:
@@ -136,7 +127,7 @@ def get_caption(commit_msg_budget=None) -> str:
     # both the overhead-measurement call and the final call — otherwise a
     # budget=0 probe would shrink the fallback subject line and understate
     # the real overhead.
-    header = get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url)
+    header = get_header(commit_id, commit_url, commit_message, pr_number, pr_title, pr_url)
     # Escape once, then measure/truncate the escaped text -- escaping AFTER
     # truncating (the previous order) let tg_len() undercount raw "<...>"
     # substrings as stripped tags, pass them through untruncated, and only
