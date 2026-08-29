@@ -1,6 +1,6 @@
 ---
 name: nagramx-implementer
-description: "Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to the staging build, writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, requests the single automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges."
+description: "Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to CI (`ci.yml`), writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, requests the single automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges."
 model: claude-sonnet-5
 ---
 
@@ -22,7 +22,8 @@ summarised here:
   concrete hook points and config surfaces, the compile gate and its CI
   fallback, the `FEATURES.md` entry, commit style, the pull request step.
 - `.claude/skills/nagramx-branch-flow/SKILL.md` — branch naming, the `#<slug>`
-  tag, the append-only rule, how the staging build works.
+  tag, the append-only rule, how the fast CI gate and the publish-on-request
+  staging build work.
 - `.claude/skills/nagramx-process-lifecycle/SKILL.md` — the contract for any
   process you start (adb, logcat, Gradle daemons, dev servers, watchers,
   emulators, detached shells): record its exact PID or handle, stop it by
@@ -143,8 +144,8 @@ If it fails on the environment rather than on your code — no SDK, no JDK, no
 network for the Gradle distribution — **stop and switch to CI as the gate**. Do
 not install an SDK or vendor dependencies to satisfy it. Report the switch.
 
-When CI is the gate, push, open the pull request, and let the staging build
-stand in: read its result and fix what it reports exactly as you would a local
+When CI is the gate, push, open the pull request, and let `ci.yml` stand in:
+read its result and fix what it reports exactly as you would a local
 failure, and say plainly in the pull request body that the change is unverified
 locally, so nothing gets installed on a phone on the assumption it compiled.
 
@@ -193,8 +194,9 @@ the prose through it. A user-visible change without its entry will fail CI.
 ## The pull request
 
 Open it into `dev`, **not as a draft**, once the change compiles (locally or
-about to be gated by CI). Non-draft is required for the staging build to run;
-it does not mean reviewed — architect round 2 has not happened when you open it.
+about to be gated by CI). Non-draft keeps the PR in the normal review flow and
+lets a requested APK build run cleanly; it does not mean reviewed — architect
+round 2 has not happened when you open it.
 
 ```powershell
 gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
@@ -206,16 +208,24 @@ gh api -X POST repos/dazewell/Dazegram/pulls/<n>/requested_reviewers -f "reviewe
 `gh api repos/dazewell/Dazegram/pulls/<n>/requested_reviewers` and look for
 `Copilot`.
 
-Opening the pull request, and every later push, triggers `staging.yml`, which
-builds `dev` + your branch as the release-signed dual-package APK and uploads it
-to Telegram. **That build is the artifact dazewell tests**, so it is not
-optional and a red one blocks landing. It path-ignores doc-only and
-`.github`-only diffs, so on those changes there is legitimately no build to
-read — say which of the two happened rather than implying it passed.
+Opening the pull request, and every later push, triggers `ci.yml` — the fast
+Java/Kotlin validation gate (no APK). **That gate is your compile signal** when
+you built without a local toolchain, so it is not optional and a red one blocks
+landing. It path-ignores doc-only, hook-only and agent/skill-only diffs, so on
+those changes there is legitimately no gate run to read — say which of the two
+happened rather than implying it passed.
 
-**Every push costs a dual-package build and a Telegram upload**, and enough of
-them in a row trips the bot's flood limit. Batch your pushes: commit each fix
-separately, push once per round of work, never once per commit.
+The release-signed dual-package APK that dazewell installs is a **separate,
+on-request** build: apply the `build-apk` label to the PR (or dispatch
+`staging.yml` against the branch), which builds `dev` + your branch and uploads
+both variants to Telegram. The label is auto-removed at the start of the run, so
+re-applying it requests a fresh build. Request it once a round of fixes is
+stable, not on every push.
+
+**Each push costs only a fast `ci.yml` run — but every `build-apk` request costs
+a dual-package build and a Telegram upload**, and enough of those in a row trips
+the bot's flood limit. Batch your pushes and request the APK once per round of
+work, never once per commit.
 
 **Wait for the automated review, then bound it yourself.** It posts a minute or
 two later, so do not move on assuming it is clean. Note the current review count
@@ -329,8 +339,8 @@ concisely to whoever dispatched you:
 ```
 Branch:        <YYYY-MM-DD>_<slug>
 PR:            <url>  (state, draft: no)
-Compile gate:  local | staging build | not applicable (doc-only) — with the result
-Staging build: <conclusion, and whether the APK was uploaded>
+Compile gate:  local | ci.yml (CI) | not applicable (doc-only) — with the result
+APK build:     not requested | <conclusion, and whether the APK was uploaded>
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md

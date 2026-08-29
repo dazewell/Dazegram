@@ -118,7 +118,7 @@ the full list always in the job summary.
 for `refs/heads/*` and `refs/tags/*`, so a push to this namespace can never
 trigger `sync-guard-check.yml` (which would hard-fail — it checks out the
 pushed tree looking for `.github/sync/sync-guard.ps1`, and a bare Nagram tree
-doesn't have one) or `staging.yml`'s unfiltered `pull_request` trigger. It also
+doesn't have one) or the `pull_request` trigger on `staging.yml` / `ci.yml`. It also
 never shows up in the branch list, the branch picker, or any PR head/base
 dropdown, so it cannot be mistaken for a reviewed branch or merged by habit.
 
@@ -326,9 +326,10 @@ bump routes to reviewed reconciliation rather than auto-pushing):**
   *double-modified* intersection (the dangerous silent-revert case), but an
   upstream-only change auto-applies and its per-hunk correctness is not read here.
 - On-device behaviour, **and compilation itself**. The guard gates the *push*;
-  `staging.yml` compiles the dual-package APK ~15 minutes *after* the refs have
-  already moved. So a guard-clean sync that breaks a fork call edge lands on the
-  trunk first and is caught by a red build afterwards, not held back by the guard.
+  after the refs move, `ci.yml` compiles the change (fast Java/Kotlin gate) and
+  `staging.yml` builds the dual-package APK — both *after* the refs have already
+  moved. So a guard-clean sync that breaks a fork call edge lands on the trunk
+  first and is caught by a red build afterwards, not held back by the guard.
 
 Do not read the machine gate as "all 627 semantic gates ran" across the
 shared-and-differing files. It did not. The typical sync path blocks early:

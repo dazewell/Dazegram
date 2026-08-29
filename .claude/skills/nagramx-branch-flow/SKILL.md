@@ -1,6 +1,6 @@
 ---
 name: nagramx-branch-flow
-description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/Dazegram, live upstream parent NextAlone/Nagram, formerly the archived base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the single staging build pipeline, the mandatory `<YYYY-MM-DD>_<slug>` branch naming, the no-force-push rule (follow-ups are new commits, not amends), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its staging-build fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
+description: "Dazewell's git branch / integration / upstream-sync model for the NagramX fork (dazewell/Dazegram, live upstream parent NextAlone/Nagram, formerly the archived base fork risin42/NagramX). Trigger this for anything about *how commits are organized* rather than what the code does: starting a feature branch, whether to work in a git worktree vs. in-place, the #tag every commit must carry, keeping a change's commits discoverable, proposing a feature upstream, syncing onto the base fork, the fast CI validation gate and the publish-on-request staging build, the mandatory `<YYYY-MM-DD>_<slug>` branch naming, the no-force-push rule (follow-ups are new commits, not amends), or the phone-triggered sync-build-Telegram automation. Companion to the nagramx-workflow skill: that one owns design review / hooks / compile gate (and its CI fallback) / FEATURES.md / commit style; THIS one owns the branch topology and the plumbing around it. Also edit this file when dazewell corrects the flow."
 ---
 
 # NagramX branch & integration flow
@@ -62,8 +62,9 @@ one-shot (CI tweak, bug fix, little tuning) just cuts a branch in the main clone
 See *Worktree or in-place?* below.
 
 **"Which command do I need?"** → *Case-by-case procedures* below.
-**"How do I test before landing?"** → open a PR into `dev`; `staging.yml` builds
-the `dev`+branch merge ref (release-signed dual APK) and uploads it to Telegram.
+**"How do I test before landing?"** → open a PR into `dev`; `ci.yml` compiles it
+on every push, and applying the `build-apk` label (or dispatching `staging.yml`)
+builds the release-signed dual APK and uploads it to Telegram.
 **"I need the whole rationale"** → *Why this model exists*.
 
 ## Why this model exists (the problem it solves)
@@ -355,15 +356,17 @@ git worktree prune                                      # tidy stale metadata (i
 ```
 
 ### Test before landing (preview build)
-Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `staging.yml` runs on
-the PR, builds the **merge ref** (`dev` + the branch) as the release-signed
-dual-package APK, and uploads it to Telegram (labelled a *test* build). Push more
-commits to iterate; each push rebuilds. This is the same artifact users get, not
-a separate debug build. It doubles as the compile gate whenever the change was
-written without a local Android toolchain — see `nagramx-workflow` step 4; in
-that case say so in the PR body so no one installs a build that CI hasn't
-confirmed yet. `commit-tag.yml` also runs and fails the PR if any commit
-is missing its tag.
+Open a PR from `<YYYY-MM-DD>_<slug>` into `dev` on `origin`. `ci.yml` compiles the
+change on every push (the fast Java/Kotlin gate — no APK). To get an on-device
+preview, apply the **`build-apk`** label (or dispatch `staging.yml` against the
+branch): that builds the **merge ref** (`dev` + the branch) as the release-signed
+dual-package APK and uploads it to Telegram (labelled a *test* build). The label
+is auto-removed at the start of the run, so re-applying it requests a fresh
+build. This is the same artifact users get, not a separate debug build. The fast
+gate doubles as the compile gate whenever the change was written without a local
+Android toolchain — see `nagramx-workflow` step 4; in that case say so in the PR
+body so no one installs a build that CI hasn't confirmed yet. `commit-tag.yml`
+also runs and fails the PR if any commit is missing its tag.
 
 For a **user-visible feature this PR is opened by default** (don't wait to be
 asked — it's how dazewell gets the test build); **CI/bug/chore work stays
@@ -397,8 +400,9 @@ count to the free-tier limit #multi-pin"), not a generic "address review" or a
 copy of the original subject. Each commit still carries the `#<slug>` tag, so
 the whole story stays greppable, and the merge into `dev` keeps all of it.
 
-Every push re-triggers `staging.yml` on the PR and supersedes the build still
-running, so you still get one fresh test APK per push rather than a stack.
+Every push re-triggers `ci.yml` on the PR (and supersedes a validation run still
+going). The preview APK is refreshed by re-applying the `build-apk` label, not by
+the push itself.
 
 Rewriting (`--amend`, `rebase -i`, `push --force-with-lease`) is **off by
 default**, even on a feature branch. Do it only when dazewell explicitly asks,
@@ -434,7 +438,7 @@ The original branch is usually gone — that's fine, the tag carries the link.
 ```powershell
 git switch dev; git pull --ff-only origin dev
 git switch -c <YYYY-MM-DD>_<slug>-fix dev
-# ...implement, compile gate (local, else the staging build on the PR), review...
+# ...implement, compile gate (local, else `ci.yml` on the PR), review...
 git commit -m "<what the fix does> #<slug>"   # SAME slug as the feature
 ```
 PR it into `dev`, merge, delete. Now `git log --grep '#<slug>'` shows the feature
@@ -566,29 +570,56 @@ else in the range is just the feature.
 
 ## Automation
 
-### The single build pipeline (`staging.yml`)
-One workflow builds and uploads. It runs on:
-- **push to `dev`** — the post-land dual-package build (Unofficial + Official),
-  uploaded to Telegram as a *staging* build.
-- **pull_request into `dev`** — builds the `dev`+branch merge ref (same
-  release-signed dual APK) as the on-device *test* preview.
-- **manual** (`workflow_dispatch`).
+### The build pipelines (`ci.yml` validates, `staging.yml` publishes)
+Two workflows, split by purpose:
 
-Upload always happens (no skip switch). Doc-only and `.github`-only changes are
-skipped via `paths-ignore` (with an exception so edits to `staging.yml` itself
-still build). A push onto a branch or PR that already has a build running
-**supersedes** it: the `build` job carries a `concurrency` group keyed on the
-branch/PR (plus the matrix package, since a job-level group is otherwise shared
-across the whole matrix) with `cancel-in-progress`, so several rounds of review
-no longer ship a pair of APKs each and trip Telegram's flood limit. Only the
-build is cancellable, so a run that already reached the upload step finishes
-posting. Nothing is lost from the changelog either: the AI summary spans commits
-since the last *successful* run, so a superseded build's commits fold into the
-next one. The upload step also posts an **AI commit summary** (GitHub Models
-via `GITHUB_TOKEN`, `models: read`) of the commits since the last successful
-build on that branch; `Tools/scripts/upload.py` folds it into the Telegram
-caption, trimming the commit message before the summary so the summary always
-fits Telegram's 1024-char cap.
+- **`ci.yml` — the fast validation gate.** Runs on every push to `dev` and every
+  pull request into `dev`. It compiles Java/Kotlin only
+  (`:TMessagesProj:compileDebugJavaWithJavac`) with `NATIVE_TARGET=SKIP`, across a
+  2-package matrix, with `setup-gradle` caching — no NDK, no signing, no
+  packaging, no Telegram. It exists so intermediate pushes get a quick green/red
+  signal without cutting an APK. A post-compile step asserts javac actually
+  emitted `.class` files, so a skipped task can't report false-green, and a
+  conditional `deep` job runs R8 + resource shrinking when a change to a build
+  script, manifest or `proguard-rules.pro` would otherwise slip past the fast
+  gate. Doc-only, hook-only and agent/skill-only changes are path-ignored, but a
+  workflow edit is **not**, so a change to `ci.yml` validates itself on its own PR.
+- **`staging.yml` — the publish-on-request build.** Builds the release-signed
+  dual-package APK (Unofficial + Official, native included) and uploads it to
+  Telegram. It runs on:
+  - **push to `dev`** — the unconditional post-land delivery, exactly as before;
+  - **a pull request labelled `build-apk`** — an on-demand preview. A dedicated
+    `unlabel` job removes the label at the start of the run, so re-applying it is
+    a repeatable button;
+  - **manual** (`workflow_dispatch`).
+
+Intermediate PR pushes no longer build an APK here — one is produced only when
+explicitly requested — so Telegram only sees builds worth installing. Upload
+always happens (no skip switch). The `build-apk` label (auto-removed each run, so
+it works as a repeatable button) and a manual `workflow_dispatch` are the two
+supported ways to request a build; a `/build` comment trigger was considered and
+rejected as unnecessary, since the label already does the job.
+
+`staging.yml`'s push-to-`dev` build still skips doc-only and `.github`-only pushes
+via `paths-ignore` (with an exception so edits to `staging.yml` itself still
+build); the labelled PR trigger deliberately carries **no** `paths-ignore`, since
+a build the user explicitly asked for is relevant even on a doc-only PR. A push
+onto a branch or PR that already has a run going **supersedes** it: both
+workflows carry a **workflow-level** `concurrency` group keyed on the branch/PR
+with `cancel-in-progress` (workflow-level, not the per-package job-level group an
+earlier version of this note described). In `staging.yml` only the build is
+cancellable, so a run that already reached the upload step finishes posting.
+Nothing is lost from the changelog either: the AI summary spans commits since the
+last *successful* run, so a superseded build's commits fold into the next one.
+The upload step also posts an **AI commit summary** (GitHub Models via
+`GITHUB_TOKEN`, `models: read`) of the commits since the last successful build on
+that branch; `Tools/scripts/upload.py` folds it into the Telegram caption,
+trimming the commit message before the summary so the summary always fits
+Telegram's 1024-char cap.
+
+Measured timings: the fast gate lands well under the old ~9.2–9.7 min wall clock
+(the publish build was ~9.5 min including native and the Telegram upload); the
+publish build is unchanged.
 
 ### Phone-triggered sync → build → Telegram (`sync-upstream.yml`)
 Triggerable from the GitHub mobile app ("Run workflow") or a Telegram bot hitting
@@ -695,8 +726,9 @@ workflow" button already covers this with no extra infra.
 - `register-topic.yml` — gone (nothing to register).
 - `canary.yml`, `release.yml` — gone (unused; `staging.yml` is the only
   release-artifact pipeline).
-- `pr.yml` — gone; PR builds are handled by `staging.yml`'s `pull_request`
-  trigger, and they build the same release-level artifact, not a bigger debug one.
+- `pr.yml` — gone; PR validation is now `ci.yml`'s `pull_request` trigger (a fast
+  Java/Kotlin compile), and the release-level APK comes from `staging.yml` on
+  request (the `build-apk` label or a manual dispatch), not from every PR push.
 
 ## Keeping this current
 When the flow changes, edit this file the same session and keep `CLAUDE.md`, the
