@@ -530,6 +530,10 @@ public class ChatActivity extends BaseFragment implements
     private final @NonNull BlurredBackgroundDrawableViewFactory glassBackgroundDrawableFactoryFrosted;
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
+    // NagramX: full-screen glass surfaces (round-video backdrop, the top/bottom fade bands) take a
+    // gradient-only proxy instead of the pattern composite, which smears at full-screen scale. Only
+    // navbarContentDrawableFactory reads this; every other factory keeps navbarContentSourceWallpaper.
+    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
     private Dialog closeChatDialog;
@@ -2928,6 +2932,7 @@ public class ChatActivity extends BaseFragment implements
         super(args);
 
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
+        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
 
@@ -2962,7 +2967,7 @@ public class ChatActivity extends BaseFragment implements
             glassBackgroundDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
             glassBackgroundDrawableFactoryFrosted = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
         }
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
         navbarContentDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactory.setLinkedViewsRef(glassAttachedViews);
         glassBackgroundDrawableFactoryFrosted.setLinkedViewsRef(glassAttachedViews);
@@ -8428,6 +8433,7 @@ public class ChatActivity extends BaseFragment implements
                             }
                         };
                         container.chatActivity.navbarContentSourceWallpaper.setSource(navbarContentSourceWallpaper);
+                        container.chatActivity.navbarContentSourceWallpaperPlain.setSource(navbarContentSourceWallpaperPlain);
                         container.chatActivity.parentThemeDelegate = themeDelegate;
                         container.chatActivity.parentChatActivity = ChatActivity.this;
                         container.chatActivity.chatActivityDelegate = new ChatActivityDelegate() {
@@ -18753,6 +18759,7 @@ public class ChatActivity extends BaseFragment implements
             shouldHaveLightNavigationBarIcons = navigationBarBrightness <= 0.9f;
 
             navbarContentSourceWallpaper.setSource(source);
+            navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
             if (chatActivityFadeView != null) {
                 chatActivityFadeView.invalidate();
             }
@@ -19773,6 +19780,12 @@ public class ChatActivity extends BaseFragment implements
 
             if (navbarContentSourceWallpaper.getSource() instanceof BlurredBackgroundSourceBitmap) {
                 ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
+                    .setParentSize(widthSize, heightSize, 0);
+            }
+            // NagramX: the plain full-screen source builds its cover matrix from setParentSize too;
+            // without this it draws the mesh 1:1 in the top-left corner of the fade bands.
+            if (navbarContentSourceWallpaperPlain.getSource() instanceof BlurredBackgroundSourceBitmap) {
+                ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaperPlain.getSource())
                     .setParentSize(widthSize, heightSize, 0);
             }
             if (lastWidth != widthSize) {

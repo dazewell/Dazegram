@@ -23,12 +23,26 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
  * Not thread-safe by design: every caller is on the UI thread (the background wallpaper drawable is
  * only ever drawn there), so the retained bitmap is never touched off the main thread and no locking
  * is needed.
+ *
+ * Scope: this proxy is for the small refracted composer pills only. Nothing blurs the wallpaper on
+ * any glass path — the Liquid Glass shader is a single {@code img.eval(uv)} tap that displaces and
+ * tints but cannot soften, and the raw wallpaper layer beneath it is drawn unblurred. So the proxy's
+ * only softening is the cover-scale upscale, which turns the pattern into a coarse, enlarged, and
+ * geometrically approximate impression of the wallpaper. That reads fine inside a small tinted pill
+ * but is wrong for any surface that must visually continue the real wallpaper (the round-video
+ * backdrop, the top/bottom fade bands): there the pattern smears into huge blocks that do not line up
+ * with the wallpaper beside them. Those full-screen consumers take WallpaperBitmapProvider's
+ * gradient-only plain source instead, which has no line-art to smear and upscales invisibly.
  */
 public class MotionGlassCompositor {
 
-    // Downsampled proxy: the glass upscales it, and its only softening is that upscale, so the long
-    // edge is matched to the liquid-glass content blur rather than the screen. Screen aspect (not the
-    // parent view's) so the pattern's cover-scale matches the wallpaper drawn right above the panel.
+    // Downsampled proxy: the glass upscales it, and its only softening is that upscale (nothing blurs
+    // the wallpaper on any path), so the long edge is matched to the liquid-glass content blur rather
+    // than the screen. Screen aspect (not the parent view's) so the pattern's cover-scale matches the
+    // wallpaper drawn right above the panel. At 248px this is a lossy, geometrically approximate
+    // impression of the wallpaper — fine for a small tinted, refracted pill, wrong for any surface
+    // that must continue the wallpaper, which is why the full-screen consumers take the gradient-only
+    // plain source. Raising this sharpens the mismatch there rather than fixing it.
     private static final int TARGET_LONG_EDGE_PX = 248;
 
     // The pattern fades in over ~250ms by ramping alpha, and setPatternAlpha/setBackgroundAlpha/

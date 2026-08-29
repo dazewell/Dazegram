@@ -2,6 +2,7 @@ package org.telegram.ui.Components.chat;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
@@ -22,6 +23,15 @@ public class WallpaperBitmapProvider {
     private final BlurredBackgroundSourceBitmap sourceBitmap = new BlurredBackgroundSourceBitmap();
     private final MotionGlassCompositor motionGlassCompositor = new MotionGlassCompositor();
 
+    // NagramX: the composited source (gradient + pattern) is a tiny screen-aspect proxy the glass
+    // cover-scales ~9x with nothing softening it (see MotionGlassCompositor). That reads fine behind a
+    // small refracted composer pill but smears the pattern into enormous blocks on a full-screen
+    // surface. Full-screen consumers take this "plain" source instead: the pre-#230 gradient-only mesh
+    // (or flat black when intensity<0), which upscales invisibly because it has no line-art to smear.
+    private final BlurredBackgroundSourceColor plainSourceColor = new BlurredBackgroundSourceColor();
+    private final BlurredBackgroundSourceBitmap plainSourceBitmap = new BlurredBackgroundSourceBitmap();
+    private BlurredBackgroundSource plainSource;
+
     private static final Rect tmpRect = new Rect();
 
     /**
@@ -38,6 +48,7 @@ public class WallpaperBitmapProvider {
         if (drawable instanceof ColorDrawable) {
             final int color = ((ColorDrawable) drawable).getColor();
             sourceColor.setColor(color);
+            plainSource = sourceColor;
             return sourceColor;
         }
 
@@ -48,12 +59,22 @@ public class WallpaperBitmapProvider {
             // shows it. Composite the drawable's actual output (gradient + pattern, including the
             // intensity<0 mask) into a retained bitmap and hand that to the glass. See MotionGlassCompositor.
             motionGlassCompositor.compose(sourceBitmap, motionDrawable, false);
+            // NagramX: the plain source is the pre-#230 gradient-only proxy for full-screen surfaces —
+            // getBitmap() (the 60x80 gradient mesh, no pattern), or flat black when intensity<0.
+            if (motionDrawable.getIntensity() < 0) {
+                plainSourceColor.setColor(Color.BLACK);
+                plainSource = plainSourceColor;
+            } else {
+                plainSourceBitmap.setBitmap(motionDrawable.getBitmap());
+                plainSource = plainSourceBitmap;
+            }
             return sourceBitmap;
         }
 
         if (drawable instanceof BitmapDrawable) {
             final Bitmap bitmap = blurredFromBitmap.get(((BitmapDrawable) drawable).getBitmap());
             sourceBitmap.setBitmap(bitmap);
+            plainSource = sourceBitmap;
             return sourceBitmap;
         }
 
@@ -72,7 +93,18 @@ public class WallpaperBitmapProvider {
             sourceBitmap.setBitmap(blurredFromBitmap.get(sourceBitmap.getBitmap()));
         }
 
+        plainSource = sourceBitmap;
         return sourceBitmap;
+    }
+
+    /**
+     * The plain wallpaper proxy for full-screen glass surfaces, set as a side effect of the most
+     * recent {@link #updateSourceFromBackgroundViewDrawable} call. For a motion wallpaper this is the
+     * gradient-only mesh (or flat black), never the pattern composite; for every other drawable type
+     * it is the same object that call returned.
+     */
+    public BlurredBackgroundSource getPlainSource() {
+        return plainSource;
     }
 
     public int getNavigationBarColor(BlurredBackgroundSource source) {

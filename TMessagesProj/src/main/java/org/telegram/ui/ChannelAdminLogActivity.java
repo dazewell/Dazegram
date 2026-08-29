@@ -184,6 +184,10 @@ import tw.nekomimi.nekogram.utils.ProxyUtil;
 public class ChannelAdminLogActivity extends BaseFragment implements NotificationCenter.NotificationCenterDelegate {
 
     private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaper;
+    // NagramX: full-screen glass surfaces (the fade bands) take a gradient-only proxy instead of the
+    // pattern composite, which smears at full-screen scale. Only navbarContentDrawableFactory reads
+    // this; every other factory keeps navbarContentSourceWallpaper. See WallpaperBitmapProvider.
+    private final @NonNull BlurredBackgroundSourceWrapped navbarContentSourceWallpaperPlain;
     private final @NonNull BlurredBackgroundDrawableViewFactory navbarContentDrawableFactory;
 
     private final @Nullable BlurredBackgroundSourceRenderNode glassBackgroundSourceRenderNode;
@@ -350,7 +354,8 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
 
     public ChannelAdminLogActivity(TLRPC.Chat chat) {
         navbarContentSourceWallpaper = new BlurredBackgroundSourceWrapped();
-        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaper);
+        navbarContentSourceWallpaperPlain = new BlurredBackgroundSourceWrapped();
+        navbarContentDrawableFactory = new BlurredBackgroundDrawableViewFactory(navbarContentSourceWallpaperPlain);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SharedConfig.chatBlurEnabled()) {
             scrollableViewNoiseSuppressor = new DownscaleScrollableNoiseSuppressor();
@@ -1022,6 +1027,12 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                     ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaper.getSource())
                         .setParentSize(widthSize, heightSize, 0);
                 }
+                // NagramX: the plain full-screen source builds its cover matrix from setParentSize too;
+                // without this it draws the mesh 1:1 in the top-left corner of the fade bands.
+                if (navbarContentSourceWallpaperPlain.getSource() instanceof BlurredBackgroundSourceBitmap) {
+                    ((BlurredBackgroundSourceBitmap) navbarContentSourceWallpaperPlain.getSource())
+                        .setParentSize(widthSize, heightSize, 0);
+                }
 
                 setMeasuredDimension(widthSize, heightSize);
                 heightSize -= getPaddingTop();
@@ -1070,6 +1081,7 @@ public class ChannelAdminLogActivity extends BaseFragment implements Notificatio
                 // shouldHaveLightNavigationBarIcons = isDark;
 
                 navbarContentSourceWallpaper.setSource(source);
+                navbarContentSourceWallpaperPlain.setSource(wallpaperBitmapProvider.getPlainSource());
                 if (chatActivityFadeView != null) {
                     chatActivityFadeView.invalidate();
                 }
