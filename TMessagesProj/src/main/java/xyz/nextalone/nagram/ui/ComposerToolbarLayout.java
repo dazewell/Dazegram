@@ -26,6 +26,7 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RLottieImageView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
 import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawable;
+import org.telegram.ui.Components.blur3.drawable.BlurredBackgroundDrawableRenderNode;
 import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProvider;
 
 import java.util.HashMap;
@@ -214,6 +215,13 @@ public final class ComposerToolbarLayout extends FrameLayout {
 
     public void attachGlass(BlurredBackgroundDrawableViewFactory factory, BlurredBackgroundColorProvider colorProvider) {
         controls.attachGlass(factory, colorProvider);
+    }
+
+    // NagramX: force the glass bubbles to re-record their baked display lists. The RenderNode glass
+    // path copies the source's BitmapShader Paint at record time, so after the preview re-points that
+    // source at new dimensions (onSizeChanged) the capture is stale until the list is invalidated.
+    public void reprimeGlass() {
+        controls.reprimeGlass();
     }
 
     public void updateColors() {
@@ -766,6 +774,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
             for (BlurredBackgroundDrawable drawable : bubbles) {
                 if (drawable != null) {
                     drawable.updateColors();
+                }
+            }
+            invalidate();
+        }
+
+        void reprimeGlass() {
+            if (bubbles == null) {
+                return;
+            }
+            for (BlurredBackgroundDrawable drawable : bubbles) {
+                if (drawable instanceof BlurredBackgroundDrawableRenderNode) {
+                    ((BlurredBackgroundDrawableRenderNode) drawable).invalidateDisplayList();
                 }
             }
             invalidate();
