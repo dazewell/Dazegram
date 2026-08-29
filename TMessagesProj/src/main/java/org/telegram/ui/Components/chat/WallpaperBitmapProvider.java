@@ -36,9 +36,9 @@ public class WallpaperBitmapProvider {
     // wallpaper (the render-node factories — the composer pills) keep the composite; surfaces that draw
     // the bare wallpaper (navbarContentDrawableFactory — the fade bands and the search list) take this
     // "plain" source: the pre-#230 gradient-only mesh (or flat black when intensity<0), which has no
-    // line-art to smear and upscales invisibly. One bare-wallpaper surface deliberately keeps the
-    // composite: the round-video recording backdrop, a near-opaque full-screen scrim with no adjacent
-    // wallpaper to smear against.
+    // line-art to smear and upscales invisibly. Within ChatActivity the round-video recording backdrop is
+    // the one bare-wallpaper surface that deliberately keeps the composite instead: a near-opaque
+    // full-screen scrim with no adjacent wallpaper to smear against.
     //
     // plainSourceColor and sourceColor must stay separate objects and never be merged: sourceColor holds
     // a colour wallpaper's fill and plainSourceColor an intensity<0 motion wallpaper's flat black, and one
@@ -153,9 +153,13 @@ public class WallpaperBitmapProvider {
      * gradient-only mesh (or flat black), never the pattern composite; for every other drawable type
      * it is the same object that call returned.
      *
-     * Not every bare-wallpaper surface routes here: GiftMessageBottomSheet, NekoDelegateFragment (both
-     * sites) and ComposerLayoutActivity deliberately draw the composite (navbarContentSourceWallpaper)
-     * full-screen and keep the pattern, so don't "finish the job" by pointing them at the plain source.
+     * Not every consumer that keeps the composite is a bare full-screen surface. GiftMessageBottomSheet
+     * is the other one that draws this composite bare across its whole container and deliberately keeps
+     * the pattern, so don't "finish the job" by pointing it at the plain source. Other consumers outside
+     * ChatActivity keep the composite too, but as surface shapes the split does not apply to:
+     * NekoDelegateFragment's glass action bar samples it through a render node (like the pills), and
+     * ComposerLayoutActivity's preview capsules sample it sized to the preview cell rather than
+     * full-screen.
      */
     public BlurredBackgroundSource getPlainSource() {
         return plainSource;

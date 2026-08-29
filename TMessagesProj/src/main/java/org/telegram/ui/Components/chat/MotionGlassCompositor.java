@@ -43,9 +43,9 @@ public class MotionGlassCompositor {
     // soft texture. 768 puts the long edge at ~354px on that screen, roughly a 3x upscale, which reads
     // as texture rather than stair-stepped line-art. Cost is ~1MB per chat activity plus a bigger
     // off-screen composite on each recomposite, the accepted trade for legible pattern edges. The pill
-    // is the only surface that samples this composite (bare-wallpaper surfaces take the gradient-only
-    // plain source), so this number is bounded by what the pill needs: raising it further only spends
-    // memory on detail the refracted, tinted pill cannot resolve.
+    // is the surface whose needs bound this number: the round-video recording backdrop also samples this
+    // composite, but it is a near-opaque scrim where upscale artefacts barely show, so raising the
+    // resolution further only spends memory on detail the refracted, tinted pill cannot resolve.
     private static final int TARGET_LONG_EDGE_PX = 768;
 
     private Bitmap composite;
