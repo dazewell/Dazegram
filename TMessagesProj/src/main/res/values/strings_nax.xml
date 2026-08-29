@@ -5,7 +5,7 @@
     <string name="CustomFileNames">Custom File Names</string>
     <string name="CustomFileNamesSwitch">Rename saved videos, voice and round messages</string>
     <string name="CustomFileNamesHint">{date}_{time}</string>
-    <string name="CustomFileNamesDescription">{date} and {time} are when the message was sent — {date}_{time} saves as 20260101_173812.mp4. {name} is the original file name without its extension; it\'s blank for voice and round messages. Anything else you type stays as you typed it. The right file extension is always added for you.</string>
+    <string name="CustomFileNamesDescription">{date} and {time} are when the message was sent — {date}_{time} saves as 20260101_173812.mp4. {name} is the sender\'s file name (without its extension) when the message carries one, and blank otherwise — voice, round, and most videos. Anything else you type stays as you typed it. The right file extension is always added for you.</string>
     <string name="CustomFileNamesOff">Off</string>
     <string name="CustomFileNamesOnExample">On — for example %1$s</string>
     <string name="CustomFileNamesReset">Reset</string>

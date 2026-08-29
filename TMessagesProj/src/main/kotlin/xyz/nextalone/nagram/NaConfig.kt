@@ -945,7 +945,7 @@ object NaConfig {
         )
     val customFileNamesEnabled =
         addConfig(
-            "CustomFileNamesEnabled",
+            "CustomFileNamesSwitch",
             ConfigItem.configTypeBool,
             false
         )

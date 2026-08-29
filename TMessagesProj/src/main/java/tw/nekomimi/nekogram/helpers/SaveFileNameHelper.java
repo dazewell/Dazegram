@@ -33,6 +33,10 @@ public final class SaveFileNameHelper {
     private SaveFileNameHelper() {
     }
 
+    public static boolean shouldRename(MessageObject messageObject) {
+        return applies(messageObject);
+    }
+
     private static boolean applies(MessageObject messageObject) {
         return NaConfig.INSTANCE.getCustomFileNamesEnabled().Bool()
                 && messageObject != null
@@ -47,32 +51,28 @@ public final class SaveFileNameHelper {
             return incomingFilename;
         }
         String base = renderBase(messageObject, incomingFilename);
-        String ext = resolveExtension(FileLoader.getFileExtension(sourceFile), incomingFilename, mimeType);
+        String ext = resolveExtension(FileLoader.getFileExtension(sourceFile), incomingFilename, mimeType, messageObject);
         return withExtension(base, ext);
     }
 
     // Single-item legacy path (API < 29), used for both the type==0 and type==1 branches in saveFile.
-    // When the feature applies the name is claimed atomically (createNewFile) so two same-second saves
-    // can't render to the same File and overwrite each other; otherwise it falls back to the stock name.
+    // Returns the stock generated name when the feature is off; when it applies the name is claimed
+    // atomically (createNewFile) so two same-second saves can't overwrite each other. Returns null only
+    // when every atomic claim failed - the caller must then abort rather than write an unclaimed name.
     public static String legacyName(File dir, MessageObject messageObject, File sourceFile, String incomingName, String mime, int defaultType) {
-        String srcExt = FileLoader.getFileExtension(sourceFile);
         if (!applies(messageObject)) {
-            return AndroidUtilities.generateFileName(defaultType, srcExt);
+            return AndroidUtilities.generateFileName(defaultType, FileLoader.getFileExtension(sourceFile));
         }
-        String base = renderBase(messageObject, incomingName);
-        String ext = resolveExtension(srcExt, incomingName, mime);
-        return claimLegacyName(dir, base, ext, messageObject.messageOwner.id);
+        return legacyClaimName(dir, messageObject, sourceFile, incomingName, mime);
     }
 
-    // Bulk legacy path (API < 29). Returns an atomically-claimed name when the feature applies, else
-    // null so the caller keeps its stock name and its existing dedupe loop untouched (feature-off is
-    // then byte-for-byte today's behaviour).
-    public static String legacyBulkClaim(File dir, MessageObject messageObject, String stockName, String mime) {
-        if (!applies(messageObject)) {
-            return null;
-        }
-        String base = renderBase(messageObject, stockName);
-        String ext = resolveExtension(extensionOf(stockName), stockName, mime);
+    // Bulk legacy path (API < 29). Call only after shouldRename(messageObject). Atomically claims the
+    // rendered name and returns it, or null when every attempt failed (the caller must skip the item so
+    // it isn't counted as copied). The source file is resolved by the caller first so the extension
+    // comes from the real saved format, not the sender's filename.
+    public static String legacyClaimName(File dir, MessageObject messageObject, File sourceFile, String incomingName, String mime) {
+        String base = renderBase(messageObject, incomingName);
+        String ext = resolveExtension(FileLoader.getFileExtension(sourceFile), incomingName, mime, messageObject);
         return claimLegacyName(dir, base, ext, messageObject.messageOwner.id);
     }
 
@@ -90,7 +90,23 @@ public final class SaveFileNameHelper {
     }
 
     private static String renderBase(MessageObject messageObject, String incomingName) {
-        return renderBase(NaConfig.INSTANCE.getCustomFileNamesPattern().String(), messageObject.messageOwner.date * 1000L, stripExtension(incomingName));
+        return renderBase(NaConfig.INSTANCE.getCustomFileNamesPattern().String(), messageObject.messageOwner.date * 1000L, resolveName(messageObject, incomingName));
+    }
+
+    // {name} resolution, shared by every entry point so the same message renders the same {name} whether
+    // it was saved singly or through a bulk album: the supplied name first, then the sender's document
+    // file name when the message carries one, then empty (voice, round, and most in-app videos).
+    private static String resolveName(MessageObject messageObject, String suppliedName) {
+        if (!TextUtils.isEmpty(suppliedName)) {
+            return stripExtension(suppliedName);
+        }
+        if (messageObject != null) {
+            String docName = FileLoader.getDocumentFileName(messageObject.getDocument());
+            if (!TextUtils.isEmpty(docName)) {
+                return stripExtension(docName);
+            }
+        }
+        return "";
     }
 
     private static String renderBase(String pattern, long millis, String name) {
@@ -164,6 +180,8 @@ public final class SaveFileNameHelper {
 
     // Atomic create-if-absent claim: createNewFile() is race-free against the other save thread and
     // another process, so no shared counter is needed. Matches the surrounding createNewFile idiom.
+    // Returns null when every attempt - including the message-id fallback - failed, so the caller can
+    // abort rather than fall back to an unclaimed name that another save may already own.
     private static String claimLegacyName(File dir, String base, String ext, int fallbackId) {
         for (int i = 0; i < 1000; i++) {
             String candidate = withExtension(i == 0 ? base : base + " (" + i + ")", ext);
@@ -186,10 +204,10 @@ public final class SaveFileNameHelper {
                 FileLog.e(e);
             }
         }
-        return withExtension(fallbackBase, ext);
+        return null;
     }
 
-    private static String resolveExtension(String sourceExt, String incomingName, String mime) {
+    private static String resolveExtension(String sourceExt, String incomingName, String mime, MessageObject messageObject) {
         if (isRealExtension(sourceExt)) {
             return sourceExt;
         }
@@ -197,8 +215,9 @@ public final class SaveFileNameHelper {
         if (isRealExtension(fromName)) {
             return fromName;
         }
-        if (!TextUtils.isEmpty(mime)) {
-            String fromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+        String effectiveMime = !TextUtils.isEmpty(mime) ? mime : (messageObject != null ? messageObject.getMimeType() : null);
+        if (!TextUtils.isEmpty(effectiveMime)) {
+            String fromMime = MimeTypeMap.getSingleton().getExtensionFromMimeType(effectiveMime);
             if (!TextUtils.isEmpty(fromMime)) {
                 return fromMime;
             }
@@ -234,11 +253,20 @@ public final class SaveFileNameHelper {
         if (s.getBytes(StandardCharsets.UTF_8).length <= maxBytes) {
             return s;
         }
-        int len = s.length();
-        while (len > 0 && s.substring(0, len).getBytes(StandardCharsets.UTF_8).length > maxBytes) {
-            len--;
+        // Walk whole code points so an emoji or other supplementary character is never split into an
+        // unmatched surrogate, which would encode badly and can be rejected by MediaStore.
+        int end = 0;
+        int bytes = 0;
+        while (end < s.length()) {
+            int cp = s.codePointAt(end);
+            int cpBytes = new String(Character.toChars(cp)).getBytes(StandardCharsets.UTF_8).length;
+            if (bytes + cpBytes > maxBytes) {
+                break;
+            }
+            bytes += cpBytes;
+            end += Character.charCount(cp);
         }
-        return s.substring(0, len);
+        return s.substring(0, end);
     }
 
     private static long demoMillis() {
