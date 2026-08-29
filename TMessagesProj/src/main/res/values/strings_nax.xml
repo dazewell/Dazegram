@@ -23,7 +23,6 @@
     <string name="VideoMessagesWarningVibrationNotice">Buzzes 5 seconds before it ends.</string>
     <string name="VideoMessagesCutVibration">Video message cutoff buzz</string>
     <string name="VideoMessagesCutVibrationNotice">Buzzes the moment it ends.</string>
-    <string name="VideoDraftRecordingFailed">That video message couldn\'t be saved -- record it again</string>
     <string name="InfiniteRecordingCeiling">Infinite Recording cap</string>
     <string name="InfiniteRecordingCeilingNotice">How long it can keep going.</string>
     <string name="InfiniteRecordingCeiling10Min">10 minutes</string>

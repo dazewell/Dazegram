@@ -422,7 +422,6 @@ import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.ToggleResult;
 import xyz.nextalone.nagram.helper.BookmarksHelper;
 import xyz.nextalone.nagram.helper.DoubleTap;
-import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 @SuppressWarnings("unchecked")
 public class ChatActivity extends BaseFragment implements
@@ -744,17 +743,10 @@ public class ChatActivity extends BaseFragment implements
     private ChatActionCell infoTopView;
     private int hideDateDelay = 500;
     public InstantCameraView instantCameraView;
-    // NagramX: draft-guard generation. Bumped when a new round video recording begins or a persisted draft is
-    // restored, and snapshotted into each finalize request, so a finalize that completes after a passcode-lock
-    // rebuild superseded it is dropped instead of overwriting the current draft. UI thread only.
+    // NagramX: draft-guard generation. Bumped when a new round video recording begins, and snapshotted into each
+    // finalize request, so a finalize that completes after a passcode-lock rebuild superseded it is dropped
+    // instead of overwriting the current draft. UI thread only.
     public int videoDraftToken;
-    // NagramX (#video-draft-guard): set by onRoundVideoRecordingFailed when the just-finished round video
-    // could not be finalized (unusable mp4). The failed recorder still lands a preview and still fires the
-    // audioDidSent finalize, so without this flag onVideoDraftReady would persist the broken file -- and a
-    // later restore + send of it is another silent drop, the exact thing this feature prevents. The failed
-    // callback is queued (InstantCameraView.java:3792) before the finalize notification (:3800/:3862) on the
-    // same main handler, so this is always set before onVideoDraftReady reads it. UI thread only.
-    private boolean roundVideoFinalizeFailed;
     private View overlayView;
     private boolean currentFloatingDateOnScreen;
     private boolean currentFloatingTopicOnScreen;
@@ -2713,28 +2705,13 @@ public class ChatActivity extends BaseFragment implements
             if (instantCameraView != null) {
                 if (state == 0) {
                     videoDraftToken++; // NagramX: a new recording session supersedes any still-in-flight finalize from a previous one
-                    roundVideoFinalizeFailed = false; // NagramX (#video-draft-guard): clear any stale failure flag from a send that finalized-failed without landing a preview
                     instantCameraView.showCamera(false);
                     chatListView.stopScroll();
                     chatAdapter.updateRowsSafe();
                 } else if (state == 1 || state == 3 || state == 4) {
                     instantCameraView.send(state, notify, scheduleDate, 0, ttl, effectId, stars);
-                    if (state != 3) {
-                        // NagramX (#video-draft-guard): state 3 is the onPause finalize that *creates* the draft;
-                        // states 1/4 send it, so the persisted record is consumed. Drop it without unlocking --
-                        // the outgoing-message machinery owns the file from here.
-                        VideoDraftStore.clearOnSend(currentAccount, dialog_id, getTopicId());
-                    }
                 } else if (state == 2 || state == 5) {
-                    // NagramX (#video-draft-guard): capture BEFORE cancel() -- only a state-(b) preview discard
-                    // should drop the persisted record. state 2/5 also fire for slide-to-cancel of a live
-                    // recording, where any persisted entry belongs to an earlier finished draft that must be
-                    // kept, not deleted. hasVideoToSend() is true only when a finished preview is present.
-                    boolean discardingPreview = chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend();
                     instantCameraView.cancel(state == 2);
-                    if (discardingPreview) {
-                        VideoDraftStore.discard(currentAccount, dialog_id, getTopicId());
-                    }
                 } else if (state == 6) {
                     // NagramX: infinite video message hit the 60s cap, roll over to the next segment
                     instantCameraView.rollOverSegment(notify, scheduleDate, ttl, effectId, stars);
@@ -32131,7 +32108,7 @@ public class ChatActivity extends BaseFragment implements
         textToRestoreOnRebuild = fieldText == null ? null : new SpannableStringBuilder(fieldText);
         // NagramX: a round video that's still capturing -- live with the finger down, or hands-free/locked --
         // would be lost if the app backgrounds now (worst with passcode lock set to Immediately, which rebuilds
-        // the chat on unlock). Finalize it into the preview strip so its file and prefs record survive. send(3)
+        // the chat on unlock). Finalize it into the preview strip so its file survives. send(3)
         // only posts the stop request; the muxer close runs on the encoder thread, so this never blocks pause.
         if (instantCameraView != null && instantCameraView.isRecording()) {
             instantCameraView.send(3, true, 0, 0, 0, 0, 0);
@@ -32519,57 +32496,6 @@ public class ChatActivity extends BaseFragment implements
                     updateBottomOverlay();
                 }
             }
-        }
-
-        restoreVideoDraftMaybe();
-    }
-
-    // NagramX (#video-draft-guard): restore a persisted round-video draft on chat open, so a clip lost to
-    // backgrounding / a passcode-lock rebuild reappears in the preview strip and can be sent. Idempotent:
-    // skips when a preview is already showing or a recording is live, and load() self-invalidates a record
-    // whose file is gone or older than 24h. Sweeps this account's expired records first so their locked
-    // orphan files don't accumulate.
-    private void restoreVideoDraftMaybe() {
-        if (chatActivityEnterView == null || instantCameraView != null && instantCameraView.isRecording()) {
-            return;
-        }
-        if (chatActivityEnterView.hasVideoToSend()) {
-            return;
-        }
-        VideoDraftStore.sweepExpired(currentAccount);
-        VideoDraftStore.Entry entry = VideoDraftStore.load(currentAccount, dialog_id, getTopicId());
-        if (entry == null) {
-            return;
-        }
-        videoDraftToken++; // a restored draft is the current generation; supersede any still-in-flight finalize
-        File file = new File(entry.path);
-        checkInstantCameraView();
-        if (instantCameraView != null) {
-            instantCameraView.adoptRestoredDraft(file, file.length(), entry.duration);
-        }
-        chatActivityEnterView.setVideoDraft(entry.path, entry.duration, entry.voiceOnce);
-    }
-
-    // NagramX (#video-draft-guard): a round-video finalize just landed in the preview. Persist it, and if this
-    // view was rebuilt (a fresh, camera-never-opened InstantCameraView) rehydrate its send path so the Send tap
-    // doesn't silently drop the message. adoptRestoredDraft refuses when the instance already holds a live or
-    // finalized draft, so the common same-session case (which keeps the user's trim) is left untouched.
-    public void onVideoDraftReady(String path, int duration, boolean voiceOnce) {
-        if (path == null || dialog_id == 0) {
-            return;
-        }
-        // NagramX (#video-draft-guard): the recorder just reported this finalize as failed. The file is
-        // unusable, so don't persist it -- and don't discard here either, since save() overwrites this dialog's
-        // single entry and an earlier good draft (kept because it was never sent) is still the current one.
-        if (roundVideoFinalizeFailed) {
-            roundVideoFinalizeFailed = false;
-            return;
-        }
-        VideoDraftStore.save(currentAccount, dialog_id, getTopicId(), path, duration, voiceOnce);
-        File file = new File(path);
-        checkInstantCameraView();
-        if (instantCameraView != null) {
-            instantCameraView.adoptRestoredDraft(file, file.length(), duration);
         }
     }
 
@@ -37255,8 +37181,8 @@ public class ChatActivity extends BaseFragment implements
             if (instantCameraView != null && !(chatActivityEnterView != null && chatActivityEnterView.hasVideoToSend())) {
                 // NagramX: cancel(false) deletes cameraFile, which in state (b) is the finished unsent round
                 // video shown in the preview strip -- an accidental back would silently destroy it. Skip the
-                // cancel when one exists; the clip stays on disk (its prefs record was written when the preview
-                // appeared) and is restored on re-entry. Fragment teardown frees the camera without deleting.
+                // cancel when one exists so the finished clip is not deleted; fragment teardown frees the camera
+                // without deleting the file.
                 instantCameraView.cancel(false);
             }
         }
@@ -38532,20 +38458,6 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public int getVideoDraftToken() {
         return videoDraftToken;
-    }
-
-    // NagramX: recorder reports the just-finished round video could not be finalized. Warn instead of
-    // letting the empty preview read as a successful send. #video-draft-guard
-    @Override
-    public void onRoundVideoRecordingFailed() {
-        // NagramX (#video-draft-guard): mark first, before the getParentActivity() gate. When the app is
-        // backgrounded the bulletin can't show (parentActivity is null) -- that is precisely the case where the
-        // draft must NOT be persisted, so the flag has to be set even when we can't warn.
-        roundVideoFinalizeFailed = true;
-        if (getParentActivity() == null) {
-            return;
-        }
-        BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.VideoDraftRecordingFailed), themeDelegate).show();
     }
 
     // NagramX: true for a segment that landed while the camera kept recording. Consumed once, because the

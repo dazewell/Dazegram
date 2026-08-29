@@ -134,7 +134,6 @@ import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.InstantZoomControlView;
 import xyz.nextalone.nagram.NaConfig;
 import xyz.nextalone.nagram.helper.RecordingLimitVibration;
-import xyz.nextalone.nagram.helper.VideoDraftStore;
 
 @SuppressLint("ViewConstructor")
 public class InstantCameraView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
@@ -187,15 +186,10 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     private File cameraFile;
     // NagramX: token of the draft generation this finalize belongs to, snapshotted on the UI thread when the
     // stop is requested and echoed back through audioDidSent. ChatActivity bumps its counter when a new
-    // recording starts or a restore is applied, so a finalize that completes after the view was rebuilt and
-    // superseded is dropped at delivery instead of clobbering the current draft. volatile: set on the UI
+    // recording starts, so a finalize that completes after the view was rebuilt and superseded by a newer
+    // recording is dropped at delivery instead of clobbering the current preview. volatile: set on the UI
     // thread, read on the encoder thread that posts the completion.
     private volatile int finalizeDraftToken;
-    // NagramX (#video-draft-guard): set when a restored round-video draft's file has been adopted into this
-    // instance (see adoptRestoredDraft). A rebuilt instance never had its camera opened, so textureView is
-    // null and send()'s :1242 guard would bail silently -- this flag is the positive signal that lets the
-    // headless send through. Never inferred from cameraFile being null.
-    private boolean sendAdoptedDraft;
     private File previewFile;
     private long recordStartTime;
     private long recordPlusTime;
@@ -874,38 +868,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         return recording;
     }
 
-    // NagramX (#video-draft-guard): rehydrate the send path for a round-video draft restored after this view
-    // was rebuilt (passcode unlock / re-entry) or landed from a superseded recorder. send(4) needs an intact
-    // cameraFile, size and a round-video videoEditedInfo; a rebuilt instance has none of them and its :1258
-    // fallback builds a bare (non-round) VideoEditedInfo, so we set them up explicitly here. file/key/iv stay
-    // null -- that's the normal "background upload not started yet" state, identical to tapping Send before a
-    // live upload finishes, and the send path re-uploads from the file.
-    //
-    // Refuses in two cases, both to protect existing state rather than to infer intent from absence:
-    //   - a live recording session (recording || videoEncoder != null) -- a disk restore racing a late
-    //     finalize must not replace the cameraFile that cancel()/:1446 would then delete.
-    //   - an instance that already holds a finalized draft (cameraFile present and on disk) -- that came from
-    //     a native same-session finalize, which keeps the user's trim; clobbering it would lose that. When
-    //     refused for this reason the instance is already sendable natively (textureView was created), so
-    //     refusing never leaves an unsendable state.
-    public void adoptRestoredDraft(File file, long fileSize, int duration) {
-        if (recording || videoEncoder != null) {
-            FileLog.d("InstantCamera adoptRestoredDraft ignored: recording session live");
-            return;
-        }
-        if (cameraFile != null && cameraFile.exists()) {
-            return;
-        }
-        if (file == null || !file.exists()) {
-            return;
-        }
-        cameraFile = file;
-        size = fileSize;
-        videoEditedInfo = VideoDraftStore.buildInfo(file.getAbsolutePath(), fileSize, duration);
-        sendAdoptedDraft = true;
-        AutoDeleteMediaTask.lockFile(file);
-    }
-
     // flips between the front and back camera; also reached from the zoom control's flip button.
     // guarded against re-entry so a rapid double-tap can't stack two flips over each other.
     private void flipCamera() {
@@ -1013,7 +975,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
 
         if (!fromPaused) {
             cameraFile = generateCameraFile();
-            sendAdoptedDraft = false; // NagramX (#video-draft-guard): a fresh recording owns a live cameraFile; drop any restored-draft state
         }
 
         SharedConfig.saveConfig();
@@ -1278,12 +1239,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
     }
 
     public void send(int state, boolean notify, int scheduleDate, int scheduleRepeatPeriod, int ttl, long effectId, long stars) {
-        if (textureView == null && !(sendAdoptedDraft && state == 4)) {
-            // NagramX (#video-draft-guard): a draft restored into a rebuilt instance (passcode unlock / late
-            // finalize) never opened the camera, so textureView is null -- but adoptRestoredDraft has set up
-            // cameraFile/size/videoEditedInfo, and only the state==4 branch below is safe without textureView,
-            // so let just that send through. Other states still bail (they assume a live camera thread).
-            // Without this the preview vanishes and the message is silently dropped.
+        if (textureView == null) {
             return;
         }
         stopProgressTimer();
@@ -3758,15 +3714,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                 previewFile.delete();
                 previewFile = null;
             }
-            // NagramX: keep finishMuxer's success flag instead of discarding it. A false result, or a
-            // segment that never got a video track (videoTrackIndex still -5 at completion, so no frame
-            // was ever encoded), means the mp4 on disk is unusable. We warn the user below rather than
-            // landing a preview that looks sendable but carries nothing. #video-draft-guard
-            boolean muxerFinishedOk = true;
             if (mediaMuxer != null) {
-                muxerFinishedOk = finishMuxer();
+                finishMuxer();
             }
-            final boolean finalizeFailed = !muxerFinishedOk || videoTrackIndex == -5;
             if (send != 2) {
                 DispatchQueue queue = generateKeyframeThumbsQueue;
                 if (queue != null) {
@@ -3785,16 +3735,6 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     videoFile.delete();
                 } catch (Throwable ignore) {}
             } else {
-                if (finalizeFailed) {
-                    // NagramX: the file is unusable; tell the user so the recording isn't silently dropped.
-                    // The existing preview still lands so nothing is torn down mid-finalize; the warning is
-                    // what stops a wrong-back or a black preview from reading as a clean send. #video-draft-guard
-                    AndroidUtilities.runOnUIThread(() -> {
-                        if (delegate != null) {
-                            delegate.onRoundVideoRecordingFailed();
-                        }
-                    });
-                }
                 if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
                     sentMedia = true;
                     AndroidUtilities.runOnUIThread(() -> {
@@ -4947,19 +4887,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         int getClassGuid();
         long getDialogId();
 
-        // NagramX: current draft-guard generation, bumped by the host when a new recording starts or a
-        // restore is applied. send() snapshots it so a stale finalize can be rejected at delivery.
+        // NagramX: current draft-guard generation, bumped by the host when a new recording starts. send()
+        // snapshots it so a stale finalize can be rejected at delivery.
         default int getVideoDraftToken() {
             return 0;
         }
 
         default boolean isSecretChat() {
             return false;
-        }
-
-        // NagramX: the round video just finished but could not be finalized into a playable file. The host
-        // surfaces a warning so the recording is never silently lost. #video-draft-guard
-        default void onRoundVideoRecordingFailed() {
         }
 
         default boolean isInScheduleMode() {
