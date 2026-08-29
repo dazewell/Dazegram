@@ -4071,7 +4071,7 @@ public class ChatActivity extends BaseFragment implements
                     return ColorUtils.setAlphaComponent(getThemedColor(Theme.key_chat_messagePanelBackground), 255);
                 }
 
-                // NagramX: dropped upstream's light-theme alpha 216 override — light now uses the same formula as dark and every other glass surface
+                // NagramX: dropped upstream's light-theme alpha 216 override — light now shares dark theme's base formula, like most other glass surfaces (PeerStoriesView's composer intentionally stays at its own 0.8f)
                 return super.getBackgroundColor();
             }
         };
@@ -4082,7 +4082,7 @@ public class ChatActivity extends BaseFragment implements
                     return ColorUtils.setAlphaComponent(getThemedColor(Theme.key_windowBackgroundWhite), 255);
                 }
 
-                // NagramX: dropped upstream's light-theme alpha 216 override — light now uses the same formula as dark and every other glass surface
+                // NagramX: dropped upstream's light-theme alpha 216 override — light now shares dark theme's base formula, like most other glass surfaces (PeerStoriesView's composer intentionally stays at its own 0.8f)
                 return super.getBackgroundColor();
             }
         };
