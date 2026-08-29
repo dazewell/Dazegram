@@ -5,6 +5,7 @@ from asyncio import sleep
 import html
 from pathlib import Path
 from sys import argv
+from urllib.parse import quote as urlquote
 
 from pyrogram import Client
 from pyrogram.errors import FloodPremiumWait, FloodWait
@@ -59,8 +60,14 @@ def get_commit_info():
     commit_url = os.environ.get("COMMIT_URL") or default_commit_url
     commit_message = os.environ.get("COMMIT_MESSAGE") or "unknown"
     branch = os.environ.get("BRANCH") or "unknown"
+    # Git branch names can legally contain '#', '?' and spaces, none of which
+    # are safe unencoded in a URL path -- '#' in particular truncates the URL
+    # at a fragment, so the link would resolve to the wrong (or no) page. '/'
+    # is kept unescaped since it's a legitimate path separator (e.g.
+    # "feature/x"); the workflow no longer builds this URL itself so encoding
+    # always happens exactly once, here.
     default_branch_url = (
-        f"https://github.com/dazewell/Dazegram/tree/{branch}"
+        f"https://github.com/dazewell/Dazegram/tree/{urlquote(branch, safe='/')}"
         if branch != "unknown"
         else "https://github.com/dazewell/Dazegram"
     )
