@@ -943,6 +943,18 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val customFileNamesEnabled =
+        addConfig(
+            "CustomFileNamesSwitch",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val customFileNamesPattern =
+        addConfig(
+            "CustomFileNames",
+            ConfigItem.configTypeString,
+            "{date}_{time}"
+        )
     val silentMessageByDefault =
         addConfig(
             "SilentMessageByDefault",

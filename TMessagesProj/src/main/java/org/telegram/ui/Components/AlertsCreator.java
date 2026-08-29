@@ -4418,17 +4418,24 @@ public class AlertsCreator {
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule) {
-        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, false);
+        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, false, 0);
     }
 
     // NagramX: single-message "Edit schedule time". The same sheet as scheduling, but flagged as a
     // reschedule so the Remember offset can seed and store from it — a sheet seeded off some other
     // date (a reminder taken from a date in a message) must keep that date, so it can't be currentDate alone.
     public static BottomSheet.Builder createEditScheduleDatePickerDialog(Context context, long dialogId, long currentDate, int currentRepeatPeriod, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
-        return createScheduleDatePickerDialog(context, null, dialogId, currentDate, currentRepeatPeriod, false, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, null, true);
+        return createScheduleDatePickerDialog(context, null, dialogId, currentDate, currentRepeatPeriod, false, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, null, true, 0);
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule, final boolean isEditSchedule) {
+        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, isEditSchedule, 0);
+    }
+
+    // NagramX: minLeadSeconds floors the earliest pickable slot above the stock 60s. Scheduled infinite
+    // video passes 180 so segment 0 is never past-due once the +120s per-segment spacing is applied; every
+    // other entry point passes 0 and keeps the stock behaviour. See InfiniteVideoScheduleHelper.
+    public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule, final boolean isEditSchedule, final int minLeadSeconds) {
         if (context == null) {
             return null;
         }
@@ -4442,7 +4449,8 @@ public class AlertsCreator {
         // Reschedule floors the earliest pickable slot at 2 min (vs the 60s default), so after seconds
         // are zeroed the base is still a full minute ahead and can't land in the server's send-now window.
         // The +1min bump at confirm then only has to cover time drifting on while the sheet sits open.
-        final long minScheduleSeconds = isReschedule ? 120 : 0;
+        // NagramX: minLeadSeconds (scheduled infinite video passes 180) overrides both when set.
+        final long minScheduleSeconds = minLeadSeconds > 0 ? minLeadSeconds : (isReschedule ? 120 : 0);
         final com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[] intervalControls = new com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.IntervalControls[1];
 
         long selfUserId = UserConfig.getInstance(UserConfig.selectedAccount).getClientUserId();
@@ -4537,7 +4545,9 @@ public class AlertsCreator {
 
         final boolean[] notify = new boolean[] { true };
         ActionBarMenuItem optionsButton = null;
-        if (!isReschedule && DialogObject.isUserDialog(dialogId) && dialogId != selfUserId) {
+        // NagramX: no "send when online" on the scheduled-infinite sheet — its 0x7ffffffe sentinel is a live
+        // send and, once spaced +120s, overflows int; the writer-side guard is the real defence, this is polish.
+        if (!isReschedule && minLeadSeconds <= 0 && DialogObject.isUserDialog(dialogId) && dialogId != selfUserId) {
             TLRPC.User user = MessagesController.getInstance(UserConfig.selectedAccount).getUser(dialogId);
             if (user != null && !user.bot && user.status != null && user.status.expires > 0) {
                 String name = UserObject.getFirstName(user);
@@ -4687,6 +4697,11 @@ public class AlertsCreator {
             intervalControls[0] = com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.addIntervalControls(
                     context, container, reschedule.messageCount, datePickerColors.textColor,
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
+        }
+
+        // NagramX: on the scheduled-infinite sheet, explain the +2min spacing and the best-effort ordering caveat.
+        if (minLeadSeconds > 0) {
+            com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
         }
 
         // NagramX: no delay slider on a reschedule sheet — dragging it rewrites the global default

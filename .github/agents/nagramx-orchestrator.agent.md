@@ -1,6 +1,6 @@
 ---
 name: nagramx-orchestrator
-description: "Coordinates work on the NagramX Telegram-for-Android fork end to end. Scopes a request against what already ships, runs read-only reconnaissance before asking anything, puts one consolidated round of questions to dazewell, then runs design, UX, architecture review, implementation and pull request closeout unattended through specialist agents and child sessions. Verifies every gate against evidence rather than claims and hands back a non-draft pull request with a green staging build, every review thread resolved, and a short before/after summary. Use it for any feature, bug or change on this repo that is more than a trivial edit. It coordinates and verifies; it does not write the code. It works by holding the `create_session` capability, so it runs as a session that owns a subtree of work — as the root of a request, or as a child orchestrator a parent orchestrator has delegated a whole unit to; it cannot run as a plain subagent, which has no way to create the sessions it depends on."
+description: "Coordinates work on the NagramX Telegram-for-Android fork end to end. Scopes a request against what already ships, runs read-only reconnaissance before asking anything, puts one consolidated round of questions to dazewell, then runs design, UX, architecture review, implementation and pull request closeout unattended through specialist agents and child sessions. Verifies every gate against evidence rather than claims and hands back a non-draft pull request with a green CI validation gate (and a green staging APK build when one was requested), every review thread resolved, and a short before/after summary. Use it for any feature, bug or change on this repo that is more than a trivial edit. It coordinates and verifies; it does not write the code. It works by holding the `create_session` capability, so it runs as a session that owns a subtree of work — as the root of a request, or as a child orchestrator a parent orchestrator has delegated a whole unit to; it cannot run as a plain subagent, which has no way to create the sessions it depends on."
 disable-model-invocation: true
 ---
 
@@ -273,7 +273,7 @@ git fetch origin; git log --oneline dev..origin/dev
   will itself need to dispatch implementers, so the implementer file must be
   present too. If either is missing, stop and say so.
 - **If the second returns commits, `dev` is stale.** Say so before dispatching:
-  the branch and its staging build will be cut from old code, so the artifact is
+  the branch and any APK cut from it will be from old code, so the artifact is
   not what dazewell thinks he is installing.
 - **Check you can actually see your own team.** The roster is read once, when a
   session starts. If your `task` tool does not offer `nagramx-scout`,
@@ -631,6 +631,10 @@ Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the dat
                   child renames to this with `rename_branch` before touching a file)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
+On-device APK:  required | not required   (decided here, at the gate, so the
+                  implementer never builds twice — dazewell's requirement 4. If
+                  required, request exactly one publish build on the final head;
+                  if not, request none.)
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
                   round trip, memory, a slower rare path — stated explicitly so
                   the implementer doesn't default to optimizing and then defend
@@ -679,7 +683,7 @@ hotfix, then the feature extended, then a follow-on option); that's a fine way
 for him to work and isn't to be discouraged. But each addition lands on an
 already-reviewed diff, and re-reviewing and rebuilding after every one is where
 elapsed cost explodes. While an addition is still settling, tell the implementer
-to **hold review and the staging build until it's stable**, then review and
+to **hold review and any APK build until it's stable**, then review and
 build the combined state once. Rank the additions by the priorities in
 `nagramx-workflow` (risk to the irreplaceable thing first): a scope addition
 that raises the risk of losing the artifact gets scrutiny; a pure tidiness
@@ -764,13 +768,30 @@ $t.data.repository.pullRequest.reviewThreads.nodes | Select-Object isResolved, p
 Confirm, one by one:
 
 - The pull request exists, targets `dev`, and is **not a draft**.
-- The staging build is green **on the pull request's head commit**. A green run
-  on an older `headSha` is evidence about older code. A `cancelled` run is a
-  superseded push — neither a failure nor a pass. On a doc-only or
-  `.github`-only change the build is legitimately path-ignored; that is a
-  different outcome from green and you must say which happened. An absent run is
-  never evidence that something was verified.
-- `Upload staging` succeeded before you write that the APK was uploaded.
+- **`ci.yml` (the fast validation gate) is green on the pull request's head
+  commit.** A green run on an older `headSha` is evidence about older code. A
+  `cancelled` run is a superseded push — neither a failure nor a pass. On a
+  doc-only, hook-only or agent/skill-only change `ci.yml` is legitimately
+  path-ignored; that is a different outcome from green and you must say which
+  happened. An absent run is never evidence that something was verified.
+- **The publish build (`staging.yml`) — distinguish four cases, and do not read
+  a healthy one as suspect.** After this repo split, an APK build is produced
+  only on request (the `build-apk` label or a manual dispatch), so its normal
+  state on a fresh PR is *not requested*. The four outcomes:
+  (a) **fast CI green, no publish run** — the healthy default; the change
+  compiles and no APK was asked for. Not a problem; say so plainly rather than
+  flagging a missing build.
+  (b) **publish requested and green on the head commit** — an APK was built and,
+  if `Upload staging` succeeded, uploaded. Confirm the upload step before you
+  write that the APK is on Telegram.
+  (c) **publish requested and red** — blocking, same as a red build always was.
+  (d) **doc/`.github`-only, and no publish was requested** — legitimately no
+  publish build to read. But note the label trigger has **no path filter**: once
+  `build-apk` was applied (or a dispatch fired), a publish *was* requested, so
+  absence is no longer healthy — require a matching successful build **and**
+  `Upload staging` on the head commit regardless of what paths changed.
+  A build dazewell installs on-device requires case (b); do not tell him an APK
+  is ready on the strength of case (a).
 - The missing-tag query returns nothing. **Any output is blocking.**
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
@@ -889,7 +910,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; staging build <green @ sha | path-ignored>; behaviour unverified on device
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; APK build <not requested | green @ sha | red>; behaviour unverified on device
 Install: <which APK variant>
 
 **Changes**

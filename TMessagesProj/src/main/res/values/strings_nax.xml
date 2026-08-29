@@ -2,6 +2,15 @@
 <resources>
     <!-- NagramX (app display name) is generated per package variant via resValue in build.gradle -->
     <string name="Acknowledgments">Acknowledgments</string>
+    <string name="CustomFileNames">Custom File Names</string>
+    <string name="CustomFileNamesSwitch">Rename saved videos, voice and round messages</string>
+    <string name="CustomFileNamesHint">{date}_{time}</string>
+    <string name="CustomFileNamesDescription">{date} and {time} are the message\'s send date. {name} is the sender\'s file name — usually blank for voice, round messages, and most videos. Anything else you type stays as is; an unknown {placeholder} is dropped.</string>
+    <string name="CustomFileNamesOff">Off</string>
+    <string name="CustomFileNamesOnExample">On — for example %1$s</string>
+    <string name="CustomFileNamesReset">Reset</string>
+    <string name="CustomFileNamesPreview">For a video, saves as %1$s</string>
+    <string name="CustomFileNamesPreviewInvalid">This can save with no name for voice and round messages — add some fixed text, or reset.</string>
     <string name="VideoMessagesPlayAll">Play all video messages</string>
     <string name="AccDescrZoomControl">Zoom</string>
     <string name="VideoMessagesResetZoomOnSwitch">Reset zoom when switching cameras</string>
@@ -374,6 +383,9 @@
     <string name="CameraInVideoMessagesInfinite">Infinite Recording</string>
     <string name="AccDescrInfiniteRecordingOn">Turn on infinite recording</string>
     <string name="AccDescrInfiniteRecordingOff">Turn off infinite recording</string>
+    <string name="InfiniteRecordingScheduleTitle">Schedule first message</string>
+    <string name="InfiniteRecordingScheduleHint">Every segment after this one is scheduled 2 minutes later.</string>
+    <string name="InfiniteRecordingScheduleOrderingHint">Telegram can send a minute or two late, so segments may still go out of order.</string>
     <string name="CameraSettings">Camera</string>
     <string name="ContactNotes">Notes</string>
     <string name="PhoneNotOnTelegramInvite">This phone number is not on Telegram. **Invite >**</string>

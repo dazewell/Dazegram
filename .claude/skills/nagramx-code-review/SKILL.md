@@ -240,7 +240,7 @@ and still be wrong for this repo.
 - **Compile gate.** Round-2 review presupposes
   `.\gradlew.bat :TMessagesProj:compileDebugJavaWithJavac` is clean — or, when
   no local toolchain was available (no Android SDK/JDK, sandboxed agent), that
-  the staging build on the PR is standing in for it. Either way, read the diff
+  `ci.yml` on the PR is standing in for it. Either way, read the diff
   as if compilation is unverified: if it can't have compiled (obvious
   type/signature errors), stop and say so, and be that much stricter when CI is
   the only gate.
@@ -458,7 +458,7 @@ When a review prescribes a specific mechanism rather than just a goal, implement
 that mechanism or contest it with `file:line` evidence before shipping a
 different one — see *Known traps on this codebase* above.
 Fix one item at a time and re-run the compile gate — locally, or by pushing to
-the PR and reading the staging build when there's no local toolchain. On a no-go, fix it and
+the PR and reading `ci.yml` when there's no local toolchain. On a no-go, fix it and
 push a **new commit** describing that fix (`#<slug>`-tagged) — don't amend and
 force-push, and don't write "address review" as the message; the branch history
 is meant to show how the change evolved (see `nagramx-workflow` step 9 and
