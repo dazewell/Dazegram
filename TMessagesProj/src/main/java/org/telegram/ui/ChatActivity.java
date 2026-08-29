@@ -4076,8 +4076,9 @@ public class ChatActivity extends BaseFragment implements
                     return ColorUtils.setAlphaComponent(getThemedColor(Theme.key_chat_messagePanelBackground), 255);
                 }
 
-                // NagramX: dropped upstream's light-theme alpha 216 override — light now shares dark theme's base formula, like most other glass surfaces (PeerStoriesView's composer intentionally stays at its own 0.8f)
-                return super.getBackgroundColor();
+                // NagramX: dropped upstream's light-theme alpha 216 override — light and dark theme now each read their own configured pass-through (see NaConfig.composerGlassAlpha), read live rather than cached so an auto night mode flip picks up the right one without reopening the chat
+                final boolean dark = themeDelegate != null ? themeDelegate.isDark() : Theme.isCurrentThemeDark();
+                return Theme.multAlpha(getThemedColor(Theme.key_chat_messagePanelBackground), NaConfig.composerGlassAlpha(dark));
             }
         };
         blurredBackgroundColorProviderWhite = new BlurredBackgroundColorProviderThemed(themeDelegate, Theme.key_windowBackgroundWhite) {
