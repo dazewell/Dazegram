@@ -50,8 +50,9 @@ public final class SaveFileNameHelper {
         if (!applies(messageObject)) {
             return incomingFilename;
         }
-        String base = renderBase(messageObject, incomingFilename);
-        String ext = resolveExtension(FileLoader.getFileExtension(sourceFile), incomingFilename, mimeType, messageObject);
+        String resolvedName = resolveIncomingName(messageObject, incomingFilename);
+        String base = renderBase(messageObject, resolvedName);
+        String ext = resolveExtension(sourceFile, resolvedName, mimeType, messageObject);
         return withExtension(base, ext);
     }
 
@@ -71,8 +72,9 @@ public final class SaveFileNameHelper {
     // it isn't counted as copied). The source file is resolved by the caller first so the extension
     // comes from the real saved format, not the sender's filename.
     public static String legacyClaimName(File dir, MessageObject messageObject, File sourceFile, String incomingName, String mime) {
-        String base = renderBase(messageObject, incomingName);
-        String ext = resolveExtension(FileLoader.getFileExtension(sourceFile), incomingName, mime, messageObject);
+        String resolvedName = resolveIncomingName(messageObject, incomingName);
+        String base = renderBase(messageObject, resolvedName);
+        String ext = resolveExtension(sourceFile, resolvedName, mime, messageObject);
         return claimLegacyName(dir, base, ext, messageObject.messageOwner.id);
     }
 
@@ -89,21 +91,23 @@ public final class SaveFileNameHelper {
         return !isDegenerate(rendered);
     }
 
-    private static String renderBase(MessageObject messageObject, String incomingName) {
-        return renderBase(NaConfig.INSTANCE.getCustomFileNamesPattern().String(), messageObject.messageOwner.date * 1000L, resolveName(messageObject, incomingName));
+    // Takes the already-resolved full incoming filename and strips its extension for the {name} token.
+    private static String renderBase(MessageObject messageObject, String resolvedName) {
+        return renderBase(NaConfig.INSTANCE.getCustomFileNamesPattern().String(), messageObject.messageOwner.date * 1000L, stripExtension(resolvedName));
     }
 
-    // {name} resolution, shared by every entry point so the same message renders the same {name} whether
-    // it was saved singly or through a bulk album: the supplied name first, then the sender's document
-    // file name when the message carries one, then empty (voice, round, and most in-app videos).
-    private static String resolveName(MessageObject messageObject, String suppliedName) {
+    // Resolves the incoming filename once, keeping its extension, shared by every entry point so the same
+    // message resolves the same name whether saved singly or through a bulk album: the supplied name
+    // first, then the sender's document file name when the message carries one, then empty (voice, round,
+    // and most in-app videos). Callers strip the extension only where they render {name}.
+    private static String resolveIncomingName(MessageObject messageObject, String suppliedName) {
         if (!TextUtils.isEmpty(suppliedName)) {
-            return stripExtension(suppliedName);
+            return suppliedName;
         }
         if (messageObject != null) {
             String docName = FileLoader.getDocumentFileName(messageObject.getDocument());
             if (!TextUtils.isEmpty(docName)) {
-                return stripExtension(docName);
+                return docName;
             }
         }
         return "";
@@ -207,11 +211,16 @@ public final class SaveFileNameHelper {
         return null;
     }
 
-    private static String resolveExtension(String sourceExt, String incomingName, String mime, MessageObject messageObject) {
+    // Source extension via our own extensionOf(getName()), NOT FileLoader.getFileExtension: the latter
+    // does substring(lastIndexOf('.') + 1), which returns the whole basename when there's no dot, so a
+    // source file named "12345" would masquerade as extension "12345". Order: real source extension,
+    // then the resolved incoming filename's extension, then the supplied or message MIME, then bare.
+    private static String resolveExtension(File sourceFile, String resolvedName, String mime, MessageObject messageObject) {
+        String sourceExt = sourceFile == null ? "" : extensionOf(sourceFile.getName());
         if (isRealExtension(sourceExt)) {
             return sourceExt;
         }
-        String fromName = extensionOf(incomingName);
+        String fromName = extensionOf(resolvedName);
         if (isRealExtension(fromName)) {
             return fromName;
         }
