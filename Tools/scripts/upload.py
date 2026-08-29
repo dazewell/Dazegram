@@ -81,19 +81,24 @@ def truncate_text(text: str, budget: int) -> str:
 def get_header(commit_id, commit_url, commit_message, branch, branch_url, pr_number, pr_title, pr_url) -> str:
     emoji = BUILD_EMOJI.get(build_type, "🚀")
     if pr_number and pr_title:
-        title = html.escape(truncate_text(pr_title, HEADER_TITLE_BUDGET))
+        # Escape before truncating, not after: tg_len() (which truncate_text
+        # relies on) strips anything that looks like an HTML tag, so
+        # truncating raw text first would under-count a title containing a
+        # literal "<...>" and let it through untruncated, only for the
+        # subsequent escape to make it longer than the intended budget again.
+        title = truncate_text(html.escape(pr_title), HEADER_TITLE_BUDGET)
         headline = f'{emoji} <a href="{html.escape(pr_url)}">#{html.escape(pr_number)}</a> · {title}'
     else:
         # No associated PR (a dispatch on a branch with no PR, or a direct
         # push) — fall back to the commit subject instead of printing a bare
         # "#" or the word "unknown".
         subject = commit_message.splitlines()[0] if commit_message and commit_message != "unknown" else ""
-        subject = html.escape(truncate_text(subject, HEADER_TITLE_BUDGET))
+        subject = truncate_text(html.escape(subject), HEADER_TITLE_BUDGET)
         headline = f"{emoji} <b>{subject}</b>" if subject else emoji
     meta = (
         f'<a href="{html.escape(branch_url)}"><code>{html.escape(branch)}</code></a>'
         f" · "
-        f'<a href="{html.escape(commit_url)}"><code>{commit_id}</code></a>'
+        f'<a href="{html.escape(commit_url)}"><code>{html.escape(commit_id)}</code></a>'
     )
     return headline + "\n" + meta
 
