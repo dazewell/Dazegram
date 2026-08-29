@@ -32703,6 +32703,12 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         fixLayout();
+        // NagramX: rotation changes the display aspect the glass composite is sized to, but a settled
+        // wallpaper emits no motion notification, so the proxy would keep the old-orientation composite
+        // until an unrelated refresh fires. Post the coalesced refresh so it reallocates on the new
+        // dimensions once AndroidUtilities.displaySize has been updated (deferred by the post).
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
+        AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
