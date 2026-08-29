@@ -136,7 +136,10 @@ public final class VideoDraftStore {
         }
         p.edit().putString(k, next.toString()).apply();
         AutoDeleteMediaTask.lockFile(path);
-        if (cur != null) {
+        // NagramX (#video-draft-guard): only unlock the superseded file, never the one we just locked. If a newer
+        // recording somehow reuses the old path, unlockFile (a set remove) would strip the lock off the live draft
+        // and the sweep could eat it. Recordings write unique paths today, so this guard is normally a no-op.
+        if (cur != null && !cur.path.equals(path)) {
             AutoDeleteMediaTask.unlockFile(cur.path);
         }
     }
