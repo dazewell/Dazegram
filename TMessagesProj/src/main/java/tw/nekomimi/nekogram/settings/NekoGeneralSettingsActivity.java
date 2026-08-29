@@ -50,6 +50,8 @@ import tw.nekomimi.nekogram.config.cell.ConfigCellTextCheckPage;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextDetail;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput;
 import tw.nekomimi.nekogram.config.cell.ConfigCellTextInput2;
+import tw.nekomimi.nekogram.helpers.SaveFileNameDialog;
+import tw.nekomimi.nekogram.helpers.SaveFileNameHelper;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
 import xyz.nextalone.nagram.NaConfig;
 
@@ -117,6 +119,16 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
             this::sanitizeCustomSavePath,
             this::shouldShowCustomSavePathInputError,
             this::formatCustomSavePathDetail));
+    private final AbstractConfigCell customFileNamesRow = cellGroup.appendCell(new ConfigCellTextDetail(
+            NaConfig.INSTANCE.getCustomFileNamesPattern(),
+            (view, position) -> openCustomFileNamesDialog(),
+            null,
+            false,
+            getString(R.string.CustomFileNames),
+            this::formatCustomFileNamesDetail,
+            null,
+            null,
+            null));
 
     private final AbstractConfigCell dividerStorage = cellGroup.appendCell(new ConfigCellDivider());
 
@@ -682,6 +694,21 @@ public class NekoGeneralSettingsActivity extends BaseNekoXSettingsActivity {
             parentLayout.rebuildFragments(flags);
             layoutManager.onRestoreInstanceState(recyclerViewState);
         }
+    }
+
+    private void openCustomFileNamesDialog() {
+        SaveFileNameDialog.show(this, () -> {
+            if (listAdapter != null) {
+                listAdapter.notifyItemChanged(cellGroup.rows.indexOf(customFileNamesRow));
+            }
+        });
+    }
+
+    private String formatCustomFileNamesDetail(String pattern) {
+        if (!NaConfig.INSTANCE.getCustomFileNamesEnabled().Bool()) {
+            return getString(R.string.CustomFileNamesOff);
+        }
+        return LocaleController.formatString(R.string.CustomFileNamesOnExample, SaveFileNameHelper.renderForDisplay(pattern) + ".mp4");
     }
 
     private String formatCustomSavePathDetail(String rawValue) {
