@@ -65,4 +65,17 @@ abstract class GlassCompositorBase {
         }
         return true;
     }
+
+    /**
+     * Drops the retained composite so an inactive compositor stops holding a full-sized proxy after a
+     * wallpaper-type switch — the provider owns one motion and one bitmap compositor, and without this
+     * both would stay resident once the wallpaper flips between the two, breaking the ~one-proxy budget.
+     * Never {@code recycle()}: a baked glass display list may still hold a paint whose shader references
+     * the bitmap, and HWUI throws on a recycled bitmap. Null the fields and let GC take it once nothing
+     * references it. Cheap to rebuild — the next compose() reallocs from null.
+     */
+    void release() {
+        composite = null;
+        compositeCanvas = null;
+    }
 }

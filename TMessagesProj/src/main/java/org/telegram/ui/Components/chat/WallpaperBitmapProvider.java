@@ -111,6 +111,10 @@ public class WallpaperBitmapProvider {
             // shows it. Composite the drawable's actual output (gradient + pattern, including the
             // intensity<0 mask) into a retained bitmap and hand that to the glass. See MotionGlassCompositor.
             motionGlassCompositor.compose(sourceBitmap, motionDrawable, false);
+            // NagramX: motion is now the active proxy on sourceBitmap; drop the bitmap compositor's
+            // retained proxy so the two don't both stay resident after a bitmap→motion switch. Target was
+            // switched above, so releasing the inactive one now can't drop a bitmap we're about to draw.
+            bitmapGlassCompositor.release();
             // NagramX: the plain source is the pre-#230 gradient-only proxy for full-screen surfaces —
             // getBitmap() (the 60x80 gradient mesh, no pattern), or flat black when intensity<0.
             if (motionDrawable.getIntensity() < 0) {
@@ -146,12 +150,20 @@ public class WallpaperBitmapProvider {
             // like the composite does (SizeNotifierFrameLayout pans the wallpaper by backgroundTranslationY).
             shiftPlainSource = true;
             if (bitmapGlassCompositor.compose(sourceBitmap, bitmapDrawable)) {
+                // NagramX: bitmap is now the active proxy; drop the motion compositor's retained proxy so
+                // both don't stay resident after a motion→bitmap switch (target already switched above).
+                motionGlassCompositor.release();
                 return sourceBitmap;
             }
             // NagramX: composite declined (null/recycled or a thumbnail-sized source) — fall back to the
             // blurred proxy for the pills too, exactly as before this change, rather than upscaling a
             // thumbnail into visible colour blocks.
             sourceBitmap.setBitmap(blurred);
+            // NagramX: neither compositor is active on the fallback path (both pill and bare surfaces draw
+            // the blurred proxy), so release both retained proxies. setBitmap above already moved the
+            // target off any composite, so this can't drop a bitmap still in use here.
+            bitmapGlassCompositor.release();
+            motionGlassCompositor.release();
             return sourceBitmap;
         }
 
