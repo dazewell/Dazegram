@@ -43,6 +43,16 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
         this.gateOnBlurEnabled = gateOnBlurEnabled;
     }
 
+    // NagramX: theme-mode "dark", not perceived-brightness "dark" - shared by every isDark-branching
+    // getter below so shadow/stroke can never disagree with getBackgroundColor()'s own theme read. The
+    // inherited isDark() (BlurredBackgroundColorProviderThemed's, perceived brightness of the panel
+    // background color) is deliberately not used here: under a custom theme the panel color's brightness
+    // can disagree with the theme's actual day/night mode, which would let the "dark theme shadow stays
+    // 0" requirement leak a shadow in an actual dark theme with a bright custom panel color.
+    private boolean isDarkTheme() {
+        return resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
+    }
+
     @Override
     public int getBackgroundColor() {
         if (gateOnBlurEnabled && !BlurredBackgroundProviderImpl.checkBlurEnabled(currentAccount, resourcesProvider)) {
@@ -50,8 +60,7 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
         }
 
         // NagramX: dropped upstream's light-theme alpha 216 override — light and dark theme now each read their own configured pass-through (see NaConfig.composerGlassAlpha), read live rather than cached so an auto night mode flip picks up the right one without reopening the chat
-        final boolean dark = resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
-        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.composerGlassAlpha(dark));
+        return Theme.multAlpha(Theme.getColor(Theme.key_chat_messagePanelBackground, resourcesProvider), NaConfig.composerGlassAlpha(isDarkTheme()));
     }
 
     // NagramX: light-theme shadow alpha bumped from the base class's 0x20000000 for the stronger 3D
@@ -59,22 +68,22 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     // change once light theme has been judged on device.
     @Override
     public int getShadowColor() {
-        return isDark() ? 0 : 0x30000000;
+        return isDarkTheme() ? 0 : 0x30000000;
     }
 
-    // NagramX: computed live from isDark() rather than inherited from the base class's cached fields -
-    // getBackgroundColor() above already reads live so an auto night-mode flip picks up the right theme
-    // without reopening the chat, and the stroke colors need the same treatment or a flip could leave the
-    // background/shadow on the new theme while the stroke highlight is still painted for the old one.
-    // Values match BlurredBackgroundColorProviderThemed.updateColors()'s own constants.
+    // NagramX: computed live from isDarkTheme() rather than inherited from the base class's cached
+    // fields - getBackgroundColor() above already reads live so an auto night-mode flip picks up the
+    // right theme without reopening the chat, and the stroke colors need the same treatment or a flip
+    // could leave the background/shadow on the new theme while the stroke highlight is still painted
+    // for the old one. Values match BlurredBackgroundColorProviderThemed.updateColors()'s own constants.
     @Override
     public int getStrokeColorTop() {
-        return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
+        return isDarkTheme() ? 0x28FFFFFF : 0xFFFFFFFF;
     }
 
     @Override
     public int getStrokeColorBottom() {
-        return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
+        return isDarkTheme() ? 0x14FFFFFF : 0xFFFFFFFF;
     }
 
     // NagramX: pinned to BlurredBackgroundDrawable's own upstream constructor defaults so implementing
