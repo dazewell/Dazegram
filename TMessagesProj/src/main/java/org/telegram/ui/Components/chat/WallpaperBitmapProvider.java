@@ -25,6 +25,7 @@ public class WallpaperBitmapProvider {
     private final BlurredBackgroundSourceColor sourceColor = new BlurredBackgroundSourceColor();
     private final BlurredBackgroundSourceBitmap sourceBitmap = new BlurredBackgroundSourceBitmap();
     private final MotionGlassCompositor motionGlassCompositor = new MotionGlassCompositor();
+    private final BitmapGlassCompositor bitmapGlassCompositor = new BitmapGlassCompositor();
 
     // NagramX: THE SPLIT — this class is the single home for the rationale; the copies in ChatActivity,
     // ChannelAdminLogActivity and MotionGlassCompositor point here.
@@ -48,20 +49,20 @@ public class WallpaperBitmapProvider {
     private BlurredBackgroundSource plainSource;
 
     // NagramX: the keyboard pans the wallpaper vertically (SizeNotifierFrameLayout adds
-    // backgroundTranslationY to the wallpaper's draw y). The composite proxy is a separate bitmap the
-    // glass samples through its own cover matrix, so without this it stays put while the wallpaper
-    // slides under it and the pattern behind the composer reads as misaligned. We keep the composite
-    // source's matrix equal to base + backgroundTranslationY at all times. The source rebuilds its own
-    // cover matrix inside setBitmap()/setParentSize() without telling us and setParentSize early-returns
-    // on identical dims, so we can never assume whether a rebuild happened: detect it by value (below)
-    // and always recompute base + current shift from scratch, which is idempotent and cannot double-
-    // apply or lose the shift. Only the composite (sourceBitmap) is shifted here; what that means for the
-    // plain source depends on the wallpaper type — see setBackgroundTranslationY.
-    private final Matrix compositeBaseMatrix = new Matrix();
-    private final Matrix compositeShiftedMatrix = new Matrix();
-    private final float[] compositeLiveValues = new float[9];
-    private final float[] compositeAppliedValues = new float[9];
-    private boolean compositeMatrixTracked;
+    // backgroundTranslationY to the wallpaper's draw y). Each bitmap glass proxy is a separate bitmap the
+    // glass samples through its own cover matrix, so without this it stays put while the wallpaper slides
+    // under it and the pattern behind the composer reads as misaligned. We keep the composite source's
+    // matrix — and, for a bare-bitmap wallpaper, the plain source's matrix — equal to base +
+    // backgroundTranslationY at all times. The source rebuilds its own cover matrix inside
+    // setBitmap()/setParentSize() without telling us and setParentSize early-returns on identical dims,
+    // so we can never assume whether a rebuild happened: the tracker detects it by value and recomputes
+    // base + current shift from scratch, which is idempotent and cannot double-apply or lose the shift.
+    // compositeShift always drives sourceBitmap; plainShift drives plainSourceBitmap only when the plain
+    // source is a bare-wallpaper bitmap (shiftPlainSource) — a motion gradient mesh is deliberately left
+    // unshifted, see setBackgroundTranslationY.
+    private final KeyboardShiftTracker compositeShift = new KeyboardShiftTracker();
+    private final KeyboardShiftTracker plainShift = new KeyboardShiftTracker();
+    private boolean shiftPlainSource;
     private int backgroundTranslationY;
 
     private static final Rect tmpRect = new Rect();
@@ -74,7 +75,7 @@ public class WallpaperBitmapProvider {
         final boolean changed = motionGlassCompositor.compose(sourceBitmap, motionDrawable, true);
         // NagramX: compose() may rebuild the source's cover matrix (setBitmap on a realloc), which drops
         // the keyboard shift back to identity, so re-assert it.
-        applyBackgroundTranslationToComposite();
+        applyBackgroundTranslation();
         return changed;
     }
 
@@ -84,13 +85,18 @@ public class WallpaperBitmapProvider {
         final BlurredBackgroundSource result = updateSourceFromBackgroundViewDrawableInner(drawable);
         // NagramX: the branches above may rebuild sourceBitmap's cover matrix (setBitmap on a wallpaper
         // or type switch), which resets it to identity and loses the keyboard shift, so re-assert it.
-        applyBackgroundTranslationToComposite();
+        applyBackgroundTranslation();
         return result;
     }
 
     private BlurredBackgroundSource updateSourceFromBackgroundViewDrawableInner(
         Drawable drawable
     ) {
+        // NagramX: default off; only the bare-bitmap wallpaper branch below opts the plain source into
+        // the keyboard shift. Reset here (not in each other branch) so the ColorDrawable, motion and
+        // canvas-record branches stay untouched and a photo→motion switch clears it.
+        shiftPlainSource = false;
+
         if (drawable instanceof ColorDrawable) {
             final int color = ((ColorDrawable) drawable).getColor();
             sourceColor.setColor(color);
@@ -122,9 +128,30 @@ public class WallpaperBitmapProvider {
         }
 
         if (drawable instanceof BitmapDrawable) {
-            final Bitmap bitmap = blurredFromBitmap.get(((BitmapDrawable) drawable).getBitmap());
-            sourceBitmap.setBitmap(bitmap);
-            plainSource = sourceBitmap;
+            final BitmapDrawable bitmapDrawable = (BitmapDrawable) drawable;
+            // NagramX: a bitmap wallpaper (photo, imported-theme pattern, single-colour pattern override,
+            // Monet composite) used to hand the ~90x120 stack-blurred proxy to BOTH the composer pills
+            // and the bare-wallpaper surfaces, which destroyed any pattern before the pill sampled it —
+            // the pattern only survived on the built-in gradient because that goes through the motion
+            // compositor. Give the composite (pills) a crisp source-aspect proxy the same way, and keep
+            // the plain source on the blurred proxy for the bare-wallpaper surfaces (fade bands, search
+            // list) where a low-res composite would smear into coarse blocks beside the real wallpaper.
+            // The two are separate objects sharing the same blurred bitmap on the fallback path, never
+            // the drawable's own bitmap: that can be ImageLoader-owned and recycled when a chat closes,
+            // and a recycled bitmap baked into a glass render node crashes HWUI.
+            final Bitmap blurred = blurredFromBitmap.get(bitmapDrawable.getBitmap());
+            plainSourceBitmap.setBitmap(blurred);
+            plainSource = plainSourceBitmap;
+            // NagramX: the plain source is now a bare-wallpaper bitmap, so it must track the keyboard pan
+            // like the composite does (SizeNotifierFrameLayout pans the wallpaper by backgroundTranslationY).
+            shiftPlainSource = true;
+            if (bitmapGlassCompositor.compose(sourceBitmap, bitmapDrawable)) {
+                return sourceBitmap;
+            }
+            // NagramX: composite declined (null/recycled or a thumbnail-sized source) — fall back to the
+            // blurred proxy for the pills too, exactly as before this change, rather than upscaling a
+            // thumbnail into visible colour blocks.
+            sourceBitmap.setBitmap(blurred);
             return sourceBitmap;
         }
 
@@ -150,8 +177,9 @@ public class WallpaperBitmapProvider {
     /**
      * The plain wallpaper proxy for full-screen glass surfaces, set as a side effect of the most
      * recent {@link #updateSourceFromBackgroundViewDrawable} call. For a motion wallpaper this is the
-     * gradient-only mesh (or flat black), never the pattern composite; for every other drawable type
-     * it is the same object that call returned.
+     * gradient-only mesh (or flat black) and for a bare-bitmap wallpaper the stack-blurred proxy, never
+     * the pattern composite the call returns; for a colour wallpaper and the canvas-record fallback it is
+     * the same object that call returned.
      *
      * Not every consumer that keeps the composite is a bare full-screen surface. GiftMessageBottomSheet
      * is the other one that draws this composite bare across its whole container and deliberately keeps
@@ -176,48 +204,68 @@ public class WallpaperBitmapProvider {
     public void setParentSize(int width, int height, int actionBarHeight) {
         sourceBitmap.setParentSize(width, height, actionBarHeight);
         plainSourceBitmap.setParentSize(width, height, actionBarHeight);
-        // NagramX: setParentSize rebuilds the composite source's cover matrix, dropping the keyboard
-        // shift back to identity, so re-assert it (a no-op when the shift is 0).
-        applyBackgroundTranslationToComposite();
+        // NagramX: setParentSize rebuilds each source's cover matrix, dropping the keyboard shift back to
+        // identity, so re-assert it on both (a no-op when the shift is 0).
+        applyBackgroundTranslation();
     }
 
     /**
      * Vertical offset the keyboard pan applies to the wallpaper (SizeNotifierFrameLayout's
-     * backgroundTranslationY). The composite glass proxy is a separate bitmap and must shift by the same
-     * amount so the pattern behind the composer tracks the real wallpaper. This shifts the composite
-     * source (sourceBitmap). What happens to the plain source depends on the wallpaper type: for a motion
+     * backgroundTranslationY). Each bitmap glass proxy is a separate bitmap and must shift by the same
+     * amount so what shows through tracks the real wallpaper. This always shifts the composite source
+     * (sourceBitmap). What happens to the plain source depends on the wallpaper type: for a motion
      * wallpaper the plain source is a separate gradient bitmap (or flat black), left unshifted because a
-     * few px of vertical drift is invisible in smooth low-frequency colour. For a photo or other
-     * wallpaper there is no separate plain proxy — plainSource is sourceBitmap, the same object shifted
-     * here — so those bare-wallpaper surfaces pan with the wallpaper too. That is correct:
-     * SizeNotifierFrameLayout pans a photo wallpaper by the same backgroundTranslationY, so the fade
-     * bands now track it where before they did not.
+     * few px of vertical drift is invisible in smooth low-frequency colour. For a bare-bitmap wallpaper
+     * (photo, imported-theme or single-colour pattern, Monet) the plain source is the blurred proxy of
+     * that wallpaper, a separate object from the composite, so it must be shifted too (shiftPlainSource) —
+     * SizeNotifierFrameLayout pans that wallpaper by the same backgroundTranslationY, so the fade bands
+     * track it where before they did not.
      */
     public void setBackgroundTranslationY(int translationY) {
         backgroundTranslationY = translationY;
-        applyBackgroundTranslationToComposite();
+        applyBackgroundTranslation();
     }
 
-    private void applyBackgroundTranslationToComposite() {
-        // getMatrix() hands back the source's live bitmapMatrix, so read its values out rather than
-        // mutating it in place. If those values no longer match what we last wrote, the source rebuilt
-        // its cover matrix (setBitmap/setParentSize) since our last pass, so adopt the live matrix as the
-        // new base; otherwise the base we already hold is still current. Then always recompute
-        // base + current shift, so there is no delta arithmetic to double-apply or lose across an
-        // early-returned setParentSize.
-        final Matrix live = sourceBitmap.getMatrix();
-        live.getValues(compositeLiveValues);
-        if (!compositeMatrixTracked || !Arrays.equals(compositeLiveValues, compositeAppliedValues)) {
-            compositeBaseMatrix.set(live);
-            compositeMatrixTracked = true;
+    private void applyBackgroundTranslation() {
+        compositeShift.apply(sourceBitmap, backgroundTranslationY);
+        if (shiftPlainSource) {
+            plainShift.apply(plainSourceBitmap, backgroundTranslationY);
         }
-        compositeShiftedMatrix.set(compositeBaseMatrix);
-        // Sign: the wallpaper draws at y = backgroundTranslationY + ... (SizeNotifierFrameLayout), so a
-        // positive translation moves it down; shift the composite's output down by the same amount so the
-        // glass keeps sampling the matching wallpaper region.
-        compositeShiftedMatrix.postTranslate(0, backgroundTranslationY);
-        sourceBitmap.setMatrix(compositeShiftedMatrix);
-        compositeShiftedMatrix.getValues(compositeAppliedValues);
+    }
+
+    /**
+     * Keeps a bitmap source's cover matrix at base + a vertical keyboard shift. Instantiated once per
+     * source rather than copied inline: the re-base-by-value detection below is the subtle part and must
+     * live in exactly one place.
+     */
+    private static final class KeyboardShiftTracker {
+        private final Matrix baseMatrix = new Matrix();
+        private final Matrix shiftedMatrix = new Matrix();
+        private final float[] liveValues = new float[9];
+        private final float[] appliedValues = new float[9];
+        private boolean tracked;
+
+        void apply(BlurredBackgroundSourceBitmap source, int translationY) {
+            // getMatrix() hands back the source's live bitmapMatrix, so read its values out rather than
+            // mutating it in place. If those values no longer match what we last wrote, the source rebuilt
+            // its cover matrix (setBitmap/setParentSize) since our last pass, so adopt the live matrix as
+            // the new base; otherwise the base we already hold is still current. Then always recompute
+            // base + current shift, so there is no delta arithmetic to double-apply or lose across an
+            // early-returned setParentSize.
+            final Matrix live = source.getMatrix();
+            live.getValues(liveValues);
+            if (!tracked || !Arrays.equals(liveValues, appliedValues)) {
+                baseMatrix.set(live);
+                tracked = true;
+            }
+            shiftedMatrix.set(baseMatrix);
+            // Sign: the wallpaper draws at y = backgroundTranslationY + ... (SizeNotifierFrameLayout), so
+            // a positive translation moves it down; shift the source's output down by the same amount so
+            // the glass keeps sampling the matching wallpaper region.
+            shiftedMatrix.postTranslate(0, translationY);
+            source.setMatrix(shiftedMatrix);
+            shiftedMatrix.getValues(appliedValues);
+        }
     }
 
     public int getNavigationBarColor(BlurredBackgroundSource source) {

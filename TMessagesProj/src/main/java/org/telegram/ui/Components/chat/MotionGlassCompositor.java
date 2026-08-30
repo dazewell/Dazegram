@@ -2,7 +2,6 @@ package org.telegram.ui.Components.chat;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
 import android.graphics.Rect;
 
 import org.telegram.messenger.AndroidUtilities;
@@ -33,7 +32,7 @@ import org.telegram.ui.Components.blur3.utils.BitmapChangeTracker;
  * take this composite versus WallpaperBitmapProvider's gradient-only plain source, and why, is decided
  * there; see that class for the split.
  */
-public class MotionGlassCompositor {
+public class MotionGlassCompositor extends GlassCompositorBase {
 
     // Downsampled proxy: the glass upscales it, and its only softening is that upscale (nothing blurs
     // the wallpaper on any path), so the pattern is only ever as sharp as this bitmap. Screen aspect
@@ -48,13 +47,12 @@ public class MotionGlassCompositor {
     // resolution further only spends memory on detail the refracted, tinted pill cannot resolve.
     private static final int TARGET_LONG_EDGE_PX = 768;
 
-    private Bitmap composite;
-    private Canvas compositeCanvas;
-
     private final BitmapChangeTracker gradientTracker = new BitmapChangeTracker();
     private final BitmapChangeTracker patternTracker = new BitmapChangeTracker();
 
     private final Rect savedBounds = new Rect();
+
+    private MotionBackgroundDrawable pendingMotion;
 
     /**
      * Records the drawable into the retained composite and points {@code target} at it. Returns true
@@ -77,54 +75,40 @@ public class MotionGlassCompositor {
             return false;
         }
 
-        final boolean realloc = composite == null || composite.isRecycled()
-                || composite.getWidth() != targetW || composite.getHeight() != targetH;
-
         final Bitmap gradient = motion.getBitmap();
         final Bitmap pattern = motion.getPatternBitmap();
         final boolean gradientChanged = gradientTracker.isInvalidated(gradient);
         final boolean patternChanged = patternTracker.isInvalidated(pattern);
 
-        if (!force && !realloc && !gradientChanged && !patternChanged
-                && target.getBitmap() == composite) {
-            return false;
+        pendingMotion = motion;
+        final boolean changed;
+        try {
+            changed = composeInto(target, targetW, targetH, force || gradientChanged || patternChanged);
+        } finally {
+            pendingMotion = null;
         }
 
-        if (realloc) {
-            // Drop the old reference rather than recycle it: a baked glass display list may still hold
-            // a paint whose shader references it, and HWUI throws on a recycled bitmap. Let GC take it.
-            composite = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888);
-            composite.setHasAlpha(false);
-            compositeCanvas = new Canvas(composite);
-        }
+        gradientTracker.set(gradient);
+        patternTracker.set(pattern);
+        return changed;
+    }
 
-        // Opaque black, not transparent: setAlpha() on the drawable during a theme crossfade posts no
-        // invalidation, so a refresh landing mid-crossfade would otherwise bake a semi-transparent
-        // proxy with no signal to fix it. Black bounds the worst case to "briefly too dark".
-        composite.eraseColor(Color.BLACK);
+    @Override
+    protected void drawInto(Canvas canvas, int width, int height) {
+        final MotionBackgroundDrawable motion = pendingMotion;
         savedBounds.set(motion.getBounds());
-        motion.setBounds(0, 0, targetW, targetH);
+        motion.setBounds(0, 0, width, height);
         // Suppress the drawable's trailing updateAnimation() for this off-screen draw: it would advance
         // the animation clock and post invalidateMotionBackground, which drives another forced composite
         // and loops as fast as the queue drains. finally so a throw can't leave the flag stuck and freeze
         // the real wallpaper animation.
         motion.setSuppressAnimationAdvance(true);
         try {
-            motion.draw(compositeCanvas);
+            motion.draw(canvas);
         } finally {
             motion.setSuppressAnimationAdvance(false);
             motion.setBounds(savedBounds);
         }
-
-        gradientTracker.set(gradient);
-        patternTracker.set(pattern);
-
-        // Same instance across re-records so setBitmap early-returns and the shader/matrix survive;
-        // only a realloc or a wallpaper-type switch rebuilds the shader here.
-        if (target.getBitmap() != composite) {
-            target.setBitmap(composite);
-        }
-        return true;
     }
 
     private static int targetWidth() {
