@@ -32,6 +32,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.ActionBar;
 import org.telegram.ui.ActionBar.ActionBarMenuItem;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -46,7 +47,6 @@ import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.blur3.BlurredBackgroundDrawableViewFactory;
-import org.telegram.ui.Components.blur3.drawable.color.BlurredBackgroundColorProviderThemed;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSource;
 import org.telegram.ui.Components.blur3.source.BlurredBackgroundSourceBitmap;
 import org.telegram.ui.Components.chat.WallpaperBitmapProvider;
@@ -1271,9 +1271,11 @@ public class ComposerLayoutActivity extends BaseFragment {
             // NagramX: glassed with the same wallpaper sample the toolbar bubbles use, fed the
             // slider-configured pass-through for whichever theme is currently running, instead of the
             // flat panel color this used to paint - otherwise the two sliders below would have no
-            // visible effect anywhere in this preview.
-            BlurredBackgroundColorProviderThemed bodyGlassColor = new BlurredBackgroundColorProviderThemed(
-                    null, Theme.key_chat_messagePanelBackground, NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark()));
+            // visible effect anywhere in this preview. Shares ComposerGlassProvider with the real chat
+            // (see attachGlass below) so the shadow/stroke shown here matches what actually ships;
+            // gateOnBlurEnabled=false because this preview has always shown the configured glass
+            // regardless of whether blur happens to be off for the previewing account right now.
+            ComposerGlassProvider bodyGlassColor = new ComposerGlassProvider(UserConfig.selectedAccount, null, false);
             FrameLayout body = new FrameLayout(getContext());
             body.setBackground(glassFactory.create(body, bodyGlassColor).setRadius(dp(PREVIEW_INPUT_HEIGHT / 2f)));
             body.setFocusable(false);
@@ -1345,14 +1347,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                 glassSource = null;
             }
             glassFactory = new BlurredBackgroundDrawableViewFactory(source);
-            // NagramX: must stay fed the same NaConfig.composerGlassAlpha value as the mock pill's
-            // provider in addMockInput() below, or the two preview surfaces disagree with each other
+            // NagramX: must stay fed the same ComposerGlassProvider construction as the mock pill's
+            // provider in addMockInput() above, or the two preview surfaces disagree with each other
             // (and with the real chat, where both read the one live-overridden provider) the moment the
             // slider moves off its default.
             toolbar.attachGlass(
                     glassFactory,
-                    new BlurredBackgroundColorProviderThemed(null, Theme.key_chat_messagePanelBackground,
-                            NaConfig.composerGlassAlpha(Theme.isCurrentThemeDark())));
+                    new ComposerGlassProvider(UserConfig.selectedAccount, null, false));
         }
 
         @Override
