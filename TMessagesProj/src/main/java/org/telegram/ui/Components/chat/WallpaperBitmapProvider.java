@@ -195,11 +195,16 @@ public class WallpaperBitmapProvider {
      *
      * Not every consumer that keeps the composite is a bare full-screen surface. GiftMessageBottomSheet
      * is the other one that draws this composite bare across its whole container and deliberately keeps
-     * the pattern, so don't "finish the job" by pointing it at the plain source. Other consumers outside
-     * ChatActivity keep the composite too, but as surface shapes the split does not apply to:
-     * NekoDelegateFragment's glass action bar samples it through a render node (like the pills), and
-     * ComposerLayoutActivity's preview capsules sample it sized to the preview cell rather than
-     * full-screen.
+     * the pattern, so don't "finish the job" by pointing it at the plain source. ComposerLayoutActivity's
+     * preview capsules also keep the composite: they sample it sized to the preview cell, not full-screen,
+     * so there is no adjacent wallpaper to smear against.
+     *
+     * NekoDelegateFragment is the exception the other way. Its glass action bar samples the composite
+     * through a render node like the pills, but it feeds the SAME source to a full-screen
+     * ChatActivityFadeView drawn bare over the real wallpaper, and the two cannot be split without
+     * restructuring its sizing. So for a bare-bitmap wallpaper it installs this plain source into that
+     * shared source and gives up the action bar's crisp pattern to keep the fade band from smearing —
+     * see resolveGlassWallpaperSource there.
      */
     public BlurredBackgroundSource getPlainSource() {
         return plainSource;
