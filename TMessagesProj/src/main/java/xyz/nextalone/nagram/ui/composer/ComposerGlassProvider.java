@@ -55,11 +55,26 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
     }
 
     // NagramX: light-theme shadow alpha bumped from the base class's 0x20000000 for the stronger 3D
-    // read; dark theme stays disabled (0) - a deliberate, separately-judged decision this round, not an
-    // oversight (see condition 5 of the design review).
+    // read; dark theme stays disabled (0) - a deliberate choice, not an oversight, left for a separate
+    // change once light theme has been judged on device.
     @Override
     public int getShadowColor() {
         return isDark() ? 0 : 0x30000000;
+    }
+
+    // NagramX: computed live from isDark() rather than inherited from the base class's cached fields -
+    // getBackgroundColor() above already reads live so an auto night-mode flip picks up the right theme
+    // without reopening the chat, and the stroke colors need the same treatment or a flip could leave the
+    // background/shadow on the new theme while the stroke highlight is still painted for the old one.
+    // Values match BlurredBackgroundColorProviderThemed.updateColors()'s own constants.
+    @Override
+    public int getStrokeColorTop() {
+        return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
+    }
+
+    @Override
+    public int getStrokeColorBottom() {
+        return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
     }
 
     // NagramX: pinned to BlurredBackgroundDrawable's own upstream constructor defaults so implementing
