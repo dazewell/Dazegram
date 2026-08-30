@@ -43,12 +43,13 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
         this.gateOnBlurEnabled = gateOnBlurEnabled;
     }
 
-    // NagramX: theme-mode "dark", not perceived-brightness "dark" - shared by every isDark-branching
-    // getter below so shadow/stroke can never disagree with getBackgroundColor()'s own theme read. The
-    // inherited isDark() (BlurredBackgroundColorProviderThemed's, perceived brightness of the panel
-    // background color) is deliberately not used here: under a custom theme the panel color's brightness
-    // can disagree with the theme's actual day/night mode, which would let the "dark theme shadow stays
-    // 0" requirement leak a shadow in an actual dark theme with a bright custom panel color.
+    // NagramX: theme-mode "dark", not perceived-brightness "dark" - used by getBackgroundColor() and
+    // getShadowColor() below (NOT by the stroke getters further down - see their comment for why they
+    // stay on the inherited isDark() instead). The inherited isDark() (BlurredBackgroundColorProviderThemed's,
+    // perceived brightness of the panel background color) is deliberately not used for shadow/background:
+    // under a custom theme the panel color's brightness can disagree with the theme's actual day/night
+    // mode, which would let the "dark theme shadow stays 0" requirement leak a shadow in an actual dark
+    // theme with a bright custom panel color.
     private boolean isDarkTheme() {
         return resourcesProvider != null ? resourcesProvider.isDark() : Theme.isCurrentThemeDark();
     }
@@ -71,19 +72,24 @@ public class ComposerGlassProvider extends BlurredBackgroundColorProviderThemed 
         return isDarkTheme() ? 0 : 0x30000000;
     }
 
-    // NagramX: computed live from isDarkTheme() rather than inherited from the base class's cached
-    // fields - getBackgroundColor() above already reads live so an auto night-mode flip picks up the
-    // right theme without reopening the chat, and the stroke colors need the same treatment or a flip
-    // could leave the background/shadow on the new theme while the stroke highlight is still painted
-    // for the old one. Values match BlurredBackgroundColorProviderThemed.updateColors()'s own constants.
+    // NagramX: deliberately NOT isDarkTheme() - stroke keeps the base class's own predicate, isDark()
+    // (perceived brightness of the panel background colour), matching BlurredBackgroundColorProviderThemed.
+    // updateColors()'s own logic exactly. A stroke is an edge highlight whose contrast is against the
+    // panel it sits on, not against the theme mode, so on a custom .attheme where a dark-mode theme has
+    // an unusually bright panel colour, the stroke should still read against that bright panel - the base
+    // class already gets this right and the brief never asked for stroke to change. Only shadow and
+    // background follow theme day/night mode (isDarkTheme()), because dazewell's gate decision - dark
+    // theme shadow stays 0 - is a statement about theme mode, not panel brightness. Computed live rather
+    // than inherited from the cached fields so it can't go stale between updateColors() calls, same as
+    // getBackgroundColor() above.
     @Override
     public int getStrokeColorTop() {
-        return isDarkTheme() ? 0x28FFFFFF : 0xFFFFFFFF;
+        return isDark() ? 0x28FFFFFF : 0xFFFFFFFF;
     }
 
     @Override
     public int getStrokeColorBottom() {
-        return isDarkTheme() ? 0x14FFFFFF : 0xFFFFFFFF;
+        return isDark() ? 0x14FFFFFF : 0xFFFFFFFF;
     }
 
     // NagramX: pinned to BlurredBackgroundDrawable's own upstream constructor defaults so implementing
