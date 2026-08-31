@@ -15,6 +15,7 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
+import android.graphics.drawable.BitmapDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -52,6 +53,7 @@ import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.ChatMessageCell;
 import org.telegram.ui.ChatActivity;
+import org.telegram.ui.ChatBackgroundDrawable;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
@@ -122,7 +124,7 @@ public abstract class NekoDelegateFragment extends BaseFragment implements Notif
         @Override
         public void onUpdateBackgroundDrawable(Drawable drawable) {
             super.onUpdateBackgroundDrawable(drawable);
-            BlurredBackgroundSource source = wallpaperBitmapProvider.updateSourceFromBackgroundViewDrawable(drawable);
+            BlurredBackgroundSource source = resolveGlassWallpaperSource(wallpaperBitmapProvider, drawable);
             glassBackgroundSourceWallpaper.setSource(source);
             updateGlassBackgroundSourceSize();
         }
@@ -147,6 +149,28 @@ public abstract class NekoDelegateFragment extends BaseFragment implements Notif
         }
     }
 
+    // NagramX: choose the glass wallpaper source for the Neko action bar and its fade view, which share
+    // this one source. The action bar samples it through a render node (like the composer pills, where a
+    // crisp pattern is wanted), but the SAME source also feeds a full-screen ChatActivityFadeView drawn
+    // bare over the real wallpaper. A crisp low-res composite on that bare band smears into coarse blocks
+    // against the wallpaper directly beneath it — the exact artefact PR #235 removed by feeding fade views
+    // the plain proxy. Since the two cannot be split without restructuring ScrimFrameLayout's sizing (a
+    // separate change), for a bitmap wallpaper install the plain (blurred) proxy into the shared source
+    // and deliberately give up the action bar's incidental crisp pattern to keep the fade band clean. Keep
+    // the composite only for a motion wallpaper, whose plain source is a gradient-only mesh with no pattern
+    // to preserve. Do not "finish the job" by handing the composite back here.
+    private BlurredBackgroundSource resolveGlassWallpaperSource(WallpaperBitmapProvider provider, Drawable drawable) {
+        final BlurredBackgroundSource composite = provider.updateSourceFromBackgroundViewDrawable(drawable);
+        Drawable resolved = drawable;
+        if (resolved instanceof ChatBackgroundDrawable) {
+            resolved = ((ChatBackgroundDrawable) resolved).getDrawable(false);
+        }
+        if (resolved instanceof BitmapDrawable) {
+            return provider.getPlainSource();
+        }
+        return composite;
+    }
+
     protected void setupGlassActionBar(@NonNull ViewGroup container, @NonNull RecyclerListView listView) {
         if (actionBar == null) {
             return;
@@ -156,7 +180,7 @@ public abstract class NekoDelegateFragment extends BaseFragment implements Notif
             source = scrimFrameLayout.glassBackgroundSourceWallpaper;
         } else {
             BlurredBackgroundSourceWrapped sourceWallpaper = new BlurredBackgroundSourceWrapped();
-            sourceWallpaper.setSource(new WallpaperBitmapProvider().updateSourceFromBackgroundViewDrawable(Theme.getCachedWallpaper()));
+            sourceWallpaper.setSource(resolveGlassWallpaperSource(new WallpaperBitmapProvider(), Theme.getCachedWallpaper()));
             source = sourceWallpaper;
         }
         BlurredBackgroundDrawableViewFactory wallpaperDrawableFactory = new BlurredBackgroundDrawableViewFactory(source);
