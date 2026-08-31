@@ -210,10 +210,12 @@ returns HTTP 200 with the reviewer dropped, and `gh pr edit --add-reviewer
 @copilot` no-ops.
 
 **Never confirm via `requested_reviewers`** — it stays empty *even after a review
-has been submitted*. Confirm on the *reviews* endpoint:
+has been submitted*. Confirm on the *reviews* endpoint, **filtered to the bot**
+(a bare listing also matches human reviewers and prior reviews):
 
 ```powershell
-gh api repos/dazewell/Dazegram/pulls/<n>/reviews --jq '.[].user.login'
+@(gh api repos/dazewell/Dazegram/pulls/<n>/reviews | ConvertFrom-Json) |
+  Where-Object { $_.user.login -like '*copilot*' }
 ```
 
 Opening the pull request, and every later push, triggers `ci.yml` — the fast

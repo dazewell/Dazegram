@@ -391,9 +391,11 @@ erroring:
 **Never confirm via `requested_reviewers`** — that endpoint stays **empty even
 after the review has landed and been submitted**, so reading it as "the review
 was never requested" is wrong and has caused exactly that misdiagnosis. Confirm
-against the reviews endpoint instead:
+against the reviews endpoint instead, **filtered to the bot** — a bare listing
+also picks up human reviewers and prior reviews, so it false-positives:
 ```powershell
-gh api repos/<owner>/<repo>/pulls/<n>/reviews --jq '.[] | "[\(.user.login)] \(.state)"'
+@(gh api repos/<owner>/<repo>/pulls/<n>/reviews | ConvertFrom-Json) |
+  Where-Object { $_.user.login -like '*copilot*' }
 ```
 A draft PR gets no review, so if nothing arrives check the PR is non-draft
 before assuming anything is broken. See the `nagramx-github-pr-copilot-review`
