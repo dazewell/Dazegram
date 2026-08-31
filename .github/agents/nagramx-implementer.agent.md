@@ -1,6 +1,6 @@
 ---
 name: nagramx-implementer
-description: "Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to CI (`ci.yml`), writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, requests the single automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges."
+description: "Implements one focused change on the NagramX Telegram-for-Android fork, from empty branch to a pull request that is ready to merge. Writes the code in the fork minimal-footprint hook style, runs the compile gate or falls back to CI (`ci.yml`), writes the FEATURES.md entry for anything user-visible, commits with the mandatory #slug tag, opens a non-draft pull request into dev, waits for the automated review pass, fixes what it finds as new commits, and resolves every review thread. Use it for the coding half of a change, one session and one branch per change. It owns its branch through to a green build and never merges."
 model: claude-sonnet-5
 ---
 
@@ -200,13 +200,21 @@ round 2 has not happened when you open it.
 
 ```powershell
 gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
-gh api -X POST repos/dazewell/Dazegram/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
 ```
 
-`gh pr edit --add-reviewer @copilot` silently no-ops, and
-`gh pr view --json reviewRequests` hides bot reviewers; confirm with
-`gh api repos/dazewell/Dazegram/pulls/<n>/requested_reviewers` and look for
-`Copilot`.
+**Don't request the review — it is automatic.** The
+`dev no-force no-delete + Copilot review` repository ruleset requests Copilot when
+a non-draft PR targets `dev`, so it arrives a few minutes after publish. Every
+hand-request route fails *silently*: the REST POST to `requested_reviewers`
+returns HTTP 200 with the reviewer dropped, and `gh pr edit --add-reviewer
+@copilot` no-ops.
+
+**Never confirm via `requested_reviewers`** — it stays empty *even after a review
+has been submitted*. Confirm on the *reviews* endpoint:
+
+```powershell
+gh api repos/dazewell/Dazegram/pulls/<n>/reviews --jq '.[].user.login'
+```
 
 Opening the pull request, and every later push, triggers `ci.yml` — the fast
 Java/Kotlin validation gate (no APK). **That gate is your compile signal** when
