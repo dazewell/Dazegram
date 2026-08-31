@@ -372,16 +372,34 @@ also runs and fails the PR if any commit is missing its tag.
 
 For a **user-visible feature this PR is opened by default** (don't wait to be
 asked — it's how dazewell gets the test build); **CI/bug/chore work stays
-optional** and can land straight into `dev` (below). When you open the PR, also
-request a Copilot review:
+optional** and can land straight into `dev` (below). Open the PR **non-draft**:
 ```powershell
 gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
-gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
 ```
-`gh pr edit --add-reviewer @copilot` silently no-ops and `--json reviewRequests`
-hides bot reviewers; confirm with
-`gh api repos/<owner>/<repo>/pulls/<n>/requested_reviewers` (look for `Copilot`).
-See the `nagramx-github-pr-copilot-review` memory note.
+**Don't request the Copilot review by hand — it is automatic.** The
+`dev no-force no-delete + Copilot review` repository ruleset requests it when a
+non-draft PR targets `dev`, so the review arrives on its own a few minutes after
+publish. Just wait for it.
+
+Every hand-request route is a trap, and each one fails *silently* rather than
+erroring:
+- `gh api -X POST .../requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"`
+  returns **HTTP 200 with the reviewer silently dropped** — it looks like it worked.
+- `gh pr edit --add-reviewer @copilot` no-ops the same way.
+- `--json reviewRequests` hides bot reviewers.
+
+**Never confirm via `requested_reviewers`** — that endpoint stays **empty even
+after the review has landed and been submitted**, so reading it as "the review
+was never requested" is wrong and has caused exactly that misdiagnosis. Confirm
+against the reviews endpoint instead, **filtered to the bot** — a bare listing
+also picks up human reviewers and prior reviews, so it false-positives:
+```powershell
+@(gh api repos/<owner>/<repo>/pulls/<n>/reviews | ConvertFrom-Json) |
+  Where-Object { $_.user.login -like '*copilot*' }
+```
+A draft PR gets no review, so if nothing arrives check the PR is non-draft
+before assuming anything is broken. See the `nagramx-github-pr-copilot-review`
+memory note.
 
 Every GitHub review comment must be closed before landing: reply with the fix,
 or explain explicitly why it will not be changed, then resolve the thread.

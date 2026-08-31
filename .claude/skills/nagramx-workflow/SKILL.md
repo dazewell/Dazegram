@@ -349,17 +349,31 @@ code are not.
    artifact. `commit-tag.yml`
    also runs and blocks the PR if any commit lacks its `#tag`.
 
-   **Request a Copilot review when the PR opens.** `gh pr edit <n> --add-reviewer
-   @copilot` doesn't resolve the bot (it no-ops), and the bot isn't a
-   `suggestedActors` entry. Add it over REST:
+   **Don't request the Copilot review — it is automatic.** The
+   `dev no-force no-delete + Copilot review` repository ruleset requests it when
+   a non-draft PR targets `dev`, so it arrives on its own. Every hand-request
+   route below fails *silently* — these are the traps, **not** things to run:
+
+   - `gh pr edit <n> --add-reviewer @copilot` — no-ops.
+   - `gh api -X POST .../requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"`
+     — returns **HTTP 200 with the reviewer dropped**, so it reads as success.
+   - the bot isn't a `suggestedActors` entry, so it can't be discovered that way
+     either.
+
+   **Never confirm via `requested_reviewers`** — that endpoint stays empty *even
+   after a review has landed and been submitted*, so reading it as "the review was
+   never requested" is wrong. Confirm on the *reviews* endpoint, and **filter to
+   the bot**: a bare `.[].user.login` also lists human reviewers and prior
+   reviews, so it false-positives. Per the login gotcha below, match
+   case-insensitively on a wildcard in PowerShell rather than in `--jq`:
 
    ```powershell
-   gh api -X POST repos/<owner>/<repo>/pulls/<n>/requested_reviewers -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+   @(gh api repos/<owner>/<repo>/pulls/<n>/reviews | ConvertFrom-Json) |
+     Where-Object { $_.user.login -like '*copilot*' }
    ```
 
-   `gh pr view <n> --json reviewRequests` hides bot reviewers (it'll read `[]`
-   even on success); confirm with `gh api repos/<owner>/<repo>/pulls/<n>/requested_reviewers`
-   (look for `Copilot`). It's a machine reviewer, not a substitute for the
+   A draft PR gets no review at all, so check that first
+   if nothing arrives. It's a machine reviewer, not a substitute for the
    round-2 architect pass — treat its comments the same way (verify before
    acting). Details in the `nagramx-github-pr-copilot-review` memory note.
 

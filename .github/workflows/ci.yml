@@ -20,6 +20,7 @@ on:
       - '.githooks/**'
       - '.claude/**'
       - '.github/agents/**'
+      - '.github/skills/**'
   pull_request:
     types: [opened, reopened, synchronize]
     paths-ignore:
@@ -28,6 +29,7 @@ on:
       - '.githooks/**'
       - '.claude/**'
       - '.github/agents/**'
+      - '.github/skills/**'
 
 # Keep only the latest run per branch/PR; supersede an older in-flight one.
 concurrency:
