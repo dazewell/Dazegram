@@ -209,11 +209,16 @@ public class MessageTriggersActivity extends BaseFragment {
     /**
      * Also drops the group's HeaderItem if this was its only row -- otherwise a lone header with
      * nothing under it would sit there until the async reload catches up.
+     *
+     * Compares by entry.key(), not object identity: a reload between the long-press (which
+     * captured this EventScheduleEntry) and the confirm click rebuilds fresh entry instances with
+     * the same key, and reference equality would silently fail to find the row, leaving it
+     * tappable until the async reload lands.
      */
     private void removeRowSynchronously(@NonNull EventScheduleEntry entry) {
         int rowIndex = -1;
         for (int i = 0; i < items.size(); i++) {
-            if (items.get(i) instanceof RowItem row && row.entry() == entry) {
+            if (items.get(i) instanceof RowItem row && row.entry().key().equals(entry.key())) {
                 rowIndex = i;
                 break;
             }
