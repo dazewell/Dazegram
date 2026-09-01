@@ -52,6 +52,12 @@ public final class EventScheduleController {
             this.expiresAtElapsedMs = expiresAtElapsedMs;
             this.claimExpiresAtElapsedMs = claimExpiresAtElapsedMs;
         }
+
+        private static final class QueueState {
+            final ArrayList<EventScheduleEntry> entries = new ArrayList<>();
+            int token;
+            int retriesLeft;
+        }
     }
 
     // Local scheduled echoes are posted inline from the send path, so claim eligibility is short.
@@ -61,9 +67,7 @@ public final class EventScheduleController {
 
     // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
-    private static final Map<String, ArrayList<EventScheduleEntry>> QUEUES = new HashMap<>();
-    private static final Map<String, Boolean> RUNNING_QUEUES = new HashMap<>();
-    private static final Map<String, Integer> QUEUE_TOKENS = new HashMap<>();
+    private static final Map<String, QueueState> QUEUES = new HashMap<>();
     private static int nextQueueToken;
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
@@ -468,12 +472,13 @@ public final class EventScheduleController {
                 || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
         String queueKey = queueKey(account, entry);
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
-        boolean queueRunning = Boolean.TRUE.equals(RUNNING_QUEUES.get(queueKey));
-        if (queue == null) {
-            queue = new ArrayList<>();
-            QUEUES.put(queueKey, queue);
+        QueueState queueState = QUEUES.get(queueKey);
+        boolean queueRunning = queueState != null;
+        if (queueState == null) {
+            queueState = new QueueState();
+            QUEUES.put(queueKey, queueState);
         }
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
         boolean inserted = false;
         if (!queue.contains(entry)) {
             queue.add(entry);
@@ -491,35 +496,34 @@ public final class EventScheduleController {
     }
 
     private static void startQueue(int account, String queueKey) {
-        if (Boolean.TRUE.equals(RUNNING_QUEUES.get(queueKey))) return;
-        RUNNING_QUEUES.put(queueKey, true);
+        QueueState queueState = QUEUES.get(queueKey);
+        if (queueState == null || queueState.token != 0) return;
         advanceQueue(account, queueKey);
     }
 
     private static void advanceQueue(int account, String queueKey) {
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
+        QueueState queueState = QUEUES.get(queueKey);
+        ArrayList<EventScheduleEntry> queue = queueState == null ? null : queueState.entries;
         while (queue != null && !queue.isEmpty()) {
             EventScheduleEntry entry = queue.get(0);
             if (entry.state == EventScheduleEntry.STATE_WAITING && EventScheduleStore.contains(account, entry.key())) {
                 int token = ++nextQueueToken;
-                QUEUE_TOKENS.put(queueKey, token);
+                queueState.token = token;
                 long revision = entry.revision;
                 AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token, revision), entry.delaySeconds * 1000L);
                 return;
             }
             queue.remove(0);
         }
-        QUEUES.remove(queueKey);
-        RUNNING_QUEUES.remove(queueKey);
-        QUEUE_TOKENS.remove(queueKey);
+        if (queueState != null && queue.isEmpty()) {
+            QUEUES.remove(queueKey);
+        }
     }
 
     private static void releaseQueue(int account, String queueKey, EventScheduleEntry current, boolean removeCurrent) {
-        ArrayList<EventScheduleEntry> queue = QUEUES.remove(queueKey);
-        RUNNING_QUEUES.remove(queueKey);
-        QUEUE_TOKENS.remove(queueKey);
-        if (queue == null) return;
-        for (EventScheduleEntry entry : queue) {
+        QueueState queueState = QUEUES.remove(queueKey);
+        if (queueState == null) return;
+        for (EventScheduleEntry entry : queueState.entries) {
             if (entry == current && removeCurrent) {
                 EventScheduleStore.remove(account, entry);
             } else if (entry.state == EventScheduleEntry.STATE_WAITING) {
@@ -530,14 +534,13 @@ public final class EventScheduleController {
 
     private static void removeFromQueue(int account, EventScheduleEntry entry) {
         String queueKey = queueKey(account, entry);
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
-        if (queue == null) return;
+        QueueState queueState = QUEUES.get(queueKey);
+        if (queueState == null) return;
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
         boolean wasHead = !queue.isEmpty() && queue.get(0) == entry;
         queue.remove(entry);
         if (queue.isEmpty()) {
             QUEUES.remove(queueKey);
-            RUNNING_QUEUES.remove(queueKey);
-            QUEUE_TOKENS.remove(queueKey);
         } else if (wasHead) {
             advanceQueue(account, queueKey);
         }
@@ -551,10 +554,11 @@ public final class EventScheduleController {
 
     private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long revision) {
         // The delay window may have outlived the entry (edited, deleted, or the fallback already fired).
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(expectedQueueKey);
-        if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))) {
+        QueueState queueState = QUEUES.get(expectedQueueKey);
+        if (queueState == null || queueState.token != token) {
             return;
         }
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
         if (queue == null || queue.isEmpty()) {
             return;
         }
