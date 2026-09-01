@@ -298,7 +298,9 @@ public final class EventScheduleController {
             entry.bindExpiresAt = 0;
         }
         entry.state = EventScheduleEntry.STATE_ARMED;
-        entry.resetCompiled();
+        // No explicit "forget the compiled pattern" call needed: the revision bump above is
+        // itself what invalidates the old compile, since matchesPattern recompiles whenever
+        // the revision it's asked to match against doesn't match the entry's cached one.
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
     }
@@ -430,10 +432,16 @@ public final class EventScheduleController {
                     continue;
                 }
                 if (!patternSet || text == null) continue;
+                // Captured together on the UI thread: matchesPattern compares this revision
+                // against entry.revision to decide whether its compile is still current, and a
+                // pattern/regex read on the background thread instead of here would just move
+                // the same race into matchesPattern (see EventScheduleEntry#matchesPattern).
                 final long revision = entry.revision;
+                final String patternSnapshot = entry.pattern;
+                final boolean regexSnapshot = entry.regex;
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
-                    if (!entry.matchesPattern(text)) return;
+                    if (!entry.matchesPattern(revision, patternSnapshot, regexSnapshot, text)) return;
                     AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key, revision));
                 });
             }

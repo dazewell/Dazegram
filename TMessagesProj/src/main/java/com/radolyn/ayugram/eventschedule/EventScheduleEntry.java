@@ -57,10 +57,11 @@ public final class EventScheduleEntry {
     public long bindGroupedId;
     public long bindExpiresAt;
     public int state = STATE_ARMED;
-    public long revision;
-
-    private volatile Pattern compiled;
-    private volatile boolean compileFailed;
+    // volatile: bumped on the UI thread on every edit (updateForEdit), read on the UI thread
+    // to detect a stale in-flight match/arm/fire, and also read from the background matcher
+    // queue below as the compare-and-publish guard for the compiled-pattern cache -- that
+    // cross-thread read needs the same visibility guarantee the cache field gets.
+    public volatile long revision;
 
     public String key() {
         return dialogId + "_" + createdAt;
@@ -82,32 +83,85 @@ public final class EventScheduleEntry {
         return false;
     }
 
-    public boolean matchesPattern(CharSequence text) {
-        if (TextUtils.isEmpty(pattern)) return true;
-        if (text == null) return false;
-        if (compileFailed) return false;
-        if (compiled == null) {
-            try {
-                int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
-                // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
-                // and quotes put text on its own line; a regex author can ask for the same with (?s).
-                if (!regex) flags |= Pattern.DOTALL;
-                compiled = Pattern.compile(regex ? pattern : globToRegex(pattern), flags);
-            } catch (Throwable t) {
-                compileFailed = true;
-                return false;
-            }
+    /**
+     * Immutable result of compiling one edit revision's pattern, published as a whole through
+     * {@link #cache} so a background compile can never publish half of a stale result -- the
+     * previous design had the compiled {@link Pattern} and a "compile failed" flag as two
+     * independently-written fields, which let a background compile of an old pattern land
+     * *after* an edit had already reset them, permanently pinning the entry to the pre-edit
+     * pattern (nothing else ever resets a non-null {@code compiled} field again). Tying the
+     * compile result to the revision it was compiled against, and only ever swapping it in
+     * one piece, closes that: see {@link #matchesPattern} for the compare-and-publish check.
+     */
+    private static final class CompiledCache {
+        final long revision;
+        final Pattern compiled; // null iff failed
+        final boolean failed;
+
+        CompiledCache(long revision, Pattern compiled, boolean failed) {
+            this.revision = revision;
+            this.compiled = compiled;
+            this.failed = failed;
         }
+    }
+
+    private volatile CompiledCache cache;
+
+    /**
+     * @param revision       entry.revision as read by the caller at the same time it read
+     *                       patternSnapshot/regexSnapshot -- all three must come from one
+     *                       consistent read (see the call site in EventScheduleController,
+     *                       which captures them together on the UI thread before posting the
+     *                       match to the background queue), otherwise this method has no way
+     *                       to tell a genuinely current pattern from a stale one.
+     * @param patternSnapshot pattern as of {@code revision}; not read from the field here so a
+     *                        background thread never has to race the UI thread for it.
+     */
+    public boolean matchesPattern(long revision, String patternSnapshot, boolean regexSnapshot, CharSequence text) {
+        if (TextUtils.isEmpty(patternSnapshot)) return true;
+        if (text == null) return false;
+
+        CompiledCache snapshot = cache;
+        if (snapshot == null || snapshot.revision != revision) {
+            snapshot = compileAndPublish(revision, patternSnapshot, regexSnapshot);
+        }
+        if (snapshot.failed) return false;
+
         CharSequence input = text.length() > MAX_MATCH_LEN ? text.subSequence(0, MAX_MATCH_LEN) : text;
         // Both modes hit anywhere in the text: a trigger word is nearly always part of a longer
         // message, and anchoring is what regex mode is for.
-        return compiled.matcher(input).find();
+        return snapshot.compiled.matcher(input).find();
     }
 
-    /** Forget the compiled pattern so a changed pattern/regex-mode recompiles on next match. */
-    public void resetCompiled() {
-        compiled = null;
-        compileFailed = false;
+    /**
+     * Compiles patternSnapshot/regexSnapshot as compiled-for revision {@code revision}, and
+     * publishes the result to {@link #cache} only if this entry is still on that revision --
+     * i.e. no edit has bumped {@link #revision} since the caller captured it. updateForEdit
+     * bumps revision as its very first write, before touching pattern/regex, so a mismatch
+     * here means this compile is for a pattern the entry no longer has, and publishing it
+     * would pin the entry to stale text exactly like the bug this replaces. The unpublished
+     * candidate is still returned so the caller (a single in-flight match) gets a correct
+     * answer for the snapshot it asked about; the discard only stops it becoming the entry's
+     * cached state for later matches. Two threads compiling the same still-current revision
+     * concurrently is harmless -- both produce an equivalent Pattern and either publish wins.
+     */
+    private CompiledCache compileAndPublish(long revision, String patternSnapshot, boolean regexSnapshot) {
+        Pattern compiledPattern = null;
+        boolean failed = false;
+        try {
+            int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+            // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
+            // and quotes put text on its own line; a regex author can ask for the same with (?s).
+            if (!regexSnapshot) flags |= Pattern.DOTALL;
+            compiledPattern = Pattern.compile(regexSnapshot ? patternSnapshot : globToRegex(patternSnapshot), flags);
+        } catch (Throwable t) {
+            failed = true;
+        }
+        CompiledCache candidate = new CompiledCache(revision, compiledPattern, failed);
+        if (this.revision == revision) {
+            cache = candidate;
+        }
+        return candidate;
     }
 
     private static String globToRegex(String glob) {
