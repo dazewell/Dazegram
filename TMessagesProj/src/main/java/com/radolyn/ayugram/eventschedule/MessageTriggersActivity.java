@@ -165,6 +165,13 @@ public class MessageTriggersActivity extends BaseFragment {
     private void removeEntry(@NonNull EventScheduleEntry entry) {
         int account = getCurrentAccount();
         EventScheduleStore.remove(account, entry);
+        // NagramX: strip the row now, synchronously -- reloadData() below is async (it hops
+        // through the storage queue), and leaving a confirmed-removed row in place until it
+        // returns would let it be tapped or long-pressed again during that gap.
+        if (items.removeIf(row -> row.entry() == entry)) {
+            adapter.notifyDataSetChanged();
+            updateEmptyView();
+        }
         reloadData();
         BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete, LocaleController.getString(R.string.MessageTriggersRemoved)).show();
     }
@@ -191,10 +198,15 @@ public class MessageTriggersActivity extends BaseFragment {
         final int account = getCurrentAccount();
         final int requestId = ++loadRequestId;
         Utilities.globalQueue.postRunnable(() -> {
-            ArrayList<EventScheduleEntry> live = new ArrayList<>();
+            // NagramX: this snapshot decides only which peers to preload. The rows themselves are
+            // rebuilt from a *fresh* forAccount() read at the UI-thread callback below, not from
+            // this list -- loadRequestId only rejects a stale *reload*, it says nothing about a
+            // fire/removal/expiry that happens during this storage-queue hop, and reusing this
+            // snapshot there would render a since-changed trigger as though nothing had happened.
+            ArrayList<EventScheduleEntry> snapshotForPeers = new ArrayList<>();
             for (EventScheduleEntry entry : EventScheduleStore.forAccount(account)) {
                 if (isLiveArm(entry)) {
-                    live.add(entry);
+                    snapshotForPeers.add(entry);
                 }
             }
             MessagesController messagesController = MessagesController.getInstance(account);
@@ -202,7 +214,7 @@ public class MessageTriggersActivity extends BaseFragment {
             ArrayList<Long> chatsToLoad = new ArrayList<>();
             HashSet<Long> seenUsers = new HashSet<>();
             HashSet<Long> seenChats = new HashSet<>();
-            for (EventScheduleEntry entry : live) {
+            for (EventScheduleEntry entry : snapshotForPeers) {
                 collectPeerToLoad(messagesController, entry.dialogId, usersToLoad, chatsToLoad, seenUsers, seenChats);
             }
             MessagesStorage messagesStorage = MessagesStorage.getInstance(account);
@@ -225,6 +237,14 @@ public class MessageTriggersActivity extends BaseFragment {
                     }
                     messagesController.putUsers(loadedUsers, true);
                     messagesController.putChats(loadedChats, true);
+                    // NagramX: re-read the store here rather than reusing snapshotForPeers -- see
+                    // the comment above it for why the pre-hop snapshot cannot be trusted for rows.
+                    ArrayList<EventScheduleEntry> live = new ArrayList<>();
+                    for (EventScheduleEntry entry : EventScheduleStore.forAccount(account)) {
+                        if (isLiveArm(entry)) {
+                            live.add(entry);
+                        }
+                    }
                     applyRows(messagesController, live);
                 });
             });
