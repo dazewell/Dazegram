@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * message containing it; anchoring is what regex mode's {@code ^} and {@code $} are for.
  *
  * <p>Persisted as JSON under {@link EventScheduleStore}; the compiled {@link Pattern}
- * and the transient runtime {@link #state} / {@link #localIds} are never stored.
+ * and transient runtime {@link #state} are never stored.
  */
 public final class EventScheduleEntry {
 
@@ -44,8 +44,8 @@ public final class EventScheduleEntry {
 
     public long dialogId;
     public final ArrayList<Integer> serverIds = new ArrayList<>();
-    // Local echo ids seen before the server assigns real ones; never persisted, useless to
-    // sendScheduledMessages, only used to recognise our own message during the pending bind.
+    // Local echo ids (negative) claimed from scheduled-batch updates; used as the exact
+    // remap key when messageReceivedByServer arrives.
     public final ArrayList<Integer> localIds = new ArrayList<>();
     public int types;
     public String pattern = "";
@@ -53,6 +53,9 @@ public final class EventScheduleEntry {
     public int delaySeconds;
     public int fallbackDate;
     public long createdAt;
+    // Correlation metadata: first non-zero grouped_id bound to this arm, and the arm bind window.
+    public long bindGroupedId;
+    public long bindExpiresAt;
     public int state = STATE_ARMED;
     public long revision;
 
@@ -155,6 +158,9 @@ public final class EventScheduleEntry {
             JSONArray ids = new JSONArray();
             for (int id : serverIds) ids.put(id);
             o.put("ids", ids);
+            JSONArray local = new JSONArray();
+            for (int id : localIds) local.put(id);
+            o.put("local_ids", local);
             o.put("types", types);
             o.put("pattern", pattern == null ? "" : pattern);
             o.put("regex", regex);
@@ -162,6 +168,8 @@ public final class EventScheduleEntry {
             o.put("fallback", fallbackDate);
             o.put("created", createdAt);
             o.put("dialog", dialogId);
+            o.put("bind_group", bindGroupedId);
+            o.put("bind_expires_at", bindExpiresAt);
             return o.toString();
         } catch (Throwable t) {
             return null;
@@ -177,12 +185,18 @@ public final class EventScheduleEntry {
             if (ids != null) {
                 for (int i = 0; i < ids.length(); i++) e.serverIds.add(ids.getInt(i));
             }
+            JSONArray local = o.optJSONArray("local_ids");
+            if (local != null) {
+                for (int i = 0; i < local.length(); i++) e.localIds.add(local.getInt(i));
+            }
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");
             e.regex = o.optBoolean("regex");
             e.delaySeconds = o.optInt("delay");
             e.fallbackDate = o.optInt("fallback");
             e.createdAt = o.optLong("created");
+            e.bindGroupedId = o.optLong("bind_group");
+            e.bindExpiresAt = o.optLong("bind_expires_at");
             return e;
         } catch (Throwable t) {
             return null;

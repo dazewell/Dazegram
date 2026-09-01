@@ -13,10 +13,11 @@ import java.util.Map;
  *
  * <p>Mirrors {@code HideLastMessageController}: a SharedPreferences file
  * {@code eventschedule_<account>} mapping {@code dialogId_createdAt -> entry JSON},
- * with a lazily loaded in-memory cache. Only entries with at least one server id are
- * persisted (local echo ids are useless after a restart); expired ones (fallback date
- * well past) are dropped on load. A per-account "has any" flag lets the hot new-message
- * path bail without touching the cache.
+ * with a lazily loaded in-memory cache. Entries are durable from arm time: an arm can be
+ * persisted before any server ids arrive, then bound later from send ack metadata. Expired
+ * entries (fallback date well past, or an unbound arm whose bind window has expired) are
+ * dropped on load. A per-account "has any" flag lets the hot new-message path bail without
+ * touching the cache.
  */
 public final class EventScheduleStore {
 
@@ -65,7 +66,11 @@ public final class EventScheduleStore {
                 for (Map.Entry<String, ?> e : sp.getAll().entrySet()) {
                     Object v = e.getValue();
                     EventScheduleEntry entry = v instanceof String ? EventScheduleEntry.fromJson((String) v) : null;
-                    if (entry == null || entry.serverIds.isEmpty() || entry.fallbackDate + 300 < now) {
+                    // Keep the serverIds.isEmpty() guard first: pre-bindExpires builds only persisted
+                    // bound rows, so testing an absent bind_expires_at independently would drop legacy data.
+                    if (entry == null || entry.fallbackDate + 300 < now
+                            || (entry.serverIds.isEmpty() && entry.localIds.isEmpty()
+                            && (entry.bindExpiresAt <= 0 || entry.bindExpiresAt <= now))) {
                         if (ed == null) ed = sp.edit();
                         ed.remove(e.getKey());
                         continue;
@@ -89,8 +94,11 @@ public final class EventScheduleStore {
         return out;
     }
 
+    public static synchronized ArrayList<EventScheduleEntry> forAccount(int account) {
+        return new ArrayList<>(cache(account).values());
+    }
+
     public static synchronized void persist(int account, EventScheduleEntry entry) {
-        if (entry.serverIds.isEmpty()) return;
         HashMap<String, EventScheduleEntry> m = cache(account);
         m.put(entry.key(), entry);
         try {
