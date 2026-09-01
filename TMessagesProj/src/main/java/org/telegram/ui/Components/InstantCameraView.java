@@ -3376,6 +3376,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         }
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        // await() clears the interrupt flag when it throws; put it back so a shutdown
+                        // or cancel further up the encoder thread still sees it
+                        Thread.currentThread().interrupt();
                         finalizeTimedOut = true;
                     }
                 } else {
@@ -3640,6 +3643,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
+                    // await() clears the interrupt flag when it throws; put it back so a shutdown or
+                    // cancel further up the encoder thread still sees it
+                    Thread.currentThread().interrupt();
                     // same reason as the timeout above: the write can still be in flight, so leave the
                     // files alone rather than falling through to the rename/copy/delete below
                     return false;
