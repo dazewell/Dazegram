@@ -24,6 +24,7 @@ import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.UserCell;
@@ -94,7 +95,7 @@ public class MessageTriggersActivity extends BaseFragment {
             EventScheduleEntry entry = items.get(position).entry();
             ItemOptions.makeOptions(this, view)
                     .setScrimViewBackground(listView.getClipBackground(view))
-                    .add(R.drawable.msg_delete, LocaleController.getString(R.string.EventScheduleClear), true, () -> removeWithUndo(entry))
+                    .add(R.drawable.msg_delete, LocaleController.getString(R.string.EventScheduleClear), true, () -> confirmRemove(entry))
                     .show();
             return true;
         });
@@ -134,25 +135,38 @@ public class MessageTriggersActivity extends BaseFragment {
     }
 
     /**
-     * Removal is immediate (matches EventScheduleClear elsewhere); the bulletin only offers to put
-     * the trigger back, it does not delay the actual removal. Safe even if this entry is mid-fire
-     * (STATE_SENDING): EventScheduleStore.remove() is idempotent and fire()'s own callbacks already
-     * guard with a contains()/token check before touching the entry again, so a race here can at
-     * worst make fire()'s in-flight response a no-op, never a double removal or a crash. If Undo
-     * re-arms an entry whose send actually completed while it was removed, the resulting
-     * messagesDeleted(scheduled=true) notification still matches this entry's serverIds and
-     * purgeIds() removes it again on its own -- so a stale "armed" row cannot survive that race
-     * either.
+     * A confirmation, not an Undo: round 2 found Undo can resurrect a trigger whose send already
+     * completed. EventScheduleController.fire()'s success callback (EventScheduleController.java:
+     * 588-599) checks EventScheduleStore.contains() immediately before removing the entry, and
+     * re-persisting via armExisting() would put back stale serverIds this page can never fire
+     * again -- exactly the failure class this page exists to expose. This page cannot tell
+     * "removed before completion" and "completed before Undo" apart: both leave the entry absent
+     * from the store with serverIds unchanged. Asking first, then only ever removing, sidesteps
+     * that distinction instead of trying to make it.
      */
-    private void removeWithUndo(@NonNull EventScheduleEntry entry) {
+    private void confirmRemove(@NonNull EventScheduleEntry entry) {
+        if (getParentActivity() == null) {
+            return;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle(LocaleController.getString(R.string.EventScheduleClear));
+        builder.setMessage(LocaleController.getString(R.string.MessageTriggersRemoveConfirm));
+        builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+        builder.setPositiveButton(LocaleController.getString(R.string.Remove), (dialog, which) -> removeEntry(entry));
+        showDialog(builder.create());
+    }
+
+    /**
+     * No Undo, so no re-persist path exists any more: whichever runs first between this and
+     * fire()'s success callback, the entry ends up removed from the store and stays that way. The
+     * bulletin only ever confirms a removal, never offers to reverse a send that may already be at
+     * the server.
+     */
+    private void removeEntry(@NonNull EventScheduleEntry entry) {
         int account = getCurrentAccount();
         EventScheduleStore.remove(account, entry);
         reloadData();
-        BulletinFactory.of(this).createUndoBulletin(LocaleController.getString(R.string.MessageTriggersRemoved), () -> {
-            EventScheduleController.armExisting(account, entry);
-            reloadData();
-        }, () -> {
-        }).show();
+        BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete, LocaleController.getString(R.string.MessageTriggersRemoved)).show();
     }
 
     /**
