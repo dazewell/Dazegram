@@ -217,6 +217,8 @@ public final class EventScheduleHelper {
             patternField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             patternField.setImeOptions(EditorInfo.IME_ACTION_DONE);
             patternField.setPadding(dp(12), dp(10), dp(12), dp(10));
+            patternField.setMinimumHeight(dp(48));
+            patternField.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
             patternField.setText(pattern);
             patternBox.addView(patternField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             builder.addCustomView(patternBox);
@@ -300,7 +302,10 @@ public final class EventScheduleHelper {
                     return delayValues.length - 1;
                 }
             });
-            delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 38, 13, 0, 13, 0));
+            // NagramX: 38dp is the app-wide height for this widget (BrightnessControlCell:76,
+            // ThemePreviewActivity:2086, BlurSettingsBottomSheet:72,100,129) -- this sheet deliberately
+            // diverges to 48dp to clear the touch-target minimum; don't "fix" it back to 38.
+            delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
             final float initialDelayProgress = startIndex / (float) (delayValues.length - 1);
             org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
             builder.addCustomView(delayLayout);
@@ -312,7 +317,7 @@ public final class EventScheduleHelper {
                     return kotlin.Unit.INSTANCE;
                 });
             }
-            builder.addButton(getString(R.string.Done), true, false, it -> {
+            TextView doneButton = builder.addButton(getString(R.string.Done), true, false, it -> {
                 int newTypes = 0;
                 if (voiceCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VOICE;
                 if (roundCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_ROUND;
@@ -330,6 +335,7 @@ public final class EventScheduleHelper {
                         Pattern.compile(newPattern);
                     } catch (Throwable t) {
                         AndroidUtil.showInputError(patternField);
+                        AlertUtil.showToast(getString(R.string.EventScheduleInvalidRegex));
                         return kotlin.Unit.INSTANCE;
                     }
                 }
@@ -348,6 +354,15 @@ public final class EventScheduleHelper {
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
             });
+            // NagramX: registered after addButton so doneButton is assigned; noAutoDismiss above
+            // means performClick() re-runs the real validation/commit lambda rather than a copy of it.
+            patternField.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    doneButton.performClick();
+                    return true;
+                }
+                return false;
+            });
             builder.addCancelButton();
             builder.show();
         }
@@ -361,6 +376,13 @@ public final class EventScheduleHelper {
             // NagramX: trim to match the Done handler's newPattern, or whitespace-only text would
             // enable the toggle here but save against the empty pattern that trim() actually commits.
             boolean hasPattern = !TextUtils.isEmpty(patternField.getText().toString().trim());
+            // Construction seeds (enabled, EventScheduleRegexInfo); skip the redundant re-layout
+            // this would otherwise trigger on every keystroke once state hasn't actually changed.
+            if (hasPattern == regexCell.isEnabled()) return;
+            regexCell.setTextAndValueAndCheck(
+                    getString(R.string.EventScheduleUseRegex),
+                    getString(hasPattern ? R.string.EventScheduleRegexInfo : R.string.EventScheduleRegexNeedsPattern),
+                    regexCell.isChecked(), true, true);
             regexCell.setEnabled(hasPattern);
             regexCell.setEnabled(hasPattern, null);
         }
