@@ -260,13 +260,18 @@ public class ArmedSendsActivity extends BaseFragment {
     /**
      * Groups by (dialogId, triggerKey) -- EventScheduleController.queueKey() minus the account
      * term, which is constant on a single-account page, so this grouping is provably the engine's
-     * own firing identity. Orders within a group with the engine's own QUEUE_ORDER rather than
-     * reimplementing it, and orders groups by soonest fallbackDate.
+     * own firing identity. A record key (not a delimiter-joined string) because triggerKey() embeds
+     * the raw user-entered pattern, which could otherwise collide with a hand-picked delimiter.
+     * Orders within a group with the engine's own QUEUE_ORDER rather than reimplementing it, and
+     * orders groups by soonest fallbackDate.
      */
+    private record GroupKey(long dialogId, String triggerKey) {
+    }
+
     private void applyRows(MessagesController messagesController, ArrayList<EventScheduleEntry> live) {
-        LinkedHashMap<String, ArrayList<EventScheduleEntry>> groups = new LinkedHashMap<>();
+        LinkedHashMap<GroupKey, ArrayList<EventScheduleEntry>> groups = new LinkedHashMap<>();
         for (EventScheduleEntry entry : live) {
-            String key = entry.dialogId + "\u0001" + entry.triggerKey();
+            GroupKey key = new GroupKey(entry.dialogId, entry.triggerKey());
             ArrayList<EventScheduleEntry> group = groups.get(key);
             if (group == null) {
                 group = new ArrayList<>();
