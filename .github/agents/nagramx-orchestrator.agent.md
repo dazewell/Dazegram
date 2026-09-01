@@ -281,6 +281,20 @@ git fetch origin; git log --oneline dev..origin/dev
   files existed on disk, and dispatching them silently falls back to a generic
   agent that has read none of the skills. Say so and ask dazewell to restart the
   session rather than working around it.
+- **If the work has a GitHub issue, run the duplicate preflight and claim it
+  before dispatching.** Issues are the durable home for deferred work, and the
+  claim protocol is the only thing standing between two sessions building the
+  same change twice. Three checks — the issue is open and carries no
+  `status:in-progress` label; no open PR's branch matches its declared branch
+  slug; no remote branch matches it either. **Any hit means do not dispatch.**
+  Then claim it (add `status:in-progress`, comment the branch name) *before* the
+  session starts, and **re-read the issue** in case a competing claim landed
+  first. The dangerous window is between deciding to work on something and a
+  branch existing to prove it, and your memory of what is in flight does not
+  survive this session. The full protocol — the two identifiers an issue
+  carries, the three labels, the stale-claim rule, and why `Closes #<n>` does the
+  closing — lives in the `nagramx-branch-flow` skill. Put `Closes #<n>` in the
+  brief so the implementer's PR body carries it.
 
 ### The `create_session` dispatch checklist
 

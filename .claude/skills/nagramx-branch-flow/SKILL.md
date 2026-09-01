@@ -159,6 +159,90 @@ line:
 
 Bypass (`--no-verify`) only in a genuine emergency.
 
+## Issues: tracking deferred work and preventing duplicates
+
+GitHub Issues are enabled on `dazewell/Dazegram` and are the durable home for
+work that is *decided but not started* — a deferred feature, a follow-up an
+architect ruled out of scope, a limitation documented rather than fixed.
+Anything parked only in a session's memory dies with that session.
+
+**The `#tag` identifies a feature, not a work item.** Three separate issues can
+all be `#eventschedule`, so the tag alone cannot answer "is someone already
+building this". Issues therefore carry **two** identifiers:
+
+- **Feature tag** — the same `#slug` its commits will carry, for catalog
+  grouping and `git log --grep`.
+- **Branch slug** — unique per work item, and the name its branch will use
+  (`<YYYY-MM-DD>_<branch-slug>`). This is what the duplicate check actually
+  keys on.
+
+Both go in a small block at the top of the issue body:
+
+```
+<!-- tracking -->
+**Branch slug:** `eventschedule-edit`  |  **Feature tag:** `#eventschedule`  |  **Status:** deferred
+
+> Blocked until PR #246 is merged and confirmed on-device.
+```
+
+### The three status labels
+
+| Label | Means |
+|---|---|
+| `status:in-progress` | A session is actively working this. **Do not dispatch another.** |
+| `status:blocked` | Cannot proceed until a named dependency lands. Name it in the body. |
+| `status:deferred` | Deliberately parked. Do not start without dazewell's say-so. |
+
+An issue with none of these is open and unclaimed — fair game.
+
+### Preflight before dispatching work for an issue (mandatory)
+
+Do not rely on remembering what is in flight; memory does not survive a session,
+a machine, or a week. Three mechanical checks, all cheap:
+
+```powershell
+$repo = 'dazewell/Dazegram'; $n = <issue>; $slug = '<branch-slug>'
+
+# 1. open, and not already claimed?
+gh issue view $n --repo $repo --json state,labels,assignees
+
+# 2. an open PR already doing it?
+gh pr list --repo $repo --state open --json number,title,headRefName |
+  ConvertFrom-Json | Where-Object { $_.headRefName -like "*$slug*" }
+
+# 3. a branch already pushed for it?
+git ls-remote --heads origin "*$slug*"
+```
+
+**Any hit means do not dispatch** — investigate first. A duplicate costs a whole
+wasted branch and, worse, two diffs that conflict in the same region.
+
+### Claim at dispatch, before the session touches anything
+
+The dangerous window is between *deciding* to work on something and a branch
+existing to prove it. Close it by claiming first:
+
+```powershell
+gh issue edit $n --repo $repo --add-label "status:in-progress" --remove-label "status:deferred"
+gh issue comment $n --repo $repo --body "Started. Branch: ``2026-09-01_$slug``"
+```
+
+Then **re-read the issue**. If another claim comment landed first, back off —
+that is the simultaneous-claim race, and re-reading is the whole mitigation.
+
+### Closing is automatic — do not do it by hand
+
+The PR body carries `Closes #<n>`, so merging closes the issue and drops the
+claim with it. Bookkeeping you have to remember is bookkeeping that rots.
+
+### Stale claims
+
+A session can die mid-work and leave `status:in-progress` on an issue nobody is
+building. Before reclaiming, confirm it is genuinely stale: no branch matching
+its slug on `origin`, no open PR, and no live session owning it. Only then
+remove the label and note why in a comment. Do not silently steal a claim — a
+half-pushed branch is real work.
+
 ## The topology
 
 Remotes (as configured in this clone):
