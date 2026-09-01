@@ -510,6 +510,28 @@ public class MessageTriggersActivity extends BaseFragment {
     }
 
     /**
+     * setData's peer argument is what gets a premium/emoji/verified badge attached to the
+     * *title* text view (UserCell.update(), :679-717). After the row redesign the title holds
+     * the message brief, not the peer's name, so an unmodified UserCell would attach that badge
+     * to the brief instead. Keeping the real peer (needed for the avatar UserCell.update() itself
+     * owns) and clearing just the title's badge drawables after super.update() runs preserves
+     * upstream's avatar handling instead of bypassing it by stamping avatarImageView directly,
+     * which update() may overwrite on its own next pass.
+     */
+    private static class UserCellNoBadge extends UserCell {
+        UserCellNoBadge(Context context, int padding, int checkbox, boolean admin) {
+            super(context, padding, checkbox, admin);
+        }
+
+        @Override
+        public void update(int mask) {
+            super.update(mask);
+            nameTextView.setLeftDrawable(null);
+            nameTextView.setRightDrawable(null);
+        }
+    }
+
+    /**
      * Chat name (GraySectionCell) plus this group's trigger, styled with the same rounded-rect
      * chip recipe EventScheduleHelper.addTriggerRow uses for the schedule sheet -- deliberately
      * not clickable, this page is read-only and per-row/chip editing is out of scope for it.
@@ -579,7 +601,7 @@ public class MessageTriggersActivity extends BaseFragment {
             if (viewType == VIEW_TYPE_HEADER) {
                 return new RecyclerListView.Holder(new TriggerGroupHeaderCell(context));
             }
-            return new RecyclerListView.Holder(new UserCell(context, 8, 0, false));
+            return new RecyclerListView.Holder(new UserCellNoBadge(context, 8, 0, false));
         }
 
         @Override
