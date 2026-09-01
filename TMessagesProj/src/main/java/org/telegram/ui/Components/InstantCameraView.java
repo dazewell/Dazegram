@@ -3352,6 +3352,7 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             // not be minted a draft id, or it would persist and unlock the previous good record's file. finishMovie
             // succeeding doesn't prove the file has video either, so the mint below also requires videoTrackIndex.
             final boolean[] finalizeSuccess = {false};
+            boolean finalizeTimedOut = false;
             if (mediaMuxer != null) {
                 if (WRITE_TO_FILE_IN_BACKGROUND) {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -3367,13 +3368,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     try {
                         // NagramX: same wall-clock bound as the stop path below. The pause finalize
                         // runs on the encoder thread too, so an unbounded wait here pins the camera.
-                        // finalizeSuccess[0] is only set inside the runnable, so a timeout correctly
-                        // leaves it false and the draft is not minted.
+                        // On expiry the write may still be in flight, so the bail-out below skips the
+                        // preview and the publish rather than handing on a half-written file.
                         if (!countDownLatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                             FileLog.e(new RuntimeException("InstantCamera preview finalize timed out"));
+                            finalizeTimedOut = true;
                         }
                     } catch (InterruptedException e) {
                         e.printStackTrace();
+                        finalizeTimedOut = true;
                     }
                 } else {
                     try {
@@ -3383,6 +3386,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         FileLog.e(e);
                     }
                 }
+            }
+            // NagramX: a finalize that timed out (or was interrupted) may still be inside
+            // finishMovie(previewFile) on the write queue. The post below hands previewFile to
+            // setupVideoPlayer and publishes it through audioDidSent, so running it now would read a
+            // half-written MP4 -- finalizeOk gates only the draft id at the mint below, not the player
+            // or the notification. Bail out instead: no preview is better than a corrupt one, and the
+            // clip is left alone rather than advertised.
+            if (finalizeTimedOut) {
+                return;
             }
             // videoTrackIndex (-5 sentinel unless a video track was added) is read here on the encoder thread that
             // writes it, folded into finalizeOk before the async UI post -- never read across the thread boundary.
@@ -3628,7 +3640,9 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
-                    success[0] = false;
+                    // same reason as the timeout above: the write can still be in flight, so leave the
+                    // files alone rather than falling through to the rename/copy/delete below
+                    return false;
                 }
             } else {
                 try {
