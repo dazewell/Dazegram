@@ -541,9 +541,9 @@
     <string name="EventScheduleRegexNeedsPattern">Enter a pattern first</string>
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
     <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
-    <string name="ArmedSendsTitle">Armed Sends</string>
-    <string name="ArmedSendsEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
-    <string name="ArmedSendsRemoved">Trigger removed</string>
+    <string name="MessageTriggersTitle">Message Triggers</string>
+    <string name="MessageTriggersEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
+    <string name="MessageTriggersRemoved">Trigger removed</string>
     <string name="ScheduledDiscardTitle">Discard message?</string>
     <string name="ScheduledDiscardMessage">Scheduled messages don\'t keep a draft. If you leave now, the text you\'ve typed will be lost.</string>
     <string name="EditDiscardTitle">Discard changes?</string>

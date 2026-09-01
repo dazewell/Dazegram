@@ -14094,7 +14094,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             // NagramX: mirrors Recent/Archived/Bookmarks above -- this menu is the only way to
             // reach the Chats long-press options when the bottom nav is hidden.
             if (hideBottomNavigationBar) {
-                com.radolyn.ayugram.eventschedule.ArmedSendsMenu.addTo(io, this);
+                com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(io, this);
             }
             if (NekoConfig.showGhostInDrawer.Bool()) {
                 final String ghostModeText = NekoConfig.isGhostModeActive()

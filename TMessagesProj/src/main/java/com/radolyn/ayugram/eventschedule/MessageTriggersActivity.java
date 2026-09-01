@@ -40,15 +40,20 @@ import java.util.LinkedHashMap;
 
 /**
  * Read-only list of every armed {@code #eventschedule} trigger for the current account, reached
- * by long-pressing the Chats nav button (see {@link ArmedSendsMenu}). Its whole reason to exist:
- * after arming several messages on one trigger, this is the one place that tells the truth about
- * whether they are actually armed, without the user having to wait and see if they fire.
+ * by long-pressing the Chats nav button (see {@link MessageTriggersMenu}). Its whole reason to
+ * exist: after arming several messages on one trigger, this is the one place that tells the truth
+ * about whether they are actually armed, without the user having to wait and see if they fire.
  *
  * <p>Deliberately flat, not the two-level {@code BookmarkManagerActivity} drill-down shape: a
  * collapsed count is exactly the kind of confident-looking summary that this page exists to
  * avoid. Every live entry gets its own visible row.
+ *
+ * <p>Named "Message Triggers" to the user -- "armed" is the engine's own internal vocabulary
+ * ({@code STATE_ARMED}) and never appears in the trigger sheet itself ({@code EventScheduleTrigger}
+ * = "Send on event"), so surfacing it here as a screen name was the one place this feature broke
+ * its own naming.
  */
-public class ArmedSendsActivity extends BaseFragment {
+public class MessageTriggersActivity extends BaseFragment {
 
     private record Row(long dialogId, TLObject peer, String title, CharSequence subtitle, EventScheduleEntry entry) {
     }
@@ -63,7 +68,7 @@ public class ArmedSendsActivity extends BaseFragment {
     public View createView(Context context) {
         actionBar.setBackButtonImage(R.drawable.ic_ab_back);
         actionBar.setAllowOverlayTitle(true);
-        actionBar.setTitle(LocaleController.getString(R.string.ArmedSendsTitle));
+        actionBar.setTitle(LocaleController.getString(R.string.MessageTriggersTitle));
 
         FrameLayout frameLayout = new FrameLayout(context);
         fragmentView = frameLayout;
@@ -95,7 +100,7 @@ public class ArmedSendsActivity extends BaseFragment {
         });
 
         emptyView = new TextView(context);
-        emptyView.setText(LocaleController.getString(R.string.ArmedSendsEmpty));
+        emptyView.setText(LocaleController.getString(R.string.MessageTriggersEmpty));
         emptyView.setTextColor(Theme.getColor(Theme.key_emptyListPlaceholder));
         emptyView.setTextSize(15);
         emptyView.setGravity(Gravity.CENTER);
@@ -143,7 +148,7 @@ public class ArmedSendsActivity extends BaseFragment {
         int account = getCurrentAccount();
         EventScheduleStore.remove(account, entry);
         reloadData();
-        BulletinFactory.of(this).createUndoBulletin(LocaleController.getString(R.string.ArmedSendsRemoved), () -> {
+        BulletinFactory.of(this).createUndoBulletin(LocaleController.getString(R.string.MessageTriggersRemoved), () -> {
             EventScheduleController.armExisting(account, entry);
             reloadData();
         }, () -> {
@@ -161,7 +166,7 @@ public class ArmedSendsActivity extends BaseFragment {
      * exists to end. Omit both the still-binding and the dead case; a message armed moments ago can
      * take a few seconds to appear here once its ack lands, which is expected.
      */
-    // Package-private (not private) so ArmedSendsMenu's row-visibility gate can share this exact
+    // Package-private (not private) so MessageTriggersMenu's row-visibility gate can share this exact
     // definition instead of drifting from it -- see the class doc above for why store membership
     // alone is not enough.
     static boolean isLiveArm(@NonNull EventScheduleEntry entry) {

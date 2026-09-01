@@ -80,7 +80,7 @@ public final class EventScheduleController {
         return account + "_" + entry.dialogId + "_" + entry.triggerKey();
     }
 
-    // Package-private so the Armed Sends overview page can order its rows the same way the
+    // Package-private so the Message Triggers overview page can order its rows the same way the
     // engine actually fires them, instead of reimplementing this comparator.
     static final Comparator<EventScheduleEntry> QUEUE_ORDER = (a, b) -> {
         int result = Integer.compare(a.fallbackDate, b.fallbackDate);

@@ -6,14 +6,14 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.ItemOptions;
 
 /**
- * The Armed Sends menu row shared by both places the Chats nav button's long-press menu is built
- * (MainTabsActivity when the bottom nav is visible, DialogsActivity's own overflow menu when it is
- * hidden). Lives here rather than duplicated in each base file, same reasoning as
+ * The Message Triggers menu row shared by both places the Chats nav button's long-press menu is
+ * built (MainTabsActivity when the bottom nav is visible, DialogsActivity's own overflow menu when
+ * it is hidden). Lives here rather than duplicated in each base file, same reasoning as
  * PrivacyProfileQuickSwitch: one two-line hook per call site instead of copying this block twice.
  */
-public final class ArmedSendsMenu {
+public final class MessageTriggersMenu {
 
-    private ArmedSendsMenu() {}
+    private MessageTriggersMenu() {}
 
     /**
      * Appends the row, or nothing at all. hasAny() alone is not a valid gate before the account's
@@ -31,7 +31,7 @@ public final class ArmedSendsMenu {
         EventScheduleController.ensureWarm(account);
         boolean hasLiveArm = false;
         for (EventScheduleEntry entry : EventScheduleStore.forAccount(account)) {
-            if (ArmedSendsActivity.isLiveArm(entry)) {
+            if (MessageTriggersActivity.isLiveArm(entry)) {
                 hasLiveArm = true;
                 break;
             }
@@ -39,7 +39,7 @@ public final class ArmedSendsMenu {
         if (!hasLiveArm) {
             return;
         }
-        o.add(R.drawable.msg_calendar2, LocaleController.getString(R.string.ArmedSendsTitle), () ->
-                fragment.presentFragment(new ArmedSendsActivity()));
+        o.add(R.drawable.msg_calendar2, LocaleController.getString(R.string.MessageTriggersTitle), () ->
+                fragment.presentFragment(new MessageTriggersActivity()));
     }
 }

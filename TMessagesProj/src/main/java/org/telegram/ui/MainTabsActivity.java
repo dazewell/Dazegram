@@ -1415,8 +1415,8 @@ public class MainTabsActivity extends ViewPagerActivity implements NotificationC
         if (NaConfig.INSTANCE.getShowAddToBookmark().Bool()) {
             o.add(R.drawable.msg_fave, getString(R.string.BookmarksManager), () -> presentFragment(new BookmarkManagerActivity()));
         }
-        // NagramX: self-hiding Armed Sends row -- see ArmedSendsMenu for the hasAny() gate.
-        com.radolyn.ayugram.eventschedule.ArmedSendsMenu.addTo(o, this);
+        // NagramX: self-hiding Message Triggers row -- see MessageTriggersMenu for the hasAny() gate.
+        com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(o, this);
     }
 
     private void setupPopupMenuStyle(ItemOptions options) {
