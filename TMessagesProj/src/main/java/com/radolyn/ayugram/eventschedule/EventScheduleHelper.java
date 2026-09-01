@@ -358,7 +358,9 @@ public final class EventScheduleHelper {
         // still toggles. setEnabled(boolean, animators) drives the alpha fade but calls super, not the
         // single-arg override, so both calls are required together.
         private static void syncRegexEnabled(EditText patternField, TextCheckCell regexCell) {
-            boolean hasPattern = !TextUtils.isEmpty(patternField.getText());
+            // NagramX: trim to match the Done handler's newPattern, or whitespace-only text would
+            // enable the toggle here but save against the empty pattern that trim() actually commits.
+            boolean hasPattern = !TextUtils.isEmpty(patternField.getText().toString().trim());
             regexCell.setEnabled(hasPattern);
             regexCell.setEnabled(hasPattern, null);
         }
