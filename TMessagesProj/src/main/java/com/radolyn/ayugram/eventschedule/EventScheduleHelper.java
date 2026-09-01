@@ -252,31 +252,29 @@ public final class EventScheduleHelper {
             }
             final int[] delayIndex = {startIndex};
 
-            final int accentColor = Theme.getColor(Theme.key_player_progress);
             LinearLayout delayLayout = new LinearLayout(context);
             delayLayout.setOrientation(LinearLayout.VERTICAL);
 
             LinearLayout delayHeader = new LinearLayout(context);
             delayHeader.setOrientation(LinearLayout.HORIZONTAL);
             delayHeader.setGravity(Gravity.CENTER_VERTICAL);
-            delayLayout.addView(delayHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 24, 22, 8, 22, 0));
+            delayLayout.addView(delayHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 21, 8, 21, 0));
 
             TextView delayTitle = new TextView(context);
             delayTitle.setText(getString(R.string.EventScheduleDelayTitle));
-            delayTitle.setTextColor(accentColor);
-            delayTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            delayTitle.setTypeface(org.telegram.messenger.AndroidUtilities.bold());
+            delayTitle.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            delayTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             delayTitle.setGravity(Gravity.CENTER_VERTICAL);
             delayTitle.setSingleLine(true);
             delayTitle.setEllipsize(TextUtils.TruncateAt.END);
-            delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
+            delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
             final TextView delayValue = new TextView(context);
             delayValue.setText(formatDelayLabel(delayValues[startIndex]));
-            delayValue.setTextColor(accentColor);
-            delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
+            delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+            delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             delayValue.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
-            delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+            delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
             final SeekBarView delaySeekBar = new SeekBarView(context, null);
             delaySeekBar.setReportChanges(true);
