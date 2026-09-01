@@ -9,6 +9,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
@@ -57,11 +58,11 @@ public final class EventScheduleEntry {
     public long bindGroupedId;
     public long bindExpiresAt;
     public int state = STATE_ARMED;
-    // volatile: bumped on the UI thread on every edit (updateForEdit), read on the UI thread
-    // to detect a stale in-flight match/arm/fire, and also read from the background matcher
-    // queue below as the compare-and-publish guard for the compiled-pattern cache -- that
-    // cross-thread read needs the same visibility guarantee the cache field gets.
-    public volatile long revision;
+    // Bumped on the UI thread on every edit (updateForEdit) to detect a stale in-flight
+    // arm/fire against the queue below; always read and written on the UI thread (armWaiting,
+    // fire, and their runOnUIThread callbacks), never from the background matcher queue --
+    // see PatternState for the separate, atomically-published state the matcher itself reads.
+    public long revision;
 
     public String key() {
         return dialogId + "_" + createdAt;
@@ -84,84 +85,125 @@ public final class EventScheduleEntry {
     }
 
     /**
-     * Immutable result of compiling one edit revision's pattern, published as a whole through
-     * {@link #cache} so a background compile can never publish half of a stale result -- the
-     * previous design had the compiled {@link Pattern} and a "compile failed" flag as two
-     * independently-written fields, which let a background compile of an old pattern land
-     * *after* an edit had already reset them, permanently pinning the entry to the pre-edit
-     * pattern (nothing else ever resets a non-null {@code compiled} field again). Tying the
-     * compile result to the revision it was compiled against, and only ever swapping it in
-     * one piece, closes that: see {@link #matchesPattern} for the compare-and-publish check.
+     * Immutable snapshot of one edit generation's pattern-matching state -- revision, the
+     * pattern/regex it was set to, and (once available) the compiled result for that exact
+     * pattern/regex -- published as a whole through the single {@link #patternState}
+     * reference. Bundling all of it into one object, rather than tracking revision and the
+     * compiled Pattern as separate fields, is what lets {@link #compileAndPublish} publish a
+     * compile result with a single {@code compareAndSet}: the CAS can only succeed against
+     * the exact object it was compiled from, so a background compile still in flight when an
+     * edit lands ({@link #resetPatternState}) can never win a race and publish over the edit
+     * -- there is no separate "is this still current" check that a newer edit could land
+     * between, the swap itself is the only thing that decides it.
      */
-    private static final class CompiledCache {
+    static final class PatternState {
         final long revision;
-        final Pattern compiled; // null iff failed
+        final String pattern;
+        final boolean regex;
+        final Pattern compiled; // null until compiled, or if compilation failed
         final boolean failed;
 
-        CompiledCache(long revision, Pattern compiled, boolean failed) {
+        PatternState(long revision, String pattern, boolean regex, Pattern compiled, boolean failed) {
             this.revision = revision;
+            this.pattern = pattern;
+            this.regex = regex;
             this.compiled = compiled;
             this.failed = failed;
         }
     }
 
-    private volatile CompiledCache cache;
+    // Starts null: capturePatternState() lazily seeds it from the pattern/regex/revision
+    // fields on first access, which is always on the UI thread (see evaluate()), so that
+    // lazy init never races a background compile. Every later generation only ever exists
+    // because resetPatternState() (also UI-thread-only) put it there.
+    private final AtomicReference<PatternState> patternState = new AtomicReference<>();
 
     /**
-     * @param revision       entry.revision as read by the caller at the same time it read
-     *                       patternSnapshot/regexSnapshot -- all three must come from one
-     *                       consistent read (see the call site in EventScheduleController,
-     *                       which captures them together on the UI thread before posting the
-     *                       match to the background queue), otherwise this method has no way
-     *                       to tell a genuinely current pattern from a stale one.
-     * @param patternSnapshot pattern as of {@code revision}; not read from the field here so a
-     *                        background thread never has to race the UI thread for it.
+     * Returns this entry's current pattern-matching state, initializing it from the
+     * pattern/regex/revision fields on first call if the entry has never been edited since
+     * construction (armExisting/armPending/fromJson all fully set pattern/regex before the
+     * entry is ever added to the store, so by the time anything can call this, they're
+     * already final for this generation). Must only be called from the UI thread -- the only
+     * caller is {@link EventScheduleController#evaluate}, which captures the returned state
+     * before handing a match off to the background queue; matching and any needed compile
+     * both then run against that one captured object (see {@link #matchesPattern}).
      */
-    public boolean matchesPattern(long revision, String patternSnapshot, boolean regexSnapshot, CharSequence text) {
-        if (TextUtils.isEmpty(patternSnapshot)) return true;
+    PatternState capturePatternState() {
+        PatternState current = patternState.get();
+        if (current == null) {
+            current = new PatternState(revision, pattern, regex, null, false);
+            if (!patternState.compareAndSet(null, current)) {
+                current = patternState.get();
+            }
+        }
+        return current;
+    }
+
+    /**
+     * Called on the UI thread by {@code updateForEdit} after it has updated
+     * pattern/regex/revision, to swap in a fresh, uncompiled state for the new revision. This
+     * is a plain reference replacement, not a CAS -- the UI thread is the only thread that
+     * ever calls this method, so there is nothing else to race here. What matters is what
+     * this replacement does to a background compile that is still in flight against the
+     * *previous* PatternState object: once this call returns, that object is no longer
+     * reachable from {@link #patternState}, so the compile's eventual
+     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to
+     * fail no matter when it runs relative to this swap.
+     */
+    void resetPatternState() {
+        patternState.set(new PatternState(revision, pattern, regex, null, false));
+    }
+
+    /**
+     * @param state the exact PatternState the caller captured via {@link #capturePatternState}
+     *              on the UI thread before posting this match to the background queue --
+     *              matching and any needed compile both happen against this one immutable
+     *              object, so the pattern that was matched and the compiled form used are
+     *              always guaranteed to be the same generation.
+     */
+    public boolean matchesPattern(PatternState state, CharSequence text) {
+        if (TextUtils.isEmpty(state.pattern)) return true;
         if (text == null) return false;
 
-        CompiledCache snapshot = cache;
-        if (snapshot == null || snapshot.revision != revision) {
-            snapshot = compileAndPublish(revision, patternSnapshot, regexSnapshot);
+        if (state.compiled == null && !state.failed) {
+            state = compileAndPublish(state);
         }
-        if (snapshot.failed) return false;
+        if (state.failed) return false;
 
         CharSequence input = text.length() > MAX_MATCH_LEN ? text.subSequence(0, MAX_MATCH_LEN) : text;
         // Both modes hit anywhere in the text: a trigger word is nearly always part of a longer
         // message, and anchoring is what regex mode is for.
-        return snapshot.compiled.matcher(input).find();
+        return state.compiled.matcher(input).find();
     }
 
     /**
-     * Compiles patternSnapshot/regexSnapshot as compiled-for revision {@code revision}, and
-     * publishes the result to {@link #cache} only if this entry is still on that revision --
-     * i.e. no edit has bumped {@link #revision} since the caller captured it. updateForEdit
-     * bumps revision as its very first write, before touching pattern/regex, so a mismatch
-     * here means this compile is for a pattern the entry no longer has, and publishing it
-     * would pin the entry to stale text exactly like the bug this replaces. The unpublished
-     * candidate is still returned so the caller (a single in-flight match) gets a correct
-     * answer for the snapshot it asked about; the discard only stops it becoming the entry's
-     * cached state for later matches. Two threads compiling the same still-current revision
-     * concurrently is harmless -- both produce an equivalent Pattern and either publish wins.
+     * Compiles {@code state.pattern}/{@code state.regex} and tries to publish the compiled
+     * result back onto {@link #patternState} with {@code compareAndSet(state, ...)} -- an
+     * atomic swap against the exact object this compile started from, not a separate
+     * check-then-write. If an edit has already replaced {@link #patternState} with a newer
+     * generation in the meantime (via {@link #resetPatternState}), the object identity no
+     * longer matches and the CAS simply fails: the freshly compiled result is still returned
+     * so the caller (one in-flight match) gets a correct answer for the generation it asked
+     * about, but it is never retried and never written anywhere else, so a stale compile can
+     * never overwrite a newer edit's state -- there is no window between "check" and "write"
+     * for a newer edit to land in, because the compareAndSet is the only write and it either
+     * happens atomically against the captured object or not at all.
      */
-    private CompiledCache compileAndPublish(long revision, String patternSnapshot, boolean regexSnapshot) {
+    private PatternState compileAndPublish(PatternState state) {
         Pattern compiledPattern = null;
         boolean failed = false;
         try {
             int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
             // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
             // and quotes put text on its own line; a regex author can ask for the same with (?s).
-            if (!regexSnapshot) flags |= Pattern.DOTALL;
-            compiledPattern = Pattern.compile(regexSnapshot ? patternSnapshot : globToRegex(patternSnapshot), flags);
+            if (!state.regex) flags |= Pattern.DOTALL;
+            compiledPattern = Pattern.compile(state.regex ? state.pattern : globToRegex(state.pattern), flags);
         } catch (Throwable t) {
             failed = true;
         }
-        CompiledCache candidate = new CompiledCache(revision, compiledPattern, failed);
-        if (this.revision == revision) {
-            cache = candidate;
-        }
-        return candidate;
+        PatternState compiledState = new PatternState(state.revision, state.pattern, state.regex, compiledPattern, failed);
+        patternState.compareAndSet(state, compiledState);
+        return compiledState;
     }
 
     private static String globToRegex(String glob) {
