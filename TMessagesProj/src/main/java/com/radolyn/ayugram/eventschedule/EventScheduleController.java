@@ -41,15 +41,21 @@ public final class EventScheduleController {
         final EventScheduleEntry entry;
         final int scheduleDate;
         final long expiresAtElapsedMs;
+        final long claimExpiresAtElapsedMs;
+        long localGroupedId;
 
-        Pending(int account, EventScheduleEntry entry, int scheduleDate, long expiresAtElapsedMs) {
+        Pending(int account, EventScheduleEntry entry, int scheduleDate,
+                long expiresAtElapsedMs, long claimExpiresAtElapsedMs) {
             this.account = account;
             this.entry = entry;
             this.scheduleDate = scheduleDate;
             this.expiresAtElapsedMs = expiresAtElapsedMs;
+            this.claimExpiresAtElapsedMs = claimExpiresAtElapsedMs;
         }
     }
 
+    // Local scheduled echoes are posted inline from the send path, so claim eligibility is short.
+    private static final long CLAIM_WINDOW_MS = 5000;
     // Bind window for associating send acks back to a just-armed trigger.
     private static final long BIND_WINDOW_SECONDS = 30L * 60L;
 
@@ -112,8 +118,10 @@ public final class EventScheduleController {
         return SystemClock.elapsedRealtime() + Math.max(remainingMs, 0L);
     }
 
-    private static void addPending(int account, @NonNull EventScheduleEntry entry, int scheduleDate) {
-        PENDING.put(pendingKey(account, entry.key()), new Pending(account, entry, scheduleDate, toElapsedDeadline(entry.bindExpiresAt)));
+    private static void addPending(int account, @NonNull EventScheduleEntry entry, int scheduleDate, long claimWindowMs) {
+        long claimExpiresAtElapsedMs = claimWindowMs <= 0 ? 0 : SystemClock.elapsedRealtime() + claimWindowMs;
+        PENDING.put(pendingKey(account, entry.key()),
+                new Pending(account, entry, scheduleDate, toElapsedDeadline(entry.bindExpiresAt), claimExpiresAtElapsedMs));
         refreshPendingBits();
     }
 
@@ -171,7 +179,7 @@ public final class EventScheduleController {
                 }
                 continue;
             }
-            addPending(account, entry, entry.fallbackDate);
+            addPending(account, entry, entry.fallbackDate, 0);
         }
         schedulePendingGc();
     }
@@ -180,14 +188,15 @@ public final class EventScheduleController {
     // registered per account covers id remap and scheduled deletes for its whole lifetime.
     private static final NotificationCenter.NotificationCenterDelegate OBSERVER = (id, account, args) -> {
         if (id == NotificationCenter.messageReceivedByServer) {
+            int oldId = args.length > 0 && args[0] instanceof Integer ? (Integer) args[0] : 0;
             int newId = args.length > 1 && args[1] instanceof Integer ? (Integer) args[1] : 0;
             TLRPC.Message message = args.length > 2 && args[2] instanceof TLRPC.Message ? (TLRPC.Message) args[2] : null;
             long dialogId = args.length > 3 && args[3] instanceof Long ? (Long) args[3]
                     : message != null ? message.dialog_id : 0L;
-            long groupedId = args.length > 5 && args[5] instanceof Long ? (Long) args[5]
+            long groupedId = args.length > 4 && args[4] instanceof Long ? (Long) args[4]
                     : message != null ? message.grouped_id : 0L;
-            boolean scheduled = args.length > 7 && args[7] instanceof Boolean && (Boolean) args[7];
-            onIdRemap(account, newId, message, dialogId, groupedId, scheduled);
+            boolean scheduled = args.length > 6 && args[6] instanceof Boolean && (Boolean) args[6];
+            onIdRemap(account, oldId, newId, message, dialogId, groupedId, scheduled);
         } else if (id == NotificationCenter.messagesDeleted) {
             boolean scheduled = args.length > 2 && args[2] instanceof Boolean && (Boolean) args[2];
             if (!scheduled) return;
@@ -231,7 +240,7 @@ public final class EventScheduleController {
         entry.bindExpiresAt = nowSeconds() + BIND_WINDOW_SECONDS;
         entry.state = EventScheduleEntry.STATE_ARMED;
         EventScheduleStore.persist(account, entry);
-        addPending(account, entry, scheduleDate);
+        addPending(account, entry, scheduleDate, CLAIM_WINDOW_MS);
         schedulePendingGc();
         ensureObserver(account);
         return entry.key();
@@ -281,16 +290,22 @@ public final class EventScheduleController {
         }
         ensureWarm(account);
         if (!hasState(account) || messages == null || messages.isEmpty()) return;
-        if (scheduled) return;
-        evaluate(account, dialogId, messages);
+        if (scheduled) {
+            claim(account, dialogId, messages);
+        } else {
+            evaluate(account, dialogId, messages);
+        }
     }
 
-    private static void onIdRemap(int account, int newId, TLRPC.Message message,
+    private static void onIdRemap(int account, int oldId, int newId, TLRPC.Message message,
                                   long dialogId, long groupedId, boolean scheduled) {
         if (!scheduled || message == null || dialogId == 0 || message.date == 0) return;
         if (EventScheduleStore.findByMessage(account, dialogId, newId) != null) return;
         pruneExpiredPending();
-        Pending pending = findPendingForAck(account, dialogId, message.date, groupedId);
+        Pending pending = findPendingByLocalId(account, oldId);
+        if (pending == null) {
+            pending = findPendingForAck(account, dialogId, message.date, groupedId);
+        }
         if (pending == null) return;
         EventScheduleEntry entry = pending.entry;
         if (!EventScheduleStore.contains(account, entry.key())) {
@@ -298,6 +313,7 @@ public final class EventScheduleController {
             schedulePendingGc();
             return;
         }
+        entry.localIds.remove((Integer) oldId);
         if (groupedId != 0 && entry.bindGroupedId == 0) {
             entry.bindGroupedId = groupedId;
         }
@@ -305,6 +321,67 @@ public final class EventScheduleController {
             entry.serverIds.add(newId);
             EventScheduleStore.persist(account, entry);
         }
+    }
+
+    private static void claim(int account, long dialogId, ArrayList<MessageObject> messages) {
+        pruneExpiredPending();
+        for (MessageObject message : messages) {
+            if (!message.isOutOwner() || message.messageOwner == null) continue;
+            int localId = message.getId();
+            if (localId >= 0) continue;
+            int scheduleDate = message.messageOwner.date;
+            long groupedId = message.messageOwner.grouped_id;
+            Pending pending = findPendingForClaim(account, dialogId, scheduleDate, groupedId);
+            if (pending == null) continue;
+            EventScheduleEntry entry = pending.entry;
+            if (groupedId != 0 && pending.localGroupedId == 0) {
+                pending.localGroupedId = groupedId;
+            }
+            if (!entry.localIds.contains(localId)) {
+                entry.localIds.add(localId);
+            }
+        }
+    }
+
+    private static Pending findPendingByLocalId(int account, int localId) {
+        if (localId >= 0) return null;
+        for (Pending pending : PENDING.values()) {
+            if (pending.account != account) continue;
+            if (pending.entry.localIds.contains(localId)) {
+                return pending;
+            }
+        }
+        return null;
+    }
+
+    private static Pending findPendingForClaim(int account, long dialogId, int scheduleDate, long groupedId) {
+        long nowElapsed = SystemClock.elapsedRealtime();
+        ArrayList<Pending> candidates = new ArrayList<>();
+        for (Pending pending : PENDING.values()) {
+            EventScheduleEntry entry = pending.entry;
+            if (pending.claimExpiresAtElapsedMs <= 0 || pending.claimExpiresAtElapsedMs <= nowElapsed) continue;
+            if (pending.account != account || entry.dialogId != dialogId || pending.scheduleDate != scheduleDate) continue;
+            if (!acceptsClaim(pending, groupedId)) continue;
+            candidates.add(pending);
+        }
+        if (candidates.isEmpty()) return null;
+        Collections.sort(candidates, (a, b) -> {
+            int result = Long.compare(a.entry.createdAt, b.entry.createdAt);
+            if (result == 0) result = a.entry.key().compareTo(b.entry.key());
+            return result;
+        });
+        return candidates.get(0);
+    }
+
+    private static boolean acceptsClaim(@NonNull Pending pending, long groupedId) {
+        EventScheduleEntry entry = pending.entry;
+        if (groupedId == 0) {
+            return pending.localGroupedId == 0 && entry.serverIds.isEmpty() && entry.localIds.isEmpty();
+        }
+        if (pending.localGroupedId == 0) {
+            return entry.serverIds.isEmpty() && entry.localIds.isEmpty();
+        }
+        return pending.localGroupedId == groupedId;
     }
 
     private static Pending findPendingForAck(int account, long dialogId, int scheduleDate, long groupedId) {
@@ -326,10 +403,10 @@ public final class EventScheduleController {
 
     private static boolean acceptsAck(@NonNull EventScheduleEntry entry, long groupedId) {
         if (groupedId == 0) {
-            return entry.bindGroupedId == 0 && entry.serverIds.isEmpty();
+            return entry.bindGroupedId == 0 && entry.serverIds.isEmpty() && entry.localIds.isEmpty();
         }
         if (entry.bindGroupedId == 0) {
-            return entry.serverIds.isEmpty();
+            return entry.serverIds.isEmpty() && entry.localIds.isEmpty();
         }
         return entry.bindGroupedId == groupedId;
     }
@@ -457,9 +534,14 @@ public final class EventScheduleController {
         if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))) {
             return;
         }
+        if (queue == null || queue.isEmpty()) {
+            advanceQueue(account, expectedQueueKey);
+            return;
+        }
         if (entry.state != EventScheduleEntry.STATE_WAITING || entry.revision != revision
-                || !EventScheduleStore.contains(account, entry.key())
-                || queue == null || queue.isEmpty()) {
+                || !EventScheduleStore.contains(account, entry.key())) {
+            // Token still matches, so this callback is the live queue owner and must re-drive.
+            advanceQueue(account, expectedQueueKey);
             return;
         }
         if (queue.get(0) != entry) {

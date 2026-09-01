@@ -44,8 +44,8 @@ public final class EventScheduleEntry {
 
     public long dialogId;
     public final ArrayList<Integer> serverIds = new ArrayList<>();
-    // Kept for compatibility with older in-flight state. New correlation binds directly on
-    // messageReceivedByServer metadata and does not depend on local echo ids.
+    // Local echo ids (negative) claimed from scheduled-batch updates; used as the primary remap key
+    // when messageReceivedByServer arrives, with metadata fallback if no local claim exists.
     public final ArrayList<Integer> localIds = new ArrayList<>();
     public int types;
     public String pattern = "";
