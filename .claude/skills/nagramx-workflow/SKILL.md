@@ -349,6 +349,30 @@ code are not.
    artifact. `commit-tag.yml`
    also runs and blocks the PR if any commit lacks its `#tag`.
 
+   **When the build is up, ask for the test explicitly — never bury it in a
+   handback.** A test request is a *blocking* request for dazewell's hands, and
+   prose he has to read to the end to discover that is prose he may not get to
+   for hours. The moment an APK is uploaded and there is something only he can
+   check, issue an **explicit interactive prompt** (the `ask_user` tool, or the
+   equivalent question surface for whatever tool you are running in) — the same
+   mechanism used for a design question, for the same reason: it interrupts
+   deliberately, it is visibly unanswered until he acts, and his reply comes back
+   attached to the thing being asked. Mentioning the build in a paragraph does
+   none of that and silently stretches the feedback loop.
+
+   Make the prompt **specific and short**: which build to install (variant and
+   the commit or PR it came from), the exact thing to try, and what a pass versus
+   a fail looks like. "Please test the build" wastes the interruption. "Install
+   the Unofficial build from PR #244, arm three videos on one trigger in one
+   chat, then send that trigger from another account — all three should send one
+   after the other" spends it well. Ask for one round of testing at a time; a
+   list of six checks is a task, not a question, and it will stall.
+
+   **This applies to every request that needs dazewell's hands or eyes**, not
+   only APK installs: a screenshot for `FEATURES.md`, confirming a device-only
+   behaviour, checking something in his own chats, or a decision that blocks the
+   pipeline. If you need him, ask him — explicitly, one thing at a time.
+
    **Don't request the Copilot review — it is automatic.** The
    `dev no-force no-delete + Copilot review` repository ruleset requests it when
    a non-draft PR targets `dev`, so it arrives on its own. Every hand-request

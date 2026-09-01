@@ -927,6 +927,23 @@ Install: <which APK variant>
 **Needs you**: <screenshots for FEATURES.md, on-device checks, the merge>
 ```
 
+**If the handback needs dazewell's hands, ask for it explicitly — do not leave
+it sitting in the `Needs you` line.** That line is a *record* of what is
+outstanding; it is not a request, and it does not interrupt. When an APK has
+been uploaded and there is something only he can verify, follow the handback
+with an explicit `ask_user` prompt — the same mechanism as a design question,
+chosen for the same reason: it visibly blocks, it stays unanswered until he
+acts, and his answer arrives attached to the question. A build he finds out
+about by reading to the end of a report is a build he tests hours later, and
+every hour there is an hour added to the loop.
+
+Keep the prompt specific and short: which build to install (variant, and the PR
+or commit it came from), the exact thing to try, and what a pass or a fail looks
+like. Ask for **one** round at a time — a list of six checks is a task, not a
+question, and it stalls. The same rule covers any request for his hands or eyes:
+a screenshot for `FEATURES.md`, a device-only behaviour, something in his own
+chats. If you need him, ask; don't narrate.
+
 Never write "ready to merge". Nothing in this pipeline establishes that: nobody
 ran the app, and the local compile usually did not happen. Say what you actually
 verified and let dazewell draw the conclusion — that one line is the claim he
