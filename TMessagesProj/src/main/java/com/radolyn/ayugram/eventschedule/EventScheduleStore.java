@@ -66,8 +66,11 @@ public final class EventScheduleStore {
                 for (Map.Entry<String, ?> e : sp.getAll().entrySet()) {
                     Object v = e.getValue();
                     EventScheduleEntry entry = v instanceof String ? EventScheduleEntry.fromJson((String) v) : null;
+                    // Keep the serverIds.isEmpty() guard first: pre-bindExpires builds only persisted
+                    // bound rows, so testing an absent bind_expires_at independently would drop legacy data.
                     if (entry == null || entry.fallbackDate + 300 < now
-                            || (entry.serverIds.isEmpty() && (entry.bindExpiresAt <= 0 || entry.bindExpiresAt <= now))) {
+                            || (entry.serverIds.isEmpty() && entry.localIds.isEmpty()
+                            && (entry.bindExpiresAt <= 0 || entry.bindExpiresAt <= now))) {
                         if (ed == null) ed = sp.edit();
                         ed.remove(e.getKey());
                         continue;

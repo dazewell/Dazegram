@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * message containing it; anchoring is what regex mode's {@code ^} and {@code $} are for.
  *
  * <p>Persisted as JSON under {@link EventScheduleStore}; the compiled {@link Pattern}
- * and the transient runtime {@link #state} / {@link #localIds} are never stored.
+ * and transient runtime {@link #state} are never stored.
  */
 public final class EventScheduleEntry {
 
@@ -44,8 +44,8 @@ public final class EventScheduleEntry {
 
     public long dialogId;
     public final ArrayList<Integer> serverIds = new ArrayList<>();
-    // Local echo ids (negative) claimed from scheduled-batch updates; used as the primary remap key
-    // when messageReceivedByServer arrives, with metadata fallback if no local claim exists.
+    // Local echo ids (negative) claimed from scheduled-batch updates; used as the exact
+    // remap key when messageReceivedByServer arrives.
     public final ArrayList<Integer> localIds = new ArrayList<>();
     public int types;
     public String pattern = "";
@@ -158,6 +158,9 @@ public final class EventScheduleEntry {
             JSONArray ids = new JSONArray();
             for (int id : serverIds) ids.put(id);
             o.put("ids", ids);
+            JSONArray local = new JSONArray();
+            for (int id : localIds) local.put(id);
+            o.put("local_ids", local);
             o.put("types", types);
             o.put("pattern", pattern == null ? "" : pattern);
             o.put("regex", regex);
@@ -181,6 +184,10 @@ public final class EventScheduleEntry {
             JSONArray ids = o.optJSONArray("ids");
             if (ids != null) {
                 for (int i = 0; i < ids.length(); i++) e.serverIds.add(ids.getInt(i));
+            }
+            JSONArray local = o.optJSONArray("local_ids");
+            if (local != null) {
+                for (int i = 0; i < local.length(); i++) e.localIds.add(local.getInt(i));
             }
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");

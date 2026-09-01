@@ -400,8 +400,8 @@ public final class EventScheduleHelper {
                 return;
             }
             if (!armed) {
-                // If this sheet armed a trigger earlier and is now "off", drop only that arm.
-                EventScheduleController.killPending(account, pendingEntryKey);
+                // Trigger explicitly off: drop only still-unclaimed pending arms in this dialog.
+                EventScheduleController.killUnclaimedForDialog(account, dialogId);
                 pendingEntryKey = null;
                 return;
             }
