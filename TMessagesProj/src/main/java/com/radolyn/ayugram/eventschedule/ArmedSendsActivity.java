@@ -102,7 +102,9 @@ public class ArmedSendsActivity extends BaseFragment {
         emptyView.setPadding(AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24), AndroidUtilities.dp(24));
         frameLayout.addView(emptyView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        reloadData();
+        // NagramX: no reloadData() here -- onResume() runs right after this on initial presentation
+        // (same as BookmarkManagerActivity), and calling it in both places would schedule two full
+        // loads on first entry for nothing.
 
         return fragmentView;
     }
