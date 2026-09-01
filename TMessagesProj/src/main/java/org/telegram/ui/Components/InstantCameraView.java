@@ -3365,7 +3365,13 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                         countDownLatch.countDown();
                     });
                     try {
-                        countDownLatch.await();
+                        // NagramX: same wall-clock bound as the stop path below. The pause finalize
+                        // runs on the encoder thread too, so an unbounded wait here pins the camera.
+                        // finalizeSuccess[0] is only set inside the runnable, so a timeout correctly
+                        // leaves it false and the draft is not minted.
+                        if (!countDownLatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                            FileLog.e(new RuntimeException("InstantCamera preview finalize timed out"));
+                        }
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
@@ -3605,7 +3611,16 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     countDownLatch.countDown();
                 });
                 try {
-                    countDownLatch.await();
+                    // NagramX: bound this the way every other blocking wait on the encoder thread is
+                    // bounded (the 500ms stall bound in feedAudioToEncoder, the 100ms drain deadlines).
+                    // An unbounded await lets a wedged muxer pin this thread, and the send waits behind
+                    // it. On expiry the movie was never finalized, so report failure -- finalizeOk must
+                    // not mint a draft id for an unclosed file. TimeUnit is fully qualified rather than
+                    // imported, matching the single-use convention already used in this file.
+                    if (!countDownLatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        FileLog.e(new RuntimeException("InstantCamera muxer finalize timed out"));
+                        success[0] = false;
+                    }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                     success[0] = false;
