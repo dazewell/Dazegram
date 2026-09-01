@@ -159,7 +159,10 @@ public class ArmedSendsActivity extends BaseFragment {
      * exists to end. Omit both the still-binding and the dead case; a message armed moments ago can
      * take a few seconds to appear here once its ack lands, which is expected.
      */
-    private static boolean isLiveArm(@NonNull EventScheduleEntry entry) {
+    // Package-private (not private) so ArmedSendsMenu's row-visibility gate can share this exact
+    // definition instead of drifting from it -- see the class doc above for why store membership
+    // alone is not enough.
+    static boolean isLiveArm(@NonNull EventScheduleEntry entry) {
         return !entry.serverIds.isEmpty();
     }
 
