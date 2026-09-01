@@ -19,11 +19,16 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
+import org.telegram.SQLite.SQLiteCursor;
+import org.telegram.SQLite.SQLiteDatabase;
+import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
@@ -41,6 +46,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Read-only list of every armed {@code #eventschedule} trigger for the current account, reached
@@ -258,8 +264,13 @@ public class MessageTriggersActivity extends BaseFragment {
             ArrayList<Long> chatsToLoad = new ArrayList<>();
             HashSet<Long> seenUsers = new HashSet<>();
             HashSet<Long> seenChats = new HashSet<>();
+            // NagramX: (dialogId, primaryServerId) pairs to preview, decided from the same
+            // pre-hop snapshot as the peers above -- see loadPreviews() for why the join key at
+            // apply time still has to be recomputed per entry rather than reused from here.
+            LinkedHashMap<Long, ArrayList<Integer>> previewIdsByDialog = new LinkedHashMap<>();
             for (EventScheduleEntry entry : snapshotForPeers) {
                 collectPeerToLoad(messagesController, entry.dialogId, usersToLoad, chatsToLoad, seenUsers, seenChats);
+                previewIdsByDialog.computeIfAbsent(entry.dialogId, d -> new ArrayList<>()).add(entry.serverIds.get(0));
             }
             MessagesStorage messagesStorage = MessagesStorage.getInstance(account);
             messagesStorage.getStorageQueue().postRunnable(() -> {
@@ -275,6 +286,9 @@ public class MessageTriggersActivity extends BaseFragment {
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
+                // NagramX: batches into the same storage-queue runnable as the peer reads above,
+                // rather than adding a second hop -- see loadPreviews() doc for the query itself.
+                LinkedHashMap<PreviewKey, CharSequence> previews = loadPreviews(account, previewIdsByDialog);
                 AndroidUtilities.runOnUIThread(() -> {
                     if (requestId != loadRequestId) {
                         return;
@@ -289,7 +303,7 @@ public class MessageTriggersActivity extends BaseFragment {
                             live.add(entry);
                         }
                     }
-                    applyRows(messagesController, live);
+                    applyRows(messagesController, live, previews);
                 });
             });
         });
@@ -316,6 +330,74 @@ public class MessageTriggersActivity extends BaseFragment {
     private static long encryptedChatUserDialogId(MessagesController messagesController, long dialogId) {
         TLRPC.EncryptedChat encryptedChat = messagesController.getEncryptedChat(DialogObject.getEncryptedChatId(dialogId));
         return encryptedChat != null ? encryptedChat.user_id : 0;
+    }
+
+    /**
+     * One batched scheduled_messages_v2 query for the whole reload, issued from the same
+     * storage-queue runnable as the peer reads above -- not a query per row, and not a second
+     * hop. Message ids collide across dialogs (see MessagesStorage's own uid+mid keying, e.g.
+     * MessagesStorage.java:562, 3804), so results are keyed by (dialogId, messageId): keying by
+     * messageId alone could render another chat's message against this row's trigger.
+     */
+    private static LinkedHashMap<PreviewKey, CharSequence> loadPreviews(int account, LinkedHashMap<Long, ArrayList<Integer>> idsByDialog) {
+        LinkedHashMap<PreviewKey, CharSequence> result = new LinkedHashMap<>();
+        if (idsByDialog.isEmpty()) {
+            return result;
+        }
+        SQLiteDatabase database = MessagesStorage.getInstance(account).getDatabase();
+        if (database == null) {
+            return result;
+        }
+        StringBuilder where = new StringBuilder();
+        for (Map.Entry<Long, ArrayList<Integer>> dialogIds : idsByDialog.entrySet()) {
+            if (dialogIds.getValue().isEmpty()) {
+                continue;
+            }
+            if (where.length() > 0) {
+                where.append(" OR ");
+            }
+            where.append("(uid = ").append(dialogIds.getKey()).append(" AND mid IN (").append(TextUtils.join(",", dialogIds.getValue())).append("))");
+        }
+        if (where.length() == 0) {
+            return result;
+        }
+        long selfId = UserConfig.getInstance(account).getClientUserId();
+        SQLiteCursor cursor = null;
+        try {
+            cursor = database.queryFinalized("SELECT data, mid, date, uid FROM scheduled_messages_v2 WHERE " + where);
+            while (cursor.next()) {
+                NativeByteBuffer data = cursor.byteBufferValue(0);
+                if (data == null) {
+                    continue;
+                }
+                // NagramX: same deserialization order MessagesStorage itself uses for this table
+                // (MessagesStorage.java:3808-3822) -- id/date/dialog_id come from the cursor, not
+                // from the serialized blob, which doesn't carry them.
+                TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+                if (message == null) {
+                    data.reuse();
+                    continue;
+                }
+                message.readAttachPath(data, selfId);
+                data.reuse();
+                message.id = cursor.intValue(1);
+                message.date = cursor.intValue(2);
+                message.dialog_id = cursor.longValue(3);
+                // generateLayout=false: this is a lightweight lookup for a one-line preview, not a
+                // chat row -- updateMessageText() runs unconditionally either way (MessageObject.
+                // java:1952), so the brief text (and Telegram's own localized voice/round/video/
+                // album labels) come along for free without paying for layout measurement.
+                MessageObject messageObject = new MessageObject(account, message, false, false);
+                result.put(new PreviewKey(message.dialog_id, message.id), AndroidUtilities.replaceNewLines(messageObject.messageText));
+            }
+        } catch (Throwable t) {
+            FileLog.e(t);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return result;
     }
 
     private TLObject resolvePeer(MessagesController messagesController, long dialogId) {
@@ -351,7 +433,7 @@ public class MessageTriggersActivity extends BaseFragment {
     private record GroupKey(long dialogId, String triggerKey) {
     }
 
-    private void applyRows(MessagesController messagesController, ArrayList<EventScheduleEntry> live) {
+    private void applyRows(MessagesController messagesController, ArrayList<EventScheduleEntry> live, LinkedHashMap<PreviewKey, CharSequence> previews) {
         LinkedHashMap<GroupKey, ArrayList<EventScheduleEntry>> groups = new LinkedHashMap<>();
         for (EventScheduleEntry entry : live) {
             GroupKey key = new GroupKey(entry.dialogId, entry.triggerKey());
@@ -380,7 +462,7 @@ public class MessageTriggersActivity extends BaseFragment {
             items.add(new HeaderItem(chatTitle, first.summary(false)));
             for (int i = 0; i < group.size(); i++) {
                 EventScheduleEntry entry = group.get(i);
-                CharSequence brief = resolveBrief(entry);
+                CharSequence brief = resolveBrief(entry, previews);
                 CharSequence timeline = resolveTimeline(entry, nowSeconds);
                 boolean divider = i < group.size() - 1;
                 items.add(new RowItem(entry.dialogId, peer, brief, timeline, entry, divider));
@@ -390,14 +472,18 @@ public class MessageTriggersActivity extends BaseFragment {
         updateEmptyView();
     }
 
+    /** (dialogId, messageId) -- message ids collide across dialogs, so messageId alone can't key this. */
+    private record PreviewKey(long dialogId, int messageId) {
+    }
+
     /**
-     * NagramX: the batched (dialogId, messageId) preview lookup lands in a later commit; until
-     * then -- and on any cache miss once it does -- this always reports "message unavailable". A
-     * miss here must never hide the row or affect its liveness, which is decided only by
-     * serverIds (see isLiveArm above).
+     * A miss (nothing loaded for this entry's primary serverId, or the batched query simply
+     * hasn't run against it yet) always falls back to "message unavailable" and never hides the
+     * row or touches its liveness -- that's decided only by serverIds (see isLiveArm above).
      */
-    private CharSequence resolveBrief(@NonNull EventScheduleEntry entry) {
-        return LocaleController.getString(R.string.MessageTriggersUnavailable);
+    private CharSequence resolveBrief(@NonNull EventScheduleEntry entry, @NonNull LinkedHashMap<PreviewKey, CharSequence> previews) {
+        CharSequence brief = previews.get(new PreviewKey(entry.dialogId, entry.serverIds.get(0)));
+        return brief != null ? brief : LocaleController.getString(R.string.MessageTriggersUnavailable);
     }
 
     /**
