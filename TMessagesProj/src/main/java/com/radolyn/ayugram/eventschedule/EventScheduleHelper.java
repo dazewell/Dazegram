@@ -195,7 +195,7 @@ public final class EventScheduleHelper {
 
             builder.addTitle(getString(R.string.EventScheduleSectionType), false, null);
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null);
-            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.AttachRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
+            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.EventScheduleTypeRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
             TextCheckCell videoCell = builder.addCheckItem(getString(R.string.AttachVideo), (types & EventScheduleEntry.TYPE_VIDEO) != 0, false, null);
             TextCheckCell photoCell = builder.addCheckItem(getString(R.string.AttachPhoto), (types & EventScheduleEntry.TYPE_PHOTO) != 0, false, null);
             TextCheckCell textCell = builder.addCheckItem(getString(R.string.EventScheduleTypeText), (types & EventScheduleEntry.TYPE_TEXT) != 0, false, null);
