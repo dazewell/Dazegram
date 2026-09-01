@@ -131,7 +131,7 @@ Pick several scheduled messages and move them all at once by setting a base time
 
 ### Send a scheduled message early on an event <!-- #eventschedule -->
 
-The schedule picker has a *Send on event* row to set a trigger (e.g., voice, video, text) to send the message early. Text triggers use a simple glob by default (`*` matches anything, `?` one character) and look for a hit anywhere. Flip on *Regular expression* for a real regex if you need a substring search or exact match. If triggered, it sends immediately; otherwise, it sends at its scheduled fallback time. Several scheduled messages can share one trigger and will send one by one in fallback-time order, each keeping its own delay.
+The schedule picker has a *Send on event* row to set a trigger (e.g., voice, video, text) to send the message early. Text triggers use a simple glob by default (`*` matches anything, `?` one character) and look for a hit anywhere. Flip on *Regular expression* for a real regex if you need a substring search or exact match. If triggered, it sends immediately; otherwise, it sends at its scheduled fallback time. Several scheduled messages can share one trigger and will send one by one in fallback-time order, each keeping its own delay. If one send cannot continue right now, the trigger stays armed, a heads-up says the run stopped partway, and matching again continues the rest.
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 

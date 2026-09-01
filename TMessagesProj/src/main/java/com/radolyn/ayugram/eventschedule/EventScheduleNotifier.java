@@ -24,19 +24,27 @@ import org.telegram.ui.LaunchActivity;
  */
 final class EventScheduleNotifier {
 
-    // Per-account, per-dialog base so repeated early sends in the same chat collapse into one
-    // notification instead of stacking, the way message notifications do.
-    private static final int ID_BASE = 0x6E780000;
+    // Separate bases keep "sent early" and "stalled run" notifications from replacing each other.
+    private static final int SENT_ID_BASE = 0x6E780000;
+    private static final int STALLED_ID_BASE = 0x6E7A0000;
 
     private EventScheduleNotifier() {}
 
     static void notifySent(int account, long dialogId) {
+        notify(account, dialogId, SENT_ID_BASE, R.string.EventScheduleSentNotification);
+    }
+
+    static void notifyBatchStalled(int account, long dialogId) {
+        notify(account, dialogId, STALLED_ID_BASE, R.string.EventScheduleBatchStalled);
+    }
+
+    private static void notify(int account, long dialogId, int idBase, int bodyRes) {
         try {
             Context context = ApplicationLoader.applicationContext;
             if (context == null) return;
 
             String name = resolveName(account, dialogId);
-            int id = ID_BASE + (account << 24) + (int) (dialogId ^ (dialogId >>> 32));
+            int id = idBase + (account << 24) + (int) (dialogId ^ (dialogId >>> 32));
 
             Intent intent = new Intent(context, LaunchActivity.class);
             intent.setAction("com.tmessages.openchat" + Math.random() + Integer.MAX_VALUE);
@@ -54,7 +62,7 @@ final class EventScheduleNotifier {
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NotificationsController.OTHER_NOTIFICATIONS_CHANNEL)
                     .setSmallIcon(R.drawable.notification)
                     .setContentTitle(name)
-                    .setContentText(LocaleController.getString(R.string.EventScheduleSentNotification))
+                    .setContentText(LocaleController.getString(bodyRes))
                     .setAutoCancel(true)
                     .setContentIntent(contentIntent);
 
