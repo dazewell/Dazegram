@@ -657,13 +657,14 @@ public final class EventScheduleController {
     private static void onSendError(int account, EventScheduleEntry entry, String expectedQueueKey, int token,
                                     long sendRevision, long dialogId, int errorCode, String errorText) {
         QueueState queueState = liveQueueState(expectedQueueKey, token);
+        boolean currentAttempt = entry.revision == sendRevision
+                && entry.state == EventScheduleEntry.STATE_SENDING
+                && EventScheduleStore.contains(account, entry.key());
         boolean retryableWait = errorCode >= 0 && isRetryableWaitError(errorText);
         int waitSeconds = retryableWait ? Utilities.parseInt(errorText) : 0;
         if (retryableWait && waitSeconds > 0 && waitSeconds <= MAX_RETRY_WAIT_SECONDS
                 && queueState != null && queueState.retriesLeft > 0
-                && entry.revision == sendRevision
-                && entry.state == EventScheduleEntry.STATE_SENDING
-                && EventScheduleStore.contains(account, entry.key())) {
+                && currentAttempt) {
             queueState.retriesLeft--;
             AndroidUtilities.runOnUIThread(
                     () -> retryHeadSend(account, entry, expectedQueueKey, token, sendRevision),
@@ -673,12 +674,15 @@ public final class EventScheduleController {
         }
 
         if (errorCode >= 0 && isDropError(errorText)) {
-            if (EventScheduleStore.contains(account, entry.key())) {
+            if (currentAttempt) {
                 EventScheduleStore.remove(account, entry);
             }
             return;
         }
 
+        if (!currentAttempt) {
+            return;
+        }
         entry.state = EventScheduleEntry.STATE_ARMED;
         if (queueState == null) {
             return;
