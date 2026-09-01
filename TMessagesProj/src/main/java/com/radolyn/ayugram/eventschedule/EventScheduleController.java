@@ -331,7 +331,7 @@ public final class EventScheduleController {
     private static void onIdRemap(int account, int oldId, int newId, long dialogId, long groupedId) {
         if (EventScheduleStore.findByMessage(account, dialogId, newId) != null) return;
         pruneExpiredPending();
-        Pending pending = findPendingByLocalId(account, oldId);
+        Pending pending = findPendingByLocalId(account, dialogId, oldId);
         if (pending == null) return;
         EventScheduleEntry entry = pending.entry;
         if (!EventScheduleStore.contains(account, entry.key())) {
@@ -356,6 +356,7 @@ public final class EventScheduleController {
 
     private static void claim(int account, long dialogId, ArrayList<MessageObject> messages) {
         pruneExpiredPending();
+        ArrayList<EventScheduleEntry> changed = new ArrayList<>();
         for (MessageObject message : messages) {
             if (!message.isOutOwner() || message.messageOwner == null) continue;
             int localId = message.getId();
@@ -370,14 +371,21 @@ public final class EventScheduleController {
             }
             if (!entry.localIds.contains(localId)) {
                 entry.localIds.add(localId);
+                if (!changed.contains(entry)) {
+                    changed.add(entry);
+                }
             }
+        }
+        for (EventScheduleEntry entry : changed) {
+            EventScheduleStore.persist(account, entry);
         }
     }
 
-    private static Pending findPendingByLocalId(int account, int localId) {
+    private static Pending findPendingByLocalId(int account, long dialogId, int localId) {
         if (localId >= 0) return null;
         for (Pending pending : PENDING.values()) {
             if (pending.account != account) continue;
+            if (pending.entry.dialogId != dialogId) continue;
             if (pending.entry.localIds.contains(localId)) {
                 return pending;
             }
