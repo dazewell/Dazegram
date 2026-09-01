@@ -44,8 +44,8 @@ public final class EventScheduleEntry {
 
     public long dialogId;
     public final ArrayList<Integer> serverIds = new ArrayList<>();
-    // Local echo ids seen before the server assigns real ones; never persisted, useless to
-    // sendScheduledMessages, only used to recognise our own message during the pending bind.
+    // Kept for compatibility with older in-flight state. New correlation binds directly on
+    // messageReceivedByServer metadata and does not depend on local echo ids.
     public final ArrayList<Integer> localIds = new ArrayList<>();
     public int types;
     public String pattern = "";
@@ -53,6 +53,9 @@ public final class EventScheduleEntry {
     public int delaySeconds;
     public int fallbackDate;
     public long createdAt;
+    // Correlation metadata: first non-zero grouped_id bound to this arm, and the arm bind window.
+    public long bindGroupedId;
+    public long bindExpiresAt;
     public int state = STATE_ARMED;
     public long revision;
 
@@ -162,6 +165,8 @@ public final class EventScheduleEntry {
             o.put("fallback", fallbackDate);
             o.put("created", createdAt);
             o.put("dialog", dialogId);
+            o.put("bind_group", bindGroupedId);
+            o.put("bind_expires_at", bindExpiresAt);
             return o.toString();
         } catch (Throwable t) {
             return null;
@@ -183,6 +188,8 @@ public final class EventScheduleEntry {
             e.delaySeconds = o.optInt("delay");
             e.fallbackDate = o.optInt("fallback");
             e.createdAt = o.optLong("created");
+            e.bindGroupedId = o.optLong("bind_group");
+            e.bindExpiresAt = o.optLong("bind_expires_at");
             return e;
         } catch (Throwable t) {
             return null;

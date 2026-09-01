@@ -1,6 +1,7 @@
 package com.radolyn.ayugram.eventschedule;
 
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
@@ -21,42 +22,38 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 
 /**
  * Runtime engine for event-triggered scheduled messages.
  *
  * <p>Everything hangs off the single new-message funnel ({@code onNewMessages}, called
- * from {@code MessagesController.updateInterfaceWithMessages}). A scheduled batch claims
- * a freshly armed trigger; an incoming batch is matched against armed triggers and, on a
- * hit, fires {@code messages.sendScheduledMessages} early. Local echo ids are remapped to
- * server ids via a {@link NotificationCenter} observer, since the send pipeline has several
- * ack sites and the observer is provably registered before any of them fire.
- *
- * <p>Triggers only work while the process is alive; the message keeps its real fallback
- * date so the server sends it on time if nothing matched.
+ * from {@code MessagesController.updateInterfaceWithMessages}). A trigger arm is persisted
+ * immediately (even before server ids are known), and later bound to server ids from the
+ * scheduled-send ack metadata delivered through {@link NotificationCenter#messageReceivedByServer}.
+ * Incoming messages are matched against bound arms and, on a hit, fire
+ * {@code messages.sendScheduledMessages} early.
  */
 public final class EventScheduleController {
 
     private static final class Pending {
+        final int account;
         final EventScheduleEntry entry;
         final int scheduleDate;
-        final long armedAtMs;
-        boolean claimed;
-        long groupedId;
+        final long expiresAtElapsedMs;
 
-        Pending(EventScheduleEntry entry, int scheduleDate) {
+        Pending(int account, EventScheduleEntry entry, int scheduleDate, long expiresAtElapsedMs) {
+            this.account = account;
             this.entry = entry;
             this.scheduleDate = scheduleDate;
-            this.armedAtMs = System.currentTimeMillis();
+            this.expiresAtElapsedMs = expiresAtElapsedMs;
         }
     }
 
-    // The local echo posts synchronously inside the send call, so the claim window is short.
-    private static final long CLAIM_WINDOW_MS = 5000;
+    // Bind window for associating send acks back to a just-armed trigger.
+    private static final long BIND_WINDOW_SECONDS = 30L * 60L;
 
-    // Written only on the UI thread (armPending/claim/onIdRemap/killPending all run there).
+    // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
     private static final Map<String, ArrayList<EventScheduleEntry>> QUEUES = new HashMap<>();
     private static final Map<String, Boolean> RUNNING_QUEUES = new HashMap<>();
@@ -69,8 +66,8 @@ public final class EventScheduleController {
 
     private EventScheduleController() {}
 
-    private static String pendingKey(int account, long dialogId) {
-        return account + "_" + dialogId;
+    private static String pendingKey(int account, @NonNull String entryKey) {
+        return account + "_" + entryKey;
     }
 
     private static String queueKey(int account, EventScheduleEntry entry) {
@@ -92,26 +89,105 @@ public final class EventScheduleController {
         return EventScheduleStore.hasAny(account) || (pendingAccounts & (1L << account)) != 0;
     }
 
-    // Keep the per-account pending bit exact so the hot new-message path bails cheaply for accounts
-    // with nothing pending, instead of only clearing when every account's pending drains.
-    private static void refreshPendingBit(int account) {
-        String prefix = account + "_";
-        for (String k : PENDING.keySet()) {
-            if (k.startsWith(prefix)) {
-                pendingAccounts |= (1L << account);
-                return;
+    private static final Runnable PENDING_GC = () -> {
+        pruneExpiredPending();
+        schedulePendingGc();
+    };
+
+    // Rebuild account bits from the pending map so the hot path can bail cheaply when no arm is pending.
+    private static void refreshPendingBits() {
+        long bits = 0;
+        for (Pending pending : PENDING.values()) {
+            bits |= (1L << pending.account);
+        }
+        pendingAccounts = bits;
+    }
+
+    private static long nowSeconds() {
+        return System.currentTimeMillis() / 1000L;
+    }
+
+    private static long toElapsedDeadline(long epochSeconds) {
+        long remainingMs = epochSeconds * 1000L - System.currentTimeMillis();
+        return SystemClock.elapsedRealtime() + Math.max(remainingMs, 0L);
+    }
+
+    private static void addPending(int account, @NonNull EventScheduleEntry entry, int scheduleDate) {
+        PENDING.put(pendingKey(account, entry.key()), new Pending(account, entry, scheduleDate, toElapsedDeadline(entry.bindExpiresAt)));
+        refreshPendingBits();
+    }
+
+    private static void removePending(int account, @NonNull String entryKey) {
+        PENDING.remove(pendingKey(account, entryKey));
+        refreshPendingBits();
+    }
+
+    private static void schedulePendingGc() {
+        AndroidUtilities.cancelRunOnUIThread(PENDING_GC);
+        long nearestDelay = Long.MAX_VALUE;
+        long now = SystemClock.elapsedRealtime();
+        for (Pending pending : PENDING.values()) {
+            nearestDelay = Math.min(nearestDelay, Math.max(0L, pending.expiresAtElapsedMs - now));
+        }
+        if (nearestDelay == Long.MAX_VALUE) return;
+        AndroidUtilities.runOnUIThread(PENDING_GC, nearestDelay);
+    }
+
+    private static void pruneExpiredPending() {
+        if (PENDING.isEmpty()) return;
+        long nowElapsed = SystemClock.elapsedRealtime();
+        long nowSec = nowSeconds();
+        ArrayList<Pending> expired = new ArrayList<>();
+        for (Pending pending : PENDING.values()) {
+            if (pending.expiresAtElapsedMs <= nowElapsed) {
+                expired.add(pending);
             }
         }
-        pendingAccounts &= ~(1L << account);
+        if (expired.isEmpty()) return;
+        for (Pending pending : expired) {
+            EventScheduleEntry entry = pending.entry;
+            removePending(pending.account, entry.key());
+            if (!EventScheduleStore.contains(pending.account, entry.key())) continue;
+            if (entry.serverIds.isEmpty()) {
+                EventScheduleStore.remove(pending.account, entry.key());
+            } else if (entry.bindExpiresAt <= nowSec) {
+                entry.bindExpiresAt = 0;
+                EventScheduleStore.persist(pending.account, entry);
+            }
+        }
+    }
+
+    private static void restorePending(int account) {
+        long nowSec = nowSeconds();
+        ArrayList<EventScheduleEntry> entries = EventScheduleStore.forAccount(account);
+        for (EventScheduleEntry entry : entries) {
+            if (entry.bindExpiresAt <= 0) continue;
+            if (entry.bindExpiresAt <= nowSec) {
+                if (entry.serverIds.isEmpty()) {
+                    EventScheduleStore.remove(account, entry.key());
+                } else {
+                    entry.bindExpiresAt = 0;
+                    EventScheduleStore.persist(account, entry);
+                }
+                continue;
+            }
+            addPending(account, entry, entry.fallbackDate);
+        }
+        schedulePendingGc();
     }
 
     // The observer serves every account (the callback carries the account), so one instance
     // registered per account covers id remap and scheduled deletes for its whole lifetime.
     private static final NotificationCenter.NotificationCenterDelegate OBSERVER = (id, account, args) -> {
         if (id == NotificationCenter.messageReceivedByServer) {
-            int oldId = (Integer) args[0];
-            int newId = (Integer) args[1];
-            onIdRemap(account, oldId, newId);
+            int newId = args.length > 1 && args[1] instanceof Integer ? (Integer) args[1] : 0;
+            TLRPC.Message message = args.length > 2 && args[2] instanceof TLRPC.Message ? (TLRPC.Message) args[2] : null;
+            long dialogId = args.length > 3 && args[3] instanceof Long ? (Long) args[3]
+                    : message != null ? message.dialog_id : 0L;
+            long groupedId = args.length > 5 && args[5] instanceof Long ? (Long) args[5]
+                    : message != null ? message.grouped_id : 0L;
+            boolean scheduled = args.length > 7 && args[7] instanceof Boolean && (Boolean) args[7];
+            onIdRemap(account, newId, message, dialogId, groupedId, scheduled);
         } else if (id == NotificationCenter.messagesDeleted) {
             boolean scheduled = args.length > 2 && args[2] instanceof Boolean && (Boolean) args[2];
             if (!scheduled) return;
@@ -131,7 +207,8 @@ public final class EventScheduleController {
         if ((warmedAccounts & (1L << account)) != 0) return;
         warmedAccounts |= (1L << account);
         EventScheduleStore.ensureLoaded(account);
-        if (EventScheduleStore.hasAny(account)) ensureObserver(account);
+        restorePending(account);
+        if (hasState(account)) ensureObserver(account);
     }
 
     static void ensureObserver(int account) {
@@ -147,23 +224,33 @@ public final class EventScheduleController {
     }
 
     /** Called from the schedule sheet's confirm, before the message is actually sent. */
-    public static void armPending(int account, long dialogId, @NonNull EventScheduleEntry entry, int scheduleDate) {
+    public static String armPending(int account, long dialogId, @NonNull EventScheduleEntry entry, int scheduleDate) {
         entry.dialogId = dialogId;
         entry.fallbackDate = scheduleDate;
+        entry.bindGroupedId = 0;
+        entry.bindExpiresAt = nowSeconds() + BIND_WINDOW_SECONDS;
         entry.state = EventScheduleEntry.STATE_ARMED;
-        PENDING.put(pendingKey(account, dialogId), new Pending(entry, scheduleDate));
-        pendingAccounts |= (1L << account);
+        EventScheduleStore.persist(account, entry);
+        addPending(account, entry, scheduleDate);
+        schedulePendingGc();
         ensureObserver(account);
+        return entry.key();
     }
 
     /** Drops a pending bind that never got a message (trigger turned off, or a stale edit). */
-    public static void killPending(int account, long dialogId) {
-        PENDING.remove(pendingKey(account, dialogId));
-        refreshPendingBit(account);
+    public static void killPending(int account, String entryKey) {
+        if (TextUtils.isEmpty(entryKey)) return;
+        removePending(account, entryKey);
+        if (EventScheduleStore.contains(account, entryKey)) {
+            EventScheduleStore.remove(account, entryKey);
+        }
+        schedulePendingGc();
     }
 
     /** Arms a trigger on a message whose server ids are already known (editing a message with no trigger yet). */
     public static void armExisting(int account, @NonNull EventScheduleEntry entry) {
+        entry.bindGroupedId = 0;
+        entry.bindExpiresAt = 0;
         entry.state = EventScheduleEntry.STATE_ARMED;
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
@@ -178,6 +265,8 @@ public final class EventScheduleController {
         entry.regex = regex;
         entry.delaySeconds = delaySeconds;
         entry.fallbackDate = fallbackDate;
+        entry.bindGroupedId = 0;
+        entry.bindExpiresAt = 0;
         entry.state = EventScheduleEntry.STATE_ARMED;
         entry.resetCompiled();
         EventScheduleStore.persist(account, entry);
@@ -192,68 +281,57 @@ public final class EventScheduleController {
         }
         ensureWarm(account);
         if (!hasState(account) || messages == null || messages.isEmpty()) return;
-        if (scheduled) {
-            claim(account, dialogId, messages);
-        } else {
-            evaluate(account, dialogId, messages);
-        }
+        if (scheduled) return;
+        evaluate(account, dialogId, messages);
     }
 
-    private static void claim(int account, long dialogId, ArrayList<MessageObject> messages) {
-        Pending pending = PENDING.get(pendingKey(account, dialogId));
+    private static void onIdRemap(int account, int newId, TLRPC.Message message,
+                                  long dialogId, long groupedId, boolean scheduled) {
+        if (!scheduled || message == null || dialogId == 0 || message.date == 0) return;
+        if (EventScheduleStore.findByMessage(account, dialogId, newId) != null) return;
+        pruneExpiredPending();
+        Pending pending = findPendingForAck(account, dialogId, message.date, groupedId);
         if (pending == null) return;
-        if (System.currentTimeMillis() - pending.armedAtMs > CLAIM_WINDOW_MS) {
-            killPending(account, dialogId);
+        EventScheduleEntry entry = pending.entry;
+        if (!EventScheduleStore.contains(account, entry.key())) {
+            removePending(account, entry.key());
+            schedulePendingGc();
             return;
         }
-        for (MessageObject message : messages) {
-            if (!message.isOutOwner() || message.messageOwner == null) continue;
-            if (message.messageOwner.date != pending.scheduleDate) continue;
-            long grouped = message.messageOwner.grouped_id;
-            if (!pending.claimed) {
-                pending.claimed = true;
-                pending.groupedId = grouped;
-            } else if (grouped == 0 || grouped != pending.groupedId) {
-                // A different message that happens to share the schedule minute: don't steal it.
-                continue;
-            }
-            int localId = message.getId();
-            if (!pending.entry.localIds.contains(localId)) {
-                pending.entry.localIds.add(localId);
-            }
+        if (groupedId != 0 && entry.bindGroupedId == 0) {
+            entry.bindGroupedId = groupedId;
         }
-    }
-
-    private static void onIdRemap(int account, int oldId, int newId) {
-        EventScheduleEntry entry = findByLocalId(account, oldId);
-        if (entry == null) return;
-        entry.localIds.remove((Integer) oldId);
-        // messageReceivedByServer fires twice for the same message; add the server id once.
         if (!entry.serverIds.contains(newId)) {
             entry.serverIds.add(newId);
-        }
-        EventScheduleStore.persist(account, entry);
-        if (entry.localIds.isEmpty()) {
-            Iterator<Map.Entry<String, Pending>> it = PENDING.entrySet().iterator();
-            while (it.hasNext()) {
-                if (it.next().getValue().entry == entry) {
-                    it.remove();
-                    break;
-                }
-            }
-            refreshPendingBit(account);
+            EventScheduleStore.persist(account, entry);
         }
     }
 
-    private static EventScheduleEntry findByLocalId(int account, int oldId) {
-        // Local echo ids are per-account and can collide across accounts, so match within this account only.
-        String prefix = account + "_";
-        for (Map.Entry<String, Pending> e : PENDING.entrySet()) {
-            if (e.getKey().startsWith(prefix) && e.getValue().entry.localIds.contains(oldId)) {
-                return e.getValue().entry;
-            }
+    private static Pending findPendingForAck(int account, long dialogId, int scheduleDate, long groupedId) {
+        ArrayList<Pending> candidates = new ArrayList<>();
+        for (Pending pending : PENDING.values()) {
+            EventScheduleEntry entry = pending.entry;
+            if (pending.account != account || entry.dialogId != dialogId || pending.scheduleDate != scheduleDate) continue;
+            if (!acceptsAck(entry, groupedId)) continue;
+            candidates.add(pending);
         }
-        return null;
+        if (candidates.isEmpty()) return null;
+        Collections.sort(candidates, (a, b) -> {
+            int result = Long.compare(a.entry.createdAt, b.entry.createdAt);
+            if (result == 0) result = a.entry.key().compareTo(b.entry.key());
+            return result;
+        });
+        return candidates.get(0);
+    }
+
+    private static boolean acceptsAck(@NonNull EventScheduleEntry entry, long groupedId) {
+        if (groupedId == 0) {
+            return entry.bindGroupedId == 0 && entry.serverIds.isEmpty();
+        }
+        if (entry.bindGroupedId == 0) {
+            return entry.serverIds.isEmpty();
+        }
+        return entry.bindGroupedId == groupedId;
     }
 
     private static void evaluate(int account, long dialogId, ArrayList<MessageObject> messages) {
@@ -369,15 +447,24 @@ public final class EventScheduleController {
 
     static void onEntryRemoved(int account, EventScheduleEntry entry) {
         removeFromQueue(account, entry);
+        removePending(account, entry.key());
+        schedulePendingGc();
     }
 
     private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long revision) {
         // The delay window may have outlived the entry (edited, deleted, or the fallback already fired).
         ArrayList<EventScheduleEntry> queue = QUEUES.get(expectedQueueKey);
-        if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))
-                || entry.state != EventScheduleEntry.STATE_WAITING || entry.revision != revision
+        if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))) {
+            return;
+        }
+        if (entry.state != EventScheduleEntry.STATE_WAITING || entry.revision != revision
                 || !EventScheduleStore.contains(account, entry.key())
-                || queue == null || queue.isEmpty() || queue.get(0) != entry) {
+                || queue == null || queue.isEmpty()) {
+            return;
+        }
+        if (queue.get(0) != entry) {
+            // Same token means this callback is still the live queue driver, so hand off to the new head.
+            advanceQueue(account, expectedQueueKey);
             return;
         }
         if (entry.serverIds.isEmpty()) {
@@ -413,7 +500,8 @@ public final class EventScheduleController {
                         EventScheduleNotifier.notifySent(account, dialogId);
                     }
                 });
-            } else if (error.text != null && error.text.startsWith("SLOWMODE_WAIT_")) {
+            } else if (error.text != null && (error.text.startsWith("SLOWMODE_WAIT_")
+                    || error.text.startsWith("FLOOD_WAIT_"))) {
                 // Next matching message retries; keep the remaining queue in scheduled-page order.
                 AndroidUtilities.runOnUIThread(() -> {
                     if (entry.revision != sendRevision) return;

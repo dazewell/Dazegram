@@ -148,6 +148,7 @@ public final class EventScheduleHelper {
         String pattern;
         boolean regex;
         int delay;
+        String pendingEntryKey;
 
         TextView chip;
 
@@ -399,8 +400,9 @@ public final class EventScheduleHelper {
                 return;
             }
             if (!armed) {
-                // A stale pending from an earlier "on" run in this dialog must not fire.
-                EventScheduleController.killPending(account, dialogId);
+                // If this sheet armed a trigger earlier and is now "off", drop only that arm.
+                EventScheduleController.killPending(account, pendingEntryKey);
+                pendingEntryKey = null;
                 return;
             }
             if (editIds != null && editIds.length > 0) {
@@ -424,7 +426,10 @@ public final class EventScheduleHelper {
             entry.regex = regex;
             entry.delaySeconds = delay;
             entry.createdAt = System.currentTimeMillis();
-            EventScheduleController.armPending(account, dialogId, entry, scheduleDate);
+            if (!TextUtils.isEmpty(pendingEntryKey)) {
+                EventScheduleController.killPending(account, pendingEntryKey);
+            }
+            pendingEntryKey = EventScheduleController.armPending(account, dialogId, entry, scheduleDate);
         }
 
         // Repaint the scheduled view so the bolt appears/disappears at once (editing a live message
