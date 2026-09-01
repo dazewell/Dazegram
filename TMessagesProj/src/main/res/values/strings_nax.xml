@@ -526,10 +526,12 @@
     <string name="EventScheduleTriggerOff">Off</string>
     <string name="EventScheduleTitle">Send early on event</string>
     <string name="EventScheduleTypeText">Text message</string>
+    <string name="EventScheduleSectionType">Message type</string>
+    <string name="EventScheduleSectionPattern">Text pattern</string>
     <string name="EventSchedulePatternHint">Text or caption pattern</string>
     <string name="EventScheduleUseRegex">Regular expression</string>
     <string name="EventScheduleRegexInfo">Off: wildcards, where * matches anything and ? matches one character. On: a full regular expression, matched anywhere in the text.</string>
-    <string name="EventScheduleMatchInfo">Sent early when a new message in this chat matches any type you pick, or when its text or caption matches the pattern (the pattern works on any message, with or without the Text message type). Set at least one condition.</string>
+    <string name="EventScheduleMatchInfo">Matches a message of the type above, or one whose text or caption fits the pattern below — either is enough on its own. At least one condition is required.</string>
     <string name="EventScheduleDelayTitle">Delay before sending</string>
     <string name="EventScheduleNoDelay">No delay</string>
     <string name="EventScheduleClear">Remove trigger</string>

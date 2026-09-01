@@ -255,8 +255,11 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
             isFocusable = true
             background = null
 
+            // NagramX: this createLinear overload dp-converts its margins itself, so passing an
+            // already-converted dp(6f) here double-scaled the left inset with density and left the
+            // right side at 0 -- use plain dp units, symmetric, matching the surrounding cells' 21dp inset.
             this@BottomBuilder.rootView.addView(this, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, -2, rtl,
-                dp(6f), 0, 0, 0))
+                21, 0, 21, 0))
         }
     }
 

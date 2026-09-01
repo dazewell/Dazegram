@@ -4,11 +4,15 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.text.Editable;
+import android.text.InputType;
 import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -20,6 +24,7 @@ import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.SeekBarView;
 
@@ -27,6 +32,7 @@ import java.util.regex.Pattern;
 
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
+import tw.nekomimi.nekogram.utils.AndroidUtil;
 import xyz.nextalone.nagram.NaConfig;
 
 /**
@@ -185,18 +191,57 @@ public final class EventScheduleHelper {
 
         void openSheet(Context context) {
             BottomBuilder builder = new BottomBuilder(context);
-            builder.addTitle(getString(R.string.EventScheduleTitle),
-                    getString(R.string.EventScheduleMatchInfo) + " " + getString(R.string.EventScheduleArmed));
+            builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
 
+            builder.addTitle(getString(R.string.EventScheduleSectionType), false, null);
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null);
             TextCheckCell roundCell = builder.addCheckItem(getString(R.string.AttachRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
             TextCheckCell videoCell = builder.addCheckItem(getString(R.string.AttachVideo), (types & EventScheduleEntry.TYPE_VIDEO) != 0, false, null);
             TextCheckCell photoCell = builder.addCheckItem(getString(R.string.AttachPhoto), (types & EventScheduleEntry.TYPE_PHOTO) != 0, false, null);
             TextCheckCell textCell = builder.addCheckItem(getString(R.string.EventScheduleTypeText), (types & EventScheduleEntry.TYPE_TEXT) != 0, false, null);
 
-            EditText patternField = builder.addEditText(getString(R.string.EventSchedulePatternHint));
+            builder.addTitle(getString(R.string.EventScheduleSectionPattern), false, getString(R.string.EventScheduleMatchInfo));
+
+            FrameLayout patternBox = new FrameLayout(context);
+            patternBox.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection)));
+            EditTextBoldCursor patternField = new EditTextBoldCursor(context);
+            patternField.setBackground(null);
+            patternField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+            patternField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            patternField.setHintTextColor(Theme.getColor(Theme.key_dialogSearchHint));
+            patternField.setHint(getString(R.string.EventSchedulePatternHint));
+            patternField.setCursorSize(dp(18));
+            patternField.setCursorColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
+            patternField.setHandlesColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
+            patternField.setSingleLine(true);
+            patternField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            patternField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+            patternField.setPadding(dp(12), dp(10), dp(12), dp(10));
             patternField.setText(pattern);
+            patternBox.addView(patternField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            builder.addCustomView(patternBox);
+            patternBox.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 21, 4, 21, 8));
+
             TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
+
+            // NagramX: build the field, seed its text, THEN build regexCell, THEN attach the watcher --
+            // in that order. Attaching the watcher before regexCell exists would have setText() above
+            // fire it against a still-null cell and crash; syncRegexEnabled is the one place that
+            // decides the dependency state, called here for the initial paint and again on every edit
+            // so the two can never drift apart.
+            patternField.addTextChangedListener(new TextWatcher() {
+                @Override
+                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                @Override
+                public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+                @Override
+                public void afterTextChanged(Editable s) {
+                    syncRegexEnabled(patternField, regexCell);
+                }
+            });
+            syncRegexEnabled(patternField, regexCell);
 
             final int[] delayValues = {0, 5, 10, 30, 60, 300};
             int startIndex = 0;
@@ -260,11 +305,13 @@ public final class EventScheduleHelper {
             org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
             builder.addCustomView(delayLayout);
 
-            builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
-                enabled = false;
-                updateChip();
-                return kotlin.Unit.INSTANCE;
-            });
+            if (enabled) {
+                builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
+                    enabled = false;
+                    updateChip();
+                    return kotlin.Unit.INSTANCE;
+                });
+            }
             builder.addButton(getString(R.string.Done), true, false, it -> {
                 int newTypes = 0;
                 if (voiceCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VOICE;
@@ -282,7 +329,7 @@ public final class EventScheduleHelper {
                     try {
                         Pattern.compile(newPattern);
                     } catch (Throwable t) {
-                        AlertUtil.showToast(getString(R.string.EventScheduleInvalidRegex));
+                        AndroidUtil.showInputError(patternField);
                         return kotlin.Unit.INSTANCE;
                     }
                 }
@@ -303,6 +350,19 @@ public final class EventScheduleHelper {
             });
             builder.addCancelButton();
             builder.show();
+        }
+
+        // NagramX: TextCheckCell.setEnabled(boolean) is the only override that reaches the Switch,
+        // but addCheckItem wires the switch's own click straight back to performClick() on the row,
+        // which ignores the enabled flag -- so the single-arg call alone leaves a dimmed row that
+        // still toggles. setEnabled(boolean, animators) drives the alpha fade but calls super, not the
+        // single-arg override, so both calls are required together.
+        private static void syncRegexEnabled(EditText patternField, TextCheckCell regexCell) {
+            // NagramX: trim to match the Done handler's newPattern, or whitespace-only text would
+            // enable the toggle here but save against the empty pattern that trim() actually commits.
+            boolean hasPattern = !TextUtils.isEmpty(patternField.getText().toString().trim());
+            regexCell.setEnabled(hasPattern);
+            regexCell.setEnabled(hasPattern, null);
         }
 
         @Override
