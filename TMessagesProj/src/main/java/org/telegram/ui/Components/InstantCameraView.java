@@ -3619,7 +3619,12 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     // imported, matching the single-use convention already used in this file.
                     if (!countDownLatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                         FileLog.e(new RuntimeException("InstantCamera muxer finalize timed out"));
-                        success[0] = false;
+                        // The write queue can still be inside finishMovie(), writing fileToWrite. The
+                        // rename/copy/delete below would race that and could corrupt or half-move the
+                        // output, so return here and leave both files untouched. success[0] is moot on
+                        // this path; the false return is what finalizeOk reads, and it refuses to mint
+                        // a draft id for a file that was never closed.
+                        return false;
                     }
                 } catch (InterruptedException e) {
                     e.printStackTrace();

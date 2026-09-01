@@ -12877,9 +12877,13 @@ public class ChatActivityEnterView extends FrameLayout implements
         // it VISIBLE; createControlsView's GONE runs once per view lifetime; and updateRecordInterface's
         // GONE is gated on recordState != RECORD_STATE_PREPARING, which is exactly what this method
         // passes below. Without this, a second recording in the same session restores with an invisible,
-        // full-scale, still-clickable control stack sitting over the composer.
+        // full-scale, still-clickable control stack sitting over the composer. The alpha goes back to 1
+        // with it: the record-start path only calls setVisibility(VISIBLE) and relies on an animator to
+        // walk alpha back up, so a non-animated start would otherwise show these controls at alpha 0 --
+        // invisible but clickable again, one path over.
         if (controlsView != null) {
             controlsView.setVisibility(GONE);
+            controlsView.setAlpha(1f);
         }
         voiceOnce = once;
         if (controlsView != null) {
