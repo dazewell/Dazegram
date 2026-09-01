@@ -195,7 +195,7 @@ public final class EventScheduleHelper {
 
             builder.addTitle(getString(R.string.EventScheduleSectionType), false, null);
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null);
-            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.AttachRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
+            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.EventScheduleTypeRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
             TextCheckCell videoCell = builder.addCheckItem(getString(R.string.AttachVideo), (types & EventScheduleEntry.TYPE_VIDEO) != 0, false, null);
             TextCheckCell photoCell = builder.addCheckItem(getString(R.string.AttachPhoto), (types & EventScheduleEntry.TYPE_PHOTO) != 0, false, null);
             TextCheckCell textCell = builder.addCheckItem(getString(R.string.EventScheduleTypeText), (types & EventScheduleEntry.TYPE_TEXT) != 0, false, null);
@@ -217,6 +217,8 @@ public final class EventScheduleHelper {
             patternField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             patternField.setImeOptions(EditorInfo.IME_ACTION_DONE);
             patternField.setPadding(dp(12), dp(10), dp(12), dp(10));
+            patternField.setMinimumHeight(dp(48));
+            patternField.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
             patternField.setText(pattern);
             patternBox.addView(patternField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             builder.addCustomView(patternBox);
@@ -250,31 +252,29 @@ public final class EventScheduleHelper {
             }
             final int[] delayIndex = {startIndex};
 
-            final int accentColor = Theme.getColor(Theme.key_player_progress);
             LinearLayout delayLayout = new LinearLayout(context);
             delayLayout.setOrientation(LinearLayout.VERTICAL);
 
             LinearLayout delayHeader = new LinearLayout(context);
             delayHeader.setOrientation(LinearLayout.HORIZONTAL);
             delayHeader.setGravity(Gravity.CENTER_VERTICAL);
-            delayLayout.addView(delayHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 24, 22, 8, 22, 0));
+            delayLayout.addView(delayHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 21, 8, 21, 0));
 
             TextView delayTitle = new TextView(context);
             delayTitle.setText(getString(R.string.EventScheduleDelayTitle));
-            delayTitle.setTextColor(accentColor);
-            delayTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            delayTitle.setTypeface(org.telegram.messenger.AndroidUtilities.bold());
+            delayTitle.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            delayTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
             delayTitle.setGravity(Gravity.CENTER_VERTICAL);
             delayTitle.setSingleLine(true);
             delayTitle.setEllipsize(TextUtils.TruncateAt.END);
-            delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.MATCH_PARENT, 1f));
+            delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
             final TextView delayValue = new TextView(context);
             delayValue.setText(formatDelayLabel(delayValues[startIndex]));
-            delayValue.setTextColor(accentColor);
-            delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
-            delayValue.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
-            delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.MATCH_PARENT));
+            delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+            delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+            delayValue.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT));
+            delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
             final SeekBarView delaySeekBar = new SeekBarView(context, null);
             delaySeekBar.setReportChanges(true);
@@ -300,7 +300,10 @@ public final class EventScheduleHelper {
                     return delayValues.length - 1;
                 }
             });
-            delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 38, 13, 0, 13, 0));
+            // NagramX: 38dp is the app-wide height for this widget (BrightnessControlCell:76,
+            // ThemePreviewActivity:2086, BlurSettingsBottomSheet:72,100,129) -- this sheet deliberately
+            // diverges to 48dp to clear the touch-target minimum; don't "fix" it back to 38.
+            delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
             final float initialDelayProgress = startIndex / (float) (delayValues.length - 1);
             org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
             builder.addCustomView(delayLayout);
@@ -312,7 +315,7 @@ public final class EventScheduleHelper {
                     return kotlin.Unit.INSTANCE;
                 });
             }
-            builder.addButton(getString(R.string.Done), true, false, it -> {
+            TextView doneButton = builder.addButton(getString(R.string.Done), true, false, it -> {
                 int newTypes = 0;
                 if (voiceCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VOICE;
                 if (roundCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_ROUND;
@@ -330,6 +333,7 @@ public final class EventScheduleHelper {
                         Pattern.compile(newPattern);
                     } catch (Throwable t) {
                         AndroidUtil.showInputError(patternField);
+                        AlertUtil.showToast(getString(R.string.EventScheduleInvalidRegex));
                         return kotlin.Unit.INSTANCE;
                     }
                 }
@@ -348,6 +352,15 @@ public final class EventScheduleHelper {
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
             });
+            // NagramX: registered after addButton so doneButton is assigned; noAutoDismiss above
+            // means performClick() re-runs the real validation/commit lambda rather than a copy of it.
+            patternField.setOnEditorActionListener((v, actionId, event) -> {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    doneButton.performClick();
+                    return true;
+                }
+                return false;
+            });
             builder.addCancelButton();
             builder.show();
         }
@@ -361,6 +374,13 @@ public final class EventScheduleHelper {
             // NagramX: trim to match the Done handler's newPattern, or whitespace-only text would
             // enable the toggle here but save against the empty pattern that trim() actually commits.
             boolean hasPattern = !TextUtils.isEmpty(patternField.getText().toString().trim());
+            // Construction seeds (enabled, EventScheduleRegexInfo); skip the redundant re-layout
+            // this would otherwise trigger on every keystroke once state hasn't actually changed.
+            if (hasPattern == regexCell.isEnabled()) return;
+            regexCell.setTextAndValueAndCheck(
+                    getString(R.string.EventScheduleUseRegex),
+                    getString(hasPattern ? R.string.EventScheduleRegexInfo : R.string.EventScheduleRegexNeedsPattern),
+                    regexCell.isChecked(), true, true);
             regexCell.setEnabled(hasPattern);
             regexCell.setEnabled(hasPattern, null);
         }

@@ -132,7 +132,7 @@ public final class EventScheduleEntry {
         ArrayList<String> parts = new ArrayList<>();
         StringBuilder typeText = new StringBuilder();
         appendType(typeText, (types & TYPE_VOICE) != 0, R.string.AttachAudio);
-        appendType(typeText, (types & TYPE_ROUND) != 0, R.string.AttachRound);
+        appendType(typeText, (types & TYPE_ROUND) != 0, R.string.EventScheduleTypeRound);
         appendType(typeText, (types & TYPE_VIDEO) != 0, R.string.AttachVideo);
         appendType(typeText, (types & TYPE_PHOTO) != 0, R.string.AttachPhoto);
         appendType(typeText, (types & TYPE_TEXT) != 0, R.string.EventScheduleTypeText);
