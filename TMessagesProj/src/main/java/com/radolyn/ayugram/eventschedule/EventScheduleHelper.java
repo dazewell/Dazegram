@@ -218,7 +218,7 @@ public final class EventScheduleHelper {
             patternField.setImeOptions(EditorInfo.IME_ACTION_DONE);
             patternField.setPadding(dp(12), dp(10), dp(12), dp(10));
             patternField.setMinimumHeight(dp(48));
-            patternField.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+            patternField.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
             patternField.setText(pattern);
             patternBox.addView(patternField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             builder.addCustomView(patternBox);
@@ -273,7 +273,7 @@ public final class EventScheduleHelper {
             delayValue.setText(formatDelayLabel(delayValues[startIndex]));
             delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-            delayValue.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+            delayValue.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT));
             delayHeader.addView(delayValue, LayoutHelper.createLinear(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT));
 
             final SeekBarView delaySeekBar = new SeekBarView(context, null);
