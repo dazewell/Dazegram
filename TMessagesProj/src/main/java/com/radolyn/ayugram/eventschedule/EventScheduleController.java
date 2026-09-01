@@ -590,6 +590,10 @@ public final class EventScheduleController {
     private static void retryHeadSend(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long sendRevision) {
         QueueState queueState = liveQueueState(expectedQueueKey, token);
         if (queueState == null) {
+            if (entry.revision == sendRevision && entry.state == EventScheduleEntry.STATE_SENDING
+                    && EventScheduleStore.contains(account, entry.key())) {
+                entry.state = EventScheduleEntry.STATE_ARMED;
+            }
             return;
         }
         ArrayList<EventScheduleEntry> queue = queueState.entries;
