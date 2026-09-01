@@ -157,12 +157,7 @@ public final class EventScheduleController {
             removePending(pending.account, entry.key());
             if (!EventScheduleStore.contains(pending.account, entry.key())) continue;
             if (entry.serverIds.isEmpty()) {
-                if (entry.localIds.isEmpty()) {
-                    EventScheduleStore.remove(pending.account, entry.key());
-                } else if (entry.bindExpiresAt <= nowSec) {
-                    entry.bindExpiresAt = 0;
-                    EventScheduleStore.persist(pending.account, entry);
-                }
+                EventScheduleStore.remove(pending.account, entry.key());
             } else if (entry.bindExpiresAt <= nowSec) {
                 entry.bindExpiresAt = 0;
                 EventScheduleStore.persist(pending.account, entry);
@@ -177,12 +172,7 @@ public final class EventScheduleController {
             if (entry.bindExpiresAt <= 0) continue;
             if (entry.bindExpiresAt <= nowSec) {
                 if (entry.serverIds.isEmpty()) {
-                    if (entry.localIds.isEmpty()) {
-                        EventScheduleStore.remove(account, entry.key());
-                    } else {
-                        entry.bindExpiresAt = 0;
-                        EventScheduleStore.persist(account, entry);
-                    }
+                    EventScheduleStore.remove(account, entry.key());
                 } else {
                     entry.bindExpiresAt = 0;
                     EventScheduleStore.persist(account, entry);
@@ -483,6 +473,9 @@ public final class EventScheduleController {
             inserted = true;
         }
         if (inserted && queueRunning && !queue.isEmpty() && queue.get(0) == entry) {
+            // Deliberately unconditional: if this insert becomes the new head, re-drive now even if
+            // the displaced head is already SENDING. A one-sided "skip while SENDING" guard here
+            // without a matching non-head completion advance in removeFromQueue reintroduces stalls.
             advanceQueue(account, queueKey);
             return;
         }
@@ -591,9 +584,10 @@ public final class EventScheduleController {
                     AyuState.permitDeleteMessage(account, dialogId, req.id.get(i), true);
                 }
                 AndroidUtilities.runOnUIThread(() -> {
+                    boolean wasArmed = EventScheduleStore.contains(account, entry.key());
                     NotificationCenter.getInstance(account).postNotificationName(
                             NotificationCenter.messagesDeleted, req.id, channelId, true, true);
-                    if (EventScheduleStore.contains(account, entry.key())) {
+                    if (wasArmed) {
                         // An edit can change the revision while this request is in flight, but the
                         // same scheduled IDs are still no longer eligible for another trigger.
                         EventScheduleStore.remove(account, entry);
