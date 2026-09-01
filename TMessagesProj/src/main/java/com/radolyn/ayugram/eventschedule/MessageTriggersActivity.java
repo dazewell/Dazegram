@@ -3,10 +3,12 @@ package com.radolyn.ayugram.eventschedule;
 import android.content.Context;
 import android.os.Bundle;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -27,6 +29,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Cells.GraySectionCell;
 import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.BulletinFactory;
@@ -56,13 +59,32 @@ import java.util.LinkedHashMap;
  */
 public class MessageTriggersActivity extends BaseFragment {
 
-    private record Row(long dialogId, TLObject peer, String title, CharSequence subtitle, EventScheduleEntry entry) {
+    /**
+     * Marker for the two kinds of row this list renders: one header per (dialogId, triggerKey)
+     * group -- chat name plus the trigger shown once -- followed by that group's live entries.
+     * A plain interface rather than sealed: nothing else in this codebase uses sealed types, and
+     * the exhaustiveness win here doesn't carry its weight against staying consistent with it.
+     */
+    private interface ListItem {
+    }
+
+    /** Chat name and this group's trigger chip, rendered once per (dialogId, triggerKey) group. */
+    private record HeaderItem(String chatTitle, CharSequence triggerSummary) implements ListItem {
+    }
+
+    /**
+     * One live armed entry. Brief/timeline intentionally do not repeat the chat name or the
+     * trigger -- both already sit in this row's HeaderItem, so repeating them per row would be
+     * exactly the redundant-by-construction look dazewell's screenshot showed: identical avatar,
+     * identical chat name, identical trigger text, distinguishable only by an easy-to-miss year.
+     */
+    private record RowItem(long dialogId, TLObject peer, CharSequence brief, CharSequence timeline, EventScheduleEntry entry, boolean divider) implements ListItem {
     }
 
     private RecyclerListView listView;
     private ListAdapter adapter;
     private TextView emptyView;
-    private final ArrayList<Row> items = new ArrayList<>();
+    private final ArrayList<ListItem> items = new ArrayList<>();
     private int loadRequestId;
 
     @Override
@@ -83,16 +105,16 @@ public class MessageTriggersActivity extends BaseFragment {
         listView.setAdapter(adapter);
 
         listView.setOnItemClickListener((view, position) -> {
-            if (position < 0 || position >= items.size()) {
+            if (position < 0 || position >= items.size() || !(items.get(position) instanceof RowItem row)) {
                 return;
             }
-            openScheduled(items.get(position).dialogId());
+            openScheduled(row.dialogId());
         });
         listView.setOnItemLongClickListener((view, position) -> {
-            if (position < 0 || position >= items.size()) {
+            if (position < 0 || position >= items.size() || !(items.get(position) instanceof RowItem row)) {
                 return false;
             }
-            EventScheduleEntry entry = items.get(position).entry();
+            EventScheduleEntry entry = row.entry();
             ItemOptions.makeOptions(this, view)
                     .setScrimViewBackground(listView.getClipBackground(view))
                     .add(R.drawable.msg_delete, LocaleController.getString(R.string.EventScheduleClear), true, () -> confirmRemove(entry))
@@ -168,12 +190,34 @@ public class MessageTriggersActivity extends BaseFragment {
         // NagramX: strip the row now, synchronously -- reloadData() below is async (it hops
         // through the storage queue), and leaving a confirmed-removed row in place until it
         // returns would let it be tapped or long-pressed again during that gap.
-        if (items.removeIf(row -> row.entry() == entry)) {
-            adapter.notifyDataSetChanged();
-            updateEmptyView();
-        }
+        removeRowSynchronously(entry);
         reloadData();
         BulletinFactory.of(this).createSimpleBulletin(R.raw.ic_delete, LocaleController.getString(R.string.MessageTriggersRemoved)).show();
+    }
+
+    /**
+     * Also drops the group's HeaderItem if this was its only row -- otherwise a lone header with
+     * nothing under it would sit there until the async reload catches up.
+     */
+    private void removeRowSynchronously(@NonNull EventScheduleEntry entry) {
+        int rowIndex = -1;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i) instanceof RowItem row && row.entry() == entry) {
+                rowIndex = i;
+                break;
+            }
+        }
+        if (rowIndex < 0) {
+            return;
+        }
+        boolean onlyRowInGroup = (rowIndex == 0 || items.get(rowIndex - 1) instanceof HeaderItem)
+                && (rowIndex == items.size() - 1 || !(items.get(rowIndex + 1) instanceof RowItem));
+        items.remove(rowIndex);
+        if (onlyRowInGroup && rowIndex > 0 && items.get(rowIndex - 1) instanceof HeaderItem) {
+            items.remove(rowIndex - 1);
+        }
+        adapter.notifyDataSetChanged();
+        updateEmptyView();
     }
 
     /**
@@ -324,19 +368,52 @@ public class MessageTriggersActivity extends BaseFragment {
         }
         groupList.sort((a, b) -> Integer.compare(a.get(0).fallbackDate, b.get(0).fallbackDate));
 
+        long nowSeconds = System.currentTimeMillis() / 1000L;
         items.clear();
         for (ArrayList<EventScheduleEntry> group : groupList) {
-            for (EventScheduleEntry entry : group) {
-                TLObject peer = resolvePeer(messagesController, entry.dialogId);
-                String title = resolveTitle(peer);
-                CharSequence summary = entry.summary(true);
-                String time = LocaleController.formatDateTime(entry.fallbackDate, true);
-                CharSequence subtitle = TextUtils.isEmpty(summary) ? time : TextUtils.concat(summary, " \u00b7 ", time);
-                items.add(new Row(entry.dialogId, peer, title, subtitle, entry));
+            EventScheduleEntry first = group.get(0);
+            TLObject peer = resolvePeer(messagesController, first.dialogId);
+            String chatTitle = resolveTitle(peer);
+            // triggerKey() guarantees every member of this group shares types/regex/pattern, so
+            // any member's summary(false) speaks for the whole group -- that's what makes it safe
+            // to show the trigger once here instead of repeating it on every row below.
+            items.add(new HeaderItem(chatTitle, first.summary(false)));
+            for (int i = 0; i < group.size(); i++) {
+                EventScheduleEntry entry = group.get(i);
+                CharSequence brief = resolveBrief(entry);
+                CharSequence timeline = resolveTimeline(entry, nowSeconds);
+                boolean divider = i < group.size() - 1;
+                items.add(new RowItem(entry.dialogId, peer, brief, timeline, entry, divider));
             }
         }
         adapter.notifyDataSetChanged();
         updateEmptyView();
+    }
+
+    /**
+     * NagramX: the batched (dialogId, messageId) preview lookup lands in a later commit; until
+     * then -- and on any cache miss once it does -- this always reports "message unavailable". A
+     * miss here must never hide the row or affect its liveness, which is decided only by
+     * serverIds (see isLiveArm above).
+     */
+    private CharSequence resolveBrief(@NonNull EventScheduleEntry entry) {
+        return LocaleController.getString(R.string.MessageTriggersUnavailable);
+    }
+
+    /**
+     * delaySeconds is deliberately not part of triggerKey(), so it can differ between two entries
+     * in the same header's group -- it has to stay per-row rather than moving into the once-per-
+     * group chip.
+     */
+    @NonNull
+    private CharSequence resolveTimeline(@NonNull EventScheduleEntry entry, long nowSeconds) {
+        String time = entry.fallbackDate <= nowSeconds
+                ? LocaleController.getString(R.string.MessageTriggersAnyMoment)
+                : LocaleController.formatDateTime(entry.fallbackDate, true);
+        if (entry.delaySeconds <= 0) {
+            return time;
+        }
+        return "+" + entry.delaySeconds + "s \u00b7 " + time;
     }
 
     private void updateEmptyView() {
@@ -346,33 +423,90 @@ public class MessageTriggersActivity extends BaseFragment {
         emptyView.setVisibility(items.isEmpty() ? View.VISIBLE : View.GONE);
     }
 
-    private static class ListAdapter extends RecyclerListView.SelectionAdapter {
-        private final Context context;
-        private final ArrayList<Row> items;
+    /**
+     * Chat name (GraySectionCell) plus this group's trigger, styled with the same rounded-rect
+     * chip recipe EventScheduleHelper.addTriggerRow uses for the schedule sheet -- deliberately
+     * not clickable, this page is read-only and per-row/chip editing is out of scope for it.
+     */
+    private static class TriggerGroupHeaderCell extends LinearLayout {
+        private final GraySectionCell sectionCell;
+        private final TextView chip;
 
-        ListAdapter(Context context, ArrayList<Row> items) {
+        TriggerGroupHeaderCell(Context context) {
+            super(context);
+            setOrientation(VERTICAL);
+            setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+
+            sectionCell = new GraySectionCell(context);
+            addView(sectionCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            chip = new TextView(context);
+            chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+            chip.setPadding(AndroidUtilities.dp(12), AndroidUtilities.dp(5), AndroidUtilities.dp(12), AndroidUtilities.dp(5));
+            chip.setMinHeight(AndroidUtilities.dp(28));
+            chip.setMaxLines(3);
+            chip.setEllipsize(TextUtils.TruncateAt.END);
+            chip.setGravity(Gravity.CENTER);
+
+            FrameLayout chipContainer = new FrameLayout(context);
+            chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_VERTICAL | (LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT), 16, 6, 16, 10));
+            addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        }
+
+        void bind(String chatTitle, CharSequence triggerSummary) {
+            sectionCell.setText(chatTitle);
+            int textColor = Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2);
+            int backgroundColor = Theme.getColor(Theme.key_windowBackgroundGray);
+            int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
+            int chipSelector = Theme.multAlpha(textColor, 0.1f);
+            chip.setTextColor(textColor);
+            chip.setBackground(Theme.createSimpleSelectorRoundRectDrawable(AndroidUtilities.dp(14), chipBg, Theme.blendOver(chipBg, chipSelector)));
+            chip.setText(triggerSummary);
+        }
+    }
+
+    private static class ListAdapter extends RecyclerListView.SelectionAdapter {
+        private static final int VIEW_TYPE_HEADER = 0;
+        private static final int VIEW_TYPE_ROW = 1;
+
+        private final Context context;
+        private final ArrayList<ListItem> items;
+
+        ListAdapter(Context context, ArrayList<ListItem> items) {
             this.context = context;
             this.items = items;
         }
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return true;
+            return holder.itemView instanceof UserCell;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return items.get(position) instanceof HeaderItem ? VIEW_TYPE_HEADER : VIEW_TYPE_ROW;
         }
 
         @NonNull
         @Override
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            if (viewType == VIEW_TYPE_HEADER) {
+                return new RecyclerListView.Holder(new TriggerGroupHeaderCell(context));
+            }
             return new RecyclerListView.Holder(new UserCell(context, 8, 0, false));
         }
 
         @Override
         public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
-            if (!(holder.itemView instanceof UserCell cell) || position < 0 || position >= items.size()) {
+            if (position < 0 || position >= items.size()) {
                 return;
             }
-            Row row = items.get(position);
-            cell.setData(row.peer(), row.title(), row.subtitle(), 0, position < items.size() - 1);
+            ListItem item = items.get(position);
+            if (item instanceof HeaderItem header && holder.itemView instanceof TriggerGroupHeaderCell cell) {
+                cell.bind(header.chatTitle(), header.triggerSummary());
+            } else if (item instanceof RowItem row && holder.itemView instanceof UserCell cell) {
+                cell.setData(row.peer(), row.brief(), row.timeline(), 0, row.divider());
+            }
         }
 
         @Override

@@ -545,6 +545,8 @@
     <string name="MessageTriggersEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
     <string name="MessageTriggersRemoved">Trigger removed</string>
     <string name="MessageTriggersRemoveConfirm">Remove this trigger? It won\'t fire again, but a message it already sent won\'t be undone.</string>
+    <string name="MessageTriggersUnavailable">Message unavailable</string>
+    <string name="MessageTriggersAnyMoment">Any moment now</string>
     <string name="ScheduledDiscardTitle">Discard message?</string>
     <string name="ScheduledDiscardMessage">Scheduled messages don\'t keep a draft. If you leave now, the text you\'ve typed will be lost.</string>
     <string name="EditDiscardTitle">Discard changes?</string>
