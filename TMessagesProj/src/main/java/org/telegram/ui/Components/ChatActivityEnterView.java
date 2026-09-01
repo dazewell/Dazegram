@@ -12872,6 +12872,19 @@ public class ChatActivityEnterView extends FrameLayout implements
         recordInterfaceState = 1;
         recordCircle.resetLockTranslation(false);
         recordControlsCircleScale.set(recordCircle, 1f);
+        // NagramX (#video-draft-guard): put controlsView into a known state here rather than
+        // inheriting whatever the last teardown left. Teardown only animates its alpha to 0 and leaves
+        // it VISIBLE; createControlsView's GONE runs once per view lifetime; and updateRecordInterface's
+        // GONE is gated on recordState != RECORD_STATE_PREPARING, which is exactly what this method
+        // passes below. Without this, a second recording in the same session restores with an invisible,
+        // full-scale, still-clickable control stack sitting over the composer. The alpha goes back to 1
+        // with it: the record-start path only calls setVisibility(VISIBLE) and relies on an animator to
+        // walk alpha back up, so a non-animated start would otherwise show these controls at alpha 0 --
+        // invisible but clickable again, one path over.
+        if (controlsView != null) {
+            controlsView.setVisibility(GONE);
+            controlsView.setAlpha(1f);
+        }
         voiceOnce = once;
         if (controlsView != null) {
             controlsView.periodDrawable.setValue(1, voiceOnce, true);
