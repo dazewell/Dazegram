@@ -88,6 +88,7 @@ public class ArmedSendsActivity extends BaseFragment {
             }
             EventScheduleEntry entry = items.get(position).entry();
             ItemOptions.makeOptions(this, view)
+                    .setScrimViewBackground(listView.getClipBackground(view))
                     .add(R.drawable.msg_delete, LocaleController.getString(R.string.EventScheduleClear), true, () -> removeWithUndo(entry))
                     .show();
             return true;
