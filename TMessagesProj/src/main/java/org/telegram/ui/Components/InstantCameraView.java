@@ -3517,24 +3517,33 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
             }
             final boolean segmentClosedOk = finishMuxer();
             final boolean segmentFirstWrite = videoConvertFirstWrite;
-            AndroidUtilities.runOnUIThread(() -> {
-                // NagramX: fires from the actual commit, not TimerView's wall-clock trigger -- the encoder
-                // can lag the 59.5s mark. Skipped if finishMuxer failed or this recording was replaced
-                // while the flush/drain above was running.
-                if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
-                    fireCutVibration();
-                }
-                VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
-                if (info != null) {
-                    info.notReadyYet = false;
-                }
-                // the segment is complete on disk, so whatever the streaming upload managed during the
-                // recording just needs closing off
-                if (segmentFirstWrite) {
-                    FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
-                }
-                FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
-            });
+            // NagramX: a segment whose finalize is still in flight is mid-write. The post below reads
+            // its length, hands the path to sendSegment and closes off the streaming upload, so running
+            // it now would ship a partial mp4 and release a file the write queue is still inside. Skip
+            // just the hand-off -- everything after it opens the next segment and must still run, or
+            // the rollover stops recording entirely. Losing one segment beats shipping a corrupt one.
+            if (finalizeInFlight) {
+                FileLog.e(new RuntimeException("InstantCamera rollover segment finalize still in flight, not sending"));
+            } else {
+                AndroidUtilities.runOnUIThread(() -> {
+                    // NagramX: fires from the actual commit, not TimerView's wall-clock trigger -- the encoder
+                    // can lag the 59.5s mark. Skipped if finishMuxer failed or this recording was replaced
+                    // while the flush/drain above was running.
+                    if (segmentClosedOk && InstantCameraView.this.recordingGeneration == capturedGeneration) {
+                        fireCutVibration();
+                    }
+                    VideoEditedInfo info = sendSegment(segmentFile, segmentDuration, sendOptions);
+                    if (info != null) {
+                        info.notReadyYet = false;
+                    }
+                    // the segment is complete on disk, so whatever the streaming upload managed during the
+                    // recording just needs closing off
+                    if (segmentFirstWrite) {
+                        FileLoader.getInstance(currentAccount).uploadFile(segmentFile.toString(), isSecretChat, false, 1, ConnectionsManager.FileTypeVideo, false);
+                    }
+                    FileLoader.getInstance(currentAccount).checkUploadNewDataAvailable(segmentFile.toString(), isSecretChat, 0, segmentFile.length());
+                });
+            }
 
             videoFile = nextFile;
             rolloverFile = null;
@@ -3609,7 +3618,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         // whether finishMovie() actually completed instead of throwing, so a caller that wants to know
         // before treating the segment as done (the rollover haptic) can check, without changing the
         // pre-existing swallow-and-log behavior the other caller already relies on.
+        //
+        // A false return has two meanings and callers must tell them apart. finalizeInFlight false means
+        // finishMovie() threw: the file is a known failure but nothing is still writing it, which is the
+        // long-standing behaviour. finalizeInFlight true means the bounded wait gave up while the write
+        // queue was still inside finishMovie(): the file is mid-write and must not be published, sent,
+        // previewed, uploaded or unlocked by anyone.
         private boolean finishMuxer() {
+            finalizeInFlight = false;
             if (mediaMuxer == null) {
                 return false;
             }
@@ -3629,16 +3645,15 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     // NagramX: bound this the way every other blocking wait on the encoder thread is
                     // bounded (the 500ms stall bound in feedAudioToEncoder, the 100ms drain deadlines).
                     // An unbounded await lets a wedged muxer pin this thread, and the send waits behind
-                    // it. On expiry the movie was never finalized, so report failure -- finalizeOk must
-                    // not mint a draft id for an unclosed file. TimeUnit is fully qualified rather than
-                    // imported, matching the single-use convention already used in this file.
+                    // it. TimeUnit is fully qualified rather than imported, matching the single-use
+                    // convention already used in this file.
                     if (!countDownLatch.await(3000, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                         FileLog.e(new RuntimeException("InstantCamera muxer finalize timed out"));
                         // The write queue can still be inside finishMovie(), writing fileToWrite. The
-                        // rename/copy/delete below would race that and could corrupt or half-move the
-                        // output, so return here and leave both files untouched. success[0] is moot on
-                        // this path; the false return is what finalizeOk reads, and it refuses to mint
-                        // a draft id for a file that was never closed.
+                        // rename/copy/delete below would race that, so return without touching either
+                        // file. finalizeInFlight tells callers this is not an ordinary failure -- the
+                        // file is mid-write, so nothing may publish, send, preview or unlock it.
+                        finalizeInFlight = true;
                         return false;
                     }
                 } catch (InterruptedException e) {
@@ -3646,8 +3661,8 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     // await() clears the interrupt flag when it throws; put it back so a shutdown or
                     // cancel further up the encoder thread still sees it
                     Thread.currentThread().interrupt();
-                    // same reason as the timeout above: the write can still be in flight, so leave the
-                    // files alone rather than falling through to the rename/copy/delete below
+                    // same reason as the timeout above: the write can still be in flight
+                    finalizeInFlight = true;
                     return false;
                 }
             } else {
@@ -3764,6 +3779,14 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
         public static final int ENCODER_SEND_PLAYER = 2;
 
         private boolean sentMedia;
+
+        // NagramX: set by finishMuxer when its bounded wait expired or was interrupted, meaning the
+        // write queue may still be inside finishMovie() and the output file is mid-write. This is a
+        // different thing from finishMuxer returning false, which has always meant "finishMovie threw"
+        // -- there the file is a known failure and nothing is still touching it. Any caller that
+        // publishes, sends, previews, uploads or unlocks the file must bail on this flag; treating it
+        // as an ordinary failure would hand on a partial mp4. Written and read on the encoder thread.
+        private boolean finalizeInFlight;
 
         private void handleStopRecording(final int send, final SendOptions sendOptions) {
             // NagramX: stash this recording's generation before anything else runs. This method is invoked
@@ -3910,7 +3933,17 @@ public class InstantCameraView extends FrameLayout implements NotificationCenter
                     videoFile.delete();
                 } catch (Throwable ignore) {}
             } else {
-                if (runDone && (send != ENCODER_SEND_SEND || !sentMedia)) {
+                // NagramX: finalizeInFlight means the bounded wait in finishMuxer gave up while the write
+                // queue was still inside finishMovie(), so videoFile is mid-write. The post below either
+                // sends it (delegate.sendMedia) or previews and publishes it (setupVideoPlayer plus the
+                // audioDidSent bind), all of which read the file. finalizeOk is no protection: it gates
+                // only the draft id mint inside. Skip the hand-off entirely -- dropping the clip is bad,
+                // but shipping or previewing a partial mp4 is worse.
+                final boolean handOffClip = runDone && (send != ENCODER_SEND_SEND || !sentMedia);
+                if (handOffClip && finalizeInFlight) {
+                    FileLog.e(new RuntimeException("InstantCamera finalize still in flight, not publishing the clip"));
+                }
+                if (handOffClip && !finalizeInFlight) {
                     sentMedia = true;
                     // NagramX: capture the pin into a local before the async boundary, same idiom as
                     // capturedGeneration below -- the post must carry the generation pinned when the stop
