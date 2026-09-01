@@ -208,10 +208,11 @@ public class ArmedSendsActivity extends BaseFragment {
     }
 
     private void collectPeerToLoad(MessagesController messagesController, long dialogId, ArrayList<Long> usersToLoad, ArrayList<Long> chatsToLoad, HashSet<Long> seenUsers, HashSet<Long> seenChats) {
-        if (DialogObject.isUserDialog(dialogId)) {
-            TLRPC.User user = messagesController.getUser(dialogId);
-            if ((user == null || user.min) && seenUsers.add(dialogId)) {
-                usersToLoad.add(dialogId);
+        long userDialogId = DialogObject.isEncryptedDialog(dialogId) ? encryptedChatUserDialogId(messagesController, dialogId) : dialogId;
+        if (userDialogId != 0 && DialogObject.isUserDialog(userDialogId)) {
+            TLRPC.User user = messagesController.getUser(userDialogId);
+            if ((user == null || user.min) && seenUsers.add(userDialogId)) {
+                usersToLoad.add(userDialogId);
             }
         } else if (DialogObject.isChatDialog(dialogId)) {
             long chatId = -dialogId;
@@ -222,9 +223,18 @@ public class ArmedSendsActivity extends BaseFragment {
         }
     }
 
-    @NonNull
+    // NagramX: a secret chat's dialogId resolves to neither isUserDialog nor isChatDialog -- the
+    // real peer is the encrypted chat's other user, same pattern DialogCell uses for its avatar/title.
+    private static long encryptedChatUserDialogId(MessagesController messagesController, long dialogId) {
+        TLRPC.EncryptedChat encryptedChat = messagesController.getEncryptedChat(DialogObject.getEncryptedChatId(dialogId));
+        return encryptedChat != null ? encryptedChat.user_id : 0;
+    }
+
     private TLObject resolvePeer(MessagesController messagesController, long dialogId) {
-        if (DialogObject.isUserDialog(dialogId)) {
+        if (DialogObject.isEncryptedDialog(dialogId)) {
+            long userDialogId = encryptedChatUserDialogId(messagesController, dialogId);
+            return userDialogId != 0 ? messagesController.getUser(userDialogId) : null;
+        } else if (DialogObject.isUserDialog(dialogId)) {
             return messagesController.getUser(dialogId);
         } else if (DialogObject.isChatDialog(dialogId)) {
             return messagesController.getChat(-dialogId);
