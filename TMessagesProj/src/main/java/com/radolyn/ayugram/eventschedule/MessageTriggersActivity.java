@@ -35,6 +35,7 @@ import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.GraySectionCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.UserCell;
 import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.BulletinFactory;
@@ -85,6 +86,10 @@ public class MessageTriggersActivity extends BaseFragment {
      * identical chat name, identical trigger text, distinguishable only by an easy-to-miss year.
      */
     private record RowItem(long dialogId, TLObject peer, CharSequence brief, CharSequence timeline, EventScheduleEntry entry, boolean divider) implements ListItem {
+    }
+
+    /** Trust statement, appended once below the list when it is non-empty -- see applyRows(). */
+    private record FooterItem() implements ListItem {
     }
 
     private RecyclerListView listView;
@@ -221,6 +226,18 @@ public class MessageTriggersActivity extends BaseFragment {
         items.remove(rowIndex);
         if (onlyRowInGroup && rowIndex > 0 && items.get(rowIndex - 1) instanceof HeaderItem) {
             items.remove(rowIndex - 1);
+        }
+        // NagramX: a lone FooterItem with no rows above it would misrepresent "still armed" as
+        // shown, so drop it too if that last row was the only one left.
+        boolean anyRowLeft = false;
+        for (int i = 0; i < items.size(); i++) {
+            if (items.get(i) instanceof RowItem) {
+                anyRowLeft = true;
+                break;
+            }
+        }
+        if (!anyRowLeft) {
+            items.clear();
         }
         adapter.notifyDataSetChanged();
         updateEmptyView();
@@ -468,6 +485,11 @@ public class MessageTriggersActivity extends BaseFragment {
                 items.add(new RowItem(entry.dialogId, peer, brief, timeline, entry, divider));
             }
         }
+        // NagramX: below the list, not the empty state -- the trust statement matters most while
+        // looking at rows, not while looking at nothing.
+        if (!items.isEmpty()) {
+            items.add(new FooterItem());
+        }
         adapter.notifyDataSetChanged();
         updateEmptyView();
     }
@@ -576,6 +598,7 @@ public class MessageTriggersActivity extends BaseFragment {
     private static class ListAdapter extends RecyclerListView.SelectionAdapter {
         private static final int VIEW_TYPE_HEADER = 0;
         private static final int VIEW_TYPE_ROW = 1;
+        private static final int VIEW_TYPE_FOOTER = 2;
 
         private final Context context;
         private final ArrayList<ListItem> items;
@@ -592,7 +615,13 @@ public class MessageTriggersActivity extends BaseFragment {
 
         @Override
         public int getItemViewType(int position) {
-            return items.get(position) instanceof HeaderItem ? VIEW_TYPE_HEADER : VIEW_TYPE_ROW;
+            ListItem item = items.get(position);
+            if (item instanceof HeaderItem) {
+                return VIEW_TYPE_HEADER;
+            } else if (item instanceof FooterItem) {
+                return VIEW_TYPE_FOOTER;
+            }
+            return VIEW_TYPE_ROW;
         }
 
         @NonNull
@@ -600,6 +629,10 @@ public class MessageTriggersActivity extends BaseFragment {
         public RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             if (viewType == VIEW_TYPE_HEADER) {
                 return new RecyclerListView.Holder(new TriggerGroupHeaderCell(context));
+            } else if (viewType == VIEW_TYPE_FOOTER) {
+                TextInfoPrivacyCell cell = new TextInfoPrivacyCell(context);
+                cell.setText(LocaleController.getString(R.string.MessageTriggersFooter));
+                return new RecyclerListView.Holder(cell);
             }
             return new RecyclerListView.Holder(new UserCellNoBadge(context, 8, 0, false));
         }
