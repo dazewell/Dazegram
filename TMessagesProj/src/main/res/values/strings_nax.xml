@@ -552,7 +552,7 @@
         <item quantity="other">Trigger added to %1$d messages</item>
     </plurals>
     <string name="EventScheduleBulkTriggerPartial">Trigger added to %1$d of %2$d — the rest were left as scheduled</string>
-    <string name="EventScheduleBulkTriggerNotApplied">Couldn\'t confirm the reschedule, so no trigger was added. Add the trigger again if you want it.</string>
+    <string name="EventScheduleBulkTriggerNotApplied">Couldn\'t confirm the trigger, so none was added. Add the trigger again if you want it.</string>
     <string name="EventScheduleBulkTriggerDialogBusy">This chat is still confirming an earlier trigger, so none were added. Try adding the trigger again in a moment.</string>
     <string name="EventScheduleTriggerConflict">Couldn\'t set the trigger for this message, so it was left unchanged.</string>
     <string name="EventScheduleTriggerUnconfirmed">Couldn\'t confirm the trigger. Its settings weren\'t changed; try again.</string>
