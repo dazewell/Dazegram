@@ -108,7 +108,7 @@ public final class EventScheduleHelper {
         if (bulkMode && !bulk.ready) {
             // A selected message is still sending, so arming would attach to a not-yet-server-addressable
             // id: offer nothing and explain why. The reschedule itself still runs.
-            addInFlightChip(context, container, textColor, backgroundColor);
+            addInFlightNote(context, container, textColor, backgroundColor);
             return null;
         }
 
@@ -149,19 +149,21 @@ public final class EventScheduleHelper {
         return row;
     }
 
-    // Disabled, non-clickable pill shown on the bulk sheet when the selection is still in flight: the
-    // trigger can't be armed yet, and the user is told to reopen once sending finishes.
-    private static void addInFlightChip(Context context, LinearLayout container, int textColor, int backgroundColor) {
+    // A non-clickable, dimmed twin of the trigger chip. It carries no Row and no click handler, so it
+    // can't be armed and can't turn into the live control while the sheet stays open -- reopening the
+    // sheet after the send acks is what surfaces the real chip.
+    private static void addInFlightNote(Context context, LinearLayout container, int textColor, int backgroundColor) {
         TextView chip = new TextView(context);
         chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         chip.setTextColor(Theme.multAlpha(textColor, 0.5f));
         chip.setPadding(dp(12), dp(5), dp(12), dp(5));
         chip.setMinHeight(dp(28));
         chip.setMaxLines(3);
-        chip.setGravity(Gravity.CENTER);
+        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
         final int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
         chip.setBackground(Theme.createRoundRectDrawable(dp(14), chipBg));
-        chip.setText(getString(R.string.EventScheduleTrigger) + ": " + getString(R.string.EventScheduleTriggerInFlight));
+        chip.setGravity(Gravity.CENTER);
+        chip.setText(getString(R.string.EventScheduleTriggerInFlight));
 
         FrameLayout chipContainer = new FrameLayout(context);
         chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
