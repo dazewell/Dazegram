@@ -37461,7 +37461,8 @@ public class ChatActivity extends BaseFragment implements
                 for (int i = 0; i < items.size(); i++) {
                     MessageObject m = items.get(i);
                     targets.add(new com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target(
-                            m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period));
+                            m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period,
+                            groupChildIds(m)));
                 }
                 if (targets.isEmpty()) return;
                 if (!com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this)) {
@@ -37510,6 +37511,24 @@ public class ChatActivity extends BaseFragment implements
                 ? Integer.compare(a.messageOwner.date, b.messageOwner.date)
                 : Integer.compare(a.getId(), b.getId()));
         return items;
+    }
+
+    // NagramX: the full album child-id set for a resolved reschedule target, captured now while the
+    // group maps are valid. The executor keeps this on its Target so a later arm/verify pass never has
+    // to re-expand the group from a live fragment. A non-grouped message yields just its own id.
+    private int[] groupChildIds(MessageObject m) {
+        long gid = m.getGroupId();
+        if (gid != 0) {
+            MessageObject.GroupedMessages group = groupedMessagesMap.get(gid);
+            if (group != null && !group.messages.isEmpty()) {
+                int[] ids = new int[group.messages.size()];
+                for (int k = 0; k < group.messages.size(); k++) {
+                    ids[k] = group.messages.get(k).getId();
+                }
+                return ids;
+            }
+        }
+        return new int[]{m.getId()};
     }
 
     // NagramX: the shared trigger for a bulk reschedule can only be armed when every selected message

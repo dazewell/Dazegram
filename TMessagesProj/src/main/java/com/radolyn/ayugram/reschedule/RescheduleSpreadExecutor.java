@@ -30,11 +30,17 @@ public final class RescheduleSpreadExecutor {
         final int id;
         final int scheduleDate;
         final int repeatPeriod;
+        // Full album child-id set captured when the target is built, while the fragment's group maps are
+        // still valid. A later arm/verify pass must never re-expand the group from a live fragment: it can
+        // mutate or become inaccessible after the fragment is destroyed, which would silently drop album
+        // children from both the arm and the verification. For a non-grouped message this is just { id }.
+        final int[] albumIds;
 
-        public Target(int id, int scheduleDate, int repeatPeriod) {
+        public Target(int id, int scheduleDate, int repeatPeriod, int[] albumIds) {
             this.id = id;
             this.scheduleDate = scheduleDate;
             this.repeatPeriod = repeatPeriod;
+            this.albumIds = albumIds;
         }
     }
 
