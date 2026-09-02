@@ -200,6 +200,14 @@ dispatch a session for it, and do not treat "nobody has objected" as approval.
 This default is deliberately deny-first, and it applies to issues **an agent
 filed itself** exactly as much as to issues a stranger filed.
 
+**Approval is necessary, not sufficient.** `status:approved` says dazewell wants
+the work; it says nothing about *when*. The three stop labels outrank it:
+`status:in-progress`, `status:blocked` and `status:deferred` each block dispatch
+**even on an approved issue**, and an issue can legitimately carry approved and
+deferred at once — that combination means "yes, eventually, but not yet." Read
+the pairing as sequencing, never as a contradiction to resolve in favour of
+starting.
+
 **Why the default is inverted.** This repository is **public**, so anyone can
 open an issue. An issue is therefore not evidence that the work is wanted — only
 that someone wants it. The approval label is the boundary between "somebody
@@ -239,29 +247,44 @@ $slug = 'eventschedule-bolt-refresh'   # the issue's declared branch slug
 # because the branch tooling normalises the separator to "-" on push.
 $branchRe = "^\d{4}-\d{2}-\d{2}[-_]$([regex]::Escape($slug))$"
 
-# 0. APPROVED BY DAZEWELL? No label, no work. This is the gate.
-$issue = gh issue view $n --repo $repo --json state,labels,assignees | ConvertFrom-Json
-$approved = @($issue.labels.name) -contains 'status:approved'
+$blockers = @()
 
-# 1. open, and not already claimed?
-#    ($issue above also carries state and status:in-progress)
+# 0. APPROVED BY DAZEWELL? No label, no work. This is the gate.
+$issue  = gh issue view $n --repo $repo --json state,labels,assignees | ConvertFrom-Json
+$labels = @($issue.labels.name)
+if ($labels -notcontains 'status:approved') { $blockers += 'NOT APPROVED by dazewell' }
+
+# 1. open, and none of the stop labels set?
+if ($issue.state -ne 'OPEN')                 { $blockers += "issue is $($issue.state)" }
+if ($labels -contains 'status:in-progress')  { $blockers += 'already claimed (status:in-progress)' }
+if ($labels -contains 'status:blocked')      { $blockers += 'blocked (status:blocked)' }
+if ($labels -contains 'status:deferred')     { $blockers += 'deferred (status:deferred)' }
 
 # 2. an open PR already doing it?
-gh pr list --repo $repo --state open --json number,title,headRefName |
+$pr = gh pr list --repo $repo --state open --json number,headRefName |
   ConvertFrom-Json | Where-Object { $_.headRefName -match $branchRe }
+if ($pr) { $blockers += "open PR #$($pr.number) on $($pr.headRefName)" }
 
 # 3. a branch already pushed for it?
-git ls-remote --heads origin |
+$branch = git ls-remote --heads origin |
   ForEach-Object { ($_ -split 'refs/heads/')[-1] } |
   Where-Object { $_ -match $branchRe }
+if ($branch) { $blockers += "remote branch $branch" }
+
+if ($blockers) { "DO NOT DISPATCH:`n - " + ($blockers -join "`n - ") } else { 'clear to dispatch' }
 ```
+
+The block **decides**; it does not merely report. A preflight that computes an
+answer and leaves acting on it to the reader is a gate in prose only — paste it,
+skim the output, and you can still dispatch on an unapproved or already-claimed
+issue.
 
 **No `status:approved` means stop.** Not "ask and proceed", not "it looks
 obviously wanted" — stop, and if you think it should be approved, say so and let
 dazewell decide. Applying the label yourself to unblock your own dispatch is the
 one move this whole section exists to prevent.
 
-**Any hit on checks 1-3 means do not dispatch** — investigate first. A duplicate
+**Any blocker at all means do not dispatch** — investigate first. A duplicate
 costs a whole wasted branch and, worse, two diffs that conflict in the same
 region.
 
@@ -271,9 +294,11 @@ The dangerous window is between *deciding* to work on something and a branch
 existing to prove it. Close it by claiming first:
 
 ```powershell
-$branch = "{0:yyyy-MM-dd}_{1}" -f (Get-Date), $slug
+# Hyphen, not underscore: the tooling flattens the separator on push, so a claim
+# comment written with "_" would name a branch that never appears on origin.
+$claimBranch = "{0:yyyy-MM-dd}-{1}" -f (Get-Date), $slug
 gh issue edit $n --repo $repo --add-label "status:in-progress" --remove-label "status:deferred"
-gh issue comment $n --repo $repo --body "Started. Branch: ``$branch``"
+gh issue comment $n --repo $repo --body "Started. Branch: ``$claimBranch``"
 ```
 
 Derive the date rather than typing one — a hard-coded example date goes stale

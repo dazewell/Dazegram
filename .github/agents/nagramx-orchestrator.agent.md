@@ -301,9 +301,12 @@ git fetch origin; git log --oneline dev..origin/dev
   `labeled` event is timestamped in the issue timeline, so doing it anyway is
   both a violation and visible.
 
-  Then the duplicate checks — the issue is open and carries no
-  `status:in-progress` label; no open PR's branch matches its declared branch
-  slug; no remote branch matches it either. **Any hit means do not dispatch.**
+  Then the duplicate checks — the issue is open and carries **neither**
+  `status:in-progress` **nor** `status:blocked`; no open PR's branch matches its
+  declared branch slug; no remote branch matches it either. **Any hit means do
+  not dispatch.** `status:blocked` is a stop condition in its own right: a
+  blocked issue is unclaimed precisely *because* something it depends on has not
+  landed, so an unclaimed blocked issue is the easiest one to start by mistake.
   Then claim it (add `status:in-progress`, comment the branch name) *before* the
   session starts, and **re-read the issue** in case a competing claim landed
   first. The dangerous window is between deciding to work on something and a
