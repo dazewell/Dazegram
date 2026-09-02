@@ -458,10 +458,13 @@ public final class EventScheduleStore {
             }
         }
         // Cross-entry heal collision: the same scheduled message healing into more than one entry demotes
-        // them all -- two triggers can never own one message. A scheduled message's identity is
-        // (dialogId, mid), not the bare mid: unrelated dialogs routinely reuse the same local id, so
-        // keying on mid alone would wrongly collide -- and thus wrongly reject -- two healthy orphans in
-        // different chats. Key on (dialogId, mid) so only a genuine same-dialog clash is caught.
+        // them all -- among these heal candidates, two of them resolving to one message is corrupt, so
+        // neither is allowed to claim it. (This checks only the heal set, not already-bound serverIds, so
+        // it catches restart collisions, not a pre-existing multi-owner already in the store.) A scheduled
+        // message's identity is (dialogId, mid), not the bare mid: unrelated dialogs routinely reuse the
+        // same local id, so keying on mid alone would wrongly collide -- and thus wrongly reject -- two
+        // healthy orphans in different chats. Key on (dialogId, mid) so only a genuine same-dialog clash is
+        // caught.
         HashMap<String, HashSet<String>> midOwners = new HashMap<>();
         for (EntrySnapshot s : snaps) {
             int[] mids = healCandidate.get(s.key);

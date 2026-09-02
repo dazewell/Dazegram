@@ -588,11 +588,13 @@ public final class EventScheduleController {
 
     /**
      * Rare edit-commit path: an unbound durable orphan still sits in this dialog, so resolve it to
-     * current server ids before deciding ownership, otherwise arming could create a second trigger
-     * beside it. Holds only the plain edit tuple across the storage hop -- no fragment, no delegate, no
-     * {@code proceed} -- and runs after the sheet has dismissed. On completion it either arms the healed
-     * owner or, if any orphan stayed unresolved, fails closed with a toast shown from {@link
-     * #finishCommitEdit} itself, so nothing outside the controller is captured across the hop.
+     * current server ids before deciding ownership, otherwise the edit acts on the wrong state -- arming
+     * could create a second trigger beside the orphan, and turning off can't reach it (it has no current
+     * server/local id to match). Holds only the plain edit tuple across the storage hop -- no fragment, no
+     * delegate, no {@code proceed} -- and runs after the sheet has dismissed. On completion it either
+     * applies the intent against the healed owner or, if any orphan stayed unresolved, fails closed for
+     * both arm and off with a toast shown from {@link #finishCommitEdit} itself, so nothing outside the
+     * controller is captured across the hop.
      */
     public static void reconcileThenCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
                                                boolean userTouchedTrigger, boolean armed, int types, String pattern,
@@ -613,15 +615,19 @@ public final class EventScheduleController {
             commitEditRefresh(account, dialogId, editIds, editLocalIds, scheduleDate);
             return;
         }
+        // A durable orphan that could not be resolved to server ids still sits unbound in this dialog,
+        // and it fails both intents equally. Arming now could create a second trigger beside it; turning
+        // off can't remove it either, because commitEditOff matches server/local ids and the orphan has
+        // neither current one (empty serverIds, stale negative localIds) -- the off would be a silent
+        // no-op and a later warm heal could still fire the trigger the user just disarmed. So fail closed
+        // for arm and off alike and tell the user their trigger settings were left unchanged. The toast is
+        // a global, context-free AlertUtil call -- no fragment or delegate is held across the storage hop
+        // to reach here.
+        if (EventScheduleStore.hasUnboundRandomEntry(account, dialogId)) {
+            AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
+            return;
+        }
         if (armed) {
-            // A durable orphan that could not be resolved to server ids still sits unbound in this
-            // dialog; arming now could create a second trigger beside it, so fail closed and tell the
-            // user their trigger settings were left unchanged. The toast is a global, context-free
-            // AlertUtil call -- no fragment or delegate is held across the storage hop to reach here.
-            if (EventScheduleStore.hasUnboundRandomEntry(account, dialogId)) {
-                AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
-                return;
-            }
             boolean claimed = commitEditArm(account, dialogId, editIds, editLocalIds, types, pattern, regex, delaySeconds, scheduleDate);
             if (!claimed) {
                 AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
