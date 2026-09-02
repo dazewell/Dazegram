@@ -36723,7 +36723,8 @@ public class ChatActivity extends BaseFragment implements
                     } else {
                         naxEventIds = new int[]{message.getId()};
                     }
-                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, this::updateVisibleRows);
+                    // NagramX: re-measure (not just repaint) the affected rows so the bolt marker's width change lands immediately.
+                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
                 }
                 AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {
