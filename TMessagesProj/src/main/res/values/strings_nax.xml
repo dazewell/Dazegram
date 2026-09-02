@@ -547,7 +547,7 @@
     <string name="MessageTriggersRemoveConfirm">Remove this trigger? It won\'t fire again, but a message it already sent won\'t be undone.</string>
     <string name="MessageTriggersUnavailable">Message unavailable</string>
     <string name="MessageTriggersAnyMoment">Any moment now</string>
-    <string name="MessageTriggersFooter">Every row below is currently armed and will fire on its own. If you just armed one — especially a video that\'s still uploading — it can take a few seconds to appear here while its send confirmation comes back from the server.</string>
+    <string name="MessageTriggersFooter">Everything listed here is armed and will fire on its own. If you just armed something — especially a video that\'s still uploading — it can take a few seconds to appear while its send confirmation comes back from the server.</string>
     <string name="ScheduledDiscardTitle">Discard message?</string>
     <string name="ScheduledDiscardMessage">Scheduled messages don\'t keep a draft. If you leave now, the text you\'ve typed will be lost.</string>
     <string name="EditDiscardTitle">Discard changes?</string>
