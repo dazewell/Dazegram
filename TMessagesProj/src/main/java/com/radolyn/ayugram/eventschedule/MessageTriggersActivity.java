@@ -226,8 +226,18 @@ public class MessageTriggersActivity extends BaseFragment {
         if (rowIndex < 0) {
             return;
         }
+        RowItem removedRow = (RowItem) items.get(rowIndex);
         boolean onlyRowInGroup = (rowIndex == 0 || items.get(rowIndex - 1) instanceof HeaderItem)
                 && (rowIndex == items.size() - 1 || !(items.get(rowIndex + 1) instanceof RowItem));
+        // NagramX: if the removed row was the last in its group (divider == false), the sibling
+        // row right before it becomes the new last row and must lose its divider too -- otherwise
+        // it keeps showing a divider line meant for a row that's now gone, until the next full
+        // reload rebuilds the list from scratch.
+        if (!onlyRowInGroup && !removedRow.divider() && rowIndex > 0
+                && items.get(rowIndex - 1) instanceof RowItem previousRow && previousRow.divider()) {
+            items.set(rowIndex - 1, new RowItem(previousRow.dialogId(), previousRow.peer(), previousRow.brief(),
+                    previousRow.timeline(), previousRow.entry(), false));
+        }
         items.remove(rowIndex);
         if (onlyRowInGroup && rowIndex > 0 && items.get(rowIndex - 1) instanceof HeaderItem) {
             items.remove(rowIndex - 1);
