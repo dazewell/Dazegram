@@ -92,7 +92,11 @@ public final class EventScheduleController {
     }
 
     private static String queueKey(int account, EventScheduleEntry entry) {
-        return account + "_" + entry.dialogId + "_" + entry.triggerKey();
+        return queueKey(account, entry.dialogId, entry.triggerKey());
+    }
+
+    static String queueKey(int account, long dialogId, String triggerKey) {
+        return account + "_" + dialogId + "_" + triggerKey;
     }
 
     // Package-private so the Message Triggers overview page can order its rows the same way the
@@ -292,12 +296,16 @@ public final class EventScheduleController {
         schedulePendingGc();
     }
 
-    /** Arms a trigger on a message whose server ids are already known (editing a message with no trigger yet). */
+    /**
+     * Temporary compatibility path: arms a trigger on an entry whose server ids are already set. Does
+     * NO ownership resolution -- it cannot see whether another entry already owns these ids -- so it is
+     * not the gate for arming during an edit; that is {@link #resolveAndClaimForEdit}. Retained only
+     * because #249's committed finalizer still calls it on its restore path; no new caller should use
+     * it, and #249's migration is expected to route through the ownership gate instead. Kept solely so a
+     * future caller that does reach for it still can't bind an in-flight id and produce a trigger that
+     * reports live but never fires (the #256 defect class).
+     */
     public static boolean armExisting(int account, @NonNull EventScheduleEntry entry) {
-        // Fail closed on an empty or non-positive id set. The one live caller preflights this in
-        // EventScheduleHelper.addTriggerRow, so this is unreachable today; it is here so a future
-        // bulk-arm caller (issue #249) can't reintroduce the in-flight-id defect by binding a
-        // negative local id as if the server had issued it.
         if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
             return false;
         }
@@ -309,14 +317,17 @@ public final class EventScheduleController {
         return true;
     }
 
-    /** Replaces an already-armed (server-side) entry in place after an edit. */
+    /**
+     * Temporary compatibility path: replaces an already-armed entry's fields in place after an edit.
+     * Like {@link #armExisting} it does NO ownership resolution, so it is not the edit gate --
+     * {@link #resolveAndClaimForEdit} is. Retained for symmetry with armExisting and its #249 caller; no
+     * new caller should use it, and migrations go through the ownership gate.
+     */
     public static boolean updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
         // Fail closed before touching any live state -- revision++ and removeFromQueue below mutate the
         // entry and the queue, so a rejection after them would leave a half-edited entry, worse than
-        // what this fixes. The only live caller edits an entry findByMessage() matched on a positive
-        // serverId, so this is unreachable today; it pairs with armExisting so #249's bulk arm (which
-        // re-runs through here for an already-armed selection) can't reintroduce an in-flight id. A
-        // bound entry keeps its negative localIds after remap, so hasInvalidIds permits those.
+        // what this guards. A bound entry keeps its negative localIds after remap, so hasInvalidIds
+        // permits those.
         if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
             return false;
         }
@@ -340,6 +351,58 @@ public final class EventScheduleController {
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
         return true;
+    }
+
+    /**
+     * Arms (or re-arms) a trigger while editing a scheduled message. Ownership is re-resolved at this
+     * point across both id spaces, so a snapshot taken when the sheet opened cannot strand a pending
+     * owner or duplicate it. Returns false when the store rejects the claim -- either the message is
+     * already owned by more than one entry (a pre-existing corruption) or the id set is empty/non-positive
+     * -- in which case nothing is changed and the caller must not report success.
+     */
+    public static boolean commitEditArm(int account, long dialogId, int[] serverIds, int[] localIds,
+                                        int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+        EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
+                account, dialogId, serverIds, localIds,
+                types, pattern, regex, delaySeconds, fallbackDate, System.currentTimeMillis());
+        if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
+            return false;
+        }
+        if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
+            // The edit changed the entry's fields (and thus its queueKey), so drop it from the bucket it
+            // was queued under before the change; the captured trigger key names that old bucket.
+            removeFromQueueByKey(account, queueKey(account, dialogId, claim.previousTriggerKey), claim.entry);
+        }
+        // The entry now carries server ids, so any lingering pending-bind record is stale -- drop it
+        // rather than leave it for GC. Harmless (a no-op) for a freshly claimed entry.
+        removePending(account, claim.entry.key());
+        ensureObserver(account);
+        return true;
+    }
+
+    /** Turns a trigger off while editing: drops every owner of the message (bound or still pending). */
+    public static void commitEditOff(int account, long dialogId, int[] serverIds, int[] localIds) {
+        ArrayList<String> keys = EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, serverIds, localIds);
+        for (String key : keys) {
+            if (EventScheduleStore.contains(account, key)) {
+                EventScheduleStore.remove(account, key);
+            }
+        }
+    }
+
+    /**
+     * Keeps an existing single owner's derived schedule time in step when the user edits a scheduled
+     * message's send time without touching the trigger controls. Never creates, removes, or
+     * reconfigures a trigger -- a multi-owner conflict or no owner is left exactly as it is. Re-sorts
+     * the owner's queue bucket so the fallback-time send order the overview promises stays correct.
+     */
+    public static void commitEditRefresh(int account, long dialogId, int[] serverIds, int[] localIds, int fallbackDate) {
+        EventScheduleEntry entry = EventScheduleStore.refreshFallbackForEdit(
+                account, dialogId, serverIds, localIds, fallbackDate);
+        if (entry != null) {
+            resortQueueForEntry(account, entry);
+        }
     }
 
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
@@ -553,7 +616,29 @@ public final class EventScheduleController {
     }
 
     private static void removeFromQueue(int account, EventScheduleEntry entry) {
-        String queueKey = queueKey(account, entry);
+        removeFromQueueByKey(account, queueKey(account, entry), entry);
+    }
+
+    // A fallbackDate refresh keeps the entry in the same bucket -- triggerKey() excludes fallbackDate --
+    // but can change its position within it, so re-sort to preserve fallback-time firing order. No
+    // re-drive: a bucket only exists while it is being driven (armWaiting creates it and immediately
+    // advances; advanceQueue removes it once drained), so a live bucket always has a pending fire
+    // callback, and fire/retryHeadSend re-read queue.get(0) and hand off to the new head on their own.
+    // In practice the entry isn't queued during a schedule edit anyway -- a still-scheduled message
+    // hasn't been sent, so its owner is armed/pending, not WAITING -- making this a guarded no-op.
+    private static void resortQueueForEntry(int account, EventScheduleEntry entry) {
+        QueueState queueState = QUEUES.get(queueKey(account, entry));
+        if (queueState == null) return;
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
+        if (!queue.contains(entry)) return;
+        Collections.sort(queue, QUEUE_ORDER);
+    }
+
+    // Same head-removal / advance behaviour as removeFromQueue, but against a caller-supplied bucket:
+    // an edit changes the entry's triggerKey (and thus its live queueKey), so a post-edit removal must
+    // use the trigger key captured before the mutation or it would look in the wrong bucket and leave
+    // the entry stranded under its old key.
+    private static void removeFromQueueByKey(int account, String queueKey, EventScheduleEntry entry) {
         QueueState queueState = QUEUES.get(queueKey);
         if (queueState == null) return;
         ArrayList<EventScheduleEntry> queue = queueState.entries;
