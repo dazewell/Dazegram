@@ -15945,9 +15945,10 @@ public class ChatActivity extends BaseFragment implements
     // arms it. Admission was decided by the whole-dispatch pre-flight in didSelectDialogs; here a slot
     // that still fails to dispatch (racy cache eviction, upload error) drops the arm via
     // finalizeRepostCopyDispatch, leaving deletion unarmed (property 8). Returns true when every slot
-    // dispatched. fromMyName isn't a copy-send parameter - a copy is always sent as your own - so the
-    // drop-author decision is carried by the hideCaption snapshot the caller captured, never by a late
-    // read of the mutable static.
+    // dispatched. There is no drop-author parameter here: a copy always drops the source author by
+    // construction, so the request-local from-my-name choice only gated whether this spread path was
+    // taken (never a late read of the mutable static). hideCaption is a separate flag and carries only
+    // caption suppression.
     private boolean dispatchForwardSpread(ArrayList<ArrayList<MessageObject>> slots, ArrayList<MessageObject> allSources, long did, boolean hideCaption, boolean notify, int baseScheduleDate, int intervalSeconds, long payStars, boolean singleTarget) {
         if (slots == null || slots.isEmpty()) {
             return true;
