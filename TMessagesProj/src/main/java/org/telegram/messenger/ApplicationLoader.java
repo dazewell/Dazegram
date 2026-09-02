@@ -298,6 +298,11 @@ public class ApplicationLoader extends Application {
             TLRPC.User user = UserConfig.getInstance(a).getCurrentUser();
             if (user != null) {
                 MessagesController.getInstance(a).putUser(user, true);
+                // NagramX: warm event-schedule triggers before the resend below so the observer and
+                // PENDING map are ready when a scheduled resend acks -- otherwise a restart-orphaned
+                // trigger misses its live rebind. Confined to logged-in accounts (the same set that
+                // resends); idempotent per process, and a no-op read for accounts with no triggers.
+                com.radolyn.ayugram.eventschedule.EventScheduleController.ensureWarm(a);
                 SendMessagesHelper.getInstance(a).checkUnsentMessages();
             }
         }

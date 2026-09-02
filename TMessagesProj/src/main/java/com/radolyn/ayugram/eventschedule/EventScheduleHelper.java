@@ -453,6 +453,27 @@ public final class EventScheduleHelper {
                 // user never opened the trigger controls, so a schedule-only edit must not reconfigure or
                 // remove a trigger the user never chose to change -- otherwise it reads as a turn-off and
                 // destroys durable state in the pre-existing multi-owner case.
+                if (EventScheduleController.needsCommitReconcile(account, dialogId)) {
+                    // Rare: an unbound entry in this dialog still carries only durable correlation keys (a
+                    // restart orphan the warm reconcile has not healed yet). Resolve it to current server
+                    // ids first so the edit can't create a second trigger beside it. Runs async after the
+                    // sheet dismisses; a failure toasts, matching the existing conflict UX. No fragment
+                    // crosses the hop -- the overview repaints on its own, and refresh() is not called.
+                    EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
+                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate,
+                            new EventScheduleController.CommitEditListener() {
+                                @Override
+                                public void onConflict() {
+                                    AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
+                                }
+
+                                @Override
+                                public void onUnconfirmed() {
+                                    AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
+                                }
+                            });
+                    return;
+                }
                 if (!userTouchedTrigger) {
                     // The user changed the send time but never opened the trigger controls, so leave the
                     // trigger's configuration exactly as it is. fallbackDate is derived from the message's

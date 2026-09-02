@@ -6,7 +6,9 @@ import org.telegram.messenger.ApplicationLoader;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.TreeSet;
 
 /**
  * Per-account, never-synced store for armed event-schedule triggers.
@@ -316,6 +318,230 @@ public final class EventScheduleStore {
             keys.add(e.key());
         }
         return keys;
+    }
+
+    // --- Durable correlation reconcile (#261) -------------------------------------------------------
+    // Kept factorable from the single-edit flow: #249 shares this same immutable-snapshot -> pure
+    // classification -> atomic heal pipeline for its batch reschedule. Nothing here holds a live entry,
+    // fragment, or delegate across the storage hop the controller runs between collect and apply.
+
+    /**
+     * Immutable snapshot of one unbound entry handed to the async storage lookup. Only these fields
+     * cross the thread boundary; the live {@link EventScheduleEntry} is re-fetched by {@link #key} and
+     * re-verified against {@link #revision} + {@link #randomIds} before any mutation, so a concurrent
+     * edit or bind cannot be overwritten by a stale continuation.
+     */
+    public static final class EntrySnapshot {
+        public final String key;
+        public final long dialogId;
+        public final long revision;
+        public final long[] randomIds;
+
+        EntrySnapshot(String key, long dialogId, long revision, long[] randomIds) {
+            this.key = key;
+            this.dialogId = dialogId;
+            this.revision = revision;
+            this.randomIds = randomIds;
+        }
+    }
+
+    /** Per-entry verdict from {@link #classifyDurable}; the controller applies heal or policy from it. */
+    public static final class DurableResolution {
+        public enum Verdict {
+            // Every distinct random_id resolved one-to-one to a distinct positive server mid.
+            HEAL,
+            // At least one random_id resolved to a negative mid: the unsent scheduled row still exists,
+            // so the live resend/remap path (or ordinary expiry) owns it, not the heal.
+            PENDING_UNSENT,
+            // A random_id has no joined row: the scheduled message was fired or locally deleted. Never
+            // resurrect it -- fail-closed expiry cleanup applies.
+            MISSING,
+            // A cardinality/collision failure (within-entry non-injective, a random_id or healed mid
+            // shared across entries, or >1 mid for one random_id). Deliberately never healed -- distinct
+            // from a genuine resolved-but-contested multi-owner conflict, hence not REJECTED_MULTI.
+            REJECTED_UNRESOLVED,
+            // The read failed (query/enqueue/construction). Non-destructive: retain the entry inert for a
+            // later process to retry; never expiry-remove on a failed read.
+            LOOKUP_ERROR
+        }
+
+        public final Verdict verdict;
+        public final int[] healMids;   // sorted ascending; non-null only for HEAL
+
+        DurableResolution(Verdict verdict, int[] healMids) {
+            this.verdict = verdict;
+            this.healMids = healMids;
+        }
+    }
+
+    private static EntrySnapshot snapshot(EventScheduleEntry e) {
+        long[] r = new long[e.randomIds.size()];
+        for (int i = 0; i < r.length; i++) r[i] = e.randomIds.get(i);
+        return new EntrySnapshot(e.key(), e.dialogId, e.revision, r);
+    }
+
+    /** Immutable snapshots of every unbound entry across the account that carries durable keys. */
+    public static synchronized ArrayList<EntrySnapshot> collectUnboundRandomSnapshots(int account) {
+        ArrayList<EntrySnapshot> out = new ArrayList<>();
+        for (EventScheduleEntry e : cache(account).values()) {
+            if (e.serverIds.isEmpty() && !e.randomIds.isEmpty()) out.add(snapshot(e));
+        }
+        return out;
+    }
+
+    /** As above, scoped to one dialog -- the commit-time fallback only ever reconciles its own dialog. */
+    public static synchronized ArrayList<EntrySnapshot> collectUnboundRandomSnapshots(int account, long dialogId) {
+        ArrayList<EntrySnapshot> out = new ArrayList<>();
+        for (EventScheduleEntry e : cache(account).values()) {
+            if (e.dialogId == dialogId && e.serverIds.isEmpty() && !e.randomIds.isEmpty()) out.add(snapshot(e));
+        }
+        return out;
+    }
+
+    /** Synchronous in-memory short-circuit: is there an unbound durable orphan in this dialog at all? */
+    public static synchronized boolean hasUnboundRandomEntry(int account, long dialogId) {
+        for (EventScheduleEntry e : cache(account).values()) {
+            if (e.dialogId == dialogId && e.serverIds.isEmpty() && !e.randomIds.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    public static synchronized EventScheduleEntry findByKey(int account, String key) {
+        return cache(account).get(key);
+    }
+
+    /**
+     * Pure classification of the joined {@code random_id -> mids} rows against the entry snapshots. No
+     * cache or storage access, so it is trivially reusable and testable. {@code resolvedByRandom} maps
+     * each queried random_id to the distinct mids the JOIN returned for it (empty/absent means no joined
+     * row -- a fired or locally deleted scheduled message, never healed). The within-entry injectivity
+     * and cross-entry collision guards are applied here so a partial album or a shared correlator can
+     * never arm.
+     */
+    public static Map<String, DurableResolution> classifyDurable(
+            ArrayList<EntrySnapshot> snaps, Map<Long, ArrayList<Integer>> resolvedByRandom, boolean lookupError) {
+        HashMap<String, DurableResolution> out = new HashMap<>();
+        if (lookupError) {
+            for (EntrySnapshot s : snaps) out.put(s.key, new DurableResolution(DurableResolution.Verdict.LOOKUP_ERROR, null));
+            return out;
+        }
+        // Cross-entry prep: which entries claim each random_id. A random_id in more than one entry is a
+        // corrupt precondition -- both entries fail closed.
+        HashMap<Long, HashSet<String>> randomOwners = new HashMap<>();
+        for (EntrySnapshot s : snaps) {
+            for (long r : distinctOf(s.randomIds)) {
+                HashSet<String> owners = randomOwners.get(r);
+                if (owners == null) { owners = new HashSet<>(); randomOwners.put(r, owners); }
+                owners.add(s.key);
+            }
+        }
+        HashMap<String, int[]> healCandidate = new HashMap<>();
+        for (EntrySnapshot s : snaps) {
+            DurableResolution.Verdict v = classifyOne(s, resolvedByRandom, randomOwners);
+            if (v == DurableResolution.Verdict.HEAL) {
+                TreeSet<Integer> mids = new TreeSet<>();
+                for (long r : distinctOf(s.randomIds)) {
+                    mids.add(resolvedByRandom.get(r).get(0));
+                }
+                int[] arr = new int[mids.size()];
+                int i = 0;
+                for (int m : mids) arr[i++] = m;
+                healCandidate.put(s.key, arr);
+                out.put(s.key, new DurableResolution(DurableResolution.Verdict.HEAL, arr));
+            } else {
+                out.put(s.key, new DurableResolution(v, null));
+            }
+        }
+        // Cross-entry heal collision: the same healed mid landing in more than one entry demotes both --
+        // two triggers can never own one message.
+        HashMap<Integer, HashSet<String>> midOwners = new HashMap<>();
+        for (Map.Entry<String, int[]> e : healCandidate.entrySet()) {
+            for (int mid : e.getValue()) {
+                HashSet<String> owners = midOwners.get(mid);
+                if (owners == null) { owners = new HashSet<>(); midOwners.put(mid, owners); }
+                owners.add(e.getKey());
+            }
+        }
+        for (HashSet<String> owners : midOwners.values()) {
+            if (owners.size() > 1) {
+                for (String k : owners) {
+                    out.put(k, new DurableResolution(DurableResolution.Verdict.REJECTED_UNRESOLVED, null));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static DurableResolution.Verdict classifyOne(
+            EntrySnapshot s, Map<Long, ArrayList<Integer>> resolved, Map<Long, HashSet<String>> randomOwners) {
+        HashSet<Long> distinct = distinctOf(s.randomIds);
+        // Within-entry: a duplicate random_id in the persisted list is itself a many-to-one violation.
+        if (distinct.size() != s.randomIds.length) return DurableResolution.Verdict.REJECTED_UNRESOLVED;
+        // Cross-entry: a random_id shared with another entry.
+        for (long r : distinct) {
+            HashSet<String> owners = randomOwners.get(r);
+            if (owners != null && owners.size() > 1) return DurableResolution.Verdict.REJECTED_UNRESOLVED;
+        }
+        boolean anyMissing = false, anyNegative = false;
+        HashSet<Integer> positiveMids = new HashSet<>();
+        for (long r : distinct) {
+            ArrayList<Integer> mids = resolved.get(r);
+            HashSet<Integer> dm = new HashSet<>();
+            if (mids != null) dm.addAll(mids);
+            if (dm.isEmpty()) {
+                anyMissing = true;
+            } else if (dm.size() > 1) {
+                // One random_id resolving to more than one distinct mid: ambiguous, fail closed.
+                return DurableResolution.Verdict.REJECTED_UNRESOLVED;
+            } else {
+                int mid = dm.iterator().next();
+                if (mid > 0) positiveMids.add(mid);
+                else anyNegative = true;
+            }
+        }
+        if (anyMissing) return DurableResolution.Verdict.MISSING;
+        if (anyNegative) return DurableResolution.Verdict.PENDING_UNSENT;
+        // All distinct randoms resolved to exactly one positive mid; require strict injectivity so two
+        // children collapsing onto one server message can never arm a partial trigger.
+        if (positiveMids.size() != distinct.size()) return DurableResolution.Verdict.REJECTED_UNRESOLVED;
+        return DurableResolution.Verdict.HEAL;
+    }
+
+    private static HashSet<Long> distinctOf(long[] ids) {
+        HashSet<Long> set = new HashSet<>();
+        for (long id : ids) set.add(id);
+        return set;
+    }
+
+    /**
+     * Atomically heals one entry to its resolved server ids, under the monitor and only if the live
+     * entry still matches the snapshot it was classified from (same revision, same random_id set, still
+     * unbound). Any mismatch -- an edit, a bind by the live path, a removal -- makes this a no-op so the
+     * stale continuation cannot resurrect or overwrite. {@code sortedMids} arrive ascending so
+     * {@code serverIds.get(0)} (the QUEUE_ORDER tie-break and overview preview) is deterministic.
+     */
+    public static synchronized boolean healDurable(int account, EntrySnapshot snap, int[] sortedMids) {
+        EventScheduleEntry e = cache(account).get(snap.key);
+        if (e == null) return false;
+        if (e.revision != snap.revision) return false;
+        if (!e.serverIds.isEmpty()) return false;
+        if (!sameRandomIds(e, snap.randomIds)) return false;
+        for (int mid : sortedMids) {
+            if (mid > 0 && !e.serverIds.contains(mid)) e.serverIds.add(mid);
+        }
+        if (e.serverIds.isEmpty()) return false;
+        e.bindExpiresAt = 0;
+        e.state = EventScheduleEntry.STATE_ARMED;
+        persist(account, e);
+        return true;
+    }
+
+    private static boolean sameRandomIds(EventScheduleEntry e, long[] snap) {
+        if (e.randomIds.size() != snap.length) return false;
+        HashSet<Long> a = new HashSet<>(e.randomIds);
+        HashSet<Long> b = new HashSet<>();
+        for (long x : snap) b.add(x);
+        return a.equals(b);
     }
 
     /** Drops scheduled ids that just left the queue (send-now, delete, or the fallback firing). */

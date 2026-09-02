@@ -48,6 +48,12 @@ public final class EventScheduleEntry {
     // Local echo ids (negative) claimed from scheduled-batch updates; used as the exact
     // remap key when messageReceivedByServer arrives.
     public final ArrayList<Integer> localIds = new ArrayList<>();
+    // Durable per-message correlation keys (Telegram random_id, non-zero for any sent message and
+    // stable across restart), one captured per claimed album child. localIds/serverIds drive the live
+    // bind; these are the durable fallback used only when the live remap was missed, resolved back to
+    // current server ids through randoms_v2 at warm. A well-formed entry keeps a strict one-to-one map
+    // between distinct randomIds and its resolved server ids -- see the reconcile's injectivity guard.
+    public final ArrayList<Long> randomIds = new ArrayList<>();
     public int types;
     public String pattern = "";
     public boolean regex;
@@ -276,6 +282,9 @@ public final class EventScheduleEntry {
             JSONArray local = new JSONArray();
             for (int id : localIds) local.put(id);
             o.put("local_ids", local);
+            JSONArray randoms = new JSONArray();
+            for (long id : randomIds) randoms.put(id);
+            o.put("random_ids", randoms);
             o.put("types", types);
             o.put("pattern", pattern == null ? "" : pattern);
             o.put("regex", regex);
@@ -303,6 +312,10 @@ public final class EventScheduleEntry {
             JSONArray local = o.optJSONArray("local_ids");
             if (local != null) {
                 for (int i = 0; i < local.length(); i++) e.localIds.add(local.getInt(i));
+            }
+            JSONArray randoms = o.optJSONArray("random_ids");
+            if (randoms != null) {
+                for (int i = 0; i < randoms.length(); i++) e.randomIds.add(randoms.getLong(i));
             }
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");
