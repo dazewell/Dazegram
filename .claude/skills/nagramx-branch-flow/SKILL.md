@@ -533,6 +533,14 @@ Android toolchain — see `nagramx-workflow` step 4; in that case say so in the 
 body so no one installs a build that CI hasn't confirmed yet. `commit-tag.yml`
 also runs and fails the PR if any commit is missing its tag.
 
+**Request the preview only once review has actually settled** — round-2
+architect review clean, any final-state pass clean — never against a commit
+still under review: a build requested earlier is stale the moment a later round
+finds a Critical. Under the `nagramx-orchestrator` pipeline this request belongs
+to the orchestrator alone, made at the point it is about to ask dazewell to
+install something, never to the implementer session that wrote the change — see
+`nagramx-workflow` step 9 and the orchestrator agent file.
+
 For a **user-visible feature this PR is opened by default** (don't wait to be
 asked — it's how dazewell gets the test build); **CI/bug/chore work stays
 optional** and can land straight into `dev` (below). Open the PR **non-draft**:

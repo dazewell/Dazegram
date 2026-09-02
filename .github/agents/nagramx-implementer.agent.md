@@ -194,9 +194,9 @@ the prose through it. A user-visible change without its entry will fail CI.
 ## The pull request
 
 Open it into `dev`, **not as a draft**, once the change compiles (locally or
-about to be gated by CI). Non-draft keeps the PR in the normal review flow and
-lets a requested APK build run cleanly; it does not mean reviewed — architect
-round 2 has not happened when you open it.
+about to be gated by CI). Non-draft keeps the PR in the normal review flow;
+it does not mean reviewed — architect round 2 has not happened when you
+open it.
 
 ```powershell
 gh pr create --base dev --head <YYYY-MM-DD>_<slug> --title "<title>" --body "<body>"
@@ -226,20 +226,16 @@ those changes there is legitimately no gate run to read — say which of the two
 happened rather than implying it passed.
 
 The release-signed dual-package APK that dazewell installs is a **separate,
-on-request** build, and whether this change needs one is decided **in your brief**
-(`On-device APK: required | not required`) — you don't decide it mid-flight, and
-you build at most once. When it's required, request it exactly once on the final
-head: apply the `build-apk` label to the PR, or dispatch `staging.yml` against
-the branch. The two differ in what they build: the **label** (a `pull_request`
-event) builds the synthetic `dev`+branch **merge ref**; a **dispatch** builds the
-selected ref **as-is** (your branch head, not merged with `dev`). Both upload
-both variants to Telegram. The label is auto-removed at the start of the run, so
-re-applying it requests a fresh build.
-
-**Each push costs only a fast `ci.yml` run — but every `build-apk` request costs
-a dual-package build and a Telegram upload**, and enough of those in a row trips
-the bot's flood limit. Batch your pushes and request the APK once per round of
-work, never once per commit.
+on-request** build, and **you never request it.** Whether this change needs one
+at all is decided **in your brief** (`On-device APK:` tells you who requests it
+and when — never an instruction for you to apply the `build-apk` label or
+dispatch `staging.yml` yourself). The orchestrator requests that build, and only
+once architect round 2 (and any final-state pass) has cleared — an implementer
+requesting one against its own last commit is exactly the failure mode this rule
+exists to prevent: review can still find Criticals after you think you're done,
+which makes any build you request stale the moment it lands. Your job stops at
+**ready for a build** — CI green on head, every review thread resolved — and you
+say so in your report instead of building anything.
 
 **Wait for the automated review, then bound it yourself.** It posts a minute or
 two later, so do not move on assuming it is clean. Note the current review count
@@ -324,6 +320,9 @@ changes. Everything else is yours to call.
 
 - **Never merge.** Open the pull request, get it green, report the URL. The
   merge decision is dazewell's.
+- **Never request the on-device APK build.** Not the `build-apk` label, not a
+  `staging.yml` dispatch — regardless of what your own final commit looks like.
+  That call belongs to whoever dispatched you, made after review has settled.
 - **Never force-push**, amend a pushed commit, or rewrite history.
 - **No destructive git without an explicit instruction** — no `reset --hard`,
   `clean -fd`, branch deletion, or a checkout that discards uncommitted work.
@@ -354,7 +353,7 @@ concisely to whoever dispatched you:
 Branch:        <YYYY-MM-DD>_<slug>
 PR:            <url>  (state, draft: no)
 Compile gate:  local | ci.yml (CI) | not applicable (doc-only) — with the result
-APK build:     not requested | <conclusion, and whether the APK was uploaded>
+APK build:     not your call — report readiness only: CI status on head, threads resolved
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md

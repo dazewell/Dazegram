@@ -333,21 +333,35 @@ code are not.
 
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
-   something to wait to be told: once it passes the compile gate (locally, or
-   on `ci.yml` once pushed) and round-2 review, **commit → push → open the PR** so dazewell always has a way to get a test build to
-   install. The build dazewell
-   tests on-device must be **`dev` + the change** (on top of the current fork
-   state, alongside everything already landed). Open a PR from
+   something to wait to be told: once the change is ready — the compile gate
+   passed locally, or (working CI-only) the change is written and ready for
+   `ci.yml`'s `pull_request` trigger to gate it — **commit → push → open the
+   PR** so dazewell always has a way to get to a test build once one is
+   actually warranted. The build
+   dazewell tests on-device must be **`dev` + the change** (on top of the
+   current fork state, alongside everything already landed). Open a PR from
    `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
-   triggers `ci.yml` (the fast Java/Kotlin validation gate — no APK). To get the
-   on-device build, apply the **`build-apk`** label to the PR (or dispatch
-   `staging.yml` against the branch), which builds the PR **merge ref** (`dev`
-   merged with the branch) as the release-signed **dual-package** APK and uploads
-   it to Telegram (labelled a *test* build). The label is auto-removed at the
-   start of the run, so re-applying it requests a fresh build. dazewell installs
-   the Unofficial variant over the daily app and tests from the uploaded
-   artifact. `commit-tag.yml`
-   also runs and blocks the PR if any commit lacks its `#tag`.
+   triggers `ci.yml` (the fast Java/Kotlin validation gate — no APK).
+   To get the on-device build, apply the **`build-apk`** label to the PR (or
+   dispatch `staging.yml` against the branch), which builds the PR **merge ref**
+   (`dev` merged with the branch) as the release-signed **dual-package** APK and
+   uploads it to Telegram (labelled a *test* build). The label is auto-removed
+   at the start of the run, so re-applying it requests a fresh build. dazewell
+   installs the Unofficial variant over the daily app and tests from the
+   uploaded artifact. `commit-tag.yml` also runs and blocks the PR if any
+   commit lacks its `#tag`.
+   **Request that build only once review has actually settled** — round-2
+   architect review clean, and any final-state pass clean, nothing Important
+   or above outstanding — never against your own still-under-review commit.
+   An APK requested earlier is stale the moment a later round finds a
+   Critical, which is exactly what a build-then-review ordering produced
+   once: dazewell installed and tested a build that three subsequent Critical
+   findings then invalidated. Under the `nagramx-orchestrator` pipeline this
+   request is the orchestrator's alone to make, at the point it is about to
+   ask dazewell to install something — never the implementer's, and never on
+   the strength of its own final head commit. Working solo, without that
+   split, hold yourself to the same ordering: don't reach for the label until
+   review is actually done.
 
    **When the build is up, ask for the test explicitly — never bury it in a
    handback.** A test request is a *blocking* request for dazewell's hands, and
