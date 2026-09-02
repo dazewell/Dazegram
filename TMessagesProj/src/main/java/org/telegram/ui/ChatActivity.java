@@ -37093,7 +37093,7 @@ public class ChatActivity extends BaseFragment implements
                 MessageHelper.CopyPreflightResult preflight = getMessageHelper().preflightSpreadAsCopy(fmessages);
                 if (!preflight.ok) {
                     int bad = Math.max(1, preflight.unsupportedCount + preflight.missingFileCount);
-                    BulletinFactory.of(this).createErrorBulletin(LocaleController.formatPluralString("RepostSpreadUnsupported", bad), themeDelegate).show();
+                    BulletinFactory.of(fragment).createErrorBulletin(LocaleController.formatPluralString("RepostSpreadUnsupported", bad)).show();
                     return false;
                 }
             }

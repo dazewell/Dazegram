@@ -1400,6 +1400,7 @@ public class MessageHelper extends BaseController {
         }
         long currentGroupId = 0;
         boolean currentInvertMedia = false;
+        boolean currentForceDocument = false;
         ArrayList<SendMessagesHelper.SendingMediaInfo> media = null;
         // When preserving the source's own reply, replyTo/quote are resolved per message (and per
         // album, whose members share one reply target) below; otherwise they stay the passed values.
@@ -1425,7 +1426,7 @@ public class MessageHelper extends BaseController {
                 long groupId = messageObject.getGroupIdForUse();
                 boolean invertMedia = messageObject.messageOwner.invert_media;
                 if (media != null && (groupId == 0 || groupId != currentGroupId || invertMedia != currentInvertMedia)) {
-                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams, currentForceDocument);
                     result.sentAny = true;
                     media = null;
                 }
@@ -1433,6 +1434,7 @@ public class MessageHelper extends BaseController {
                     media = new ArrayList<>();
                     currentGroupId = groupId;
                     currentInvertMedia = invertMedia;
+                    currentForceDocument = isCopyAlbumForceDocument(messageObject);
                     if (preserveOwnReply) {
                         MessageObject ownReply = getPreservableOwnReply(messageObject, targetDialogId, replyToTopMsg);
                         currentReply = ownReply != null ? ownReply : replyToTopMsg;
@@ -1444,10 +1446,11 @@ public class MessageHelper extends BaseController {
                 media.add(createSendingMediaInfo(messageObject, path, caption, entities, markerParams));
             } else {
                 if (media != null) {
-                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams, currentForceDocument);
                     result.sentAny = true;
                     media = null;
                     currentGroupId = 0;
+                    currentForceDocument = false;
                 }
                 MessageObject messageReply = replyTo;
                 ChatActivity.ReplyQuote messageQuote = quote;
@@ -1464,7 +1467,7 @@ public class MessageHelper extends BaseController {
             }
         }
         if (media != null) {
-            flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
+            flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams, currentForceDocument);
             result.sentAny = true;
         }
         return result;
@@ -1711,11 +1714,21 @@ public class MessageHelper extends BaseController {
         return info;
     }
 
-    private void flushSendingMedia(ArrayList<SendMessagesHelper.SendingMediaInfo> media, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+    private void flushSendingMedia(ArrayList<SendMessagesHelper.SendingMediaInfo> media, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams, boolean forceDocument) {
         if (media == null || media.isEmpty()) {
             return;
         }
-        SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, targetDialogId, replyTo, replyToTopMsg, null, quote, false, media.size() > 1, null, notify, scheduleDate, 0, mode, false, null, createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId), 0, invertMedia, payStars, monoForumPeerId, suggestionParams);
+        SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, targetDialogId, replyTo, replyToTopMsg, null, quote, forceDocument, media.size() > 1, null, notify, scheduleDate, 0, mode, false, null, createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId), 0, invertMedia, payStars, monoForumPeerId, suggestionParams);
+    }
+
+    // NagramX: a grouped document/music album must be flushed with forceDocument set. prepareSendingMedia
+    // only assigns a shared group id to its document flush when forceDocument is true (see the sendAsDocuments
+    // loop); with it off a document album shatters into single ungrouped sends - the mirror of the tie this
+    // feature exists to prevent. Photos and videos keep it off so they still upload as playable media, and a
+    // copied music/document file keeps its own attributes either way since those are read from the file.
+    private static boolean isCopyAlbumForceDocument(MessageObject messageObject) {
+        return messageObject != null && messageObject.getDocument() != null
+                && !messageObject.isPhoto() && !messageObject.isVideo() && !messageObject.isRoundVideo();
     }
 
     private static SendMessageChatArguments createSendMessageChatArguments(String quickReplyShortcut, int quickReplyShortcutId) {
