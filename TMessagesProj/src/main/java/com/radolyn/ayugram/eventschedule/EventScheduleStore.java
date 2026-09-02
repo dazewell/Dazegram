@@ -176,7 +176,14 @@ public final class EventScheduleStore {
                     if (id > 0 && e.serverIds.contains(id)) { hit = true; break; }
                 }
             }
-            if (!hit && negativeLocalIds != null) {
+            // A bound entry keeps its old negative localIds, but they are no longer safe to match on.
+            // Negative locals come from UserConfig.lastSendMessageId, which clearConfig() resets on
+            // logout, so after a logout/login on the same slot the allocator hands the same negative
+            // ids back out. An unrelated new scheduled message in this dialog can then be given an id a
+            // stale bound entry still holds and would resolve to it -- absorbing it on Done or disarming
+            // it on Clear. Once bound, an entry is owned only through positive server identity; local
+            // identity resolves only entries that are still unbound.
+            if (!hit && e.serverIds.isEmpty() && negativeLocalIds != null) {
                 for (int id : negativeLocalIds) {
                     if (id < 0 && e.localIds.contains(id)) { hit = true; break; }
                 }
