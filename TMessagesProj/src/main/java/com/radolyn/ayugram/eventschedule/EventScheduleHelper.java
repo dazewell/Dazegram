@@ -455,10 +455,18 @@ public final class EventScheduleHelper {
             boolean armed = enabled && repeatPeriod == 0;
             if (editIds != null && editIds.length > 0) {
                 // Editing an existing scheduled message. The schedule picker fires this commit even when the
-                // user never opened the trigger controls, so a schedule-only edit must leave every trigger
-                // exactly as it is -- otherwise it reads as a turn-off and removes owners the user never
-                // chose to drop, which in the pre-existing multi-owner case silently destroys durable state.
+                // user never opened the trigger controls, so a schedule-only edit must not reconfigure or
+                // remove a trigger the user never chose to change -- otherwise it reads as a turn-off and
+                // destroys durable state in the pre-existing multi-owner case.
                 if (!userTouchedTrigger) {
+                    // The user changed the send time but never opened the trigger controls, so leave the
+                    // trigger's configuration exactly as it is. fallbackDate is derived from the message's
+                    // schedule time, not trigger config, so it must still track the new time -- a stale
+                    // value prunes the trigger on reload and mis-orders the send queue. Only ever refreshes
+                    // a lone owner; a multi-owner conflict or none is untouched, so the destructive case
+                    // (an untouched edit reading as a turn-off) stays closed.
+                    EventScheduleController.commitEditRefresh(account, dialogId, editIds, editLocalIds,
+                            editOriginalScheduleDate, scheduleDate);
                     return;
                 }
                 // Re-resolve ownership at commit across both id spaces plus the schedule-date fallback rather

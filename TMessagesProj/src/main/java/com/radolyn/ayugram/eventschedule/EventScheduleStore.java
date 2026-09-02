@@ -264,6 +264,35 @@ public final class EventScheduleStore {
         return new EditClaim(EditClaim.Status.CLAIMED_FRESH, fresh, null);
     }
 
+    /**
+     * Keeps a lone owner's derived schedule time in step when the user edits a scheduled message's send
+     * time but never opens the trigger controls. fallbackDate is derived from the message, not user
+     * trigger configuration, so it must track the new time: a stale value gets the entry pruned on
+     * reload (fallbackDate + 300 < now), mis-orders the fallback-time send queue, and stops the
+     * date-fallback owner scan (which matches on the original schedule date) from finding it again.
+     * Resolves the owner the same two-space way as the arm path and only ever touches a single owner --
+     * MULTI or NONE change nothing, so the multi-owner conflict this change guards stays untouched. Does
+     * not create, remove, or reconfigure a trigger; only the derived date moves. Returns the refreshed
+     * live entry so the caller can re-sort its queue bucket, or null when there was no single owner.
+     */
+    public static synchronized EventScheduleEntry refreshFallbackForEdit(
+            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate, int fallbackDate) {
+        ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
+        if (candidates.isEmpty()) {
+            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
+        }
+        if (candidates.size() != 1) {
+            return null;
+        }
+        EventScheduleEntry target = candidates.get(0);
+        if (target.fallbackDate == fallbackDate) {
+            return target;
+        }
+        target.fallbackDate = fallbackDate;
+        persist(account, target);
+        return target;
+    }
+
     /** Which ownership state the edit sheet found for its message: nothing, exactly one owner, or a conflict. */
     public enum EditOwner { NONE, SINGLE, MULTI }
 

@@ -383,6 +383,21 @@ public final class EventScheduleController {
         }
     }
 
+    /**
+     * Keeps an existing single owner's derived schedule time in step when the user edits a scheduled
+     * message's send time without touching the trigger controls. Never creates, removes, or
+     * reconfigures a trigger -- a multi-owner conflict or no owner is left exactly as it is. Re-sorts
+     * the owner's queue bucket so the fallback-time send order the overview promises stays correct.
+     */
+    public static void commitEditRefresh(int account, long dialogId, int[] serverIds, int[] localIds,
+                                         int originalScheduleDate, int fallbackDate) {
+        EventScheduleEntry entry = EventScheduleStore.refreshFallbackForEdit(
+                account, dialogId, serverIds, localIds, originalScheduleDate, fallbackDate);
+        if (entry != null) {
+            resortQueueForEntry(account, entry);
+        }
+    }
+
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             ArrayList<MessageObject> snapshot = messages == null ? null : new ArrayList<>(messages);
@@ -595,6 +610,21 @@ public final class EventScheduleController {
 
     private static void removeFromQueue(int account, EventScheduleEntry entry) {
         removeFromQueueByKey(account, queueKey(account, entry), entry);
+    }
+
+    // A fallbackDate refresh keeps the entry in the same bucket -- triggerKey() excludes fallbackDate --
+    // but can change its position within it, so re-sort to preserve fallback-time firing order. No
+    // re-drive: a bucket only exists while it is being driven (armWaiting creates it and immediately
+    // advances; advanceQueue removes it once drained), so a live bucket always has a pending fire
+    // callback, and fire/retryHeadSend re-read queue.get(0) and hand off to the new head on their own.
+    // In practice the entry isn't queued during a schedule edit anyway -- a still-scheduled message
+    // hasn't been sent, so its owner is armed/pending, not WAITING -- making this a guarded no-op.
+    private static void resortQueueForEntry(int account, EventScheduleEntry entry) {
+        QueueState queueState = QUEUES.get(queueKey(account, entry));
+        if (queueState == null) return;
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
+        if (!queue.contains(entry)) return;
+        Collections.sort(queue, QUEUE_ORDER);
     }
 
     // Same head-removal / advance behaviour as removeFromQueue, but against a caller-supplied bucket:
