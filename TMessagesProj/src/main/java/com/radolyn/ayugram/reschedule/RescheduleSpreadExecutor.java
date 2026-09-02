@@ -50,16 +50,20 @@ public final class RescheduleSpreadExecutor {
      * One target's result, handed to the trigger finalization to reconcile against the server's
      * authoritative scheduled set. Neutral by design -- no eventschedule types cross this package
      * boundary. {@code applied} is false when the edit didn't demonstrably land, so the target is
-     * not a candidate for arming.
+     * not a candidate for arming. {@code repeatPeriod} is the message's native schedule-repeat period,
+     * carried through so the finalization can refuse to arm a repeating message (the two features don't
+     * compose, same rule the single-message path enforces).
      */
     public static final class TargetOutcome {
         public final int[] albumIds;
         public final int scheduleDate;
+        public final int repeatPeriod;
         public final boolean applied;
 
-        TargetOutcome(int[] albumIds, int scheduleDate, boolean applied) {
+        TargetOutcome(int[] albumIds, int scheduleDate, int repeatPeriod, boolean applied) {
             this.albumIds = albumIds;
             this.scheduleDate = scheduleDate;
+            this.repeatPeriod = repeatPeriod;
             this.applied = applied;
         }
     }
@@ -203,7 +207,7 @@ public final class RescheduleSpreadExecutor {
                 applied = false;
             }
             if (outcomes != null) {
-                outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, applied));
+                outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, target.repeatPeriod, applied));
             }
             sendNext(currentAccount, dialogId, targets, index + 1, 1, failedIds, outcomes, hooks, serial, fragment);
         }, ConnectionsManager.RequestFlagFailOnServerErrors);

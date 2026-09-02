@@ -142,6 +142,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     notArmed++;
                     continue;
                 }
+                // A repeating scheduled message can't carry a trigger -- the single-message path refuses
+                // it (armed = enabled && repeatPeriod == 0), because Premium repeat and early-trigger
+                // don't compose. The bulk path must not create a state the single path forbids, so a
+                // repeating target is left as a plain reschedule and counted not-armed.
+                if (o.repeatPeriod != 0) {
+                    notArmed++;
+                    continue;
+                }
                 // Every album child must be present at the applied date, and none deleted mid-run;
                 // one missing child rejects the whole album target.
                 if (!allScheduledAt(o.albumIds, o.scheduleDate, serverDates) || anyDeleted(o.albumIds)) {
