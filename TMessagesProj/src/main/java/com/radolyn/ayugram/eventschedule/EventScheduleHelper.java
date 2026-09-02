@@ -44,6 +44,25 @@ public final class EventScheduleHelper {
 
     public interface TriggerRow {
         void commit(int scheduleDate, int repeatPeriod);
+
+        /** The trigger the user configured on this chip, or null when the chip is left Off. */
+        EventScheduleConfig snapshot();
+    }
+
+    /**
+     * Bulk-reschedule state for the chip; non-null only on the bulk Reschedule sheet. {@code ready}
+     * is false when any selected message (album members included) is still in flight -- the chip is
+     * then shown disabled and no trigger can be armed. {@code armedCount} is how many selected
+     * messages already carry a trigger, surfaced as an overwrite heads-up.
+     */
+    public static final class BulkTriggerContext {
+        public final boolean ready;
+        public final int armedCount;
+
+        public BulkTriggerContext(boolean ready, int armedCount) {
+            this.ready = ready;
+            this.armedCount = armedCount;
+        }
     }
 
     private static final int BOLT_SIZE_DP = 11;
@@ -69,16 +88,27 @@ public final class EventScheduleHelper {
 
     public static TriggerRow addTriggerRow(Context context, LinearLayout container, int account, long dialogId,
                                            long selfUserId, boolean isReschedule, boolean hasForcedTitle,
-                                           int textColor, int backgroundColor) {
-        boolean editHere = editPending && editAccount == account && editDialogId == dialogId;
+                                           BulkTriggerContext bulk, int textColor, int backgroundColor) {
+        boolean bulkMode = bulk != null;
+        // A bulk arm never rides the single-message edit one-shot; still consume it here so it can't
+        // leak into a later sheet, but never let it prefill a bulk chip.
+        boolean editHere = !bulkMode && editPending && editAccount == account && editDialogId == dialogId;
         int[] editIds = editHere ? editMessageIds : null;
         Runnable onChanged = editHere ? editOnChanged : null;
         editPending = false;
         editMessageIds = null;
         editOnChanged = null;
 
-        if (isReschedule || hasForcedTitle || dialogId == 0 || dialogId == -1
+        // NagramX: the bulk Reschedule sheet is the one forcedTitle+reschedule sheet that wants the chip;
+        // every other forced-title or reschedule sheet (scheduled infinite-video included) stays blocked.
+        if (((isReschedule || hasForcedTitle) && !bulkMode) || dialogId == 0 || dialogId == -1
                 || dialogId == selfUserId || DialogObject.isEncryptedDialog(dialogId)) {
+            return null;
+        }
+        if (bulkMode && !bulk.ready) {
+            // A selected message is still sending, so arming would attach to a not-yet-server-addressable
+            // id: offer nothing and explain why. The reschedule itself still runs.
+            addInFlightChip(context, container, textColor, backgroundColor);
             return null;
         }
 
@@ -105,7 +135,37 @@ public final class EventScheduleHelper {
         chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
         container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        // Overwrite heads-up: some selected messages already carry a trigger, so turning this on replaces
+        // them. Read-only readout of existing state; the actual confirm rides the reschedule's own dialog.
+        if (bulkMode && bulk.armedCount > 0) {
+            TextView note = new TextView(context);
+            note.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+            note.setTextColor(Theme.multAlpha(textColor, 0.6f));
+            note.setGravity(Gravity.CENTER);
+            note.setText(org.telegram.messenger.LocaleController.formatPluralString("EventScheduleBulkOverwrite", bulk.armedCount));
+            container.addView(note, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 32, 0, 32, 6));
+        }
+
         return row;
+    }
+
+    // Disabled, non-clickable pill shown on the bulk sheet when the selection is still in flight: the
+    // trigger can't be armed yet, and the user is told to reopen once sending finishes.
+    private static void addInFlightChip(Context context, LinearLayout container, int textColor, int backgroundColor) {
+        TextView chip = new TextView(context);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        chip.setTextColor(Theme.multAlpha(textColor, 0.5f));
+        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
+        chip.setMinHeight(dp(28));
+        chip.setMaxLines(3);
+        chip.setGravity(Gravity.CENTER);
+        final int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
+        chip.setBackground(Theme.createRoundRectDrawable(dp(14), chipBg));
+        chip.setText(getString(R.string.EventScheduleTrigger) + ": " + getString(R.string.EventScheduleTriggerInFlight));
+
+        FrameLayout chipContainer = new FrameLayout(context);
+        chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
+        container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
     }
 
     /** Prepends a small bolt to the time string of a scheduled message that carries a live trigger. */
@@ -384,6 +444,11 @@ public final class EventScheduleHelper {
                     regexCell.isChecked(), true, true);
             regexCell.setEnabled(hasPattern);
             regexCell.setEnabled(hasPattern, null);
+        }
+
+        @Override
+        public EventScheduleConfig snapshot() {
+            return enabled ? new EventScheduleConfig(types, pattern, regex, delay) : null;
         }
 
         @Override

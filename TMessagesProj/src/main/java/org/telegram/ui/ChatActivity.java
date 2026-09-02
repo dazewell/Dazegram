@@ -37447,7 +37447,12 @@ public class ChatActivity extends BaseFragment implements
         if (preview.isEmpty()) return;
         final int count = preview.size();
         final long currentDate = preview.get(0).messageOwner.date;
-        AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, (baseScheduleDate, intervalSeconds) -> {
+        // NagramX: readiness for the shared trigger chip is decided once, here, over the album-expanded id
+        // set of the whole selection — any still-in-flight (non-positive) member refuses the chip for the
+        // whole selection. armedCount is how many already carry a trigger (an overwrite heads-up).
+        final boolean triggerReady = bulkTriggerReady(preview);
+        final int armedCount = bulkTriggerArmedCount(preview);
+        AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, armedCount, triggerReady, (baseScheduleDate, intervalSeconds, triggerConfig) -> {
             final Runnable apply = () -> {
                 // Dates can move while the sheet is open (an earlier pass still landing, a message
                 // getting sent), so re-resolve and re-sort now instead of trusting the preview snapshot.
@@ -37505,6 +37510,53 @@ public class ChatActivity extends BaseFragment implements
                 ? Integer.compare(a.messageOwner.date, b.messageOwner.date)
                 : Integer.compare(a.getId(), b.getId()));
         return items;
+    }
+
+    // NagramX: the shared trigger for a bulk reschedule can only be armed when every selected message
+    // (album members included) is already server-addressable. A still-sending message has a negative
+    // local id; arming against it would attach the trigger to an id the server never issued, so any
+    // non-positive member refuses the chip for the whole selection. Album expansion mirrors the arm
+    // path (a schedule edit moves the whole group, so the trigger must cover every member).
+    private boolean bulkTriggerReady(ArrayList<MessageObject> items) {
+        for (int i = 0; i < items.size(); i++) {
+            MessageObject m = items.get(i);
+            long gid = m.getGroupId();
+            if (gid != 0) {
+                MessageObject.GroupedMessages group = groupedMessagesMap.get(gid);
+                if (group != null && !group.messages.isEmpty()) {
+                    for (int k = 0; k < group.messages.size(); k++) {
+                        if (group.messages.get(k).getId() <= 0) return false;
+                    }
+                    continue;
+                }
+            }
+            if (m.getId() <= 0) return false;
+        }
+        return true;
+    }
+
+    // NagramX: how many of the resolved reschedule items already carry an event trigger, so the sheet can
+    // warn that turning the chip on overwrites them. In-memory over the store, no server round-trip.
+    private int bulkTriggerArmedCount(ArrayList<MessageObject> items) {
+        int armed = 0;
+        for (int i = 0; i < items.size(); i++) {
+            MessageObject m = items.get(i);
+            boolean hit = false;
+            long gid = m.getGroupId();
+            if (gid != 0) {
+                MessageObject.GroupedMessages group = groupedMessagesMap.get(gid);
+                if (group != null && !group.messages.isEmpty()) {
+                    for (int k = 0; k < group.messages.size() && !hit; k++) {
+                        hit = com.radolyn.ayugram.eventschedule.EventScheduleStore.findByMessage(currentAccount, dialog_id, group.messages.get(k).getId()) != null;
+                    }
+                }
+            }
+            if (!hit) {
+                hit = com.radolyn.ayugram.eventschedule.EventScheduleStore.findByMessage(currentAccount, dialog_id, m.getId()) != null;
+            }
+            if (hit) armed++;
+        }
+        return armed;
     }
 
     public void clearSelectionMode() {

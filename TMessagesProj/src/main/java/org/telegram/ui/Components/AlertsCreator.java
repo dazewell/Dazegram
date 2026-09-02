@@ -4305,20 +4305,27 @@ public class AlertsCreator {
         void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod);
     }
 
-    // NagramX: bulk "Reschedule selected" — the schedule sheet returns the chosen base time plus
-    // the per-message interval, so the caller can spread the selected messages out from the base.
+    // NagramX: bulk "Reschedule selected" — the schedule sheet returns the chosen base time, the
+    // per-message interval, and the shared "Send on event" trigger the chip captured (null when Off),
+    // so the caller can spread the selected messages out from the base and arm them on the same trigger.
     public interface RescheduleDatePickerDelegate {
-        void didSelectReschedule(int baseScheduleDate, int intervalSeconds);
+        void didSelectReschedule(int baseScheduleDate, int intervalSeconds, com.radolyn.ayugram.eventschedule.EventScheduleConfig trigger);
     }
 
     // NagramX: marks the schedule sheet as a bulk-reschedule sheet (carries how many messages are
-    // being rescheduled, so the interval row can preview/validate the resulting span).
+    // being rescheduled, so the interval row can preview/validate the resulting span). triggerReady is
+    // false when any selected message is still in flight (the trigger chip is then shown disabled);
+    // armedCount is how many already carry a trigger (an overwrite heads-up under the chip).
     public static class RescheduleSpread {
         public final int messageCount;
+        public final int armedCount;
+        public final boolean triggerReady;
         public final RescheduleDatePickerDelegate delegate;
 
-        public RescheduleSpread(int messageCount, RescheduleDatePickerDelegate delegate) {
+        public RescheduleSpread(int messageCount, int armedCount, boolean triggerReady, RescheduleDatePickerDelegate delegate) {
             this.messageCount = messageCount;
+            this.armedCount = armedCount;
+            this.triggerReady = triggerReady;
             this.delegate = delegate;
         }
     }
@@ -4413,8 +4420,8 @@ public class AlertsCreator {
     // NagramX: bulk "Reschedule selected" entry point. Reuses the schedule sheet (so the base-time
     // wheels and past-time validation are identical) but injects an interval row + preview and
     // returns base + interval via the reschedule delegate. See RescheduleSpreadHelper.
-    public static BottomSheet.Builder createRescheduleDatePickerDialog(Context context, long dialogId, long currentDate, int messageCount, final RescheduleDatePickerDelegate rescheduleDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
-        return createScheduleDatePickerDialog(context, getString(R.string.RescheduleMessages), dialogId, currentDate, 0, true, null, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, new RescheduleSpread(messageCount, rescheduleDelegate));
+    public static BottomSheet.Builder createRescheduleDatePickerDialog(Context context, long dialogId, long currentDate, int messageCount, int armedCount, boolean triggerReady, final RescheduleDatePickerDelegate rescheduleDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider) {
+        return createScheduleDatePickerDialog(context, getString(R.string.RescheduleMessages), dialogId, currentDate, 0, true, null, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, new RescheduleSpread(messageCount, armedCount, triggerReady, rescheduleDelegate));
     }
 
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule) {
@@ -4733,11 +4740,14 @@ public class AlertsCreator {
         }
         final boolean[] canceled = {true};
 
-        // NagramX: "Send on event" trigger chip; null unless this is a plain forward schedule to a real chat.
+        // NagramX: "Send on event" trigger chip; null unless this is a plain forward schedule to a real
+        // chat, or the bulk Reschedule sheet (which passes its own bulk context so the chip can appear).
         final com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerRow naxEventRow =
                 com.radolyn.ayugram.eventschedule.EventScheduleHelper.addTriggerRow(
                         context, container, UserConfig.selectedAccount, dialogId, selfUserId,
-                        isReschedule, forcedTitle != null, datePickerColors.textColor, datePickerColors.backgroundColor);
+                        isReschedule, forcedTitle != null,
+                        isReschedule ? new com.radolyn.ayugram.eventschedule.EventScheduleHelper.BulkTriggerContext(reschedule.triggerReady, reschedule.armedCount) : null,
+                        datePickerColors.textColor, datePickerColors.backgroundColor);
 
         checkScheduleDate(isReschedule ? null : buttonTextView, null, minScheduleSeconds, 0, scheduleType, dayPicker, hourPicker, minutePicker);
         // The initial validation above may have snapped the pickers forward; re-render the readout.
@@ -4892,7 +4902,10 @@ public class AlertsCreator {
                 final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
                 // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
                 ScheduleTimeHelper.rememberOffset(currentDate, naxReschedule, naxSeededAt, calendar.getTimeInMillis());
-                reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds);
+                // NagramX: hand the bulk-mode chip's captured trigger (null when Off) to the caller so it
+                // can arm every rescheduled message on the same trigger after each edit lands.
+                reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds,
+                        naxEventRow != null ? naxEventRow.snapshot() : null);
                 builder.getDismissRunnable().run();
                 return;
             }
