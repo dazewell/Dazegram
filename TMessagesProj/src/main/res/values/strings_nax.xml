@@ -542,7 +542,6 @@
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
     <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
     <string name="EventScheduleBatchStalled">Trigger stopped partway. The rest will send when the trigger matches again.</string>
-    <string name="EventScheduleTriggerInFlight">Available after all messages finish sending. Reopen this sheet to add a trigger.</string>
     <plurals name="EventScheduleBulkOverwrite">
         <item quantity="one">%1$d selected message already has a trigger — turning this on replaces it</item>
         <item quantity="other">%1$d selected messages already have a trigger — turning this on replaces them</item>

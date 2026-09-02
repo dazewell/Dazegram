@@ -149,27 +149,6 @@ public final class EventScheduleHelper {
         return row;
     }
 
-    // A non-clickable, dimmed twin of the trigger chip. It carries no Row and no click handler, so it
-    // can't be armed and can't turn into the live control while the sheet stays open -- reopening the
-    // sheet after the send acks is what surfaces the real chip.
-    private static void addInFlightNote(Context context, LinearLayout container, int textColor, int backgroundColor) {
-        TextView chip = new TextView(context);
-        chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
-        chip.setTextColor(Theme.multAlpha(textColor, 0.5f));
-        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
-        chip.setMinHeight(dp(28));
-        chip.setMaxLines(3);
-        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        final int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
-        chip.setBackground(Theme.createRoundRectDrawable(dp(14), chipBg));
-        chip.setGravity(Gravity.CENTER);
-        chip.setText(getString(R.string.EventScheduleTriggerInFlight));
-
-        FrameLayout chipContainer = new FrameLayout(context);
-        chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
-        container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-    }
-
     /** Prepends a small bolt to the time string of a scheduled message that carries a live trigger. */
     public static CharSequence decorateTimeString(int account, MessageObject msg, CharSequence timeString) {
         EventScheduleController.ensureWarm(account);
