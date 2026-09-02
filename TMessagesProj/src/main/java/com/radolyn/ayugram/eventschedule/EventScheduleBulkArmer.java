@@ -104,8 +104,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
     private void finalizeOnUi(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
                               boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
-        // Remove the collector in this same final UI turn (C2): deletions after publication are the
-        // ordinary purgeIds path's job again.
+        // C2 collector lifetime: removal happens here, before the fragment guard below, and this method
+        // always runs. The executor's closing scheduled-history read always calls onFinalize (a tgnet
+        // request always calls back, on success or error), and onFinalize hops here with runOnUIThread
+        // regardless of fragment state, so removal is not gated on the run "succeeding" or on the
+        // fragment being alive. A backgrounded process still runs the callback and removes the observer;
+        // a killed process drops the in-memory observer with everything else. The `collecting` flag
+        // makes the removal idempotent. Each run owns its own armer instance and its own collector
+        // lambda, so this only ever unregisters this run's observer, never a concurrent run's.
         if (collecting) {
             NotificationCenter.getInstance(account).removeObserver(deletionCollector, NotificationCenter.messagesDeleted);
             collecting = false;
@@ -158,6 +164,17 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             boolean superseded = !failClosed && intersectsAnySurvivor(e, survivorAlbums);
             if (superseded) continue;
             if (stillValid(e, serverDates)) {
+                // Restore re-arms the same entry we detached at admission, from its snapshot. It is not
+                // a new create, so it carries no duplicate-ownership hazard and needs no ownership seam.
+                // detach->send->restore: detach at admission cleared this entry from the store, queue
+                // and pending, so it could not fire during the run (any in-flight send already bails on
+                // the store's contains() going false). armExisting re-persists it as ARMED and ensures
+                // the observer; the entry re-enters the fire queue lazily on the next matching message
+                // via evaluate(), exactly as a store reload after an app restart does, so its
+                // QUEUE_ORDER position, pattern-state (recompiled from the snapshot) and revision are
+                // re-derived coherently rather than assumed carried across the detach. If a future
+                // ownership check rejects this arm, the ids are legitimately owned elsewhere now and
+                // leaving the entry removed is the correct outcome.
                 EventScheduleController.armExisting(account, e);
             }
         }
