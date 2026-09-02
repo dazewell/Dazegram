@@ -261,7 +261,9 @@ if ($labels -contains 'status:blocked')      { $blockers += 'blocked (status:blo
 if ($labels -contains 'status:deferred')     { $blockers += 'deferred (status:deferred)' }
 
 # 2. an open PR already doing it?
-$pr = gh pr list --repo $repo --state open --json number,headRefName |
+#    --limit is mandatory: gh defaults to 30 and would silently drop a match off
+#    the end, reporting "clear" on a repo that already has the work in flight.
+$pr = gh pr list --repo $repo --state open --limit 200 --json number,headRefName |
   ConvertFrom-Json | Where-Object { $_.headRefName -match $branchRe }
 if ($pr) { $blockers += "open PR #$($pr.number) on $($pr.headRefName)" }
 
