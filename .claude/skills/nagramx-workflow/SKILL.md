@@ -552,6 +552,88 @@ around, so a refactor of a load-bearing path clears the same bar as a feature,
 not the lighter bar of "just cleanup." The review skill applies the same ranking
 when it calibrates severity.
 
+## Verifying a claim about the system
+
+Most of what goes wrong here is not a bad decision — it is a true-sounding
+sentence nobody checked. These rules are cheap and they are what catch it.
+
+**When you cannot observe a property directly, do not pick the best single
+proxy — pick two whose failure modes are independent.** Searching for the
+*best* proxy has no good answer: one proxy is always defeatable in its own
+dimension, and optimising it only makes the residual failure rarer and more
+surprising. The useful question is "what does this evidence fail to see, and
+what sees that." Example: to confirm a fix propagated through a merge, use
+**ancestry** (`git merge-base --is-ancestor <sha> HEAD`, which no wording can
+defeat) **and** **content** (the guard is present in the file, which no bad
+merge resolution can fake). Neither is the property; together they bracket it.
+
+Two checks on the pair, in this order:
+
+- **Are they at different layers?** Topology, text, process, time, external
+  observation. Layers are enumerable; failure modes are not, which is why this
+  check is safe to rely on. "CI is green" and "the merge commit exists" are
+  both *did the pipeline do its thing* — same layer, shared failures by
+  construction.
+- **Can you name a single failure that defeats both?** If yes, they are not
+  independent — pick again. Cheap, and it catches the obvious case.
+
+**Grade a failing check as *insufficient* or *inverted*, because they need
+opposite responses.** An insufficient check misses some failures and leaves you
+appropriately uncertain — supplement it. An **inverted** check passes
+*specifically in the failure case*, because the thing it keys on is the
+signature of what is going wrong; it manufactures confidence exactly where
+alarm is warranted. **Delete an inverted check**, never supplement it: a
+passing check nobody has invalidated will be cited later by someone who was not
+here. The same applies to a check with a *guaranteed false positive* — it
+trains you to explain rows away, and that habit cannot distinguish the noise
+from a real finding.
+
+**Pre-commit to what *both* outcomes would mean, before you look.** This is
+routinely done only for the outcome you fear, which is backwards — **the result
+you are relaxed about is the one whose interpretation goes unexamined, and it
+is the one you will quote later.** A review section dispatched knowing a
+negative result would indict the *comment* must not have its positive result
+read as vindicating the *design*.
+
+**Check the scope of a claim against the claim, not against what you happened
+to be looking at.** A correct trace of one configuration is not a property of
+the system; an audit of the file you edited is not an audit of the property.
+Both errors have the same cause — the scope came from the work in front of you
+rather than from the sentence you are about to write.
+
+**A sufficient explanation is not the cause.** When a symptom is
+over-determined, every mechanism you find fully accounts for it, so each one
+*feels* complete — nothing is left unexplained. The tell is not weak evidence;
+it is that more than one mechanism could produce this symptom. Ask that
+question explicitly before concluding, and when two candidates are **in
+series**, note that a test of the first is informative in one direction only:
+if nothing reaches the second, you have learned nothing about it while
+believing you ran the decisive test.
+
+**A contradiction between two sources is information, not noise.** Two
+plausible statements that cannot both be true will sit there indefinitely
+because letting them coexist costs nothing visible, and resolving one always
+looks like a detour. Treat it as work. On this repo it has repeatedly been the
+thing that surfaced the real cause — including a user report that contradicted
+a decisive code trace, where **both were right**: the code had not changed, and
+the behaviour had, because a fresh install reset a setting.
+
+**Verify claims about process infrastructure as rigorously as claims about
+code.** They are just as falsifiable and far less scrutinised — a prediction
+about how CI, a ruleset, or a tool behaves reads exactly like a report of it
+having happened, especially when it comes from a source that has been reliable
+all day. Watch it happen, or say you have not.
+
+**Before dispatching an instruction to an agent, check it against the
+constraints you are the one enforcing.** A human implementer who holds the
+append-only rule reads "amend the pushed commits" and refuses; an agent
+complies. The safety property a human executor provides for free is absent, so
+the check moves upstream into instruction-writing. **Trigger on the
+operation's *effect*, not on whether it names a git verb** — *does this create,
+move, delete or rewrite a ref, a worktree, or history?* The most destructive
+tools here (`rename_branch`, `archive_session`, `create_session` with
+`base_branch`) contain no git verb at all.
+
 ## Coding conventions
 
 - **Reuse over reinvention** (see step 3) — the most important one.
