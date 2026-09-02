@@ -37475,7 +37475,27 @@ public class ChatActivity extends BaseFragment implements
                             groupChildIds(m)));
                 }
                 if (targets.isEmpty()) return;
-                if (!com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this)) {
+                // NagramX: a non-null triggerConfig means the user opted into the shared "Send on event"
+                // chip, so arm one shared trigger across the whole selection at finalization. Build the
+                // armer's album child-id snapshot from the SAME re-resolved items the targets came from
+                // (never a live re-expansion), and hand it in as the executor's arming hooks. The bolt is
+                // revealed only at finalization, on exactly the rows that armed, through the private
+                // condition overload of updateVisibleRows (which forces a re-measure); the predicate
+                // null-guards because getMessageObject() can be null for a cell.
+                com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.TriggerArmingHooks hooks = null;
+                if (triggerConfig != null) {
+                    java.util.List<int[]> selectionAlbumIds = new ArrayList<>(items.size());
+                    for (int i = 0; i < items.size(); i++) {
+                        selectionAlbumIds.add(groupChildIds(items.get(i)));
+                    }
+                    hooks = new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer(
+                            currentAccount, dialog_id, triggerConfig, selectionAlbumIds,
+                            armedIds -> updateVisibleRows(msg -> msg != null && armedIds.contains(msg.getId())));
+                }
+                final boolean started = hooks != null
+                        ? com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this, hooks)
+                        : com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this);
+                if (!started) {
                     BulletinFactory.of(ChatActivity.this).createSimpleBulletin(R.raw.error, LocaleController.getString(R.string.RescheduleBusy)).show();
                     return;
                 }
