@@ -358,9 +358,16 @@ public final class EventScheduleHelper {
             // NagramX: this is a UI-only clamp so the sheet doesn't seed itself (thumb + label) above the
             // max from a stale EventScheduleLastDelay preference recorded before this cap shipped (a
             // pre-cap seed can still hold 60/300s). It is not what actually enforces the cap on a new
-            // arm -- delayFromExistingTrigger is a seed-time snapshot that can go stale by commit time, so
-            // the real enforcement is EventScheduleStore.resolveAndClaimForEdit's fresh-entry branch,
-            // which re-decides existing-vs-new atomically with the ownership check itself.
+            // arm going through the edit path -- delayFromExistingTrigger is a seed-time snapshot that can
+            // go stale by commit time, so that enforcement is EventScheduleStore.resolveAndClaimForEdit's
+            // fresh-entry branch, which re-decides existing-vs-new atomically with the ownership check
+            // itself.
+            //
+            // But for the non-edit brand-new-schedule path (armPending, below), this clamp IS load-bearing:
+            // armPending persists directly and never goes through resolveAndClaimForEdit's gate, so there is
+            // no atomic re-check behind it here. If a future change to this sheet ever removes this clamp,
+            // a stale pre-cap EventScheduleLastDelay (60/300s) will arm a brand-new trigger uncapped with
+            // nothing left to catch it.
             if (!delayFromExistingTrigger && delay > delayValues[delayValues.length - 1]) {
                 delay = delayValues[delayValues.length - 1];
             }

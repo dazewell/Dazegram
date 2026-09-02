@@ -210,6 +210,16 @@ public final class EventScheduleStore {
      * updating that owner and still land in the fresh branch here if the owner fired or was removed
      * between when the caller's data was seeded and this call -- so the fresh branch enforces the cap
      * itself rather than trusting whatever the caller decided at seed time.
+     *
+     * <p>Being the single matched candidate is not by itself grandfathering: another operation can create
+     * a replacement at-or-under the cap for the same ids after a legacy owner is gone, and a stale caller
+     * can then land on that replacement as its "single candidate". So the update branch below only lets an
+     * incoming out-of-range delay through when the candidate's own current {@code delaySeconds} -- read
+     * before this call touches it -- already exceeds the cap; otherwise it clamps like the fresh branch
+     * does. Invariant this leaves in place, checkable by grepping every {@code delaySeconds =} in this
+     * class: every assignment either clamps to {@link EventScheduleEntry#MAX_NEW_DELAY_SECONDS}, or writes
+     * onto an entry whose own {@code delaySeconds} already exceeded it. Equivalently, the only entries with
+     * {@code delaySeconds > MAX_NEW_DELAY_SECONDS} are ones loaded from disk that way.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
             int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,
@@ -237,7 +247,18 @@ public final class EventScheduleStore {
             target.types = types;
             target.pattern = pattern == null ? "" : pattern;
             target.regex = regex;
-            target.delaySeconds = delaySeconds;
+            // NagramX: read the candidate's own delay before writing it -- being the single matched
+            // candidate is not itself grandfathering (a replacement can have been created at-or-under the
+            // cap for these ids after a legacy owner disappeared, and a stale caller can land on that
+            // replacement as its "single candidate"). Only an incoming delay above the cap landing on an
+            // entry whose CURRENT delay already exceeds the cap is let through unclamped; anything else is
+            // clamped like the fresh branch below. Must be captured before this assignment, not read back
+            // from target.delaySeconds after -- reading post-assignment would see the value just written
+            // and always pass, silently reopening this same bug.
+            int previousDelaySeconds = target.delaySeconds;
+            target.delaySeconds = previousDelaySeconds > EventScheduleEntry.MAX_NEW_DELAY_SECONDS
+                    ? delaySeconds
+                    : Math.min(delaySeconds, EventScheduleEntry.MAX_NEW_DELAY_SECONDS);
             target.fallbackDate = fallbackDate;
             target.bindGroupedId = 0;
             target.bindExpiresAt = 0;
@@ -257,9 +278,12 @@ public final class EventScheduleStore {
         // NagramX: this is the actual point a trigger becomes newly created, re-decided in this same
         // synchronized scope rather than trusted from whatever the caller believed when the sheet was
         // seeded -- a caller can believe it's updating a live single owner and still land here if that
-        // owner fired or was removed between seed time and this call. An out-of-range delay is only ever
-        // legitimate for a trigger that already existed (the update branch above, untouched); a genuinely
-        // fresh entry must never exceed the cap regardless of what delaySeconds carries in.
+        // owner fired or was removed between seed time and this call. A genuinely fresh entry has no prior
+        // delay to grandfather against, so it is always clamped here regardless of what delaySeconds
+        // carries in. Invariant (see the update branch above for the other half): every assignment to
+        // delaySeconds in this class either clamps to MAX_NEW_DELAY_SECONDS, or writes onto an entry whose
+        // own delaySeconds already exceeded it -- so the only entries ever above the cap are ones loaded
+        // from disk that way.
         fresh.delaySeconds = Math.min(delaySeconds, EventScheduleEntry.MAX_NEW_DELAY_SECONDS);
         fresh.fallbackDate = fallbackDate;
         fresh.createdAt = freshCreatedAt;
