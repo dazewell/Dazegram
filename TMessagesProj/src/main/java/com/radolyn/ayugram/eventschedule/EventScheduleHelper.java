@@ -74,15 +74,17 @@ public final class EventScheduleHelper {
     private static int editAccount;
     private static long editDialogId;
     private static int[] editMessageIds;
+    private static int[] editLocalIds;
     private static Runnable editOnChanged;
 
     private EventScheduleHelper() {}
 
-    public static void armEdit(int account, long dialogId, int[] messageIds, Runnable onChanged) {
+    public static void armEdit(int account, long dialogId, int[] messageIds, int[] localIds, Runnable onChanged) {
         editPending = true;
         editAccount = account;
         editDialogId = dialogId;
         editMessageIds = messageIds;
+        editLocalIds = localIds;
         editOnChanged = onChanged;
     }
 
@@ -94,9 +96,11 @@ public final class EventScheduleHelper {
         // leak into a later sheet, but never let it prefill a bulk chip.
         boolean editHere = !bulkMode && editPending && editAccount == account && editDialogId == dialogId;
         int[] editIds = editHere ? editMessageIds : null;
+        int[] editLocals = editHere ? editLocalIds : null;
         Runnable onChanged = editHere ? editOnChanged : null;
         editPending = false;
         editMessageIds = null;
+        editLocalIds = null;
         editOnChanged = null;
 
         // NagramX: the bulk Reschedule sheet is the one forcedTitle+reschedule sheet that wants the chip;
@@ -124,7 +128,7 @@ public final class EventScheduleHelper {
             return null;
         }
 
-        Row row = new Row(account, dialogId, editIds, onChanged);
+        Row row = new Row(account, dialogId, editIds, editLocals, onChanged);
 
         TextView chip = new TextView(context);
         chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
@@ -221,10 +225,15 @@ public final class EventScheduleHelper {
         final int account;
         final long dialogId;
         final int[] editIds;
-        final EventScheduleEntry editEntry;
+        final int[] editLocalIds;
         final Runnable onChanged;
 
         boolean enabled;
+        // Whether the user actually operated the trigger controls this time (hit Done to arm, or Clear to
+        // turn off). The schedule picker fires commit() even on an edit where the trigger was never
+        // touched, so without this an untouched edit would run a mutation off the seeded state alone --
+        // and in the pre-existing multi-owner case that mutation is a destructive turn-off.
+        boolean userTouchedTrigger;
         int types;
         String pattern;
         boolean regex;
@@ -233,15 +242,22 @@ public final class EventScheduleHelper {
 
         TextView chip;
 
-        Row(int account, long dialogId, int[] editIds, Runnable onChanged) {
+        Row(int account, long dialogId, int[] editIds, int[] editLocalIds, Runnable onChanged) {
             this.account = account;
             this.dialogId = dialogId;
             this.editIds = editIds;
+            this.editLocalIds = editLocalIds;
             this.onChanged = onChanged;
-            EventScheduleEntry existing = editIds != null && editIds.length > 0
-                    ? EventScheduleStore.findByMessage(account, dialogId, editIds[0]) : null;
-            this.editEntry = existing;
-            if (existing != null) {
+            // Seed the controls from any trigger this message already has, resolved the same exact-id way
+            // as commit (all edit ids + local ids) so a still-pending owner shows as armed instead of off.
+            // Only an unambiguous single owner seeds the controls "on"; a MULTI conflict stays off and is
+            // left for the user to resolve explicitly, never auto-changed. This is a UI seed only -- the
+            // arming decision at commit re-resolves ownership from scratch.
+            EventScheduleStore.OwnerSeed seed = editIds != null && editIds.length > 0
+                    ? EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, editIds, editLocalIds)
+                    : new EventScheduleStore.OwnerSeed(EventScheduleStore.EditOwner.NONE, null);
+            if (seed.kind == EventScheduleStore.EditOwner.SINGLE) {
+                EventScheduleEntry existing = seed.entry;
                 enabled = true;
                 types = existing.types;
                 pattern = existing.pattern;
@@ -393,6 +409,7 @@ public final class EventScheduleHelper {
             if (enabled) {
                 builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                     enabled = false;
+                    userTouchedTrigger = true;
                     updateChip();
                     return kotlin.Unit.INSTANCE;
                 });
@@ -421,6 +438,7 @@ public final class EventScheduleHelper {
                 }
                 int newDelay = delayValues[delayIndex[0]];
                 enabled = true;
+                userTouchedTrigger = true;
                 types = newTypes;
                 pattern = newPattern;
                 regex = newRegex;
@@ -474,13 +492,55 @@ public final class EventScheduleHelper {
 
         @Override
         public void commit(int scheduleDate, int repeatPeriod) {
+            // NOTE: this decision tree (!userTouchedTrigger -> refresh / armed -> arm / else off) has an
+            // async twin in EventScheduleController.finishCommitEdit, reached via reconcileThenCommitEdit
+            // just below when a durable orphan forces a storage hop first. They diverge on purpose: this
+            // synchronous path calls refresh() (it owns the open sheet's overview) and reaches the common
+            // no-reconcile case, while the twin runs after dismiss with no fragment, so it repaints on its
+            // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
-            if (editEntry != null) {
+            if (editIds != null && editIds.length > 0) {
+                // Editing an existing scheduled message. The schedule picker fires this commit even when the
+                // user never opened the trigger controls, so a schedule-only edit must not reconfigure or
+                // remove a trigger the user never chose to change -- otherwise it reads as a turn-off and
+                // destroys durable state in the pre-existing multi-owner case.
+                if (EventScheduleController.needsCommitReconcile(account, dialogId)) {
+                    // Rare: an unbound entry in this dialog still carries only durable correlation keys (a
+                    // restart orphan the warm reconcile has not healed yet). Resolve it to current server
+                    // ids first so the edit can't create a second trigger beside it. Runs async after the
+                    // sheet dismisses; on failure the controller shows the toast itself. No fragment or
+                    // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
+                    EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
+                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate);
+                    return;
+                }
+                if (!userTouchedTrigger) {
+                    // The user changed the send time but never opened the trigger controls, so leave the
+                    // trigger's configuration exactly as it is. fallbackDate is derived from the message's
+                    // schedule time, not trigger config, so it must still track the new time -- a stale
+                    // value prunes the trigger on reload and mis-orders the send queue. Only ever refreshes
+                    // a lone owner; a multi-owner conflict or none is untouched, so the destructive case
+                    // (an untouched edit reading as a turn-off) stays closed.
+                    EventScheduleController.commitEditRefresh(account, dialogId, editIds, editLocalIds,
+                            scheduleDate);
+                    return;
+                }
+                // Re-resolve ownership at commit across both id spaces rather than trusting the seed, so a
+                // trigger armed or turned off in the meantime is handled correctly and the same message
+                // can't end up with two triggers.
                 if (armed) {
-                    EventScheduleController.updateForEdit(account, editEntry, types, pattern, regex, delay, scheduleDate);
+                    boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
+                            types, pattern, regex, delay, scheduleDate);
+                    if (!claimed) {
+                        // Another trigger already owns this message (only reachable against data a prior
+                        // defect persisted). Leave every trigger untouched; the schedule-date edit still
+                        // proceeds, so tell the user the trigger specifically was not changed.
+                        AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
+                        return;
+                    }
                 } else {
-                    EventScheduleStore.remove(account, editEntry);
+                    EventScheduleController.commitEditOff(account, dialogId, editIds, editLocalIds);
                 }
                 refresh();
                 return;
@@ -489,21 +549,6 @@ public final class EventScheduleHelper {
                 // Trigger explicitly off: drop only still-unclaimed pending arms in this dialog.
                 EventScheduleController.killUnclaimedForDialog(account, dialogId);
                 pendingEntryKey = null;
-                return;
-            }
-            if (editIds != null && editIds.length > 0) {
-                // Editing a scheduled message that had no trigger: attach directly to its server ids.
-                EventScheduleEntry entry = new EventScheduleEntry();
-                entry.dialogId = dialogId;
-                for (int id : editIds) entry.serverIds.add(id);
-                entry.types = types;
-                entry.pattern = pattern == null ? "" : pattern;
-                entry.regex = regex;
-                entry.delaySeconds = delay;
-                entry.fallbackDate = scheduleDate;
-                entry.createdAt = System.currentTimeMillis();
-                EventScheduleController.armExisting(account, entry);
-                refresh();
                 return;
             }
             EventScheduleEntry entry = new EventScheduleEntry();

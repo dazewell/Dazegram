@@ -36717,14 +36717,23 @@ public class ChatActivity extends BaseFragment implements
                 // Only when the picker will actually build (parent non-null), so the one-shot can't linger and pin this fragment.
                 if (getParentActivity() != null) {
                     int[] naxEventIds;
+                    int[] naxEventLocalIds;
                     if (group != null && !group.messages.isEmpty()) {
                         naxEventIds = new int[group.messages.size()];
-                        for (int a = 0; a < group.messages.size(); a++) naxEventIds[a] = group.messages.get(a).getId();
+                        naxEventLocalIds = new int[group.messages.size()];
+                        for (int a = 0; a < group.messages.size(); a++) {
+                            naxEventIds[a] = group.messages.get(a).getId();
+                            naxEventLocalIds[a] = group.messages.get(a).messageOwner.local_id;
+                        }
                     } else {
                         naxEventIds = new int[]{message.getId()};
+                        naxEventLocalIds = new int[]{message.messageOwner.local_id};
                     }
+                    // NagramX: the negative local_id echo lets the sheet re-find a still-pending trigger at
+                    // commit that a positive-id lookup would miss, so it can't arm a second trigger on the
+                    // same message. All snapshots here are read once and never written again.
                     // NagramX: re-measure (not just repaint) the affected rows so the bolt marker's width change lands immediately.
-                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
+                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
                 }
                 AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {

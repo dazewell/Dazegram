@@ -48,6 +48,12 @@ public final class EventScheduleEntry {
     // Local echo ids (negative) claimed from scheduled-batch updates; used as the exact
     // remap key when messageReceivedByServer arrives.
     public final ArrayList<Integer> localIds = new ArrayList<>();
+    // Durable per-message correlation keys (Telegram random_id, non-zero for any sent message and
+    // stable across restart), one captured per claimed album child. localIds/serverIds drive the live
+    // bind; these are the durable fallback used only when the live remap was missed, resolved back to
+    // current server ids through randoms_v2 at warm. A well-formed entry keeps a strict one-to-one map
+    // between distinct randomIds and its resolved server ids -- see the reconcile's injectivity guard.
+    public final ArrayList<Long> randomIds = new ArrayList<>();
     public int types;
     public String pattern = "";
     public boolean regex;
@@ -58,7 +64,7 @@ public final class EventScheduleEntry {
     public long bindGroupedId;
     public long bindExpiresAt;
     public int state = STATE_ARMED;
-    // Bumped on the UI thread on every edit (updateForEdit) to detect a stale in-flight
+    // Bumped on the UI thread on every edit (through resolveAndClaimForEdit) to detect a stale in-flight
     // arm/fire against the queue below; always read and written on the UI thread (armWaiting,
     // fire, and their runOnUIThread callbacks), never from the background matcher queue --
     // see PatternState for the separate, atomically-published state the matcher itself reads.
@@ -136,9 +142,9 @@ public final class EventScheduleEntry {
     /**
      * Returns this entry's current pattern-matching state, initializing it from the
      * pattern/regex/revision fields on first call if the entry has never been edited since
-     * construction (armExisting/armPending/fromJson all fully set pattern/regex before the
-     * entry is ever added to the store, so by the time anything can call this, they're
-     * already final for this generation). Must only be called from the UI thread -- the only
+     * construction (armPending/fromJson -- and the no-caller armExisting compat path -- all fully set
+     * pattern/regex before the entry is ever added to the store, so by the time anything can call this,
+     * they're already final for this generation). Must only be called from the UI thread -- the only
      * caller is {@link EventScheduleController#evaluate}, which captures the returned state
      * before handing a match off to the background queue; matching and any needed compile
      * both then run against that one captured object (see {@link #matchesPattern}).
@@ -155,15 +161,20 @@ public final class EventScheduleEntry {
     }
 
     /**
-     * Called on the UI thread by {@code updateForEdit} after it has updated
-     * pattern/regex/revision, to swap in a fresh, uncompiled state for the new revision. This
-     * is a plain reference replacement, not a CAS -- the UI thread is the only thread that
-     * ever calls this method, so there is nothing else to race here. What matters is what
-     * this replacement does to a background compile that is still in flight against the
-     * *previous* PatternState object: once this call returns, that object is no longer
-     * reachable from {@link #patternState}, so the compile's eventual
-     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to
-     * fail no matter when it runs relative to this swap.
+     * Called on the UI thread after an edit has updated pattern/regex/revision, to swap in a
+     * fresh, uncompiled state for the new revision. The live edit path reaches here through
+     * {@link EventScheduleStore#resolveAndClaimForEdit}, which mutates the selected entry and
+     * then calls this. The {@code updateForEdit} compatibility method (no caller in this tree) would
+     * reach here too, but it is not on any live path.
+     * This is a plain reference replacement, not a CAS: every caller runs on the UI thread, so
+     * this method is single-threaded by that precondition and there is nothing to race against
+     * here -- note the {@code synchronized} on the store's claim method gives mutual exclusion,
+     * not thread affinity, so it is the UI-thread-only callers, not that lock, that make the
+     * plain {@code set} safe. What matters is what this replacement does to a background compile
+     * still in flight against the *previous* PatternState object: once this call returns, that
+     * object is no longer reachable from {@link #patternState}, so the compile's eventual
+     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to fail
+     * no matter when it runs relative to this swap.
      */
     void resetPatternState() {
         patternState.set(new PatternState(revision, pattern, regex, null, false));
@@ -272,6 +283,9 @@ public final class EventScheduleEntry {
             JSONArray local = new JSONArray();
             for (int id : localIds) local.put(id);
             o.put("local_ids", local);
+            JSONArray randoms = new JSONArray();
+            for (long id : randomIds) randoms.put(id);
+            o.put("random_ids", randoms);
             o.put("types", types);
             o.put("pattern", pattern == null ? "" : pattern);
             o.put("regex", regex);
@@ -299,6 +313,10 @@ public final class EventScheduleEntry {
             JSONArray local = o.optJSONArray("local_ids");
             if (local != null) {
                 for (int i = 0; i < local.length(); i++) e.localIds.add(local.getInt(i));
+            }
+            JSONArray randoms = o.optJSONArray("random_ids");
+            if (randoms != null) {
+                for (int i = 0; i < randoms.length(); i++) e.randomIds.add(randoms.getLong(i));
             }
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");
