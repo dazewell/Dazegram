@@ -37029,9 +37029,12 @@ public class ChatActivity extends BaseFragment implements
 
     @Override
     public boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment) {
-        // NagramX: #repost-spread. Consume-and-clear the one-shot interval channel on the exact
-        // didSelectDialogs the confirmation caused, before any early return can leave it armed. (C1)
+        // NagramX: #repost-spread. Consume-and-clear the one-shot interval and drop-author channels on
+        // the exact didSelectDialogs the confirmation caused, before any early return can leave them
+        // armed. The drop-author choice is request-local to the forward picker; fall back to the shared
+        // static only when this picker's Send menu never made a choice. (C1, IMPORTANT 1)
         final int forwardSpreadInterval = fragment != null ? fragment.consumeForwardSpreadInterval() : 0;
+        final Boolean forwardSpreadFromMyNameArmed = fragment != null ? fragment.consumeForwardSpreadFromMyName() : null;
         if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
             return false;
         }
@@ -37071,16 +37074,18 @@ public class ChatActivity extends BaseFragment implements
             }
         }
 
-        // NagramX: #repost-spread. Snapshot the drop-author/caption flags now, before the paid
-        // confirmation callback below (which can run asynchronously) - never re-read the mutable
-        // ChatActivity.noForwardQuote static from inside the callback. Then capture the immutable
-        // slots and run ONE whole-dispatch pre-flight up front, so no comment or first-target send
-        // can go out before the whole selection has been admitted. The interval channel plus a
-        // schedule date is what marks this dispatch a spread; forwarding via the field panel (a
-        // single message/album) is never one. Pre-flight admission is atomic for the conditions
-        // observed here only - a cache hit reserves nothing, so a later eviction or upload failure
-        // still leaves the delete offer unarmed (property 8). (C4)
-        final boolean naxFromMyName = noForwardQuote;
+        // NagramX: #repost-spread. Resolve the drop-author/caption flags now, before the paid
+        // confirmation callback below (which can run asynchronously). The drop-author choice comes from
+        // the picker's request-local channel consumed above (static fallback only for a plain non-menu
+        // forward), so another chat flipping the ChatActivity.noForwardQuote static can't retarget this
+        // dispatch; the caption flag isn't user-toggleable in this picker, so its static snapshot here is
+        // enough. Then capture the immutable slots and run ONE whole-dispatch pre-flight up front, so no
+        // comment or first-target send can go out before the whole selection has been admitted. The
+        // interval channel plus a schedule date is what marks this dispatch a spread; forwarding via the
+        // field panel (a single message/album) is never one. Pre-flight admission is atomic for the
+        // conditions observed here only - a cache hit reserves nothing, so a later eviction or upload
+        // failure still leaves the delete offer unarmed (property 8). (C4, IMPORTANT 1)
+        final boolean naxFromMyName = forwardSpreadFromMyNameArmed != null ? forwardSpreadFromMyNameArmed : noForwardQuote;
         final boolean naxHideCaption = noForwardCaption;
         boolean naxSpread = forwardSpreadInterval > 0 && scheduleDate != 0 && forwardingMessage == null;
         ArrayList<ArrayList<MessageObject>> naxSlotsTmp = null;
