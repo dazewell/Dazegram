@@ -28,8 +28,11 @@ import java.util.Set;
  * durable orphans are reconciled first -- a step that MAY yield to a storage hop -- and only once that
  * reconcile completes is the whole selection published in a single UI-thread turn. So the safety
  * argument is deliberately NOT "one synchronous turn": it rests on the admission suppression, the
- * deletion collector, the run's (account, dialogId) generation and each target's owner revision all
- * spanning that hop -- see finalizeOnUi for the full statement. Progressive arming is deliberately
+ * deletion collector, the run's (account, dialogId) generation and each target's owner revision and
+ * scheduleRevision all spanning that hop -- see finalizeOnUi for the full statement. Publication is
+ * conditional: if an unbound durable orphan survives that reconcile the whole selection is declined --
+ * dialog-scoped by definition, so transient and retryable rather than a per-target failure -- see
+ * finalizeAfterReconcile for why the decline spans the dialog. Progressive arming is deliberately
  * avoided -- a trigger firing mid-run would enrol only the armed prefix and leave the rest needing a
  * second key phrase, which is the exact problem this feature exists to remove.
  *
@@ -140,10 +143,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private final HashSet<String> suppressed = new HashSet<>();
 
     // C2: each album's ownership state as seen at admission, keyed by the album's canonical server-id
-    // key (see albumKey). NONE / exact SINGLE(key+revision) / MULTI. Immediately before arming, the same
-    // resolution is re-run and must still match: an owner created, removed, replaced, or re-authored
-    // (revision bumped) since admission means a later single-message edit landed mid-run, so that target
-    // is rejected rather than overwritten. A MULTI album is rejected outright.
+    // key (see albumKey): NONE / SINGLE(key+revision+scheduleRevision) / MULTI. Re-checked immediately
+    // before arming and rejected on any change -- see ownershipUnchangedForArm.
     private final HashMap<String, AdmissionOwnership> admissionByAlbum = new HashMap<>();
     // Parallel local ids per album (same canonical key), so finalization can re-resolve ownership across
     // BOTH id spaces from an outcome that carries only server ids.
@@ -219,12 +220,10 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     sendingAtAdmissionIds.addAll(live.serverIds);
                 }
             }
-            // Classify this album's ownership PER CHILD (C1). Aggregate owner counting can't tell a
-            // fully-owned album from a partially-owned one: an owned child plus an unowned child collapse
-            // to a single distinct owner, and the commit-time merge in resolveAndClaimForEdit would then
-            // annex the unowned child into that owner. A count can't answer a question about every child --
-            // an unowned child contributes nothing to it and is invisible to the very check meant to catch
-            // it -- so classifyAlbumOwnership iterates the children and demands unanimity.
+            // Classify this album's ownership PER CHILD via classifyAlbumOwnership -- do NOT derive it
+            // from the aggregate `owners` list resolved just above for suppression. That list is a
+            // collapsed set, and a distinct-owner count over it can't tell a fully-owned album from a
+            // partially-owned one, which is exactly the mixture that must reject (why: classifyAlbumOwnership).
             admissionByAlbum.put(ak, classifyAlbumOwnership(album.serverIds, album.localIds));
         }
     }
@@ -247,7 +246,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         // the hop is still recorded and still rejects its target), and -- rechecked in
         // finalizeAfterReconcile immediately after the reconcile and immediately before each mutation --
         // the run's (account, dialogId) generation (an overtaken run fails closed) and each target's exact
-        // owner key + revision (a later single-message edit wins). Reconcile this dialog's unbound durable
+        // owner key + revision + scheduleRevision (a later single-message edit -- a trigger change or a
+        // schedule-time move -- wins). Reconcile this dialog's unbound durable
         // orphans to current server ids first, then finalize; reconcileDialogThen always runs its callback
         // on the UI thread (synchronously when there are no orphans, the common case).
         EventScheduleController.reconcileDialogThen(account, dialogId, () ->
@@ -334,11 +334,12 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     }
                     // A later single-message edit wins over this in-flight bulk arm (C2/C4). Re-resolve
                     // this album's ownership across both id spaces and require it to be EXACTLY what
-                    // admission saw: still ownerless, or still the same single owner at the same revision.
-                    // An owner created since admission (there was none, now there is), removed (turned off),
-                    // replaced, or re-authored (revision bumped -- including a schedule-only time change,
-                    // which the controller now advances) means the user acted mid-run, so yield rather than
-                    // overwrite. A target that was multi-owned at admission is rejected outright here.
+                    // admission saw: still ownerless, or still the same single owner at the same revision
+                    // and scheduleRevision. An owner created since admission (there was none, now there is),
+                    // removed (turned off), replaced, re-authored (revision bumped), or whose schedule time
+                    // moved (scheduleRevision bumped by an untouched-trigger edit) means the user acted
+                    // mid-run, so yield rather than overwrite. A target that was multi-owned at admission is
+                    // rejected outright here.
                     if (!ownershipUnchangedForArm(o.albumIds)) {
                         notArmed++;
                         continue;
@@ -419,9 +420,17 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     // C2: is this album's ownership still exactly what admission recorded? Re-runs the SAME per-child
     // classification (classifyAlbumOwnership) and compares to the admission snapshot. A NONE album must
     // still have every child ownerless; a SINGLE must still be every child the same owner key at the same
-    // revision; a MULTI (or an album with no admission snapshot) is never armed. Any owner created,
-    // removed, replaced, re-authored, or a child that fell out of a formerly unanimous owner since
-    // admission is a later single-message edit that wins over this bulk arm.
+    // revision AND the same scheduleRevision; a MULTI (or an album with no admission snapshot) is never
+    // armed. Any owner created, removed, replaced, re-authored (revision bumped), or whose schedule time
+    // moved (scheduleRevision bumped) since admission, or a child that fell out of a formerly unanimous
+    // owner, is a later single-message edit that wins over this bulk arm.
+    //
+    // Both revisions are process-local and reset to 0 on restart, so a capture from before a process
+    // death would compare equal to one after it -- a false match. That cannot happen here: this
+    // comparison and the admission capture both run within one run's lifetime, and the run cannot span a
+    // process death because the armer instance, its suppression holds and the run generation are all
+    // process-local and vanish with the process. A reader who moves either capture outside that single
+    // run, or persists an entry between them, breaks this and must restore a persisted comparison key.
     private boolean ownershipUnchangedForArm(int[] albumServerIds) {
         AdmissionOwnership snap = admissionByAlbum.get(albumKey(albumServerIds));
         if (snap == null) return false;
@@ -433,7 +442,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             case SINGLE:
                 return now.kind == EventScheduleStore.EditOwner.SINGLE
                         && snap.ownerKey.equals(now.ownerKey)
-                        && snap.ownerRevision == now.ownerRevision;
+                        && snap.ownerRevision == now.ownerRevision
+                        && snap.ownerScheduleRevision == now.ownerScheduleRevision;
             default:
                 return false;
         }
@@ -451,6 +461,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private AdmissionOwnership classifyAlbumOwnership(int[] serverIds, @Nullable int[] localIds) {
         String commonKey = null;
         long commonRevision = 0;
+        long commonScheduleRevision = 0;
         boolean anyOwned = false;
         boolean anyNone = false;
         for (int i = 0; i < serverIds.length; i++) {
@@ -458,7 +469,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             int[] childLocal = (localIds != null && i < localIds.length) ? new int[]{localIds[i]} : null;
             EventScheduleStore.OwnerSeed seed = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, childServer, childLocal);
             if (seed.kind == EventScheduleStore.EditOwner.MULTI) {
-                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0, 0);
             }
             if (seed.kind == EventScheduleStore.EditOwner.NONE) {
                 anyNone = true;
@@ -469,19 +480,20 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             if (commonKey == null) {
                 commonKey = key;
                 commonRevision = seed.entry.revision;
+                commonScheduleRevision = seed.entry.scheduleRevision;
             } else if (!commonKey.equals(key)) {
-                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0, 0);
             }
         }
         if (anyOwned && anyNone) {
             // Partial ownership -- some children owned, some not. Rejecting here is what stops the
             // commit-time merge from annexing the unowned children into the partial owner.
-            return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+            return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0, 0);
         }
         if (!anyOwned) {
-            return new AdmissionOwnership(EventScheduleStore.EditOwner.NONE, null, 0);
+            return new AdmissionOwnership(EventScheduleStore.EditOwner.NONE, null, 0, 0);
         }
-        return new AdmissionOwnership(EventScheduleStore.EditOwner.SINGLE, commonKey, commonRevision);
+        return new AdmissionOwnership(EventScheduleStore.EditOwner.SINGLE, commonKey, commonRevision, commonScheduleRevision);
     }
 
     // Canonical key for an album, order-independent, so a finalization outcome (which carries only
@@ -494,17 +506,19 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return sb.toString();
     }
 
-    // One album's ownership as seen at admission (C2). SINGLE carries the exact owner key and revision;
-    // NONE and MULTI carry neither.
+    // One album's ownership as seen at admission (C2). SINGLE carries the exact owner key, revision and
+    // scheduleRevision; NONE and MULTI carry none of them.
     private static final class AdmissionOwnership {
         final EventScheduleStore.EditOwner kind;
         final String ownerKey;
         final long ownerRevision;
+        final long ownerScheduleRevision;
 
-        AdmissionOwnership(EventScheduleStore.EditOwner kind, String ownerKey, long ownerRevision) {
+        AdmissionOwnership(EventScheduleStore.EditOwner kind, String ownerKey, long ownerRevision, long ownerScheduleRevision) {
             this.kind = kind;
             this.ownerKey = ownerKey;
             this.ownerRevision = ownerRevision;
+            this.ownerScheduleRevision = ownerScheduleRevision;
         }
     }
 

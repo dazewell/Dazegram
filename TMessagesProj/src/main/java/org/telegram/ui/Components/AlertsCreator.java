@@ -4902,8 +4902,9 @@ public class AlertsCreator {
                 final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
                 // NagramX: with "Remember" on, store the offset just confirmed so the next sheet opens on it.
                 ScheduleTimeHelper.rememberOffset(currentDate, naxReschedule, naxSeededAt, calendar.getTimeInMillis());
-                // NagramX: hand the bulk-mode chip's captured trigger (null when Off) to the caller so it
-                // can arm every rescheduled message on the same trigger after each edit lands.
+                // NagramX: hand the bulk-mode chip's captured trigger (null when Off) to the caller, which
+                // applies it to the selection once at finalization -- not per message as each edit lands,
+                // which would let a mid-run match enrol only the messages armed so far.
                 reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds,
                         naxEventRow != null ? naxEventRow.snapshot() : null);
                 builder.getDismissRunnable().run();

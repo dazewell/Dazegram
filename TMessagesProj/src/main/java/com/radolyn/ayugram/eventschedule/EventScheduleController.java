@@ -527,12 +527,20 @@ public final class EventScheduleController {
      * Keeps an existing single owner's derived schedule time in step when the user edits a scheduled
      * message's send time without touching the trigger controls. Never creates, removes, or
      * reconfigures a trigger -- a multi-owner conflict or no owner is left exactly as it is. Re-sorts
-     * the owner's queue bucket so the fallback-time send order the overview promises stays correct. When
-     * the time actually moves it also advances the owner's observable revision (C2): a schedule-only edit
+     * the owner's queue bucket so the fallback-time send order the overview promises stays correct
+     * (resortQueueForEntry leaves a STATE_SENDING head alone -- its RPC owns the queue). When the time
+     * actually moves it advances the owner's process-local scheduleRevision (C2): a schedule-only edit
      * is still a later single-message edit that an in-flight bulk arm must yield to, and the bulk
-     * finalizer detects that only by an exact-revision recheck. refreshFallbackForEdit deliberately does
-     * not bump revision (it is not a trigger reconfigure), so the wrapper does it here -- only on a real
-     * move, or a spurious bump would make the bulk arm needlessly reject an untouched target.
+     * finalizer detects that by an exact scheduleRevision recheck. It bumps scheduleRevision, NOT
+     * revision: revision is the send pipeline's staleness token (fire/retryHeadSend/onSendError), and
+     * bumping it while a send RPC is outstanding makes a later error read as stale and stall the queue.
+     * Bumped only on a real move, or a spurious bump would make the bulk arm needlessly reject an
+     * untouched target.
+     *
+     * <p>INVARIANT: this method is the sole funnel for an untouched-trigger schedule move. The
+     * scheduleRevision signal is only as complete as this funnel -- any future path that moves an
+     * owner's fallbackDate MUST bump scheduleRevision here (or route through here), or a concurrent
+     * bulk arm will miss the edit and arm from a stale snapshot.
      */
     public static void commitEditRefresh(int account, long dialogId, int[] serverIds, int[] localIds, int fallbackDate) {
         EventScheduleStore.OwnerSeed seed = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, serverIds, localIds);
@@ -542,8 +550,9 @@ public final class EventScheduleController {
                 account, dialogId, serverIds, localIds, fallbackDate);
         if (entry != null) {
             if (moved) {
-                entry.revision++;
-                EventScheduleStore.persist(account, entry);
+                // Process-local, not persisted (refreshFallbackForEdit already persisted the moved
+                // fallbackDate; scheduleRevision itself is never serialized -- see EventScheduleEntry).
+                entry.scheduleRevision++;
             }
             resortQueueForEntry(account, entry);
         }
@@ -1015,11 +1024,15 @@ public final class EventScheduleController {
     // re-drive: a bucket only exists while it is being driven (armWaiting creates it and immediately
     // advances; advanceQueue removes it once drained), so a live bucket always has a pending fire
     // callback, and fire/retryHeadSend re-read queue.get(0) and hand off to the new head on their own.
-    // In practice the entry isn't queued during a schedule edit anyway -- a still-scheduled message
-    // hasn't been sent, so its owner is armed/pending, not WAITING -- making this a guarded no-op.
+    // A STATE_SENDING entry is the exception and must NOT be reordered: its sendScheduledMessages RPC
+    // is outstanding and it owns the head, so moving it would let fire/retryHeadSend hand the queue to
+    // a different entry and issue a second send while the first RPC is still in flight. Leave it in
+    // place; it drops out of the queue on its own when the send completes (success removes it, error
+    // re-arms and advances).
     private static void resortQueueForEntry(int account, EventScheduleEntry entry) {
         QueueState queueState = QUEUES.get(queueKey(account, entry));
         if (queueState == null) return;
+        if (entry.state == EventScheduleEntry.STATE_SENDING) return;
         ArrayList<EventScheduleEntry> queue = queueState.entries;
         if (!queue.contains(entry)) return;
         Collections.sort(queue, QUEUE_ORDER);
