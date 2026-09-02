@@ -298,7 +298,11 @@ public final class EventScheduleController {
             entry.bindExpiresAt = 0;
         }
         entry.state = EventScheduleEntry.STATE_ARMED;
-        entry.resetCompiled();
+        // Swaps in a fresh, uncompiled pattern-state for the new revision -- this reference
+        // replacement (not a flag reset) is what guarantees a background compile still in
+        // flight against the pre-edit state can never publish over it: see
+        // EventScheduleEntry#resetPatternState / #compileAndPublish.
+        entry.resetPatternState();
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
     }
@@ -430,11 +434,15 @@ public final class EventScheduleController {
                     continue;
                 }
                 if (!patternSet || text == null) continue;
-                final long revision = entry.revision;
+                // Captured once, on the UI thread, before crossing to the background queue --
+                // matching and any needed compile both run against this one immutable
+                // snapshot, so they can't observe two different generations of the pattern
+                // (see EventScheduleEntry#capturePatternState / #matchesPattern).
+                final EventScheduleEntry.PatternState patternState = entry.capturePatternState();
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
-                    if (!entry.matchesPattern(text)) return;
-                    AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key, revision));
+                    if (!entry.matchesPattern(patternState, text)) return;
+                    AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key, patternState.revision));
                 });
             }
         }

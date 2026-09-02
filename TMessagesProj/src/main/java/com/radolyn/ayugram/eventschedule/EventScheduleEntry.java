@@ -9,6 +9,7 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 /**
@@ -57,10 +58,11 @@ public final class EventScheduleEntry {
     public long bindGroupedId;
     public long bindExpiresAt;
     public int state = STATE_ARMED;
+    // Bumped on the UI thread on every edit (updateForEdit) to detect a stale in-flight
+    // arm/fire against the queue below; always read and written on the UI thread (armWaiting,
+    // fire, and their runOnUIThread callbacks), never from the background matcher queue --
+    // see PatternState for the separate, atomically-published state the matcher itself reads.
     public long revision;
-
-    private volatile Pattern compiled;
-    private volatile boolean compileFailed;
 
     public String key() {
         return dialogId + "_" + createdAt;
@@ -82,32 +84,126 @@ public final class EventScheduleEntry {
         return false;
     }
 
-    public boolean matchesPattern(CharSequence text) {
-        if (TextUtils.isEmpty(pattern)) return true;
-        if (text == null) return false;
-        if (compileFailed) return false;
-        if (compiled == null) {
-            try {
-                int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
-                // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
-                // and quotes put text on its own line; a regex author can ask for the same with (?s).
-                if (!regex) flags |= Pattern.DOTALL;
-                compiled = Pattern.compile(regex ? pattern : globToRegex(pattern), flags);
-            } catch (Throwable t) {
-                compileFailed = true;
-                return false;
+    /**
+     * Immutable snapshot of one edit generation's pattern-matching state -- revision, the
+     * pattern/regex it was set to, and (once available) the compiled result for that exact
+     * pattern/regex -- published as a whole through the single {@link #patternState}
+     * reference. Bundling all of it into one object, rather than tracking revision and the
+     * compiled Pattern as separate fields, is what lets {@link #compileAndPublish} publish a
+     * compile result with a single {@code compareAndSet}: the CAS can only succeed against
+     * the exact object it was compiled from, so a background compile still in flight when an
+     * edit lands ({@link #resetPatternState}) can never win a race and publish over the edit
+     * -- there is no separate "is this still current" check that a newer edit could land
+     * between, the swap itself is the only thing that decides it.
+     */
+    static final class PatternState {
+        final long revision;
+        final String pattern;
+        final boolean regex;
+        final Pattern compiled; // null until compiled, or if compilation failed
+        final boolean failed;
+
+        PatternState(long revision, String pattern, boolean regex, Pattern compiled, boolean failed) {
+            this.revision = revision;
+            this.pattern = pattern;
+            this.regex = regex;
+            this.compiled = compiled;
+            this.failed = failed;
+        }
+    }
+
+    // Starts null: capturePatternState() lazily seeds it from the pattern/regex/revision
+    // fields on first access, which is always on the UI thread (see evaluate()), so that
+    // lazy init never races a background compile. Every later generation only ever exists
+    // because resetPatternState() (also UI-thread-only) put it there.
+    private final AtomicReference<PatternState> patternState = new AtomicReference<>();
+
+    /**
+     * Returns this entry's current pattern-matching state, initializing it from the
+     * pattern/regex/revision fields on first call if the entry has never been edited since
+     * construction (armExisting/armPending/fromJson all fully set pattern/regex before the
+     * entry is ever added to the store, so by the time anything can call this, they're
+     * already final for this generation). Must only be called from the UI thread -- the only
+     * caller is {@link EventScheduleController#evaluate}, which captures the returned state
+     * before handing a match off to the background queue; matching and any needed compile
+     * both then run against that one captured object (see {@link #matchesPattern}).
+     */
+    PatternState capturePatternState() {
+        PatternState current = patternState.get();
+        if (current == null) {
+            current = new PatternState(revision, pattern, regex, null, false);
+            if (!patternState.compareAndSet(null, current)) {
+                current = patternState.get();
             }
         }
+        return current;
+    }
+
+    /**
+     * Called on the UI thread by {@code updateForEdit} after it has updated
+     * pattern/regex/revision, to swap in a fresh, uncompiled state for the new revision. This
+     * is a plain reference replacement, not a CAS -- the UI thread is the only thread that
+     * ever calls this method, so there is nothing else to race here. What matters is what
+     * this replacement does to a background compile that is still in flight against the
+     * *previous* PatternState object: once this call returns, that object is no longer
+     * reachable from {@link #patternState}, so the compile's eventual
+     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to
+     * fail no matter when it runs relative to this swap.
+     */
+    void resetPatternState() {
+        patternState.set(new PatternState(revision, pattern, regex, null, false));
+    }
+
+    /**
+     * @param state the exact PatternState the caller captured via {@link #capturePatternState}
+     *              on the UI thread before posting this match to the background queue --
+     *              matching and any needed compile both happen against this one immutable
+     *              object, so the pattern that was matched and the compiled form used are
+     *              always guaranteed to be the same generation.
+     */
+    public boolean matchesPattern(PatternState state, CharSequence text) {
+        if (TextUtils.isEmpty(state.pattern)) return true;
+        if (text == null) return false;
+
+        if (state.compiled == null && !state.failed) {
+            state = compileAndPublish(state);
+        }
+        if (state.failed) return false;
+
         CharSequence input = text.length() > MAX_MATCH_LEN ? text.subSequence(0, MAX_MATCH_LEN) : text;
         // Both modes hit anywhere in the text: a trigger word is nearly always part of a longer
         // message, and anchoring is what regex mode is for.
-        return compiled.matcher(input).find();
+        return state.compiled.matcher(input).find();
     }
 
-    /** Forget the compiled pattern so a changed pattern/regex-mode recompiles on next match. */
-    public void resetCompiled() {
-        compiled = null;
-        compileFailed = false;
+    /**
+     * Compiles {@code state.pattern}/{@code state.regex} and tries to publish the compiled
+     * result back onto {@link #patternState} with {@code compareAndSet(state, ...)} -- an
+     * atomic swap against the exact object this compile started from, not a separate
+     * check-then-write. If an edit has already replaced {@link #patternState} with a newer
+     * generation in the meantime (via {@link #resetPatternState}), the object identity no
+     * longer matches and the CAS simply fails: the freshly compiled result is still returned
+     * so the caller (one in-flight match) gets a correct answer for the generation it asked
+     * about, but it is never retried and never written anywhere else, so a stale compile can
+     * never overwrite a newer edit's state -- there is no window between "check" and "write"
+     * for a newer edit to land in, because the compareAndSet is the only write and it either
+     * happens atomically against the captured object or not at all.
+     */
+    private PatternState compileAndPublish(PatternState state) {
+        Pattern compiledPattern = null;
+        boolean failed = false;
+        try {
+            int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+            // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
+            // and quotes put text on its own line; a regex author can ask for the same with (?s).
+            if (!state.regex) flags |= Pattern.DOTALL;
+            compiledPattern = Pattern.compile(state.regex ? state.pattern : globToRegex(state.pattern), flags);
+        } catch (Throwable t) {
+            failed = true;
+        }
+        PatternState compiledState = new PatternState(state.revision, state.pattern, state.regex, compiledPattern, failed);
+        patternState.compareAndSet(state, compiledState);
+        return compiledState;
     }
 
     private static String globToRegex(String glob) {
