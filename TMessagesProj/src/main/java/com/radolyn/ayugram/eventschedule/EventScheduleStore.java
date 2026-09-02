@@ -105,6 +105,12 @@ public final class EventScheduleStore {
     }
 
     public static synchronized void persist(int account, EventScheduleEntry entry) {
+        // NagramX: the single runtime enforcement point for the delay cap. persist() is the common
+        // durability boundary every live writer funnels through -- resolveAndClaimForEdit's both branches,
+        // armPending (before it ever reaches addPending/pending state), and the bulk armer's claim-and-persist
+        // -- so clamping here once covers all of them without a clamp duplicated at each call site (and
+        // without a future writer being able to forget one, the way a per-branch clamp could).
+        entry.delaySeconds = Math.min(entry.delaySeconds, EventScheduleEntry.MAX_DELAY_SECONDS);
         HashMap<String, EventScheduleEntry> m = cache(account);
         m.put(entry.key(), entry);
         try {
@@ -203,6 +209,10 @@ public final class EventScheduleStore {
      * of; the no-caller armExisting compat path checks it too):
      * arming a trigger against ids the server has not issued yields one that reports live but can never
      * fire, the #256 defect class.
+     *
+     * <p>Neither branch below clamps {@code delaySeconds} itself -- the delay cap is enforced once, in
+     * {@link #persist}, the common durability boundary both branches (and every other live writer) funnel
+     * through, so it can't drift out of sync between them.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
             int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,

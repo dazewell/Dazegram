@@ -39,6 +39,12 @@ public final class EventScheduleEntry {
     public static final int STATE_WAITING = 1;
     public static final int STATE_SENDING = 2;
 
+    // The delay cap: no armed trigger may exceed this, at rest or newly created -- enforced at load
+    // (fromJson, for legacy disk data) and at the actual persistence boundary (EventScheduleStore.persist,
+    // for every runtime writer). Single source of truth shared with the sheet's top slider stop
+    // (EventScheduleHelper) so the two can't drift apart.
+    public static final int MAX_DELAY_SECONDS = 30;
+
     // A user-typed regex has no timeout; cap the input it runs against so a pathological
     // pattern on a huge caption can't stall the queue it's evaluated on.
     private static final int MAX_MATCH_LEN = 2048;
@@ -332,7 +338,12 @@ public final class EventScheduleEntry {
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");
             e.regex = o.optBoolean("regex");
-            e.delaySeconds = o.optInt("delay");
+            // NagramX: clamp legacy disk data on the way in -- a trigger armed before this cap existed, or
+            // before it was lowered, can carry a delay above the current MAX_DELAY_SECONDS. This is the
+            // enforcement point for every entry that predates the running process; a value already >0 and
+            // within range passes through unchanged, so this is a no-op for every entry this feature has
+            // ever written under the current cap.
+            e.delaySeconds = Math.min(o.optInt("delay"), MAX_DELAY_SECONDS);
             e.fallbackDate = o.optInt("fallback");
             e.createdAt = o.optLong("created");
             e.bindGroupedId = o.optLong("bind_group");
