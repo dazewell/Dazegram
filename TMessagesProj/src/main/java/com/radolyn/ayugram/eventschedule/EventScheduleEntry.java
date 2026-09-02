@@ -68,6 +68,21 @@ public final class EventScheduleEntry {
         return dialogId + "_" + createdAt;
     }
 
+    // A well-formed entry holds only strictly positive, server-addressable ids in serverIds and only
+    // negative correlation echoes in localIds. A serverId <= 0 means an in-flight local id was bound as
+    // if the server had issued it (the trigger reports live but can never fire); a localId >= 0 is the
+    // same corruption from the other side. Such an entry is dropped whole at load, never repaired by
+    // stripping ids -- stripping a mixed album would silently leave a partial trigger, the same bug.
+    public boolean hasInvalidIds() {
+        for (int id : serverIds) {
+            if (id <= 0) return true;
+        }
+        for (int id : localIds) {
+            if (id >= 0) return true;
+        }
+        return false;
+    }
+
     public String triggerKey() {
         return types + ":" + regex + ":" + (pattern == null ? "" : pattern);
     }

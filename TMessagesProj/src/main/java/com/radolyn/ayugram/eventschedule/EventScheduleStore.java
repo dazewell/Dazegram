@@ -68,7 +68,11 @@ public final class EventScheduleStore {
                     EventScheduleEntry entry = v instanceof String ? EventScheduleEntry.fromJson((String) v) : null;
                     // Keep the serverIds.isEmpty() guard first: pre-bindExpires builds only persisted
                     // bound rows, so testing an absent bind_expires_at independently would drop legacy data.
+                    // hasInvalidIds() migrates entries orphaned by an older build that bound an in-flight
+                    // local id into serverIds -- they read as live armed triggers but can never fire, so
+                    // drop the whole entry here rather than let it surface as a phantom armed row.
                     if (entry == null || entry.fallbackDate + 300 < now
+                            || entry.hasInvalidIds()
                             || (entry.serverIds.isEmpty() && entry.localIds.isEmpty()
                             && (entry.bindExpiresAt <= 0 || entry.bindExpiresAt <= now))) {
                         if (ed == null) ed = sp.edit();

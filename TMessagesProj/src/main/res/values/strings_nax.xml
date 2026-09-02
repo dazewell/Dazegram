@@ -524,6 +524,7 @@
     <string name="NumberedRepliesSent_other">%1$d numbered replies sent</string>
     <string name="EventScheduleTrigger">Send on event</string>
     <string name="EventScheduleTriggerOff">Off</string>
+    <string name="EventScheduleTriggerInFlight">Available after all messages finish sending. Reopen this sheet to add a trigger.</string>
     <string name="EventScheduleTitle">Send early on event</string>
     <string name="EventScheduleTypeText">Text message</string>
     <string name="EventScheduleSectionType">By message type</string>
