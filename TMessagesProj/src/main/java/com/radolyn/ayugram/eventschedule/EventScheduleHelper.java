@@ -192,6 +192,11 @@ public final class EventScheduleHelper {
         final Runnable onChanged;
 
         boolean enabled;
+        // Whether the user actually operated the trigger controls this time (hit Done to arm, or Clear to
+        // turn off). The schedule picker fires commit() even on an edit where the trigger was never
+        // touched, so without this an untouched edit would run a mutation off the seeded state alone --
+        // and in the pre-existing multi-owner case that mutation is a destructive turn-off.
+        boolean userTouchedTrigger;
         int types;
         String pattern;
         boolean regex;
@@ -209,11 +214,14 @@ public final class EventScheduleHelper {
             this.onChanged = onChanged;
             // Seed the controls from any trigger this message already has, resolved the same two-space way
             // as commit (all edit ids + local ids, then the date fallback) so a still-pending owner shows
-            // as armed instead of off. This is a UI seed only -- the arming decision at commit re-resolves
-            // ownership from scratch, so a snapshot taken here can't route a stale entry.
-            EventScheduleEntry existing = editIds != null && editIds.length > 0
-                    ? EventScheduleStore.resolveSingleOwnerForEdit(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate) : null;
-            if (existing != null) {
+            // as armed instead of off. Only an unambiguous single owner seeds the controls "on"; a MULTI
+            // conflict stays off and is left for the user to resolve explicitly, never auto-changed. This is
+            // a UI seed only -- the arming decision at commit re-resolves ownership from scratch.
+            EventScheduleStore.OwnerSeed seed = editIds != null && editIds.length > 0
+                    ? EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate)
+                    : new EventScheduleStore.OwnerSeed(EventScheduleStore.EditOwner.NONE, null);
+            if (seed.kind == EventScheduleStore.EditOwner.SINGLE) {
+                EventScheduleEntry existing = seed.entry;
                 enabled = true;
                 types = existing.types;
                 pattern = existing.pattern;
@@ -365,6 +373,7 @@ public final class EventScheduleHelper {
             if (enabled) {
                 builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                     enabled = false;
+                    userTouchedTrigger = true;
                     updateChip();
                     return kotlin.Unit.INSTANCE;
                 });
@@ -393,6 +402,7 @@ public final class EventScheduleHelper {
                 }
                 int newDelay = delayValues[delayIndex[0]];
                 enabled = true;
+                userTouchedTrigger = true;
                 types = newTypes;
                 pattern = newPattern;
                 regex = newRegex;
@@ -444,10 +454,16 @@ public final class EventScheduleHelper {
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
             if (editIds != null && editIds.length > 0) {
-                // Editing an existing scheduled message. Re-resolve ownership at commit across both id
-                // spaces plus the schedule-date fallback rather than trusting a snapshot from when the
-                // sheet opened, so a trigger armed or turned off in the meantime is handled correctly and
-                // the same message can't end up with two triggers.
+                // Editing an existing scheduled message. The schedule picker fires this commit even when the
+                // user never opened the trigger controls, so a schedule-only edit must leave every trigger
+                // exactly as it is -- otherwise it reads as a turn-off and removes owners the user never
+                // chose to drop, which in the pre-existing multi-owner case silently destroys durable state.
+                if (!userTouchedTrigger) {
+                    return;
+                }
+                // Re-resolve ownership at commit across both id spaces plus the schedule-date fallback rather
+                // than trusting the seed, so a trigger armed or turned off in the meantime is handled
+                // correctly and the same message can't end up with two triggers.
                 if (armed) {
                     boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
                             editOriginalScheduleDate, types, pattern, regex, delay, scheduleDate);

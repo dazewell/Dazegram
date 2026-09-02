@@ -264,19 +264,39 @@ public final class EventScheduleStore {
         return new EditClaim(EditClaim.Status.CLAIMED_FRESH, fresh, null);
     }
 
+    /** Which ownership state the edit sheet found for its message: nothing, exactly one owner, or a conflict. */
+    public enum EditOwner { NONE, SINGLE, MULTI }
+
+    /** Seed result for the edit sheet -- an explicit tri-state so a conflict can never read as "no trigger". */
+    public static final class OwnerSeed {
+        public final EditOwner kind;
+        public final EventScheduleEntry entry;   // non-null only for SINGLE
+
+        OwnerSeed(EditOwner kind, EventScheduleEntry entry) {
+            this.kind = kind;
+            this.entry = entry;
+        }
+    }
+
     /**
-     * Read-only single-owner resolution for seeding the edit sheet's controls. Uses the same two-space
-     * (ids + date fallback) scan as the arm path so a still-pending owner -- which a positive-serverId
-     * lookup would miss -- shows as armed rather than off; otherwise a schedule-only edit would read as a
-     * turn-off and drop that owner. Returns null for zero or multiple candidates (defaults / conflict).
-     * Selects only; mutates nothing.
+     * Read-only ownership resolution for seeding the edit sheet's controls, as an explicit tri-state.
+     * Uses the same two-space (ids + date fallback) scan as the arm path so a still-pending owner -- which
+     * a positive-serverId lookup would miss -- shows as armed rather than off. MULTI is kept distinct from
+     * NONE so a pre-existing multi-owner conflict is never seeded as an ordinary off, which would let an
+     * untouched schedule-only edit destroy it. Selects only; mutates nothing.
      */
-    public static synchronized EventScheduleEntry resolveSingleOwnerForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
+    public static synchronized OwnerSeed resolveOwnerSeedForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
         ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
         if (candidates.isEmpty()) {
             candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
         }
-        return candidates.size() == 1 ? candidates.get(0) : null;
+        if (candidates.isEmpty()) {
+            return new OwnerSeed(EditOwner.NONE, null);
+        }
+        if (candidates.size() == 1) {
+            return new OwnerSeed(EditOwner.SINGLE, candidates.get(0));
+        }
+        return new OwnerSeed(EditOwner.MULTI, null);
     }
 
     /** Owner keys to drop when a trigger is turned off while editing -- same two-space resolution as the arm path. */
