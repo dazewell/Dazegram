@@ -14091,6 +14091,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             if (hideBottomNavigationBar && NaConfig.INSTANCE.getShowAddToBookmark().Bool()) {
                 io.add(R.drawable.msg_fave, getString(R.string.BookmarksManager), () -> presentFragment(new BookmarkManagerActivity()));
             }
+            // NagramX: mirrors Recent/Archived/Bookmarks above -- this menu is the only way to
+            // reach the Chats long-press options when the bottom nav is hidden.
+            if (hideBottomNavigationBar) {
+                com.radolyn.ayugram.eventschedule.MessageTriggersMenu.addTo(io, this);
+            }
             if (NekoConfig.showGhostInDrawer.Bool()) {
                 final String ghostModeText = NekoConfig.isGhostModeActive()
                         ? getString(R.string.DisableGhostMode)
