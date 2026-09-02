@@ -543,14 +543,10 @@
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
     <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
     <string name="EventScheduleBatchStalled">Trigger stopped partway. The rest will send when the trigger matches again.</string>
-    <plurals name="EventScheduleBulkOverwrite">
-        <item quantity="one">%1$d selected message already has a trigger — turning this on replaces it</item>
-        <item quantity="other">%1$d selected messages already have a trigger — turning this on replaces them</item>
-    </plurals>
-    <plurals name="EventScheduleBulkTriggerArmed">
-        <item quantity="one">Trigger added to %1$d message</item>
-        <item quantity="other">Trigger added to %1$d messages</item>
-    </plurals>
+    <string name="EventScheduleBulkOverwrite_one">%1$d selected message already has a trigger — turning this on replaces it</string>
+    <string name="EventScheduleBulkOverwrite_other">%1$d selected messages already have a trigger — turning this on replaces them</string>
+    <string name="EventScheduleBulkTriggerArmed_one">Trigger added to %1$d message</string>
+    <string name="EventScheduleBulkTriggerArmed_other">Trigger added to %1$d messages</string>
     <string name="EventScheduleBulkTriggerPartial">Trigger added to %1$d of %2$d — the rest were left as scheduled</string>
     <string name="EventScheduleBulkTriggerNotApplied">Couldn\'t confirm the trigger, so none was added. Add the trigger again if you want it.</string>
     <string name="EventScheduleBulkTriggerDialogBusy">This chat is still confirming an earlier trigger, so none were added. Try adding the trigger again in a moment.</string>
