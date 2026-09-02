@@ -4330,6 +4330,28 @@ public class AlertsCreator {
         }
     }
 
+    // NagramX: #repost-spread. A drop-header forward destined for the schedule list spreads its slots
+    // over base + interval instead of stamping one shared time. The sheet keeps its normal
+    // datePickerDelegate (which drives the existing didSelectDialogs path); this only injects the
+    // interval row and hands the chosen interval back the instant before that confirm fires, all on
+    // one synchronous confirm tap. slotCount is the number of scheduled sends (an album is one),
+    // messageCount is the total messages behind them (the preview label).
+    public interface ForwardSpreadIntervalDelegate {
+        void onIntervalSelected(int intervalSeconds);
+    }
+
+    public static class ForwardSpread {
+        public final int slotCount;
+        public final int messageCount;
+        public final ForwardSpreadIntervalDelegate delegate;
+
+        public ForwardSpread(int slotCount, int messageCount, ForwardSpreadIntervalDelegate delegate) {
+            this.slotCount = slotCount;
+            this.messageCount = messageCount;
+            this.delegate = delegate;
+        }
+    }
+
     public static class ScheduleDatePickerColors {
 
         public final int textColor;
@@ -4424,6 +4446,13 @@ public class AlertsCreator {
         return createScheduleDatePickerDialog(context, getString(R.string.RescheduleMessages), dialogId, currentDate, 0, true, null, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, new RescheduleSpread(messageCount, armedCount, triggerReady, rescheduleDelegate));
     }
 
+    // NagramX: #repost-spread entry point. Reuses the schedule sheet (identical base-time wheels and
+    // validation) with the normal datePickerDelegate, but injects the interval row and returns the
+    // chosen interval through forwardSpread just before the delegate fires. See DialogsActivity.
+    public static BottomSheet.Builder createForwardSpreadDatePickerDialog(Context context, long dialogId, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, Theme.ResourcesProvider resourcesProvider, final ForwardSpread forwardSpread) {
+        return createScheduleDatePickerDialog(context, null, dialogId, -1, 0, false, datePickerDelegate, cancelRunnable, new ScheduleDatePickerColors(resourcesProvider), resourcesProvider, null, false, 0, forwardSpread);
+    }
+
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule) {
         return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, false, 0);
     }
@@ -4443,6 +4472,12 @@ public class AlertsCreator {
     // video passes 180 so segment 0 is never past-due once the +120s per-segment spacing is applied; every
     // other entry point passes 0 and keeps the stock behaviour. See InfiniteVideoScheduleHelper.
     public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule, final boolean isEditSchedule, final int minLeadSeconds) {
+        return createScheduleDatePickerDialog(context, forcedTitle, dialogId, currentDate, currentRepeatPeriod, doNotShowReminder, datePickerDelegate, cancelRunnable, datePickerColors, resourcesProvider, reschedule, isEditSchedule, minLeadSeconds, null);
+    }
+
+    // NagramX: #repost-spread threads the ForwardSpread through as the last param. It's null for every
+    // stock/reschedule/edit/infinite entry point above; only createForwardSpreadDatePickerDialog sets it.
+    public static BottomSheet.Builder createScheduleDatePickerDialog(Context context, String forcedTitle, long dialogId, long currentDate, int currentRepeatPeriod, boolean doNotShowReminder, final ScheduleDatePickerDelegate datePickerDelegate, final Runnable cancelRunnable, final ScheduleDatePickerColors datePickerColors, Theme.ResourcesProvider resourcesProvider, final RescheduleSpread reschedule, final boolean isEditSchedule, final int minLeadSeconds, final ForwardSpread forwardSpread) {
         if (context == null) {
             return null;
         }
@@ -4706,6 +4741,14 @@ public class AlertsCreator {
                     dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
         }
 
+        // NagramX: #repost-spread reuses the same interval row. The span is slot count (an album is
+        // one send); the preview label counts messages behind those slots.
+        if (forwardSpread != null && forwardSpread.slotCount >= 2) {
+            intervalControls[0] = com.radolyn.ayugram.reschedule.RescheduleSpreadHelper.addIntervalControls(
+                    context, container, forwardSpread.slotCount, forwardSpread.messageCount, datePickerColors.textColor,
+                    dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
+        }
+
         // NagramX: on the scheduled-infinite sheet, explain the +2min spacing and the best-effort ordering caveat.
         if (minLeadSeconds > 0) {
             com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
@@ -4742,7 +4785,11 @@ public class AlertsCreator {
 
         // NagramX: "Send on event" trigger chip; null unless this is a plain forward schedule to a real
         // chat, or the bulk Reschedule sheet (which passes its own bulk context so the chip can appear).
+        // #repost-spread: whenever forward-spread controls are active the trigger row is explicitly
+        // impossible - a per-slot spread and a single shared trigger can't both own the send times.
+        // This does not lean on dialogId == -1: the row is suppressed outright.
         final com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerRow naxEventRow =
+                forwardSpread != null ? null :
                 com.radolyn.ayugram.eventschedule.EventScheduleHelper.addTriggerRow(
                         context, container, UserConfig.selectedAccount, dialogId, selfUserId,
                         isReschedule, forcedTitle != null,
@@ -4907,6 +4954,26 @@ public class AlertsCreator {
                 // which would let a mid-run match enrol only the messages armed so far.
                 reschedule.delegate.didSelectReschedule((int) (calendar.getTimeInMillis() / 1000), intervalSeconds,
                         naxEventRow != null ? naxEventRow.snapshot() : null);
+                builder.getDismissRunnable().run();
+                return;
+            }
+            // NagramX: #repost-spread. Minute-align the base and capture the interval, then hand the
+            // interval back (synchronous) and fire the normal schedule delegate - DialogsActivity writes
+            // its one-shot field in onIntervalSelected, then the existing didSelectDialogs path consumes
+            // it. No trigger row exists here (suppressed above), so nothing to commit.
+            if (forwardSpread != null) {
+                if (intervalControls[0] != null && !intervalControls[0].isValid()) {
+                    return;
+                }
+                calendar.set(Calendar.SECOND, 0);
+                calendar.set(Calendar.MILLISECOND, 0);
+                if (calendar.getTimeInMillis() < System.currentTimeMillis() + 60000L) {
+                    calendar.add(Calendar.MINUTE, 1);
+                }
+                final int intervalSeconds = intervalControls[0] != null ? intervalControls[0].getIntervalSeconds() : 0;
+                ScheduleTimeHelper.rememberOffset(currentDate, naxReschedule, naxSeededAt, calendar.getTimeInMillis());
+                forwardSpread.delegate.onIntervalSelected(intervalSeconds);
+                datePickerDelegate.didSelectDate(notify[0], (int) (calendar.getTimeInMillis() / 1000), repeat[0]);
                 builder.getDismissRunnable().run();
                 return;
             }

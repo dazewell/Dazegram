@@ -1412,7 +1412,14 @@ public class MessageHelper extends BaseController {
             if (repostMarkerParamsBySource != null && markerParams == null) {
                 result.allDispatched = false;
             }
-            boolean batchMedia = messageObject != null && messageObject.messageOwner != null && !messageObject.isRoundVideo() && (messageObject.isPhoto() || messageObject.isVideo());
+            // NagramX: a grouped document/music album has to copy as one server album too, not shatter
+            // into N independent sends - route an album-member document (non-zero group id) through the
+            // same media batch, which prepareSendingMedia groups under one id. Lone documents keep the
+            // singular path in the else branch, which preserves their attributes as before.
+            boolean batchMedia = messageObject != null && messageObject.messageOwner != null && !messageObject.isRoundVideo()
+                    && (messageObject.isPhoto() || messageObject.isVideo()
+                        || (messageObject.getDocument() != null && messageObject.getGroupIdForUse() != 0
+                            && !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji()));
             if (batchMedia) {
                 String path = getPathToMessage(messageObject, currentAccount);
                 long groupId = messageObject.getGroupIdForUse();
@@ -1460,6 +1467,73 @@ public class MessageHelper extends BaseController {
             flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
             result.sentAny = true;
         }
+        return result;
+    }
+
+    // NagramX: split a forward selection into copy-spread slots for #repost-spread. A slot is one
+    // scheduled send: an album (every message sharing a non-zero grouped_id) is one slot; every
+    // other message is its own slot. Slots come from captured album membership - grouping by
+    // grouped_id, never assuming equal ids are consecutive in the list - and keep the caller's
+    // order (each slot sits at the position of its first member), so the [merge box][current box]
+    // ascending order the forward chokepoint already built is preserved without a global sort.
+    public ArrayList<ArrayList<MessageObject>> buildCopySpreadSlots(ArrayList<MessageObject> messages) {
+        ArrayList<ArrayList<MessageObject>> slots = new ArrayList<>();
+        if (messages == null || messages.isEmpty()) {
+            return slots;
+        }
+        HashMap<Long, ArrayList<MessageObject>> albumSlots = new HashMap<>();
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (messageObject == null) {
+                continue;
+            }
+            long groupId = messageObject.getGroupIdForUse();
+            if (groupId != 0) {
+                ArrayList<MessageObject> slot = albumSlots.get(groupId);
+                if (slot == null) {
+                    slot = new ArrayList<>();
+                    albumSlots.put(groupId, slot);
+                    slots.add(slot);
+                }
+                slot.add(messageObject);
+            } else {
+                ArrayList<MessageObject> slot = new ArrayList<>(1);
+                slot.add(messageObject);
+                slots.add(slot);
+            }
+        }
+        return slots;
+    }
+
+    // NagramX: result of the one whole-dispatch pre-flight for #repost-spread. unsupportedCount is
+    // messages the copy engine can't re-send at all; missingFileCount is messages whose media isn't
+    // in cache right now. The cache check is inherently racy - File.exists() reserves nothing - so
+    // ok means "admissible for the conditions observed here", not a guarantee the send can't still
+    // fail later on eviction, upload error or server rejection (that path leaves deletion unarmed).
+    public static class CopyPreflightResult {
+        public boolean ok;
+        public int unsupportedCount;
+        public int missingFileCount;
+    }
+
+    public CopyPreflightResult preflightSpreadAsCopy(ArrayList<MessageObject> messages) {
+        CopyPreflightResult result = new CopyPreflightResult();
+        if (messages == null || messages.isEmpty()) {
+            return result;
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (!canSendSingleMessageAsCopy(messageObject)) {
+                result.unsupportedCount++;
+                continue;
+            }
+            boolean needsFile = messageObject.messageOwner != null && !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
+                    (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
+            if (needsFile && TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount))) {
+                result.missingFileCount++;
+            }
+        }
+        result.ok = result.unsupportedCount == 0 && result.missingFileCount == 0;
         return result;
     }
 

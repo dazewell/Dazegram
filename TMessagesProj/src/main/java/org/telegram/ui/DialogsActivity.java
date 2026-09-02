@@ -561,6 +561,13 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean checkingImportDialog;
 
     private int messagesCount;
+    // NagramX: #repost-spread. Slot count (albums collapse to one) passed from ChatActivity.openForward,
+    // used only to decide whether the schedule sheet offers the spread interval row.
+    private int forwardSpreadSlotCount;
+    // NagramX: #repost-spread one-shot interval channel. 0 = not armed. Written at schedule-confirm just
+    // before didSelectDate, consumed-and-cleared on entry to ChatActivity.didSelectDialogs, and cleared
+    // on any post-write path that never reaches didSelectDialogs. See consumeForwardSpreadInterval.
+    private int forwardSpreadIntervalSeconds;
     private int hasPoll;
     private boolean hasInvoice;
 
@@ -2898,6 +2905,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             resetDelegate = arguments.getBoolean("resetDelegate", true);
             messagesCount = arguments.getInt("messagesCount", 0);
+            forwardSpreadSlotCount = arguments.getInt("forwardSpreadSlotCount", 0);
             hasPoll = arguments.getInt("hasPoll", 0);
             hasInvoice = arguments.getBoolean("hasInvoice", false);
             showSetPasswordConfirm = arguments.getBoolean("showSetPasswordConfirm", showSetPasswordConfirm);
@@ -12208,6 +12216,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean onSendLongClick(View view) {
         if (getParentActivity() == null) return false;
 
+        // NagramX: #repost-spread. Start every attempt with the interval channel absent, so no stale
+        // interval from a previously aborted confirm can be consumed by a later plain forward. (C1)
+        forwardSpreadIntervalSeconds = 0;
+
         boolean onlyMyself = false;
         boolean canSchedule = true;
         for (int i = 0; i < selectedDialogs.size(); ++i) {
@@ -12263,12 +12275,15 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 delegate.didSelectDialogs(DialogsActivity.this, topicKeys, commentView.getFieldText(), false, notify, scheduleDate, scheduleRepeatPeriod, null);
             })
             .addIf(canSchedule, R.drawable.msg_calendar2, LocaleController.getString(R.string.ScheduleMessage), () -> {
-                AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, new AlertsCreator.ScheduleDatePickerDelegate() {
+                final AlertsCreator.ScheduleDatePickerDelegate scheduleDelegate = new AlertsCreator.ScheduleDatePickerDelegate() {
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         DialogsActivity.this.scheduleDate = scheduleDate;
                         DialogsActivity.this.scheduleRepeatPeriod = scheduleRepeatPeriod;
                         if (delegate == null || selectedDialogs.isEmpty()) {
+                            // NagramX: #repost-spread. Confirm fired but the dispatch never reaches
+                            // didSelectDialogs, so drop any interval written just before us. (C1)
+                            forwardSpreadIntervalSeconds = 0;
                             return;
                         }
                         ArrayList<MessagesStorage.TopicKey> topicKeys = new ArrayList<>();
@@ -12277,11 +12292,29 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         }
                         delegate.didSelectDialogs(DialogsActivity.this, topicKeys, commentView.getFieldText(), false, notify, scheduleDate, scheduleRepeatPeriod, null);
                     }
-                }, getResourceProvider());
+                };
+                // NagramX: #repost-spread. A drop-author forward of >= 2 slots reuses the schedule sheet
+                // with an interval row so each slot lands on its own time. noForwardQuote is read live: it
+                // reflects the Show/Hide senders' name choice made in this same menu above.
+                if (ChatActivity.noForwardQuote && forwardSpreadSlotCount >= 2) {
+                    AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
+                            new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));
+                } else {
+                    AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, getResourceProvider());
+                }
             })
             .show();
 
         return true;
+    }
+
+    // NagramX: #repost-spread. Atomic consume-and-clear of the one-shot interval channel. Returns the
+    // per-slot interval in seconds (0 when this dispatch is not a spread) and zeroes the field so the
+    // exact didSelectDialogs caused by this confirmation is the only reader that can observe it. (C1)
+    public int consumeForwardSpreadInterval() {
+        final int value = forwardSpreadIntervalSeconds;
+        forwardSpreadIntervalSeconds = 0;
+        return value;
     }
 
     private float getRightSlidingProgress() {
