@@ -328,11 +328,12 @@ public final class EventScheduleController {
     /**
      * Temporary compatibility path: arms a trigger on an entry whose server ids are already set. Does
      * NO ownership resolution -- it cannot see whether another entry already owns these ids -- so it is
-     * not the gate for arming during an edit; that is {@link #resolveAndClaimForEdit}. Retained only
-     * because #249's committed finalizer still calls it on its restore path; no new caller should use
-     * it, and #249's migration is expected to route through the ownership gate instead. Kept solely so a
-     * future caller that does reach for it still can't bind an in-flight id and produce a trigger that
-     * reports live but never fires (the #256 defect class).
+     * not the gate for arming during an edit; that is {@link #resolveAndClaimForEdit}. No caller exists in
+     * this tree. The apparent callers on the `2026-09-01-reschedule-trigger` branch are pre-#259 helper
+     * code that this ownership gate supersedes, so they disappear when that branch integrates #259; #249
+     * owns removing this method at its migration. No new caller should use it -- route arming through
+     * {@link #resolveAndClaimForEdit}. Kept meanwhile so that a caller which does reach for it still can't
+     * bind an in-flight id and produce a trigger that reports live but never fires (the #256 defect class).
      */
     public static boolean armExisting(int account, @NonNull EventScheduleEntry entry) {
         if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
@@ -349,8 +350,9 @@ public final class EventScheduleController {
     /**
      * Temporary compatibility path: replaces an already-armed entry's fields in place after an edit.
      * Like {@link #armExisting} it does NO ownership resolution, so it is not the edit gate --
-     * {@link #resolveAndClaimForEdit} is. Retained for symmetry with armExisting and its #249 caller; no
-     * new caller should use it, and migrations go through the ownership gate.
+     * {@link #resolveAndClaimForEdit} is. Same status as armExisting: no caller in this tree, the
+     * `2026-09-01-reschedule-trigger` callers are pre-#259 code the gate supersedes, and removal is #249's
+     * at migration. No new caller should use it.
      */
     public static boolean updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
         // Fail closed before touching any live state -- revision++ and removeFromQueue below mutate the
@@ -623,6 +625,14 @@ public final class EventScheduleController {
         // for arm and off alike and tell the user their trigger settings were left unchanged. The toast is
         // a global, context-free AlertUtil call -- no fragment or delegate is held across the storage hop
         // to reach here.
+        //
+        // The block is deliberately DIALOG-WIDE, not message-scoped: an unresolved orphan (in particular
+        // one pinned by a LOOKUP_ERROR, which stays tracked until a read succeeds) declines trigger arm
+        // AND disarm for EVERY scheduled message in this chat, including edits to unrelated messages,
+        // until the next successful reconcile clears it. That is forced, not a shortcut -- the orphan by
+        // definition has no current id to compare an edit against, so the gate cannot narrow to one
+        // message without reopening the wrong-owner hole this whole change exists to close. The schedule
+        // time still changes on such an edit; only the trigger settings are declined.
         if (EventScheduleStore.hasUnboundRandomEntry(account, dialogId)) {
             AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
             return;

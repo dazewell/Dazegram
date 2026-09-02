@@ -446,6 +446,12 @@ public final class EventScheduleHelper {
 
         @Override
         public void commit(int scheduleDate, int repeatPeriod) {
+            // NOTE: this decision tree (!userTouchedTrigger -> refresh / armed -> arm / else off) has an
+            // async twin in EventScheduleController.finishCommitEdit, reached via reconcileThenCommitEdit
+            // just below when a durable orphan forces a storage hop first. They diverge on purpose: this
+            // synchronous path calls refresh() (it owns the open sheet's overview) and reaches the common
+            // no-reconcile case, while the twin runs after dismiss with no fragment, so it repaints on its
+            // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
             if (editIds != null && editIds.length > 0) {

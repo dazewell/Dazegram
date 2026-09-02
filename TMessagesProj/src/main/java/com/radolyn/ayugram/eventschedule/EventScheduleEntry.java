@@ -142,9 +142,9 @@ public final class EventScheduleEntry {
     /**
      * Returns this entry's current pattern-matching state, initializing it from the
      * pattern/regex/revision fields on first call if the entry has never been edited since
-     * construction (armExisting/armPending/fromJson all fully set pattern/regex before the
-     * entry is ever added to the store, so by the time anything can call this, they're
-     * already final for this generation). Must only be called from the UI thread -- the only
+     * construction (armPending/fromJson -- and the no-caller armExisting compat path -- all fully set
+     * pattern/regex before the entry is ever added to the store, so by the time anything can call this,
+     * they're already final for this generation). Must only be called from the UI thread -- the only
      * caller is {@link EventScheduleController#evaluate}, which captures the returned state
      * before handing a match off to the background queue; matching and any needed compile
      * both then run against that one captured object (see {@link #matchesPattern}).
@@ -164,7 +164,8 @@ public final class EventScheduleEntry {
      * Called on the UI thread after an edit has updated pattern/regex/revision, to swap in a
      * fresh, uncompiled state for the new revision. The live edit path reaches here through
      * {@link EventScheduleStore#resolveAndClaimForEdit}, which mutates the selected entry and
-     * then calls this; the retained {@code updateForEdit} compatibility path calls it too.
+     * then calls this. The {@code updateForEdit} compatibility method (no caller in this tree) would
+     * reach here too, but it is not on any live path.
      * This is a plain reference replacement, not a CAS: every caller runs on the UI thread, so
      * this method is single-threaded by that precondition and there is nothing to race against
      * here -- note the {@code synchronized} on the store's claim method gives mutual exclusion,

@@ -192,7 +192,8 @@ public final class EventScheduleStore {
      * merges into the one existing owner or inserts a collision-free fresh entry -- then persists. The
      * check and the persist are inseparable, and the mutation happens on the live cached object here
      * rather than in the caller, so no caller-side alias can pre-empt a rejection. Fails closed on an
-     * empty or non-positive id set (Required by the same in-flight-id invariant armExisting enforced):
+     * empty or non-positive id set (the same in-flight-id invariant this gate is the sole live enforcer
+     * of; the no-caller armExisting compat path checks it too):
      * arming a trigger against ids the server has not issued yields one that reports live but can never
      * fire, the #256 defect class.
      */
