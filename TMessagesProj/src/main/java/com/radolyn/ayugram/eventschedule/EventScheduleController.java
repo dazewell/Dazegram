@@ -474,6 +474,41 @@ public final class EventScheduleController {
         return true;
     }
 
+    /**
+     * Bulk-arm one target through the same ownership gate as {@link #commitEditArm}, but driven from a
+     * pre-built entry so the caller's batch-local createdAt sequence -- not wall-clock -- seeds a fresh
+     * claim, and reporting the resolved entry's key rather than a bare boolean: on a merge that key is the
+     * existing owner's, not the built entry's, and the caller needs it to release the right suppression
+     * hold. Never removes an entry -- a merge updates the survivor in place, and on the merge path the
+     * existing entry IS the survivor being armed, so a create-then-remove would delete what was just armed.
+     * Returns the resolved entry's key on success (merged or freshly claimed), or null when the store
+     * rejects the claim (multi-owner, or an empty/non-positive id set).
+     */
+    public static String bulkArmSurvivor(int account, long dialogId, @NonNull EventScheduleEntry built) {
+        int[] serverIds = new int[built.serverIds.size()];
+        for (int i = 0; i < serverIds.length; i++) {
+            serverIds[i] = built.serverIds.get(i);
+        }
+        EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
+                account, dialogId, serverIds, null,
+                built.types, built.pattern, built.regex, built.delaySeconds, built.fallbackDate, built.createdAt);
+        if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
+            return null;
+        }
+        if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
+            // The merge changed the entry's fields (and thus its queueKey), so drop it from the bucket it
+            // was queued under before the change, named by the captured previous trigger key. Mirrors
+            // commitEditArm; harmless when the entry was suppressed out of every queue at admission.
+            removeFromQueueByKey(account, queueKey(account, dialogId, claim.previousTriggerKey), claim.entry);
+        }
+        // The entry now carries server ids, so any lingering pending-bind record is stale -- drop it rather
+        // than leave it for GC. A no-op for a freshly claimed entry.
+        removePending(account, claim.entry.key());
+        ensureObserver(account);
+        return claim.entry.key();
+    }
+
     /** Turns a trigger off while editing: drops every owner of the message (bound or still pending). */
     public static void commitEditOff(int account, long dialogId, int[] serverIds, int[] localIds) {
         ArrayList<String> keys = EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, serverIds, localIds);
@@ -670,6 +705,24 @@ public final class EventScheduleController {
         }
         postDurableLookup(account, snaps, () ->
                 finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate));
+    }
+
+    /**
+     * Bulk-arm gate for a whole selection: reconcile this dialog's unbound durable orphans to current
+     * server ids before the caller decides ownership over the selection, then run {@code onDone} on the UI
+     * thread. Mirrors the single-message {@link #reconcileThenCommitEdit}, but stays generic -- the caller
+     * (the bulk armer) does the ownership decision and the dialog-wide gate re-check itself in
+     * {@code onDone}, since a bulk selection is dialog-scoped and an orphan that stays unresolved must
+     * decline the WHOLE selection through the same {@link EventScheduleStore#hasUnboundRandomEntry} gate.
+     * Runs {@code onDone} synchronously when the dialog has no orphan -- the common case, no storage hop.
+     */
+    public static void reconcileDialogThen(int account, long dialogId, @NonNull Runnable onDone) {
+        ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account, dialogId);
+        if (snaps.isEmpty()) {
+            onDone.run();
+            return;
+        }
+        postDurableLookup(account, snaps, onDone);
     }
 
     private static void finishCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,

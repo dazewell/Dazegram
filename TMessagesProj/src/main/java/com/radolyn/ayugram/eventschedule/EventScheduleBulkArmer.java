@@ -3,6 +3,7 @@ package com.radolyn.ayugram.eventschedule;
 import android.util.SparseIntArray;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor;
 
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Arms one shared event-schedule trigger across a bulk reschedule, using deferred atomic
@@ -33,6 +35,16 @@ import java.util.List;
  */
 public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.TriggerArmingHooks {
 
+    /**
+     * Reveals the bolt on the armed rows at finalization. The armer never touches the fragment itself --
+     * the visible-rows refresh it needs is a private ChatActivity overload -- so the fragment hands in a
+     * lambda that carries the armed message ids and forces a re-measure of just those rows. Called once,
+     * on the UI thread, only when the fragment is still alive and at least one target armed.
+     */
+    public interface TriggerRefresh {
+        void revealArmed(@NonNull Set<Integer> armedServerIds);
+    }
+
     private final int account;
     private final long dialogId;
     private final EventScheduleConfig config;
@@ -40,6 +52,10 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     // a live fragment). Used to suppress pre-existing entries at admission and to seed the createdAt
     // sequence above anything already persisted.
     private final List<int[]> selectionAlbumIds;
+    // Reveals the bolt on the armed rows at finalization (nullable: an armer built without a fragment,
+    // e.g. in a test, simply skips the refresh).
+    @Nullable
+    private final TriggerRefresh refresh;
 
     // Keys of the pre-existing entries this run is holding back, mapped to the entry revision seen at
     // admission. The key set is what finalization drains -- every hold this run placed is released,
@@ -65,11 +81,12 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     // fields that are already assigned (a field initializer would run before the constructor body).
     private final NotificationCenter.NotificationCenterDelegate deletionCollector;
 
-    public EventScheduleBulkArmer(int account, long dialogId, @NonNull EventScheduleConfig config, @NonNull List<int[]> selectionAlbumIds) {
+    public EventScheduleBulkArmer(int account, long dialogId, @NonNull EventScheduleConfig config, @NonNull List<int[]> selectionAlbumIds, @Nullable TriggerRefresh refresh) {
         this.account = account;
         this.dialogId = dialogId;
         this.config = config;
         this.selectionAlbumIds = selectionAlbumIds;
+        this.refresh = refresh;
         this.deletionCollector = (id, acc, args) -> {
             if (id != NotificationCenter.messagesDeleted || acc != account) return;
             boolean scheduled = args.length > 2 && args[2] instanceof Boolean && (Boolean) args[2];
@@ -118,14 +135,26 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
     private void finalizeOnUi(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
                               boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
+        // Reconcile this dialog's unbound durable orphans to current server ids before the dialog-wide gate
+        // in finalizeAfterReconcile reads them (synchronous when there are none -- the common case, no
+        // storage hop). The deletion collector stays registered across the hop -- it is removed only in
+        // finalizeAfterReconcile -- so a scheduled-delete that lands during the hop is still recorded and
+        // can still reject its target. reconcileDialogThen always runs its callback on the UI thread.
+        EventScheduleController.reconcileDialogThen(account, dialogId, () ->
+                finalizeAfterReconcile(outcomes, scheduledIds, scheduledDates, authoritative, overlap, rescheduleWrong, rescheduleTotal, fragment));
+    }
+
+    private void finalizeAfterReconcile(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
+                                        boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
         // C2 collector lifetime: removal happens here, before the fragment guard below, and this method
         // always runs. The executor's closing scheduled-history read always calls onFinalize (a tgnet
-        // request always calls back, on success or error), and onFinalize hops here with runOnUIThread
-        // regardless of fragment state, so removal is not gated on the run "succeeding" or on the
-        // fragment being alive. A backgrounded process still runs the callback and removes the observer;
-        // a killed process drops the in-memory observer with everything else. The `collecting` flag
-        // makes the removal idempotent. Each run owns its own armer instance and its own collector
-        // lambda, so this only ever unregisters this run's observer, never a concurrent run's.
+        // request always calls back, on success or error), onFinalize hops to finalizeOnUi with
+        // runOnUIThread, and the reconcile hop above always runs its callback here regardless of fragment
+        // state, so removal is not gated on the run "succeeding" or on the fragment being alive. A
+        // backgrounded process still runs the callback and removes the observer; a killed process drops
+        // the in-memory observer with everything else. The `collecting` flag makes the removal idempotent.
+        // Each run owns its own armer instance and its own collector lambda, so this only ever unregisters
+        // this run's observer, never a concurrent run's.
         if (collecting) {
             NotificationCenter.getInstance(account).removeObserver(deletionCollector, NotificationCenter.messagesDeleted);
             collecting = false;
@@ -141,10 +170,21 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         // releases every hold this run placed, so the pre-existing triggers survive untouched.
         final boolean failClosed = overlap || !authoritative;
 
+        // Dialog-wide decline: an unbound durable orphan that survived the reconcile above still sits in
+        // this chat, and a bulk selection is dialog-scoped by definition, so it declines the WHOLE
+        // selection -- nothing armed. This is a distinct outcome from every per-target not-armed reason
+        // (which are permanent or message-specific): it is transient, retryable and dialog-wide, so it
+        // carries its own bulletin line telling the user to try again shortly. Reporting "3 of 8 weren't
+        // armed" when the truth is "none were, try again in a moment" is the exact UI-asserts-something-
+        // -untrue failure this family of changes exists to prevent. See EventScheduleController's
+        // single-message twin (finishCommitEdit) for why the block is dialog-wide and cannot narrow.
+        final boolean dialogGate = !failClosed && EventScheduleStore.hasUnboundRandomEntry(account, dialogId);
+
         int armed = 0;
         int notArmed = 0;
+        final HashSet<Integer> armedIds = new HashSet<>();
         try {
-            if (!failClosed) {
+            if (!failClosed && !dialogGate) {
                 // One batch-local createdAt sequence in milliseconds (createdAt is millis everywhere:
                 // EventScheduleHelper assigns System.currentTimeMillis(), key() and QUEUE_ORDER both read
                 // it), seeded above every persisted key so a freshly claimed entry can't collide.
@@ -187,6 +227,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     // the target is counted not-armed. Consume the result either way.
                     if (armSurvivor(entry)) {
                         armed++;
+                        // Reveal the bolt on exactly the rows that armed. albumIds are the message ids.
+                        for (int id : o.albumIds) armedIds.add(id);
                     } else {
                         notArmed++;
                     }
@@ -195,11 +237,12 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         } finally {
             // I5: release every hold this run placed, unconditionally and driven by what we suppressed
             // (not by what survived), so a target dropped from the outcomes -- album collapse, dedup, a
-            // per-target error, or a fail-closed run -- is still released. Releasing is the safe
-            // direction: a wrongly-released trigger re-arms and fires per its config, whereas a
-            // wrongly-retained hold silently never fires for the process lifetime, the same invisible loss
-            // this redesign exists to prevent. A merged survivor keeps its original key, so its hold is
-            // released here too -- correct, since the merged entry should fire.
+            // per-target error, a fail-closed run, or the dialog-wide gate declining everything -- is
+            // still released. Releasing is the safe direction: a wrongly-released trigger re-arms and
+            // fires per its config, whereas a wrongly-retained hold silently never fires for the process
+            // lifetime, the same invisible loss this redesign exists to prevent. A merged survivor keeps
+            // its original key, so its hold is released here too -- correct, since the merged entry should
+            // fire. armSurvivor already released the survivors it armed; this double release is a no-op.
             for (String key : suppressed.keySet()) {
                 EventScheduleController.releaseSuppression(account, key, this);
             }
@@ -208,7 +251,13 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         // Suppression release above is unconditional (I3/I5); only the user-facing refresh and bulletin
         // depend on the fragment still being alive.
         if (fragment != null && fragment.getParentActivity() != null) {
-            showBulletin(fragment, failClosed, armed, notArmed, rescheduleWrong, rescheduleTotal);
+            // Bolt reveals only at finalization -- nothing is live until now, so this is the first honest
+            // render. Refresh only the armed rows (forcing a re-measure so the bolt actually draws); skip
+            // it entirely when nothing armed so no untouched row is needlessly rebuilt.
+            if (refresh != null && !armedIds.isEmpty()) {
+                refresh.revealArmed(armedIds);
+            }
+            showBulletin(fragment, failClosed, dialogGate, armed, notArmed, rescheduleWrong, rescheduleTotal);
         }
     }
 
@@ -216,13 +265,25 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
      * The atomic, ownership-enforcing create-and-persist-with-ownership-check for one armed target. On an
      * existing owner of these ids it merges the shared trigger into that entry in place (never removing
      * it -- on the merge path the existing entry IS the survivor being armed, so a remove would delete
-     * what was just armed); with no owner it claims a fresh entry; a contested id rejects and the target
-     * is reported not armed. The ownership resolution is owned outside this change; until it lands this
-     * arms nothing and reports not armed, so no half-owned entry is ever written and the caller still
-     * counts the outcome. Returns true only when the trigger is now durably armed on the target.
+     * what was just armed); with no owner it claims a fresh entry; a contested id (multi-owner or an
+     * empty/non-positive id set) rejects and the target is reported not armed. Ownership is resolved at
+     * commit by exact identity across both id spaces over the full album child-id set, so no half-owned
+     * entry is ever written and the caller still counts the outcome. Returns true only when the trigger is
+     * now durably armed on the target.
      */
     private boolean armSurvivor(@NonNull EventScheduleEntry entry) {
-        return false;
+        String resolvedKey = EventScheduleController.bulkArmSurvivor(account, dialogId, entry);
+        if (resolvedKey == null) {
+            return false;
+        }
+        // Release this run's hold on the resolved entry so it can fire per its config now that it is the
+        // live shared trigger. On a merge the resolved key is the existing owner's -- an in-place merge
+        // leaves createdAt, and thus key(), unchanged -- which is exactly the key suppressed at admission,
+        // so this drops the right hold. A fresh claim was never suppressed, so it is a harmless no-op
+        // there. Idempotent, and the finalize finally-block releases every held key again, so the double
+        // release is safe.
+        EventScheduleController.releaseSuppression(account, resolvedKey, this);
+        return true;
     }
 
     private ArrayList<EventScheduleEntry> findExisting(int[] albumIds) {
@@ -289,12 +350,17 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return false;
     }
 
-    private void showBulletin(BaseFragment fragment, boolean failClosed, int armed, int notArmed, int rescheduleWrong, int rescheduleTotal) {
+    private void showBulletin(BaseFragment fragment, boolean failClosed, boolean dialogGate, int armed, int notArmed, int rescheduleWrong, int rescheduleTotal) {
         final String base = rescheduleWrong == 0
                 ? LocaleController.formatPluralString("RescheduleApplied", rescheduleTotal)
                 : LocaleController.formatString(R.string.RescheduleVerifyFailed, rescheduleWrong, rescheduleTotal);
         final String triggerLine;
-        if (failClosed) {
+        if (dialogGate) {
+            // Transient, retryable, dialog-wide -- distinct from every other not-armed reason. The whole
+            // selection was declined because the chat is still confirming an earlier trigger; nothing
+            // armed, so the wording tells the user to try again shortly rather than implying a partial.
+            triggerLine = LocaleController.getString(R.string.EventScheduleBulkTriggerDialogBusy);
+        } else if (failClosed) {
             triggerLine = LocaleController.getString(R.string.EventScheduleBulkTriggerNotApplied);
         } else if (notArmed > 0) {
             triggerLine = LocaleController.formatString(R.string.EventScheduleBulkTriggerPartial, armed, armed + notArmed);
@@ -302,7 +368,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             triggerLine = LocaleController.formatPluralString("EventScheduleBulkTriggerArmed", armed);
         }
         final String message = base + "\n" + triggerLine;
-        final int icon = (rescheduleWrong == 0 && !failClosed && notArmed == 0) ? R.raw.chats_infotip : R.raw.error;
+        final int icon = (rescheduleWrong == 0 && !failClosed && !dialogGate && notArmed == 0) ? R.raw.chats_infotip : R.raw.error;
         BulletinFactory.of(fragment).createSimpleBulletin(icon, message).show();
     }
 }
