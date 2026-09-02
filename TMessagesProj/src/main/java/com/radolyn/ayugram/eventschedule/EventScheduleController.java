@@ -33,6 +33,13 @@ import java.util.Map;
  * scheduled-send ack metadata delivered through {@link NotificationCenter#messageReceivedByServer}.
  * Incoming messages are matched against bound arms and, on a hit, fire
  * {@code messages.sendScheduledMessages} early.
+ *
+ * <p>Queue state is intentionally process-local: runtime {@link EventScheduleEntry#state} and the
+ * per-run retry budget are never persisted. After restart, entries reload as armed from
+ * {@link EventScheduleStore}; each successful early send removes its row, so only not-yet-sent
+ * entries remain to be matched again in queue order. A process death during a retry window drops
+ * that pending retry post (and any stalled notification), but the scheduled fallback date still
+ * delivers the message.
  */
 public final class EventScheduleController {
 
@@ -54,16 +61,24 @@ public final class EventScheduleController {
         }
     }
 
+    private static final class QueueState {
+        final ArrayList<EventScheduleEntry> entries = new ArrayList<>();
+        int token;
+        int retriesLeft;
+    }
+
     // Local scheduled echoes are posted inline from the send path, so claim eligibility is short.
     private static final long CLAIM_WINDOW_MS = 30000;
     // Bind window for associating send acks back to a just-armed trigger.
     private static final long BIND_WINDOW_SECONDS = 30L * 60L;
+    // Retry at most once in the same run (2 total send attempts counting the first).
+    private static final int SEND_ATTEMPTS_PER_RUN = 2;
+    // Keep parity with RescheduleSpreadExecutor's "short wait" cutoff.
+    private static final int MAX_RETRY_WAIT_SECONDS = 60;
 
     // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
-    private static final Map<String, ArrayList<EventScheduleEntry>> QUEUES = new HashMap<>();
-    private static final Map<String, Boolean> RUNNING_QUEUES = new HashMap<>();
-    private static final Map<String, Integer> QUEUE_TOKENS = new HashMap<>();
+    private static final Map<String, QueueState> QUEUES = new HashMap<>();
     private static int nextQueueToken;
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
@@ -470,12 +485,13 @@ public final class EventScheduleController {
                 || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
         String queueKey = queueKey(account, entry);
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
-        boolean queueRunning = Boolean.TRUE.equals(RUNNING_QUEUES.get(queueKey));
-        if (queue == null) {
-            queue = new ArrayList<>();
-            QUEUES.put(queueKey, queue);
+        QueueState queueState = QUEUES.get(queueKey);
+        boolean queueRunning = queueState != null;
+        if (queueState == null) {
+            queueState = new QueueState();
+            QUEUES.put(queueKey, queueState);
         }
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
         boolean inserted = false;
         if (!queue.contains(entry)) {
             queue.add(entry);
@@ -493,53 +509,40 @@ public final class EventScheduleController {
     }
 
     private static void startQueue(int account, String queueKey) {
-        if (Boolean.TRUE.equals(RUNNING_QUEUES.get(queueKey))) return;
-        RUNNING_QUEUES.put(queueKey, true);
+        QueueState queueState = QUEUES.get(queueKey);
+        if (queueState == null || queueState.token != 0) return;
         advanceQueue(account, queueKey);
     }
 
     private static void advanceQueue(int account, String queueKey) {
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
+        QueueState queueState = QUEUES.get(queueKey);
+        ArrayList<EventScheduleEntry> queue = queueState == null ? null : queueState.entries;
         while (queue != null && !queue.isEmpty()) {
             EventScheduleEntry entry = queue.get(0);
             if (entry.state == EventScheduleEntry.STATE_WAITING && EventScheduleStore.contains(account, entry.key())) {
                 int token = ++nextQueueToken;
-                QUEUE_TOKENS.put(queueKey, token);
+                queueState.token = token;
+                queueState.retriesLeft = SEND_ATTEMPTS_PER_RUN - 1;
                 long revision = entry.revision;
                 AndroidUtilities.runOnUIThread(() -> fire(account, entry, queueKey, token, revision), entry.delaySeconds * 1000L);
                 return;
             }
             queue.remove(0);
         }
-        QUEUES.remove(queueKey);
-        RUNNING_QUEUES.remove(queueKey);
-        QUEUE_TOKENS.remove(queueKey);
-    }
-
-    private static void releaseQueue(int account, String queueKey, EventScheduleEntry current, boolean removeCurrent) {
-        ArrayList<EventScheduleEntry> queue = QUEUES.remove(queueKey);
-        RUNNING_QUEUES.remove(queueKey);
-        QUEUE_TOKENS.remove(queueKey);
-        if (queue == null) return;
-        for (EventScheduleEntry entry : queue) {
-            if (entry == current && removeCurrent) {
-                EventScheduleStore.remove(account, entry);
-            } else if (entry.state == EventScheduleEntry.STATE_WAITING) {
-                entry.state = EventScheduleEntry.STATE_ARMED;
-            }
+        if (queueState != null && queue.isEmpty()) {
+            QUEUES.remove(queueKey);
         }
     }
 
     private static void removeFromQueue(int account, EventScheduleEntry entry) {
         String queueKey = queueKey(account, entry);
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(queueKey);
-        if (queue == null) return;
+        QueueState queueState = QUEUES.get(queueKey);
+        if (queueState == null) return;
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
         boolean wasHead = !queue.isEmpty() && queue.get(0) == entry;
         queue.remove(entry);
         if (queue.isEmpty()) {
             QUEUES.remove(queueKey);
-            RUNNING_QUEUES.remove(queueKey);
-            QUEUE_TOKENS.remove(queueKey);
         } else if (wasHead) {
             advanceQueue(account, queueKey);
         }
@@ -551,13 +554,19 @@ public final class EventScheduleController {
         schedulePendingGc();
     }
 
+    private static QueueState liveQueueState(String queueKey, int token) {
+        QueueState queueState = QUEUES.get(queueKey);
+        return queueState != null && queueState.token == token ? queueState : null;
+    }
+
     private static void fire(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long revision) {
         // The delay window may have outlived the entry (edited, deleted, or the fallback already fired).
-        ArrayList<EventScheduleEntry> queue = QUEUES.get(expectedQueueKey);
-        if (!Integer.valueOf(token).equals(QUEUE_TOKENS.get(expectedQueueKey))) {
+        QueueState queueState = liveQueueState(expectedQueueKey, token);
+        if (queueState == null) {
             return;
         }
-        if (queue == null || queue.isEmpty()) {
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
+        if (queue.isEmpty()) {
             return;
         }
         if (entry.state != EventScheduleEntry.STATE_WAITING || entry.revision != revision
@@ -573,12 +582,44 @@ public final class EventScheduleController {
         }
         if (entry.serverIds.isEmpty()) {
             entry.state = EventScheduleEntry.STATE_ARMED;
-            releaseQueue(account, expectedQueueKey, entry, false);
+            advanceQueue(account, expectedQueueKey);
             return;
         }
         entry.state = EventScheduleEntry.STATE_SENDING;
+        sendHeadRequest(account, entry, expectedQueueKey, token, entry.revision);
+    }
+
+    private static void retryHeadSend(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long sendRevision) {
+        QueueState queueState = liveQueueState(expectedQueueKey, token);
+        if (queueState == null) {
+            if (entry.revision == sendRevision && entry.state == EventScheduleEntry.STATE_SENDING
+                    && EventScheduleStore.contains(account, entry.key())) {
+                entry.state = EventScheduleEntry.STATE_ARMED;
+            }
+            return;
+        }
+        ArrayList<EventScheduleEntry> queue = queueState.entries;
+        if (queue.isEmpty()) {
+            return;
+        }
+        if (entry.state != EventScheduleEntry.STATE_SENDING || entry.revision != sendRevision
+                || !EventScheduleStore.contains(account, entry.key())) {
+            // Token still matches, so this callback is still the queue owner and must re-drive.
+            advanceQueue(account, expectedQueueKey);
+            return;
+        }
+        if (queue.get(0) != entry) {
+            // Same token means the queue is alive; hand off to the live head.
+            entry.state = EventScheduleEntry.STATE_ARMED;
+            advanceQueue(account, expectedQueueKey);
+            return;
+        }
+        sendHeadRequest(account, entry, expectedQueueKey, token, sendRevision);
+    }
+
+    private static void sendHeadRequest(int account, EventScheduleEntry entry, String expectedQueueKey, int token, long sendRevision) {
+        entry.state = EventScheduleEntry.STATE_SENDING;
         final long dialogId = entry.dialogId;
-        final long sendRevision = entry.revision;
         final TLRPC.TL_messages_sendScheduledMessages req = new TLRPC.TL_messages_sendScheduledMessages();
         req.peer = MessagesController.getInstance(account).getInputPeer(dialogId);
         req.id.addAll(entry.serverIds);
@@ -589,6 +630,8 @@ public final class EventScheduleController {
                 && ChatObject.isChannel(MessagesController.getInstance(account).getChat(-dialogId)) ? -dialogId : 0L;
         ConnectionsManager.getInstance(account).sendRequest(req, (response, error) -> {
             if (error == null) {
+                // Deliberately off the UI thread: tgnet invokes this callback on its own thread, and
+                // these two calls mirror that existing threading contract before hopping to UI work.
                 MessagesController.getInstance(account).processUpdates((TLRPC.Updates) response, false);
                 for (int i = 0; i < req.id.size(); i++) {
                     AyuState.permitDeleteMessage(account, dialogId, req.id.get(i), true);
@@ -605,21 +648,63 @@ public final class EventScheduleController {
                         EventScheduleNotifier.notifySent(account, dialogId);
                     }
                 });
-            } else if (error.text != null && (error.text.startsWith("SLOWMODE_WAIT_")
-                    || error.text.startsWith("FLOOD_WAIT_"))) {
-                // Next matching message retries; keep the remaining queue in scheduled-page order.
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (entry.revision != sendRevision) return;
-                    entry.state = EventScheduleEntry.STATE_ARMED;
-                    releaseQueue(account, expectedQueueKey, entry, false);
-                });
             } else {
-                // Already sent / deleted / still processing server-side: nothing left to do.
-                AndroidUtilities.runOnUIThread(() -> {
-                    if (entry.revision != sendRevision) return;
-                    releaseQueue(account, expectedQueueKey, entry, true);
-                });
+                final int errorCode = error.code;
+                final String errorText = error.text;
+                AndroidUtilities.runOnUIThread(() ->
+                        onSendError(account, entry, expectedQueueKey, token, sendRevision, dialogId, errorCode, errorText));
             }
         });
+    }
+
+    private static void onSendError(int account, EventScheduleEntry entry, String expectedQueueKey, int token,
+                                    long sendRevision, long dialogId, int errorCode, String errorText) {
+        QueueState queueState = liveQueueState(expectedQueueKey, token);
+        boolean currentAttempt = entry.revision == sendRevision
+                && entry.state == EventScheduleEntry.STATE_SENDING
+                && EventScheduleStore.contains(account, entry.key());
+        boolean retryableWait = errorCode >= 0 && isRetryableWaitError(errorText);
+        int waitSeconds = retryableWait ? Utilities.parseInt(errorText) : 0;
+        if (retryableWait && waitSeconds > 0 && waitSeconds <= MAX_RETRY_WAIT_SECONDS
+                && queueState != null && queueState.retriesLeft > 0
+                && currentAttempt) {
+            queueState.retriesLeft--;
+            AndroidUtilities.runOnUIThread(
+                    () -> retryHeadSend(account, entry, expectedQueueKey, token, sendRevision),
+                    (waitSeconds + 1) * 1000L
+            );
+            return;
+        }
+
+        if (errorCode >= 0 && isDropError(errorText)) {
+            if (currentAttempt) {
+                EventScheduleStore.remove(account, entry);
+            }
+            return;
+        }
+
+        if (!currentAttempt) {
+            return;
+        }
+        entry.state = EventScheduleEntry.STATE_ARMED;
+        if (queueState == null) {
+            return;
+        }
+        advanceQueue(account, expectedQueueKey);
+        // This branch re-arms a failed head, so at least that entry is still unsent.
+        EventScheduleNotifier.notifyBatchStalled(account, dialogId);
+    }
+
+    private static boolean isRetryableWaitError(String errorText) {
+        return errorText != null && (errorText.startsWith("SLOWMODE_WAIT_") || errorText.startsWith("FLOOD_WAIT_"));
+    }
+
+    private static boolean isDropError(String errorText) {
+        return "MESSAGE_ID_INVALID".equals(errorText)
+                || "MESSAGE_IDS_EMPTY".equals(errorText)
+                || "PEER_ID_INVALID".equals(errorText)
+                || "CHANNEL_INVALID".equals(errorText)
+                || "CHANNEL_PRIVATE".equals(errorText)
+                || "INPUT_USER_DEACTIVATED".equals(errorText);
     }
 }
