@@ -410,7 +410,14 @@ public class MessageTriggersActivity extends BaseFragment {
                 // java:1952), so the brief text (and Telegram's own localized voice/round/video/
                 // album labels) come along for free without paying for layout measurement.
                 MessageObject messageObject = new MessageObject(account, message, false, false);
-                result.put(new PreviewKey(message.dialog_id, message.id), AndroidUtilities.replaceNewLines(messageObject.messageText));
+                // NagramX: captioned media keeps its real text in caption, not messageText --
+                // messageText stays the generic type label ("Video", "Photo", ...) even when a
+                // caption is present. Preferring caption here is the entire point of the row
+                // redesign: two captioned videos in one chat must stay distinguishable by their
+                // caption text, not collapse to the same generic label. A caption-less voice/round
+                // video/album still falls back to messageText's localized type label.
+                CharSequence brief = !TextUtils.isEmpty(messageObject.caption) ? messageObject.caption : messageObject.messageText;
+                result.put(new PreviewKey(message.dialog_id, message.id), AndroidUtilities.replaceNewLines(brief));
             }
         } catch (Throwable t) {
             FileLog.e(t);
