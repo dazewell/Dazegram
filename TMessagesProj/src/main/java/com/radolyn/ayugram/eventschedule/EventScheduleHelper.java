@@ -238,6 +238,11 @@ public final class EventScheduleHelper {
         String pattern;
         boolean regex;
         int delay;
+        // Whether `delay` came from a genuine existing single-owner trigger (an already-armed delay that
+        // must survive untouched even if it's out of range for the current step set) or from the
+        // EventScheduleLastDelay seed preference (a stale pre-cap value that must never arm a brand-new
+        // trigger above the current max). See the clamp in openSheet() and the guarded config write below.
+        boolean delayFromExistingTrigger;
         String pendingEntryKey;
 
         TextView chip;
@@ -263,12 +268,14 @@ public final class EventScheduleHelper {
                 pattern = existing.pattern;
                 regex = existing.regex;
                 delay = existing.delaySeconds;
+                delayFromExistingTrigger = true;
             } else {
                 NaConfig cfg = NaConfig.INSTANCE;
                 types = cfg.getEventScheduleLastTypes().Int();
                 pattern = cfg.getEventScheduleLastPattern().String();
                 regex = cfg.getEventScheduleLastPatternRegex().Bool();
                 delay = cfg.getEventScheduleLastDelay().Int();
+                delayFromExistingTrigger = false;
             }
         }
 
@@ -344,16 +351,25 @@ public final class EventScheduleHelper {
             syncRegexEnabled(patternField, regexCell);
 
             final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, 30};
+            // NagramX: EventScheduleLastDelay is a reusable seed for a brand-new trigger, not an
+            // already-armed value -- a preference recorded before this cap shipped can still hold a
+            // pre-cap number (60/300s), and letting that arm a new trigger unchanged would defeat the
+            // cap entirely. Only a genuine existing trigger's already-armed delay is allowed to stay out
+            // of range (delayFromExistingTrigger); a stale seed is capped to the top stop instead.
+            if (!delayFromExistingTrigger && delay > delayValues[delayValues.length - 1]) {
+                delay = delayValues[delayValues.length - 1];
+            }
             int startIndex = 0;
             for (int i = 0; i < delayValues.length; i++) {
                 if (delayValues[i] <= delay) startIndex = i;
             }
             final int[] delayIndex = {startIndex};
-            // NagramX: a trigger armed under a previous, wider step set (e.g. 60s/300s) floor-matches
-            // to the top stop above, which only seeds the thumb's start position -- it must not silently
-            // reduce the stored delay on a Done tap the user never touched the slider for. delayTouched
-            // distinguishes "the user actually dragged" from "seed only" so an untouched commit keeps the
-            // legacy value byte-identical instead of clamping it to 30.
+            // NagramX: onSeekBarDrag fires for any real interaction with the slider -- a drag, a tap, or
+            // an accessibility adjustment -- but never for the setup/seed calls below (SeekBarView's
+            // setProgress() only positions the thumb, it doesn't invoke the delegate). delayTouched
+            // distinguishes that real interaction from a seed-only value, so an untouched Done keeps a
+            // legacy out-of-range delay exactly as stored instead of clamping it to the new max, and
+            // never rewrites the EventScheduleLastDelay seed from a value the user never chose.
             final boolean[] delayTouched = {false};
 
             LinearLayout delayLayout = new LinearLayout(context);
@@ -376,7 +392,7 @@ public final class EventScheduleHelper {
             final TextView delayValue = new TextView(context);
             // NagramX: label the actual stored delay, not the floor-clamped stop -- for a legacy
             // out-of-range trigger those two disagree (see delayTouched above), and this sheet must
-            // never show a number that differs from what Done would actually commit (C2).
+            // never show a number that differs from what Done would actually commit.
             delayValue.setText(formatDelayLabel(delay));
             delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
@@ -457,7 +473,12 @@ public final class EventScheduleHelper {
                 cfg.getEventScheduleLastTypes().setConfigInt(types);
                 cfg.getEventScheduleLastPattern().setConfigString(pattern);
                 cfg.getEventScheduleLastPatternRegex().setConfigBool(regex);
-                cfg.getEventScheduleLastDelay().setConfigInt(delay);
+                // NagramX: only a real slider move produces a value worth reusing as the next seed --
+                // writing an untouched, possibly out-of-range existing-trigger delay here would leak it
+                // into EventScheduleLastDelay and silently poison the next brand-new trigger's seed.
+                if (delayTouched[0]) {
+                    cfg.getEventScheduleLastDelay().setConfigInt(delay);
+                }
                 updateChip();
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
