@@ -129,11 +129,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
         int armed = 0;
         int notArmed = 0;
+        int restoreFailed = 0;
         final ArrayList<int[]> survivorAlbums = new ArrayList<>();
         if (!failClosed) {
-            // One batch-local createdAt sequence, seeded above every live and detached key so a new
-            // entry can never collide with a persisted or about-to-be-restored one.
-            long nextCreatedAt = Math.max(System.currentTimeMillis() / 1000L, maxCreatedAtIncludingDetached() + 1);
+            // One batch-local createdAt sequence in milliseconds (createdAt is millis everywhere:
+            // EventScheduleHelper assigns System.currentTimeMillis(), key() and QUEUE_ORDER both read it),
+            // seeded above every live and detached key so a new entry can never collide with a persisted
+            // or about-to-be-restored one.
+            long nextCreatedAt = Math.max(System.currentTimeMillis(), maxCreatedAtIncludingDetached() + 1);
             for (RescheduleSpreadExecutor.TargetOutcome o : outcomes) {
                 if (!o.applied) {
                     notArmed++;
@@ -172,17 +175,25 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                 // the observer; the entry re-enters the fire queue lazily on the next matching message
                 // via evaluate(), exactly as a store reload after an app restart does, so its
                 // QUEUE_ORDER position, pattern-state (recompiled from the snapshot) and revision are
-                // re-derived coherently rather than assumed carried across the detach. If a future
-                // ownership check rejects this arm, the ids are legitimately owned elsewhere now and
-                // leaving the entry removed is the correct outcome.
-                EventScheduleController.armExisting(account, e);
+                // re-derived coherently rather than assumed carried across the detach.
+                //
+                // The result is consumed. Today it is always true (a detached entry was live, so its
+                // serverIds are non-empty and positive). Once a commit-time ownership check exists it can
+                // reject: the ids are then legitimately owned elsewhere, so leaving the entry removed is
+                // the correct STATE -- but the user configured that trigger and we already deleted it at
+                // admission, so a rejected restore is a trigger silently lost. Count and surface it: this
+                // is the mirror of the not-armed summary (absent believed present), and it must not be
+                // the one surface left uncovered.
+                if (!EventScheduleController.armExisting(account, e)) {
+                    restoreFailed++;
+                }
             }
         }
 
         // Store work above is unconditional (I3); only the user-facing refresh and bulletin depend on
         // the fragment still being alive.
         if (fragment != null && fragment.getParentActivity() != null) {
-            showBulletin(fragment, failClosed, armed, notArmed, rescheduleWrong, rescheduleTotal);
+            showBulletin(fragment, failClosed, armed, notArmed, restoreFailed, rescheduleWrong, rescheduleTotal);
         }
     }
 
@@ -273,7 +284,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return false;
     }
 
-    private void showBulletin(BaseFragment fragment, boolean failClosed, int armed, int notArmed, int rescheduleWrong, int rescheduleTotal) {
+    private void showBulletin(BaseFragment fragment, boolean failClosed, int armed, int notArmed, int restoreFailed, int rescheduleWrong, int rescheduleTotal) {
         final String base = rescheduleWrong == 0
                 ? LocaleController.formatPluralString("RescheduleApplied", rescheduleTotal)
                 : LocaleController.formatString(R.string.RescheduleVerifyFailed, rescheduleWrong, rescheduleTotal);
@@ -285,7 +296,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         } else {
             triggerLine = LocaleController.formatPluralString("EventScheduleBulkTriggerArmed", armed);
         }
-        final int icon = (rescheduleWrong == 0 && !failClosed && notArmed == 0) ? R.raw.chats_infotip : R.raw.error;
-        BulletinFactory.of(fragment).createSimpleBulletin(icon, base + "\n" + triggerLine).show();
+        // A restore that was rejected means a trigger the user had before this run is now gone; it is a
+        // distinct failure from "couldn't add the new trigger", so it gets its own line rather than being
+        // folded into notArmed, and it always forces the error icon.
+        String message = base + "\n" + triggerLine;
+        if (restoreFailed > 0) {
+            message += "\n" + LocaleController.formatPluralString("EventScheduleBulkTriggerRestoreFailed", restoreFailed);
+        }
+        final int icon = (rescheduleWrong == 0 && !failClosed && notArmed == 0 && restoreFailed == 0) ? R.raw.chats_infotip : R.raw.error;
+        BulletinFactory.of(fragment).createSimpleBulletin(icon, message).show();
     }
 }

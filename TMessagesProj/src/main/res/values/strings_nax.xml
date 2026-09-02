@@ -553,6 +553,10 @@
     </plurals>
     <string name="EventScheduleBulkTriggerPartial">Trigger added to %1$d of %2$d — the rest were left as scheduled</string>
     <string name="EventScheduleBulkTriggerNotApplied">Couldn\'t confirm the reschedule, so no trigger was added. The messages were still moved; add the trigger again if you want it.</string>
+    <plurals name="EventScheduleBulkTriggerRestoreFailed">
+        <item quantity="one">Couldn\'t keep an existing trigger on %1$d message — set it again if you still want it</item>
+        <item quantity="other">Couldn\'t keep an existing trigger on %1$d messages — set them again if you still want them</item>
+    </plurals>
     <string name="MessageTriggersTitle">Message Triggers</string>
     <string name="MessageTriggersEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
     <string name="MessageTriggersRemoved">Trigger removed</string>
