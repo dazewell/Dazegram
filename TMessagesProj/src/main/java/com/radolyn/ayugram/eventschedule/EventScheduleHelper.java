@@ -207,11 +207,12 @@ public final class EventScheduleHelper {
             this.editLocalIds = editLocalIds;
             this.editOriginalScheduleDate = editOriginalScheduleDate;
             this.onChanged = onChanged;
-            // Seed the controls from any trigger this message already has. This is a UI seed only -- the
-            // arming decision at commit re-resolves ownership from scratch, so a snapshot taken here can't
-            // route a stale entry.
+            // Seed the controls from any trigger this message already has, resolved the same two-space way
+            // as commit (all edit ids + local ids, then the date fallback) so a still-pending owner shows
+            // as armed instead of off. This is a UI seed only -- the arming decision at commit re-resolves
+            // ownership from scratch, so a snapshot taken here can't route a stale entry.
             EventScheduleEntry existing = editIds != null && editIds.length > 0
-                    ? EventScheduleStore.findByMessage(account, dialogId, editIds[0]) : null;
+                    ? EventScheduleStore.resolveSingleOwnerForEdit(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate) : null;
             if (existing != null) {
                 enabled = true;
                 types = existing.types;

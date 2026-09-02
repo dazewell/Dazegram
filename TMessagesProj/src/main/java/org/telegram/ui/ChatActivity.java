@@ -36731,8 +36731,10 @@ public class ChatActivity extends BaseFragment implements
                     }
                     // NagramX: the negative local_id echo and the original schedule date let the sheet re-find
                     // a still-pending trigger at commit that a positive-id lookup would miss, so it can't arm a
-                    // second trigger on the same message. Both are primitive snapshots; the array can't mutate.
-                    int naxOriginalDate = message.messageOwner.date;
+                    // second trigger on the same message. Take the date from the same message the edit is applied
+                    // to; all snapshots here are read once and never written again.
+                    int naxOriginalDate = (group != null && !group.messages.isEmpty())
+                            ? group.messages.get(0).messageOwner.date : message.messageOwner.date;
                     // NagramX: re-measure (not just repaint) the affected rows so the bolt marker's width change lands immediately.
                     com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, naxOriginalDate, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
                 }

@@ -543,7 +543,7 @@
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
     <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
     <string name="EventScheduleBatchStalled">Trigger stopped partway. The rest will send when the trigger matches again.</string>
-    <string name="EventScheduleTriggerConflict">This message already has a trigger, so it was left unchanged.</string>
+    <string name="EventScheduleTriggerConflict">Couldn\'t set the trigger for this message, so it was left unchanged.</string>
     <string name="MessageTriggersTitle">Message Triggers</string>
     <string name="MessageTriggersEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
     <string name="MessageTriggersRemoved">Trigger removed</string>

@@ -264,6 +264,21 @@ public final class EventScheduleStore {
         return new EditClaim(EditClaim.Status.CLAIMED_FRESH, fresh, null);
     }
 
+    /**
+     * Read-only single-owner resolution for seeding the edit sheet's controls. Uses the same two-space
+     * (ids + date fallback) scan as the arm path so a still-pending owner -- which a positive-serverId
+     * lookup would miss -- shows as armed rather than off; otherwise a schedule-only edit would read as a
+     * turn-off and drop that owner. Returns null for zero or multiple candidates (defaults / conflict).
+     * Selects only; mutates nothing.
+     */
+    public static synchronized EventScheduleEntry resolveSingleOwnerForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
+        ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
+        if (candidates.isEmpty()) {
+            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
+        }
+        return candidates.size() == 1 ? candidates.get(0) : null;
+    }
+
     /** Owner keys to drop when a trigger is turned off while editing -- same two-space resolution as the arm path. */
     public static synchronized ArrayList<String> resolveOwnerKeysForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
         ArrayList<String> keys = new ArrayList<>();
