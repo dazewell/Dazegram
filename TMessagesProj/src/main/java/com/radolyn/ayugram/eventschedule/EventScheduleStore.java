@@ -203,6 +203,13 @@ public final class EventScheduleStore {
      * of; the no-caller armExisting compat path checks it too):
      * arming a trigger against ids the server has not issued yields one that reports live but can never
      * fire, the #256 defect class.
+     *
+     * <p>This is also the one place that decides "existing" versus "new" for {@code delaySeconds}'s
+     * out-of-range cap: only the update branch, against a genuinely still-live single owner, may keep a
+     * delay above {@link EventScheduleEntry#MAX_NEW_DELAY_SECONDS}. A caller can walk in believing it's
+     * updating that owner and still land in the fresh branch here if the owner fired or was removed
+     * between when the caller's data was seeded and this call -- so the fresh branch enforces the cap
+     * itself rather than trusting whatever the caller decided at seed time.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
             int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,
@@ -247,7 +254,13 @@ public final class EventScheduleStore {
         fresh.types = types;
         fresh.pattern = pattern == null ? "" : pattern;
         fresh.regex = regex;
-        fresh.delaySeconds = delaySeconds;
+        // NagramX: this is the actual point a trigger becomes newly created, re-decided in this same
+        // synchronized scope rather than trusted from whatever the caller believed when the sheet was
+        // seeded -- a caller can believe it's updating a live single owner and still land here if that
+        // owner fired or was removed between seed time and this call. An out-of-range delay is only ever
+        // legitimate for a trigger that already existed (the update branch above, untouched); a genuinely
+        // fresh entry must never exceed the cap regardless of what delaySeconds carries in.
+        fresh.delaySeconds = Math.min(delaySeconds, EventScheduleEntry.MAX_NEW_DELAY_SECONDS);
         fresh.fallbackDate = fallbackDate;
         fresh.createdAt = freshCreatedAt;
         fresh.bindGroupedId = 0;

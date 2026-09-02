@@ -39,6 +39,13 @@ public final class EventScheduleEntry {
     public static final int STATE_WAITING = 1;
     public static final int STATE_SENDING = 2;
 
+    // The forward-looking delay cap: a trigger armed before this cap existed keeps whatever delay it
+    // already has (see resolveAndClaimForEdit's update branch), but a trigger that is actually newly
+    // created -- fresh, never a merge into a live owner -- can never exceed this, no matter what value a
+    // caller passes in. Single source of truth shared with the sheet's top slider stop
+    // (EventScheduleHelper) so the two can't drift apart.
+    public static final int MAX_NEW_DELAY_SECONDS = 30;
+
     // A user-typed regex has no timeout; cap the input it runs against so a pathological
     // pattern on a huge caption can't stall the queue it's evaluated on.
     private static final int MAX_MATCH_LEN = 2048;

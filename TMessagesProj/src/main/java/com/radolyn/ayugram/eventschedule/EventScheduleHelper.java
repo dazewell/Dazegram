@@ -238,10 +238,14 @@ public final class EventScheduleHelper {
         String pattern;
         boolean regex;
         int delay;
-        // Whether `delay` came from a genuine existing single-owner trigger (an already-armed delay that
-        // must survive untouched even if it's out of range for the current step set) or from the
-        // EventScheduleLastDelay seed preference (a stale pre-cap value that must never arm a brand-new
-        // trigger above the current max). See the clamp in openSheet() and the guarded config write below.
+        // UI-only seed classification: whether `delay` came from a genuine existing single-owner trigger
+        // (drives the label/thumb so a legacy out-of-range value displays honestly) or from the
+        // EventScheduleLastDelay preference (drives the seed-time clamp below so a stale pre-cap value
+        // doesn't seed the sheet above the max). This flag is a snapshot from when the sheet opened and
+        // can go stale by commit time (the trigger it was seeded from may fire or be removed while the
+        // sheet is open) -- so it must NOT be trusted as the thing that actually enforces the cap on a
+        // truly new arm. That enforcement lives in EventScheduleStore.resolveAndClaimForEdit's fresh-entry
+        // branch, which re-decides "existing vs. new" atomically with the ownership check itself.
         boolean delayFromExistingTrigger;
         String pendingEntryKey;
 
@@ -350,12 +354,13 @@ public final class EventScheduleHelper {
             });
             syncRegexEnabled(patternField, regexCell);
 
-            final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, 30};
-            // NagramX: EventScheduleLastDelay is a reusable seed for a brand-new trigger, not an
-            // already-armed value -- a preference recorded before this cap shipped can still hold a
-            // pre-cap number (60/300s), and letting that arm a new trigger unchanged would defeat the
-            // cap entirely. Only a genuine existing trigger's already-armed delay is allowed to stay out
-            // of range (delayFromExistingTrigger); a stale seed is capped to the top stop instead.
+            final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_NEW_DELAY_SECONDS};
+            // NagramX: this is a UI-only clamp so the sheet doesn't seed itself (thumb + label) above the
+            // max from a stale EventScheduleLastDelay preference recorded before this cap shipped (a
+            // pre-cap seed can still hold 60/300s). It is not what actually enforces the cap on a new
+            // arm -- delayFromExistingTrigger is a seed-time snapshot that can go stale by commit time, so
+            // the real enforcement is EventScheduleStore.resolveAndClaimForEdit's fresh-entry branch,
+            // which re-decides existing-vs-new atomically with the ownership check itself.
             if (!delayFromExistingTrigger && delay > delayValues[delayValues.length - 1]) {
                 delay = delayValues[delayValues.length - 1];
             }
@@ -473,9 +478,10 @@ public final class EventScheduleHelper {
                 cfg.getEventScheduleLastTypes().setConfigInt(types);
                 cfg.getEventScheduleLastPattern().setConfigString(pattern);
                 cfg.getEventScheduleLastPatternRegex().setConfigBool(regex);
-                // NagramX: only a real slider move produces a value worth reusing as the next seed --
-                // writing an untouched, possibly out-of-range existing-trigger delay here would leak it
-                // into EventScheduleLastDelay and silently poison the next brand-new trigger's seed.
+                // NagramX: only an actual slider interaction (drag, tap, or accessibility adjustment --
+                // see delayTouched above) produces a value worth reusing as the next seed. Writing an
+                // untouched, possibly out-of-range existing-trigger delay here would leak it into
+                // EventScheduleLastDelay and silently poison the next brand-new trigger's seed.
                 if (delayTouched[0]) {
                     cfg.getEventScheduleLastDelay().setConfigInt(delay);
                 }
