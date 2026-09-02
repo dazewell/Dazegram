@@ -22,7 +22,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Runtime engine for event-triggered scheduled messages.
@@ -79,6 +81,15 @@ public final class EventScheduleController {
     // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
     private static final Map<String, QueueState> QUEUES = new HashMap<>();
+    // Run-owned fire suppression for a bulk arm (issue #249): account+entry.key() -> the set of live run
+    // tokens holding the trigger back. A bulk run suppresses each pre-existing trigger it admits so the
+    // trigger can't fire mid-run and then read back missing during verification, WITHOUT durably removing
+    // it -- a durable remove whose only in-memory copy is lost on process death would destroy a trigger the
+    // user configured. This map is process-local, so a process death just discards it and the durable entry
+    // reloads armed (runtime state is never persisted). Refcounted by run token so two overlapping runs that
+    // both suppress one trigger keep it suppressed until the last releases; a run removes only its own
+    // token. UI-thread only, like PENDING and QUEUES.
+    private static final Map<String, Set<Object>> SUPPRESSED = new HashMap<>();
     private static int nextQueueToken;
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
@@ -93,6 +104,16 @@ public final class EventScheduleController {
 
     private static String queueKey(int account, EventScheduleEntry entry) {
         return account + "_" + entry.dialogId + "_" + entry.triggerKey();
+    }
+
+    private static String suppressKey(int account, @NonNull String entryKey) {
+        return account + "_" + entryKey;
+    }
+
+    private static boolean isSuppressed(int account, @NonNull String entryKey) {
+        // releaseSuppression drops the map key when the last owner leaves, so a present key always means
+        // a live owner still holds this trigger back.
+        return SUPPRESSED.containsKey(suppressKey(account, entryKey));
     }
 
     // Package-private so the Message Triggers overview page can order its rows the same way the
@@ -342,6 +363,48 @@ public final class EventScheduleController {
         return true;
     }
 
+    /**
+     * Bulk-arm admission (issue #249): hold one pre-existing trigger back from firing for the duration of
+     * a run, without touching durable state. Ejects the entry from any live queue and resets its runtime
+     * state to ARMED -- removeFromQueue leaves a WAITING entry's state unchanged, which would leave it
+     * unable to fire even after release, since evaluate only re-queues ARMED entries.
+     *
+     * <p>Returns false when the entry is already SENDING: an issued send can't be recalled, so the caller
+     * must treat that target as linearized before admission and reject it in verification.
+     *
+     * @param runToken identifies the run so overlapping runs refcount cleanly; pass the same token to
+     *                 {@link #releaseSuppression}.
+     */
+    public static boolean suppressForBulk(int account, @NonNull EventScheduleEntry entry, @NonNull Object runToken) {
+        if (entry.state == EventScheduleEntry.STATE_SENDING) {
+            return false;
+        }
+        String sk = suppressKey(account, entry.key());
+        Set<Object> owners = SUPPRESSED.get(sk);
+        if (owners == null) {
+            owners = new HashSet<>();
+            SUPPRESSED.put(sk, owners);
+        }
+        owners.add(runToken);
+        removeFromQueue(account, entry);
+        entry.state = EventScheduleEntry.STATE_ARMED;
+        return true;
+    }
+
+    /**
+     * Release one run's hold on a trigger. It becomes eligible to fire again only once the last run
+     * releases it. A no-op for a key this run never suppressed, and idempotent.
+     */
+    public static void releaseSuppression(int account, @NonNull String entryKey, @NonNull Object runToken) {
+        String sk = suppressKey(account, entryKey);
+        Set<Object> owners = SUPPRESSED.get(sk);
+        if (owners == null) return;
+        owners.remove(runToken);
+        if (owners.isEmpty()) {
+            SUPPRESSED.remove(sk);
+        }
+    }
+
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             ArrayList<MessageObject> snapshot = messages == null ? null : new ArrayList<>(messages);
@@ -459,8 +522,12 @@ public final class EventScheduleController {
             if (message.isOutOwner() || message.getId() <= 0 || message.messageOwner == null) continue;
             final String text = matchableText(message);
             for (EventScheduleEntry entry : entries) {
-                if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()) continue;
                 final String key = entry.key();
+                // Suppressed by an in-flight bulk arm (issue #249): held back from firing without a
+                // durable remove. Checked here, in armWaiting, and again just before fire issues the RPC,
+                // because a pattern match begun before admission can post armWaiting after it.
+                if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()
+                        || isSuppressed(account, key)) continue;
                 boolean typeSet = entry.types != 0;
                 boolean patternSet = !TextUtils.isEmpty(entry.pattern);
                 // OR: a matching type is enough on its own; otherwise the pattern can still match.
@@ -500,6 +567,7 @@ public final class EventScheduleController {
 
     private static void armWaiting(int account, EventScheduleEntry entry, String key, long revision) {
         if (entry.state != EventScheduleEntry.STATE_ARMED || entry.revision != revision
+                || isSuppressed(account, key)
                 || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
         String queueKey = queueKey(account, entry);
@@ -599,6 +667,14 @@ public final class EventScheduleController {
             return;
         }
         if (entry.serverIds.isEmpty()) {
+            entry.state = EventScheduleEntry.STATE_ARMED;
+            advanceQueue(account, expectedQueueKey);
+            return;
+        }
+        if (isSuppressed(account, entry.key())) {
+            // A bulk arm (issue #249) suppressed this trigger after it reached the queue head. Don't issue
+            // the send: drop back to ARMED (the map still holds it, so it can't be re-queued until the run
+            // releases it) and re-drive so the queue doesn't stall on a suppressed head.
             entry.state = EventScheduleEntry.STATE_ARMED;
             advanceQueue(account, expectedQueueKey);
             return;

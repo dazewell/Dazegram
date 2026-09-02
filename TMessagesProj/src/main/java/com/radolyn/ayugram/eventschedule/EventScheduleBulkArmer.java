@@ -14,6 +14,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 
@@ -36,19 +37,27 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private final long dialogId;
     private final EventScheduleConfig config;
     // Full album child-id set per selected message, snapshotted at build time (never re-expanded from
-    // a live fragment). Used to detach pre-existing entries at admission and to seed the createdAt
+    // a live fragment). Used to suppress pre-existing entries at admission and to seed the createdAt
     // sequence above anything already persisted.
     private final List<int[]> selectionAlbumIds;
 
-    // Independent JSON snapshots of the entries the selected messages already carried, detached at
-    // admission so a live trigger can't fire mid-run and then read back as missing during
-    // verification (C1). Kept for restore under I2.
-    private final ArrayList<EventScheduleEntry> detached = new ArrayList<>();
+    // Keys of the pre-existing entries this run is holding back, mapped to the entry revision seen at
+    // admission. The key set is what finalization drains -- every hold this run placed is released,
+    // driven by what we suppressed, not by what survived -- so a target that later dropped out of the
+    // outcomes still gets released. The revision detects a single-message edit that landed mid-run, so
+    // the bulk arm yields to that later explicit edit instead of overwriting it (C4). Nothing durable is
+    // removed at admission: suppression is process-local, so a process death discards it and the durable
+    // entry reloads armed, where a durable remove with only an in-memory copy would lose the trigger.
+    private final HashMap<String, Long> suppressed = new HashMap<>();
+
+    // Server ids of entries already SENDING at admission. An issued early send can't be recalled and
+    // suppression can't hold it back, so its target is treated as linearized before the run and rejected
+    // in verification rather than re-armed (I6).
+    private final HashSet<Integer> sendingAtAdmissionIds = new HashSet<>();
 
     // Exact scheduled ids deleted while the run was in flight, collected on the UI thread. An entry
     // only survives finalization if none of its ids appear here (C2): a deletion can land after the
-    // server snapshot, or before it but with its UI notification arriving before finalization, and
-    // because no new entry exists yet the normal purgeIds path would remove nothing.
+    // server snapshot, or before it but with its UI notification arriving before finalization.
     private final HashSet<Integer> deletedDuringRun = new HashSet<>();
     private boolean collecting;
 
@@ -84,13 +93,18 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         collecting = true;
         for (int[] album : selectionAlbumIds) {
             for (EventScheduleEntry live : findExisting(album)) {
-                EventScheduleEntry snapshot = EventScheduleEntry.fromJson(live.toJson());
-                if (snapshot != null && !containsKey(detached, snapshot.key())) {
-                    detached.add(snapshot);
+                String key = live.key();
+                if (suppressed.containsKey(key)) continue;
+                // Hold the pre-existing trigger back for the run without touching durable state: it can't
+                // fire mid-run and then read back missing during verification, but nothing is removed, so
+                // a process death before finalization loses nothing (the entry reloads armed). A SENDING
+                // entry can't be held back -- its send is already issued -- so record its ids instead, and
+                // verification rejects that target rather than assuming the old trigger was suspended.
+                if (EventScheduleController.suppressForBulk(account, live, this)) {
+                    suppressed.put(key, live.revision);
+                } else {
+                    sendingAtAdmissionIds.addAll(live.serverIds);
                 }
-                // Removing clears the queue and pending state too, so the detached trigger can't fire
-                // for the duration of the run. A restore under I2 re-arms it from the snapshot.
-                EventScheduleStore.remove(account, live);
             }
         }
     }
@@ -122,96 +136,90 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             serverDates.put(scheduledIds[i], scheduledDates[i]);
         }
 
-        // Fail closed on overlap (a concurrent run may have moved these dates under us, C3) or on a
-        // failed authoritative read (we can't trust membership). Arm nothing new; restore what is
-        // still valid.
+        // Fail closed on overlap (a concurrent run may have moved these dates under us) or on a failed
+        // authoritative read (we can't trust membership). Arm nothing new; the finally below still
+        // releases every hold this run placed, so the pre-existing triggers survive untouched.
         final boolean failClosed = overlap || !authoritative;
 
         int armed = 0;
         int notArmed = 0;
-        int restoreFailed = 0;
-        final ArrayList<int[]> survivorAlbums = new ArrayList<>();
-        if (!failClosed) {
-            // One batch-local createdAt sequence in milliseconds (createdAt is millis everywhere:
-            // EventScheduleHelper assigns System.currentTimeMillis(), key() and QUEUE_ORDER both read it),
-            // seeded above every live and detached key so a new entry can never collide with a persisted
-            // or about-to-be-restored one.
-            long nextCreatedAt = Math.max(System.currentTimeMillis(), maxCreatedAtIncludingDetached() + 1);
-            for (RescheduleSpreadExecutor.TargetOutcome o : outcomes) {
-                if (!o.applied) {
-                    notArmed++;
-                    continue;
+        try {
+            if (!failClosed) {
+                // One batch-local createdAt sequence in milliseconds (createdAt is millis everywhere:
+                // EventScheduleHelper assigns System.currentTimeMillis(), key() and QUEUE_ORDER both read
+                // it), seeded above every persisted key so a freshly claimed entry can't collide.
+                long nextCreatedAt = Math.max(System.currentTimeMillis(), maxCreatedAt() + 1);
+                for (RescheduleSpreadExecutor.TargetOutcome o : outcomes) {
+                    if (!o.applied) {
+                        notArmed++;
+                        continue;
+                    }
+                    // A repeating scheduled message can't carry a trigger -- the single-message path
+                    // refuses it (armed = enabled && repeatPeriod == 0), because Premium repeat and
+                    // early-trigger don't compose. The bulk path must not create a state the single path
+                    // forbids, so a repeating target is left as a plain reschedule and counted not-armed.
+                    if (o.repeatPeriod != 0) {
+                        notArmed++;
+                        continue;
+                    }
+                    // Every album child must be present at the applied date and none deleted mid-run; one
+                    // missing child rejects the whole album target. A target whose old trigger was already
+                    // SENDING at admission was linearized before the run -- its early send can't be
+                    // recalled -- so it is rejected here rather than re-armed (I6).
+                    if (!allScheduledAt(o.albumIds, o.scheduleDate, serverDates) || anyDeleted(o.albumIds)
+                            || anySendingAtAdmission(o.albumIds)) {
+                        notArmed++;
+                        continue;
+                    }
+                    // A later single-message edit wins over this in-flight bulk arm (C4). If the message
+                    // already carried a trigger whose revision changed since admission, the user
+                    // re-authored it mid-run, so yield rather than overwrite it. Every path that edits an
+                    // armed trigger bumps revision -- an author adding a new arming path must keep that
+                    // true or this detection silently stops working.
+                    if (editedMidRun(o.albumIds)) {
+                        notArmed++;
+                        continue;
+                    }
+                    EventScheduleEntry entry = buildEntry(o.albumIds, o.scheduleDate, nextCreatedAt++);
+                    // armSurvivor merges the shared trigger into an existing owner in place, or claims a
+                    // fresh entry when there is none -- it never removes an old entry, because on the
+                    // merge path the "old" entry IS the survivor being armed. A contested id rejects and
+                    // the target is counted not-armed. Consume the result either way.
+                    if (armSurvivor(entry)) {
+                        armed++;
+                    } else {
+                        notArmed++;
+                    }
                 }
-                // A repeating scheduled message can't carry a trigger -- the single-message path refuses
-                // it (armed = enabled && repeatPeriod == 0), because Premium repeat and early-trigger
-                // don't compose. The bulk path must not create a state the single path forbids, so a
-                // repeating target is left as a plain reschedule and counted not-armed.
-                if (o.repeatPeriod != 0) {
-                    notArmed++;
-                    continue;
-                }
-                // Every album child must be present at the applied date, and none deleted mid-run;
-                // one missing child rejects the whole album target.
-                if (!allScheduledAt(o.albumIds, o.scheduleDate, serverDates) || anyDeleted(o.albumIds)) {
-                    notArmed++;
-                    continue;
-                }
-                survivorAlbums.add(o.albumIds);
-                EventScheduleEntry entry = buildEntry(o.albumIds, o.scheduleDate, nextCreatedAt++);
-                // Consume the arming result: a rejection here is a not-armed target, never a silent
-                // success (rejection is reachable on this path).
-                if (armSurvivor(entry)) {
-                    armed++;
-                } else {
-                    notArmed++;
-                }
+            }
+        } finally {
+            // I5: release every hold this run placed, unconditionally and driven by what we suppressed
+            // (not by what survived), so a target dropped from the outcomes -- album collapse, dedup, a
+            // per-target error, or a fail-closed run -- is still released. Releasing is the safe
+            // direction: a wrongly-released trigger re-arms and fires per its config, whereas a
+            // wrongly-retained hold silently never fires for the process lifetime, the same invisible loss
+            // this redesign exists to prevent. A merged survivor keeps its original key, so its hold is
+            // released here too -- correct, since the merged entry should fire.
+            for (String key : suppressed.keySet()) {
+                EventScheduleController.releaseSuppression(account, key, this);
             }
         }
 
-        // Detached existing entries: a survivor supersedes its old entry, so leave it removed; a
-        // non-survivor whose full ids are still scheduled at its old fallback date is a working
-        // trigger the reschedule didn't touch, so restore it (I2). Everything else stays removed.
-        for (EventScheduleEntry e : detached) {
-            boolean superseded = !failClosed && intersectsAnySurvivor(e, survivorAlbums);
-            if (superseded) continue;
-            if (stillValid(e, serverDates)) {
-                // Restore re-arms the same entry we detached at admission, from its snapshot. It is not
-                // a new create, so it carries no duplicate-ownership hazard and needs no ownership seam.
-                // detach->send->restore: detach at admission cleared this entry from the store, queue
-                // and pending, so it could not fire during the run (any in-flight send already bails on
-                // the store's contains() going false). armExisting re-persists it as ARMED and ensures
-                // the observer; the entry re-enters the fire queue lazily on the next matching message
-                // via evaluate(), exactly as a store reload after an app restart does, so its
-                // QUEUE_ORDER position, pattern-state (recompiled from the snapshot) and revision are
-                // re-derived coherently rather than assumed carried across the detach.
-                //
-                // The result is consumed. Today it is always true (a detached entry was live, so its
-                // serverIds are non-empty and positive). Once a commit-time ownership check exists it can
-                // reject: the ids are then legitimately owned elsewhere, so leaving the entry removed is
-                // the correct STATE -- but the user configured that trigger and we already deleted it at
-                // admission, so a rejected restore is a trigger silently lost. Count and surface it: this
-                // is the mirror of the not-armed summary (absent believed present), and it must not be
-                // the one surface left uncovered.
-                if (!EventScheduleController.armExisting(account, e)) {
-                    restoreFailed++;
-                }
-            }
-        }
-
-        // Store work above is unconditional (I3); only the user-facing refresh and bulletin depend on
-        // the fragment still being alive.
+        // Suppression release above is unconditional (I3/I5); only the user-facing refresh and bulletin
+        // depend on the fragment still being alive.
         if (fragment != null && fragment.getParentActivity() != null) {
-            showBulletin(fragment, failClosed, armed, notArmed, restoreFailed, rescheduleWrong, rescheduleTotal);
+            showBulletin(fragment, failClosed, armed, notArmed, rescheduleWrong, rescheduleTotal);
         }
     }
 
     /**
-     * The atomic, ownership-enforcing create-and-persist for a freshly armed target. It must admit a
-     * new bound entry only when no other owner already holds its positive ids -- resolved at commit
-     * time against the store, with the rejection propagated back here -- because a stale single-message
-     * sheet can bind the same positive id in parallel and both ids pass sign validation. That
-     * boundary is owned outside this change; until it exists this arms nothing and reports the target
-     * as not armed, so no half-owned entry is ever written and the caller still counts the outcome.
+     * The atomic, ownership-enforcing create-and-persist-with-ownership-check for one armed target. On an
+     * existing owner of these ids it merges the shared trigger into that entry in place (never removing
+     * it -- on the merge path the existing entry IS the survivor being armed, so a remove would delete
+     * what was just armed); with no owner it claims a fresh entry; a contested id rejects and the target
+     * is reported not armed. The ownership resolution is owned outside this change; until it lands this
+     * arms nothing and reports not armed, so no half-owned entry is ever written and the caller still
+     * counts the outcome. Returns true only when the trigger is now durably armed on the target.
      */
     private boolean armSurvivor(@NonNull EventScheduleEntry entry) {
         return false;
@@ -242,15 +250,29 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return e;
     }
 
-    private long maxCreatedAtIncludingDetached() {
+    private long maxCreatedAt() {
         long max = 0;
         for (EventScheduleEntry e : EventScheduleStore.forDialog(account, dialogId)) {
             if (e.createdAt > max) max = e.createdAt;
         }
-        for (EventScheduleEntry e : detached) {
-            if (e.createdAt > max) max = e.createdAt;
-        }
         return max;
+    }
+
+    private boolean anySendingAtAdmission(int[] albumIds) {
+        for (int id : albumIds) {
+            if (sendingAtAdmissionIds.contains(id)) return true;
+        }
+        return false;
+    }
+
+    private boolean editedMidRun(int[] albumIds) {
+        for (int id : albumIds) {
+            EventScheduleEntry e = EventScheduleStore.findByMessage(account, dialogId, id);
+            if (e == null) continue;
+            Long admissionRevision = suppressed.get(e.key());
+            if (admissionRevision != null && e.revision != admissionRevision) return true;
+        }
+        return false;
     }
 
     private boolean allScheduledAt(int[] albumIds, int scheduleDate, SparseIntArray serverDates) {
@@ -267,32 +289,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return false;
     }
 
-    private boolean stillValid(EventScheduleEntry e, SparseIntArray serverDates) {
-        if (e.serverIds.isEmpty()) return false;
-        for (int id : e.serverIds) {
-            if (deletedDuringRun.contains(id)) return false;
-            if (serverDates.get(id, -1) != e.fallbackDate) return false;
-        }
-        return true;
-    }
-
-    private boolean intersectsAnySurvivor(EventScheduleEntry e, ArrayList<int[]> survivorAlbums) {
-        for (int[] album : survivorAlbums) {
-            for (int id : album) {
-                if (e.serverIds.contains(id)) return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean containsKey(ArrayList<EventScheduleEntry> list, String key) {
-        for (EventScheduleEntry e : list) {
-            if (e.key().equals(key)) return true;
-        }
-        return false;
-    }
-
-    private void showBulletin(BaseFragment fragment, boolean failClosed, int armed, int notArmed, int restoreFailed, int rescheduleWrong, int rescheduleTotal) {
+    private void showBulletin(BaseFragment fragment, boolean failClosed, int armed, int notArmed, int rescheduleWrong, int rescheduleTotal) {
         final String base = rescheduleWrong == 0
                 ? LocaleController.formatPluralString("RescheduleApplied", rescheduleTotal)
                 : LocaleController.formatString(R.string.RescheduleVerifyFailed, rescheduleWrong, rescheduleTotal);
@@ -304,14 +301,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         } else {
             triggerLine = LocaleController.formatPluralString("EventScheduleBulkTriggerArmed", armed);
         }
-        // A restore that was rejected means a trigger the user had before this run is now gone; it is a
-        // distinct failure from "couldn't add the new trigger", so it gets its own line rather than being
-        // folded into notArmed, and it always forces the error icon.
-        String message = base + "\n" + triggerLine;
-        if (restoreFailed > 0) {
-            message += "\n" + LocaleController.formatPluralString("EventScheduleBulkTriggerRestoreFailed", restoreFailed);
-        }
-        final int icon = (rescheduleWrong == 0 && !failClosed && notArmed == 0 && restoreFailed == 0) ? R.raw.chats_infotip : R.raw.error;
+        final String message = base + "\n" + triggerLine;
+        final int icon = (rescheduleWrong == 0 && !failClosed && notArmed == 0) ? R.raw.chats_infotip : R.raw.error;
         BulletinFactory.of(fragment).createSimpleBulletin(icon, message).show();
     }
 }
