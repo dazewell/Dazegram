@@ -446,6 +446,12 @@ public final class EventScheduleHelper {
 
         @Override
         public void commit(int scheduleDate, int repeatPeriod) {
+            // NOTE: this decision tree (!userTouchedTrigger -> refresh / armed -> arm / else off) has an
+            // async twin in EventScheduleController.finishCommitEdit, reached via reconcileThenCommitEdit
+            // just below when a durable orphan forces a storage hop first. They diverge on purpose: this
+            // synchronous path calls refresh() (it owns the open sheet's overview) and reaches the common
+            // no-reconcile case, while the twin runs after dismiss with no fragment, so it repaints on its
+            // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
             if (editIds != null && editIds.length > 0) {
@@ -453,6 +459,16 @@ public final class EventScheduleHelper {
                 // user never opened the trigger controls, so a schedule-only edit must not reconfigure or
                 // remove a trigger the user never chose to change -- otherwise it reads as a turn-off and
                 // destroys durable state in the pre-existing multi-owner case.
+                if (EventScheduleController.needsCommitReconcile(account, dialogId)) {
+                    // Rare: an unbound entry in this dialog still carries only durable correlation keys (a
+                    // restart orphan the warm reconcile has not healed yet). Resolve it to current server
+                    // ids first so the edit can't create a second trigger beside it. Runs async after the
+                    // sheet dismisses; on failure the controller shows the toast itself. No fragment or
+                    // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
+                    EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
+                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate);
+                    return;
+                }
                 if (!userTouchedTrigger) {
                     // The user changed the send time but never opened the trigger controls, so leave the
                     // trigger's configuration exactly as it is. fallbackDate is derived from the message's

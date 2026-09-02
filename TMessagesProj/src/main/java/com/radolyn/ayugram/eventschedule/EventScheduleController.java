@@ -1,5 +1,7 @@
 package com.radolyn.ayugram.eventschedule;
 
+import static org.telegram.messenger.LocaleController.getString;
+
 import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -8,20 +10,29 @@ import androidx.annotation.NonNull;
 
 import com.radolyn.ayugram.utils.AyuState;
 
+import org.telegram.SQLite.SQLiteCursor;
+import org.telegram.SQLite.SQLiteDatabase;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
+import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
+import org.telegram.messenger.R;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
 import org.telegram.tgnet.TLRPC;
+
+import tw.nekomimi.nekogram.utils.AlertUtil;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -79,6 +90,10 @@ public final class EventScheduleController {
     // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
     private static final Map<String, QueueState> QUEUES = new HashMap<>();
+    // account -> entry keys with a durable reconcile in flight. Written only on the UI thread, like
+    // PENDING. While a key is tracked here the expiry GC must leave the entry alone: a slow storage-queue
+    // lookup may still heal it, so the delete waits for that lookup's own snapshot-guarded disposition.
+    private static final Map<Integer, HashSet<String>> DURABLE_INFLIGHT = new HashMap<>();
     private static int nextQueueToken;
     private static volatile long pendingAccounts;
     private static volatile long warmedAccounts;
@@ -178,6 +193,12 @@ public final class EventScheduleController {
             removePending(pending.account, entry.key());
             if (!EventScheduleStore.contains(pending.account, entry.key())) continue;
             if (entry.serverIds.isEmpty()) {
+                if (isDurableInFlight(pending.account, entry.key())) {
+                    // A durable reconcile is resolving this entry; its guarded disposition (heal, or a
+                    // snapshot-checked removal) owns the delete, so GC must not race ahead and destroy a
+                    // trigger that is about to be healed. It stays in the store, tracked, until then.
+                    continue;
+                }
                 EventScheduleStore.remove(pending.account, entry.key());
             } else if (entry.bindExpiresAt <= nowSec) {
                 entry.bindExpiresAt = 0;
@@ -193,7 +214,14 @@ public final class EventScheduleController {
             if (entry.bindExpiresAt <= 0) continue;
             if (entry.bindExpiresAt <= nowSec) {
                 if (entry.serverIds.isEmpty()) {
-                    EventScheduleStore.remove(account, entry.key());
+                    // An unbound entry that carries durable correlation keys is not deleted on expiry
+                    // here: the async warm reconcile below may still heal it to current server ids from
+                    // randoms_v2, and a single failed read must not destroy a recoverable trigger. Its
+                    // final disposition (heal, or the deferred fail-closed removal) is reconcileDurable's.
+                    // Legacy entries with no randomIds keep the pre-existing expiry-removal behaviour.
+                    if (entry.randomIds.isEmpty()) {
+                        EventScheduleStore.remove(account, entry.key());
+                    }
                 } else {
                     entry.bindExpiresAt = 0;
                     EventScheduleStore.persist(account, entry);
@@ -203,6 +231,7 @@ public final class EventScheduleController {
             addPending(account, entry, entry.fallbackDate, 0);
         }
         schedulePendingGc();
+        reconcileDurable(account);
     }
 
     // The observer serves every account (the callback carries the account), so one instance
@@ -299,11 +328,12 @@ public final class EventScheduleController {
     /**
      * Temporary compatibility path: arms a trigger on an entry whose server ids are already set. Does
      * NO ownership resolution -- it cannot see whether another entry already owns these ids -- so it is
-     * not the gate for arming during an edit; that is {@link #resolveAndClaimForEdit}. Retained only
-     * because #249's committed finalizer still calls it on its restore path; no new caller should use
-     * it, and #249's migration is expected to route through the ownership gate instead. Kept solely so a
-     * future caller that does reach for it still can't bind an in-flight id and produce a trigger that
-     * reports live but never fires (the #256 defect class).
+     * not the gate for arming during an edit; that is {@link #resolveAndClaimForEdit}. No caller exists in
+     * this tree. The apparent callers on the `2026-09-01-reschedule-trigger` branch are pre-#259 helper
+     * code that this ownership gate supersedes, so they disappear when that branch integrates #259; #249
+     * owns removing this method at its migration. No new caller should use it -- route arming through
+     * {@link #resolveAndClaimForEdit}. Kept meanwhile so that a caller which does reach for it still can't
+     * bind an in-flight id and produce a trigger that reports live but never fires (the #256 defect class).
      */
     public static boolean armExisting(int account, @NonNull EventScheduleEntry entry) {
         if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
@@ -320,8 +350,9 @@ public final class EventScheduleController {
     /**
      * Temporary compatibility path: replaces an already-armed entry's fields in place after an edit.
      * Like {@link #armExisting} it does NO ownership resolution, so it is not the edit gate --
-     * {@link #resolveAndClaimForEdit} is. Retained for symmetry with armExisting and its #249 caller; no
-     * new caller should use it, and migrations go through the ownership gate.
+     * {@link #resolveAndClaimForEdit} is. Same status as armExisting: no caller in this tree, the
+     * `2026-09-01-reschedule-trigger` callers are pre-#259 code the gate supersedes, and removal is #249's
+     * at migration. No new caller should use it.
      */
     public static boolean updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
         // Fail closed before touching any live state -- revision++ and removeFromQueue below mutate the
@@ -405,6 +436,218 @@ public final class EventScheduleController {
         }
     }
 
+    // --- Durable correlation reconcile (#261) -------------------------------------------------------
+
+    private static void markDurableInFlight(int account, ArrayList<EventScheduleStore.EntrySnapshot> snaps) {
+        HashSet<String> keys = DURABLE_INFLIGHT.get(account);
+        if (keys == null) {
+            keys = new HashSet<>();
+            DURABLE_INFLIGHT.put(account, keys);
+        }
+        for (EventScheduleStore.EntrySnapshot s : snaps) keys.add(s.key);
+    }
+
+    private static void clearDurableInFlight(int account, String key) {
+        HashSet<String> keys = DURABLE_INFLIGHT.get(account);
+        if (keys != null && keys.remove(key) && keys.isEmpty()) DURABLE_INFLIGHT.remove(account);
+    }
+
+    private static boolean isDurableInFlight(int account, String key) {
+        HashSet<String> keys = DURABLE_INFLIGHT.get(account);
+        return keys != null && keys.contains(key);
+    }
+
+    /**
+     * Warm-path reconcile: for every unbound entry that carries durable correlation keys, resolve those
+     * random_ids back to current server ids through {@code randoms_v2} and either heal the entry or
+     * apply the deferred expiry policy. Short-circuits with no storage hop when the account has no such
+     * orphan, so a warm on an account of ordinary bound triggers costs nothing here.
+     */
+    private static void reconcileDurable(int account) {
+        ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account);
+        if (snaps.isEmpty()) return;
+        postDurableLookup(account, snaps, null);
+    }
+
+    /**
+     * Runs the one joined lookup on the storage queue and applies its result on the UI thread. The JOIN
+     * onto {@code scheduled_messages_v2} is what keeps a fired-or-deleted scheduled message (whose
+     * {@code randoms_v2} row outlives it) from being resurrected through a stale correlation. Only
+     * immutable snapshots cross to the storage thread. Every entry looked up is first marked in-flight so
+     * the expiry GC defers to this lookup's disposition rather than deleting a trigger mid-resolution.
+     * Terminal delivery is guaranteed exactly once: the task is wrapped in try/catch (throw ->
+     * LOOKUP_ERROR), and if the enqueue itself fails the same apply runs synchronously with LOOKUP_ERROR
+     * -- never both. {@code onDone} (commit-time only) runs after the apply on the UI thread.
+     */
+    private static void postDurableLookup(int account, ArrayList<EventScheduleStore.EntrySnapshot> snaps, Runnable onDone) {
+        markDurableInFlight(account, snaps);
+        HashSet<Long> randomSet = new HashSet<>();
+        HashSet<Long> dialogSet = new HashSet<>();
+        for (EventScheduleStore.EntrySnapshot s : snaps) {
+            dialogSet.add(s.dialogId);
+            for (long r : s.randomIds) randomSet.add(r);
+        }
+        if (randomSet.isEmpty()) {
+            applyDurableResolution(account, snaps, Collections.emptyMap(), false);
+            if (onDone != null) onDone.run();
+            return;
+        }
+        final String randomsIn = TextUtils.join(",", randomSet);
+        final String dialogsIn = TextUtils.join(",", dialogSet);
+        final MessagesStorage storage = MessagesStorage.getInstance(account);
+        boolean posted = storage.getStorageQueue().postRunnable(() -> {
+            boolean error = false;
+            HashMap<Long, ArrayList<Integer>> resolved = new HashMap<>();
+            SQLiteCursor cursor = null;
+            try {
+                SQLiteDatabase db = storage.getDatabase();
+                if (db == null) {
+                    error = true;
+                } else {
+                    cursor = db.queryFinalized(String.format(Locale.US,
+                            "SELECT r.random_id, r.mid FROM randoms_v2 r INNER JOIN scheduled_messages_v2 s ON s.mid = r.mid AND s.uid = r.uid WHERE r.uid IN (%s) AND r.random_id IN (%s)",
+                            dialogsIn, randomsIn));
+                    while (cursor.next()) {
+                        long randomId = cursor.longValue(0);
+                        int mid = cursor.intValue(1);
+                        ArrayList<Integer> list = resolved.get(randomId);
+                        if (list == null) {
+                            list = new ArrayList<>();
+                            resolved.put(randomId, list);
+                        }
+                        if (!list.contains(mid)) list.add(mid);
+                    }
+                }
+            } catch (Throwable t) {
+                error = true;
+                FileLog.e("eventschedule: durable random_id lookup failed, failing closed", t);
+            } finally {
+                if (cursor != null) cursor.dispose();
+            }
+            final boolean lookupError = error;
+            final HashMap<Long, ArrayList<Integer>> resolvedFinal = resolved;
+            AndroidUtilities.runOnUIThread(() -> {
+                applyDurableResolution(account, snaps, resolvedFinal, lookupError);
+                if (onDone != null) onDone.run();
+            });
+        });
+        if (!posted) {
+            applyDurableResolution(account, snaps, Collections.emptyMap(), true);
+            if (onDone != null) onDone.run();
+        }
+    }
+
+    // UI thread: turn the classification into heal / expiry / inert actions on the live cache.
+    private static void applyDurableResolution(int account, ArrayList<EventScheduleStore.EntrySnapshot> snaps,
+                                               Map<Long, ArrayList<Integer>> resolved, boolean lookupError) {
+        Map<String, EventScheduleStore.DurableResolution> verdicts =
+                EventScheduleStore.classifyDurable(snaps, resolved, lookupError);
+        long nowSec = nowSeconds();
+        boolean pendingChanged = false;
+        for (EventScheduleStore.EntrySnapshot snap : snaps) {
+            EventScheduleStore.DurableResolution r = verdicts.get(snap.key);
+            if (r == null) continue;
+            switch (r.verdict) {
+                case HEAL:
+                    if (EventScheduleStore.healDurable(account, snap, r.healMids)) {
+                        removePending(account, snap.key);
+                        pendingChanged = true;
+                        EventScheduleEntry healed = EventScheduleStore.findByKey(account, snap.key);
+                        if (healed != null) resortQueueForEntry(account, healed);
+                    }
+                    // Verdict delivered (healed, or stale so the edit/live path now owns it): stop
+                    // deferring GC for this key.
+                    clearDurableInFlight(account, snap.key);
+                    break;
+                case PENDING_UNSENT:
+                case MISSING:
+                case REJECTED_UNRESOLVED:
+                    // Snapshot-guarded so a slow result can't remove an entry that changed underneath it.
+                    // An expired unbound orphan can't be rescued by the live path either
+                    // (findPendingByLocalId searches only PENDING, which an expired entry has left), so
+                    // dropping it is correct; a within-window entry is left as restorePending set it.
+                    if (EventScheduleStore.removeIfExpiredUnbound(account, snap, nowSec)) {
+                        removePending(account, snap.key);
+                        pendingChanged = true;
+                    }
+                    clearDurableInFlight(account, snap.key);
+                    break;
+                case LOOKUP_ERROR:
+                default:
+                    // A failed read is non-destructive AND stays tracked: never expiry-remove on the
+                    // strength of a read that did not complete, so leave the entry inert and in-flight for
+                    // the commit-time reconcile or a later process to retry. Do not clear the in-flight
+                    // mark -- that is what keeps GC off it.
+                    break;
+            }
+        }
+        if (pendingChanged) schedulePendingGc();
+    }
+
+    /** Synchronous predicate the edit-commit path uses to gate the storage hop (the common case skips it). */
+    public static boolean needsCommitReconcile(int account, long dialogId) {
+        return EventScheduleStore.hasUnboundRandomEntry(account, dialogId);
+    }
+
+    /**
+     * Rare edit-commit path: an unbound durable orphan still sits in this dialog, so resolve it to
+     * current server ids before deciding ownership, otherwise the edit acts on the wrong state -- arming
+     * could create a second trigger beside the orphan, and turning off can't reach it (it has no current
+     * server/local id to match). Holds only the plain edit tuple across the storage hop -- no fragment, no
+     * delegate, no {@code proceed} -- and runs after the sheet has dismissed. On completion it either
+     * applies the intent against the healed owner or, if any orphan stayed unresolved, fails closed for
+     * both arm and off with a toast shown from {@link #finishCommitEdit} itself, so nothing outside the
+     * controller is captured across the hop.
+     */
+    public static void reconcileThenCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
+                                               boolean userTouchedTrigger, boolean armed, int types, String pattern,
+                                               boolean regex, int delaySeconds, int scheduleDate) {
+        ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account, dialogId);
+        if (snaps.isEmpty()) {
+            finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate);
+            return;
+        }
+        postDurableLookup(account, snaps, () ->
+                finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate));
+    }
+
+    private static void finishCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
+                                         boolean userTouchedTrigger, boolean armed, int types, String pattern,
+                                         boolean regex, int delaySeconds, int scheduleDate) {
+        if (!userTouchedTrigger) {
+            commitEditRefresh(account, dialogId, editIds, editLocalIds, scheduleDate);
+            return;
+        }
+        // A durable orphan that could not be resolved to server ids still sits unbound in this dialog,
+        // and it fails both intents equally. Arming now could create a second trigger beside it; turning
+        // off can't remove it either, because commitEditOff matches server/local ids and the orphan has
+        // neither current one (empty serverIds, stale negative localIds) -- the off would be a silent
+        // no-op and a later warm heal could still fire the trigger the user just disarmed. So fail closed
+        // for arm and off alike and tell the user their trigger settings were left unchanged. The toast is
+        // a global, context-free AlertUtil call -- no fragment or delegate is held across the storage hop
+        // to reach here.
+        //
+        // The block is deliberately DIALOG-WIDE, not message-scoped: an unresolved orphan (in particular
+        // one pinned by a LOOKUP_ERROR, which stays tracked until a read succeeds) declines trigger arm
+        // AND disarm for EVERY scheduled message in this chat, including edits to unrelated messages,
+        // until the next successful reconcile clears it. That is forced, not a shortcut -- the orphan by
+        // definition has no current id to compare an edit against, so the gate cannot narrow to one
+        // message without reopening the wrong-owner hole this whole change exists to close. The schedule
+        // time still changes on such an edit; only the trigger settings are declined.
+        if (EventScheduleStore.hasUnboundRandomEntry(account, dialogId)) {
+            AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
+            return;
+        }
+        if (armed) {
+            boolean claimed = commitEditArm(account, dialogId, editIds, editLocalIds, types, pattern, regex, delaySeconds, scheduleDate);
+            if (!claimed) {
+                AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
+            }
+        } else {
+            commitEditOff(account, dialogId, editIds, editLocalIds);
+        }
+    }
+
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             ArrayList<MessageObject> snapshot = messages == null ? null : new ArrayList<>(messages);
@@ -463,6 +706,19 @@ public final class EventScheduleController {
             }
             if (!entry.localIds.contains(localId)) {
                 entry.localIds.add(localId);
+                // Durable correlation key for this child. random_id is written to randoms_v2 and set on
+                // the echo before it reaches us (SendMessagesHelper), so a zero here means an unexpected
+                // send path -- keep the live localId binding but skip the durable key rather than persist
+                // a zero that would later fail the reconcile's injectivity guard.
+                long randomId = message.messageOwner.random_id;
+                if (randomId != 0) {
+                    if (!entry.randomIds.contains(randomId)) {
+                        entry.randomIds.add(randomId);
+                    }
+                } else {
+                    FileLog.e("eventschedule: claimed scheduled echo with zero random_id, dialog="
+                            + dialogId + " local=" + localId);
+                }
                 if (!changed.contains(entry)) {
                     changed.add(entry);
                 }

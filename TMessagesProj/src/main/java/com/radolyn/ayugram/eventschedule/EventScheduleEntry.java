@@ -48,6 +48,12 @@ public final class EventScheduleEntry {
     // Local echo ids (negative) claimed from scheduled-batch updates; used as the exact
     // remap key when messageReceivedByServer arrives.
     public final ArrayList<Integer> localIds = new ArrayList<>();
+    // Durable per-message correlation keys (Telegram random_id, non-zero for any sent message and
+    // stable across restart), one captured per claimed album child. localIds/serverIds drive the live
+    // bind; these are the durable fallback used only when the live remap was missed, resolved back to
+    // current server ids through randoms_v2 at warm. A well-formed entry keeps a strict one-to-one map
+    // between distinct randomIds and its resolved server ids -- see the reconcile's injectivity guard.
+    public final ArrayList<Long> randomIds = new ArrayList<>();
     public int types;
     public String pattern = "";
     public boolean regex;
@@ -136,9 +142,9 @@ public final class EventScheduleEntry {
     /**
      * Returns this entry's current pattern-matching state, initializing it from the
      * pattern/regex/revision fields on first call if the entry has never been edited since
-     * construction (armExisting/armPending/fromJson all fully set pattern/regex before the
-     * entry is ever added to the store, so by the time anything can call this, they're
-     * already final for this generation). Must only be called from the UI thread -- the only
+     * construction (armPending/fromJson -- and the no-caller armExisting compat path -- all fully set
+     * pattern/regex before the entry is ever added to the store, so by the time anything can call this,
+     * they're already final for this generation). Must only be called from the UI thread -- the only
      * caller is {@link EventScheduleController#evaluate}, which captures the returned state
      * before handing a match off to the background queue; matching and any needed compile
      * both then run against that one captured object (see {@link #matchesPattern}).
@@ -158,7 +164,8 @@ public final class EventScheduleEntry {
      * Called on the UI thread after an edit has updated pattern/regex/revision, to swap in a
      * fresh, uncompiled state for the new revision. The live edit path reaches here through
      * {@link EventScheduleStore#resolveAndClaimForEdit}, which mutates the selected entry and
-     * then calls this; the retained {@code updateForEdit} compatibility path calls it too.
+     * then calls this. The {@code updateForEdit} compatibility method (no caller in this tree) would
+     * reach here too, but it is not on any live path.
      * This is a plain reference replacement, not a CAS: every caller runs on the UI thread, so
      * this method is single-threaded by that precondition and there is nothing to race against
      * here -- note the {@code synchronized} on the store's claim method gives mutual exclusion,
@@ -276,6 +283,9 @@ public final class EventScheduleEntry {
             JSONArray local = new JSONArray();
             for (int id : localIds) local.put(id);
             o.put("local_ids", local);
+            JSONArray randoms = new JSONArray();
+            for (long id : randomIds) randoms.put(id);
+            o.put("random_ids", randoms);
             o.put("types", types);
             o.put("pattern", pattern == null ? "" : pattern);
             o.put("regex", regex);
@@ -303,6 +313,10 @@ public final class EventScheduleEntry {
             JSONArray local = o.optJSONArray("local_ids");
             if (local != null) {
                 for (int i = 0; i < local.length(); i++) e.localIds.add(local.getInt(i));
+            }
+            JSONArray randoms = o.optJSONArray("random_ids");
+            if (randoms != null) {
+                for (int i = 0; i < randoms.length(); i++) e.randomIds.add(randoms.getLong(i));
             }
             e.types = o.optInt("types");
             e.pattern = o.optString("pattern", "");
