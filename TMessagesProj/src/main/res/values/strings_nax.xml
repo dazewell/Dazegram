@@ -547,6 +547,12 @@
         <item quantity="one">%1$d selected message already has a trigger — turning this on replaces it</item>
         <item quantity="other">%1$d selected messages already have a trigger — turning this on replaces them</item>
     </plurals>
+    <plurals name="EventScheduleBulkTriggerArmed">
+        <item quantity="one">Trigger added to %1$d message</item>
+        <item quantity="other">Trigger added to %1$d messages</item>
+    </plurals>
+    <string name="EventScheduleBulkTriggerPartial">Trigger added to %1$d of %2$d — the rest were left as scheduled</string>
+    <string name="EventScheduleBulkTriggerNotApplied">Couldn\'t confirm the reschedule, so no trigger was added. The messages were still moved; add the trigger again if you want it.</string>
     <string name="MessageTriggersTitle">Message Triggers</string>
     <string name="MessageTriggersEmpty">Nothing here yet. A trigger you just armed can take a few seconds to show up</string>
     <string name="MessageTriggersRemoved">Trigger removed</string>
