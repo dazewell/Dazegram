@@ -293,16 +293,33 @@ public final class EventScheduleController {
     }
 
     /** Arms a trigger on a message whose server ids are already known (editing a message with no trigger yet). */
-    public static void armExisting(int account, @NonNull EventScheduleEntry entry) {
+    public static boolean armExisting(int account, @NonNull EventScheduleEntry entry) {
+        // Fail closed on an empty or non-positive id set. The one live caller preflights this in
+        // EventScheduleHelper.addTriggerRow, so this is unreachable today; it is here so a future
+        // bulk-arm caller (issue #249) can't reintroduce the in-flight-id defect by binding a
+        // negative local id as if the server had issued it.
+        if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
+            return false;
+        }
         entry.bindGroupedId = 0;
         entry.bindExpiresAt = 0;
         entry.state = EventScheduleEntry.STATE_ARMED;
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
+        return true;
     }
 
     /** Replaces an already-armed (server-side) entry in place after an edit. */
-    public static void updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+    public static boolean updateForEdit(int account, @NonNull EventScheduleEntry entry, int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+        // Fail closed before touching any live state -- revision++ and removeFromQueue below mutate the
+        // entry and the queue, so a rejection after them would leave a half-edited entry, worse than
+        // what this fixes. The only live caller edits an entry findByMessage() matched on a positive
+        // serverId, so this is unreachable today; it pairs with armExisting so #249's bulk arm (which
+        // re-runs through here for an already-armed selection) can't reintroduce an in-flight id. A
+        // bound entry keeps its negative localIds after remap, so hasInvalidIds permits those.
+        if (entry.hasInvalidIds() || entry.serverIds.isEmpty()) {
+            return false;
+        }
         entry.revision++;
         removeFromQueue(account, entry);
         entry.types = types;
@@ -322,6 +339,7 @@ public final class EventScheduleController {
         entry.resetPatternState();
         EventScheduleStore.persist(account, entry);
         ensureObserver(account);
+        return true;
     }
 
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
