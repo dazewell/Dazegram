@@ -457,21 +457,10 @@ public final class EventScheduleHelper {
                     // Rare: an unbound entry in this dialog still carries only durable correlation keys (a
                     // restart orphan the warm reconcile has not healed yet). Resolve it to current server
                     // ids first so the edit can't create a second trigger beside it. Runs async after the
-                    // sheet dismisses; a failure toasts, matching the existing conflict UX. No fragment
-                    // crosses the hop -- the overview repaints on its own, and refresh() is not called.
+                    // sheet dismisses; on failure the controller shows the toast itself. No fragment or
+                    // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
                     EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
-                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate,
-                            new EventScheduleController.CommitEditListener() {
-                                @Override
-                                public void onConflict() {
-                                    AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
-                                }
-
-                                @Override
-                                public void onUnconfirmed() {
-                                    AlertUtil.showToast(getString(R.string.EventScheduleTriggerUnconfirmed));
-                                }
-                            });
+                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate);
                     return;
                 }
                 if (!userTouchedTrigger) {

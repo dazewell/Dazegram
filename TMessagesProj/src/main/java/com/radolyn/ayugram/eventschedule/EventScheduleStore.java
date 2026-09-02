@@ -336,12 +336,17 @@ public final class EventScheduleStore {
         public final long dialogId;
         public final long revision;
         public final long[] randomIds;
+        // How many distinct local children this entry claimed. Every one of them must have contributed a
+        // distinct nonzero random id, so a randomIds shorter than this count means a child was dropped at
+        // capture (zero or duplicate id) and the album can only be partially healed -- fail closed.
+        public final int localChildCount;
 
-        EntrySnapshot(String key, long dialogId, long revision, long[] randomIds) {
+        EntrySnapshot(String key, long dialogId, long revision, long[] randomIds, int localChildCount) {
             this.key = key;
             this.dialogId = dialogId;
             this.revision = revision;
             this.randomIds = randomIds;
+            this.localChildCount = localChildCount;
         }
     }
 
@@ -377,7 +382,7 @@ public final class EventScheduleStore {
     private static EntrySnapshot snapshot(EventScheduleEntry e) {
         long[] r = new long[e.randomIds.size()];
         for (int i = 0; i < r.length; i++) r[i] = e.randomIds.get(i);
-        return new EntrySnapshot(e.key(), e.dialogId, e.revision, r);
+        return new EntrySnapshot(e.key(), e.dialogId, e.revision, r, e.localIds.size());
     }
 
     /** Immutable snapshots of every unbound entry across the account that carries durable keys. */
@@ -452,14 +457,20 @@ public final class EventScheduleStore {
                 out.put(s.key, new DurableResolution(v, null));
             }
         }
-        // Cross-entry heal collision: the same healed mid landing in more than one entry demotes both --
-        // two triggers can never own one message.
-        HashMap<Integer, HashSet<String>> midOwners = new HashMap<>();
-        for (Map.Entry<String, int[]> e : healCandidate.entrySet()) {
-            for (int mid : e.getValue()) {
-                HashSet<String> owners = midOwners.get(mid);
-                if (owners == null) { owners = new HashSet<>(); midOwners.put(mid, owners); }
-                owners.add(e.getKey());
+        // Cross-entry heal collision: the same scheduled message healing into more than one entry demotes
+        // them all -- two triggers can never own one message. A scheduled message's identity is
+        // (dialogId, mid), not the bare mid: unrelated dialogs routinely reuse the same local id, so
+        // keying on mid alone would wrongly collide -- and thus wrongly reject -- two healthy orphans in
+        // different chats. Key on (dialogId, mid) so only a genuine same-dialog clash is caught.
+        HashMap<String, HashSet<String>> midOwners = new HashMap<>();
+        for (EntrySnapshot s : snaps) {
+            int[] mids = healCandidate.get(s.key);
+            if (mids == null) continue;
+            for (int mid : mids) {
+                String midKey = s.dialogId + ":" + mid;
+                HashSet<String> owners = midOwners.get(midKey);
+                if (owners == null) { owners = new HashSet<>(); midOwners.put(midKey, owners); }
+                owners.add(s.key);
             }
         }
         for (HashSet<String> owners : midOwners.values()) {
@@ -475,6 +486,13 @@ public final class EventScheduleStore {
     private static DurableResolution.Verdict classifyOne(
             EntrySnapshot s, Map<Long, ArrayList<Integer>> resolved, Map<Long, HashSet<String>> randomOwners) {
         HashSet<Long> distinct = distinctOf(s.randomIds);
+        // Capture-time cardinality (the relation upstream of everything else here): every claimed local
+        // child must have contributed exactly one distinct nonzero random id. claim() drops a child with a
+        // zero id and de-duplicates, so fewer keys than children means the child -> random_id map already
+        // lost a member before this lookup ran. Healing that resolves only the surviving keys and arms a
+        // partial album, so reject unless the count matches. This guards the one relation the within- and
+        // cross-entry checks below cannot see, because it was collapsed at capture, not here.
+        if (s.randomIds.length != s.localChildCount) return DurableResolution.Verdict.REJECTED_UNRESOLVED;
         // Within-entry: a duplicate random_id in the persisted list is itself a many-to-one violation.
         if (distinct.size() != s.randomIds.length) return DurableResolution.Verdict.REJECTED_UNRESOLVED;
         // Cross-entry: a random_id shared with another entry.
@@ -542,6 +560,25 @@ public final class EventScheduleStore {
         HashSet<Long> b = new HashSet<>();
         for (long x : snap) b.add(x);
         return a.equals(b);
+    }
+
+    /**
+     * Snapshot-guarded expiry removal: drops an entry only if the live entry still matches the snapshot
+     * it was classified from (same revision and random-id set), is still unbound, and its bind window has
+     * elapsed. The guards stop a slow reconcile result from removing an entry that was edited, bound, or
+     * replaced in the meantime -- the delete must be authorized by the same generation that was looked up,
+     * never by a stale one. Returns whether it removed anything.
+     */
+    public static synchronized boolean removeIfExpiredUnbound(int account, EntrySnapshot snap, long nowSec) {
+        EventScheduleEntry e = cache(account).get(snap.key);
+        if (e == null) return false;
+        if (e.revision != snap.revision) return false;
+        if (!e.serverIds.isEmpty()) return false;
+        if (e.randomIds.isEmpty()) return false;
+        if (!sameRandomIds(e, snap.randomIds)) return false;
+        if (e.bindExpiresAt <= 0 || e.bindExpiresAt > nowSec) return false;
+        remove(account, snap.key);
+        return true;
     }
 
     /** Drops scheduled ids that just left the queue (send-now, delete, or the fallback firing). */
