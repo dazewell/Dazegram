@@ -10134,6 +10134,49 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         });
     }
 
+    // NagramX: #repost-spread. Send a captured document/music album as a copy while keeping it one
+    // server group. Neither stock document path fits: prepareSendingMedia's document flush reuses one
+    // shared extension variable for every member (it ends up holding the last member's), which corrupts
+    // the MIME and drops audio attributes on a mixed-extension album; and prepareSendingDocuments shares
+    // a single caption and a single params map across the whole album, which would collapse the
+    // per-source repost markers the delete offer matches on. So drive the same per-document engine
+    // directly - each child derives its own extension from its own path (mime == null) and carries its
+    // own caption, entities and marker params, and they share only one generated group id. Modeled on
+    // the paths branch of prepareSendingDocuments so the grouping/finish behaviour stays identical.
+    @UiThread
+    public static void prepareSendingDocumentAlbumAsCopy(AccountInstance accountInstance, ArrayList<String> paths, ArrayList<String> originalPaths, ArrayList<CharSequence> captions, ArrayList<ArrayList<TLRPC.MessageEntity>> entities, ArrayList<HashMap<String, String>> messageParamsList, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, SendMessageChatArguments sendMessageChatArguments, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        if (paths == null || originalPaths == null || paths.size() != originalPaths.size() || paths.isEmpty()) {
+            return;
+        }
+        Utilities.globalQueue.postRunnable(() -> {
+            int error = 0;
+            long[] groupId = new long[1];
+            int mediaCount = 0;
+            Integer[] docType = new Integer[1];
+            boolean isEncrypted = DialogObject.isEncryptedDialog(dialogId);
+            int count = paths.size();
+            for (int a = 0; a < count; a++) {
+                if (!isEncrypted && count > 1 && mediaCount % 10 == 0) {
+                    if (groupId[0] != 0) {
+                        finishGroup(accountInstance, groupId[0], scheduleDate);
+                    }
+                    groupId[0] = Utilities.random.nextLong();
+                    mediaCount = 0;
+                }
+                mediaCount++;
+                long prevGroupId = groupId[0];
+                CharSequence caption = captions != null && a < captions.size() ? captions.get(a) : null;
+                ArrayList<TLRPC.MessageEntity> childEntities = entities != null && a < entities.size() ? entities.get(a) : null;
+                HashMap<String, String> childParams = messageParamsList != null && a < messageParamsList.size() ? messageParamsList.get(a) : null;
+                error = prepareSendingDocumentInternal(accountInstance, paths.get(a), originalPaths.get(a), null, null, dialogId, replyToMsg, replyToTopMsg, null, quote, childEntities, null, groupId, mediaCount == 10 || a == count - 1, caption, notify, scheduleDate, 0, docType, true, sendMessageChatArguments, 0, invertMedia, payStars, monoForumPeerId, suggestionParams, null, -1, childParams);
+                if (prevGroupId != groupId[0] || groupId[0] == -1) {
+                    mediaCount = 1;
+                }
+            }
+            handleError(error, accountInstance);
+        });
+    }
+
     private static void handleError(int error, AccountInstance accountInstance) {
         if (error != 0) {
             int finalError = error;
