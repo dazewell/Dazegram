@@ -12223,11 +12223,11 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
         if (getParentActivity() == null) return false;
 
         // NagramX: #repost-spread. Start every attempt with the interval channel absent, so no stale
-        // interval from a previously aborted confirm can be consumed by a later plain forward. (C1)
+        // interval from a previously aborted confirm can be consumed by a later plain forward.
         forwardSpreadIntervalSeconds = 0;
         // NagramX: #repost-spread. Snapshot the drop-author choice this menu displays into request-local
         // state, so the spread row gate and dispatch use this picker's own choice, never the shared
-        // ChatActivity.noForwardQuote static that another open chat can flip meanwhile. (IMPORTANT 1)
+        // ChatActivity.noForwardQuote static that another open chat can flip meanwhile.
         forwardSpreadFromMyName = ChatActivity.noForwardQuote;
 
         boolean onlyMyself = false;
@@ -12295,7 +12295,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         if (delegate == null || selectedDialogs.isEmpty()) {
                             // NagramX: #repost-spread. Confirm fired but the dispatch never reaches
                             // didSelectDialogs, so drop any interval and drop-author choice written just
-                            // before us, together. (C1, IMPORTANT 1)
+                            // before us, together.
                             forwardSpreadIntervalSeconds = 0;
                             forwardSpreadFromMyName = null;
                             return;
@@ -12310,7 +12310,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 // NagramX: #repost-spread. A drop-author forward of >= 2 slots reuses the schedule sheet
                 // with an interval row so each slot lands on its own time. The gate reads this picker's
                 // request-local drop-author choice, never the shared ChatActivity.noForwardQuote static,
-                // which another open chat could flip while this picker is up. (IMPORTANT 1)
+                // which another open chat could flip while this picker is up.
                 if (Boolean.TRUE.equals(forwardSpreadFromMyName) && forwardSpreadSlotCount >= 2) {
                     AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
                             new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));
@@ -12325,7 +12325,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     // NagramX: #repost-spread. Atomic consume-and-clear of the one-shot interval channel. Returns the
     // per-slot interval in seconds (0 when this dispatch is not a spread) and zeroes the field so the
-    // exact didSelectDialogs caused by this confirmation is the only reader that can observe it. (C1)
+    // exact didSelectDialogs caused by this confirmation is the only reader that can observe it.
     public int consumeForwardSpreadInterval() {
         final int value = forwardSpreadIntervalSeconds;
         forwardSpreadIntervalSeconds = 0;
@@ -12334,7 +12334,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     // NagramX: #repost-spread. Atomic consume-and-clear of the one-shot drop-author choice, paired with
     // the interval above. Returns null when this picker's Send menu never made a choice, so the caller
-    // falls back to the shared static for a plain non-menu forward. (IMPORTANT 1)
+    // falls back to the shared static for a plain non-menu forward.
     public Boolean consumeForwardSpreadFromMyName() {
         final Boolean value = forwardSpreadFromMyName;
         forwardSpreadFromMyName = null;

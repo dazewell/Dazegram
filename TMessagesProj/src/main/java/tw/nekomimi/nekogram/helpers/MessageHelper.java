@@ -1404,8 +1404,12 @@ public class MessageHelper extends BaseController {
         ArrayList<SendMessagesHelper.SendingMediaInfo> media = null;
         // A grouped document/music album copies through its own per-child path (docAlbum* below) so each
         // member keeps its own extension, caption, entities and repost marker while sharing one group id;
-        // photos and videos keep the prepareSendingMedia path. Only one accumulator is ever active at a
-        // time because a source grouped_id is homogeneous, and any boundary flushes whichever is filling.
+        // photos and videos keep the prepareSendingMedia path. The two accumulators are never both active:
+        // the isDoc == currentAlbumIsDoc term in sameAlbum below is what enforces it - a type change fails
+        // sameAlbum, flushes whichever accumulator is filling and nulls both before the other starts, so
+        // this does not lean on the server sending a type-homogeneous grouped_id. If a mixed group ever did
+        // arrive it would just flush at the type boundary into two server groups on one timestamp - degraded
+        // grouping, never a null-accumulator crash.
         ArrayList<String> docAlbumPaths = null;
         ArrayList<CharSequence> docAlbumCaptions = null;
         ArrayList<ArrayList<TLRPC.MessageEntity>> docAlbumEntities = null;
@@ -1748,11 +1752,13 @@ public class MessageHelper extends BaseController {
         return info;
     }
 
-    // Flush whichever copy-album accumulator is filling. Only one of the two is ever non-empty at a
-    // boundary because a source grouped_id is homogeneous: photos/videos go through prepareSendingMedia,
-    // a document/music album goes through the per-child prepareSendingDocumentAlbumAsCopy so each member
-    // keeps its own extension, caption, entities and marker while sharing one group id. Returns whether
-    // anything was dispatched.
+    // Flush whichever copy-album accumulator is filling. At most one of the two is non-empty at a boundary
+    // because the sameAlbum guard in sendMessagesAsCopy flushes and nulls both on any type change, not
+    // because the server is trusted to keep a grouped_id type-homogeneous: photos/videos go through
+    // prepareSendingMedia, a document/music album goes through the per-child prepareSendingDocumentAlbumAsCopy
+    // so each member keeps its own extension, caption, entities and marker while sharing one group id.
+    // Both being non-empty here would only mean a mixed group split into two server groups upstream, never
+    // a crash. Returns whether anything was dispatched.
     private boolean flushCopyAlbum(ArrayList<SendMessagesHelper.SendingMediaInfo> media, ArrayList<String> docPaths, ArrayList<CharSequence> docCaptions, ArrayList<ArrayList<TLRPC.MessageEntity>> docEntities, ArrayList<HashMap<String, String>> docParams, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
         boolean sent = false;
         if (media != null && !media.isEmpty()) {

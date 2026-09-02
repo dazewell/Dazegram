@@ -946,7 +946,7 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: #repost-spread. A repost-as-copy batch that fully acked while the source chat was still
     // mid picker-close (resumed but not yet fully visible) can't show its delete offer yet. It's retained
     // here across exactly that transition and resolved once from onBecomeFullyVisible; a genuine pause or
-    // fragment destruction drops it instead (property 11 - fragment death loses the offer, never a send).
+    // fragment destruction drops it instead (fragment death loses the offer, never a send).
     private RepostCopyDeleteBatch repostCopyDeletePendingOffer;
     // NagramX: tracks the on-demand repost-as-copy delete offer bulletin so onPause can cancel it; cleared
     // by identity via repostCopyDeleteBulletinTag, mirroring the pinBulletin/pinBullerinTag pattern (#repost-reply).
@@ -15944,7 +15944,7 @@ public class ChatActivity extends BaseFragment implements
     // slot's sources and only for a single target (dids.size() == 1); a multi-target spread never
     // arms it. Admission was decided by the whole-dispatch pre-flight in didSelectDialogs; here a slot
     // that still fails to dispatch (racy cache eviction, upload error) drops the arm via
-    // finalizeRepostCopyDispatch, leaving deletion unarmed (property 8). Returns true when every slot
+    // finalizeRepostCopyDispatch, leaving deletion unarmed. Returns true when every slot
     // dispatched. There is no drop-author parameter here: a copy always drops the source author by
     // construction, so the request-local from-my-name choice only gated whether this spread path was
     // taken (never a late read of the mutable static). hideCaption is a separate flag and carries only
@@ -32247,7 +32247,7 @@ public class ChatActivity extends BaseFragment implements
         super.onPause();
         repostCopyDeleteBatch = null;
         // NagramX: #repost-spread. A genuine pause is not the picker-close transition - drop any pending
-        // delete offer so it never shows on a chat the user has left or backgrounded (property 11).
+        // delete offer so it never shows on a chat the user has left or backgrounded.
         repostCopyDeletePendingOffer = null;
         // NagramX: cancel the delete offer the moment the chat stops being live and visible (leaving, or the
         // app backgrounding), matching today's arm-window behaviour instead of leaving it counting down unseen.
@@ -37051,7 +37051,7 @@ public class ChatActivity extends BaseFragment implements
         // NagramX: #repost-spread. Consume-and-clear the one-shot interval and drop-author channels on
         // the exact didSelectDialogs the confirmation caused, before any early return can leave them
         // armed. The drop-author choice is request-local to the forward picker; fall back to the shared
-        // static only when this picker's Send menu never made a choice. (C1, IMPORTANT 1)
+        // static only when this picker's Send menu never made a choice.
         final int forwardSpreadInterval = fragment != null ? fragment.consumeForwardSpreadInterval() : 0;
         final Boolean forwardSpreadFromMyNameArmed = fragment != null ? fragment.consumeForwardSpreadFromMyName() : null;
         if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
@@ -37103,7 +37103,7 @@ public class ChatActivity extends BaseFragment implements
         // interval channel plus a schedule date is what marks this dispatch a spread; forwarding via the
         // field panel (a single message/album) is never one. Pre-flight admission is atomic for the
         // conditions observed here only - a cache hit reserves nothing, so a later eviction or upload
-        // failure still leaves the delete offer unarmed (property 8). (C4, IMPORTANT 1)
+        // failure still leaves the delete offer unarmed.
         final boolean naxFromMyName = forwardSpreadFromMyNameArmed != null ? forwardSpreadFromMyNameArmed : noForwardQuote;
         final boolean naxHideCaption = noForwardCaption;
         boolean naxSpread = forwardSpreadInterval > 0 && scheduleDate != 0 && forwardingMessage == null;
