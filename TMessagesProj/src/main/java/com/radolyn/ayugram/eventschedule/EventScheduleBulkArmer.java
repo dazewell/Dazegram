@@ -15,6 +15,7 @@ import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,13 +46,60 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         void revealArmed(@NonNull Set<Integer> armedServerIds);
     }
 
+    /**
+     * Parallel server/local id arrays for one selected message (or its whole album), captured on the UI
+     * thread while the fragment's group maps are valid. Both spaces are carried because ownership is
+     * resolved across both: a positive serverId (bound) or the negative local_id echo of a still-pending
+     * arm. The fragment captures these raw; all trigger policy (readiness, armed count, ownership) lives
+     * here in the fork-owned armer, not in the base file.
+     */
+    public static final class AlbumIdentity {
+        public final int[] serverIds;
+        public final int[] localIds;
+
+        public AlbumIdentity(@NonNull int[] serverIds, @NonNull int[] localIds) {
+            this.serverIds = serverIds;
+            this.localIds = localIds;
+        }
+    }
+
+    /**
+     * True only when every selected message (album members included) is already server-addressable. A
+     * still-sending child has a non-positive server id; arming against it would bind the shared trigger
+     * to an id the server never issued (the #256 defect class), so any non-positive member refuses the
+     * chip for the whole selection. Policy kept here, off the base file, so the sheet only captures ids.
+     */
+    public static boolean selectionReady(@NonNull List<AlbumIdentity> selection) {
+        for (AlbumIdentity a : selection) {
+            for (int id : a.serverIds) {
+                if (id <= 0) return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * How many selected items already carry a trigger, so the sheet can warn that turning the chip on
+     * overwrites them. Resolved across both id spaces (the same exact-id scan the arm path uses) so a
+     * still-pending owner is counted too; in-memory over the store, no server round-trip.
+     */
+    public static int armedCount(int account, long dialogId, @NonNull List<AlbumIdentity> selection) {
+        int armed = 0;
+        for (AlbumIdentity a : selection) {
+            if (!EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, a.serverIds, a.localIds).isEmpty()) {
+                armed++;
+            }
+        }
+        return armed;
+    }
+
     private final int account;
     private final long dialogId;
     private final EventScheduleConfig config;
-    // Full album child-id set per selected message, snapshotted at build time (never re-expanded from
-    // a live fragment). Used to suppress pre-existing entries at admission and to seed the createdAt
-    // sequence above anything already persisted.
-    private final List<int[]> selectionAlbumIds;
+    // Full server/local album identity per selected message, snapshotted at build time (never
+    // re-expanded from a live fragment). Used to resolve and suppress pre-existing owners across both id
+    // spaces at admission and to seed the createdAt sequence above anything already persisted.
+    private final List<AlbumIdentity> selection;
     // Reveals the bolt on the armed rows at finalization (nullable: an armer built without a fragment,
     // e.g. in a test, simply skips the refresh).
     @Nullable
@@ -60,11 +108,20 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     // Keys of the pre-existing entries this run is holding back, mapped to the entry revision seen at
     // admission. The key set is what finalization drains -- every hold this run placed is released,
     // driven by what we suppressed, not by what survived -- so a target that later dropped out of the
-    // outcomes still gets released. The revision detects a single-message edit that landed mid-run, so
-    // the bulk arm yields to that later explicit edit instead of overwriting it (C4). Nothing durable is
-    // removed at admission: suppression is process-local, so a process death discards it and the durable
-    // entry reloads armed, where a durable remove with only an in-memory copy would lose the trigger.
+    // outcomes still gets released. Nothing durable is removed at admission: suppression is
+    // process-local, so a process death discards it and the durable entry reloads armed, where a durable
+    // remove with only an in-memory copy would lose the trigger.
     private final HashMap<String, Long> suppressed = new HashMap<>();
+
+    // C2: each album's ownership state as seen at admission, keyed by the album's canonical server-id
+    // key (see albumKey). NONE / exact SINGLE(key+revision) / MULTI. Immediately before arming, the same
+    // resolution is re-run and must still match: an owner created, removed, replaced, or re-authored
+    // (revision bumped) since admission means a later single-message edit landed mid-run, so that target
+    // is rejected rather than overwritten. A MULTI album is rejected outright.
+    private final HashMap<String, AdmissionOwnership> admissionByAlbum = new HashMap<>();
+    // Parallel local ids per album (same canonical key), so finalization can re-resolve ownership across
+    // BOTH id spaces from an outcome that carries only server ids.
+    private final HashMap<String, int[]> localIdsByAlbum = new HashMap<>();
 
     // Server ids of entries already SENDING at admission. An issued early send can't be recalled and
     // suppression can't hold it back, so its target is treated as linearized before the run and rejected
@@ -81,11 +138,11 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     // fields that are already assigned (a field initializer would run before the constructor body).
     private final NotificationCenter.NotificationCenterDelegate deletionCollector;
 
-    public EventScheduleBulkArmer(int account, long dialogId, @NonNull EventScheduleConfig config, @NonNull List<int[]> selectionAlbumIds, @Nullable TriggerRefresh refresh) {
+    public EventScheduleBulkArmer(int account, long dialogId, @NonNull EventScheduleConfig config, @NonNull List<AlbumIdentity> selection, @Nullable TriggerRefresh refresh) {
         this.account = account;
         this.dialogId = dialogId;
         this.config = config;
-        this.selectionAlbumIds = selectionAlbumIds;
+        this.selection = selection;
         this.refresh = refresh;
         this.deletionCollector = (id, acc, args) -> {
             if (id != NotificationCenter.messagesDeleted || acc != account) return;
@@ -108,8 +165,21 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         EventScheduleStore.ensureLoaded(account);
         NotificationCenter.getInstance(account).addObserver(deletionCollector, NotificationCenter.messagesDeleted);
         collecting = true;
-        for (int[] album : selectionAlbumIds) {
-            for (EventScheduleEntry live : findExisting(album)) {
+        for (AlbumIdentity album : selection) {
+            String ak = albumKey(album.serverIds);
+            localIdsByAlbum.put(ak, album.localIds);
+            // Resolve EVERY owner of this album across BOTH id spaces (C1): a positive serverId (bound) or
+            // the negative local_id echo of a still-pending arm. Matching only server ids -- as an earlier
+            // draft did by passing null local ids -- misses a pending owner and lets a second durable
+            // trigger be armed beside it, or leaves one owner of a multi-owner target unsuppressed and able
+            // to fire mid-run.
+            ArrayList<String> ownerKeys = EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, album.serverIds, album.localIds);
+            ArrayList<EventScheduleEntry> owners = new ArrayList<>();
+            for (String key : ownerKeys) {
+                EventScheduleEntry live = EventScheduleStore.findByKey(account, key);
+                if (live != null && !owners.contains(live)) owners.add(live);
+            }
+            for (EventScheduleEntry live : owners) {
                 String key = live.key();
                 if (suppressed.containsKey(key)) continue;
                 // Hold the pre-existing trigger back for the run without touching durable state: it can't
@@ -123,29 +193,47 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     sendingAtAdmissionIds.addAll(live.serverIds);
                 }
             }
+            // Snapshot admission ownership for C2. Use the resolved owners (not the raw key list) so a key
+            // whose entry vanished doesn't over-count: 0 -> NONE, exactly 1 -> SINGLE(key, revision),
+            // more -> MULTI (rejected outright at finalization).
+            if (owners.isEmpty()) {
+                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.NONE, null, 0));
+            } else if (owners.size() == 1) {
+                EventScheduleEntry only = owners.get(0);
+                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.SINGLE, only.key(), only.revision));
+            } else {
+                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0));
+            }
         }
     }
 
     @Override
     public void onFinalize(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
-                           boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
+                           boolean authoritative, RescheduleSpreadExecutor.RunGeneration generation, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
         AndroidUtilities.runOnUIThread(() ->
-                finalizeOnUi(outcomes, scheduledIds, scheduledDates, authoritative, overlap, rescheduleWrong, rescheduleTotal, fragment));
+                finalizeOnUi(outcomes, scheduledIds, scheduledDates, authoritative, generation, rescheduleWrong, rescheduleTotal, fragment));
     }
 
     private void finalizeOnUi(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
-                              boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
-        // Reconcile this dialog's unbound durable orphans to current server ids before the dialog-wide gate
-        // in finalizeAfterReconcile reads them (synchronous when there are none -- the common case, no
-        // storage hop). The deletion collector stays registered across the hop -- it is removed only in
-        // finalizeAfterReconcile -- so a scheduled-delete that lands during the hop is still recorded and
-        // can still reject its target. reconcileDialogThen always runs its callback on the UI thread.
+                              boolean authoritative, RescheduleSpreadExecutor.RunGeneration generation, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
+        // Safety argument for the deferred activation. Finalization MAY yield -- reconcileDialogThen below
+        // does a storage hop whenever this dialog has unbound orphans, and after a HEAL that clears the
+        // unbound condition the dialog gate is no longer up, so arming proceeds after that yield. So the
+        // old "everything runs in one synchronous UI turn" premise does not hold and must not be assumed.
+        // Atomicity instead rests on three things spanning the hop: the admission suppression stays in
+        // place (nothing durable was removed), the deletion collector stays registered (a delete during
+        // the hop is still recorded and still rejects its target), and -- rechecked in
+        // finalizeAfterReconcile immediately after the reconcile and immediately before each mutation --
+        // the run's (account, dialogId) generation (an overtaken run fails closed) and each target's exact
+        // owner key + revision (a later single-message edit wins). Reconcile this dialog's unbound durable
+        // orphans to current server ids first, then finalize; reconcileDialogThen always runs its callback
+        // on the UI thread (synchronously when there are no orphans, the common case).
         EventScheduleController.reconcileDialogThen(account, dialogId, () ->
-                finalizeAfterReconcile(outcomes, scheduledIds, scheduledDates, authoritative, overlap, rescheduleWrong, rescheduleTotal, fragment));
+                finalizeAfterReconcile(outcomes, scheduledIds, scheduledDates, authoritative, generation, rescheduleWrong, rescheduleTotal, fragment));
     }
 
     private void finalizeAfterReconcile(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
-                                        boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
+                                        boolean authoritative, RescheduleSpreadExecutor.RunGeneration generation, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
         // C2 collector lifetime: removal happens here, before the fragment guard below, and this method
         // always runs. The executor's closing scheduled-history read always calls onFinalize (a tgnet
         // request always calls back, on success or error), onFinalize hops to finalizeOnUi with
@@ -165,10 +253,21 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             serverDates.put(scheduledIds[i], scheduledDates[i]);
         }
 
-        // Fail closed on overlap (a concurrent run may have moved these dates under us) or on a failed
-        // authoritative read (we can't trust membership). Arm nothing new; the finally below still
-        // releases every hold this run placed, so the pre-existing triggers survive untouched.
-        final boolean failClosed = overlap || !authoritative;
+        // NagramX: the run's (account, dialogId) generation is compared HERE -- immediately after the
+        // reconcile hop and immediately before any mutation -- not frozen early in the executor. It exists
+        // so an overtaken run fails closed: every reschedule run (plain or trigger-enabled) advances the
+        // generation at admission, and if a later run advanced it past ours it moved the server dates this
+        // run is about to arm against, so we must arm nothing. A plain run only ever advances it and never
+        // reads it, so plain reschedule behaviour is unchanged. This comparison MUST stay right before the
+        // arm loop -- that position is the fix (a run admitted after this point runs on the same UI thread
+        // in the same callback, so it cannot interleave before we arm); moving it earlier reopens the
+        // window it closes. The counter is written in RescheduleSpreadExecutor.run(); do not treat that
+        // write as dead just because it looks unread there.
+        final boolean superseded = generation.superseded();
+        // Fail closed on supersession (a later run moved these dates under us) or on a failed authoritative
+        // read (we can't trust membership). Arm nothing new; the finally below still releases every hold
+        // this run placed, so the pre-existing triggers survive untouched.
+        final boolean failClosed = superseded || !authoritative;
 
         // Dialog-wide decline: an unbound durable orphan that survived the reconcile above still sits in
         // this chat, and a bulk selection is dialog-scoped by definition, so it declines the WHOLE
@@ -211,21 +310,25 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                         notArmed++;
                         continue;
                     }
-                    // A later single-message edit wins over this in-flight bulk arm (C4). If the message
-                    // already carried a trigger whose revision changed since admission, the user
-                    // re-authored it mid-run, so yield rather than overwrite it. Every path that edits an
-                    // armed trigger bumps revision -- an author adding a new arming path must keep that
-                    // true or this detection silently stops working.
-                    if (editedMidRun(o.albumIds)) {
+                    // A later single-message edit wins over this in-flight bulk arm (C2/C4). Re-resolve
+                    // this album's ownership across both id spaces and require it to be EXACTLY what
+                    // admission saw: still ownerless, or still the same single owner at the same revision.
+                    // An owner created since admission (there was none, now there is), removed (turned off),
+                    // replaced, or re-authored (revision bumped -- including a schedule-only time change,
+                    // which the controller now advances) means the user acted mid-run, so yield rather than
+                    // overwrite. A target that was multi-owned at admission is rejected outright here.
+                    if (!ownershipUnchangedForArm(o.albumIds)) {
                         notArmed++;
                         continue;
                     }
                     EventScheduleEntry entry = buildEntry(o.albumIds, o.scheduleDate, nextCreatedAt++);
                     // armSurvivor merges the shared trigger into an existing owner in place, or claims a
                     // fresh entry when there is none -- it never removes an old entry, because on the
-                    // merge path the "old" entry IS the survivor being armed. A contested id rejects and
-                    // the target is counted not-armed. Consume the result either way.
-                    if (armSurvivor(entry)) {
+                    // merge path the "old" entry IS the survivor being armed. Ownership is resolved at
+                    // commit across both id spaces over the full album child-id set, so pass this album's
+                    // local ids too. A contested id rejects and the target is counted not-armed. Consume
+                    // the result either way.
+                    if (armSurvivor(entry, localIdsByAlbum.get(albumKey(o.albumIds)))) {
                         armed++;
                         // Reveal the bolt on exactly the rows that armed. albumIds are the message ids.
                         for (int id : o.albumIds) armedIds.add(id);
@@ -246,6 +349,11 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             for (String key : suppressed.keySet()) {
                 EventScheduleController.releaseSuppression(account, key, this);
             }
+            // NagramX: release this run's (account, dialogId) generation, unconditionally and exactly
+            // once. It was held from admission through the reconcile hop so the superseded() check above
+            // is meaningful; release it here whether we armed, failed closed, or the dialog gate declined
+            // everything, so a later run for this dialog isn't compared against a stale claim.
+            generation.release();
         }
 
         // Suppression release above is unconditional (I3/I5); only the user-facing refresh and bulletin
@@ -271,8 +379,8 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
      * entry is ever written and the caller still counts the outcome. Returns true only when the trigger is
      * now durably armed on the target.
      */
-    private boolean armSurvivor(@NonNull EventScheduleEntry entry) {
-        String resolvedKey = EventScheduleController.bulkArmSurvivor(account, dialogId, entry);
+    private boolean armSurvivor(@NonNull EventScheduleEntry entry, @Nullable int[] negativeLocalIds) {
+        String resolvedKey = EventScheduleController.bulkArmSurvivor(account, dialogId, entry, negativeLocalIds);
         if (resolvedKey == null) {
             return false;
         }
@@ -286,13 +394,51 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return true;
     }
 
-    private ArrayList<EventScheduleEntry> findExisting(int[] albumIds) {
-        ArrayList<EventScheduleEntry> found = new ArrayList<>();
-        for (int id : albumIds) {
-            EventScheduleEntry e = EventScheduleStore.findByMessage(account, dialogId, id);
-            if (e != null && !found.contains(e)) found.add(e);
+    // C2: is this album's ownership still exactly what admission recorded? Re-resolves across both id
+    // spaces (the arm path's exact-id scan) and compares to the admission snapshot. A NONE album must
+    // still be ownerless; a SINGLE must still be the same owner key at the same revision; a MULTI (or an
+    // album with no admission snapshot) is never armed. Any owner created, removed, replaced, or
+    // re-authored since admission is a later single-message edit that wins over this bulk arm.
+    private boolean ownershipUnchangedForArm(int[] albumServerIds) {
+        AdmissionOwnership snap = admissionByAlbum.get(albumKey(albumServerIds));
+        if (snap == null) return false;
+        int[] localIds = localIdsByAlbum.get(albumKey(albumServerIds));
+        EventScheduleStore.OwnerSeed now = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, albumServerIds, localIds);
+        switch (snap.kind) {
+            case NONE:
+                return now.kind == EventScheduleStore.EditOwner.NONE;
+            case SINGLE:
+                return now.kind == EventScheduleStore.EditOwner.SINGLE
+                        && now.entry != null
+                        && now.entry.key().equals(snap.ownerKey)
+                        && now.entry.revision == snap.ownerRevision;
+            default:
+                return false;
         }
-        return found;
+    }
+
+    // Canonical key for an album, order-independent, so a finalization outcome (which carries only
+    // server ids) joins back to the admission snapshot and local-id map regardless of child order.
+    private static String albumKey(int[] serverIds) {
+        int[] sorted = serverIds.clone();
+        Arrays.sort(sorted);
+        StringBuilder sb = new StringBuilder();
+        for (int id : sorted) sb.append(id).append(',');
+        return sb.toString();
+    }
+
+    // One album's ownership as seen at admission (C2). SINGLE carries the exact owner key and revision;
+    // NONE and MULTI carry neither.
+    private static final class AdmissionOwnership {
+        final EventScheduleStore.EditOwner kind;
+        final String ownerKey;
+        final long ownerRevision;
+
+        AdmissionOwnership(EventScheduleStore.EditOwner kind, String ownerKey, long ownerRevision) {
+            this.kind = kind;
+            this.ownerKey = ownerKey;
+            this.ownerRevision = ownerRevision;
+        }
     }
 
     private EventScheduleEntry buildEntry(int[] albumIds, int scheduleDate, long createdAt) {
@@ -322,16 +468,6 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private boolean anySendingAtAdmission(int[] albumIds) {
         for (int id : albumIds) {
             if (sendingAtAdmissionIds.contains(id)) return true;
-        }
-        return false;
-    }
-
-    private boolean editedMidRun(int[] albumIds) {
-        for (int id : albumIds) {
-            EventScheduleEntry e = EventScheduleStore.findByMessage(account, dialogId, id);
-            if (e == null) continue;
-            Long admissionRevision = suppressed.get(e.key());
-            if (admissionRevision != null && e.revision != admissionRevision) return true;
         }
         return false;
     }

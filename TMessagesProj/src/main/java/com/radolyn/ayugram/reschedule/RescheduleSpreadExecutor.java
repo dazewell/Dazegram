@@ -77,35 +77,61 @@ public final class RescheduleSpreadExecutor {
      */
     public interface TriggerArmingHooks {
         /**
-         * Once, on the UI thread, before the first edit request. Detach any triggers the selected
-         * messages already carry here (C1), so a live trigger can't fire mid-run and then read back
-         * as missing during verification. The implementation keeps its own restore snapshots.
+         * Once, on the UI thread, before the first edit request. The implementation holds back any
+         * triggers the selected messages already carry, so a live trigger can't fire mid-run and then
+         * read back as missing during verification. This alters runtime suppression ONLY and must never
+         * durably remove an entry: suppression is process-local, so a process death before finalization
+         * simply discards it and the durable trigger reloads armed. (An earlier design durably detached
+         * the entry and kept restore snapshots to put it back; that lost the trigger outright on a
+         * process death mid-run and was replaced by non-durable suppression -- do not reintroduce a
+         * durable-removal step here.)
          */
         void onAdmission();
 
         /**
          * Once, after the closing scheduled-history read, on the request thread. {@code scheduledIds}
          * / {@code scheduledDates} are the server's current scheduled set (parallel arrays), empty
-         * when {@code authoritative} is false. {@code overlap} true means another run for this dialog
-         * was admitted before this one finalized (C3) -- activation must fail closed. {@code
-         * rescheduleWrong}/{@code rescheduleTotal} carry the plain reschedule result so the
+         * when {@code authoritative} is false. {@code generation} is this run's handle to its
+         * (account, dialogId) generation: the implementation re-checks {@link RunGeneration#superseded()}
+         * immediately before it commits the arm on the UI thread -- after the reconcile hop that can
+         * yield, not frozen here where the window is still open -- and fails closed if a later run
+         * overtook it (C3), then calls {@link RunGeneration#release()} once in its unconditional finally.
+         * {@code rescheduleWrong}/{@code rescheduleTotal} carry the plain reschedule result so the
          * implementation can fold it into one bulletin. The implementation does its single
          * reconcile-create-refresh-notify pass on the UI thread.
          */
         void onFinalize(List<TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
-                        boolean authoritative, boolean overlap, int rescheduleWrong, int rescheduleTotal,
+                        boolean authoritative, RunGeneration generation, int rescheduleWrong, int rescheduleTotal,
                         BaseFragment fragment);
     }
 
+    /**
+     * Neutral handle to one run's (account, dialogId) generation, handed to the trigger finalizer so
+     * the overtaken-run comparison happens immediately before the arm commits rather than frozen early
+     * in the executor. Primitive-only, so no eventschedule type crosses the package boundary.
+     */
+    public interface RunGeneration {
+        /** True when a later run for this (account, dialogId) advanced the generation past this run. */
+        boolean superseded();
+
+        /** Release this run's generation. Call once, in finalization's unconditional finally. */
+        void release();
+    }
+
     // Best-effort re-entry guard: one bulk run per dialog at a time. Deliberately NOT a safety
-    // property for trigger activation -- see armRunSerial for that.
+    // property for trigger activation -- see armRunSerial for that. This is the ONLY thing that can
+    // refuse a plain reschedule, and the trigger feature leaves it exactly as it was.
     private static volatile long busyDialogId;
 
-    // C3 overlap detection, kept separate from busyDialogId. busyDialogId is cleared the instant the
-    // scheduled-history response arrives, before the UI finalization runs, so a second run can be
-    // admitted in that window and change the server dates this run is about to finalize from. Each
-    // arming run claims a serial for its (account, dialogId) at admission; if a later run overwrites
-    // that serial before this run finalizes, this run's activation fails closed.
+    // (account, dialogId) run generation. busyDialogId is cleared the instant the scheduled-history
+    // response arrives, before the UI finalization runs, so a second run can be admitted in that
+    // window and move the server dates this run is about to arm against. EVERY reschedule run advances
+    // this generation at admission (see run()); only a trigger-enabled finalizer ever reads it, and it
+    // reads it right before it commits the arm, failing closed if it was overtaken. A plain run only
+    // advances it -- it never reads or branches on it -- so plain reschedule behaviour is unchanged.
+    // The reader is EventScheduleBulkArmer, via the RunGeneration handle. Do not delete this as
+    // "write-only": from inside this file the write looks unread, but the read lives in that finalizer
+    // and is load-bearing -- removing it makes an overtaken trigger run arm from a stale snapshot again.
     private static final HashMap<String, Long> armRunSerial = new HashMap<>();
     private static long armRunCounter;
 
@@ -130,12 +156,15 @@ public final class RescheduleSpreadExecutor {
             return false;
         }
         busyDialogId = dialogId;
-        final long serial;
+        // NagramX: advance the (account, dialogId) generation on EVERY run, placed AFTER the
+        // busyDialogId admission check above so it can never gate or refuse a plain run -- here it is
+        // deliberately write-only. Its sole purpose is that a concurrent trigger-enabled finalizer
+        // (EventScheduleBulkArmer) can detect this run overtook it and fail closed; a plain run never
+        // reads it, so plain reschedule behaviour is unchanged. Do not delete this because it looks
+        // unread in this file -- the read is in that finalizer, one file away, and is load-bearing.
+        final long serial = claimArmSerial(currentAccount, dialogId);
         if (hooks != null) {
-            serial = claimArmSerial(currentAccount, dialogId);
             hooks.onAdmission();
-        } else {
-            serial = 0L;
         }
         sendNext(currentAccount, dialogId, targets, 0, 1, new ArrayList<>(), hooks == null ? null : new ArrayList<>(), hooks, serial, fragment);
         return true;
@@ -220,10 +249,6 @@ public final class RescheduleSpreadExecutor {
         req.hash = 0;
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> {
             busyDialogId = 0;
-            final boolean overlap = hooks != null && armRunSuperseded(currentAccount, dialogId, serial);
-            if (hooks != null) {
-                clearArmSerial(currentAccount, dialogId, serial);
-            }
             final int total = targets.size();
             int wrong;
             final SparseIntArray serverDates = new SparseIntArray();
@@ -255,9 +280,28 @@ public final class RescheduleSpreadExecutor {
                     ids[i] = serverDates.keyAt(i);
                     dates[i] = serverDates.valueAt(i);
                 }
-                hooks.onFinalize(outcomes, ids, dates, authoritative, overlap, wrongFinal, total, fragment);
+                // NagramX: hand the generation to the finalizer rather than comparing it here. The
+                // supersession check must happen immediately before the arm commits, AFTER the reconcile
+                // hop that can yield -- comparing it here froze the window open. The finalizer releases
+                // it in its unconditional finally.
+                final long capturedSerial = serial;
+                final RunGeneration generation = new RunGeneration() {
+                    @Override
+                    public boolean superseded() {
+                        return armRunSuperseded(currentAccount, dialogId, capturedSerial);
+                    }
+
+                    @Override
+                    public void release() {
+                        clearArmSerial(currentAccount, dialogId, capturedSerial);
+                    }
+                };
+                hooks.onFinalize(outcomes, ids, dates, authoritative, generation, wrongFinal, total, fragment);
                 return;
             }
+            // NagramX: plain reschedule advanced the generation at admission purely so a concurrent
+            // trigger run can detect it moved the dates; nothing on this path reads it, so release it now.
+            clearArmSerial(currentAccount, dialogId, serial);
             AndroidUtilities.runOnUIThread(() -> {
                 if (fragment == null || fragment.getParentActivity() == null) {
                     return;

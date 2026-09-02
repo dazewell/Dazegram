@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.radolyn.ayugram.utils.AyuState;
 
@@ -482,15 +483,18 @@ public final class EventScheduleController {
      * hold. Never removes an entry -- a merge updates the survivor in place, and on the merge path the
      * existing entry IS the survivor being armed, so a create-then-remove would delete what was just armed.
      * Returns the resolved entry's key on success (merged or freshly claimed), or null when the store
-     * rejects the claim (multi-owner, or an empty/non-positive id set).
+     * rejects the claim (multi-owner, or an empty/non-positive id set). {@code negativeLocalIds} carries
+     * the album's local_id echoes so ownership is resolved across both id spaces (mirroring
+     * {@link #commitEditArm}) -- a still-pending owner reachable only by local id must not be missed, or
+     * a second trigger gets armed beside it.
      */
-    public static String bulkArmSurvivor(int account, long dialogId, @NonNull EventScheduleEntry built) {
+    public static String bulkArmSurvivor(int account, long dialogId, @NonNull EventScheduleEntry built, @Nullable int[] negativeLocalIds) {
         int[] serverIds = new int[built.serverIds.size()];
         for (int i = 0; i < serverIds.length; i++) {
             serverIds[i] = built.serverIds.get(i);
         }
         EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
-                account, dialogId, serverIds, null,
+                account, dialogId, serverIds, negativeLocalIds,
                 built.types, built.pattern, built.regex, built.delaySeconds, built.fallbackDate, built.createdAt);
         if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
                 || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
@@ -523,12 +527,24 @@ public final class EventScheduleController {
      * Keeps an existing single owner's derived schedule time in step when the user edits a scheduled
      * message's send time without touching the trigger controls. Never creates, removes, or
      * reconfigures a trigger -- a multi-owner conflict or no owner is left exactly as it is. Re-sorts
-     * the owner's queue bucket so the fallback-time send order the overview promises stays correct.
+     * the owner's queue bucket so the fallback-time send order the overview promises stays correct. When
+     * the time actually moves it also advances the owner's observable revision (C2): a schedule-only edit
+     * is still a later single-message edit that an in-flight bulk arm must yield to, and the bulk
+     * finalizer detects that only by an exact-revision recheck. refreshFallbackForEdit deliberately does
+     * not bump revision (it is not a trigger reconfigure), so the wrapper does it here -- only on a real
+     * move, or a spurious bump would make the bulk arm needlessly reject an untouched target.
      */
     public static void commitEditRefresh(int account, long dialogId, int[] serverIds, int[] localIds, int fallbackDate) {
+        EventScheduleStore.OwnerSeed seed = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, serverIds, localIds);
+        boolean moved = seed.kind == EventScheduleStore.EditOwner.SINGLE
+                && seed.entry != null && seed.entry.fallbackDate != fallbackDate;
         EventScheduleEntry entry = EventScheduleStore.refreshFallbackForEdit(
                 account, dialogId, serverIds, localIds, fallbackDate);
         if (entry != null) {
+            if (moved) {
+                entry.revision++;
+                EventScheduleStore.persist(account, entry);
+            }
             resortQueueForEntry(account, entry);
         }
     }
