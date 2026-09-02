@@ -37457,19 +37457,49 @@ public class ChatActivity extends BaseFragment implements
         if (preview.isEmpty()) return;
         final int count = preview.size();
         final long currentDate = preview.get(0).messageOwner.date;
-        AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, (baseScheduleDate, intervalSeconds) -> {
+        // NagramX: readiness for the shared trigger chip and the overwrite heads-up count are decided once,
+        // here, over the album-expanded server/local identity of the whole selection. Both policies live in
+        // the fork-owned armer API; the base file only captures raw ids. Any still-in-flight (non-positive)
+        // member refuses the chip for the whole selection.
+        java.util.List<com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> previewIdentity = new ArrayList<>(preview.size());
+        for (int i = 0; i < preview.size(); i++) previewIdentity.add(albumIdentity(preview.get(i)));
+        final boolean triggerReady = com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.selectionReady(previewIdentity);
+        final int armedCount = com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.armedCount(currentAccount, dialog_id, previewIdentity);
+        AlertsCreator.createRescheduleDatePickerDialog(getParentActivity(), dialog_id, currentDate, count, armedCount, triggerReady, (baseScheduleDate, intervalSeconds, triggerConfig) -> {
             final Runnable apply = () -> {
                 // Dates can move while the sheet is open (an earlier pass still landing, a message
                 // getting sent), so re-resolve and re-sort now instead of trusting the preview snapshot.
                 ArrayList<MessageObject> items = resolveRescheduleItems(selectedIds);
                 ArrayList<com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target> targets = new ArrayList<>(items.size());
+                // NagramX: capture each item's album identity (server + local ids) once here and reuse it
+                // for both the executor Target (server ids) and the armer (both id spaces), so the group is
+                // expanded a single time on fresh apply-time items.
+                java.util.List<com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity> selectionIdentity = new ArrayList<>(items.size());
                 for (int i = 0; i < items.size(); i++) {
                     MessageObject m = items.get(i);
+                    com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity identity = albumIdentity(m);
+                    selectionIdentity.add(identity);
                     targets.add(new com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.Target(
-                            m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period));
+                            m.getId(), baseScheduleDate + i * intervalSeconds, m.messageOwner.schedule_repeat_period,
+                            identity.serverIds));
                 }
                 if (targets.isEmpty()) return;
-                if (!com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this)) {
+                // NagramX: a non-null triggerConfig means the user opted into the shared "Send on event"
+                // chip, so arm one shared trigger across the whole selection at finalization. The armer
+                // gets the same apply-time identities the targets came from (never a live re-expansion),
+                // as the executor's arming hooks. The bolt is revealed only at finalization, on exactly the
+                // rows that armed, through the private condition overload of updateVisibleRows (which forces
+                // a re-measure); the predicate null-guards because getMessageObject() can be null for a cell.
+                com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.TriggerArmingHooks hooks = null;
+                if (triggerConfig != null) {
+                    hooks = new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer(
+                            currentAccount, dialog_id, triggerConfig, selectionIdentity,
+                            armedIds -> updateVisibleRows(msg -> msg != null && armedIds.contains(msg.getId())));
+                }
+                final boolean started = hooks != null
+                        ? com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this, hooks)
+                        : com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.run(currentAccount, dialog_id, targets, ChatActivity.this);
+                if (!started) {
                     BulletinFactory.of(ChatActivity.this).createSimpleBulletin(R.raw.error, LocaleController.getString(R.string.RescheduleBusy)).show();
                     return;
                 }
@@ -37515,6 +37545,16 @@ public class ChatActivity extends BaseFragment implements
                 ? Integer.compare(a.messageOwner.date, b.messageOwner.date)
                 : Integer.compare(a.getId(), b.getId()));
         return items;
+    }
+
+    // NagramX: the full album server/local identity for a resolved reschedule target. Only the grouped-map
+    // lookup is forced onto the base file here; the array capture across both id spaces lives in the
+    // fork-owned armer factory. Trigger policy (readiness, armed count, ownership) lives in the armer, not
+    // here.
+    private com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity albumIdentity(MessageObject m) {
+        long gid = m.getGroupId();
+        MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
+        return com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity.of(m, group);
     }
 
     public void clearSelectionMode() {

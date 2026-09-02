@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.text.TextUtils;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.radolyn.ayugram.utils.AyuState;
 
@@ -34,6 +35,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Runtime engine for event-triggered scheduled messages.
@@ -90,6 +92,15 @@ public final class EventScheduleController {
     // Written only on the UI thread (arm/kill/ack/pending GC all run there).
     private static final Map<String, Pending> PENDING = new HashMap<>();
     private static final Map<String, QueueState> QUEUES = new HashMap<>();
+    // Run-owned fire suppression for a bulk arm (issue #249): account+entry.key() -> the set of live run
+    // tokens holding the trigger back. A bulk run suppresses each pre-existing trigger it admits so the
+    // trigger can't fire mid-run and then read back missing during verification, WITHOUT durably removing
+    // it -- a durable remove whose only in-memory copy is lost on process death would destroy a trigger the
+    // user configured. This map is process-local, so a process death just discards it and the durable entry
+    // reloads armed (runtime state is never persisted). Refcounted by run token so two overlapping runs that
+    // both suppress one trigger keep it suppressed until the last releases; a run removes only its own
+    // token. UI-thread only, like PENDING and QUEUES.
+    private static final Map<String, Set<Object>> SUPPRESSED = new HashMap<>();
     // account -> entry keys with a durable reconcile in flight. Written only on the UI thread, like
     // PENDING. While a key is tracked here the expiry GC must leave the entry alone: a slow storage-queue
     // lookup may still heal it, so the delete waits for that lookup's own snapshot-guarded disposition.
@@ -112,6 +123,16 @@ public final class EventScheduleController {
 
     static String queueKey(int account, long dialogId, String triggerKey) {
         return account + "_" + dialogId + "_" + triggerKey;
+    }
+
+    private static String suppressKey(int account, @NonNull String entryKey) {
+        return account + "_" + entryKey;
+    }
+
+    private static boolean isSuppressed(int account, @NonNull String entryKey) {
+        // releaseSuppression drops the map key when the last owner leaves, so a present key always means
+        // a live owner still holds this trigger back.
+        return SUPPRESSED.containsKey(suppressKey(account, entryKey));
     }
 
     // Package-private so the Message Triggers overview page can order its rows the same way the
@@ -385,6 +406,48 @@ public final class EventScheduleController {
     }
 
     /**
+     * Bulk-arm admission (issue #249): hold one pre-existing trigger back from firing for the duration of
+     * a run, without touching durable state. Ejects the entry from any live queue and resets its runtime
+     * state to ARMED -- removeFromQueue leaves a WAITING entry's state unchanged, which would leave it
+     * unable to fire even after release, since evaluate only re-queues ARMED entries.
+     *
+     * <p>Returns false when the entry is already SENDING: an issued send can't be recalled, so the caller
+     * must treat that target as linearized before admission and reject it in verification.
+     *
+     * @param runToken identifies the run so overlapping runs refcount cleanly; pass the same token to
+     *                 {@link #releaseSuppression}.
+     */
+    public static boolean suppressForBulk(int account, @NonNull EventScheduleEntry entry, @NonNull Object runToken) {
+        if (entry.state == EventScheduleEntry.STATE_SENDING) {
+            return false;
+        }
+        String sk = suppressKey(account, entry.key());
+        Set<Object> owners = SUPPRESSED.get(sk);
+        if (owners == null) {
+            owners = new HashSet<>();
+            SUPPRESSED.put(sk, owners);
+        }
+        owners.add(runToken);
+        removeFromQueue(account, entry);
+        entry.state = EventScheduleEntry.STATE_ARMED;
+        return true;
+    }
+
+    /**
+     * Release one run's hold on a trigger. It becomes eligible to fire again only once the last run
+     * releases it. A no-op for a key this run never suppressed, and idempotent.
+     */
+    public static void releaseSuppression(int account, @NonNull String entryKey, @NonNull Object runToken) {
+        String sk = suppressKey(account, entryKey);
+        Set<Object> owners = SUPPRESSED.get(sk);
+        if (owners == null) return;
+        owners.remove(runToken);
+        if (owners.isEmpty()) {
+            SUPPRESSED.remove(sk);
+        }
+    }
+
+    /**
      * Arms (or re-arms) a trigger while editing a scheduled message. Ownership is re-resolved at this
      * point across both id spaces, so a snapshot taken when the sheet opened cannot strand a pending
      * owner or duplicate it. Returns false when the store rejects the claim -- either the message is
@@ -412,6 +475,44 @@ public final class EventScheduleController {
         return true;
     }
 
+    /**
+     * Bulk-arm one target through the same ownership gate as {@link #commitEditArm}, but driven from a
+     * pre-built entry so the caller's batch-local createdAt sequence -- not wall-clock -- seeds a fresh
+     * claim, and reporting the resolved entry's key rather than a bare boolean: on a merge that key is the
+     * existing owner's, not the built entry's, and the caller needs it to release the right suppression
+     * hold. Never removes an entry -- a merge updates the survivor in place, and on the merge path the
+     * existing entry IS the survivor being armed, so a create-then-remove would delete what was just armed.
+     * Returns the resolved entry's key on success (merged or freshly claimed), or null when the store
+     * rejects the claim (multi-owner, or an empty/non-positive id set). {@code negativeLocalIds} carries
+     * the album's local_id echoes so ownership is resolved across both id spaces (mirroring
+     * {@link #commitEditArm}) -- a still-pending owner reachable only by local id must not be missed, or
+     * a second trigger gets armed beside it.
+     */
+    public static String bulkArmSurvivor(int account, long dialogId, @NonNull EventScheduleEntry built, @Nullable int[] negativeLocalIds) {
+        int[] serverIds = new int[built.serverIds.size()];
+        for (int i = 0; i < serverIds.length; i++) {
+            serverIds[i] = built.serverIds.get(i);
+        }
+        EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
+                account, dialogId, serverIds, negativeLocalIds,
+                built.types, built.pattern, built.regex, built.delaySeconds, built.fallbackDate, built.createdAt);
+        if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
+            return null;
+        }
+        if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
+            // The merge changed the entry's fields (and thus its queueKey), so drop it from the bucket it
+            // was queued under before the change, named by the captured previous trigger key. Mirrors
+            // commitEditArm; harmless when the entry was suppressed out of every queue at admission.
+            removeFromQueueByKey(account, queueKey(account, dialogId, claim.previousTriggerKey), claim.entry);
+        }
+        // The entry now carries server ids, so any lingering pending-bind record is stale -- drop it rather
+        // than leave it for GC. A no-op for a freshly claimed entry.
+        removePending(account, claim.entry.key());
+        ensureObserver(account);
+        return claim.entry.key();
+    }
+
     /** Turns a trigger off while editing: drops every owner of the message (bound or still pending). */
     public static void commitEditOff(int account, long dialogId, int[] serverIds, int[] localIds) {
         ArrayList<String> keys = EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, serverIds, localIds);
@@ -426,12 +527,33 @@ public final class EventScheduleController {
      * Keeps an existing single owner's derived schedule time in step when the user edits a scheduled
      * message's send time without touching the trigger controls. Never creates, removes, or
      * reconfigures a trigger -- a multi-owner conflict or no owner is left exactly as it is. Re-sorts
-     * the owner's queue bucket so the fallback-time send order the overview promises stays correct.
+     * the owner's queue bucket so the fallback-time send order the overview promises stays correct
+     * (resortQueueForEntry leaves a STATE_SENDING head alone -- its RPC owns the queue). When the time
+     * actually moves it advances the owner's process-local scheduleRevision (C2): a schedule-only edit
+     * is still a later single-message edit that an in-flight bulk arm must yield to, and the bulk
+     * finalizer detects that by an exact scheduleRevision recheck. It bumps scheduleRevision, NOT
+     * revision: revision is the send pipeline's staleness token (fire/retryHeadSend/onSendError), and
+     * bumping it while a send RPC is outstanding makes a later error read as stale and stall the queue.
+     * Bumped only on a real move, or a spurious bump would make the bulk arm needlessly reject an
+     * untouched target.
+     *
+     * <p>INVARIANT: this method is the sole funnel for an untouched-trigger schedule move. The
+     * scheduleRevision signal is only as complete as this funnel -- any future path that moves an
+     * owner's fallbackDate MUST bump scheduleRevision here (or route through here), or a concurrent
+     * bulk arm will miss the edit and arm from a stale snapshot.
      */
     public static void commitEditRefresh(int account, long dialogId, int[] serverIds, int[] localIds, int fallbackDate) {
+        EventScheduleStore.OwnerSeed seed = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, serverIds, localIds);
+        boolean moved = seed.kind == EventScheduleStore.EditOwner.SINGLE
+                && seed.entry != null && seed.entry.fallbackDate != fallbackDate;
         EventScheduleEntry entry = EventScheduleStore.refreshFallbackForEdit(
                 account, dialogId, serverIds, localIds, fallbackDate);
         if (entry != null) {
+            if (moved) {
+                // Process-local, not persisted (refreshFallbackForEdit already persisted the moved
+                // fallbackDate; scheduleRevision itself is never serialized -- see EventScheduleEntry).
+                entry.scheduleRevision++;
+            }
             resortQueueForEntry(account, entry);
         }
     }
@@ -611,6 +733,24 @@ public final class EventScheduleController {
                 finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate));
     }
 
+    /**
+     * Bulk-arm gate for a whole selection: reconcile this dialog's unbound durable orphans to current
+     * server ids before the caller decides ownership over the selection, then run {@code onDone} on the UI
+     * thread. Mirrors the single-message {@link #reconcileThenCommitEdit}, but stays generic -- the caller
+     * (the bulk armer) does the ownership decision and the dialog-wide gate re-check itself in
+     * {@code onDone}, since a bulk selection is dialog-scoped and an orphan that stays unresolved must
+     * decline the WHOLE selection through the same {@link EventScheduleStore#hasUnboundRandomEntry} gate.
+     * Runs {@code onDone} synchronously when the dialog has no orphan -- the common case, no storage hop.
+     */
+    public static void reconcileDialogThen(int account, long dialogId, @NonNull Runnable onDone) {
+        ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account, dialogId);
+        if (snaps.isEmpty()) {
+            onDone.run();
+            return;
+        }
+        postDurableLookup(account, snaps, onDone);
+    }
+
     private static void finishCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
                                          boolean userTouchedTrigger, boolean armed, int types, String pattern,
                                          boolean regex, int delaySeconds, int scheduleDate) {
@@ -778,8 +918,12 @@ public final class EventScheduleController {
             if (message.isOutOwner() || message.getId() <= 0 || message.messageOwner == null) continue;
             final String text = matchableText(message);
             for (EventScheduleEntry entry : entries) {
-                if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()) continue;
                 final String key = entry.key();
+                // Suppressed by an in-flight bulk arm (issue #249): held back from firing without a
+                // durable remove. Checked here, in armWaiting, and again just before fire issues the RPC,
+                // because a pattern match begun before admission can post armWaiting after it.
+                if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()
+                        || isSuppressed(account, key)) continue;
                 boolean typeSet = entry.types != 0;
                 boolean patternSet = !TextUtils.isEmpty(entry.pattern);
                 // OR: a matching type is enough on its own; otherwise the pattern can still match.
@@ -819,6 +963,7 @@ public final class EventScheduleController {
 
     private static void armWaiting(int account, EventScheduleEntry entry, String key, long revision) {
         if (entry.state != EventScheduleEntry.STATE_ARMED || entry.revision != revision
+                || isSuppressed(account, key)
                 || !EventScheduleStore.contains(account, key)) return;
         entry.state = EventScheduleEntry.STATE_WAITING;
         String queueKey = queueKey(account, entry);
@@ -880,11 +1025,15 @@ public final class EventScheduleController {
     // re-drive: a bucket only exists while it is being driven (armWaiting creates it and immediately
     // advances; advanceQueue removes it once drained), so a live bucket always has a pending fire
     // callback, and fire/retryHeadSend re-read queue.get(0) and hand off to the new head on their own.
-    // In practice the entry isn't queued during a schedule edit anyway -- a still-scheduled message
-    // hasn't been sent, so its owner is armed/pending, not WAITING -- making this a guarded no-op.
+    // A STATE_SENDING entry is the exception and must NOT be reordered: its sendScheduledMessages RPC
+    // is outstanding and it owns the head, so moving it would let fire/retryHeadSend hand the queue to
+    // a different entry and issue a second send while the first RPC is still in flight. Leave it in
+    // place; it drops out of the queue on its own when the send completes (success removes it, error
+    // re-arms and advances).
     private static void resortQueueForEntry(int account, EventScheduleEntry entry) {
         QueueState queueState = QUEUES.get(queueKey(account, entry));
         if (queueState == null) return;
+        if (entry.state == EventScheduleEntry.STATE_SENDING) return;
         ArrayList<EventScheduleEntry> queue = queueState.entries;
         if (!queue.contains(entry)) return;
         Collections.sort(queue, QUEUE_ORDER);
@@ -940,6 +1089,14 @@ public final class EventScheduleController {
             return;
         }
         if (entry.serverIds.isEmpty()) {
+            entry.state = EventScheduleEntry.STATE_ARMED;
+            advanceQueue(account, expectedQueueKey);
+            return;
+        }
+        if (isSuppressed(account, entry.key())) {
+            // A bulk arm (issue #249) suppressed this trigger after it reached the queue head. Don't issue
+            // the send: drop back to ARMED (the map still holds it, so it can't be re-queued until the run
+            // releases it) and re-drive so the queue doesn't stall on a suppressed head.
             entry.state = EventScheduleEntry.STATE_ARMED;
             advanceQueue(account, expectedQueueKey);
             return;

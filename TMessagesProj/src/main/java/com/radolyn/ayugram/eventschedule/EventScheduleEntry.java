@@ -69,6 +69,17 @@ public final class EventScheduleEntry {
     // fire, and their runOnUIThread callbacks), never from the background matcher queue --
     // see PatternState for the separate, atomically-published state the matcher itself reads.
     public long revision;
+    // Bumped by commitEditRefresh when an untouched-trigger schedule edit actually MOVES this owner's
+    // fallback date. Kept separate from revision on purpose: revision is the staleness token the
+    // single-message send pipeline compares against an in-flight sendScheduledMessages RPC
+    // (fire/retryHeadSend/onSendError), so bumping it under a STATE_SENDING head makes a later send
+    // error read as stale and stall the queue silently. scheduleRevision carries the "this owner's
+    // schedule moved" signal a bulk arm needs without disturbing that token. Process-local and never
+    // serialized -- absent from toJson/fromJson, exactly like revision. It resets to 0 on restart,
+    // which is safe only because every consumer compares two captures taken within one process
+    // lifetime; see EventScheduleBulkArmer.ownershipUnchangedForArm for why the run cannot span a
+    // process death. UI-thread only, like revision.
+    public long scheduleRevision;
 
     public String key() {
         return dialogId + "_" + createdAt;
