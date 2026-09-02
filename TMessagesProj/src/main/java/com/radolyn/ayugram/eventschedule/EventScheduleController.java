@@ -92,7 +92,11 @@ public final class EventScheduleController {
     }
 
     private static String queueKey(int account, EventScheduleEntry entry) {
-        return account + "_" + entry.dialogId + "_" + entry.triggerKey();
+        return queueKey(account, entry.dialogId, entry.triggerKey());
+    }
+
+    static String queueKey(int account, long dialogId, String triggerKey) {
+        return account + "_" + dialogId + "_" + triggerKey;
     }
 
     // Package-private so the Message Triggers overview page can order its rows the same way the
@@ -342,6 +346,43 @@ public final class EventScheduleController {
         return true;
     }
 
+    /**
+     * Arms (or re-arms) a trigger while editing a scheduled message. Ownership is re-resolved at this
+     * point across both id spaces plus the schedule-date fallback, so a snapshot taken when the sheet
+     * opened cannot strand a pending owner or duplicate it. Returns false only when the message is
+     * already owned by more than one entry (a pre-existing corruption), in which case nothing is
+     * changed and the caller must not report success.
+     */
+    public static boolean commitEditArm(int account, long dialogId, int[] serverIds, int[] localIds, int originalScheduleDate,
+                                        int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+        EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
+                account, dialogId, serverIds, localIds, originalScheduleDate,
+                types, pattern, regex, delaySeconds, fallbackDate, System.currentTimeMillis());
+        if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI) {
+            return false;
+        }
+        if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
+            // The edit changed the entry's fields (and thus its queueKey), so drop it from the bucket it
+            // was queued under before the change; the captured trigger key names that old bucket.
+            removeFromQueueByKey(account, queueKey(account, dialogId, claim.previousTriggerKey), claim.entry);
+        }
+        // The entry now carries server ids, so any lingering pending-bind record is stale -- drop it
+        // rather than leave it for GC. Harmless (a no-op) for a freshly claimed entry.
+        removePending(account, claim.entry.key());
+        ensureObserver(account);
+        return true;
+    }
+
+    /** Turns a trigger off while editing: drops every owner of the message (bound or still pending). */
+    public static void commitEditOff(int account, long dialogId, int[] serverIds, int[] localIds, int originalScheduleDate) {
+        ArrayList<String> keys = EventScheduleStore.resolveOwnerKeysForEdit(account, dialogId, serverIds, localIds, originalScheduleDate);
+        for (String key : keys) {
+            if (EventScheduleStore.contains(account, key)) {
+                EventScheduleStore.remove(account, key);
+            }
+        }
+    }
+
     public static void onNewMessages(int account, long dialogId, ArrayList<MessageObject> messages, boolean scheduled) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             ArrayList<MessageObject> snapshot = messages == null ? null : new ArrayList<>(messages);
@@ -553,7 +594,14 @@ public final class EventScheduleController {
     }
 
     private static void removeFromQueue(int account, EventScheduleEntry entry) {
-        String queueKey = queueKey(account, entry);
+        removeFromQueueByKey(account, queueKey(account, entry), entry);
+    }
+
+    // Same head-removal / advance behaviour as removeFromQueue, but against a caller-supplied bucket:
+    // an edit changes the entry's triggerKey (and thus its live queueKey), so a post-edit removal must
+    // use the trigger key captured before the mutation or it would look in the wrong bucket and leave
+    // the entry stranded under its old key.
+    private static void removeFromQueueByKey(int account, String queueKey, EventScheduleEntry entry) {
         QueueState queueState = QUEUES.get(queueKey);
         if (queueState == null) return;
         ArrayList<EventScheduleEntry> queue = queueState.entries;

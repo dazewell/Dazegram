@@ -146,6 +146,141 @@ public final class EventScheduleStore {
         return null;
     }
 
+    /** Outcome of {@link #resolveAndClaimForEdit}; consumed by the controller, never by the UI directly. */
+    public static final class EditClaim {
+        public enum Status { REJECTED_MULTI, UPDATED_EXISTING, CLAIMED_FRESH }
+        public final Status status;
+        public final EventScheduleEntry entry;      // live resolved entry (null on reject)
+        public final String previousTriggerKey;     // the entry's triggerKey() BEFORE the edit; null on fresh/reject
+
+        EditClaim(Status status, EventScheduleEntry entry, String previousTriggerKey) {
+            this.status = status;
+            this.entry = entry;
+            this.previousTriggerKey = previousTriggerKey;
+        }
+    }
+
+    // Distinct live entries in this dialog that own any of these ids by EITHER correlation space: a
+    // positive serverId (bound) or a negative localId (a still-pending arm claimed from a scheduled
+    // echo). Matching only serverIds -- as an earlier draft did -- misses a pending owner and lets a
+    // second entry be armed beside it.
+    private static ArrayList<EventScheduleEntry> collectExactCandidates(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds) {
+        ArrayList<EventScheduleEntry> out = new ArrayList<>();
+        for (EventScheduleEntry e : cache(account).values()) {
+            if (e.dialogId != dialogId) continue;
+            boolean hit = false;
+            if (positiveIds != null) {
+                for (int id : positiveIds) {
+                    if (id > 0 && e.serverIds.contains(id)) { hit = true; break; }
+                }
+            }
+            if (!hit && negativeLocalIds != null) {
+                for (int id : negativeLocalIds) {
+                    if (id < 0 && e.localIds.contains(id)) { hit = true; break; }
+                }
+            }
+            if (hit) out.add(e);
+        }
+        return out;
+    }
+
+    // Fallback for when exact-id matching finds nothing (after a restart, the message no longer exposes
+    // its original negative echo, so a reloaded pending owner is invisible to the exact scan). A
+    // still-binding entry (bind window not yet closed) at the same original schedule date is the same
+    // arm; the caller routes only when exactly one exists and never guesses among several.
+    private static ArrayList<EventScheduleEntry> collectBindingByDate(int account, long dialogId, int originalScheduleDate) {
+        ArrayList<EventScheduleEntry> out = new ArrayList<>();
+        long now = System.currentTimeMillis() / 1000L;
+        for (EventScheduleEntry e : cache(account).values()) {
+            if (e.dialogId != dialogId) continue;
+            if (e.fallbackDate != originalScheduleDate) continue;
+            if (e.bindExpiresAt > now) out.add(e);
+        }
+        return out;
+    }
+
+    /**
+     * The single ownership gate for arming a trigger while editing a scheduled message. In one monitor
+     * scope it re-resolves ownership across both id spaces (with a date fallback), refuses a
+     * multi-owner state, and either merges into the one existing owner or inserts a collision-free
+     * fresh entry -- then persists. The check and the persist are inseparable, and the mutation happens
+     * on the live cached object here rather than in the caller, so no caller-side alias can pre-empt a
+     * rejection.
+     */
+    public static synchronized EditClaim resolveAndClaimForEdit(
+            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate,
+            int types, String pattern, boolean regex, int delaySeconds, int fallbackDate, long freshCreatedAt) {
+        HashMap<String, EventScheduleEntry> m = cache(account);
+        ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
+        if (candidates.isEmpty()) {
+            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
+        }
+        if (candidates.size() > 1) {
+            return new EditClaim(EditClaim.Status.REJECTED_MULTI, null, null);
+        }
+        if (candidates.size() == 1) {
+            EventScheduleEntry target = candidates.get(0);
+            String previousTriggerKey = target.triggerKey();
+            if (positiveIds != null) {
+                for (int id : positiveIds) {
+                    if (id > 0 && !target.serverIds.contains(id)) target.serverIds.add(id);
+                }
+            }
+            target.revision++;
+            target.types = types;
+            target.pattern = pattern == null ? "" : pattern;
+            target.regex = regex;
+            target.delaySeconds = delaySeconds;
+            target.fallbackDate = fallbackDate;
+            target.bindGroupedId = 0;
+            target.bindExpiresAt = 0;
+            target.state = EventScheduleEntry.STATE_ARMED;
+            target.resetPatternState();
+            persist(account, target);
+            return new EditClaim(EditClaim.Status.UPDATED_EXISTING, target, previousTriggerKey);
+        }
+        EventScheduleEntry fresh = new EventScheduleEntry();
+        fresh.dialogId = dialogId;
+        if (positiveIds != null) {
+            for (int id : positiveIds) {
+                if (id > 0 && !fresh.serverIds.contains(id)) fresh.serverIds.add(id);
+            }
+        }
+        fresh.types = types;
+        fresh.pattern = pattern == null ? "" : pattern;
+        fresh.regex = regex;
+        fresh.delaySeconds = delaySeconds;
+        fresh.fallbackDate = fallbackDate;
+        fresh.createdAt = freshCreatedAt;
+        fresh.bindGroupedId = 0;
+        fresh.bindExpiresAt = 0;
+        fresh.state = EventScheduleEntry.STATE_ARMED;
+        // key() is dialogId_createdAt at millisecond resolution, so two arms in the same millisecond can
+        // collide; bump forward to an unused key before inserting rather than overwrite a live entry.
+        while (m.containsKey(fresh.key())) {
+            fresh.createdAt++;
+        }
+        persist(account, fresh);
+        return new EditClaim(EditClaim.Status.CLAIMED_FRESH, fresh, null);
+    }
+
+    /** Owner keys to drop when a trigger is turned off while editing -- same two-space resolution as the arm path. */
+    public static synchronized ArrayList<String> resolveOwnerKeysForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
+        ArrayList<String> keys = new ArrayList<>();
+        ArrayList<EventScheduleEntry> exact = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
+        if (!exact.isEmpty()) {
+            for (EventScheduleEntry e : exact) keys.add(e.key());
+            return keys;
+        }
+        // No exact match: fall back to a still-binding entry at the original date, but only when it is
+        // unambiguous -- removing on a date guess could nuke an unrelated message's trigger.
+        ArrayList<EventScheduleEntry> byDate = collectBindingByDate(account, dialogId, originalScheduleDate);
+        if (byDate.size() == 1) {
+            keys.add(byDate.get(0).key());
+        }
+        return keys;
+    }
+
     /** Drops scheduled ids that just left the queue (send-now, delete, or the fallback firing). */
     public static synchronized void purgeIds(int account, long channelId, ArrayList<Integer> ids) {
         boolean changed = false;

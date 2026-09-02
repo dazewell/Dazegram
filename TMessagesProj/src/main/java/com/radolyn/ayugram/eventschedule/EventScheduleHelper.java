@@ -55,15 +55,19 @@ public final class EventScheduleHelper {
     private static int editAccount;
     private static long editDialogId;
     private static int[] editMessageIds;
+    private static int[] editLocalIds;
+    private static int editOriginalScheduleDate;
     private static Runnable editOnChanged;
 
     private EventScheduleHelper() {}
 
-    public static void armEdit(int account, long dialogId, int[] messageIds, Runnable onChanged) {
+    public static void armEdit(int account, long dialogId, int[] messageIds, int[] localIds, int originalScheduleDate, Runnable onChanged) {
         editPending = true;
         editAccount = account;
         editDialogId = dialogId;
         editMessageIds = messageIds;
+        editLocalIds = localIds;
+        editOriginalScheduleDate = originalScheduleDate;
         editOnChanged = onChanged;
     }
 
@@ -72,9 +76,12 @@ public final class EventScheduleHelper {
                                            int textColor, int backgroundColor) {
         boolean editHere = editPending && editAccount == account && editDialogId == dialogId;
         int[] editIds = editHere ? editMessageIds : null;
+        int[] editLocals = editHere ? editLocalIds : null;
+        int editOriginalDate = editHere ? editOriginalScheduleDate : 0;
         Runnable onChanged = editHere ? editOnChanged : null;
         editPending = false;
         editMessageIds = null;
+        editLocalIds = null;
         editOnChanged = null;
 
         if (isReschedule || hasForcedTitle || dialogId == 0 || dialogId == -1
@@ -94,7 +101,7 @@ public final class EventScheduleHelper {
             return null;
         }
 
-        Row row = new Row(account, dialogId, editIds, onChanged);
+        Row row = new Row(account, dialogId, editIds, editLocals, editOriginalDate, onChanged);
 
         TextView chip = new TextView(context);
         chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
@@ -180,7 +187,8 @@ public final class EventScheduleHelper {
         final int account;
         final long dialogId;
         final int[] editIds;
-        final EventScheduleEntry editEntry;
+        final int[] editLocalIds;
+        final int editOriginalScheduleDate;
         final Runnable onChanged;
 
         boolean enabled;
@@ -192,14 +200,18 @@ public final class EventScheduleHelper {
 
         TextView chip;
 
-        Row(int account, long dialogId, int[] editIds, Runnable onChanged) {
+        Row(int account, long dialogId, int[] editIds, int[] editLocalIds, int editOriginalScheduleDate, Runnable onChanged) {
             this.account = account;
             this.dialogId = dialogId;
             this.editIds = editIds;
+            this.editLocalIds = editLocalIds;
+            this.editOriginalScheduleDate = editOriginalScheduleDate;
             this.onChanged = onChanged;
+            // Seed the controls from any trigger this message already has. This is a UI seed only -- the
+            // arming decision at commit re-resolves ownership from scratch, so a snapshot taken here can't
+            // route a stale entry.
             EventScheduleEntry existing = editIds != null && editIds.length > 0
                     ? EventScheduleStore.findByMessage(account, dialogId, editIds[0]) : null;
-            this.editEntry = existing;
             if (existing != null) {
                 enabled = true;
                 types = existing.types;
@@ -430,11 +442,23 @@ public final class EventScheduleHelper {
         public void commit(int scheduleDate, int repeatPeriod) {
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
-            if (editEntry != null) {
+            if (editIds != null && editIds.length > 0) {
+                // Editing an existing scheduled message. Re-resolve ownership at commit across both id
+                // spaces plus the schedule-date fallback rather than trusting a snapshot from when the
+                // sheet opened, so a trigger armed or turned off in the meantime is handled correctly and
+                // the same message can't end up with two triggers.
                 if (armed) {
-                    EventScheduleController.updateForEdit(account, editEntry, types, pattern, regex, delay, scheduleDate);
+                    boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
+                            editOriginalScheduleDate, types, pattern, regex, delay, scheduleDate);
+                    if (!claimed) {
+                        // Another trigger already owns this message (only reachable against data a prior
+                        // defect persisted). Leave every trigger untouched; the schedule-date edit still
+                        // proceeds, so tell the user the trigger specifically was not changed.
+                        AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
+                        return;
+                    }
                 } else {
-                    EventScheduleStore.remove(account, editEntry);
+                    EventScheduleController.commitEditOff(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate);
                 }
                 refresh();
                 return;
@@ -443,21 +467,6 @@ public final class EventScheduleHelper {
                 // Trigger explicitly off: drop only still-unclaimed pending arms in this dialog.
                 EventScheduleController.killUnclaimedForDialog(account, dialogId);
                 pendingEntryKey = null;
-                return;
-            }
-            if (editIds != null && editIds.length > 0) {
-                // Editing a scheduled message that had no trigger: attach directly to its server ids.
-                EventScheduleEntry entry = new EventScheduleEntry();
-                entry.dialogId = dialogId;
-                for (int id : editIds) entry.serverIds.add(id);
-                entry.types = types;
-                entry.pattern = pattern == null ? "" : pattern;
-                entry.regex = regex;
-                entry.delaySeconds = delay;
-                entry.fallbackDate = scheduleDate;
-                entry.createdAt = System.currentTimeMillis();
-                EventScheduleController.armExisting(account, entry);
-                refresh();
                 return;
             }
             EventScheduleEntry entry = new EventScheduleEntry();
