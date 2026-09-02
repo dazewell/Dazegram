@@ -446,9 +446,25 @@ and it archives **only its own direct children** — never a grandchild.
 
    ```powershell
    $worktree = (Resolve-Path $childWorktreePath).ProviderPath.TrimEnd('\')
+
+   # Exclude this shell and its ancestors before matching. The worktree path is
+   # normally a literal in the invoking command line, so an unfiltered query
+   # matches its own process and returns at least one row every time it runs.
+   # That is worse than it sounds: a check with a guaranteed false positive
+   # teaches you to explain rows away, and the habit does not distinguish the
+   # self-match from a real leak.
+   $selfChain = @(); $walk = $PID
+   while ($walk) {
+       $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $walk" -ErrorAction SilentlyContinue
+       if (-not $proc) { break }
+       $selfChain += $proc.ProcessId; $walk = $proc.ParentProcessId
+       if ($selfChain.Count -gt 8) { break }
+   }
+
    Get-CimInstance Win32_Process | Where-Object {
-       ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($worktree, [System.StringComparison]::OrdinalIgnoreCase)) -or
-       ($_.CommandLine -and $_.CommandLine.IndexOf($worktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+       $selfChain -notcontains $_.ProcessId -and (
+           ($_.ExecutablePath -and $_.ExecutablePath.StartsWith($worktree, [System.StringComparison]::OrdinalIgnoreCase)) -or
+           ($_.CommandLine -and $_.CommandLine.IndexOf($worktree, [System.StringComparison]::OrdinalIgnoreCase) -ge 0))
    } | Select-Object ProcessId, Name, CreationDate, ExecutablePath, CommandLine
    ```
 
