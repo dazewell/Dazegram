@@ -284,7 +284,24 @@ git fetch origin; git log --oneline dev..origin/dev
 - **If the work has a GitHub issue, run the duplicate preflight and claim it
   before dispatching.** Issues are the durable home for deferred work, and the
   claim protocol is the only thing standing between two sessions building the
-  same change twice. Three checks — the issue is open and carries no
+  same change twice.
+
+  **First, the approval gate — this one is absolute.** The repository is
+  **public**, so anyone can file an issue, and an issue is therefore not
+  evidence that the work is wanted. **An issue without the `status:approved`
+  label is a proposal, not work.** Do not dispatch for it, do not start it
+  yourself, and do not read "nobody objected" as approval. This applies to
+  issues *you* filed exactly as much as to issues a stranger filed. If you think
+  something deserves approval, say so and let dazewell decide.
+
+  **Never apply `status:approved` yourself.** You run under dazewell's token and
+  therefore hold admin, so nothing platform-level stops you — GitHub records
+  your label and his identically. That is precisely why this is a hard limit in
+  the same class as never merging on his behalf and never force-pushing. Every
+  `labeled` event is timestamped in the issue timeline, so doing it anyway is
+  both a violation and visible.
+
+  Then the duplicate checks — the issue is open and carries no
   `status:in-progress` label; no open PR's branch matches its declared branch
   slug; no remote branch matches it either. **Any hit means do not dispatch.**
   Then claim it (add `status:in-progress`, comment the branch name) *before* the
@@ -292,7 +309,7 @@ git fetch origin; git log --oneline dev..origin/dev
   first. The dangerous window is between deciding to work on something and a
   branch existing to prove it, and your memory of what is in flight does not
   survive this session. The full protocol — the two identifiers an issue
-  carries, the three labels, the stale-claim rule, and why `Closes #<n>` does the
+  carries, the four labels, the stale-claim rule, and why `Closes #<n>` does the
   closing — lives in the `nagramx-branch-flow` skill. Put `Closes #<n>` in the
   brief so the implementer's PR body carries it.
 

@@ -185,23 +185,53 @@ Both go in a small block at the top of the issue body:
 > Blocked until PR #246 is merged and confirmed on-device.
 ```
 
-### The three status labels
+### The four status labels
 
 | Label | Means |
 |---|---|
+| `status:approved` | **dazewell has approved this for work.** Nothing starts without it. **Only dazewell applies this label — never an agent.** |
 | `status:in-progress` | A session is actively working this. **Do not dispatch another.** |
 | `status:blocked` | Cannot proceed until a named dependency lands. Name it in the body. |
 | `status:deferred` | Deliberately parked. Do not start without dazewell's say-so. |
 
-An issue with none of these is open and unclaimed — fair game.
+**An issue with no `status:approved` label is not work. It is a proposal.** Read
+it, reference it, link it, file more like it — but do not start it, do not
+dispatch a session for it, and do not treat "nobody has objected" as approval.
+This default is deliberately deny-first, and it applies to issues **an agent
+filed itself** exactly as much as to issues a stranger filed.
+
+**Why the default is inverted.** This repository is **public**, so anyone can
+open an issue. An issue is therefore not evidence that the work is wanted — only
+that someone wants it. The approval label is the boundary between "somebody
+suggested this" and "dazewell decided this."
+
+**What actually enforces it, and what does not.** Applying a label needs
+**triage permission or higher**, so a member of the public genuinely cannot
+approve their own request — GitHub does not offer them the control and the API
+refuses it. That part is enforced by the platform, not by convention. What the
+platform *cannot* enforce is agent restraint: agents act under dazewell's own
+token and therefore hold admin, so the timeline records an agent's label and
+dazewell's label identically. **That is why "only dazewell applies
+`status:approved`" is written here as a hard limit, in the same class as never
+merging on his behalf and never force-pushing** — it holds because it is
+absolute, not because something blocks it. The backstop is auditability: every
+`labeled` event is timestamped in the issue timeline, so a wrongly-approved item
+is visible after the fact.
+
+If a collaborator is ever granted triage or higher, they inherit the ability to
+approve. That is the moment to revisit this section.
 
 ### Preflight before dispatching work for an issue (mandatory)
 
 Do not rely on remembering what is in flight; memory does not survive a session,
-a machine, or a week. Three mechanical checks, all cheap:
+a machine, or a week. **Four** mechanical checks, all cheap — and the first one
+is a gate, not a hint:
 
 ```powershell
-$repo = 'dazewell/Dazegram'; $n = <issue>; $slug = '<branch-slug>'
+# Fill these in: the issue number, and the branch slug the issue declares.
+$repo = 'dazewell/Dazegram'
+$n    = 254              # issue number
+$slug = 'eventschedule-bolt-refresh'   # the issue's declared branch slug
 
 # A branch for this work is "<date><sep><slug>" and nothing else. Match it exactly:
 # a loose "*$slug*" false-positives whenever one slug is a substring of another
@@ -209,8 +239,12 @@ $repo = 'dazewell/Dazegram'; $n = <issue>; $slug = '<branch-slug>'
 # because the branch tooling normalises the separator to "-" on push.
 $branchRe = "^\d{4}-\d{2}-\d{2}[-_]$([regex]::Escape($slug))$"
 
+# 0. APPROVED BY DAZEWELL? No label, no work. This is the gate.
+$issue = gh issue view $n --repo $repo --json state,labels,assignees | ConvertFrom-Json
+$approved = @($issue.labels.name) -contains 'status:approved'
+
 # 1. open, and not already claimed?
-gh issue view $n --repo $repo --json state,labels,assignees
+#    ($issue above also carries state and status:in-progress)
 
 # 2. an open PR already doing it?
 gh pr list --repo $repo --state open --json number,title,headRefName |
@@ -222,8 +256,14 @@ git ls-remote --heads origin |
   Where-Object { $_ -match $branchRe }
 ```
 
-**Any hit means do not dispatch** — investigate first. A duplicate costs a whole
-wasted branch and, worse, two diffs that conflict in the same region.
+**No `status:approved` means stop.** Not "ask and proceed", not "it looks
+obviously wanted" — stop, and if you think it should be approved, say so and let
+dazewell decide. Applying the label yourself to unblock your own dispatch is the
+one move this whole section exists to prevent.
+
+**Any hit on checks 1-3 means do not dispatch** — investigate first. A duplicate
+costs a whole wasted branch and, worse, two diffs that conflict in the same
+region.
 
 ### Claim at dispatch, before the session touches anything
 
