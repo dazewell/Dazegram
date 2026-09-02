@@ -2184,6 +2184,29 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         return titleTextView != null && titleTextView.getMeasuredWidth() > 0;
     }
 
+    // Full drawn width of the subtitle line: a leading status icon (typing/recording/sending
+    // file/game/round-video, set via setLeftDrawable()) is content, not decoration, so it must be
+    // reserved the same way the title side reserves its leading drawable -- otherwise the pill hugs
+    // the text and leaves the icon hanging in the padding, which is what made this line look broken.
+    // getSideDrawablesSize() (upstream SimpleTextView, unmodified) is exactly the right sum: it
+    // returns 0 for the choosing-sticker status because that one is substituted straight into the
+    // text layout (replaceTextWithDrawable(), already inside textWidth) rather than set as a left
+    // drawable, so it can't be double-counted here. It would also count an outside right drawable,
+    // but the subtitle never sets one, so that term is 0 in practice.
+    // Single-term clamp, not min(textWidth, maxTextWidth) + side: the layout is built into
+    // maxTextWidth - side (recreateLayoutMaybe()/onMeasure()), so min(a,b)+c === min(a+c, b+c) and
+    // the single-term form is the one that reads as the actual invariant -- the drawn line can never
+    // exceed the subtitle's own box. Assumes rightDrawableInside is never set on the subtitle (both
+    // getTextWidth()'s right-drawable term and getSideDrawablesSize()'s would otherwise double-count).
+    // This only turns into symmetric padding because SimpleTextView centres icon+text as one group on
+    // the box centre (offsetX computed on the icon-reduced width), and that box shares the pill's own
+    // centre anchor -- if the subtitle group is ever left-aligned, or centred on a different anchor,
+    // this silently degrades back to lopsided padding.
+    private int subtitleContentWidth() {
+        int side = subtitleTextView.getSideDrawablesSize();
+        return Math.min(subtitleTextView.getTextWidth() + side, subtitleTextView.getMaxTextWidth());
+    }
+
     // Widest of the title+pill group or the status line -- the smallest bubble that hugs both. The
     // box-centre terms cancel out, so this is a width only -- but it still reads the title's
     // measured width, so it only means anything once the title has been measured. Callers check
@@ -2195,8 +2218,7 @@ public class ChatAvatarContainer extends FrameLayout implements FactorAnimator.T
         View subtitleView = getSubtitleTextView();
         if (subtitleView != null && subtitleView.getVisibility() == VISIBLE) {
             if (subtitleTextView != null) {
-                // Same gradient-fade caveat as the title: clamp to the displayed width.
-                width = Math.max(width, Math.min(subtitleTextView.getTextWidth(), subtitleTextView.getMaxTextWidth()));
+                width = Math.max(width, subtitleContentWidth());
             } else if (animatedSubtitleTextView != null) {
                 // getAnimateToWidth(), not getCurrentWidth(): the latter lerps old->new mid-transition,
                 // so sizing from it targets whatever subtitle was showing when the animation started.
