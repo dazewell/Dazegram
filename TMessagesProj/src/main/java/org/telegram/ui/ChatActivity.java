@@ -37547,28 +37547,14 @@ public class ChatActivity extends BaseFragment implements
         return items;
     }
 
-    // NagramX: the full album server/local identity for a resolved reschedule target, captured now while
-    // the group maps are valid. Both id spaces are captured raw: the executor keeps the server ids on its
-    // Target, and the armer resolves ownership across both spaces (the negative local_id echo re-finds a
-    // still-pending owner). Trigger policy (readiness, armed count, ownership) lives in the fork-owned
-    // armer, not here. A non-grouped message yields just its own server/local id.
+    // NagramX: the full album server/local identity for a resolved reschedule target. Only the grouped-map
+    // lookup is forced onto the base file here; the array capture across both id spaces lives in the
+    // fork-owned armer factory. Trigger policy (readiness, armed count, ownership) lives in the armer, not
+    // here.
     private com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity albumIdentity(MessageObject m) {
         long gid = m.getGroupId();
-        if (gid != 0) {
-            MessageObject.GroupedMessages group = groupedMessagesMap.get(gid);
-            if (group != null && !group.messages.isEmpty()) {
-                int n = group.messages.size();
-                int[] serverIds = new int[n];
-                int[] localIds = new int[n];
-                for (int k = 0; k < n; k++) {
-                    serverIds[k] = group.messages.get(k).getId();
-                    localIds[k] = group.messages.get(k).messageOwner.local_id;
-                }
-                return new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity(serverIds, localIds);
-            }
-        }
-        return new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity(
-                new int[]{m.getId()}, new int[]{m.messageOwner.local_id});
+        MessageObject.GroupedMessages group = gid != 0 ? groupedMessagesMap.get(gid) : null;
+        return com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer.AlbumIdentity.of(m, group);
     }
 
     public void clearSelectionMode() {

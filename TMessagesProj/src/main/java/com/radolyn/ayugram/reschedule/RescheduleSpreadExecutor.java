@@ -72,8 +72,10 @@ public final class RescheduleSpreadExecutor {
      * Neutral seam for arming one shared event-schedule trigger across a bulk reschedule. Kept
      * primitive-only so the reschedule package never imports the eventschedule package: the executor
      * owns the request sequencing and hands over immutable outcome data; the implementation owns all
-     * trigger state. Deferred atomic activation -- nothing is armed while the run is in flight; the
-     * whole selection is published in one UI-thread pass at finalization.
+     * trigger state. Deferred atomic activation -- nothing is armed while the run is in flight; at
+     * finalization the implementation reconciles first (a step that may yield to a storage hop) and
+     * publishes the whole selection in one UI-thread turn only after that reconcile completes, so the
+     * safety argument spans the hop rather than resting on a single synchronous turn.
      */
     public interface TriggerArmingHooks {
         /**

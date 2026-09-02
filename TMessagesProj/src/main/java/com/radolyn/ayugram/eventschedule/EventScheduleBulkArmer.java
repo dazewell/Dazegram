@@ -9,6 +9,7 @@ import com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -23,11 +24,14 @@ import java.util.Set;
 
 /**
  * Arms one shared event-schedule trigger across a bulk reschedule, using deferred atomic
- * activation: nothing is armed while the reschedule is in flight; the whole selection is reconciled
- * and published in a single UI-thread pass once the run's closing scheduled-history read returns.
- * Progressive arming is deliberately avoided -- a trigger firing mid-run would enrol only the armed
- * prefix and leave the rest needing a second key phrase, which is the exact problem this feature
- * exists to remove.
+ * activation: nothing is armed while the reschedule is in flight. At finalization the dialog's unbound
+ * durable orphans are reconciled first -- a step that MAY yield to a storage hop -- and only once that
+ * reconcile completes is the whole selection published in a single UI-thread turn. So the safety
+ * argument is deliberately NOT "one synchronous turn": it rests on the admission suppression, the
+ * deletion collector, the run's (account, dialogId) generation and each target's owner revision all
+ * spanning that hop -- see finalizeOnUi for the full statement. Progressive arming is deliberately
+ * avoided -- a trigger firing mid-run would enrol only the armed prefix and leave the rest needing a
+ * second key phrase, which is the exact problem this feature exists to remove.
  *
  * <p>One instance per run. The bulk-reschedule handler builds it on the UI thread with the shared
  * trigger config, the dialog, and the full album child-id set of every selected message, then hands
@@ -60,6 +64,27 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         public AlbumIdentity(@NonNull int[] serverIds, @NonNull int[] localIds) {
             this.serverIds = serverIds;
             this.localIds = localIds;
+        }
+
+        /**
+         * Builds the identity from a resolved message and its group -- {@code group} is null for a
+         * non-grouped message or when the fragment's group map has no entry for it. Captures both id
+         * spaces for every album child (a non-grouped message yields just its own server/local id). The
+         * array allocation and per-child extraction live here, off the base file, so ChatActivity only
+         * does the grouped-map lookup and hands the two objects over.
+         */
+        public static AlbumIdentity of(@NonNull MessageObject representative, @Nullable MessageObject.GroupedMessages group) {
+            if (group != null && !group.messages.isEmpty()) {
+                int n = group.messages.size();
+                int[] serverIds = new int[n];
+                int[] localIds = new int[n];
+                for (int k = 0; k < n; k++) {
+                    serverIds[k] = group.messages.get(k).getId();
+                    localIds[k] = group.messages.get(k).messageOwner.local_id;
+                }
+                return new AlbumIdentity(serverIds, localIds);
+            }
+            return new AlbumIdentity(new int[]{representative.getId()}, new int[]{representative.messageOwner.local_id});
         }
     }
 
@@ -193,17 +218,13 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
                     sendingAtAdmissionIds.addAll(live.serverIds);
                 }
             }
-            // Snapshot admission ownership for C2. Use the resolved owners (not the raw key list) so a key
-            // whose entry vanished doesn't over-count: 0 -> NONE, exactly 1 -> SINGLE(key, revision),
-            // more -> MULTI (rejected outright at finalization).
-            if (owners.isEmpty()) {
-                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.NONE, null, 0));
-            } else if (owners.size() == 1) {
-                EventScheduleEntry only = owners.get(0);
-                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.SINGLE, only.key(), only.revision));
-            } else {
-                admissionByAlbum.put(ak, new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0));
-            }
+            // Classify this album's ownership PER CHILD (C1). Aggregate owner counting can't tell a
+            // fully-owned album from a partially-owned one: an owned child plus an unowned child collapse
+            // to a single distinct owner, and the commit-time merge in resolveAndClaimForEdit would then
+            // annex the unowned child into that owner. A count can't answer a question about every child --
+            // an unowned child contributes nothing to it and is invisible to the very check meant to catch
+            // it -- so classifyAlbumOwnership iterates the children and demands unanimity.
+            admissionByAlbum.put(ak, classifyAlbumOwnership(album.serverIds, album.localIds));
         }
     }
 
@@ -394,27 +415,72 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         return true;
     }
 
-    // C2: is this album's ownership still exactly what admission recorded? Re-resolves across both id
-    // spaces (the arm path's exact-id scan) and compares to the admission snapshot. A NONE album must
-    // still be ownerless; a SINGLE must still be the same owner key at the same revision; a MULTI (or an
-    // album with no admission snapshot) is never armed. Any owner created, removed, replaced, or
-    // re-authored since admission is a later single-message edit that wins over this bulk arm.
+    // C2: is this album's ownership still exactly what admission recorded? Re-runs the SAME per-child
+    // classification (classifyAlbumOwnership) and compares to the admission snapshot. A NONE album must
+    // still have every child ownerless; a SINGLE must still be every child the same owner key at the same
+    // revision; a MULTI (or an album with no admission snapshot) is never armed. Any owner created,
+    // removed, replaced, re-authored, or a child that fell out of a formerly unanimous owner since
+    // admission is a later single-message edit that wins over this bulk arm.
     private boolean ownershipUnchangedForArm(int[] albumServerIds) {
         AdmissionOwnership snap = admissionByAlbum.get(albumKey(albumServerIds));
         if (snap == null) return false;
         int[] localIds = localIdsByAlbum.get(albumKey(albumServerIds));
-        EventScheduleStore.OwnerSeed now = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, albumServerIds, localIds);
+        AdmissionOwnership now = classifyAlbumOwnership(albumServerIds, localIds);
         switch (snap.kind) {
             case NONE:
                 return now.kind == EventScheduleStore.EditOwner.NONE;
             case SINGLE:
                 return now.kind == EventScheduleStore.EditOwner.SINGLE
-                        && now.entry != null
-                        && now.entry.key().equals(snap.ownerKey)
-                        && now.entry.revision == snap.ownerRevision;
+                        && snap.ownerKey.equals(now.ownerKey)
+                        && snap.ownerRevision == now.ownerRevision;
             default:
                 return false;
         }
+    }
+
+    // Per-child ownership classification (C1). The rule -- every child ownerless, or every child the
+    // same single owner -- must hold for EVERY album child, so the expression iterates the children
+    // rather than counting a collapsed set: a distinct-owner count over the whole album can't answer it,
+    // because an unowned child adds nothing to that count and so is invisible to the check meant to catch
+    // it. Every child NONE -> NONE (a fresh create is safe); every child the same single owner -> SINGLE
+    // (an in-place merge over the full set adds nothing, because that owner already holds every child).
+    // Any owned/unowned mixture, differing owners across children, or a per-child multi-owner conflict
+    // rejects the whole target -> MULTI. Each child is resolved by exact id across BOTH id spaces (the
+    // arm path's scan), so a still-pending owner reachable only by its negative local_id counts too.
+    private AdmissionOwnership classifyAlbumOwnership(int[] serverIds, @Nullable int[] localIds) {
+        String commonKey = null;
+        long commonRevision = 0;
+        boolean anyOwned = false;
+        boolean anyNone = false;
+        for (int i = 0; i < serverIds.length; i++) {
+            int[] childServer = {serverIds[i]};
+            int[] childLocal = (localIds != null && i < localIds.length) ? new int[]{localIds[i]} : null;
+            EventScheduleStore.OwnerSeed seed = EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, childServer, childLocal);
+            if (seed.kind == EventScheduleStore.EditOwner.MULTI) {
+                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+            }
+            if (seed.kind == EventScheduleStore.EditOwner.NONE) {
+                anyNone = true;
+                continue;
+            }
+            anyOwned = true;
+            String key = seed.entry.key();
+            if (commonKey == null) {
+                commonKey = key;
+                commonRevision = seed.entry.revision;
+            } else if (!commonKey.equals(key)) {
+                return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+            }
+        }
+        if (anyOwned && anyNone) {
+            // Partial ownership -- some children owned, some not. Rejecting here is what stops the
+            // commit-time merge from annexing the unowned children into the partial owner.
+            return new AdmissionOwnership(EventScheduleStore.EditOwner.MULTI, null, 0);
+        }
+        if (!anyOwned) {
+            return new AdmissionOwnership(EventScheduleStore.EditOwner.NONE, null, 0);
+        }
+        return new AdmissionOwnership(EventScheduleStore.EditOwner.SINGLE, commonKey, commonRevision);
     }
 
     // Canonical key for an album, order-independent, so a finalization outcome (which carries only
