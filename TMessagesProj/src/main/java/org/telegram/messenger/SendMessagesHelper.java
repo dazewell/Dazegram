@@ -10141,8 +10141,15 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
     // a single caption and a single params map across the whole album, which would collapse the
     // per-source repost markers the delete offer matches on. So drive the same per-document engine
     // directly - each child derives its own extension from its own path (mime == null) and carries its
-    // own caption, entities and marker params, and they share only one generated group id. Modeled on
-    // the paths branch of prepareSendingDocuments so the grouping/finish behaviour stays identical.
+    // own caption, entities and marker params, and they share one generated group id.
+    //
+    // The grouping policy is deliberately NOT the stock one. prepareSendingDocuments passes a shared
+    // docType array so that prepareSendingDocumentInternal calls finishGroup and rotates the group id
+    // whenever the media type changes between two children (SendMessagesHelper.java:9646-9650) - the
+    // right policy for an arbitrary multi-file share, but wrong here: a captured source album is one
+    // group by definition, so an .mp3 (type 2) next to a .pdf (type 0) must stay together, not split.
+    // We pass docType == null instead, which skips that whole type-change block, so the only thing that
+    // can rotate the group id is the ten-item limit below - membership, not media type, defines the group.
     @UiThread
     public static void prepareSendingDocumentAlbumAsCopy(AccountInstance accountInstance, ArrayList<String> paths, ArrayList<String> originalPaths, ArrayList<CharSequence> captions, ArrayList<ArrayList<TLRPC.MessageEntity>> entities, ArrayList<HashMap<String, String>> messageParamsList, long dialogId, MessageObject replyToMsg, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, SendMessageChatArguments sendMessageChatArguments, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
         if (paths == null || originalPaths == null || paths.size() != originalPaths.size() || paths.isEmpty()) {
@@ -10152,7 +10159,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             int error = 0;
             long[] groupId = new long[1];
             int mediaCount = 0;
-            Integer[] docType = new Integer[1];
             boolean isEncrypted = DialogObject.isEncryptedDialog(dialogId);
             int count = paths.size();
             for (int a = 0; a < count; a++) {
@@ -10164,14 +10170,10 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                     mediaCount = 0;
                 }
                 mediaCount++;
-                long prevGroupId = groupId[0];
                 CharSequence caption = captions != null && a < captions.size() ? captions.get(a) : null;
                 ArrayList<TLRPC.MessageEntity> childEntities = entities != null && a < entities.size() ? entities.get(a) : null;
                 HashMap<String, String> childParams = messageParamsList != null && a < messageParamsList.size() ? messageParamsList.get(a) : null;
-                error = prepareSendingDocumentInternal(accountInstance, paths.get(a), originalPaths.get(a), null, null, dialogId, replyToMsg, replyToTopMsg, null, quote, childEntities, null, groupId, mediaCount == 10 || a == count - 1, caption, notify, scheduleDate, 0, docType, true, sendMessageChatArguments, 0, invertMedia, payStars, monoForumPeerId, suggestionParams, null, -1, childParams);
-                if (prevGroupId != groupId[0] || groupId[0] == -1) {
-                    mediaCount = 1;
-                }
+                error = prepareSendingDocumentInternal(accountInstance, paths.get(a), originalPaths.get(a), null, null, dialogId, replyToMsg, replyToTopMsg, null, quote, childEntities, null, groupId, mediaCount == 10 || a == count - 1, caption, notify, scheduleDate, 0, null, true, sendMessageChatArguments, 0, invertMedia, payStars, monoForumPeerId, suggestionParams, null, -1, childParams);
             }
             handleError(error, accountInstance);
         });
