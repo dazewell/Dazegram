@@ -608,6 +608,7 @@ public final class EventScheduleController {
         }
         if (queue.get(0) != entry) {
             // Same token means the queue is alive; hand off to the live head.
+            entry.state = EventScheduleEntry.STATE_ARMED;
             advanceQueue(account, expectedQueueKey);
             return;
         }
@@ -687,26 +688,9 @@ public final class EventScheduleController {
         if (queueState == null) {
             return;
         }
-        boolean hasUnsent = hasUnsentEntries(account, queueState, entry);
         advanceQueue(account, expectedQueueKey);
-        if (hasUnsent) {
-            EventScheduleNotifier.notifyBatchStalled(account, dialogId);
-        }
-    }
-
-    private static boolean hasUnsentEntries(int account, QueueState queueState, EventScheduleEntry current) {
-        if (EventScheduleStore.contains(account, current.key())) {
-            return true;
-        }
-        for (int i = 0; i < queueState.entries.size(); i++) {
-            EventScheduleEntry queued = queueState.entries.get(i);
-            if (queued == current) continue;
-            if ((queued.state == EventScheduleEntry.STATE_WAITING || queued.state == EventScheduleEntry.STATE_SENDING)
-                    && EventScheduleStore.contains(account, queued.key())) {
-                return true;
-            }
-        }
-        return false;
+        // This branch re-arms a failed head, so at least that entry is still unsent.
+        EventScheduleNotifier.notifyBatchStalled(account, dialogId);
     }
 
     private static boolean isRetryableWaitError(String errorText) {
