@@ -130,13 +130,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     @Nullable
     private final TriggerRefresh refresh;
 
-    // Keys of the pre-existing entries this run is holding back, mapped to the entry revision seen at
-    // admission. The key set is what finalization drains -- every hold this run placed is released,
-    // driven by what we suppressed, not by what survived -- so a target that later dropped out of the
-    // outcomes still gets released. Nothing durable is removed at admission: suppression is
-    // process-local, so a process death discards it and the durable entry reloads armed, where a durable
-    // remove with only an in-memory copy would lose the trigger.
-    private final HashMap<String, Long> suppressed = new HashMap<>();
+    // Keys of the pre-existing entries this run is holding back. A set, not a map: finalization drains
+    // these keys to release every hold this run placed -- driven by what we suppressed, not by what
+    // survived -- so a target that later dropped out of the outcomes still gets released. (Revision
+    // baselines for the later-edit-wins check live per album in admissionByAlbum, not here.) Nothing
+    // durable is removed at admission: suppression is process-local, so a process death discards it and
+    // the durable entry reloads armed, where a durable remove with only an in-memory copy would lose the
+    // trigger.
+    private final HashSet<String> suppressed = new HashSet<>();
 
     // C2: each album's ownership state as seen at admission, keyed by the album's canonical server-id
     // key (see albumKey). NONE / exact SINGLE(key+revision) / MULTI. Immediately before arming, the same
@@ -206,14 +207,14 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             }
             for (EventScheduleEntry live : owners) {
                 String key = live.key();
-                if (suppressed.containsKey(key)) continue;
+                if (suppressed.contains(key)) continue;
                 // Hold the pre-existing trigger back for the run without touching durable state: it can't
                 // fire mid-run and then read back missing during verification, but nothing is removed, so
                 // a process death before finalization loses nothing (the entry reloads armed). A SENDING
                 // entry can't be held back -- its send is already issued -- so record its ids instead, and
                 // verification rejects that target rather than assuming the old trigger was suspended.
                 if (EventScheduleController.suppressForBulk(account, live, this)) {
-                    suppressed.put(key, live.revision);
+                    suppressed.add(key);
                 } else {
                     sendingAtAdmissionIds.addAll(live.serverIds);
                 }
@@ -367,7 +368,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
             // lifetime, the same invisible loss this redesign exists to prevent. A merged survivor keeps
             // its original key, so its hold is released here too -- correct, since the merged entry should
             // fire. armSurvivor already released the survivors it armed; this double release is a no-op.
-            for (String key : suppressed.keySet()) {
+            for (String key : suppressed) {
                 EventScheduleController.releaseSuppression(account, key, this);
             }
             // NagramX: release this run's (account, dialogId) generation, unconditionally and exactly
