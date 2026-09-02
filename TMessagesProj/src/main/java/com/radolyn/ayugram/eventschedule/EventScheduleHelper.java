@@ -343,12 +343,18 @@ public final class EventScheduleHelper {
             });
             syncRegexEnabled(patternField, regexCell);
 
-            final int[] delayValues = {0, 5, 10, 30, 60, 300};
+            final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, 30};
             int startIndex = 0;
             for (int i = 0; i < delayValues.length; i++) {
                 if (delayValues[i] <= delay) startIndex = i;
             }
             final int[] delayIndex = {startIndex};
+            // NagramX: a trigger armed under a previous, wider step set (e.g. 60s/300s) floor-matches
+            // to the top stop above, which only seeds the thumb's start position -- it must not silently
+            // reduce the stored delay on a Done tap the user never touched the slider for. delayTouched
+            // distinguishes "the user actually dragged" from "seed only" so an untouched commit keeps the
+            // legacy value byte-identical instead of clamping it to 30.
+            final boolean[] delayTouched = {false};
 
             LinearLayout delayLayout = new LinearLayout(context);
             delayLayout.setOrientation(LinearLayout.VERTICAL);
@@ -368,7 +374,10 @@ public final class EventScheduleHelper {
             delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
             final TextView delayValue = new TextView(context);
-            delayValue.setText(formatDelayLabel(delayValues[startIndex]));
+            // NagramX: label the actual stored delay, not the floor-clamped stop -- for a legacy
+            // out-of-range trigger those two disagree (see delayTouched above), and this sheet must
+            // never show a number that differs from what Done would actually commit (C2).
+            delayValue.setText(formatDelayLabel(delay));
             delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             delayValue.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT));
@@ -382,6 +391,7 @@ public final class EventScheduleHelper {
                 public void onSeekBarDrag(boolean stop, float progress) {
                     int step = Math.round(progress * (delayValues.length - 1));
                     delayIndex[0] = step;
+                    delayTouched[0] = true;
                     delayValue.setText(formatDelayLabel(delayValues[step]));
                     if (stop) {
                         delaySeekBar.setProgress(step / (float) (delayValues.length - 1), true);
@@ -436,7 +446,7 @@ public final class EventScheduleHelper {
                         return kotlin.Unit.INSTANCE;
                     }
                 }
-                int newDelay = delayValues[delayIndex[0]];
+                int newDelay = delayTouched[0] ? delayValues[delayIndex[0]] : delay;
                 enabled = true;
                 userTouchedTrigger = true;
                 types = newTypes;
