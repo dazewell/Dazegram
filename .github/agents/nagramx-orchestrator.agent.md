@@ -794,10 +794,13 @@ git diff origin/dev...origin/$branch -- '*.java' '*.kt' '*.xml' |
 
 # threads, and the baseline that stops empty from reading as clean
 # --paginate is mandatory: an unpaginated read caps at one page, so a busy PR
-# silently under-counts and "zero reviews" stops meaning what you think
+# silently under-counts and "zero reviews" stops meaning what you think.
+# --slurp + flatten is belt-and-braces: this gh merges arrays across pages, but
+# the documented contract is one JSON document per page, so don't depend on it
 # filter in PowerShell, never in --jq: this shell strips the inner quotes out of
 # a jq string literal and you get an error, or worse a zero that reads as clean
-$reviews = gh api --paginate "repos/$repo/pulls/$pr/reviews" | ConvertFrom-Json
+$reviews = gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews" |
+  ConvertFrom-Json | ForEach-Object { $_ }
 @($reviews | Where-Object { $_.user.login -like '*copilot*' }).Count
 
 # graphql takes real variables; backslash-escaped quotes do not survive this shell
