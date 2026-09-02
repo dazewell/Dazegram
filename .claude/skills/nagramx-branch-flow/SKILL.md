@@ -159,6 +159,169 @@ line:
 
 Bypass (`--no-verify`) only in a genuine emergency.
 
+## Issues: tracking deferred work and preventing duplicates
+
+GitHub Issues are enabled on `dazewell/Dazegram` and are the durable home for
+work that is *decided but not started* — a deferred feature, a follow-up an
+architect ruled out of scope, a limitation documented rather than fixed.
+Anything parked only in a session's memory dies with that session.
+
+**The `#tag` identifies a feature, not a work item.** Three separate issues can
+all be `#eventschedule`, so the tag alone cannot answer "is someone already
+building this". Issues therefore carry **two** identifiers:
+
+- **Feature tag** — the same `#slug` its commits will carry, for catalog
+  grouping and `git log --grep`.
+- **Branch slug** — unique per work item, and the name its branch will use
+  (`<YYYY-MM-DD>_<branch-slug>`). This is what the duplicate check actually
+  keys on.
+
+Both go in a small block at the top of the issue body:
+
+```
+<!-- tracking -->
+**Branch slug:** `eventschedule-edit`  |  **Feature tag:** `#eventschedule`  |  **Status:** deferred
+
+> Blocked until PR #246 is merged and confirmed on-device.
+```
+
+### The four status labels
+
+| Label | Means |
+|---|---|
+| `status:approved` | **dazewell has approved this for work.** Nothing starts without it. **Only dazewell applies this label — never an agent.** |
+| `status:in-progress` | A session is actively working this. **Do not dispatch another.** |
+| `status:blocked` | Cannot proceed until a named dependency lands. Name it in the body. |
+| `status:deferred` | Deliberately parked. Do not start without dazewell's say-so. |
+
+**An issue with no `status:approved` label is not work. It is a proposal.** Read
+it, reference it, link it, file more like it — but do not start it, do not
+dispatch a session for it, and do not treat "nobody has objected" as approval.
+This default is deliberately deny-first, and it applies to issues **an agent
+filed itself** exactly as much as to issues a stranger filed.
+
+**Approval is necessary, not sufficient.** `status:approved` says dazewell wants
+the work; it says nothing about *when*. The three stop labels outrank it:
+`status:in-progress`, `status:blocked` and `status:deferred` each block dispatch
+**even on an approved issue**, and an issue can legitimately carry approved and
+deferred at once — that combination means "yes, eventually, but not yet." Read
+the pairing as sequencing, never as a contradiction to resolve in favour of
+starting.
+
+**Why the default is inverted.** This repository is **public**, so anyone can
+open an issue. An issue is therefore not evidence that the work is wanted — only
+that someone wants it. The approval label is the boundary between "somebody
+suggested this" and "dazewell decided this."
+
+**What actually enforces it, and what does not.** Applying a label needs
+**triage permission or higher**, so a member of the public genuinely cannot
+approve their own request — GitHub does not offer them the control and the API
+refuses it. That part is enforced by the platform, not by convention. What the
+platform *cannot* enforce is agent restraint: agents act under dazewell's own
+token and therefore hold admin, so the timeline records an agent's label and
+dazewell's label identically. **That is why "only dazewell applies
+`status:approved`" is written here as a hard limit, in the same class as never
+merging on his behalf and never force-pushing** — it holds because it is
+absolute, not because something blocks it. The backstop is auditability: every
+`labeled` event is timestamped in the issue timeline, so a wrongly-approved item
+is visible after the fact.
+
+If a collaborator is ever granted triage or higher, they inherit the ability to
+approve. That is the moment to revisit this section.
+
+### Preflight before dispatching work for an issue (mandatory)
+
+Do not rely on remembering what is in flight; memory does not survive a session,
+a machine, or a week. **Four** mechanical checks, all cheap — and the first one
+is a gate, not a hint:
+
+```powershell
+# Fill these in: the issue number, and the branch slug the issue declares.
+$repo = 'dazewell/Dazegram'
+$n    = 254              # issue number
+$slug = 'eventschedule-bolt-refresh'   # the issue's declared branch slug
+
+# A branch for this work is "<date><sep><slug>" and nothing else. Match it exactly:
+# a loose "*$slug*" false-positives whenever one slug is a substring of another
+# (`edit` would hit `trigger-edit`), and anchoring on "_" matches nothing at all,
+# because the branch tooling normalises the separator to "-" on push.
+$branchRe = "^\d{4}-\d{2}-\d{2}[-_]$([regex]::Escape($slug))$"
+
+$blockers = @()
+
+# 0. APPROVED BY DAZEWELL? No label, no work. This is the gate.
+$issue  = gh issue view $n --repo $repo --json state,labels,assignees | ConvertFrom-Json
+$labels = @($issue.labels.name)
+if ($labels -notcontains 'status:approved') { $blockers += 'NOT APPROVED by dazewell' }
+
+# 1. open, and none of the stop labels set?
+if ($issue.state -ne 'OPEN')                 { $blockers += "issue is $($issue.state)" }
+if ($labels -contains 'status:in-progress')  { $blockers += 'already claimed (status:in-progress)' }
+if ($labels -contains 'status:blocked')      { $blockers += 'blocked (status:blocked)' }
+if ($labels -contains 'status:deferred')     { $blockers += 'deferred (status:deferred)' }
+
+# 2. an open PR already doing it?
+#    --limit is mandatory: gh defaults to 30 and would silently drop a match off
+#    the end, reporting "clear" on a repo that already has the work in flight.
+$pr = gh pr list --repo $repo --state open --limit 200 --json number,headRefName |
+  ConvertFrom-Json | Where-Object { $_.headRefName -match $branchRe }
+if ($pr) { $blockers += "open PR #$($pr.number) on $($pr.headRefName)" }
+
+# 3. a branch already pushed for it?
+$branch = git ls-remote --heads origin |
+  ForEach-Object { ($_ -split 'refs/heads/')[-1] } |
+  Where-Object { $_ -match $branchRe }
+if ($branch) { $blockers += "remote branch $branch" }
+
+if ($blockers) { "DO NOT DISPATCH:`n - " + ($blockers -join "`n - ") } else { 'clear to dispatch' }
+```
+
+The block **decides**; it does not merely report. A preflight that computes an
+answer and leaves acting on it to the reader is a gate in prose only — paste it,
+skim the output, and you can still dispatch on an unapproved or already-claimed
+issue.
+
+**No `status:approved` means stop.** Not "ask and proceed", not "it looks
+obviously wanted" — stop, and if you think it should be approved, say so and let
+dazewell decide. Applying the label yourself to unblock your own dispatch is the
+one move this whole section exists to prevent.
+
+**Any blocker at all means do not dispatch** — investigate first. A duplicate
+costs a whole wasted branch and, worse, two diffs that conflict in the same
+region.
+
+### Claim at dispatch, before the session touches anything
+
+The dangerous window is between *deciding* to work on something and a branch
+existing to prove it. Close it by claiming first:
+
+```powershell
+# Hyphen, not underscore: the tooling flattens the separator on push, so a claim
+# comment written with "_" would name a branch that never appears on origin.
+$claimBranch = "{0:yyyy-MM-dd}-{1}" -f (Get-Date), $slug
+gh issue edit $n --repo $repo --add-label "status:in-progress" --remove-label "status:deferred"
+gh issue comment $n --repo $repo --body "Started. Branch: ``$claimBranch``"
+```
+
+Derive the date rather than typing one — a hard-coded example date goes stale
+within a day and invites someone to paste a branch name that does not exist.
+
+Then **re-read the issue**. If another claim comment landed first, back off —
+that is the simultaneous-claim race, and re-reading is the whole mitigation.
+
+### Closing is automatic — do not do it by hand
+
+The PR body carries `Closes #<n>`, so merging closes the issue and drops the
+claim with it. Bookkeeping you have to remember is bookkeeping that rots.
+
+### Stale claims
+
+A session can die mid-work and leave `status:in-progress` on an issue nobody is
+building. Before reclaiming, confirm it is genuinely stale: no branch matching
+its slug on `origin`, no open PR, and no live session owning it. Only then
+remove the label and note why in a comment. Do not silently steal a claim — a
+half-pushed branch is real work.
+
 ## The topology
 
 Remotes (as configured in this clone):

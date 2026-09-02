@@ -281,6 +281,45 @@ git fetch origin; git log --oneline dev..origin/dev
   files existed on disk, and dispatching them silently falls back to a generic
   agent that has read none of the skills. Say so and ask dazewell to restart the
   session rather than working around it.
+- **If the work has a GitHub issue, run the duplicate preflight and claim it
+  before dispatching.** Issues are the durable home for deferred work, and the
+  claim protocol is the only thing standing between two sessions building the
+  same change twice.
+
+  **First, the approval gate — this one is absolute.** The repository is
+  **public**, so anyone can file an issue, and an issue is therefore not
+  evidence that the work is wanted. **An issue without the `status:approved`
+  label is a proposal, not work.** Do not dispatch for it, do not start it
+  yourself, and do not read "nobody objected" as approval. This applies to
+  issues *you* filed exactly as much as to issues a stranger filed. If you think
+  something deserves approval, say so and let dazewell decide.
+
+  **Never apply `status:approved` yourself.** You run under dazewell's token and
+  therefore hold admin, so nothing platform-level stops you — GitHub records
+  your label and his identically. That is precisely why this is a hard limit in
+  the same class as never merging on his behalf and never force-pushing. Every
+  `labeled` event is timestamped in the issue timeline, so doing it anyway is
+  both a violation and visible.
+
+  Then the duplicate checks — the issue is open and carries **none** of
+  `status:in-progress`, `status:blocked` or `status:deferred`; no open PR's
+  branch matches its declared branch slug; no remote branch matches it either.
+  **Any hit means do not dispatch.** Note that **approval is necessary, not
+  sufficient**: `status:approved` says dazewell wants the work, not that he
+  wants it *now*, and an issue can legitimately carry approved **and** deferred
+  at once — read that pairing as sequencing, never as a contradiction to resolve
+  in favour of starting. `status:blocked` and `status:deferred` are each a stop
+  in their own right: a blocked issue is unclaimed precisely *because* something
+  it depends on has not landed, and a deferred one is parked deliberately, so
+  those are the easiest issues to start by mistake.
+  Then claim it (add `status:in-progress`, comment the branch name) *before* the
+  session starts, and **re-read the issue** in case a competing claim landed
+  first. The dangerous window is between deciding to work on something and a
+  branch existing to prove it, and your memory of what is in flight does not
+  survive this session. The full protocol — the two identifiers an issue
+  carries, the four labels, the stale-claim rule, and why `Closes #<n>` does the
+  closing — lives in the `nagramx-branch-flow` skill. Put `Closes #<n>` in the
+  brief so the implementer's PR body carries it.
 
 ### The `create_session` dispatch checklist
 
@@ -754,9 +793,14 @@ git diff origin/dev...origin/$branch -- '*.java' '*.kt' '*.xml' |
   Select-String -Pattern "(?i)^\+.*($vendors|\bai[- ]generated\b)"
 
 # threads, and the baseline that stops empty from reading as clean
+# --paginate is mandatory: an unpaginated read caps at one page, so a busy PR
+# silently under-counts and "zero reviews" stops meaning what you think.
+# --slurp + flatten is belt-and-braces: this gh merges arrays across pages, but
+# the documented contract is one JSON document per page, so don't depend on it
 # filter in PowerShell, never in --jq: this shell strips the inner quotes out of
 # a jq string literal and you get an error, or worse a zero that reads as clean
-$reviews = gh api "repos/$repo/pulls/$pr/reviews" | ConvertFrom-Json
+$reviews = gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews" |
+  ConvertFrom-Json | ForEach-Object { $_ }
 @($reviews | Where-Object { $_.user.login -like '*copilot*' }).Count
 
 # graphql takes real variables; backslash-escaped quotes do not survive this shell
