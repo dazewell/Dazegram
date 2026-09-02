@@ -203,15 +203,23 @@ a machine, or a week. Three mechanical checks, all cheap:
 ```powershell
 $repo = 'dazewell/Dazegram'; $n = <issue>; $slug = '<branch-slug>'
 
+# A branch for this work is "<date><sep><slug>" and nothing else. Match it exactly:
+# a loose "*$slug*" false-positives whenever one slug is a substring of another
+# (`edit` would hit `trigger-edit`), and anchoring on "_" matches nothing at all,
+# because the branch tooling normalises the separator to "-" on push.
+$branchRe = "^\d{4}-\d{2}-\d{2}[-_]$([regex]::Escape($slug))$"
+
 # 1. open, and not already claimed?
 gh issue view $n --repo $repo --json state,labels,assignees
 
 # 2. an open PR already doing it?
 gh pr list --repo $repo --state open --json number,title,headRefName |
-  ConvertFrom-Json | Where-Object { $_.headRefName -like "*$slug*" }
+  ConvertFrom-Json | Where-Object { $_.headRefName -match $branchRe }
 
 # 3. a branch already pushed for it?
-git ls-remote --heads origin "*$slug*"
+git ls-remote --heads origin |
+  ForEach-Object { ($_ -split 'refs/heads/')[-1] } |
+  Where-Object { $_ -match $branchRe }
 ```
 
 **Any hit means do not dispatch** — investigate first. A duplicate costs a whole
@@ -223,9 +231,13 @@ The dangerous window is between *deciding* to work on something and a branch
 existing to prove it. Close it by claiming first:
 
 ```powershell
+$branch = "{0:yyyy-MM-dd}_{1}" -f (Get-Date), $slug
 gh issue edit $n --repo $repo --add-label "status:in-progress" --remove-label "status:deferred"
-gh issue comment $n --repo $repo --body "Started. Branch: ``2026-09-01_$slug``"
+gh issue comment $n --repo $repo --body "Started. Branch: ``$branch``"
 ```
+
+Derive the date rather than typing one — a hard-coded example date goes stale
+within a day and invites someone to paste a branch name that does not exist.
 
 Then **re-read the issue**. If another claim comment landed first, back off —
 that is the simultaneous-claim race, and re-reading is the whole mitigation.
