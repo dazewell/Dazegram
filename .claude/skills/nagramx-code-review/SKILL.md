@@ -45,6 +45,26 @@ rationale ("kept it simple," "YAGNI," "no reusable component existed") is the
 implementer grading their own work — it never downgrades a finding. If they say
 "reused `PasscodeView`," open the diff and confirm they did.
 
+**Name the load-bearing claim and verify that one.** You cannot check
+everything, so spend the budget where a single sentence carries the whole
+safety argument. The claims that earn it are **asserted negatives** — "nothing
+can reach this", "the only caller is", "this cannot happen while X holds", "it
+only goes async when Y". They are cheap to write, expensive to check, and
+catastrophic when wrong, and they are load-bearing precisely because everything
+downstream assumes them. Do not ask "is this plausible"; go and find the code
+that makes it true, or report that you could not. Every false claim caught on
+this feature family was of exactly this form.
+
+**Scrutinise an asserted negative that *dissolves* a finding as hard as one
+that establishes danger.** They are the same epistemic act, but the dissolving
+one is rewarded — the work goes away — so it gets waved through. When a claim
+of unreachability would close a finding, require the distinction: is it
+**structurally unreachable** (a guard or invariant, cited at `file:line`), or
+merely **not currently reachable** (no path happens to exist today, nothing
+prevents one)? Only the first collapses a finding. The second leaves a live
+hazard and an accidental safety property nobody has written down — which is one
+refactor from vanishing, silently, because nothing fails when it does.
+
 **Read the code, don't skim the summary.** Before judging, actually read every
 changed file and the base-file call sites the change hooks into. If you can't
 locate a file referenced in the diff, say so rather than guessing.
@@ -143,6 +163,19 @@ and still be wrong for this repo.
   maximum or a count can't represent membership with holes; if the real
   question is "was this specific id already counted", the answer needs the
   set, not a derived number.
+- **A cardinality check cannot answer a question about every element.** An
+  aggregate collapses the set *before* the comparison and drops the
+  non-matching members, so the elements the guard exists to catch are exactly
+  the ones invisible to it. Seen twice on this feature family in changes
+  written by different sessions against different requirements: a
+  `candidates.size() == 1` ownership test where one *wrong* candidate is still
+  a count of one, and a distinct-owner count over an album where an *unowned*
+  child contributes nothing and the partial owner silently annexes the rest.
+  **The mechanical tell: if a guard must hold for every element, its expression
+  should mention those elements** — a loop, an all-match, an explicit
+  per-element comparison. A `.size()`, a count, or a distinct-set cardinality
+  is a red flag on sight, because the set is gone by the time the question is
+  asked. It reads as a guard while having none of the semantics of one.
 - **Ordering claims require a citation, not an assertion.** Any claim that one
   thing happens before another across threads, queues, or components must cite
   the producer `file:line` that actually establishes it. "Immune by
@@ -251,6 +284,42 @@ and still be wrong for this repo.
   marketing), matching neighboring entries' format (shortcut table / screenshot
   where they have one), tagged `<!-- #slug -->`? It rides *with* the code in the
   same PR, so its absence on a user-visible change is a finding.
+- **Does any surviving artefact still describe something this change
+  invalidated?** A deletion isn't complete until every artefact that described
+  the removed thing is corrected — class javadoc, interface contracts, call-site
+  comments, and the PR body. A stale contract is worse than dead code: dead code
+  does nothing, while a stale contract actively *instructs* the next
+  implementer to rebuild the thing you removed. Seen on this feature family as
+  an `onAdmission()` javadoc that still prescribed the durable-detach design
+  deleted for losing triggers outright.
+- **Sweep for superseded premises, not just deleted mechanisms — and note this
+  cannot be a grep.** A deleted mechanism has a *name* (`restoreFailed`,
+  durable-detach) so it is greppable; a superseded premise is a *sentence*
+  ("one synchronous UI turn", "this all happens atomically") that matches no
+  keyword and still reads as true. Finding those means reading every artefact
+  attached to the code you changed and asking of each sentence whether it is
+  still true. A file left carrying **two incompatible safety arguments** is
+  worse than one carrying a stale one, because the reader who meets the
+  obsolete claim first concludes the protections below it are redundant and
+  removes them.
+- **Correct the whole artefact, and record why the thing was removed.** Two
+  traps here. First, fixing only the clause someone flagged leaves the artefact
+  false elsewhere — what was reported is a sample, not a specification, so
+  re-read the whole thing against current behaviour. This is more dangerous
+  than leaving it alone: a visibly ancient comment invites suspicion, while a
+  freshly corrected one **confers implied authority** and stops the next reader
+  checking at all. Second, a corrected contract stops you copying the bug; a
+  corrected contract *carrying its reason* stops you reasoning your way back to
+  it independently.
+- **Check the fix direction before applying it.** When a comment contradicts
+  the code, which one is wrong is a *question*, not a given. Rewriting the
+  comment to match the code assumes the code is right — and permanently erases
+  the evidence that behaviour was ever meant to differ. A stale comment is
+  recoverable; a comment rewritten to bless a behavioural gap is not.
+- **Documentation can be accurate and still fail by sitting at the wrong
+  altitude.** If a comment delegates a fact to another component ("see the
+  armer"), check that the *contract* a referred reader lands on states it — not
+  merely that the fact exists somewhere at a call site they will never reach.
 
 ## When line-fixing stops and design review starts
 
