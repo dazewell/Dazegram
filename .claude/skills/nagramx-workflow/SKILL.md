@@ -333,9 +333,11 @@ code are not.
 
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
-   something to wait to be told: once it passes the compile gate (locally, or
-   on `ci.yml` once pushed), **commit → push → open the PR** so dazewell always
-   has a way to get to a test build once one is actually warranted. The build
+   something to wait to be told: once the change is ready — the compile gate
+   passed locally, or (working CI-only) the change is written and ready for
+   `ci.yml`'s `pull_request` trigger to gate it — **commit → push → open the
+   PR** so dazewell always has a way to get to a test build once one is
+   actually warranted. The build
    dazewell tests on-device must be **`dev` + the change** (on top of the
    current fork state, alongside everything already landed). Open a PR from
    `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
