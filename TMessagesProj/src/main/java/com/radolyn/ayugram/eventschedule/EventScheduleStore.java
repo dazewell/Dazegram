@@ -216,10 +216,15 @@ public final class EventScheduleStore {
      * can then land on that replacement as its "single candidate". So the update branch below only lets an
      * incoming out-of-range delay through when the candidate's own current {@code delaySeconds} -- read
      * before this call touches it -- already exceeds the cap; otherwise it clamps like the fresh branch
-     * does. Invariant this leaves in place, checkable by grepping every {@code delaySeconds =} in this
-     * class: every assignment either clamps to {@link EventScheduleEntry#MAX_NEW_DELAY_SECONDS}, or writes
-     * onto an entry whose own {@code delaySeconds} already exceeded it. Equivalently, the only entries with
-     * {@code delaySeconds > MAX_NEW_DELAY_SECONDS} are ones loaded from disk that way.
+     * does. Invariant this leaves in place within this class, checkable by grepping every
+     * {@code delaySeconds =} here: every assignment either clamps to
+     * {@link EventScheduleEntry#MAX_NEW_DELAY_SECONDS}, or writes onto an entry whose own
+     * {@code delaySeconds} already exceeded it. That grep alone does not cover the whole picture, though --
+     * {@link EventScheduleController#armPending} persists a brand-new entry directly and never calls into
+     * this gate at all, so it is an explicit exception to "this class enforces the cap": it stays safe only
+     * because its caller clamps first, at {@code EventScheduleHelper}'s sheet-seed clamp. With that
+     * exception accounted for, the only entries with {@code delaySeconds > MAX_NEW_DELAY_SECONDS} are ones
+     * loaded from disk that way.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
             int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,

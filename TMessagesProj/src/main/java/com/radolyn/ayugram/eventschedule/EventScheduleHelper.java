@@ -403,8 +403,12 @@ public final class EventScheduleHelper {
 
             final TextView delayValue = new TextView(context);
             // NagramX: label the actual stored delay, not the floor-clamped stop -- for a legacy
-            // out-of-range trigger those two disagree (see delayTouched above), and this sheet must
-            // never show a number that differs from what Done would actually commit.
+            // out-of-range trigger those two disagree (see delayTouched above). This guarantees the label
+            // matches what an UNTOUCHED Done commits (delayTouched stays false, so commit() below reuses
+            // this same `delay`, not a snapped stop). It does not cover the fire-or-remove-while-open race:
+            // if the owning trigger fires or is removed while the sheet is still up, the store re-decides
+            // existing-vs-new at commit time (EventScheduleStore.resolveAndClaimForEdit) and can cap what
+            // this label showed -- by design, not a bug in this label.
             delayValue.setText(formatDelayLabel(delay));
             delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
