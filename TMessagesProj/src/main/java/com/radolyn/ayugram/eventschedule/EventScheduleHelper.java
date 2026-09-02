@@ -82,6 +82,18 @@ public final class EventScheduleHelper {
             return null;
         }
 
+        // editIds is an immutable primitive snapshot captured when the sheet opened; a send ack mutates
+        // the MessageObject but can never update this array, so a non-positive id here means at least one
+        // target is still in flight. Decide once, now, and stay decided for the sheet's life: withhold the
+        // trigger entirely (albums are all-or-nothing -- one unsent member refuses the whole group) and
+        // show a disabled note instead. The user reopens the sheet after the ack to get positive ids and
+        // the normal control. The fallback schedule-time edit still commits normally; only the trigger is
+        // withheld, because returning no TriggerRow means the confirmation runs no event-schedule mutation.
+        if (editIds != null && hasNonPositiveId(editIds)) {
+            addInFlightNote(context, container, textColor, backgroundColor);
+            return null;
+        }
+
         Row row = new Row(account, dialogId, editIds, onChanged);
 
         TextView chip = new TextView(context);
@@ -106,6 +118,34 @@ public final class EventScheduleHelper {
         container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         return row;
+    }
+
+    private static boolean hasNonPositiveId(int[] ids) {
+        for (int id : ids) {
+            if (id <= 0) return true;
+        }
+        return false;
+    }
+
+    // A non-clickable, dimmed twin of the trigger chip. It carries no Row and no click handler, so it
+    // can't be armed and can't turn into the live control while the sheet stays open -- reopening the
+    // sheet after the send acks is what surfaces the real chip.
+    private static void addInFlightNote(Context context, LinearLayout container, int textColor, int backgroundColor) {
+        TextView chip = new TextView(context);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+        chip.setTextColor(Theme.multAlpha(textColor, 0.5f));
+        chip.setPadding(dp(12), dp(5), dp(12), dp(5));
+        chip.setMinHeight(dp(28));
+        chip.setMaxLines(3);
+        chip.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        final int chipBg = Theme.blendOver(backgroundColor, Theme.multAlpha(textColor, 0.075f));
+        chip.setBackground(Theme.createRoundRectDrawable(dp(14), chipBg));
+        chip.setGravity(Gravity.CENTER);
+        chip.setText(getString(R.string.EventScheduleTriggerInFlight));
+
+        FrameLayout chipContainer = new FrameLayout(context);
+        chipContainer.addView(chip, LayoutHelper.createFrame(LayoutHelper.WRAP_CONTENT, LayoutHelper.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL, 32, 4, 32, 5));
+        container.addView(chipContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
     }
 
     /** Prepends a small bolt to the time string of a scheduled message that carries a live trigger. */
