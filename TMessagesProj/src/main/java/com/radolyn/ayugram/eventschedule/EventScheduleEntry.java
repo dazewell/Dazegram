@@ -58,7 +58,7 @@ public final class EventScheduleEntry {
     public long bindGroupedId;
     public long bindExpiresAt;
     public int state = STATE_ARMED;
-    // Bumped on the UI thread on every edit (updateForEdit) to detect a stale in-flight
+    // Bumped on the UI thread on every edit (through resolveAndClaimForEdit) to detect a stale in-flight
     // arm/fire against the queue below; always read and written on the UI thread (armWaiting,
     // fire, and their runOnUIThread callbacks), never from the background matcher queue --
     // see PatternState for the separate, atomically-published state the matcher itself reads.
@@ -155,15 +155,19 @@ public final class EventScheduleEntry {
     }
 
     /**
-     * Called on the UI thread by {@code updateForEdit} after it has updated
-     * pattern/regex/revision, to swap in a fresh, uncompiled state for the new revision. This
-     * is a plain reference replacement, not a CAS -- the UI thread is the only thread that
-     * ever calls this method, so there is nothing else to race here. What matters is what
-     * this replacement does to a background compile that is still in flight against the
-     * *previous* PatternState object: once this call returns, that object is no longer
-     * reachable from {@link #patternState}, so the compile's eventual
-     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to
-     * fail no matter when it runs relative to this swap.
+     * Called on the UI thread after an edit has updated pattern/regex/revision, to swap in a
+     * fresh, uncompiled state for the new revision. The live edit path reaches here through
+     * {@link EventScheduleStore#resolveAndClaimForEdit}, which mutates the selected entry and
+     * then calls this; the retained {@code updateForEdit} compatibility path calls it too.
+     * This is a plain reference replacement, not a CAS: every caller runs on the UI thread, so
+     * this method is single-threaded by that precondition and there is nothing to race against
+     * here -- note the {@code synchronized} on the store's claim method gives mutual exclusion,
+     * not thread affinity, so it is the UI-thread-only callers, not that lock, that make the
+     * plain {@code set} safe. What matters is what this replacement does to a background compile
+     * still in flight against the *previous* PatternState object: once this call returns, that
+     * object is no longer reachable from {@link #patternState}, so the compile's eventual
+     * {@code compareAndSet(oldState, ...)} in {@link #compileAndPublish} is guaranteed to fail
+     * no matter when it runs relative to this swap.
      */
     void resetPatternState() {
         patternState.set(new PatternState(revision, pattern, regex, null, false));

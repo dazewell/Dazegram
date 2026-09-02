@@ -36729,14 +36729,11 @@ public class ChatActivity extends BaseFragment implements
                         naxEventIds = new int[]{message.getId()};
                         naxEventLocalIds = new int[]{message.messageOwner.local_id};
                     }
-                    // NagramX: the negative local_id echo and the original schedule date let the sheet re-find
-                    // a still-pending trigger at commit that a positive-id lookup would miss, so it can't arm a
-                    // second trigger on the same message. Take the date from the same message the edit is applied
-                    // to; all snapshots here are read once and never written again.
-                    int naxOriginalDate = (group != null && !group.messages.isEmpty())
-                            ? group.messages.get(0).messageOwner.date : message.messageOwner.date;
+                    // NagramX: the negative local_id echo lets the sheet re-find a still-pending trigger at
+                    // commit that a positive-id lookup would miss, so it can't arm a second trigger on the
+                    // same message. All snapshots here are read once and never written again.
                     // NagramX: re-measure (not just repaint) the affected rows so the bolt marker's width change lands immediately.
-                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, naxOriginalDate, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
+                    com.radolyn.ayugram.eventschedule.EventScheduleHelper.armEdit(currentAccount, dialog_id, naxEventIds, naxEventLocalIds, () -> updateVisibleRows(msg -> msg != null && org.telegram.messenger.support.ArrayUtils.contains(naxEventIds, msg.getId())));
                 }
                 AlertsCreator.createEditScheduleDatePickerDialog(getParentActivity(), dialog_id, message.messageOwner.date, message.messageOwner.schedule_repeat_period, (notify, scheduleDate, scheduleRepeatPeriod) -> {
                     if (group != null && !group.messages.isEmpty()) {

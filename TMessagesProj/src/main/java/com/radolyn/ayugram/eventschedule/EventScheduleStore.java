@@ -148,7 +148,7 @@ public final class EventScheduleStore {
 
     /** Outcome of {@link #resolveAndClaimForEdit}; consumed by the controller, never by the UI directly. */
     public static final class EditClaim {
-        public enum Status { REJECTED_MULTI, UPDATED_EXISTING, CLAIMED_FRESH }
+        public enum Status { REJECTED_MULTI, REJECTED_INVALID_IDS, UPDATED_EXISTING, CLAIMED_FRESH }
         public final Status status;
         public final EventScheduleEntry entry;      // live resolved entry (null on reject)
         public final String previousTriggerKey;     // the entry's triggerKey() BEFORE the edit; null on fresh/reject
@@ -184,47 +184,37 @@ public final class EventScheduleStore {
         return out;
     }
 
-    // Fallback for when exact-id matching finds nothing (after a restart, the message no longer exposes
-    // its original negative echo, so a reloaded pending owner is invisible to the exact scan). A
-    // still-binding entry (bind window not yet closed) at the same original schedule date is the same
-    // arm; the caller routes only when exactly one exists and never guesses among several.
-    private static ArrayList<EventScheduleEntry> collectBindingByDate(int account, long dialogId, int originalScheduleDate) {
-        ArrayList<EventScheduleEntry> out = new ArrayList<>();
-        long now = System.currentTimeMillis() / 1000L;
-        for (EventScheduleEntry e : cache(account).values()) {
-            if (e.dialogId != dialogId) continue;
-            if (e.fallbackDate != originalScheduleDate) continue;
-            if (e.bindExpiresAt > now) out.add(e);
-        }
-        return out;
-    }
-
     /**
      * The single ownership gate for arming a trigger while editing a scheduled message. In one monitor
-     * scope it re-resolves ownership across both id spaces (with a date fallback), refuses a
-     * multi-owner state, and either merges into the one existing owner or inserts a collision-free
-     * fresh entry -- then persists. The check and the persist are inseparable, and the mutation happens
-     * on the live cached object here rather than in the caller, so no caller-side alias can pre-empt a
-     * rejection.
+     * scope it re-resolves ownership across both id spaces, refuses a multi-owner state, and either
+     * merges into the one existing owner or inserts a collision-free fresh entry -- then persists. The
+     * check and the persist are inseparable, and the mutation happens on the live cached object here
+     * rather than in the caller, so no caller-side alias can pre-empt a rejection. Fails closed on an
+     * empty or non-positive id set (Required by the same in-flight-id invariant armExisting enforced):
+     * arming a trigger against ids the server has not issued yields one that reports live but can never
+     * fire, the #256 defect class.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
-            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate,
+            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,
             int types, String pattern, boolean regex, int delaySeconds, int fallbackDate, long freshCreatedAt) {
+        if (positiveIds == null || positiveIds.length == 0) {
+            return new EditClaim(EditClaim.Status.REJECTED_INVALID_IDS, null, null);
+        }
+        for (int id : positiveIds) {
+            if (id <= 0) {
+                return new EditClaim(EditClaim.Status.REJECTED_INVALID_IDS, null, null);
+            }
+        }
         HashMap<String, EventScheduleEntry> m = cache(account);
         ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
-        if (candidates.isEmpty()) {
-            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
-        }
         if (candidates.size() > 1) {
             return new EditClaim(EditClaim.Status.REJECTED_MULTI, null, null);
         }
         if (candidates.size() == 1) {
             EventScheduleEntry target = candidates.get(0);
             String previousTriggerKey = target.triggerKey();
-            if (positiveIds != null) {
-                for (int id : positiveIds) {
-                    if (id > 0 && !target.serverIds.contains(id)) target.serverIds.add(id);
-                }
+            for (int id : positiveIds) {
+                if (!target.serverIds.contains(id)) target.serverIds.add(id);
             }
             target.revision++;
             target.types = types;
@@ -241,10 +231,8 @@ public final class EventScheduleStore {
         }
         EventScheduleEntry fresh = new EventScheduleEntry();
         fresh.dialogId = dialogId;
-        if (positiveIds != null) {
-            for (int id : positiveIds) {
-                if (id > 0 && !fresh.serverIds.contains(id)) fresh.serverIds.add(id);
-            }
+        for (int id : positiveIds) {
+            if (!fresh.serverIds.contains(id)) fresh.serverIds.add(id);
         }
         fresh.types = types;
         fresh.pattern = pattern == null ? "" : pattern;
@@ -268,19 +256,15 @@ public final class EventScheduleStore {
      * Keeps a lone owner's derived schedule time in step when the user edits a scheduled message's send
      * time but never opens the trigger controls. fallbackDate is derived from the message, not user
      * trigger configuration, so it must track the new time: a stale value gets the entry pruned on
-     * reload (fallbackDate + 300 < now), mis-orders the fallback-time send queue, and stops the
-     * date-fallback owner scan (which matches on the original schedule date) from finding it again.
-     * Resolves the owner the same two-space way as the arm path and only ever touches a single owner --
-     * MULTI or NONE change nothing, so the multi-owner conflict this change guards stays untouched. Does
-     * not create, remove, or reconfigure a trigger; only the derived date moves. Returns the refreshed
-     * live entry so the caller can re-sort its queue bucket, or null when there was no single owner.
+     * reload (fallbackDate + 300 < now) and mis-orders the fallback-time send queue. Resolves the owner
+     * by exact id across both id spaces and only ever touches a single owner -- MULTI or NONE change
+     * nothing, so the multi-owner conflict this change guards stays untouched. Does not create, remove,
+     * or reconfigure a trigger; only the derived date moves. Returns the refreshed live entry so the
+     * caller can re-sort its queue bucket, or null when there was no single owner.
      */
     public static synchronized EventScheduleEntry refreshFallbackForEdit(
-            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate, int fallbackDate) {
+            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int fallbackDate) {
         ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
-        if (candidates.isEmpty()) {
-            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
-        }
         if (candidates.size() != 1) {
             return null;
         }
@@ -309,16 +293,13 @@ public final class EventScheduleStore {
 
     /**
      * Read-only ownership resolution for seeding the edit sheet's controls, as an explicit tri-state.
-     * Uses the same two-space (ids + date fallback) scan as the arm path so a still-pending owner -- which
-     * a positive-serverId lookup would miss -- shows as armed rather than off. MULTI is kept distinct from
+     * Uses the same exact-id (both id spaces) scan as the arm path so a still-pending owner -- which a
+     * positive-serverId lookup would miss -- shows as armed rather than off. MULTI is kept distinct from
      * NONE so a pre-existing multi-owner conflict is never seeded as an ordinary off, which would let an
      * untouched schedule-only edit destroy it. Selects only; mutates nothing.
      */
-    public static synchronized OwnerSeed resolveOwnerSeedForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
+    public static synchronized OwnerSeed resolveOwnerSeedForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds) {
         ArrayList<EventScheduleEntry> candidates = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
-        if (candidates.isEmpty()) {
-            candidates = collectBindingByDate(account, dialogId, originalScheduleDate);
-        }
         if (candidates.isEmpty()) {
             return new OwnerSeed(EditOwner.NONE, null);
         }
@@ -328,19 +309,11 @@ public final class EventScheduleStore {
         return new OwnerSeed(EditOwner.MULTI, null);
     }
 
-    /** Owner keys to drop when a trigger is turned off while editing -- same two-space resolution as the arm path. */
-    public static synchronized ArrayList<String> resolveOwnerKeysForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds, int originalScheduleDate) {
+    /** Owner keys to drop when a trigger is turned off while editing -- same exact-id resolution as the arm path. */
+    public static synchronized ArrayList<String> resolveOwnerKeysForEdit(int account, long dialogId, int[] positiveIds, int[] negativeLocalIds) {
         ArrayList<String> keys = new ArrayList<>();
-        ArrayList<EventScheduleEntry> exact = collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds);
-        if (!exact.isEmpty()) {
-            for (EventScheduleEntry e : exact) keys.add(e.key());
-            return keys;
-        }
-        // No exact match: fall back to a still-binding entry at the original date, but only when it is
-        // unambiguous -- removing on a date guess could nuke an unrelated message's trigger.
-        ArrayList<EventScheduleEntry> byDate = collectBindingByDate(account, dialogId, originalScheduleDate);
-        if (byDate.size() == 1) {
-            keys.add(byDate.get(0).key());
+        for (EventScheduleEntry e : collectExactCandidates(account, dialogId, positiveIds, negativeLocalIds)) {
+            keys.add(e.key());
         }
         return keys;
     }

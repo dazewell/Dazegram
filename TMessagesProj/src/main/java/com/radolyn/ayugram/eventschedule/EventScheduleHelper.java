@@ -56,18 +56,16 @@ public final class EventScheduleHelper {
     private static long editDialogId;
     private static int[] editMessageIds;
     private static int[] editLocalIds;
-    private static int editOriginalScheduleDate;
     private static Runnable editOnChanged;
 
     private EventScheduleHelper() {}
 
-    public static void armEdit(int account, long dialogId, int[] messageIds, int[] localIds, int originalScheduleDate, Runnable onChanged) {
+    public static void armEdit(int account, long dialogId, int[] messageIds, int[] localIds, Runnable onChanged) {
         editPending = true;
         editAccount = account;
         editDialogId = dialogId;
         editMessageIds = messageIds;
         editLocalIds = localIds;
-        editOriginalScheduleDate = originalScheduleDate;
         editOnChanged = onChanged;
     }
 
@@ -77,7 +75,6 @@ public final class EventScheduleHelper {
         boolean editHere = editPending && editAccount == account && editDialogId == dialogId;
         int[] editIds = editHere ? editMessageIds : null;
         int[] editLocals = editHere ? editLocalIds : null;
-        int editOriginalDate = editHere ? editOriginalScheduleDate : 0;
         Runnable onChanged = editHere ? editOnChanged : null;
         editPending = false;
         editMessageIds = null;
@@ -101,7 +98,7 @@ public final class EventScheduleHelper {
             return null;
         }
 
-        Row row = new Row(account, dialogId, editIds, editLocals, editOriginalDate, onChanged);
+        Row row = new Row(account, dialogId, editIds, editLocals, onChanged);
 
         TextView chip = new TextView(context);
         chip.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
@@ -188,7 +185,6 @@ public final class EventScheduleHelper {
         final long dialogId;
         final int[] editIds;
         final int[] editLocalIds;
-        final int editOriginalScheduleDate;
         final Runnable onChanged;
 
         boolean enabled;
@@ -205,20 +201,19 @@ public final class EventScheduleHelper {
 
         TextView chip;
 
-        Row(int account, long dialogId, int[] editIds, int[] editLocalIds, int editOriginalScheduleDate, Runnable onChanged) {
+        Row(int account, long dialogId, int[] editIds, int[] editLocalIds, Runnable onChanged) {
             this.account = account;
             this.dialogId = dialogId;
             this.editIds = editIds;
             this.editLocalIds = editLocalIds;
-            this.editOriginalScheduleDate = editOriginalScheduleDate;
             this.onChanged = onChanged;
-            // Seed the controls from any trigger this message already has, resolved the same two-space way
-            // as commit (all edit ids + local ids, then the date fallback) so a still-pending owner shows
-            // as armed instead of off. Only an unambiguous single owner seeds the controls "on"; a MULTI
-            // conflict stays off and is left for the user to resolve explicitly, never auto-changed. This is
-            // a UI seed only -- the arming decision at commit re-resolves ownership from scratch.
+            // Seed the controls from any trigger this message already has, resolved the same exact-id way
+            // as commit (all edit ids + local ids) so a still-pending owner shows as armed instead of off.
+            // Only an unambiguous single owner seeds the controls "on"; a MULTI conflict stays off and is
+            // left for the user to resolve explicitly, never auto-changed. This is a UI seed only -- the
+            // arming decision at commit re-resolves ownership from scratch.
             EventScheduleStore.OwnerSeed seed = editIds != null && editIds.length > 0
-                    ? EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate)
+                    ? EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, editIds, editLocalIds)
                     : new EventScheduleStore.OwnerSeed(EventScheduleStore.EditOwner.NONE, null);
             if (seed.kind == EventScheduleStore.EditOwner.SINGLE) {
                 EventScheduleEntry existing = seed.entry;
@@ -466,15 +461,15 @@ public final class EventScheduleHelper {
                     // a lone owner; a multi-owner conflict or none is untouched, so the destructive case
                     // (an untouched edit reading as a turn-off) stays closed.
                     EventScheduleController.commitEditRefresh(account, dialogId, editIds, editLocalIds,
-                            editOriginalScheduleDate, scheduleDate);
+                            scheduleDate);
                     return;
                 }
-                // Re-resolve ownership at commit across both id spaces plus the schedule-date fallback rather
-                // than trusting the seed, so a trigger armed or turned off in the meantime is handled
-                // correctly and the same message can't end up with two triggers.
+                // Re-resolve ownership at commit across both id spaces rather than trusting the seed, so a
+                // trigger armed or turned off in the meantime is handled correctly and the same message
+                // can't end up with two triggers.
                 if (armed) {
                     boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
-                            editOriginalScheduleDate, types, pattern, regex, delay, scheduleDate);
+                            types, pattern, regex, delay, scheduleDate);
                     if (!claimed) {
                         // Another trigger already owns this message (only reachable against data a prior
                         // defect persisted). Leave every trigger untouched; the schedule-date edit still
@@ -483,7 +478,7 @@ public final class EventScheduleHelper {
                         return;
                     }
                 } else {
-                    EventScheduleController.commitEditOff(account, dialogId, editIds, editLocalIds, editOriginalScheduleDate);
+                    EventScheduleController.commitEditOff(account, dialogId, editIds, editLocalIds);
                 }
                 refresh();
                 return;
