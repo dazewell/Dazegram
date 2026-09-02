@@ -642,6 +642,7 @@ public final class EventScheduleController {
                 }
             } catch (Throwable t) {
                 error = true;
+                FileLog.e("eventschedule: durable random_id lookup failed, failing closed", t);
             } finally {
                 if (cursor != null) cursor.dispose();
             }
