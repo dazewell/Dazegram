@@ -943,6 +943,11 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject selectedObjectToEditCaption;
     private MessageObject selectedObject;
     private RepostCopyDeleteBatch repostCopyDeleteBatch;
+    // NagramX: #repost-spread. A repost-as-copy batch that fully acked while the source chat was still
+    // mid picker-close (resumed but not yet fully visible) can't show its delete offer yet. It's retained
+    // here across exactly that transition and resolved once from onBecomeFullyVisible; a genuine pause or
+    // fragment destruction drops it instead (property 11 - fragment death loses the offer, never a send).
+    private RepostCopyDeleteBatch repostCopyDeletePendingOffer;
     // NagramX: tracks the on-demand repost-as-copy delete offer bulletin so onPause can cancel it; cleared
     // by identity via repostCopyDeleteBulletinTag, mirroring the pinBulletin/pinBullerinTag pattern (#repost-reply).
     private Bulletin repostCopyDeleteBulletin;
@@ -3760,6 +3765,7 @@ public class ChatActivity extends BaseFragment implements
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         repostCopyDeleteBatch = null;
+        repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
         removeChatLockPasscodeView();
         if (messageMetricsView != null) {
@@ -29157,6 +29163,15 @@ public class ChatActivity extends BaseFragment implements
     public void onBecomeFullyVisible() {
         isFullyVisible = true;
         super.onBecomeFullyVisible();
+        // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
+        // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
+        // once. The guard inside re-validates (sources still present/deletable, no open dialog), so a
+        // batch that became unshowable meanwhile simply drops.
+        if (repostCopyDeletePendingOffer != null) {
+            RepostCopyDeleteBatch pendingOffer = repostCopyDeletePendingOffer;
+            repostCopyDeletePendingOffer = null;
+            showRepostCopyDeleteOfferIfSafe(pendingOffer);
+        }
         if (showCloseChatDialogLater) {
             showDialog(closeChatDialog);
         }
@@ -32230,6 +32245,9 @@ public class ChatActivity extends BaseFragment implements
     public void onPause() {
         super.onPause();
         repostCopyDeleteBatch = null;
+        // NagramX: #repost-spread. A genuine pause is not the picker-close transition - drop any pending
+        // delete offer so it never shows on a chat the user has left or backgrounded (property 11).
+        repostCopyDeletePendingOffer = null;
         // NagramX: cancel the delete offer the moment the chat stops being live and visible (leaving, or the
         // app backgrounding), matching today's arm-window behaviour instead of leaving it counting down unseen.
         if (repostCopyDeleteBulletin != null) {
@@ -48716,6 +48734,13 @@ public class ChatActivity extends BaseFragment implements
         if (batch.succeededSources.size() == batch.armedSources.size()) {
             if (!showRepostCopyDeleteOfferIfSafe(batch)) {
                 repostCopyDeleteBatch = null;
+                // NagramX: #repost-spread. A fast batch can finish acking during the forward-picker close
+                // animation - resumed (not paused) but not yet fully visible - when the offer can't show
+                // yet. Retain it across exactly that transition so onBecomeFullyVisible can resolve it. A
+                // genuine pause, a still-open dialog, or a finishing fragment falls through and drops it.
+                if (!paused && !isFullyVisible && !isFinishing()) {
+                    repostCopyDeletePendingOffer = batch;
+                }
                 return;
             }
             repostCopyDeleteBatch = null;
