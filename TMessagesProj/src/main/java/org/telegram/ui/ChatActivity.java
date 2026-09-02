@@ -37140,7 +37140,11 @@ public class ChatActivity extends BaseFragment implements
                         // NagramX: #repost-spread. Re-send each slot as a copy on its own schedule time
                         // (base + index*interval), so a batch no longer collapses onto one timestamp. The
                         // delete-originals offer is armed once across all slots, single-target only.
-                        anyFailed = anyFailed || !dispatchForwardSpread(spreadSlots, fmessages, did, naxHideCaption, notify, scheduleDate, forwardSpreadInterval, price == null ? 0 : price, dids.size() == 1);
+                        // Call unconditionally into a local first: folding it straight into anyFailed with
+                        // || would short-circuit and skip the dispatch for every target after the first
+                        // failure, silently turning a multi-target send into a partial one.
+                        boolean slotFailed = !dispatchForwardSpread(spreadSlots, fmessages, did, naxHideCaption, notify, scheduleDate, forwardSpreadInterval, price == null ? 0 : price, dids.size() == 1);
+                        anyFailed = anyFailed || slotFailed;
                     } else {
                         forwardMessages(fmessages, naxFromMyName, naxHideCaption, notify, scheduleDate, did, price == null ? 0 : price);
                         // getSendMessagesHelper().sendMessage(fmessages, did, false, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
