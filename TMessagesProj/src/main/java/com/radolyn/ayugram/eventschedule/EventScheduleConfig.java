@@ -1,6 +1,7 @@
 package com.radolyn.ayugram.eventschedule;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -13,13 +14,14 @@ import java.util.List;
 public final class EventScheduleConfig {
 
     public final int types;
-    public final ArrayList<String> patterns;
+    public final List<String> patterns;
     public final boolean regex;
     public final int delaySeconds;
 
     public EventScheduleConfig(int types, List<String> patterns, boolean regex, int delaySeconds) {
         this.types = types;
-        this.patterns = new ArrayList<>(patterns == null ? java.util.Collections.emptyList() : patterns);
+        this.patterns = Collections.unmodifiableList(
+                new ArrayList<>(patterns == null ? Collections.emptyList() : patterns));
         this.regex = regex;
         this.delaySeconds = delaySeconds;
     }
