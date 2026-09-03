@@ -702,8 +702,10 @@ Diagnostics:    required | not required   (required only when the change adds
                   for why `Log.v`/`Log.d` don't survive to the device), tagged
                   with a literal in the `NAX_SMOKE_<slug>` pattern — `<slug>`
                   replaced with this change's actual slug, not left as a
-                  placeholder — recorded verbatim in the PR body so your
-                  Phase 4 grep has an exact string to check for, removed as
+                  placeholder, and embedded in the log message text itself so
+                  it's part of the code, not just prose — recorded verbatim
+                  in the PR body too so you know what to grep the head tree
+                  for in Phase 4 — removed as
                   its own commit once the smoke build answers the
                   reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
@@ -910,9 +912,11 @@ Confirm, one by one:
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
 - If the brief marked `Diagnostics: required`, the temporary logging commit and
-  its **literal tag from the PR body** are gone from the final diff — grep the
-  head for that exact string. A PR body with no recorded tag literal is itself
-  a finding: the check can't run without one. Its removal is not the
+  its **literal tag** are gone from the final diff — grep the head tree for
+  that exact string; the tag was embedded in the log message text itself, so
+  the grep runs against code, not the PR body. A PR body with no recorded tag
+  literal is itself a finding: you have no declared string to grep for, even
+  if diagnostic code exists somewhere in the diff. Its removal is not the
   implementer's call to skip; confirm it here the same mechanical way you
   confirm the hard-line greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
