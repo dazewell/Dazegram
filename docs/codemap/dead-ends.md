@@ -32,23 +32,29 @@ membership is `grouped_id`-only, per the entry above.
 
 *(Established 2026-09-02.)*
 
-## "Rescheduling a message races an unreconciled placeholder"
+## "Rescheduling a message races an unreconciled placeholder" — single-message path only
 
-Disproven, on reachability rather than on the race itself. An outgoing,
-not-yet-reconciled message (`id <= 0`, not a send error) resolves to
-`MESSAGE_TYPE_INVALID` in `ChatActivity.getMessageType`
-(`ChatActivity.java:20537-20546`), and `processRowSelect` refuses to select
-any row below `MESSAGE_TYPE_MEDIA` (`ChatActivity.java:21147-21154`) — so it
-can't be routed to Reschedule through the UI in the first place. Had it
-somehow reached `editMessage` anyway, the failure path shows an
-`EditMessageError` alert (`AlertsCreator.java:450-457`); no such alert was
-observed during the investigation that raised this theory, consistent with
-the path never being reachable. See the matching latent-gap note in
-`upstream-traps.md` (`canEditMessageScheduleTime` has no `id <= 0` guard) —
-the reachability guard lives one layer up, in `ChatActivity`, not in that
-method itself.
+Disproven for the **single-message** reschedule/edit path, on reachability
+rather than on the race itself. An outgoing, not-yet-reconciled message
+(`id <= 0`, not a send error) resolves to `MESSAGE_TYPE_INVALID` in
+`ChatActivity.getMessageType` (`ChatActivity.java:20672-20696`), and
+`processRowSelect` refuses to select any row below `MESSAGE_TYPE_MEDIA`
+(`ChatActivity.java:21294`) — so it can't be routed to Reschedule through the
+UI in the first place for a directly-selected message. Had it somehow reached
+`editMessage` anyway, the failure path shows an `EditMessageError` alert
+(`AlertsCreator.java:450-457`); no such alert was observed during the
+investigation that raised this theory, consistent with the path never being
+reachable. See the matching latent-gap note in `upstream-traps.md`
+(`canEditMessageScheduleTime` has no `id <= 0` guard) — the reachability guard
+lives one layer up, in `ChatActivity`, not in that method itself.
 
-*(Established 2026-09-02.)*
+This disproof does **not** extend to the bulk `RescheduleSpreadExecutor` path:
+see "Bulk reschedule's album expansion bypasses the selection type check" in
+`upstream-traps.md` for why a non-positive id can still reach that executor
+through an album sibling, with reachability left unproven rather than
+declared safe.
+
+*(Established 2026-09-02, narrowed to single-message-only 2026-09-03.)*
 
 ## "A clickable child view swallowed the share-sheet avatar tap"
 

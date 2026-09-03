@@ -76,15 +76,17 @@ siblings `canEditMessageAnytime` (`:11745-11766`, bails on `message.id < 0` at
 
 This is **not currently exploitable**: an outgoing message with `id <= 0`
 that isn't a send-error resolves to `MESSAGE_TYPE_INVALID` in
-`ChatActivity.getMessageType` (`ChatActivity.java:20537-20546`), and
+`ChatActivity.getMessageType` (`ChatActivity.java:20672-20696`), and
 `processRowSelect` refuses to select any row whose type is below
 `MESSAGE_TYPE_MEDIA` — which `MESSAGE_TYPE_INVALID` (`-1`) is
-(`ChatActivity.java:21147-21154`). The scheduled-message Reschedule path never
-reaches a message in that state. Recorded here as a latent gap with its
-shadowing guard so a future change to `getMessageType` or `processRowSelect`
-doesn't silently reopen it.
+(`ChatActivity.java:21294`). The scheduled-message Reschedule path never
+reaches a message in that state **for a directly-selected single message**;
+the bulk path has a separate, unproven gap covered by its own entry below
+("Bulk reschedule's album expansion bypasses the selection type check").
+Recorded here as a latent gap with its shadowing guard so a future change to
+`getMessageType` or `processRowSelect` doesn't silently reopen it.
 
-*(Established 2026-09-02.)*
+*(Established 2026-09-02, citations refreshed 2026-09-03.)*
 
 ## `ShareAlert.darkTheme` (`= forCall`) is not VoIP-exclusive — it's just a misleading name
 
@@ -166,6 +168,41 @@ behaviour; only reading the actual diff tells you which. This is why a
 one-token fork fix in a hot upstream file needs a `// NagramX:` comment
 explaining the *why*: the comment is the only thing that survives to tell a
 future investigator the line was intentional, since the diff itself won't.
+
+*(Established 2026-09-03.)*
+
+## Bulk reschedule's album expansion bypasses the selection type check
+
+The single-message reschedule path is gated: `ChatActivity.getMessageType`
+returns `MESSAGE_TYPE_INVALID` for a not-yet-reconciled outgoing message
+(`id <= 0`, not a send error, `ChatActivity.java:20672-20696`), and
+`processRowSelect` refuses to select anything below `MESSAGE_TYPE_MEDIA`
+(`ChatActivity.java:21294`) — see the matching dead-end entry. The bulk
+`RescheduleSpreadExecutor` path does **not** inherit that gate the same way.
+
+`resolveRescheduleItems` picks an album's representative as the **minimum-id**
+member of the group (`ChatActivity.java:37756-37762`,
+`if (group.messages.get(k).getId() < first.getId()) first = ...`) — not the
+message the user actually selected, and with no positivity check on that
+comparison. A still-sending sibling carries a negative local id, which sorts
+below every positive server id, so it can become `first` (and therefore
+`target.id`) outright.
+
+Separately, `EventScheduleBulkArmer.AlbumIdentity.of`
+(`EventScheduleBulkArmer.java:79-91`) captures every `group.messages.get(k).getId()`
+into `serverIds` (→ `RescheduleSpreadExecutor.Target.albumIds`) by iterating
+the live group map directly, with no `getMessageType`/selectability check per
+member — it only ever sees the *representative* that passed selection, not
+each sibling. A non-positive sibling id can therefore land in `albumIds` even
+when the representative itself is positive and was validly selected.
+
+Reachability of either case through the shipped UI is **unproven either
+way** — album sends have not been observed acking asynchronously enough to
+leave one sibling negative while another is already positive — this is
+recorded as a live gap, not a confirmed defect. `RescheduleSpreadExecutor.sendNext`
+guards against both shapes directly (`target.id <= 0` and any non-positive
+`target.albumIds` member) rather than relying on this selection-level gating,
+since the gating above was never proven to reach this executor's inputs.
 
 *(Established 2026-09-03.)*
 

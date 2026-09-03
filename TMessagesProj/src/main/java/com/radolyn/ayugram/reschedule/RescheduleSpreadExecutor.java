@@ -195,6 +195,24 @@ public final class RescheduleSpreadExecutor {
         }
     }
 
+    /**
+     * True when every id in {@code albumIds} is server-assigned (positive). Null is treated as
+     * invalid -- a target with no captured album identity can't be verified safe to send. Deliberately
+     * a local copy of the same shape used elsewhere (album readiness, single-message editability) rather
+     * than a call across it: this package must stay primitive-only, see {@link TriggerArmingHooks}.
+     */
+    private static boolean allPositive(int[] albumIds) {
+        if (albumIds == null) {
+            return false;
+        }
+        for (int id : albumIds) {
+            if (id <= 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static void sendNext(int currentAccount, long dialogId, ArrayList<Target> targets, int index, int retriesLeft,
                                  ArrayList<Integer> failedIds, ArrayList<TargetOutcome> outcomes,
                                  TriggerArmingHooks hooks, long serial, BaseFragment fragment) {
@@ -203,6 +221,18 @@ public final class RescheduleSpreadExecutor {
             return;
         }
         final Target target = targets.get(index);
+        // NagramX: fail this target closed rather than send a partial/invalid edit. Albums are
+        // all-or-nothing here because a rejected child can't carry the new schedule time on its own --
+        // a half-moved group is worse than a group that didn't move at all. Checks target.id explicitly
+        // rather than assuming albumIds always contains it, and treats a null albumIds as invalid too.
+        if (target.id <= 0 || !allPositive(target.albumIds)) {
+            failedIds.add(target.id);
+            if (outcomes != null) {
+                outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, target.repeatPeriod, false));
+            }
+            sendNext(currentAccount, dialogId, targets, index + 1, 1, failedIds, outcomes, hooks, serial, fragment);
+            return;
+        }
         final TLRPC.TL_messages_editMessage req = new TLRPC.TL_messages_editMessage();
         req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
         req.id = target.id;
