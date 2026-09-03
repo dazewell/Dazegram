@@ -185,7 +185,8 @@ code are not.
    value's *meaning*. Migration is the exception, and it has to be argued
    for: justified only when falling back would lose something the user
    would actually miss and couldn't trivially recreate, and — per the
-   trade-off budget above — its cost is stated the moment it's proposed, not
+   `Trade-off budget` field in the change brief (see the trade-off-budget
+   note above) — its cost is stated the moment it's proposed, not
    discovered after it ships. Preservation machinery is usually the part
    that breaks: a clamp is one expression at a read site, where preserving
    an out-of-range value means tracking which values are legacy, keeping
