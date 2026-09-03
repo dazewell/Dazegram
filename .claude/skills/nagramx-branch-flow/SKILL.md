@@ -533,6 +533,26 @@ Android toolchain — see `nagramx-workflow` step 4; in that case say so in the 
 body so no one installs a build that CI hasn't confirmed yet. `commit-tag.yml`
 also runs and fails the PR if any commit is missing its tag.
 
+**Prefer the label. A dispatch is a fallback with a condition attached, not an
+equivalent alternative.** Reach for `workflow_dispatch` only when the label
+fails to produce a run — GitHub has been observed to silently drop the
+`pull_request` event for a push, so `ci.yml`, `commit-tag.yml` and the label's
+own `staging.yml` run all fail to fire together, and re-adding the label
+doesn't help. Before dispatching in that situation, check whether the two refs
+would actually differ: `git diff --name-only origin/<branch>...origin/dev --
+'TMessagesProj/src'`. Empty means `dev` has nothing in app source the branch
+lacks, so the merge ref and the branch head are byte-equivalent there and a
+dispatch is fine. Non-empty means a dispatch builds a ref dazewell will never
+run once this merges — merge `dev` into the branch first and build that
+instead, so the artifact matches what a merge would actually produce. Whichever
+trigger ends up firing, say which one and which ref it built in the handback;
+"an APK is on Telegram" doesn't tell dazewell that on its own, and the two
+triggers are not interchangeable just because both happen to produce an
+installable file. This generalizes past builds: **a workflow that never ran is
+not a workflow that passed.** An expected check with no run pinned to the head
+SHA is a finding to report, not an absence to skim past — see the orchestrator
+agent file's Phase 4 verification, which already treats an absent run this way.
+
 **Request the preview only once review has actually settled** — round-2
 architect review clean, any final-state pass clean — never against a commit
 still under review: a build requested earlier is stale the moment a later round

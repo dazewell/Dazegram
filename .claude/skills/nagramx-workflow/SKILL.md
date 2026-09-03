@@ -434,10 +434,14 @@ code are not.
    current fork state, alongside everything already landed). Open a PR from
    `<YYYY-MM-DD>_<slug>` into `dev` on `origin`: opening it, and every later push,
    triggers `ci.yml` (the fast Java/Kotlin validation gate — no APK).
-   To get the on-device build, apply the **`build-apk`** label to the PR (or
-   dispatch `staging.yml` against the branch), which builds the PR **merge ref**
-   (`dev` merged with the branch) as the release-signed **dual-package** APK and
-   uploads it to Telegram (labelled a *test* build). The label is auto-removed
+   To get the on-device build, apply the **`build-apk`** label to the PR, which
+   builds the PR **merge ref** (`dev` merged with the branch) as the
+   release-signed **dual-package** APK and uploads it to Telegram (labelled a
+   *test* build). **Prefer the label over dispatching `staging.yml` directly**
+   — a dispatch builds the branch head as-is, not the merge ref, so it is a
+   fallback with a condition attached, not an equivalent trigger; see
+   `nagramx-branch-flow`'s "Test before landing" section for when a dispatch is
+   safe and when it isn't. The label is auto-removed
    at the start of the run, so re-applying it requests a fresh build. dazewell
    installs the Unofficial variant over the daily app and tests from the
    uploaded artifact. `commit-tag.yml` also runs and blocks the PR if any
