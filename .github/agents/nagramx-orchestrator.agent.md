@@ -704,8 +704,8 @@ Diagnostics:    required | not required   (required only when the change adds
                   replaced with this change's actual slug, not left as a
                   placeholder, and embedded in the log message text itself so
                   it's part of the code, not just prose — recorded verbatim
-                  in the PR body too so your Phase 4 grep of the head tree has
-                  an exact string to check for, removed as
+                  in the PR body too so you know what to grep the head tree
+                  for in Phase 4 — removed as
                   its own commit once the smoke build answers the
                   reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
@@ -915,10 +915,10 @@ Confirm, one by one:
   its **literal tag** are gone from the final diff — grep the head tree for
   that exact string; the tag was embedded in the log message text itself, so
   the grep runs against code, not the PR body. A PR body with no recorded tag
-  literal is itself a finding, since it means there was nothing to check the
-  code against in the first place. Its removal is not the implementer's call
-  to skip; confirm it here the same mechanical way you confirm the hard-line
-  greps.
+  literal is itself a finding: you have no declared string to grep for, even
+  if diagnostic code exists somewhere in the diff. Its removal is not the
+  implementer's call to skip; confirm it here the same mechanical way you
+  confirm the hard-line greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
   never landed, not that it was clean.** Zero threads with zero reviews is not
   evidence.
