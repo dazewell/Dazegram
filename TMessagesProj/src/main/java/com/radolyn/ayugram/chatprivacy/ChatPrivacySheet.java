@@ -13,15 +13,21 @@ import com.radolyn.ayugram.hidelastmessage.HideLastMessageDialog;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
+import org.telegram.messenger.NotificationsController;
 import org.telegram.messenger.R;
 import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
+
+import tw.nekomimi.nekogram.helpers.PopupHelper;
+
+import java.util.ArrayList;
 
 public final class ChatPrivacySheet {
 
@@ -60,6 +66,18 @@ public final class ChatPrivacySheet {
         final TextCheckCell lockCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
         lockCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(lockCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        final HeaderCell notificationsHeader = new HeaderCell(context, fragment.getResourceProvider());
+        notificationsHeader.setText(LocaleController.getString(R.string.NaxCoverSectionTitle));
+        container.addView(notificationsHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        final TextCheckCell disguiseCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
+        disguiseCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
+        container.addView(disguiseCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        final TextSettingsCell coverCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
+        coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
+        container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final Runnable[] refreshRef = new Runnable[1];
         refreshRef[0] = () -> {
@@ -100,6 +118,23 @@ public final class ChatPrivacySheet {
                 lockCell.setEnabled(false);
             }
             placeholderCell.setEnabled(hidden);
+
+            boolean disguised = NotificationCoverController.isCovered(account, dialogId);
+            disguiseCell.setTextAndValueAndCheck(
+                    LocaleController.getString(R.string.NaxCoverDisguiseTitle),
+                    LocaleController.getString(R.string.NaxCoverDisguiseSubtitle),
+                    disguised,
+                    true,
+                    true
+            );
+            coverCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
+            if (disguised) {
+                coverCell.setTextAndValue(
+                        LocaleController.getString(R.string.NaxCoverRowTitle),
+                        NotificationCoverController.activePersonaLabel(account, dialogId),
+                        false
+                );
+            }
         };
 
         hideCell.setOnClickListener(v -> {
@@ -138,10 +173,59 @@ public final class ChatPrivacySheet {
             refreshRef[0].run();
         });
 
+        disguiseCell.setOnClickListener(v -> {
+            boolean nowDisguised = !NotificationCoverController.isCovered(account, dialogId);
+            NotificationCoverController.setEnabled(account, dialogId, nowDisguised);
+            NotificationsController.getInstance(account).showNotifications();
+            if (sheetRef[0] != null) {
+                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                        .createSimpleBulletin(
+                                nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
+                                LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint)
+                        ).show();
+            }
+            refreshRef[0].run();
+        });
+
+        coverCell.setOnClickListener(v -> {
+            if (!NotificationCoverController.isCovered(account, dialogId)) {
+                return;
+            }
+            showCoverPicker(fragment, account, dialogId, refreshRef[0]);
+        });
+
         refreshRef[0].run();
 
         builder.setCustomView(container);
         sheetRef[0] = builder.create();
         fragment.showDialog(sheetRef[0]);
+    }
+
+    private static void showCoverPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {
+        if (fragment.getParentActivity() == null) {
+            return;
+        }
+        int[] ids = NotificationCoverController.personaIds();
+        int active = NotificationCoverController.resolvePersonaId(account, dialogId);
+        ArrayList<String> entries = new ArrayList<>(ids.length);
+        int checked = 0;
+        for (int i = 0; i < ids.length; i++) {
+            entries.add(NotificationCoverController.personaLabel(ids[i]));
+            if (ids[i] == active) {
+                checked = i;
+            }
+        }
+        PopupHelper.show(
+                entries,
+                LocaleController.getString(R.string.NaxCoverSheetTitle),
+                checked,
+                fragment.getParentActivity(),
+                which -> {
+                    NotificationCoverController.setPersona(account, dialogId, ids[which]);
+                    NotificationsController.getInstance(account).showNotifications();
+                    refresh.run();
+                },
+                fragment.getResourceProvider()
+        );
     }
 }

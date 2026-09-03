@@ -119,6 +119,8 @@ public class NotificationsController extends BaseController implements Notificat
     private static NotificationManager systemNotificationManager = null;
     private final LongSparseArray<Integer> pushDialogs = new LongSparseArray<>();
     private final LongSparseArray<Integer> wearNotificationsIds = new LongSparseArray<>();
+    // NagramX: tagged disguised-cover children posted last rebuild, kept apart from wearNotificationsIds (real children only)
+    private final LongSparseArray<Integer> coverNotificationsIds = new LongSparseArray<>();
     private final LongSparseArray<Integer> lastWearNotifiedMessageId = new LongSparseArray<>();
     private final LongSparseArray<Integer> pushDialogsOverrideMention = new LongSparseArray<>();
     private final HashSet<String> pendingVoiceLoads = new HashSet<>();
@@ -402,6 +404,10 @@ public class NotificationsController extends BaseController implements Notificat
             dismissNotification();
             setBadge(getTotalAllUnreadCount());
             SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
+            // NagramX: drop disguised covers and their generic channels while the config is still readable
+            com.radolyn.ayugram.chatprivacy.NotificationCoverController.cancelAll(currentAccount, preferences);
+            com.radolyn.ayugram.chatprivacy.NotificationCoverController.deleteChannels(currentAccount, preferences);
+            coverNotificationsIds.clear();
             SharedPreferences.Editor editor = preferences.edit();
             editor.clear();
             editor.commit();
@@ -3295,6 +3301,9 @@ public class NotificationsController extends BaseController implements Notificat
                 notificationManager.cancel(wearNotificationsIds.valueAt(a));
             }
             wearNotificationsIds.clear();
+            // NagramX: tagged covers are cancelled by tag+id, not by the untagged cancel above
+            com.radolyn.ayugram.chatprivacy.NotificationCoverController.cancelAll(currentAccount, getAccountInstance().getNotificationsSettings());
+            coverNotificationsIds.clear();
         });
     }
 
@@ -3313,6 +3322,9 @@ public class NotificationsController extends BaseController implements Notificat
                 notificationManager.cancel(wearNotificationsIds.valueAt(a));
             }
             wearNotificationsIds.clear();
+            // NagramX: dismiss also drops tagged covers (fail-closed cancel by tag+id)
+            com.radolyn.ayugram.chatprivacy.NotificationCoverController.cancelAll(currentAccount, getAccountInstance().getNotificationsSettings());
+            coverNotificationsIds.clear();
             AndroidUtilities.runOnUIThread(() -> NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated));
         } catch (Exception e) {
             FileLog.e(e);
@@ -4844,7 +4856,8 @@ public class NotificationsController extends BaseController implements Notificat
     @SuppressLint("InlinedApi")
     private void showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
-        if (Build.VERSION.SDK_INT >= 26) {
+        if (Build.VERSION.SDK_INT >= 26 && !com.radolyn.ayugram.chatprivacy.NotificationCoverController.isCovered(currentAccount, lastDialogId)) {
+            // NagramX: skip the real per-dialog channel validation when the last dialog is covered, since it would create a chat-named channel
             notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
         }
         Notification mainNotification = notificationBuilder.build();
@@ -4889,6 +4902,13 @@ public class NotificationsController extends BaseController implements Notificat
         }
         wearNotificationsIds.clear();
 
+        // NagramX: snapshot last rebuild's covers, then rebuild the current set below
+        LongSparseArray<Integer> oldCoverIds = new LongSparseArray<>();
+        for (int i = 0; i < coverNotificationsIds.size(); i++) {
+            oldCoverIds.put(coverNotificationsIds.keyAt(i), coverNotificationsIds.valueAt(i));
+        }
+        coverNotificationsIds.clear();
+
         class NotificationHolder {
             int id;
             long dialogId;
@@ -4930,6 +4950,15 @@ public class NotificationsController extends BaseController implements Notificat
             checkOtherNotificationsChannel();
         }
 
+        // NagramX: any covered chat present means the real InboxStyle summary would leak its lines; rebuild it generic
+        java.util.HashSet<Long> naxCoveredDialogs = com.radolyn.ayugram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, messagesByDialogs);
+        if (useSummaryNotification && !naxCoveredDialogs.isEmpty()) {
+            Notification coverSummary = naxBuildCoverSummary(preferences, messagesByDialogs, naxCoveredDialogs);
+            if (coverSummary != null) {
+                mainNotification = coverSummary;
+            }
+        }
+
         long selfUserId = getUserConfig().getClientUserId();
         boolean waitingForPasscode = AndroidUtilities.needShowPasscode() || SharedConfig.isWaitingForPasscodeEnter;
         boolean hideNotificationContent = waitingForPasscode && !NaConfig.INSTANCE.getShowNotificationPreviewWhenLocked().Bool();
@@ -4967,6 +4996,16 @@ public class NotificationsController extends BaseController implements Notificat
                 messageObjects = messagesByDialogs.get(dialogKey.dialogId);
                 maxId = messageObjects.get(0).getId();
                 lastMessageObject = messageObjects.get(0);
+            }
+
+            // NagramX: disguise this chat before any real user/chat/avatar is read; post a fresh tagged cover and skip the real child
+            if (!dialogKey.story && com.radolyn.ayugram.chatprivacy.NotificationCoverController.isCovered(currentAccount, dialogId)
+                    && com.radolyn.ayugram.chatprivacy.NotificationCoverController.hasCoverableMessage(messageObjects)) {
+                Integer pd = pushDialogs.get(dialogId);
+                int coverCount = Math.max(messageObjects.size(), pd == null ? 0 : pd);
+                com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, useSummaryNotification, notificationGroup);
+                coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
+                continue;
             }
 
             Integer internalId = oldIdsWear.get(dialogKey.dialogId);
@@ -5739,7 +5778,10 @@ public class NotificationsController extends BaseController implements Notificat
                 notificationManager.notify(notificationId, mainNotification);
             } catch (SecurityException e) {
                 FileLog.e(e);
-                resetNotificationSound(notificationBuilder, lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType);
+                // NagramX: resetNotificationSound rebuilds and posts the real summary, which would leak a covered chat, so fail closed instead
+                if (naxCoveredDialogs.isEmpty()) {
+                    resetNotificationSound(notificationBuilder, lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType);
+                }
             }
         } else {
             if (openedInBubbleDialogs.isEmpty()) {
@@ -5762,6 +5804,9 @@ public class NotificationsController extends BaseController implements Notificat
             notificationManager.cancel(id);
         }
 
+        // NagramX: cancel disguised covers that should no longer show (disabled, read, or leftover after restart)
+        com.radolyn.ayugram.chatprivacy.NotificationCoverController.reconcile(currentAccount, oldCoverIds, coverNotificationsIds, preferences);
+
         ArrayList<String> ids = new ArrayList<>(holders.size());
         FileLog.d("showExtraNotifications: holders.size()=" + holders.size());
         for (int a = 0, size = holders.size(); a < size; a++) {
@@ -5779,6 +5824,41 @@ public class NotificationsController extends BaseController implements Notificat
                 ShortcutManagerCompat.removeDynamicShortcuts(ApplicationLoader.applicationContext, ids);
             }
         }
+    }
+
+    // NagramX: fresh cover-aware summary (real lines for normal dialogs, one generic line per covered dialog)
+    private Notification naxBuildCoverSummary(SharedPreferences preferences, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> covered) {
+        ArrayList<String> lines = new ArrayList<>();
+        java.util.HashSet<Long> emittedCovered = new java.util.HashSet<>();
+        boolean[] text = new boolean[1];
+        int count = 0;
+        for (int i = 0; i < pushMessages.size() && count < 10; i++) {
+            MessageObject messageObject = pushMessages.get(i);
+            long did = messageObject.getDialogId();
+            ArrayList<MessageObject> dialogMessages = messagesByDialogs.get(did);
+            if (dialogMessages == null) {
+                // dropped by the dismissDate filter above, so it isn't shown as a child either
+                continue;
+            }
+            if (covered.contains(did)) {
+                if (emittedCovered.add(did)) {
+                    Integer pd = pushDialogs.get(did);
+                    int coverCount = Math.max(dialogMessages.size(), pd == null ? 0 : pd);
+                    lines.add(com.radolyn.ayugram.chatprivacy.NotificationCoverController.coverLine(currentAccount, did, coverCount));
+                    count++;
+                }
+            } else {
+                String message = getStringForMessage(messageObject, false, text, null);
+                if (message == null) {
+                    continue;
+                }
+                lines.add(message);
+                count++;
+            }
+        }
+        String subText = LocaleController.formatPluralString("NewMessages", total_unread_count);
+        return com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildCoverSummary(
+                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText);
     }
 
     private String cutLastName(String name) {

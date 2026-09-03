@@ -26,6 +26,29 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:127
 
 *(Established 2026-09-03.)*
 
+## Chat privacy sheet's Notifications section drives disguised covers
+
+The same sheet has a `Notifications` header, a `Disguise notifications`
+`TextCheckCell`, and a `Cover` `TextSettingsCell` (visible only while disguise
+is on). The switch toggles `NotificationCoverController.setEnabled(...)` and
+queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
+the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
+sheet and calls `setPersona(...)` + the same rebuild
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java` — cell setup after the
+lock cell, the `disguiseCell`/`coverCell` click listeners, and `showCoverPicker(...)`;
+`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
+cancels a notification itself — it only writes config and asks the controller to
+rebuild, matching the existing settings-write precedent.
+
+Cover config is stored in the account's notifications `SharedPreferences`
+(`MessagesController.getNotificationsSettings(account)`), keyed
+`nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
+generic channels under `nax_cover_v1_channel_<personaId>` /
+`nax_cover_v1_summary_channel`
+(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java`).
+
+*(Established 2026-09-03.)*
+
 ## Selection bar left button ("NoQuote")
 
 The button at the bottom-left of the message-selection action bar is the
