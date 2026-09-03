@@ -88,27 +88,6 @@ others.** It is now computed at gate time from the delegate's live selection
 `ChatActivity`) using the same selection logic the dispatch forwards, so no
 presentation can reach the gate with a stale count.
 
-**Unresolved — under investigation. The gate itself is never reached on device.**
-Measured, not reasoned: instrumented build `92c70fb021` was confirmed installed
-and running (its `NAX_SPREAD_DIAG` literals verified present in the pulled
-`base.apk`'s decompressed DEX, general logging live), dazewell reproduced the
-schedule-a-forward flow through *both* the fork's NoQuote button *and* stock
-Forward + "Hide sender's name", and **not one line was logged from the gate at
-`DialogsActivity.java:12321`** — via either door. So the long-press-Send handler
-in the forward chat-picker (`DialogsActivity`) is **not** on the path that opens
-the schedule sheet dazewell sees. The earlier framing here — "does the NoQuote
-tap reach `selectAnotherChat`, or is there a second `openForward` fault" — was
-wrong on both branches: neither presentation's gate executes at all. He does see
-a sheet with a Default delay slider, so `createScheduleDatePickerDialog` (or an
-overload) runs, reached from some other entry point (candidates not yet
-confirmed: `ShareAlert`'s own send long-press, the forward preview's
-`MessagePreviewView` send button, or an unenumerated path). A second round of
-`NAX_SPREAD_DIAG` logging — a `Throwable` at the `createScheduleDatePickerDialog`
-chokepoint (`AlertsCreator.java`, where every overload funnels) plus a line at
-each of the six presentation sites — was added to capture the real call chain by
-stack trace. This note gets rewritten to the verified mapping once those logs
-land.
-
 *(Established 2026-09-02, PR #270.)*
 
 The fork's selection-toolbar "Reschedule" button (`nkactionbarbtn_reschedule`,

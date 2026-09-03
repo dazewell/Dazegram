@@ -943,6 +943,17 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject selectedObjectToEditCaption;
     private MessageObject selectedObject;
     private RepostCopyDeleteBatch repostCopyDeleteBatch;
+    // NagramX: #repost-spread. Fixed spread step for the staged-forward door (chat's own send button). The
+    // forward-picker door lets the user pick an interval; here there is no interval row, so a batch that
+    // would otherwise collapse onto one schedule_date is spread three minutes apart - two minutes trips the
+    // reschedule-spread short-interval warning, three does not. This is the fork's own UX threshold, not a
+    // Telegram ordering guarantee.
+    private static final int REPOST_SPREAD_INTERVAL_SECONDS = 180;
+    // NagramX: #repost-spread. One-shot captured on the pre-send pass of beforeMessageSend (which runs
+    // before the composer is cleared) so the later dispatch pass can still tell a bare staged forward from
+    // one carrying a typed comment. Defaults false (ineligible) so any path that does not capture it stays
+    // on the plain forward.
+    private boolean naxForwardComposerEmpty;
     // NagramX: #repost-spread. A repost-as-copy batch that fully acked while the source chat was still
     // mid picker-close (resumed but not yet fully visible) can't show its delete offer yet. It's retained
     // here across exactly that transition and resolved once from onBecomeFullyVisible; a genuine pause or
@@ -15977,6 +15988,60 @@ public class ChatActivity extends BaseFragment implements
         return allDispatched;
     }
 
+    // NagramX: #repost-spread staged-forward door. A drop-author scheduled forward that the user staged
+    // into a chat's input bar (select -> NoQuote -> pick the chat) and then schedules from the chat's own
+    // send button reaches this fork's beforeMessageSend and sends through the shared-schedule forward API -
+    // one schedule_date for the whole batch, so every message lands on one timestamp. That is the same
+    // collapse the forward-picker spread fixes, in a second entry point. When such a forward is eligible,
+    // re-send each slot as a copy on its own time (base + i*interval) via the shared dispatchForwardSpread
+    // instead. Eligibility is decided here, where the staged-preview provenance (drop-author, empty
+    // composer) is known; the forwarding primitives stay unaware of it. Returns true when this path owns
+    // the send - dispatched, or refused it with a bulletin; false leaves the caller's plain forward
+    // untouched. Send-When-Online (0x7ffffffe) is a protocol sentinel, never a real date, so it is excluded
+    // before any slot arithmetic can turn it into garbage times.
+    private boolean naxTryStagedForwardSpread(ArrayList<MessageObject> messagesToForward, boolean notify, int rawScheduleDate, int baseScheduleDate, boolean composerEmpty, long payStars) {
+        if (messagePreviewParams == null || !messagePreviewParams.hideForwardSendersName) {
+            return false;
+        }
+        if (!composerEmpty) {
+            return false;
+        }
+        if (rawScheduleDate == 0 || rawScheduleDate == 0x7ffffffe) {
+            return false;
+        }
+        ArrayList<ArrayList<MessageObject>> slots = getMessageHelper().buildCopySpreadSlots(messagesToForward);
+        if (slots.size() < 2) {
+            return false;
+        }
+        if (!naxSpreadScheduleWithinHorizon(baseScheduleDate, slots.size(), REPOST_SPREAD_INTERVAL_SECONDS)) {
+            BulletinFactory.of(this).createErrorBulletin(getString(R.string.RescheduleSpreadOverflow), themeDelegate).show();
+            return true;
+        }
+        MessageHelper.CopyPreflightResult preflight = getMessageHelper().preflightSpreadAsCopy(messagesToForward);
+        if (!preflight.ok) {
+            int bad = Math.max(1, preflight.unsupportedCount + preflight.missingFileCount);
+            BulletinFactory.of(this).createErrorBulletin(LocaleController.formatPluralString("RepostSpreadUnsupported", bad), themeDelegate).show();
+            return true;
+        }
+        dispatchForwardSpread(slots, messagesToForward, dialog_id, messagePreviewParams.hideCaption, notify, baseScheduleDate, REPOST_SPREAD_INTERVAL_SECONDS, payStars, true);
+        return true;
+    }
+
+    // NagramX: #repost-spread. The furthest slot is base + (slotCount - 1) * interval. dispatchForwardSpread
+    // computes each slot in int seconds and could silently wrap, so validate the furthest slot in long
+    // arithmetic up front and refuse the whole spread if it overflows the int range or lands past
+    // Telegram's one-year scheduling horizon - the same 365-day limit the reschedule-spread sheet enforces.
+    // base is a unix timestamp in seconds, already within the horizon (the picker capped it); only the
+    // added span can cross it.
+    private boolean naxSpreadScheduleWithinHorizon(int baseScheduleDate, int slotCount, int intervalSeconds) {
+        long last = (long) baseScheduleDate + (long) (slotCount - 1) * intervalSeconds;
+        if (last > Integer.MAX_VALUE) {
+            return false;
+        }
+        long horizonSeconds = System.currentTimeMillis() / 1000L + 365L * 24L * 60L * 60L;
+        return last <= horizonSeconds;
+    }
+
 
     public boolean shouldShowImport() {
         return openImport;
@@ -16289,6 +16354,14 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void beforeMessageSend(boolean notify, int scheduleDate, boolean beforeSend, long payStars) {
+        // NagramX: #repost-spread. The pre-send pass (beforeSend == true) always runs before the composer is
+        // cleared, so capture composer-empty now while a forward is staged. The dispatch pass for the default
+        // sendCommentAfterForward=false config fires later from hideFieldPanel, after the field is cleared,
+        // and could otherwise no longer tell a bare staged forward from one carrying a typed comment.
+        if (beforeSend) {
+            naxForwardComposerEmpty = messagePreviewParams != null && messagePreviewParams.forwardMessages != null
+                    && (chatActivityEnterView == null || TextUtils.isEmpty(chatActivityEnterView.getFieldText()));
+        }
         if (beforeSend != NekoConfig.sendCommentAfterForward.Bool()) return;
         if (messagePreviewParams != null && messagePreviewParams.forwardMessages != null) {
             forbidForwardingWithDismiss = false;
@@ -16299,7 +16372,17 @@ public class ChatActivity extends BaseFragment implements
                 }
                 // NagramX: the +1s offset keeps a scheduled comment ahead of the forward; when the comment is
                 // meant to follow it, the forward has to keep the picked second instead.
-                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe && !NekoConfig.sendCommentAfterForward.Bool() ? scheduleDate + 1 : scheduleDate, payStars);
+                final int effectiveScheduleDate = scheduleDate != 0 && scheduleDate != 0x7ffffffe && !NekoConfig.sendCommentAfterForward.Bool() ? scheduleDate + 1 : scheduleDate;
+                // NagramX: #repost-spread. Consume the one-shot; slot zero keeps this exact effective date
+                // (its +1s applied once), later slots add i*interval. Ineligible falls through to the plain
+                // forward below, byte-for-byte as before.
+                final boolean composerEmpty = naxForwardComposerEmpty;
+                naxForwardComposerEmpty = false;
+                if (naxTryStagedForwardSpread(messagesToForward, notify, scheduleDate, effectiveScheduleDate, composerEmpty, payStars)) {
+                    messagePreviewParams = null;
+                    return;
+                }
+                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, effectiveScheduleDate, payStars);
             // }
             messagePreviewParams = null;
         }
