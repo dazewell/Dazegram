@@ -783,8 +783,10 @@ addition to green code may not be worth its build at all.
 end at a green compile gate — it ends at a positive reachability check.** Once
 the implementer reports the compile gate clean, request a build yourself the
 same way you would the verification build in Phase 4 (`build-apk` label or a
-`staging.yml` dispatch) and confirm it the same way — a matching run on the
-head commit, green, `Upload staging` itself green. Then ask dazewell, with an
+`staging.yml` dispatch — prefer the label; a dispatch is a fallback with a
+condition, see `nagramx-branch-flow`'s "Test before landing" section) and
+confirm it the same way — a matching run on the head commit, green, with the
+`Upload staging` job itself green. Then ask dazewell, with an
 explicit `ask_user`-equivalent prompt, exactly one question: does the control
 appear, and can you reach it? Nothing else — not correctness, not edge cases.
 This build is disposable by construction: it is superseded by whatever Phase 4
@@ -1039,13 +1041,17 @@ away by a later Critical, becomes structurally impossible rather than merely
 discouraged, and the normal case costs exactly one verification build per
 change (plus, for a UI-facing change, the one smoke build already spent in
 Phase 3 — that is a second build for a different purpose, not a second build
-for this one). Apply the `build-apk` label
-to the pull request, or dispatch `staging.yml` against its head branch — the
-label builds the synthetic `dev`+branch merge ref, a dispatch builds the branch
-head as-is; pick whichever matches what dazewell is meant to test. Then confirm
-it the same way Phase 4 does: a matching run on the head commit, green, with the
+for this one). **Prefer the `build-apk` label** on the pull request — it
+builds the synthetic `dev`+branch merge ref, what dazewell actually runs after
+this merges. Only fall back to dispatching `staging.yml` against the head
+branch (branch head as-is, not merged) when the label fails to produce a run,
+and only after checking `dev` has no app-source changes the branch lacks — see
+`nagramx-branch-flow`'s "Test before landing" section for the check and the
+merge-first alternative when it doesn't hold. Then confirm it the same way
+Phase 4 does: a matching run on the head commit, green, with the
 `Upload staging` job itself green — not just the rollup — before you tell him
-anything is on Telegram. If the gate said no build is required, request none.
+anything is on Telegram, and say in the handback which trigger fired and which
+ref it built. If the gate said no build is required, request none.
 
 ### Phase 5 — Hand back
 

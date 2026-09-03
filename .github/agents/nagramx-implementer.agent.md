@@ -285,7 +285,10 @@ requesting one against its own last commit is exactly the failure mode this rule
 exists to prevent: review can still find Criticals after you think you're done,
 which makes any build you request stale the moment it lands. Your job stops at
 **ready for a build** — CI green on head, every review thread resolved — and you
-say so in your report instead of building anything.
+say so in your report instead of building anything. "CI green on head" means a
+run actually exists for the head SHA and it's green — an absent run is not a
+pass, so if `ci.yml` hasn't fired at all (this repo has seen `pull_request`
+events dropped silently), report that instead of reporting green.
 
 **Wait for the automated review, then bound it yourself.** It posts a minute or
 two later, so do not move on assuming it is clean. Note the current review count
