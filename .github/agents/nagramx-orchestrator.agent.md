@@ -210,6 +210,10 @@ quote only the specific rule you are acting on.
   contract; you own the pre-archive verification side of it.
 - `CLAUDE.md` — the repo-wide rules.
 - `FEATURES.md` — what already ships. Check it before treating anything as new.
+- `docs/codemap/README.md` — the fork's UI→code map, upstream traps, and dead
+  ends. Check it during recon alongside `FEATURES.md`; `nagramx-workflow` and
+  the implementer brief are what require a durable finding to be written back
+  here in the same change that discovered it.
 
 ## Your team
 
@@ -671,9 +675,11 @@ Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the dat
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
 On-device APK:  required | not required   (decided here, at the gate, so the
-                  implementer never builds twice — dazewell's requirement 4. If
-                  required, request exactly one publish build on the final head;
-                  if not, request none.)
+                  implementer never has to guess. If required, say who requests
+                  it and when — you do, once architect round 2 and any
+                  final-state pass have cleared with nothing Important or above
+                  outstanding, never the implementer, and never on its own last
+                  commit. If not required, none gets requested at all.)
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
                   round trip, memory, a slower rare path — stated explicitly so
                   the implementer doesn't default to optimizing and then defend
@@ -722,8 +728,9 @@ hotfix, then the feature extended, then a follow-on option); that's a fine way
 for him to work and isn't to be discouraged. But each addition lands on an
 already-reviewed diff, and re-reviewing and rebuilding after every one is where
 elapsed cost explodes. While an addition is still settling, tell the implementer
-to **hold review and any APK build until it's stable**, then review and
-build the combined state once. Rank the additions by the priorities in
+to **hold review until it's stable**, then review the combined state once — and
+if a build is called for, request that one build yourself, after the combined
+state clears, never mid-addition. Rank the additions by the priorities in
 `nagramx-workflow` (risk to the irreplaceable thing first): a scope addition
 that raises the risk of losing the artifact gets scrutiny; a pure tidiness
 addition to green code may not be worth its build at all.
@@ -939,6 +946,21 @@ the gate; or it turns one change into two branches. **Everything else you
 decide**, including whether a finding is right and whether a suggestion is a
 false positive for this codebase. Record the decision and the reason in the
 handback.
+
+**Once review has actually settled — round 2 clean, and any final-state pass
+clean — request the publish build yourself, if the gate said one was required.**
+This is the one and only place the request happens: never the implementer, and
+never before this point. An APK exists only when dazewell is actually about to
+be asked to put his hands on something, which is what makes "a build exists"
+and "he is needed" the same event — a stale build, reviewed-away by a later
+Critical, becomes structurally impossible rather than merely discouraged, and
+the normal case costs exactly one build per change. Apply the `build-apk` label
+to the pull request, or dispatch `staging.yml` against its head branch — the
+label builds the synthetic `dev`+branch merge ref, a dispatch builds the branch
+head as-is; pick whichever matches what dazewell is meant to test. Then confirm
+it the same way Phase 4 does: a matching run on the head commit, green, with the
+`Upload staging` job itself green — not just the rollup — before you tell him
+anything is on Telegram. If the gate said no build is required, request none.
 
 ### Phase 5 — Hand back
 

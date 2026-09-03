@@ -237,6 +237,9 @@ public final class EventScheduleHelper {
         int types;
         String pattern;
         boolean regex;
+        // Always kept within [0, MAX_DELAY_SECONDS] -- clamped at seed time below, and enforced again by
+        // EventScheduleStore.persist regardless of what this ends up carrying. Not necessarily a member of
+        // delayValues, though (see delayValue's label comment in openSheet()).
         int delay;
         String pendingEntryKey;
 
@@ -270,6 +273,13 @@ public final class EventScheduleHelper {
                 regex = cfg.getEventScheduleLastPatternRegex().Bool();
                 delay = cfg.getEventScheduleLastDelay().Int();
             }
+            // NagramX: unconditional presentation clamp -- an existing trigger predating this cap (or a
+            // stale EventScheduleLastDelay recorded before it shipped) can carry a delay above the max.
+            // This isn't the actual enforcement (that's EventScheduleStore.persist, which clamps every
+            // runtime write regardless of what this field holds), but delay is read directly by snapshot()
+            // and commit() below even when the sheet is never opened, so it must already be in range the
+            // moment the row is constructed, not just once the sheet's controls are shown.
+            delay = Math.min(delay, EventScheduleEntry.MAX_DELAY_SECONDS);
         }
 
         void updateChip() {
@@ -343,12 +353,20 @@ public final class EventScheduleHelper {
             });
             syncRegexEnabled(patternField, regexCell);
 
-            final int[] delayValues = {0, 5, 10, 30, 60, 300};
+            final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_DELAY_SECONDS};
             int startIndex = 0;
             for (int i = 0; i < delayValues.length; i++) {
                 if (delayValues[i] <= delay) startIndex = i;
             }
+            // NagramX: delayIndex tracks the slider's current visual step (for the snap-to-step call on
+            // release); stagedDelay is the value Done will actually commit. It starts equal to the raw
+            // seed `delay` -- not delayValues[startIndex] -- so an untouched Done reuses the exact seed
+            // (which need not be a stop; see the label comment below) and only a real onSeekBarDrag
+            // callback overwrites it with a snapped stop. Neither is written back to the Row's `delay`
+            // field until Done (see the Done handler): Cancel must discard a mid-drag selection, and this
+            // sheet has no other way to leave the delay unmodified than simply never writing it.
             final int[] delayIndex = {startIndex};
+            final int[] stagedDelay = {delay};
 
             LinearLayout delayLayout = new LinearLayout(context);
             delayLayout.setOrientation(LinearLayout.VERTICAL);
@@ -368,7 +386,13 @@ public final class EventScheduleHelper {
             delayHeader.addView(delayTitle, LayoutHelper.createLinear(0, LayoutHelper.WRAP_CONTENT, 1f));
 
             final TextView delayValue = new TextView(context);
-            delayValue.setText(formatDelayLabel(delayValues[startIndex]));
+            // NagramX: label the sheet-local staged value, not the floor-matched stop -- fromJson's
+            // Math.min clamp does not guarantee stop membership (a raw disk value like 7 stays 7, which
+            // isn't in delayValues), so a floor-matched label could disagree with what Done actually
+            // commits. Labeling stagedDelay directly keeps the two in lockstep by construction, both here
+            // at initial paint (stagedDelay starts equal to the raw seed) and after a real drag
+            // (stagedDelay is reassigned alongside this label in the delegate below).
+            delayValue.setText(formatDelayLabel(delay));
             delayValue.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             delayValue.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             delayValue.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT));
@@ -382,7 +406,8 @@ public final class EventScheduleHelper {
                 public void onSeekBarDrag(boolean stop, float progress) {
                     int step = Math.round(progress * (delayValues.length - 1));
                     delayIndex[0] = step;
-                    delayValue.setText(formatDelayLabel(delayValues[step]));
+                    stagedDelay[0] = delayValues[step];
+                    delayValue.setText(formatDelayLabel(stagedDelay[0]));
                     if (stop) {
                         delaySeekBar.setProgress(step / (float) (delayValues.length - 1), true);
                     }
@@ -436,7 +461,7 @@ public final class EventScheduleHelper {
                         return kotlin.Unit.INSTANCE;
                     }
                 }
-                int newDelay = delayValues[delayIndex[0]];
+                int newDelay = stagedDelay[0];
                 enabled = true;
                 userTouchedTrigger = true;
                 types = newTypes;
@@ -447,6 +472,11 @@ public final class EventScheduleHelper {
                 cfg.getEventScheduleLastTypes().setConfigInt(types);
                 cfg.getEventScheduleLastPattern().setConfigString(pattern);
                 cfg.getEventScheduleLastPatternRegex().setConfigBool(regex);
+                // NagramX: written unconditionally, like types/pattern/regex above -- this preference is
+                // part of the last submitted trigger configuration, not a record of "did the user touch
+                // this one control", so an untouched delay is as much the submitted value as an untouched
+                // pattern is. delay is already capped (seeded clamped in the constructor, re-clamped for
+                // real by EventScheduleStore.persist regardless), so there is nothing left to leak.
                 cfg.getEventScheduleLastDelay().setConfigInt(delay);
                 updateChip();
                 builder.dismiss();
