@@ -22,6 +22,7 @@ import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextSettingsCell;
+import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -42,7 +43,6 @@ public final class ChatPrivacySheet {
         final BottomSheet[] sheetRef = new BottomSheet[1];
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, fragment.getResourceProvider());
-        builder.setApplyBottomPadding(false);
 
         LinearLayout container = new LinearLayout(context);
         container.setOrientation(LinearLayout.VERTICAL);
@@ -199,6 +199,14 @@ public final class ChatPrivacySheet {
 
         builder.setCustomView(container);
         sheetRef[0] = builder.create();
+        // NagramX: lift bulletins by one row height so the "disguised"/"back to normal" toast clears the last visible row, not covers it.
+        // Container overload (not the fragment one) keeps the offset scoped to this sheet, so it can't leak into chat bulletins after dismiss.
+        Bulletin.addDelegate(sheetRef[0].container, new Bulletin.Delegate() {
+            @Override
+            public int getBottomOffset(int tag) {
+                return AndroidUtilities.dp(50);
+            }
+        });
         fragment.showDialog(sheetRef[0]);
     }
 
