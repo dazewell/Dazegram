@@ -664,6 +664,7 @@
     <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
     <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
     <string name="NaxCoverRowTitle">Cover</string>
+    <string name="NaxCoverLimitations">Covers hide the chat name, sender and message. They don\'t change the app name, badge, calls or stories. Notifications only.</string>
     <string name="NaxCoverSheetTitle">Cover</string>
     <string name="NaxCoverEnabledHint">Notifications for this chat are now disguised.</string>
     <string name="NaxCoverDisabledHint">Notifications for this chat are back to normal.</string>

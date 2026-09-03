@@ -21,8 +21,8 @@ import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
-import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -79,6 +79,11 @@ public final class ChatPrivacySheet {
         coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        // Always-visible footer stating the cover limitations; stays put whether or not Cover is shown.
+        final TextInfoPrivacyCell footerCell = new TextInfoPrivacyCell(context, 21, fragment.getResourceProvider());
+        footerCell.setText(LocaleController.getString(R.string.NaxCoverLimitations));
+        container.addView(footerCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         final Runnable[] refreshRef = new Runnable[1];
         refreshRef[0] = () -> {
             boolean hidden = HideLastMessageController.isHidden(account, dialogId);
@@ -132,7 +137,7 @@ public final class ChatPrivacySheet {
                 coverCell.setTextAndValue(
                         LocaleController.getString(R.string.NaxCoverRowTitle),
                         NotificationCoverController.activePersonaLabel(account, dialogId),
-                        false
+                        true
                 );
             }
         };
@@ -199,14 +204,6 @@ public final class ChatPrivacySheet {
 
         builder.setCustomView(container);
         sheetRef[0] = builder.create();
-        // NagramX: lift bulletins by one row height so the "disguised"/"back to normal" toast clears the last visible row, not covers it.
-        // Container overload (not the fragment one) keeps the offset scoped to this sheet, so it can't leak into chat bulletins after dismiss.
-        Bulletin.addDelegate(sheetRef[0].container, new Bulletin.Delegate() {
-            @Override
-            public int getBottomOffset(int tag) {
-                return AndroidUtilities.dp(50);
-            }
-        });
         fragment.showDialog(sheetRef[0]);
     }
 
