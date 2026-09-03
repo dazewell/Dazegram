@@ -1400,7 +1400,20 @@ public class MessageHelper extends BaseController {
         }
         long currentGroupId = 0;
         boolean currentInvertMedia = false;
+        boolean currentAlbumIsDoc = false;
         ArrayList<SendMessagesHelper.SendingMediaInfo> media = null;
+        // A grouped document/music album copies through its own per-child path (docAlbum* below) so each
+        // member keeps its own extension, caption, entities and repost marker while sharing one group id;
+        // photos and videos keep the prepareSendingMedia path. The two accumulators are never both active:
+        // the isDoc == currentAlbumIsDoc term in sameAlbum below is what enforces it - a type change fails
+        // sameAlbum, flushes whichever accumulator is filling and nulls both before the other starts, so
+        // this does not lean on the server sending a type-homogeneous grouped_id. If a mixed group ever did
+        // arrive it would just flush at the type boundary into two server groups on one timestamp - degraded
+        // grouping, never a null-accumulator crash.
+        ArrayList<String> docAlbumPaths = null;
+        ArrayList<CharSequence> docAlbumCaptions = null;
+        ArrayList<ArrayList<TLRPC.MessageEntity>> docAlbumEntities = null;
+        ArrayList<HashMap<String, String>> docAlbumParams = null;
         // When preserving the source's own reply, replyTo/quote are resolved per message (and per
         // album, whose members share one reply target) below; otherwise they stay the passed values.
         MessageObject currentReply = replyTo;
@@ -1412,34 +1425,68 @@ public class MessageHelper extends BaseController {
             if (repostMarkerParamsBySource != null && markerParams == null) {
                 result.allDispatched = false;
             }
-            boolean batchMedia = messageObject != null && messageObject.messageOwner != null && !messageObject.isRoundVideo() && (messageObject.isPhoto() || messageObject.isVideo());
-            if (batchMedia) {
+            boolean isPhotoVideo = messageObject != null && messageObject.messageOwner != null && !messageObject.isRoundVideo()
+                    && (messageObject.isPhoto() || messageObject.isVideo());
+            boolean isGroupedDoc = messageObject != null && messageObject.messageOwner != null && !isPhotoVideo
+                    && messageObject.getDocument() != null && messageObject.getGroupIdForUse() != 0
+                    && !messageObject.isRoundVideo() && !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji();
+            if (isPhotoVideo || isGroupedDoc) {
                 String path = getPathToMessage(messageObject, currentAccount);
                 long groupId = messageObject.getGroupIdForUse();
                 boolean invertMedia = messageObject.messageOwner.invert_media;
-                if (media != null && (groupId == 0 || groupId != currentGroupId || invertMedia != currentInvertMedia)) {
-                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-                    result.sentAny = true;
+                boolean isDoc = isGroupedDoc;
+                boolean accumulating = media != null || docAlbumPaths != null;
+                boolean sameAlbum = accumulating && groupId != 0 && groupId == currentGroupId
+                        && invertMedia == currentInvertMedia && isDoc == currentAlbumIsDoc;
+                if (accumulating && !sameAlbum) {
+                    if (flushCopyAlbum(media, docAlbumPaths, docAlbumCaptions, docAlbumEntities, docAlbumParams, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams)) {
+                        result.sentAny = true;
+                    }
                     media = null;
+                    docAlbumPaths = null;
+                    docAlbumCaptions = null;
+                    docAlbumEntities = null;
+                    docAlbumParams = null;
+                    accumulating = false;
                 }
-                if (media == null) {
-                    media = new ArrayList<>();
+                if (!accumulating) {
                     currentGroupId = groupId;
                     currentInvertMedia = invertMedia;
+                    currentAlbumIsDoc = isDoc;
                     if (preserveOwnReply) {
                         MessageObject ownReply = getPreservableOwnReply(messageObject, targetDialogId, replyToTopMsg);
                         currentReply = ownReply != null ? ownReply : replyToTopMsg;
                         currentQuote = ownReply != null ? getOwnReplyQuote(messageObject) : null;
                     }
+                    if (isDoc) {
+                        docAlbumPaths = new ArrayList<>();
+                        docAlbumCaptions = new ArrayList<>();
+                        docAlbumEntities = new ArrayList<>();
+                        docAlbumParams = new ArrayList<>();
+                    } else {
+                        media = new ArrayList<>();
+                    }
                 }
                 CharSequence caption = hideCaption ? null : ChatActivity.getMessageCaption(messageObject, null, null);
                 ArrayList<TLRPC.MessageEntity> entities = caption != null ? messageObject.messageOwner.entities : null;
-                media.add(createSendingMediaInfo(messageObject, path, caption, entities, markerParams));
+                if (isDoc) {
+                    docAlbumPaths.add(path);
+                    docAlbumCaptions.add(caption);
+                    docAlbumEntities.add(entities);
+                    docAlbumParams.add(copyRepostMarkerParams(markerParams));
+                } else {
+                    media.add(createSendingMediaInfo(messageObject, path, caption, entities, markerParams));
+                }
             } else {
-                if (media != null) {
-                    flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-                    result.sentAny = true;
+                if (media != null || docAlbumPaths != null) {
+                    if (flushCopyAlbum(media, docAlbumPaths, docAlbumCaptions, docAlbumEntities, docAlbumParams, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams)) {
+                        result.sentAny = true;
+                    }
                     media = null;
+                    docAlbumPaths = null;
+                    docAlbumCaptions = null;
+                    docAlbumEntities = null;
+                    docAlbumParams = null;
                     currentGroupId = 0;
                 }
                 MessageObject messageReply = replyTo;
@@ -1456,10 +1503,78 @@ public class MessageHelper extends BaseController {
                 }
             }
         }
-        if (media != null) {
-            flushSendingMedia(media, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams);
-            result.sentAny = true;
+        if (media != null || docAlbumPaths != null) {
+            if (flushCopyAlbum(media, docAlbumPaths, docAlbumCaptions, docAlbumEntities, docAlbumParams, targetDialogId, currentReply, replyToTopMsg, currentQuote, notify, scheduleDate, mode, quickReplyShortcut, quickReplyShortcutId, currentInvertMedia, payStars, monoForumPeerId, suggestionParams)) {
+                result.sentAny = true;
+            }
         }
+        return result;
+    }
+
+    // NagramX: split a forward selection into copy-spread slots for #repost-spread. A slot is one
+    // scheduled send: an album (every message sharing a non-zero grouped_id) is one slot; every
+    // other message is its own slot. Slots come from captured album membership - grouping by
+    // grouped_id, never assuming equal ids are consecutive in the list - and keep the caller's
+    // order (each slot sits at the position of its first member), so the [merge box][current box]
+    // ascending order the forward chokepoint already built is preserved without a global sort.
+    public ArrayList<ArrayList<MessageObject>> buildCopySpreadSlots(ArrayList<MessageObject> messages) {
+        ArrayList<ArrayList<MessageObject>> slots = new ArrayList<>();
+        if (messages == null || messages.isEmpty()) {
+            return slots;
+        }
+        HashMap<Long, ArrayList<MessageObject>> albumSlots = new HashMap<>();
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (messageObject == null) {
+                continue;
+            }
+            long groupId = messageObject.getGroupIdForUse();
+            if (groupId != 0) {
+                ArrayList<MessageObject> slot = albumSlots.get(groupId);
+                if (slot == null) {
+                    slot = new ArrayList<>();
+                    albumSlots.put(groupId, slot);
+                    slots.add(slot);
+                }
+                slot.add(messageObject);
+            } else {
+                ArrayList<MessageObject> slot = new ArrayList<>(1);
+                slot.add(messageObject);
+                slots.add(slot);
+            }
+        }
+        return slots;
+    }
+
+    // NagramX: result of the one whole-dispatch pre-flight for #repost-spread. unsupportedCount is
+    // messages the copy engine can't re-send at all; missingFileCount is messages whose media isn't
+    // in cache right now. The cache check is inherently racy - File.exists() reserves nothing - so
+    // ok means "admissible for the conditions observed here", not a guarantee the send can't still
+    // fail later on eviction, upload error or server rejection (that path leaves deletion unarmed).
+    public static class CopyPreflightResult {
+        public boolean ok;
+        public int unsupportedCount;
+        public int missingFileCount;
+    }
+
+    public CopyPreflightResult preflightSpreadAsCopy(ArrayList<MessageObject> messages) {
+        CopyPreflightResult result = new CopyPreflightResult();
+        if (messages == null || messages.isEmpty()) {
+            return result;
+        }
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject messageObject = messages.get(i);
+            if (!canSendSingleMessageAsCopy(messageObject)) {
+                result.unsupportedCount++;
+                continue;
+            }
+            boolean needsFile = messageObject.messageOwner != null && !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
+                    (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
+            if (needsFile && TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount))) {
+                result.missingFileCount++;
+            }
+        }
+        result.ok = result.unsupportedCount == 0 && result.missingFileCount == 0;
         return result;
     }
 
@@ -1637,11 +1752,24 @@ public class MessageHelper extends BaseController {
         return info;
     }
 
-    private void flushSendingMedia(ArrayList<SendMessagesHelper.SendingMediaInfo> media, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
-        if (media == null || media.isEmpty()) {
-            return;
+    // Flush whichever copy-album accumulator is filling. At most one of the two is non-empty at a boundary
+    // because the sameAlbum guard in sendMessagesAsCopy flushes and nulls both on any type change, not
+    // because the server is trusted to keep a grouped_id type-homogeneous: photos/videos go through
+    // prepareSendingMedia, a document/music album goes through the per-child prepareSendingDocumentAlbumAsCopy
+    // so each member keeps its own extension, caption, entities and marker while sharing one group id.
+    // Both being non-empty here would only mean a mixed group split into two server groups upstream, never
+    // a crash. Returns whether anything was dispatched.
+    private boolean flushCopyAlbum(ArrayList<SendMessagesHelper.SendingMediaInfo> media, ArrayList<String> docPaths, ArrayList<CharSequence> docCaptions, ArrayList<ArrayList<TLRPC.MessageEntity>> docEntities, ArrayList<HashMap<String, String>> docParams, long targetDialogId, MessageObject replyTo, MessageObject replyToTopMsg, ChatActivity.ReplyQuote quote, boolean notify, int scheduleDate, int mode, String quickReplyShortcut, int quickReplyShortcutId, boolean invertMedia, long payStars, long monoForumPeerId, MessageSuggestionParams suggestionParams) {
+        boolean sent = false;
+        if (media != null && !media.isEmpty()) {
+            SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, targetDialogId, replyTo, replyToTopMsg, null, quote, false, media.size() > 1, null, notify, scheduleDate, 0, mode, false, null, createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId), 0, invertMedia, payStars, monoForumPeerId, suggestionParams);
+            sent = true;
         }
-        SendMessagesHelper.prepareSendingMedia(getAccountInstance(), media, targetDialogId, replyTo, replyToTopMsg, null, quote, false, media.size() > 1, null, notify, scheduleDate, 0, mode, false, null, createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId), 0, invertMedia, payStars, monoForumPeerId, suggestionParams);
+        if (docPaths != null && !docPaths.isEmpty()) {
+            SendMessagesHelper.prepareSendingDocumentAlbumAsCopy(getAccountInstance(), docPaths, new ArrayList<>(docPaths), docCaptions, docEntities, docParams, targetDialogId, replyTo, replyToTopMsg, quote, notify, scheduleDate, createSendMessageChatArguments(quickReplyShortcut, quickReplyShortcutId), invertMedia, payStars, monoForumPeerId, suggestionParams);
+            sent = true;
+        }
+        return sent;
     }
 
     private static SendMessageChatArguments createSendMessageChatArguments(String quickReplyShortcut, int quickReplyShortcutId) {

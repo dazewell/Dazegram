@@ -561,6 +561,16 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean checkingImportDialog;
 
     private int messagesCount;
+    // NagramX: #repost-spread one-shot interval channel. 0 = not armed. Written at schedule-confirm just
+    // before didSelectDate, consumed-and-cleared on entry to ChatActivity.didSelectDialogs, and cleared
+    // on any post-write path that never reaches didSelectDialogs. See consumeForwardSpreadInterval.
+    private int forwardSpreadIntervalSeconds;
+    // NagramX: #repost-spread request-local drop-author (from-my-name) choice for THIS forward picker.
+    // null = this picker's Send menu never chose, so the caller falls back to the shared static. The
+    // shared ChatActivity.noForwardQuote can be rewritten by another open chat while this picker lives,
+    // so the spread row gate and the value the dispatch acts on both come from here - snapshotted when
+    // the Send menu opens, updated by its Show/Hide toggle, and consumed-and-cleared with the interval.
+    private Boolean forwardSpreadFromMyName;
     private int hasPoll;
     private boolean hasInvoice;
 
@@ -2734,6 +2744,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
 
     public interface DialogsActivityDelegate {
         boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment);
+
+        // NagramX: #repost-spread. Slot count over the delegate's live forward selection (a source album
+        // collapses to one slot), computed at gate time so every DIALOGS_TYPE_FORWARD presentation reflects
+        // the real selection instead of a value each caller has to remember to thread in. 0 for a delegate
+        // that isn't forwarding messages.
+        default int getForwardSpreadSlotCount() { return 0; }
 
         default boolean canSelectStories() { return false; }
         default boolean didSelectStories(DialogsActivity fragment) { return false; }
@@ -12208,6 +12224,14 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean onSendLongClick(View view) {
         if (getParentActivity() == null) return false;
 
+        // NagramX: #repost-spread. Start every attempt with the interval channel absent, so no stale
+        // interval from a previously aborted confirm can be consumed by a later plain forward.
+        forwardSpreadIntervalSeconds = 0;
+        // NagramX: #repost-spread. Snapshot the drop-author choice this menu displays into request-local
+        // state, so the spread row gate and dispatch use this picker's own choice, never the shared
+        // ChatActivity.noForwardQuote static that another open chat can flip meanwhile.
+        forwardSpreadFromMyName = ChatActivity.noForwardQuote;
+
         boolean onlyMyself = false;
         boolean canSchedule = true;
         for (int i = 0; i < selectedDialogs.size(); ++i) {
@@ -12231,6 +12255,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             .addChecked(!ChatActivity.noForwardQuote, LocaleController.getString(R.string.ShowSendersName), () -> {
                 options.dontDismiss();
                 ChatActivity.noForwardQuote = false;
+                forwardSpreadFromMyName = false;
                 if (showSendersNameItem[0] != null) {
                     showSendersNameItem[0].setChecked(true);
                 }
@@ -12243,6 +12268,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             .addChecked(ChatActivity.noForwardQuote, LocaleController.getString(R.string.HideSendersName), () -> {
                 options.dontDismiss();
                 ChatActivity.noForwardQuote = true;
+                forwardSpreadFromMyName = true;
                 if (showSendersNameItem[0] != null) {
                     showSendersNameItem[0].setChecked(false);
                 }
@@ -12263,12 +12289,17 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 delegate.didSelectDialogs(DialogsActivity.this, topicKeys, commentView.getFieldText(), false, notify, scheduleDate, scheduleRepeatPeriod, null);
             })
             .addIf(canSchedule, R.drawable.msg_calendar2, LocaleController.getString(R.string.ScheduleMessage), () -> {
-                AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, new AlertsCreator.ScheduleDatePickerDelegate() {
+                final AlertsCreator.ScheduleDatePickerDelegate scheduleDelegate = new AlertsCreator.ScheduleDatePickerDelegate() {
                     @Override
                     public void didSelectDate(boolean notify, int scheduleDate, int scheduleRepeatPeriod) {
                         DialogsActivity.this.scheduleDate = scheduleDate;
                         DialogsActivity.this.scheduleRepeatPeriod = scheduleRepeatPeriod;
                         if (delegate == null || selectedDialogs.isEmpty()) {
+                            // NagramX: #repost-spread. Confirm fired but the dispatch never reaches
+                            // didSelectDialogs, so drop any interval and drop-author choice written just
+                            // before us, together.
+                            forwardSpreadIntervalSeconds = 0;
+                            forwardSpreadFromMyName = null;
                             return;
                         }
                         ArrayList<MessagesStorage.TopicKey> topicKeys = new ArrayList<>();
@@ -12277,11 +12308,42 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                         }
                         delegate.didSelectDialogs(DialogsActivity.this, topicKeys, commentView.getFieldText(), false, notify, scheduleDate, scheduleRepeatPeriod, null);
                     }
-                }, getResourceProvider());
+                };
+                // NagramX: #repost-spread. A drop-author forward of >= 2 slots reuses the schedule sheet
+                // with an interval row so each slot lands on its own time. The gate reads this picker's
+                // request-local drop-author choice, never the shared ChatActivity.noForwardQuote static,
+                // which another open chat could flip while this picker is up. The slot count comes from the
+                // delegate's live forward selection now, so it matches whatever the dispatch will forward no
+                // matter which presentation opened this picker.
+                final int forwardSpreadSlotCount = delegate != null ? delegate.getForwardSpreadSlotCount() : 0;
+                if (Boolean.TRUE.equals(forwardSpreadFromMyName) && forwardSpreadSlotCount >= 2) {
+                    AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
+                            new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));
+                } else {
+                    AlertsCreator.createScheduleDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, getResourceProvider());
+                }
             })
             .show();
 
         return true;
+    }
+
+    // NagramX: #repost-spread. Atomic consume-and-clear of the one-shot interval channel. Returns the
+    // per-slot interval in seconds (0 when this dispatch is not a spread) and zeroes the field so the
+    // exact didSelectDialogs caused by this confirmation is the only reader that can observe it.
+    public int consumeForwardSpreadInterval() {
+        final int value = forwardSpreadIntervalSeconds;
+        forwardSpreadIntervalSeconds = 0;
+        return value;
+    }
+
+    // NagramX: #repost-spread. Atomic consume-and-clear of the one-shot drop-author choice, paired with
+    // the interval above. Returns null when this picker's Send menu never made a choice, so the caller
+    // falls back to the shared static for a plain non-menu forward.
+    public Boolean consumeForwardSpreadFromMyName() {
+        final Boolean value = forwardSpreadFromMyName;
+        forwardSpreadFromMyName = null;
+        return value;
     }
 
     private float getRightSlidingProgress() {

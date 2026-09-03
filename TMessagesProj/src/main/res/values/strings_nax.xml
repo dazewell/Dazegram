@@ -656,4 +656,7 @@
     <string name="RepeatAsCopyDeleteHint_one">Reposted as a copy. The original message is still here.</string>
     <string name="RepeatAsCopyDeleteHint_other">Reposted as a copy. %1$d original messages are still here.</string>
     <string name="RepeatAsCopyDeleteUnavailable">Can\'t delete the originals anymore</string>
+    <!-- Spread a scheduled repost-as-copy over its own times #repost-spread -->
+    <string name="RepostSpreadUnsupported_one">Can\'t repost %1$d of these as a copy</string>
+    <string name="RepostSpreadUnsupported_other">Can\'t repost %1$d of these as a copy</string>
 </resources>

@@ -72,6 +72,18 @@ public final class RescheduleSpreadHelper {
                                                        int messageCount, int textColor,
                                                        NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker,
                                                        TextView buttonTextView, Theme.ResourcesProvider resourcesProvider) {
+        return addIntervalControls(context, container, messageCount, messageCount, textColor,
+                dayPicker, hourPicker, minutePicker, buttonTextView, resourcesProvider);
+    }
+
+    // NagramX: #repost-spread reuses this row but a slot is not a message - an album is several
+    // messages that go out as one scheduled send. spanCount is the number of sends (slots), which
+    // drives how far the spread reaches; displayCount is the message total shown in the preview
+    // label. Reschedule passes the same value for both (one message = one slot).
+    public static IntervalControls addIntervalControls(Context context, LinearLayout container,
+                                                       int spanCount, int displayCount, int textColor,
+                                                       NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker,
+                                                       TextView buttonTextView, Theme.ResourcesProvider resourcesProvider) {
         final TextView caption = new TextView(context);
         caption.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
         caption.setTextColor(Theme.multAlpha(textColor, 0.75f));
@@ -129,7 +141,7 @@ public final class RescheduleSpreadHelper {
         container.addView(shortIntervalHint, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, 6));
 
         final IntervalControlsImpl controls = new IntervalControlsImpl(
-                messageCount, textColor, preview, shortIntervalHint, buttonTextView,
+                spanCount, displayCount, textColor, preview, shortIntervalHint, buttonTextView,
                 valuePicker, unitPicker, dayPicker, hourPicker, minutePicker);
 
         unitPicker.setOnValueChangedListener((picker, oldVal, newVal) -> {
@@ -166,7 +178,8 @@ public final class RescheduleSpreadHelper {
     }
 
     private static final class IntervalControlsImpl implements IntervalControls {
-        private final int messageCount;
+        private final int spanCount;
+        private final int displayCount;
         private final int textColor;
         private final TextView preview;
         private final TextView shortIntervalHint;
@@ -178,11 +191,12 @@ public final class RescheduleSpreadHelper {
         private final NumberPicker minutePicker;
         private boolean valid = true;
 
-        IntervalControlsImpl(int messageCount, int textColor,
+        IntervalControlsImpl(int spanCount, int displayCount, int textColor,
                              TextView preview, TextView shortIntervalHint, TextView buttonTextView,
                              NumberPicker valuePicker, NumberPicker unitPicker,
                              NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
-            this.messageCount = messageCount;
+            this.spanCount = spanCount;
+            this.displayCount = displayCount;
             this.textColor = textColor;
             this.preview = preview;
             this.shortIntervalHint = shortIntervalHint;
@@ -226,7 +240,7 @@ public final class RescheduleSpreadHelper {
             final long baseMs = c.getTimeInMillis();
 
             final int interval = getIntervalSeconds();
-            final long lastMs = baseMs + (long) (messageCount - 1) * interval * 1000L;
+            final long lastMs = baseMs + (long) (spanCount - 1) * interval * 1000L;
 
             final Calendar limit = Calendar.getInstance();
             limit.setTimeInMillis(now);
@@ -244,7 +258,7 @@ public final class RescheduleSpreadHelper {
             }
 
             final boolean crossesDay = !sameDay(baseMs, lastMs);
-            final String text = formatPluralString("RescheduleSpreadMessages", messageCount)
+            final String text = formatPluralString("RescheduleSpreadMessages", displayCount)
                     + "  ·  " + formatMoment(baseMs, crossesDay)
                     + "  →  " + formatMoment(lastMs, crossesDay);
             preview.setText(text);

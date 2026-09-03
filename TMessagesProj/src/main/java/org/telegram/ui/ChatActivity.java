@@ -943,6 +943,22 @@ public class ChatActivity extends BaseFragment implements
     private MessageObject selectedObjectToEditCaption;
     private MessageObject selectedObject;
     private RepostCopyDeleteBatch repostCopyDeleteBatch;
+    // NagramX: #repost-spread. Fixed spread step for the staged-forward door (chat's own send button). The
+    // forward-picker door lets the user pick an interval; here there is no interval row, so a batch that
+    // would otherwise collapse onto one schedule_date is spread three minutes apart - two minutes trips the
+    // reschedule-spread short-interval warning, three does not. This is the fork's own UX threshold, not a
+    // Telegram ordering guarantee.
+    private static final int REPOST_SPREAD_INTERVAL_SECONDS = 180;
+    // NagramX: #repost-spread. One-shot captured on the pre-send pass of beforeMessageSend (which runs
+    // before the composer is cleared) so the later dispatch pass can still tell a bare staged forward from
+    // one carrying a typed comment. Defaults false (ineligible) so any path that does not capture it stays
+    // on the plain forward.
+    private boolean naxForwardComposerEmpty;
+    // NagramX: #repost-spread. A repost-as-copy batch that fully acked while the source chat was still
+    // mid picker-close (resumed but not yet fully visible) can't show its delete offer yet. It's retained
+    // here across exactly that transition and resolved once from onBecomeFullyVisible; a genuine pause or
+    // fragment destruction drops it instead (fragment death loses the offer, never a send).
+    private RepostCopyDeleteBatch repostCopyDeletePendingOffer;
     // NagramX: tracks the on-demand repost-as-copy delete offer bulletin so onPause can cancel it; cleared
     // by identity via repostCopyDeleteBulletinTag, mirroring the pinBulletin/pinBullerinTag pattern (#repost-reply).
     private Bulletin repostCopyDeleteBulletin;
@@ -3760,6 +3776,7 @@ public class ChatActivity extends BaseFragment implements
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         repostCopyDeleteBatch = null;
+        repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
         removeChatLockPasscodeView();
         if (messageMetricsView != null) {
@@ -15846,7 +15863,7 @@ public class ChatActivity extends BaseFragment implements
                 chatAdapter.checkRemoveBotForumRowsStartThreadRow(true);
             }
         }
-        if (forwardScheduledMessagesAsCopy(arrayList, dialog_id, hideCaption, notify, scheduleDate, payStars)) {
+        if (forwardMessagesAsCopyIfScheduled(arrayList, dialog_id, hideCaption, notify, scheduleDate, payStars)) {
             return REPOST_COPY_FORWARD_NOT_DISPATCHED;
         }
         int result = getSendMessagesHelper().sendMessage(arrayList, dialog_id, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams(), repostMarkerParamsBySource);
@@ -15868,18 +15885,26 @@ public class ChatActivity extends BaseFragment implements
         if ((scheduleDate != 0) == (chatMode == MODE_SCHEDULED)) {
             waitingForSendingMessageLoad = true;
         }
-        if (forwardScheduledMessagesAsCopy(arrayList, did == 0 ? dialog_id : did, hideCaption, notify, scheduleDate, payStars)) {
+        if (forwardMessagesAsCopyIfScheduled(arrayList, did == 0 ? dialog_id : did, hideCaption, notify, scheduleDate, payStars)) {
             return;
         }
         AlertsCreator.showSendMediaAlert(getSendMessagesHelper().sendMessage(arrayList, did == 0 ? dialog_id : did, fromMyName, hideCaption, notify, scheduleDate, 0, getThreadMessage(), -1, payStars, getSendMonoForumPeerId(), getSendMessageSuggestionParams()), this);
     }
 
+    // NagramX: per-dialog flag - reset at the top of every forwardMessagesAsCopyIfScheduled call (which
+    // the dispatch loop makes once per target) and read straight after, so each target's success or
+    // failure is judged on its own, never carried over from a previous dialog in the same dispatch.
     private boolean forwardAsCopyFailed;
 
-    // NagramX: a scheduled message has no id in the dialog's message box yet, so messages.forwardMessages
-    // rejects it and the copies land as failed sends that keep failing on retry. Re-send their content
-    // instead, which is equivalent here because scheduled messages are always your own.
-    private boolean forwardScheduledMessagesAsCopy(ArrayList<MessageObject> messages, long did, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
+    // NagramX: copy-based re-send exists in this fork for two reasons, both because a real
+    // messages.forwardMessages can't do the job. One: a scheduled source has no id in the dialog's
+    // message box yet, so forwarding it is rejected and the copies land as failed sends that keep
+    // failing on retry - this method re-sends their content instead, which is equivalent here because
+    // scheduled messages are always your own. Two (#repost-spread): a batch forward carries a single
+    // schedule_date for the whole request, so per-message scheduled times need one re-send per slot -
+    // that path is dispatchForwardSpread below. This method owns reason one only, gated on the source
+    // actually being scheduled.
+    private boolean forwardMessagesAsCopyIfScheduled(ArrayList<MessageObject> messages, long did, boolean hideCaption, boolean notify, int scheduleDate, long payStars) {
         forwardAsCopyFailed = false;
         boolean hasScheduled = false;
         for (int a = 0, N = messages.size(); a < N; a++) {
@@ -15909,6 +15934,105 @@ public class ChatActivity extends BaseFragment implements
         }
         return true;
     }
+
+    // NagramX: #repost-spread dispatcher. One re-send per slot (an album is one slot, kept as one
+    // server group by sendMessagesAsCopy), each on its own schedule time base + index*interval, so a
+    // scheduled batch no longer collapses onto one timestamp and the resulting messages behave as
+    // independent scheduled messages. This is a plain loop over the existing SendMessagesHelper copy
+    // entry, not a new sequencer or retry layer. The delete-originals offer is armed once across every
+    // slot's sources and only for a single target (dids.size() == 1); a multi-target spread never
+    // arms it. Admission was decided by the whole-dispatch pre-flight in didSelectDialogs; here a slot
+    // that still fails to dispatch (racy cache eviction, upload error) drops the arm via
+    // finalizeRepostCopyDispatch, leaving deletion unarmed. Returns true when every slot
+    // dispatched. There is no drop-author parameter here: a copy always drops the source author by
+    // construction, so the request-local from-my-name choice only gated whether this spread path was
+    // taken (never a late read of the mutable static). hideCaption is a separate flag and carries only
+    // caption suppression.
+    private boolean dispatchForwardSpread(ArrayList<ArrayList<MessageObject>> slots, ArrayList<MessageObject> allSources, long did, boolean hideCaption, boolean notify, int baseScheduleDate, int intervalSeconds, long payStars, boolean singleTarget) {
+        if (slots == null || slots.isEmpty()) {
+            return true;
+        }
+        if ((baseScheduleDate != 0) == (chatMode == MODE_SCHEDULED)) {
+            waitingForSendingMessageLoad = true;
+        }
+        boolean toCurrentDialog = did == dialog_id;
+        RepostCopyDeleteBatch batch = singleTarget ? armRepostCopyDeleteBatch(allSources) : null;
+        HashMap<String, HashMap<String, String>> markerMap = singleTarget ? buildRepostCopyMarkerMap(batch, allSources) : null;
+        boolean sentAny = false;
+        boolean allDispatched = true;
+        for (int i = 0; i < slots.size(); i++) {
+            int slotSchedule = baseScheduleDate + i * intervalSeconds;
+            MessageHelper.CopyDispatchResult r = getMessageHelper().sendMessagesAsCopy(slots.get(i), did, null, toCurrentDialog ? getThreadMessage() : null, null, toCurrentDialog, hideCaption, notify, slotSchedule, toCurrentDialog ? chatMode : 0, quickReplyShortcut, getQuickReplyId(), payStars, toCurrentDialog ? getSendMonoForumPeerId() : 0, toCurrentDialog ? getSendMessageSuggestionParams() : null, markerMap);
+            sentAny = sentAny || r.sentAny;
+            allDispatched = allDispatched && r.allDispatched;
+        }
+        finalizeRepostCopyDispatch(batch, sentAny, allDispatched);
+        if (!allDispatched) {
+            waitingForSendingMessageLoad = false;
+            // the picker fragment on top of us is still closing, and its own bulletin would replace this one
+            AndroidUtilities.runOnUIThread(() -> {
+                if (getParentActivity() == null || fragmentView == null || isFinishing()) {
+                    return;
+                }
+                BulletinFactory.of(this).createErrorBulletin(getString(R.string.PleaseDownload), themeDelegate).show();
+            }, 300);
+        }
+        return allDispatched;
+    }
+
+    // NagramX: #repost-spread staged-forward door. A drop-author scheduled forward that the user staged
+    // into a chat's input bar (select -> NoQuote -> pick the chat) and then schedules from the chat's own
+    // send button reaches this fork's beforeMessageSend and sends through the shared-schedule forward API -
+    // one schedule_date for the whole batch, so every message lands on one timestamp. That is the same
+    // collapse the forward-picker spread fixes, in a second entry point. When such a forward is eligible,
+    // re-send each slot as a copy on its own time (base + i*interval) via the shared dispatchForwardSpread
+    // instead. Eligibility is decided here, where the staged-preview provenance (drop-author, empty
+    // composer) is known; the forwarding primitives stay unaware of it. Returns true only when it actually
+    // dispatched the spread; every ineligible case - including a batch that can't all be copied, or a span
+    // past the scheduling horizon - returns false and leaves the caller's plain forward untouched, so a send
+    // the user never asked to spread is never refused, it just goes the ordinary way. Send-When-Online
+    // (0x7ffffffe) is a protocol sentinel, never a real date, so it is excluded before any slot arithmetic
+    // can turn it into garbage times.
+    private boolean naxTryStagedForwardSpread(ArrayList<MessageObject> messagesToForward, boolean notify, int rawScheduleDate, int baseScheduleDate, boolean composerEmpty, long payStars) {
+        if (messagePreviewParams == null || !messagePreviewParams.hideForwardSendersName) {
+            return false;
+        }
+        if (!composerEmpty) {
+            return false;
+        }
+        if (rawScheduleDate == 0 || rawScheduleDate == 0x7ffffffe) {
+            return false;
+        }
+        ArrayList<ArrayList<MessageObject>> slots = getMessageHelper().buildCopySpreadSlots(messagesToForward);
+        if (slots.size() < 2) {
+            return false;
+        }
+        if (!naxSpreadScheduleWithinHorizon(baseScheduleDate, slots.size(), REPOST_SPREAD_INTERVAL_SECONDS)) {
+            return false;
+        }
+        MessageHelper.CopyPreflightResult preflight = getMessageHelper().preflightSpreadAsCopy(messagesToForward);
+        if (!preflight.ok) {
+            return false;
+        }
+        dispatchForwardSpread(slots, messagesToForward, dialog_id, messagePreviewParams.hideCaption, notify, baseScheduleDate, REPOST_SPREAD_INTERVAL_SECONDS, payStars, true);
+        return true;
+    }
+
+    // NagramX: #repost-spread. The furthest slot is base + (slotCount - 1) * interval. dispatchForwardSpread
+    // computes each slot in int seconds and could silently wrap, so validate the furthest slot in long
+    // arithmetic up front and refuse the whole spread if it overflows the int range or lands past
+    // Telegram's one-year scheduling horizon - the same 365-day limit the reschedule-spread sheet enforces.
+    // base is a unix timestamp in seconds, already within the horizon (the picker capped it); only the
+    // added span can cross it.
+    private boolean naxSpreadScheduleWithinHorizon(int baseScheduleDate, int slotCount, int intervalSeconds) {
+        long last = (long) baseScheduleDate + (long) (slotCount - 1) * intervalSeconds;
+        if (last > Integer.MAX_VALUE) {
+            return false;
+        }
+        long horizonSeconds = System.currentTimeMillis() / 1000L + 365L * 24L * 60L * 60L;
+        return last <= horizonSeconds;
+    }
+
 
     public boolean shouldShowImport() {
         return openImport;
@@ -16221,6 +16345,14 @@ public class ChatActivity extends BaseFragment implements
     }
 
     public void beforeMessageSend(boolean notify, int scheduleDate, boolean beforeSend, long payStars) {
+        // NagramX: #repost-spread. The pre-send pass (beforeSend == true) always runs before the composer is
+        // cleared, so capture composer-empty now while a forward is staged. The dispatch pass for the default
+        // sendCommentAfterForward=false config fires later from hideFieldPanel, after the field is cleared,
+        // and could otherwise no longer tell a bare staged forward from one carrying a typed comment.
+        if (beforeSend) {
+            naxForwardComposerEmpty = messagePreviewParams != null && messagePreviewParams.forwardMessages != null
+                    && (chatActivityEnterView == null || TextUtils.isEmpty(chatActivityEnterView.getFieldText()));
+        }
         if (beforeSend != NekoConfig.sendCommentAfterForward.Bool()) return;
         if (messagePreviewParams != null && messagePreviewParams.forwardMessages != null) {
             forbidForwardingWithDismiss = false;
@@ -16231,7 +16363,17 @@ public class ChatActivity extends BaseFragment implements
                 }
                 // NagramX: the +1s offset keeps a scheduled comment ahead of the forward; when the comment is
                 // meant to follow it, the forward has to keep the picked second instead.
-                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, scheduleDate != 0 && scheduleDate != 0x7ffffffe && !NekoConfig.sendCommentAfterForward.Bool() ? scheduleDate + 1 : scheduleDate, payStars);
+                final int effectiveScheduleDate = scheduleDate != 0 && scheduleDate != 0x7ffffffe && !NekoConfig.sendCommentAfterForward.Bool() ? scheduleDate + 1 : scheduleDate;
+                // NagramX: #repost-spread. Consume the one-shot; slot zero keeps this exact effective date
+                // (its +1s applied once), later slots add i*interval. Ineligible falls through to the plain
+                // forward below, byte-for-byte as before.
+                final boolean composerEmpty = naxForwardComposerEmpty;
+                naxForwardComposerEmpty = false;
+                if (naxTryStagedForwardSpread(messagesToForward, notify, scheduleDate, effectiveScheduleDate, composerEmpty, payStars)) {
+                    messagePreviewParams = null;
+                    return;
+                }
+                forwardMessages(messagesToForward, messagePreviewParams.hideForwardSendersName, messagePreviewParams.hideCaption, notify, effectiveScheduleDate, payStars);
             // }
             messagePreviewParams = null;
         }
@@ -29092,6 +29234,15 @@ public class ChatActivity extends BaseFragment implements
     public void onBecomeFullyVisible() {
         isFullyVisible = true;
         super.onBecomeFullyVisible();
+        // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
+        // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
+        // once. The guard inside re-validates (sources still present/deletable, no open dialog), so a
+        // batch that became unshowable meanwhile simply drops.
+        if (repostCopyDeletePendingOffer != null) {
+            RepostCopyDeleteBatch pendingOffer = repostCopyDeletePendingOffer;
+            repostCopyDeletePendingOffer = null;
+            showRepostCopyDeleteOfferIfSafe(pendingOffer);
+        }
         if (showCloseChatDialogLater) {
             showDialog(closeChatDialog);
         }
@@ -32165,6 +32316,9 @@ public class ChatActivity extends BaseFragment implements
     public void onPause() {
         super.onPause();
         repostCopyDeleteBatch = null;
+        // NagramX: #repost-spread. A genuine pause is not the picker-close transition - drop any pending
+        // delete offer so it never shows on a chat the user has left or backgrounded.
+        repostCopyDeletePendingOffer = null;
         // NagramX: cancel the delete offer the moment the chat stops being live and visible (leaving, or the
         // app backgrounding), matching today's arm-window behaviour instead of leaving it counting down unseen.
         if (repostCopyDeleteBulletin != null) {
@@ -36962,11 +37116,11 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    @Override
-    public boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment) {
-        if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
-            return false;
-        }
+    // NagramX: #repost-spread. The exact set a forward dispatch will act on, in dispatch order: the
+    // field-panel forward (single message or its album) when one is armed, otherwise the multi-select
+    // in id order across both selection maps. didSelectDialogs and the spread gate both build the
+    // selection from here, so the gate can never see a different count than the dispatch forwards.
+    private ArrayList<MessageObject> naxBuildForwardSpreadSelection() {
         ArrayList<MessageObject> fmessages = new ArrayList<>();
         if (forwardingMessage != null) {
             if (forwardingMessageGroup != null) {
@@ -36990,6 +37144,32 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
+        return fmessages;
+    }
+
+    // NagramX: #repost-spread. The forward picker asks for this at gate time to decide whether to offer
+    // the per-slot interval row. Computed from the live selection with the same grouping the dispatch
+    // uses (a source album collapses to one slot), so no DIALOGS_TYPE_FORWARD presentation can reach the
+    // gate with a stale or missing count - the value can't be forgotten because there's nothing to thread.
+    @Override
+    public int getForwardSpreadSlotCount() {
+        ArrayList<MessageObject> naxSel = naxBuildForwardSpreadSelection();
+        int naxCount = getMessageHelper().buildCopySpreadSlots(naxSel).size();
+        return naxCount;
+    }
+
+    @Override
+    public boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment) {
+        // NagramX: #repost-spread. Consume-and-clear the one-shot interval and drop-author channels on
+        // the exact didSelectDialogs the confirmation caused, before any early return can leave them
+        // armed. The drop-author choice is request-local to the forward picker; fall back to the shared
+        // static only when this picker's Send menu never made a choice.
+        final int forwardSpreadInterval = fragment != null ? fragment.consumeForwardSpreadInterval() : 0;
+        final Boolean forwardSpreadFromMyNameArmed = fragment != null ? fragment.consumeForwardSpreadFromMyName() : null;
+        if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
+            return false;
+        }
+        ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
         for (int j = 0; j < dids.size(); j++) {
             TLRPC.Chat chat = getMessagesController().getChat(-dids.get(j).dialogId);
             if (chat != null) {
@@ -37002,6 +37182,38 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
+
+        // NagramX: #repost-spread. Resolve the drop-author/caption flags now, before the paid
+        // confirmation callback below (which can run asynchronously). The drop-author choice comes from
+        // the picker's request-local channel consumed above (static fallback only for a plain non-menu
+        // forward), so another chat flipping the ChatActivity.noForwardQuote static can't retarget this
+        // dispatch; the caption flag isn't user-toggleable in this picker, so its static snapshot here is
+        // enough. Then capture the immutable slots and run ONE whole-dispatch pre-flight up front, so no
+        // comment or first-target send can go out before the whole selection has been admitted. The
+        // interval channel plus a schedule date is what marks this dispatch a spread; forwarding via the
+        // field panel (a single message/album) is never one. Pre-flight admission is atomic for the
+        // conditions observed here only - a cache hit reserves nothing, so a later eviction or upload
+        // failure still leaves the delete offer unarmed.
+        final boolean naxFromMyName = forwardSpreadFromMyNameArmed != null ? forwardSpreadFromMyNameArmed : noForwardQuote;
+        final boolean naxHideCaption = noForwardCaption;
+        boolean naxSpread = forwardSpreadInterval > 0 && scheduleDate != 0 && forwardingMessage == null;
+        ArrayList<ArrayList<MessageObject>> naxSlotsTmp = null;
+        if (naxSpread) {
+            naxSlotsTmp = getMessageHelper().buildCopySpreadSlots(fmessages);
+            if (naxSlotsTmp.size() < 2) {
+                naxSpread = false;
+                naxSlotsTmp = null;
+            } else {
+                MessageHelper.CopyPreflightResult preflight = getMessageHelper().preflightSpreadAsCopy(fmessages);
+                if (!preflight.ok) {
+                    int bad = Math.max(1, preflight.unsupportedCount + preflight.missingFileCount);
+                    BulletinFactory.of(fragment).createErrorBulletin(LocaleController.formatPluralString("RepostSpreadUnsupported", bad)).show();
+                    return false;
+                }
+            }
+        }
+        final boolean forwardSpread = naxSpread;
+        final ArrayList<ArrayList<MessageObject>> spreadSlots = naxSlotsTmp;
 
         if (!fragment.isQuote && (dids.size() > 1 || dids.get(0).dialogId == getUserConfig().getClientUserId() || message != null || scheduleDate != 0 || !notify)) {
             return !AlertsCreator.ensurePaidMessagesMultiConfirmationTopicKeys(currentAccount, dids, fmessages.size() + (TextUtils.isEmpty(message) ? 0 : 1), prices -> {
@@ -37038,8 +37250,20 @@ public class ChatActivity extends BaseFragment implements
                         params.payStars = price == null ? 0 : price;
                         getSendMessagesHelper().sendMessage(params);
                     }
-                    forwardMessages(fmessages, noForwardQuote, noForwardCaption, notify, scheduleDate, did, price == null ? 0 : price);
-                    // getSendMessagesHelper().sendMessage(fmessages, did, false, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+                    if (forwardSpread) {
+                        // NagramX: #repost-spread. Re-send each slot as a copy on its own schedule time
+                        // (base + index*interval), so a batch no longer collapses onto one timestamp. The
+                        // delete-originals offer is armed once across all slots, single-target only.
+                        // Call unconditionally into a local first: folding it straight into anyFailed with
+                        // || would short-circuit and skip the dispatch for every target after the first
+                        // failure, silently turning a multi-target send into a partial one.
+                        boolean slotFailed = !dispatchForwardSpread(spreadSlots, fmessages, did, naxHideCaption, notify, scheduleDate, forwardSpreadInterval, price == null ? 0 : price, dids.size() == 1);
+                        anyFailed = anyFailed || slotFailed;
+                    } else {
+                        forwardMessages(fmessages, naxFromMyName, naxHideCaption, notify, scheduleDate, did, price == null ? 0 : price);
+                        // getSendMessagesHelper().sendMessage(fmessages, did, false, false, notify, scheduleDate, scheduleRepeatPeriod, null, -1, price == null ? 0 : price, getSendMonoForumPeerId(), getSendMessageSuggestionParams());
+                        anyFailed = anyFailed || forwardAsCopyFailed;
+                    }
                     if (message != null && NekoConfig.sendCommentAfterForward.Bool()) {
                         final SendMessagesHelper.SendMessageParams params = SendMessagesHelper.SendMessageParams.of(message.toString(), did, null, null, null, true, null, null, null, notify, scheduleDate, scheduleRepeatPeriod, null, false);
                         params.sendMessageChatArguments = getMessageChatSendParams();
@@ -37048,7 +37272,6 @@ public class ChatActivity extends BaseFragment implements
                         params.suggestionParams = messageSuggestionParams;
                         getSendMessagesHelper().sendMessage(params);
                     }
-                    anyFailed = anyFailed || forwardAsCopyFailed;
                 }
                 fragment.finishFragment();
                 if (anyFailed) {
@@ -48602,6 +48825,13 @@ public class ChatActivity extends BaseFragment implements
         if (batch.succeededSources.size() == batch.armedSources.size()) {
             if (!showRepostCopyDeleteOfferIfSafe(batch)) {
                 repostCopyDeleteBatch = null;
+                // NagramX: #repost-spread. A fast batch can finish acking during the forward-picker close
+                // animation - resumed (not paused) but not yet fully visible - when the offer can't show
+                // yet. Retain it across exactly that transition so onBecomeFullyVisible can resolve it. A
+                // genuine pause, a still-open dialog, or a finishing fragment falls through and drops it.
+                if (!paused && !isFullyVisible && !isFinishing()) {
+                    repostCopyDeletePendingOffer = batch;
+                }
                 return;
             }
             repostCopyDeleteBatch = null;

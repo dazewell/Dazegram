@@ -115,6 +115,38 @@ installed build, not a reading of the diff.
 
 *(Established 2026-09-02, PR #270.)*
 
+## Forward picker (`DIALOGS_TYPE_FORWARD`) has six presentation sites
+
+`ChatActivity` opens the forward chat-picker (`DialogsActivity` with
+`dialogsType == DIALOGS_TYPE_FORWARD`) from **six** places, each building its
+own argument `Bundle`:
+
+- `:4013` — quote-reply picker (single message).
+- `:5807` — reply-to-author quote picker (single message).
+- `:12327` — `selectAnotherChat` (`:12300`), the forward **preview's** "select
+  another chat". Multi-message; populates `selectedMessagesIds[0]` (`:12322`)
+  and syncs `noForwardQuote = messagePreviewParams.hideForwardSendersName`
+  (`:12306`). **This is the route reached via "Hide sender's name"** — that
+  toggle is a preview control, so stock Forward + hide-sender lands here, not in
+  `openForward`.
+- `:13728` — `openForward` (`:13651`), the selection bar's Forward / left
+  NoQuote button. Multi-message.
+- `:35941` — context-menu single-message forward (`OPTION_FORWARD`); sets
+  `forwardingMessage`.
+- `:36267` — context-menu reply-to-author (`OPTION_REPLY`).
+
+The `#repost-spread` spread-interval gate needs the forward slot count. It was
+first threaded as a Bundle int written by **only `openForward`**, so the other
+five presentations — `selectAnotherChat` included — reached the gate with the
+count defaulting to 0 and the interval row never appeared. The durable lesson:
+**adding a value to one presentation of a shared screen has to enumerate the
+others.** It is now computed at gate time from the delegate's live selection
+(`DialogsActivityDelegate.getForwardSpreadSlotCount`, overridden in
+`ChatActivity`) using the same selection logic the dispatch forwards, so no
+presentation can reach the gate with a stale count.
+
+*(Established 2026-09-02, PR #270.)*
+
 ## Bulk reschedule toolbar button
 
 The fork's selection-toolbar "Reschedule" button (`nkactionbarbtn_reschedule`,
