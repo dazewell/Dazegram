@@ -10,6 +10,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.inputmethod.EditorInfo;
@@ -391,9 +392,14 @@ public final class EventScheduleHelper {
             }
         }
 
-        private static void updateAddRow(ArrayList<PatternFieldRow> rows, org.telegram.ui.Cells.TextCell addRow, TextView footer) {
+        private static void updateAddRow(ArrayList<PatternFieldRow> rows, org.telegram.ui.Cells.TextCell addRow, TextView footer, boolean regexMode) {
             int remaining = EventScheduleEntry.MAX_PATTERN_COUNT - rows.size();
             addRow.setVisibility(remaining > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            Log.i("EventSchedule", "NAX_SMOKE_eventschedule rows=" + rows.size()
+                    + " max=" + EventScheduleEntry.MAX_PATTERN_COUNT
+                    + " remaining=" + remaining
+                    + " addVisible=" + (remaining > 0)
+                    + " regex=" + regexMode);
             if (remaining > 0) {
                 footer.setText(org.telegram.messenger.LocaleController.formatPluralString("EventSchedulePatternSlotsLeft", remaining));
             } else {
@@ -574,7 +580,7 @@ public final class EventScheduleHelper {
                     row.field.setText("");
                     clearRowMessage(row);
                     syncRegexEnabled(rows, regexCell);
-                    updateAddRow(rows, addPatternRow, patternFooter);
+                    updateAddRow(rows, addPatternRow, patternFooter, regexCell.isChecked());
                     return;
                 }
                 patternRowsContainer.removeView(row.container);
@@ -582,7 +588,7 @@ public final class EventScheduleHelper {
                 clearAllRowMessages(rows);
                 updateRowAccessibility(rows);
                 syncRegexEnabled(rows, regexCell);
-                updateAddRow(rows, addPatternRow, patternFooter);
+                updateAddRow(rows, addPatternRow, patternFooter, regexCell.isChecked());
                 updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
                 if (hadFocus) {
                     int next = Math.max(0, Math.min(index, rows.size() - 1));
@@ -638,7 +644,7 @@ public final class EventScheduleHelper {
                 clearAllRowMessages(rows);
                 updateRowAccessibility(rows);
                 syncRegexEnabled(rows, regexCell);
-                updateAddRow(rows, addPatternRow, patternFooter);
+                updateAddRow(rows, addPatternRow, patternFooter, regexCell.isChecked());
                 updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
                 org.telegram.messenger.AndroidUtilities.doOnLayout(patternRowsContainer, () -> focusRow(row.field));
             };
@@ -646,7 +652,7 @@ public final class EventScheduleHelper {
 
             syncRegexEnabled(rows, regexCell);
             updateRowAccessibility(rows);
-            updateAddRow(rows, addPatternRow, patternFooter);
+            updateAddRow(rows, addPatternRow, patternFooter, regexCell.isChecked());
 
             final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_DELAY_SECONDS};
             int startIndex = 0;
