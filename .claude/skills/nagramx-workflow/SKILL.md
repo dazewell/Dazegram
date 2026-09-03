@@ -174,6 +174,31 @@ code are not.
    Reuse existing drawables/strings where one already fits; don't add new
    assets when an upstream one works.
 
+   **Default to falling back, not migrating, when a stored value's range,
+   set, or format changes.** A value that is no longer valid gets clamped to
+   the nearest valid one, or replaced with a sensible default, at the point
+   it is read. No data rewrite, no versioned migration, no per-value
+   grandfathering. The one requirement that isn't negotiable: the app must
+   not crash on an out-of-range, absent, unparseable, or otherwise
+   unexpected stored value, at every place it's read. That's the floor this
+   rule doesn't lower — what it lowers is the obligation to preserve the old
+   value's *meaning*. Migration is the exception, and it has to be argued
+   for: justified only when falling back would lose something the user
+   would actually miss and couldn't trivially recreate, and — per the
+   `Trade-off budget` field in the change brief (see the trade-off-budget
+   note above) — its cost is stated the moment it's proposed, not
+   discovered after it ships. Preservation machinery is usually the part
+   that breaks: a clamp is one expression at a read site, where preserving
+   an out-of-range value means tracking which values are legacy, keeping
+   them distinguishable from new ones, and stopping every write path from
+   laundering one into the other. A delay slider's cap dropped from 300
+   seconds to 30 once got a grandfathering path for triggers already armed
+   above the new cap instead of a clamp — six times the code, three separate
+   Critical findings across three review rounds, all of it deleted the
+   moment the real cost was stated and dazewell said he'd never wanted it
+   preserved. The replacement was a clamp at two boundaries: a net deletion
+   of about 46 lines.
+
    Check `git show --stat` on a recent commit for the feature you're about
    to build something similar to — the diffstat is the target: a handful of
    files, most of the diff in new code, only a few lines touching anything

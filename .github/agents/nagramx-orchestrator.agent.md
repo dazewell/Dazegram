@@ -647,6 +647,10 @@ round has to carry the whole conversation. In one message:
   review rounds, and was reversed the moment dazewell learned the real number
   — at which point all of it was deleted. State the number, or the shape of
   it, up front and he declines the expensive ones before they're built.
+  That episode is why `nagramx-workflow` step 3 now defaults a changed
+  value's range, set, or format to falling back rather than migrating —
+  when a specialist proposes migration instead, treat it the same as any
+  other unilaterally-decided trade-off and bring it to this gate costed.
 
 Then go. After this point you report progress; you do not ask permission. Come
 back mid-flight only for a genuine blocker:
@@ -719,7 +723,11 @@ On-device APK:  required | not required   (decided here, at the gate, so the
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
                   round trip, memory, a slower rare path — stated explicitly so
                   the implementer doesn't default to optimizing and then defend
-                  that optimization for three review rounds>
+                  that optimization for three review rounds. If a changed value's
+                  range, set, or format is in scope, this is also where you name
+                  the default: fall back per `nagramx-workflow` step 3, unless
+                  you're deliberately overriding that with a costed migration
+                  decision from the gate above.>
 Out of scope:   <explicit list>
 
 ## What dazewell asked for, and why
