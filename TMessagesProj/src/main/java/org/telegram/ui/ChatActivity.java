@@ -13727,18 +13727,6 @@ public class ChatActivity extends BaseFragment implements
         args.putBoolean("onlySelect", true);
         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
         args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? selectedMessagesIds[0].size() + selectedMessagesIds[1].size() : canForwardMessagesCount);
-        // NagramX: #repost-spread. Slot count over the selection (a source album collapses to one slot)
-        // so the schedule sheet can decide whether to offer the per-slot interval row. Grouping only.
-        ArrayList<MessageObject> naxForwardSelection = new ArrayList<>();
-        for (int a = 1; a >= 0; a--) {
-            for (int b = 0; b < selectedMessagesIds[a].size(); b++) {
-                MessageObject naxSel = selectedMessagesIds[a].valueAt(b);
-                if (naxSel != null) {
-                    naxForwardSelection.add(naxSel);
-                }
-            }
-        }
-        args.putInt("forwardSpreadSlotCount", getMessageHelper().buildCopySpreadSlots(naxForwardSelection).size());
         args.putInt("hasPoll", hasPoll);
         args.putBoolean("hasInvoice", hasInvoice);
         args.putBoolean("canSelectTopics", true);
@@ -37046,17 +37034,11 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    @Override
-    public boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment) {
-        // NagramX: #repost-spread. Consume-and-clear the one-shot interval and drop-author channels on
-        // the exact didSelectDialogs the confirmation caused, before any early return can leave them
-        // armed. The drop-author choice is request-local to the forward picker; fall back to the shared
-        // static only when this picker's Send menu never made a choice.
-        final int forwardSpreadInterval = fragment != null ? fragment.consumeForwardSpreadInterval() : 0;
-        final Boolean forwardSpreadFromMyNameArmed = fragment != null ? fragment.consumeForwardSpreadFromMyName() : null;
-        if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
-            return false;
-        }
+    // NagramX: #repost-spread. The exact set a forward dispatch will act on, in dispatch order: the
+    // field-panel forward (single message or its album) when one is armed, otherwise the multi-select
+    // in id order across both selection maps. didSelectDialogs and the spread gate both build the
+    // selection from here, so the gate can never see a different count than the dispatch forwards.
+    private ArrayList<MessageObject> naxBuildForwardSpreadSelection() {
         ArrayList<MessageObject> fmessages = new ArrayList<>();
         if (forwardingMessage != null) {
             if (forwardingMessageGroup != null) {
@@ -37080,6 +37062,30 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
+        return fmessages;
+    }
+
+    // NagramX: #repost-spread. The forward picker asks for this at gate time to decide whether to offer
+    // the per-slot interval row. Computed from the live selection with the same grouping the dispatch
+    // uses (a source album collapses to one slot), so no DIALOGS_TYPE_FORWARD presentation can reach the
+    // gate with a stale or missing count - the value can't be forgotten because there's nothing to thread.
+    @Override
+    public int getForwardSpreadSlotCount() {
+        return getMessageHelper().buildCopySpreadSlots(naxBuildForwardSpreadSelection()).size();
+    }
+
+    @Override
+    public boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment) {
+        // NagramX: #repost-spread. Consume-and-clear the one-shot interval and drop-author channels on
+        // the exact didSelectDialogs the confirmation caused, before any early return can leave them
+        // armed. The drop-author choice is request-local to the forward picker; fall back to the shared
+        // static only when this picker's Send menu never made a choice.
+        final int forwardSpreadInterval = fragment != null ? fragment.consumeForwardSpreadInterval() : 0;
+        final Boolean forwardSpreadFromMyNameArmed = fragment != null ? fragment.consumeForwardSpreadFromMyName() : null;
+        if ((messagePreviewParams == null && (!fragment.isQuote || replyingMessageObject == null) || fragment.isQuote && replyingMessageObject == null) && forwardingMessage == null && selectedMessagesIds[0].size() == 0 && selectedMessagesIds[1].size() == 0) {
+            return false;
+        }
+        ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
         for (int j = 0; j < dids.size(); j++) {
             TLRPC.Chat chat = getMessagesController().getChat(-dids.get(j).dialogId);
             if (chat != null) {

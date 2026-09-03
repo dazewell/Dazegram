@@ -561,9 +561,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean checkingImportDialog;
 
     private int messagesCount;
-    // NagramX: #repost-spread. Slot count (albums collapse to one) passed from ChatActivity.openForward,
-    // used only to decide whether the schedule sheet offers the spread interval row.
-    private int forwardSpreadSlotCount;
     // NagramX: #repost-spread one-shot interval channel. 0 = not armed. Written at schedule-confirm just
     // before didSelectDate, consumed-and-cleared on entry to ChatActivity.didSelectDialogs, and cleared
     // on any post-write path that never reaches didSelectDialogs. See consumeForwardSpreadInterval.
@@ -2748,6 +2745,12 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     public interface DialogsActivityDelegate {
         boolean didSelectDialogs(DialogsActivity fragment, ArrayList<MessagesStorage.TopicKey> dids, CharSequence message, boolean param, boolean notify, int scheduleDate, int scheduleRepeatPeriod, TopicsFragment topicsFragment);
 
+        // NagramX: #repost-spread. Slot count over the delegate's live forward selection (a source album
+        // collapses to one slot), computed at gate time so every DIALOGS_TYPE_FORWARD presentation reflects
+        // the real selection instead of a value each caller has to remember to thread in. 0 for a delegate
+        // that isn't forwarding messages.
+        default int getForwardSpreadSlotCount() { return 0; }
+
         default boolean canSelectStories() { return false; }
         default boolean didSelectStories(DialogsActivity fragment) { return false; }
     }
@@ -2911,7 +2914,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             resetDelegate = arguments.getBoolean("resetDelegate", true);
             messagesCount = arguments.getInt("messagesCount", 0);
-            forwardSpreadSlotCount = arguments.getInt("forwardSpreadSlotCount", 0);
             hasPoll = arguments.getInt("hasPoll", 0);
             hasInvoice = arguments.getBoolean("hasInvoice", false);
             showSetPasswordConfirm = arguments.getBoolean("showSetPasswordConfirm", showSetPasswordConfirm);
@@ -12310,7 +12312,10 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 // NagramX: #repost-spread. A drop-author forward of >= 2 slots reuses the schedule sheet
                 // with an interval row so each slot lands on its own time. The gate reads this picker's
                 // request-local drop-author choice, never the shared ChatActivity.noForwardQuote static,
-                // which another open chat could flip while this picker is up.
+                // which another open chat could flip while this picker is up. The slot count comes from the
+                // delegate's live forward selection now, so it matches whatever the dispatch will forward no
+                // matter which presentation opened this picker.
+                final int forwardSpreadSlotCount = delegate != null ? delegate.getForwardSpreadSlotCount() : 0;
                 if (Boolean.TRUE.equals(forwardSpreadFromMyName) && forwardSpreadSlotCount >= 2) {
                     AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
                             new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));
