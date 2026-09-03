@@ -5009,8 +5009,10 @@ public class NotificationsController extends BaseController implements Notificat
                 Integer pd = pushDialogs.get(dialogId);
                 int coverCount = Math.max(messageObjects.size(), pd == null ? 0 : pd);
                 android.util.Log.i("NAX_SMOKE", "NAX_SMOKE_customized-privacy-cover-engine child covered grouped=" + useSummaryNotification + " count=" + coverCount);
-                com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, useSummaryNotification, notificationGroup);
-                coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
+                // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
+                if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, useSummaryNotification, notificationGroup)) {
+                    coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
+                }
                 continue;
             }
 

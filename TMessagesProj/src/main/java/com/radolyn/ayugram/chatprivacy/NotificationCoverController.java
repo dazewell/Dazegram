@@ -265,9 +265,11 @@ public final class NotificationCoverController {
     /**
      * Builds and posts the fresh disguised child. Constructed from an allow-list only; never
      * carries real identity, and fails closed (logs, posts nothing) rather than falling back
-     * to the real builder.
+     * to the real builder. Returns true only when {@code notify} actually posted, so the caller
+     * records the cover as live only when it is — a failed post is left unrecorded and gets
+     * cancelled by reconciliation rather than masking a stale cover at the same tag.
      */
-    public static void postChild(int account, long dialogId, int count, boolean grouped, String group) {
+    public static boolean postChild(int account, long dialogId, int count, boolean grouped, String group) {
         Context ctx = ApplicationLoader.applicationContext;
         int personaId = resolvePersonaId(account, dialogId);
         Persona p = personaById(personaId);
@@ -291,9 +293,11 @@ public final class NotificationCoverController {
         }
         try {
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
+            return true;
         } catch (Throwable t) {
             // Fail closed: a covered chat must never fall back to the real notification.
             FileLog.e("nax cover child post failed", t);
+            return false;
         }
     }
 
