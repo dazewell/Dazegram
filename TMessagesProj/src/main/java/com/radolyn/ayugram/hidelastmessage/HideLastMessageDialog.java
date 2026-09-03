@@ -79,7 +79,7 @@ public final class HideLastMessageDialog {
             AndroidUtilities.hideKeyboard(v);
             return false;
         });
-        linearLayout.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, Gravity.TOP | Gravity.LEFT, 24, 6, 24, 0));
+        linearLayout.addView(editText, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, Gravity.TOP | Gravity.START, 24, 6, 24, 0));
 
         builder.setPositiveButton(
                 LocaleController.getString(currentlyHidden ? R.string.Save : R.string.HideLastMessageEnable),
@@ -133,7 +133,7 @@ public final class HideLastMessageDialog {
         editText.setMaxLines(1);
         editText.setLines(1);
         editText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        editText.setGravity(Gravity.LEFT | Gravity.TOP);
+        editText.setGravity(Gravity.START | Gravity.TOP);
         editText.setSingleLine(true);
         editText.setImeOptions(EditorInfo.IME_ACTION_DONE);
         editText.setCursorColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
