@@ -196,16 +196,17 @@ public final class RescheduleSpreadExecutor {
     }
 
     /**
-     * True when every id in {@code albumIds} is server-assigned (positive). Null is treated as
-     * invalid -- a target with no captured album identity can't be verified safe to send. Deliberately
-     * a local copy of the same shape used elsewhere (album readiness, single-message editability) rather
-     * than a call across it: this package must stay primitive-only, see {@link TriggerArmingHooks}.
+     * True when {@code target} is safe to send: a positive {@code id} and every {@code albumIds}
+     * member positive (null {@code albumIds} is invalid -- a target with no captured album identity
+     * can't be verified safe). Deliberately a local copy of the same shape used elsewhere (album
+     * readiness, single-message editability) rather than a call across it: this package must stay
+     * primitive-only, see {@link TriggerArmingHooks}.
      */
-    private static boolean allPositive(int[] albumIds) {
-        if (albumIds == null) {
+    private static boolean isSendable(Target target) {
+        if (target.id <= 0 || target.albumIds == null) {
             return false;
         }
-        for (int id : albumIds) {
+        for (int id : target.albumIds) {
             if (id <= 0) {
                 return false;
             }
@@ -216,23 +217,27 @@ public final class RescheduleSpreadExecutor {
     private static void sendNext(int currentAccount, long dialogId, ArrayList<Target> targets, int index, int retriesLeft,
                                  ArrayList<Integer> failedIds, ArrayList<TargetOutcome> outcomes,
                                  TriggerArmingHooks hooks, long serial, BaseFragment fragment) {
-        if (index >= targets.size()) {
-            verify(currentAccount, dialogId, targets, failedIds, outcomes, hooks, serial, fragment);
-            return;
-        }
-        final Target target = targets.get(index);
-        // NagramX: fail this target closed rather than send a partial/invalid edit. Albums are
+        // NagramX: fail each invalid target closed rather than send a partial/invalid edit, in a loop
+        // rather than a per-target recursive call -- a run with many consecutive invalid targets (e.g.
+        // several still-sending album members in a row) must not grow the call stack. Albums are
         // all-or-nothing here because a rejected child can't carry the new schedule time on its own --
         // a half-moved group is worse than a group that didn't move at all. Checks target.id explicitly
         // rather than assuming albumIds always contains it, and treats a null albumIds as invalid too.
-        if (target.id <= 0 || !allPositive(target.albumIds)) {
-            failedIds.add(target.id);
+        int cursor = index;
+        while (cursor < targets.size() && !isSendable(targets.get(cursor))) {
+            final Target invalid = targets.get(cursor);
+            failedIds.add(invalid.id);
             if (outcomes != null) {
-                outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, target.repeatPeriod, false));
+                outcomes.add(new TargetOutcome(invalid.albumIds, invalid.scheduleDate, invalid.repeatPeriod, false));
             }
-            sendNext(currentAccount, dialogId, targets, index + 1, 1, failedIds, outcomes, hooks, serial, fragment);
+            cursor++;
+        }
+        if (cursor >= targets.size()) {
+            verify(currentAccount, dialogId, targets, failedIds, outcomes, hooks, serial, fragment);
             return;
         }
+        final int targetIndex = cursor;
+        final Target target = targets.get(targetIndex);
         final TLRPC.TL_messages_editMessage req = new TLRPC.TL_messages_editMessage();
         req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
         req.id = target.id;
@@ -257,7 +262,7 @@ public final class RescheduleSpreadExecutor {
             } else if (error.text != null && error.text.startsWith("FLOOD_WAIT_")) {
                 int wait = Utilities.parseInt(error.text);
                 if (retriesLeft > 0 && wait <= 60) {
-                    AndroidUtilities.runOnUIThread(() -> sendNext(currentAccount, dialogId, targets, index, retriesLeft - 1, failedIds, outcomes, hooks, serial, fragment), (wait + 1) * 1000L);
+                    AndroidUtilities.runOnUIThread(() -> sendNext(currentAccount, dialogId, targets, targetIndex, retriesLeft - 1, failedIds, outcomes, hooks, serial, fragment), (wait + 1) * 1000L);
                     return;
                 }
                 failedIds.add(target.id);
@@ -270,7 +275,7 @@ public final class RescheduleSpreadExecutor {
             if (outcomes != null) {
                 outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, target.repeatPeriod, applied));
             }
-            sendNext(currentAccount, dialogId, targets, index + 1, 1, failedIds, outcomes, hooks, serial, fragment);
+            sendNext(currentAccount, dialogId, targets, targetIndex + 1, 1, failedIds, outcomes, hooks, serial, fragment);
         }, ConnectionsManager.RequestFlagFailOnServerErrors);
     }
 
