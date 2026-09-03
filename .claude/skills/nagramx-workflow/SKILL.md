@@ -189,14 +189,25 @@ code are not.
    local compile gate, an automated review, and two architect rounds still
    shipped unreachable once, because every one of those checks reasons about
    the diff and none of them can see the device state that decides which
-   branch fires — a single log line at that branch would have settled it. Put
-   the instrumentation in its **own clearly-marked commit** so reverting it is
-   trivial, use **one distinctive log tag** so it can be filtered, and say in
-   the PR body that the head carries temporary diagnostics. It comes back out
-   once the smoke build in step 9 has answered the reachability question — as
-   a new commit, never folded into the feature commits — and whoever verifies
-   the branch before it lands confirms it's gone. This is proportional to the
-   smoke build below: a change with no user-visible surface earns neither.
+   branch fires — a single log line at that branch would have settled it.
+
+   **Log only what identifies the path, never what identifies the user.**
+   "The operands of the decision" means booleans, enum/state names, ids and
+   counts — never message text, a contact's name or number, a token, or
+   anything else that would leave the device in this release-signed, uploaded-
+   to-Telegram artifact. If a decision genuinely can't be logged without one of
+   those, log that a branch was taken, not the value that chose it.
+
+   Put the instrumentation in its **own clearly-marked commit** using a
+   **single tag literal chosen up front and written verbatim in the PR body**
+   (e.g. `NAX_SMOKE_<slug>`) — not merely "a distinctive tag" described in
+   prose, because the exact string is what the removal check in step 9 greps
+   for, and a check against a tag nobody wrote down anywhere is a check
+   against nothing. It comes back out once the smoke build in step 9 has
+   answered the reachability question — as a new commit, never folded into the
+   feature commits — and whoever verifies the branch before it lands confirms
+   the literal tag is gone. This is proportional to the smoke build below: a
+   change with no user-visible surface earns neither.
 
 4. **Compile gate (local when the toolchain is there, CI when it isn't).**
    After any Java/Kotlin edit, run the compile check from the repo root:

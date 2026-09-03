@@ -693,9 +693,11 @@ Smoke build:    required | not required   (required whenever the change adds or
                   surface, none gets requested.)
 Diagnostics:    required | not required   (matches Smoke build above — add a
                   clearly-marked temporary logging commit at the new UI
-                  decision point per `nagramx-workflow` step 3, one distinctive
-                  tag, removed as its own commit once the smoke build answers
-                  the reachability question.)
+                  decision point per `nagramx-workflow` step 3, non-sensitive
+                  operands only, tagged with the literal `NAX_SMOKE_<slug>`
+                  recorded verbatim in the PR body so your Phase 4 grep has an
+                  exact string to check for, removed as its own commit once the
+                  smoke build answers the reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
                   implementer never has to guess. If required, say who requests
                   it and when — you do, once architect round 2 and any
@@ -900,9 +902,11 @@ Confirm, one by one:
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
 - If the brief marked `Diagnostics: required`, the temporary logging commit and
-  its distinctive tag are **gone from the final diff** — grep the head for the
-  tag. Its removal is not the implementer's call to skip; confirm it here the
-  same mechanical way you confirm the hard-line greps.
+  its **literal tag from the PR body** are gone from the final diff — grep the
+  head for that exact string. A PR body with no recorded tag literal is itself
+  a finding: the check can't run without one. Its removal is not the
+  implementer's call to skip; confirm it here the same mechanical way you
+  confirm the hard-line greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
   never landed, not that it was clean.** Zero threads with zero reviews is not
   evidence.

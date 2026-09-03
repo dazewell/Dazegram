@@ -95,16 +95,21 @@ Four invariants where getting it wrong is silent and expensive:
 **Temporary diagnostics, when your brief says `Diagnostics: required`.** If the
 change adds a decision point that determines whether something is shown, or
 which of several code paths ends up presenting the same screen, add logging at
-that decision point as part of this same work — the operands of the decision,
-and which path ran where more than one path can reach the same screen. Put it
-in its **own commit**, clearly marked, using **one distinctive log tag** so
-dazewell can filter for it, and say in the PR body that the head carries
-temporary diagnostics. Leave it in through the smoke build (below) — it's the
-thing that tells you which path the device actually took if reachability comes
-back negative — then revert it as a **new commit** once the smoke build
-confirms reachability, before further review continues. Never fold it into a
-feature commit either way; the orchestrator greps the final diff for the tag
-and treats a stray hit as blocking, the same as the hard-line greps.
+that decision point as part of this same work — booleans, enum/state names,
+ids and counts only, **never** message text, a contact's name or number, a
+token, or anything else that would leave the device in this release-signed,
+uploaded artifact; if a value itself can't be logged safely, log that the
+branch was taken instead of the value. Put it in its **own commit**, clearly
+marked, using a **single tag literal you pick up front** (e.g.
+`NAX_SMOKE_<slug>`) and write **verbatim in the PR body** — the orchestrator's
+removal check greps for that exact string, so describing the tag in prose
+without recording the literal leaves nothing to grep for. Leave it in through
+the smoke build (below) — it's the thing that tells you which path the device
+actually took if reachability comes back negative — then revert it as a **new
+commit** once the smoke build confirms reachability, before further review
+continues. Never fold it into a feature commit either way; the orchestrator
+greps the final diff for the literal tag and treats a stray hit as blocking,
+the same as the hard-line greps.
 
 **A design gate before writing a risky part.** If the change touches a cache,
 asynchronous work, or invalidation — any two of the three, or any one plus
