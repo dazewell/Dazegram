@@ -81,14 +81,18 @@ a given gesture.
 **A forward to a single chosen chat is staged into that chat's own input bar,
 not sent from the picker.** `ChatActivity.openForward`
 (`ChatActivity.java:13645-13730`) presents `DialogsActivity` as a
-`DIALOGS_TYPE_FORWARD` picker; selecting a destination chat there opens that
-chat (`ChatActivity`) with the forward queued into its input field, so the Send
-button the user then long-presses belongs to the target chat's
-`ChatActivityEnterView`, not the picker's `writeButton`. This is why the
-picker's own schedule path can look correct in review — it compiles, it is
-wired to a real menu item — and still never execute for this gesture: the
-picker has already closed and handed off before the user reaches the button it
-owns.
+`DIALOGS_TYPE_FORWARD` picker; selecting a single destination chat that isn't
+already open calls back into `ChatActivity.didSelectDialogs`
+(`ChatActivity.java:36966`), which — for the plain single-chat, no-comment,
+not-scheduled case — opens a new `ChatActivity` for that dialog and calls
+`showFieldPanelForForward(true, fmessages)` on it
+(`ChatActivity.java:37112-37143`) instead of sending immediately. That queues
+the forward into the new chat's own field panel, so the Send button the user
+then long-presses belongs to the target chat's `ChatActivityEnterView`, not the
+picker's `writeButton`. This is why the picker's own schedule path can look
+correct in review — it compiles, it is wired to a real menu item — and still
+never execute for this gesture: the picker has already closed and handed off
+before the user reaches the button it owns.
 
 **Measured, not inferred.** Instrumented build `3a55877cb1` (confirmed
 installed as `org.telegram.messenger.beta`, `versionName=12.10.1-3a55877`,
