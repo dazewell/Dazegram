@@ -912,11 +912,13 @@ Confirm, one by one:
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
 - If the brief marked `Diagnostics: required`, the temporary logging commit and
-  its **literal tag from the PR body** are gone from the final diff — grep the
-  head for that exact string. A PR body with no recorded tag literal is itself
-  a finding: the check can't run without one. Its removal is not the
-  implementer's call to skip; confirm it here the same mechanical way you
-  confirm the hard-line greps.
+  its **literal tag** are gone from the final diff — grep the head tree for
+  that exact string; the tag was embedded in the log message text itself, so
+  the grep runs against code, not the PR body. A PR body with no recorded tag
+  literal is itself a finding, since it means there was nothing to check the
+  code against in the first place. Its removal is not the implementer's call
+  to skip; confirm it here the same mechanical way you confirm the hard-line
+  greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
   never landed, not that it was clean.** Zero threads with zero reviews is not
   evidence.
