@@ -234,29 +234,33 @@ on the installed staging APK, and had to be reissued at `Log.e`. Referenced by
 
 `NotificationsController` renders a message notification twice over: the account
 **summary/group** is built in `showOrUpdateNotification` (the `mBuilder` InboxStyle
-around `NotificationsController.java:4320-4381`, posted as `mainNotification` inside
+around `NotificationsController.java:4392-4423`, posted as `mainNotification` inside
 `showExtraNotifications`), and each **per-dialog child** is built separately in
-`showExtraNotifications` (`:4857`+). Both read real `pushMessages` content. Anything
+`showExtraNotifications` (`:4908`+). Both read real `pushMessages` content. Anything
 that means to suppress a chat's real name/sender/text has to intercept **both**: a
 child-only change still leaks every real line through the summary's InboxStyle. The
-disguised-cover engine replaces the summary wholesale when any covered dialog is
-present (`:4953`, `naxBuildCoverSummary` at `:5826`) and swaps each covered child for
-a fresh tagged builder before identity is read (`:5001`).
+disguised-cover engine resolves the exact covered-dialog set in a **preflight** at the
+top of `showOrUpdateNotification`, before any real identity/content is read
+(`:4140`+), then threads that one immutable set + grouping into `showExtraNotifications`,
+which builds a fresh generic summary instead of the real one when any covered dialog is
+present (`naxBuildCoverSummary` at `:5878`) and swaps each covered child for a fresh
+tagged builder, routing on `naxCoveredSet.contains(dialogId)` (`:5038`+).
 
 ## `validateChannelId` observes/creates a chat-named OS channel as a side effect
 
 `showExtraNotifications` calls `validateChannelId(lastDialogId, ...)` on the summary
-builder (`NotificationsController.java:4860`), which synchronizes against — and can
+builder (`NotificationsController.java:4939`), which synchronizes against — and can
 create — a real per-dialog `NotificationChannel` named after the chat. Reusing it for
 a covered chat would leave the chat's real name visible in Android Settings even though
-the notification itself is disguised, so the cover path skips that call for a covered
-last dialog and uses its own generic channel. Cover channels are created directly (not
-through `validateChannelId`) so they never adopt real-chat identity.
+the notification itself is disguised, so that call sits in the **non-covered branch
+only**: when any dialog is covered the real summary is never built and this is never
+reached. Cover channels are created directly (not through `validateChannelId`) so they
+never adopt real-chat identity.
 
 ## `minSdk` is 27, so the `SDK_INT <= 19` notification branch is dead
 
 `build.gradle:36` pins `minSdk = 27`. The `Build.VERSION.SDK_INT <= 19` early-return in
-`showExtraNotifications` (`NotificationsController.java:4863-4869`) and the other
+`showExtraNotifications` (`NotificationsController.java:4944`) and the other
 `<= 19` guards never execute on a shipped build; don't spend effort covering them, and
 treat `<= 27` conditions as "always true on the oldest supported device."
 
