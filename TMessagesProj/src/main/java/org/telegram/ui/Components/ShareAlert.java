@@ -1166,7 +1166,8 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
             @Override
             protected boolean allowSelectChildAtPosition(float x, float y) {
-                return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58) + systemInsets.top;
+                // NagramX: y is gridView-local, and the container's status-bar padding is already out of it (onLayout puts every top child at getPaddingTop()), so upstream's + systemInsets.top dropped the dead band onto the first avatar row
+                return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58);
             }
 
             @Override
@@ -1250,7 +1251,8 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
             @Override
             protected boolean allowSelectChildAtPosition(float x, float y) {
-                return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58) + systemInsets.top;
+                // NagramX: y is gridView-local, and the container's status-bar padding is already out of it (onLayout puts every top child at getPaddingTop()), so upstream's + systemInsets.top dropped the dead band onto the first avatar row
+                return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58);
             }
 
             @Override
