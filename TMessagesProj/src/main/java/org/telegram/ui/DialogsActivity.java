@@ -561,7 +561,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
     private boolean checkingImportDialog;
 
     private int messagesCount;
-    private String naxDbgPresenter; // NagramX: #repost-spread temp diagnostic, remove before merge
     // NagramX: #repost-spread one-shot interval channel. 0 = not armed. Written at schedule-confirm just
     // before didSelectDate, consumed-and-cleared on entry to ChatActivity.didSelectDialogs, and cleared
     // on any post-write path that never reaches didSelectDialogs. See consumeForwardSpreadInterval.
@@ -2915,7 +2914,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
             }
             resetDelegate = arguments.getBoolean("resetDelegate", true);
             messagesCount = arguments.getInt("messagesCount", 0);
-            naxDbgPresenter = arguments.getString("naxDbgPresenter", "unknown"); // NagramX: #repost-spread temp diagnostic, remove before merge
             hasPoll = arguments.getInt("hasPoll", 0);
             hasInvoice = arguments.getBoolean("hasInvoice", false);
             showSetPasswordConfirm = arguments.getBoolean("showSetPasswordConfirm", showSetPasswordConfirm);
@@ -12318,7 +12316,6 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 // delegate's live forward selection now, so it matches whatever the dispatch will forward no
                 // matter which presentation opened this picker.
                 final int forwardSpreadSlotCount = delegate != null ? delegate.getForwardSpreadSlotCount() : 0;
-                android.util.Log.e("NAX_SPREAD_DIAG", "gate presenter=" + naxDbgPresenter + " fromMyName=" + forwardSpreadFromMyName + " slotCount=" + forwardSpreadSlotCount + " hasDelegate=" + (delegate != null)); // NagramX: #repost-spread temp diagnostic, remove before merge (Log.e: d/v are stripped in release, see proguard-rules.pro)
                 if (Boolean.TRUE.equals(forwardSpreadFromMyName) && forwardSpreadSlotCount >= 2) {
                     AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
                             new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));

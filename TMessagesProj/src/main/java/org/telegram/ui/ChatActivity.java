@@ -4022,8 +4022,6 @@ public class ChatActivity extends BaseFragment implements
                     Bundle args = new Bundle();
                     args.putBoolean("onlySelect", true);
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-                    args.putString("naxDbgPresenter", "quoteReplyPicker"); // NagramX: #repost-spread temp diagnostic, remove before merge
-                    android.util.Log.e("NAX_SPREAD_DIAG", "present quoteReplyPicker", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
                     args.putBoolean("quote", true);
                     args.putInt("messagesCount", 1);
                     args.putBoolean("canSelectTopics", true);
@@ -5818,8 +5816,6 @@ public class ChatActivity extends BaseFragment implements
                             Bundle args = new Bundle();
                             args.putBoolean("onlySelect", true);
                             args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-                            args.putString("naxDbgPresenter", "replyToAuthorMenu"); // NagramX: #repost-spread temp diagnostic, remove before merge
-                            android.util.Log.e("NAX_SPREAD_DIAG", "present replyToAuthorMenu", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
                             args.putBoolean("quote", true);
                             args.putBoolean("reply_to", true);
                             final long author = DialogObject.getPeerDialogId(message.getFromPeer());
@@ -12340,8 +12336,6 @@ public class ChatActivity extends BaseFragment implements
                     final Bundle args = new Bundle();
                     args.putBoolean("onlySelect", true);
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-                    args.putString("naxDbgPresenter", "selectAnotherChat"); // NagramX: #repost-spread temp diagnostic, remove before merge
-                    android.util.Log.e("NAX_SPREAD_DIAG", "present selectAnotherChat", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
                     args.putBoolean("quote", !forward);
                     final boolean reply = !forward && messagePreviewParams.replyMessage != null && !messagePreviewParams.replyMessage.messages.isEmpty() && messagePreviewParams.quote == null;
                     args.putBoolean("reply_to", reply);
@@ -13743,8 +13737,6 @@ public class ChatActivity extends BaseFragment implements
         Bundle args = new Bundle();
         args.putBoolean("onlySelect", true);
         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-        args.putString("naxDbgPresenter", "openForward"); // NagramX: #repost-spread temp diagnostic, remove before merge
-        android.util.Log.e("NAX_SPREAD_DIAG", "present openForward", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
         args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? selectedMessagesIds[0].size() + selectedMessagesIds[1].size() : canForwardMessagesCount);
         args.putInt("hasPoll", hasPoll);
         args.putBoolean("hasInvoice", hasInvoice);
@@ -36030,8 +36022,6 @@ public class ChatActivity extends BaseFragment implements
                 Bundle args = new Bundle();
                 args.putBoolean("onlySelect", true);
                 args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-                args.putString("naxDbgPresenter", "contextForward"); // NagramX: #repost-spread temp diagnostic, remove before merge
-                android.util.Log.e("NAX_SPREAD_DIAG", "present contextForward", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
                 args.putInt("messagesCount", 1);
                 args.putInt("hasPoll", forwardingMessage.isTodo() ? 3 : forwardingMessage.isPoll() ? (forwardingMessage.isPublicPoll() ? 2 : 1) : 0);
                 if (ChatObject.isMonoForum(currentChat) && ChatObject.canManageMonoForum(currentAccount, currentChat) && currentChat.linked_monoforum_id != 0) {
@@ -36358,8 +36348,6 @@ public class ChatActivity extends BaseFragment implements
                     Bundle args = new Bundle();
                     args.putBoolean("onlySelect", true);
                     args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-                    args.putString("naxDbgPresenter", "contextReplyToAuthor"); // NagramX: #repost-spread temp diagnostic, remove before merge
-                    android.util.Log.e("NAX_SPREAD_DIAG", "present contextReplyToAuthor", new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
                     args.putBoolean("quote", true);
                     args.putBoolean("reply_to", true);
                     final long author = DialogObject.getPeerDialogId(selectedObject.getFromPeer());
