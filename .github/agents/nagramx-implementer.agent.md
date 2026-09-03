@@ -107,10 +107,11 @@ mistake. Place it where you're uncertain the flow reaches, not inside the
 path you expect — see `nagramx-workflow` step 3 for why a probe in an
 assumed path only ever produces silence when that assumption is wrong. Put
 it in its **own commit**, clearly
-marked, using a **single tag literal you pick up front** (e.g.
-`NAX_SMOKE_<slug>`) and write **verbatim in the PR body** — the orchestrator's
-removal check greps for that exact string, so describing the tag in prose
-without recording the literal leaves nothing to grep for. Leave it in through
+marked, using a **single tag literal you pick up front, embedded in the log
+message text itself** (e.g. `NAX_SMOKE_<slug>`), and write it **verbatim in
+the PR body** too — the orchestrator's removal check greps the head tree for
+that exact string, so a tag that only lives in a commit message or the PR
+body leaves nothing in the code for the grep to find. Leave it in through
 the smoke build (below) — it's the thing that tells you which path the device
 actually took if reachability comes back negative — then revert it as a **new
 commit** once the smoke build confirms reachability, before further review

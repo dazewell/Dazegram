@@ -702,8 +702,10 @@ Diagnostics:    required | not required   (required only when the change adds
                   for why `Log.v`/`Log.d` don't survive to the device), tagged
                   with a literal in the `NAX_SMOKE_<slug>` pattern — `<slug>`
                   replaced with this change's actual slug, not left as a
-                  placeholder — recorded verbatim in the PR body so your
-                  Phase 4 grep has an exact string to check for, removed as
+                  placeholder, and embedded in the log message text itself so
+                  it's part of the code, not just prose — recorded verbatim
+                  in the PR body too so your Phase 4 grep of the head tree has
+                  an exact string to check for, removed as
                   its own commit once the smoke build answers the
                   reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
