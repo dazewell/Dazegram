@@ -90,6 +90,8 @@ presentation can reach the gate with a stale count.
 
 *(Established 2026-09-02, PR #270.)*
 
+## Bulk reschedule toolbar button
+
 The fork's selection-toolbar "Reschedule" button (`nkactionbarbtn_reschedule`,
 `ChatActivity.java:493`) only shows in scheduled-message mode with at least
 one row checked (`ChatActivity.java:11492`). Its click handler calls

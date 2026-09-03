@@ -82,6 +82,8 @@ that isn't a send-error resolves to `MESSAGE_TYPE_INVALID` in
 (`ChatActivity.java:21147-21154`). The scheduled-message Reschedule path never
 reaches a message in that state. Recorded here as a latent gap with its
 shadowing guard so a future change to `getMessageType` or `processRowSelect`
+doesn't silently reopen it.
+
 *(Established 2026-09-02.)*
 
 ## Release builds strip `Log.v` and `Log.d`
