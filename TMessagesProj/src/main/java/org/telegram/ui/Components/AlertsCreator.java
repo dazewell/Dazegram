@@ -4481,6 +4481,11 @@ public class AlertsCreator {
         if (context == null) {
             return null;
         }
+        // NagramX: #repost-spread temp diagnostic, remove before merge. Every createScheduleDatePickerDialog
+        // overload funnels here (the delegation ladder at :4406-4480), so one Throwable at this chokepoint
+        // prints the real call chain that opens the sheet - including the entry overload's own frame - for
+        // every open, whichever door. Log.e survives the release strip (see proguard-rules.pro).
+        android.util.Log.e("NAX_SPREAD_DIAG", "scheduleSheet forwardSpread=" + (forwardSpread != null) + " reschedule=" + (reschedule != null) + " editSchedule=" + isEditSchedule, new Throwable()); // NagramX: #repost-spread temp diagnostic, remove before merge
         final int[] repeat = new int[] { currentRepeatPeriod };
 
         // NagramX: bulk reschedule reuses this sheet but spreads the selection over base + interval.
