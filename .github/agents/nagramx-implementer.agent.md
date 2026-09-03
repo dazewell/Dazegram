@@ -92,6 +92,32 @@ Four invariants where getting it wrong is silent and expensive:
   widen the diff and make the next upstream merge more expensive. Raise them as
   separate suggestions.
 
+**Temporary diagnostics, when your brief says `Diagnostics: required`.** If the
+change adds a decision point that determines whether something is shown, or
+which of several code paths ends up presenting the same screen, add logging at
+that decision point as part of this same work — booleans, enum/state names,
+ids and counts only, **never** message text, a contact's name or number, a
+token, or anything else that would leave the device in this release-signed,
+uploaded artifact; if a value itself can't be logged safely, log that the
+branch was taken instead of the value. **Use `Log.e`, `Log.i` or `Log.w` —
+never `Log.v` or `Log.d`**, which `TMessagesProj/proguard-rules.pro` strips
+from the release build the smoke build actually installs; see
+`nagramx-workflow` step 3 for why the local compile gate can't catch that
+mistake. Place it where you're uncertain the flow reaches, not inside the
+path you expect — see `nagramx-workflow` step 3 for why a probe in an
+assumed path only ever produces silence when that assumption is wrong. Put
+it in its **own commit**, clearly
+marked, using a **single tag literal you pick up front** (e.g.
+`NAX_SMOKE_<slug>`) and write **verbatim in the PR body** — the orchestrator's
+removal check greps for that exact string, so describing the tag in prose
+without recording the literal leaves nothing to grep for. Leave it in through
+the smoke build (below) — it's the thing that tells you which path the device
+actually took if reachability comes back negative — then revert it as a **new
+commit** once the smoke build confirms reachability, before further review
+continues. Never fold it into a feature commit either way; the orchestrator
+greps the final diff for the literal tag and treats a stray hit as blocking,
+the same as the hard-line greps.
+
 **A design gate before writing a risky part.** If the change touches a cache,
 asynchronous work, or invalidation — any two of the three, or any one plus
 multi-threading — write a short state-and-interleaving spec before implementing
@@ -234,10 +260,15 @@ those changes there is legitimately no gate run to read — say which of the two
 happened rather than implying it passed.
 
 The release-signed dual-package APK that dazewell installs is a **separate,
-on-request** build, and **you never request it.** Whether this change needs one
-at all is decided **in your brief** (`On-device APK:` tells you who requests it
-and when — never an instruction for you to apply the `build-apk` label or
-dispatch `staging.yml` yourself). The orchestrator requests that build, and only
+on-request** build — and for a UI-facing change there can be **two** such
+builds, not one. **You never request either of them.** Whether this change
+needs a build at all is decided **in your brief**: `On-device APK:` (the
+verification build — who requests it and when — never an instruction for you
+to apply the `build-apk` label or dispatch `staging.yml` yourself) and, for a
+UI-facing change, `Smoke build:` (a separate, earlier build the orchestrator
+requests as soon as you report the compile gate clean, to answer one
+reachability question before round 2 starts — also never yours to request).
+The orchestrator requests the verification build itself, and only
 once architect round 2 (and any final-state pass) has cleared — an implementer
 requesting one against its own last commit is exactly the failure mode this rule
 exists to prevent: review can still find Criticals after you think you're done,
@@ -331,6 +362,9 @@ changes. Everything else is yours to call.
 - **Never request the on-device APK build.** Not the `build-apk` label, not a
   `staging.yml` dispatch — regardless of what your own final commit looks like.
   That call belongs to whoever dispatched you, made after review has settled.
+  The same goes for the smoke build a UI-facing brief calls for: it is a
+  reachability check the orchestrator requests once you report the compile
+  gate clean, not something you trigger yourself either.
 - **Never force-push**, amend a pushed commit, or rewrite history.
 - **No destructive git without an explicit instruction** — no `reset --hard`,
   `clean -fd`, branch deletion, or a checkout that discards uncommitted work.
@@ -362,6 +396,7 @@ Branch:        <YYYY-MM-DD>_<slug>
 PR:            <url>  (state, draft: no)
 Compile gate:  local | ci.yml (CI) | not applicable (doc-only) — with the result
 APK build:     not your call — report readiness only: CI status on head, threads resolved
+Diagnostics:   not applicable | added in <sha>, reverted in <sha> | still in (say why)
 Automated review: <n findings — fixed / declined with reason>
 Review threads: <n, all resolved?>
 Processes:     <none> | one block per item in the ledger format from .claude/skills/nagramx-process-lifecycle/SKILL.md

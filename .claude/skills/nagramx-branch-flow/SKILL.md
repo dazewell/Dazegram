@@ -539,7 +539,12 @@ still under review: a build requested earlier is stale the moment a later round
 finds a Critical. Under the `nagramx-orchestrator` pipeline this request belongs
 to the orchestrator alone, made at the point it is about to ask dazewell to
 install something, never to the implementer session that wrote the change — see
-`nagramx-workflow` step 9 and the orchestrator agent file.
+`nagramx-workflow` step 9 and the orchestrator agent file. **A UI-facing change
+gets one more, earlier preview first** — the smoke build, requested as soon as
+the change compiles, for reachability only, before round 2 even starts — which
+narrows this rule rather than replacing it: this paragraph still governs the
+one build dazewell tests behaviour against. See `nagramx-workflow` step 9 for
+the full reconciliation.
 
 For a **user-visible feature this PR is opened by default** (don't wait to be
 asked — it's how dazewell gets the test build); **CI/bug/chore work stays
