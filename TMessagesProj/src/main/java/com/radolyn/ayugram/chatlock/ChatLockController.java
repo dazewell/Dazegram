@@ -73,6 +73,12 @@ public final class ChatLockController {
         // was removed from Telegram, don't strand a locked chat behind a screen nothing can unlock:
         // treat it as open. The flag stays in storage and starts working again once a passcode is set.
         if (SharedConfig.passcodeHash.length() == 0) return false;
+        return isFlagged(account, dialogId);
+    }
+
+    /** True when this dialog has a persisted require-password flag, regardless of app passcode state. */
+    public static synchronized boolean isFlagged(int account, long dialogId) {
+        if (dialogId == 0) return false;
         return locked(account).contains(dialogId);
     }
 

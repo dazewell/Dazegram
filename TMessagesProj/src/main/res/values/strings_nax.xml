@@ -47,6 +47,12 @@
     <string name="HideLastMessageEnable">Hide</string>
     <string name="HideLastMessageDisable">Don\'t hide</string>
     <string name="HideLastMessageDefault">Hidden message</string>
+    <string name="ChatPrivacy">Chat privacy</string>
+    <string name="ChatPrivacyTitle">Chat privacy</string>
+    <string name="ChatPrivacyPlaceholderText">Placeholder text</string>
+    <string name="ChatPrivacyRequirePassword">Require password</string>
+    <string name="ChatPrivacyPasscodeRequired">Set an app passcode to use this.</string>
+    <string name="ChatPrivacyPasscodeMissingLocked">Won\'t be enforced until you set an app passcode again.</string>
     <string name="ChatLockEnable">Require Password</string>
     <string name="ChatLockDisable">Don\'t Require Password</string>
     <string name="ChatLockEnabledHint">This chat will now ask for your passcode before it opens.</string>
