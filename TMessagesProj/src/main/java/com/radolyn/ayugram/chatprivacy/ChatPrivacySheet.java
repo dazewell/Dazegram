@@ -33,6 +33,7 @@ public final class ChatPrivacySheet {
         }
         final int account = fragment.getCurrentAccount();
         final Context context = fragment.getParentActivity();
+        final BottomSheet[] sheetRef = new BottomSheet[1];
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, fragment.getResourceProvider());
         builder.setApplyBottomPadding(false);
@@ -129,7 +130,10 @@ public final class ChatPrivacySheet {
                 if (!HideLastMessageController.isHidden(account, dialogId)) {
                     HideLastMessageController.setHidden(account, dialogId, true, null);
                 }
-                BulletinFactory.of(fragment).createSimpleBulletin(R.raw.passcode_lock, LocaleController.getString(R.string.ChatLockEnabledHint)).show();
+                if (sheetRef[0] != null) {
+                    BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                            .createSimpleBulletin(R.raw.passcode_lock, LocaleController.getString(R.string.ChatLockEnabledHint)).show();
+                }
             }
             refreshRef[0].run();
         });
@@ -137,6 +141,7 @@ public final class ChatPrivacySheet {
         refreshRef[0].run();
 
         builder.setCustomView(container);
-        fragment.showDialog(builder.create());
+        sheetRef[0] = builder.create();
+        fragment.showDialog(sheetRef[0]);
     }
 }

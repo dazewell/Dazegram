@@ -40,12 +40,8 @@
     <string name="VideoMessagesMute">Mute video messages</string>
     <string name="VideoMessagesUnmute">Unmute video messages</string>
     <string name="VideoMessagesCaptions">Closed captions</string>
-    <string name="HideLastMessage">Hide Last Message</string>
     <string name="Cut">Cut</string>
     <string name="HideLastMessageTitle">Hide last message</string>
-    <string name="HideLastMessageInfo">Replace this chat\'s last message in the chat list with a placeholder, so it can\'t be read at a glance. The real message is still shown when you open the chat.</string>
-    <string name="HideLastMessageEnable">Hide</string>
-    <string name="HideLastMessageDisable">Don\'t hide</string>
     <string name="HideLastMessageDefault">Hidden message</string>
     <string name="ChatPrivacy">Chat privacy</string>
     <string name="ChatPrivacyTitle">Chat privacy</string>
@@ -53,8 +49,6 @@
     <string name="ChatPrivacyRequirePassword">Require password</string>
     <string name="ChatPrivacyPasscodeRequired">Set an app passcode to use this.</string>
     <string name="ChatPrivacyPasscodeMissingLocked">Won\'t be enforced until you set an app passcode again.</string>
-    <string name="ChatLockEnable">Require Password</string>
-    <string name="ChatLockDisable">Don\'t Require Password</string>
     <string name="ChatLockEnabledHint">This chat will now ask for your passcode before it opens.</string>
     <string name="EnableSaveDeletedMessages">Save Deleted Messages</string>
     <string name="DeletedMessage">deleted</string>
