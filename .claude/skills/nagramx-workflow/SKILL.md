@@ -212,13 +212,13 @@ code are not.
    Put the instrumentation in its **own clearly-marked commit** using a
    **single tag literal chosen up front and written verbatim in the PR body**
    (e.g. `NAX_SMOKE_<slug>`) — not merely "a distinctive tag" described in
-   prose, because the exact string is what the removal check in step 9 greps
-   for, and a check against a tag nobody wrote down anywhere is a check
-   against nothing. It comes back out once the smoke build in step 9 has
-   answered the reachability question — as a new commit, never folded into the
-   feature commits — and whoever verifies the branch before it lands confirms
-   the literal tag is gone. This is proportional to the smoke build below: a
-   change with no user-visible surface earns neither.
+   prose, because the exact string is what whoever verifies the branch greps
+   for before it lands, and a check against a tag nobody wrote down anywhere
+   is a check against nothing. It comes back out once the smoke build below
+   has answered the reachability question — as a new commit, never folded into
+   the feature commits — and whoever verifies the branch before it lands
+   confirms the literal tag is gone. This is proportional to the smoke build
+   below: a change with no user-visible surface earns neither.
 
 4. **Compile gate (local when the toolchain is there, CI when it isn't).**
    After any Java/Kotlin edit, run the compile check from the repo root:
