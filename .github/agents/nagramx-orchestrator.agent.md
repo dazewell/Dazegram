@@ -697,10 +697,14 @@ Diagnostics:    required | not required   (required only when the change adds
                   UI-facing change that reuses an existing, already-reachable
                   decision point can need a smoke build without diagnostics.
                   When required: a clearly-marked temporary logging commit at
-                  that decision point, non-sensitive operands only, tagged with
-                  the literal `NAX_SMOKE_<slug>` recorded verbatim in the PR
-                  body so your Phase 4 grep has an exact string to check for,
-                  removed as its own commit once the smoke build answers the
+                  that decision point, non-sensitive operands only, using
+                  `Log.e`/`Log.i`/`Log.w` only (see `nagramx-workflow` step 3
+                  for why `Log.v`/`Log.d` don't survive to the device), tagged
+                  with a literal in the `NAX_SMOKE_<slug>` pattern — `<slug>`
+                  replaced with this change's actual slug, not left as a
+                  placeholder — recorded verbatim in the PR body so your
+                  Phase 4 grep has an exact string to check for, removed as
+                  its own commit once the smoke build answers the
                   reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
                   implementer never has to guess. If required, say who requests
