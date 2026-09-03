@@ -209,6 +209,16 @@ code are not.
    resulting silence in `adb logcat` came within a hair of being read as
    evidence about the feature rather than about the log level.
 
+   **Place diagnostics where you are uncertain, not inside the path you
+   expect to be taken.** Instrumentation inside an assumed path can only
+   confirm that assumption; when the assumption is wrong it yields silence,
+   which is indistinguishable from broken tooling and teaches nothing. When
+   the question is "which code path ran," log a stack trace at the observed
+   symptom — `Log.e(TAG, "<label>", new Throwable())` where the user actually
+   sees something happen — rather than a boolean at the place you believe
+   produced it: a stack trace names the real call chain in one device run,
+   where a probe inside a guessed path can take several.
+
    Put the instrumentation in its **own clearly-marked commit** using a
    **single tag literal chosen up front and written verbatim in the PR body**
    (e.g. `NAX_SMOKE_<slug>`) — not merely "a distinctive tag" described in

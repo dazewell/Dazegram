@@ -103,7 +103,10 @@ branch was taken instead of the value. **Use `Log.e`, `Log.i` or `Log.w` —
 never `Log.v` or `Log.d`**, which `TMessagesProj/proguard-rules.pro` strips
 from the release build the smoke build actually installs; see
 `nagramx-workflow` step 3 for why the local compile gate can't catch that
-mistake. Put it in its **own commit**, clearly
+mistake. Place it where you're uncertain the flow reaches, not inside the
+path you expect — see `nagramx-workflow` step 3 for why a probe in an
+assumed path only ever produces silence when that assumption is wrong. Put
+it in its **own commit**, clearly
 marked, using a **single tag literal you pick up front** (e.g.
 `NAX_SMOKE_<slug>`) and write **verbatim in the PR body** — the orchestrator's
 removal check greps for that exact string, so describing the tag in prose
