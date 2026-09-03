@@ -106,18 +106,28 @@ public final class NotificationCoverController {
         return dialogId != 0 && prefs(account).getBoolean(KEY_ENABLED + dialogId, false);
     }
 
-    /** Stored persona id, or the safe fallback for an unknown/missing value. Never writes. */
+    /** Stored persona id, or the safe fallback for an unknown/missing/wrong-typed value. Never writes. */
     public static int resolvePersonaId(int account, long dialogId) {
-        int id = prefs(account).getInt(KEY_PERSONA + dialogId, -1);
+        int id;
+        try {
+            id = prefs(account).getInt(KEY_PERSONA + dialogId, -1);
+        } catch (ClassCastException e) {
+            // a wrong-typed or future-format stored value reads as the safe persona, without rewriting it
+            return SAFE_PERSONA_ID;
+        }
         return personaById(id) != null ? id : SAFE_PERSONA_ID;
     }
 
-    /** Assigns a stable persona if none is stored yet, and returns the effective id. */
+    /**
+     * Assigns a stable persona only when none is stored yet, and returns the effective id. A stored
+     * value is never overwritten: a valid one is honored, and an invalid/wrong-typed/future one falls
+     * back to the safe persona at read time (via {@link #resolvePersonaId}) without mutation, so a
+     * downgrade-then-re-enable keeps the user's stored choice.
+     */
     public static int assignPersonaIfAbsent(int account, long dialogId) {
         SharedPreferences p = prefs(account);
-        int id = p.getInt(KEY_PERSONA + dialogId, -1);
-        if (personaById(id) != null) {
-            return id;
+        if (p.contains(KEY_PERSONA + dialogId)) {
+            return resolvePersonaId(account, dialogId);
         }
         int picked = POOL[(int) Math.floorMod(dialogId, POOL.length)].id;
         p.edit().putInt(KEY_PERSONA + dialogId, picked).apply();
@@ -237,11 +247,6 @@ public final class NotificationCoverController {
         return id;
     }
 
-    /** Generic summary channel id, exposed so a covered summary builder never adopts a real per-chat channel. */
-    public static String summaryChannel(int account) {
-        return summaryChannelId(account);
-    }
-
     // ---- Fresh, allow-listed builders ----
 
     private static PendingIntent inertIntent(int account, int requestCode) {
@@ -263,38 +268,41 @@ public final class NotificationCoverController {
     }
 
     /**
-     * Builds and posts the fresh disguised child. Constructed from an allow-list only; never
-     * carries real identity, and fails closed (logs, posts nothing) rather than falling back
-     * to the real builder. Returns true only when {@code notify} actually posted, so the caller
-     * records the cover as live only when it is — a failed post is left unrecorded and gets
-     * cancelled by reconciliation rather than masking a stale cover at the same tag.
+     * Builds and posts the fresh disguised child. The COMPLETE operation — cover channel, safe intent,
+     * builder, build and tagged notify — runs inside one try, so a preparation failure is caught the same
+     * as a {@code notify} failure and reported to the caller, never leaving a half-built state or falling
+     * back to the real builder. Returns true only when the tagged post actually landed, so the caller
+     * records the cover as live only then and a failed post is reconciled away rather than masking a stale
+     * cover at the same tag. Catches {@link Exception} (not {@link Throwable}): an {@link Error} unwinds the
+     * covered branch and still cannot reach the real-child path, so masking VM-level failures would help
+     * nothing while hiding ordinary preparation failures.
      */
     public static boolean postChild(int account, long dialogId, int count, boolean grouped, String group) {
         Context ctx = ApplicationLoader.applicationContext;
-        int personaId = resolvePersonaId(account, dialogId);
-        Persona p = personaById(personaId);
-        if (p == null) p = personaById(SAFE_PERSONA_ID);
-        int internalId = internalId(dialogId);
-
-        NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
-                .setContentTitle(LocaleController.getString(p.labelRes))
-                .setContentText(LocaleController.formatString(p.bodyRes, count))
-                .setSmallIcon(R.drawable.nax_cover_notification)
-                .setNumber(count)
-                .setAutoCancel(true)
-                .setOnlyAlertOnce(true)
-                .setShowWhen(false)
-                .setContentIntent(inertIntent(account, internalId))
-                .setCategory(NotificationCompat.CATEGORY_STATUS)
-                .setPriority(NotificationCompat.PRIORITY_LOW);
-        if (grouped) {
-            b.setGroup(group);
-            b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
-        }
         try {
+            int personaId = resolvePersonaId(account, dialogId);
+            Persona p = personaById(personaId);
+            if (p == null) p = personaById(SAFE_PERSONA_ID);
+            int internalId = internalId(dialogId);
+
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
+                    .setContentTitle(LocaleController.getString(p.labelRes))
+                    .setContentText(LocaleController.formatString(p.bodyRes, count))
+                    .setSmallIcon(R.drawable.nax_cover_notification)
+                    .setNumber(count)
+                    .setAutoCancel(true)
+                    .setOnlyAlertOnce(true)
+                    .setShowWhen(false)
+                    .setContentIntent(inertIntent(account, internalId))
+                    .setCategory(NotificationCompat.CATEGORY_STATUS)
+                    .setPriority(NotificationCompat.PRIORITY_LOW);
+            if (grouped) {
+                b.setGroup(group);
+                b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
+            }
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
             return true;
-        } catch (Throwable t) {
+        } catch (Exception t) {
             // Fail closed: a covered chat must never fall back to the real notification.
             FileLog.e("nax cover child post failed", t);
             return false;
