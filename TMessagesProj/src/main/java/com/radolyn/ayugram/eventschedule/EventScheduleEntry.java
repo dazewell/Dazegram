@@ -9,6 +9,9 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -44,6 +47,8 @@ public final class EventScheduleEntry {
     // for every runtime writer). Single source of truth shared with the sheet's top slider stop
     // (EventScheduleHelper) so the two can't drift apart.
     public static final int MAX_DELAY_SECONDS = 30;
+    public static final int MAX_PATTERN_COUNT = 5;
+    public static final int MAX_PATTERN_LENGTH = 512;
 
     // A user-typed regex has no timeout; cap the input it runs against so a pathological
     // pattern on a huge caption can't stall the queue it's evaluated on.
@@ -61,7 +66,10 @@ public final class EventScheduleEntry {
     // between distinct randomIds and its resolved server ids -- see the reconcile's injectivity guard.
     public final ArrayList<Long> randomIds = new ArrayList<>();
     public int types;
+    // Legacy scalar pattern field, kept for backward compatibility with older app builds.
     public String pattern = "";
+    // Ordered display list of patterns (trim-normalized, blanks stripped), up to MAX_PATTERN_COUNT.
+    public final ArrayList<String> patterns = new ArrayList<>();
     public boolean regex;
     public int delaySeconds;
     public int fallbackDate;
@@ -91,6 +99,52 @@ public final class EventScheduleEntry {
         return dialogId + "_" + createdAt;
     }
 
+    public static String normalizePattern(String value) {
+        if (value == null) return "";
+        String trimmed = value.trim();
+        if (trimmed.length() > MAX_PATTERN_LENGTH) {
+            return trimmed.substring(0, MAX_PATTERN_LENGTH);
+        }
+        return trimmed;
+    }
+
+    private static ArrayList<String> normalizePatterns(List<String> source, boolean dedupe) {
+        ArrayList<String> out = new ArrayList<>();
+        HashSet<String> seen = dedupe ? new HashSet<>() : null;
+        if (source == null) return out;
+        for (int i = 0; i < source.size(); i++) {
+            String normalized = normalizePattern(source.get(i));
+            if (TextUtils.isEmpty(normalized)) continue;
+            if (dedupe && !seen.add(normalized)) continue;
+            out.add(normalized);
+            if (out.size() >= MAX_PATTERN_COUNT) break;
+        }
+        return out;
+    }
+
+    public static ArrayList<String> normalizeCommittedPatterns(List<String> source) {
+        return normalizePatterns(source, true);
+    }
+
+    public ArrayList<String> normalizedPatterns() {
+        ArrayList<String> out = normalizePatterns(patterns, false);
+        if (!out.isEmpty()) return out;
+        String legacy = normalizePattern(pattern);
+        if (!TextUtils.isEmpty(legacy)) out.add(legacy);
+        return out;
+    }
+
+    public void setPatterns(List<String> values) {
+        ArrayList<String> normalized = normalizePatterns(values, false);
+        patterns.clear();
+        patterns.addAll(normalized);
+        pattern = normalized.isEmpty() ? "" : normalized.get(0);
+    }
+
+    public boolean hasAnyPattern() {
+        return !normalizedPatterns().isEmpty();
+    }
+
     // A well-formed entry holds only strictly positive, server-addressable ids in serverIds and only
     // negative correlation echoes in localIds. A serverId <= 0 means an in-flight local id was bound as
     // if the server had issued it (the trigger reports live but can never fire); a localId >= 0 is the
@@ -107,7 +161,17 @@ public final class EventScheduleEntry {
     }
 
     public String triggerKey() {
-        return types + ":" + regex + ":" + (pattern == null ? "" : pattern);
+        // Queue/group identity includes mode and the normalized pattern SET; set order is canonicalized
+        // and injectively length-prefixed so arbitrary user text can never collide by delimiter tricks.
+        ArrayList<String> sorted = new ArrayList<>(new HashSet<>(normalizedPatterns()));
+        Collections.sort(sorted);
+        StringBuilder encoded = new StringBuilder();
+        encoded.append(sorted.size()).append(':');
+        for (int i = 0; i < sorted.size(); i++) {
+            String value = sorted.get(i);
+            encoded.append(value.length()).append('#').append(value);
+        }
+        return types + ":" + regex + ":" + encoded;
     }
 
     public boolean matchesType(MessageObject message, CharSequence text) {
@@ -136,17 +200,19 @@ public final class EventScheduleEntry {
      */
     static final class PatternState {
         final long revision;
-        final String pattern;
         final boolean regex;
-        final Pattern compiled; // null until compiled, or if compilation failed
-        final boolean failed;
+        final String[] patterns;
+        final Pattern[] compiled;
+        final boolean[] failed;
+        final boolean compiledReady;
 
-        PatternState(long revision, String pattern, boolean regex, Pattern compiled, boolean failed) {
+        PatternState(long revision, boolean regex, String[] patterns, Pattern[] compiled, boolean[] failed, boolean compiledReady) {
             this.revision = revision;
-            this.pattern = pattern;
             this.regex = regex;
+            this.patterns = patterns;
             this.compiled = compiled;
             this.failed = failed;
+            this.compiledReady = compiledReady;
         }
     }
 
@@ -169,7 +235,9 @@ public final class EventScheduleEntry {
     PatternState capturePatternState() {
         PatternState current = patternState.get();
         if (current == null) {
-            current = new PatternState(revision, pattern, regex, null, false);
+            ArrayList<String> values = normalizedPatterns();
+            String[] p = values.toArray(new String[0]);
+            current = new PatternState(revision, regex, p, new Pattern[p.length], new boolean[p.length], false);
             if (!patternState.compareAndSet(null, current)) {
                 current = patternState.get();
             }
@@ -194,7 +262,9 @@ public final class EventScheduleEntry {
      * no matter when it runs relative to this swap.
      */
     void resetPatternState() {
-        patternState.set(new PatternState(revision, pattern, regex, null, false));
+        ArrayList<String> values = normalizedPatterns();
+        String[] p = values.toArray(new String[0]);
+        patternState.set(new PatternState(revision, regex, p, new Pattern[p.length], new boolean[p.length], false));
     }
 
     /**
@@ -204,23 +274,27 @@ public final class EventScheduleEntry {
      *              object, so the pattern that was matched and the compiled form used are
      *              always guaranteed to be the same generation.
      */
-    public boolean matchesPattern(PatternState state, CharSequence text) {
-        if (TextUtils.isEmpty(state.pattern)) return true;
-        if (text == null) return false;
-
-        if (state.compiled == null && !state.failed) {
+    public int matchPatternIndex(PatternState state, CharSequence text) {
+        if (text == null || state.patterns.length == 0) return -1;
+        if (!state.compiledReady) {
             state = compileAndPublish(state);
         }
-        if (state.failed) return false;
-
+        if (state.patterns.length == 0) return -1;
         CharSequence input = text.length() > MAX_MATCH_LEN ? text.subSequence(0, MAX_MATCH_LEN) : text;
         // Both modes hit anywhere in the text: a trigger word is nearly always part of a longer
         // message, and anchoring is what regex mode is for.
-        return state.compiled.matcher(input).find();
+        for (int i = 0; i < state.patterns.length; i++) {
+            if (state.failed[i]) continue;
+            Pattern compiled = state.compiled[i];
+            if (compiled != null && compiled.matcher(input).find()) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
-     * Compiles {@code state.pattern}/{@code state.regex} and tries to publish the compiled
+     * Compiles {@code state.patterns}/{@code state.regex} and tries to publish the compiled
      * result back onto {@link #patternState} with {@code compareAndSet(state, ...)} -- an
      * atomic swap against the exact object this compile started from, not a separate
      * check-then-write. If an edit has already replaced {@link #patternState} with a newer
@@ -233,20 +307,35 @@ public final class EventScheduleEntry {
      * happens atomically against the captured object or not at all.
      */
     private PatternState compileAndPublish(PatternState state) {
-        Pattern compiledPattern = null;
-        boolean failed = false;
-        try {
-            int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
-            // A glob's * and ? have no way to opt into crossing line breaks, and code blocks
-            // and quotes put text on its own line; a regex author can ask for the same with (?s).
-            if (!state.regex) flags |= Pattern.DOTALL;
-            compiledPattern = Pattern.compile(state.regex ? state.pattern : globToRegex(state.pattern), flags);
-        } catch (Throwable t) {
-            failed = true;
+        Pattern[] compiled = new Pattern[state.patterns.length];
+        boolean[] failed = new boolean[state.patterns.length];
+        for (int i = 0; i < state.patterns.length; i++) {
+            try {
+                compiled[i] = compilePattern(state.patterns[i], state.regex);
+            } catch (Throwable t) {
+                failed[i] = true;
+            }
         }
-        PatternState compiledState = new PatternState(state.revision, state.pattern, state.regex, compiledPattern, failed);
+        PatternState compiledState = new PatternState(state.revision, state.regex, state.patterns, compiled, failed, true);
         patternState.compareAndSet(state, compiledState);
         return compiledState;
+    }
+
+    private static Pattern compilePattern(String pattern, boolean regex) {
+        int flags = Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
+        // A glob's * and ? have no way to opt into crossing line breaks, and code blocks and quotes put
+        // text on its own line; a regex author can ask for the same with (?s).
+        if (!regex) flags |= Pattern.DOTALL;
+        return Pattern.compile(regex ? pattern : globToRegex(pattern), flags);
+    }
+
+    public static boolean isPatternValid(String pattern, boolean regex) {
+        try {
+            compilePattern(normalizePattern(pattern), regex);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private static String globToRegex(String glob) {
@@ -272,6 +361,14 @@ public final class EventScheduleEntry {
 
     public CharSequence summary(boolean withDelay) {
         ArrayList<String> parts = new ArrayList<>();
+        ArrayList<String> p = normalizedPatterns();
+        if (!p.isEmpty()) {
+            String first = p.get(0);
+            if (p.size() > 1) {
+                first = first + " " + LocaleController.formatString(R.string.EventSchedulePatternMore, p.size() - 1);
+            }
+            parts.add(first);
+        }
         StringBuilder typeText = new StringBuilder();
         appendType(typeText, (types & TYPE_VOICE) != 0, R.string.AttachAudio);
         appendType(typeText, (types & TYPE_ROUND) != 0, R.string.EventScheduleTypeRound);
@@ -279,7 +376,6 @@ public final class EventScheduleEntry {
         appendType(typeText, (types & TYPE_PHOTO) != 0, R.string.AttachPhoto);
         appendType(typeText, (types & TYPE_TEXT) != 0, R.string.EventScheduleTypeText);
         if (typeText.length() > 0) parts.add(typeText.toString());
-        if (!TextUtils.isEmpty(pattern)) parts.add(pattern);
         if (withDelay && delaySeconds > 0) parts.add("+" + delaySeconds + "s");
         return TextUtils.join(" \u00b7 ", parts);
     }
@@ -293,7 +389,7 @@ public final class EventScheduleEntry {
     public String toJson() {
         try {
             JSONObject o = new JSONObject();
-            o.put("v", 1);
+            o.put("v", 2);
             JSONArray ids = new JSONArray();
             for (int id : serverIds) ids.put(id);
             o.put("ids", ids);
@@ -304,7 +400,14 @@ public final class EventScheduleEntry {
             for (long id : randomIds) randoms.put(id);
             o.put("random_ids", randoms);
             o.put("types", types);
-            o.put("pattern", pattern == null ? "" : pattern);
+            ArrayList<String> normalized = normalizedPatterns();
+            JSONArray patternsJson = new JSONArray();
+            for (int i = 0; i < normalized.size(); i++) {
+                patternsJson.put(normalized.get(i));
+            }
+            o.put("patterns", patternsJson);
+            // Keep a scalar for old builds: they degrade to the first pattern instead of "no text".
+            o.put("pattern", normalized.isEmpty() ? "" : normalized.get(0));
             o.put("regex", regex);
             o.put("delay", delaySeconds);
             o.put("fallback", fallbackDate);
@@ -336,7 +439,28 @@ public final class EventScheduleEntry {
                 for (int i = 0; i < randoms.length(); i++) e.randomIds.add(randoms.getLong(i));
             }
             e.types = o.optInt("types");
-            e.pattern = o.optString("pattern", "");
+            ArrayList<String> loaded = new ArrayList<>();
+            JSONArray patternsJson = o.optJSONArray("patterns");
+            boolean patternsArrayValid = patternsJson != null;
+            if (patternsJson != null) {
+                for (int i = 0; i < patternsJson.length() && loaded.size() < MAX_PATTERN_COUNT; i++) {
+                    Object raw = patternsJson.opt(i);
+                    if (!(raw instanceof String)) {
+                        patternsArrayValid = false;
+                        break;
+                    }
+                    String normalized = normalizePattern((String) raw);
+                    if (!TextUtils.isEmpty(normalized)) loaded.add(normalized);
+                }
+            }
+            if (!patternsArrayValid) {
+                loaded.clear();
+            }
+            if (patternsJson == null || !patternsArrayValid) {
+                String legacy = normalizePattern(o.optString("pattern", ""));
+                if (!TextUtils.isEmpty(legacy)) loaded.add(legacy);
+            }
+            e.setPatterns(loaded);
             e.regex = o.optBoolean("regex");
             // NagramX: clamp legacy disk data on the way in -- a trigger armed before this cap existed, or
             // before it was lowered, can carry a delay above the current MAX_DELAY_SECONDS. This is the

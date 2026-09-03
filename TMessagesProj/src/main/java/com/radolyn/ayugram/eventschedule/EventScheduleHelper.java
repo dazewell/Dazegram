@@ -28,7 +28,7 @@ import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.SeekBarView;
 
-import java.util.regex.Pattern;
+import java.util.ArrayList;
 
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
@@ -235,7 +235,7 @@ public final class EventScheduleHelper {
         // and in the pre-existing multi-owner case that mutation is a destructive turn-off.
         boolean userTouchedTrigger;
         int types;
-        String pattern;
+        final ArrayList<String> patterns = new ArrayList<>();
         boolean regex;
         // Always kept within [0, MAX_DELAY_SECONDS] -- clamped at seed time below, and enforced again by
         // EventScheduleStore.persist regardless of what this ends up carrying. Not necessarily a member of
@@ -244,6 +244,23 @@ public final class EventScheduleHelper {
         String pendingEntryKey;
 
         TextView chip;
+
+        private static final class PatternFieldRow {
+            final LinearLayout container;
+            final FrameLayout fieldBox;
+            final EditTextBoldCursor field;
+            final TextView removeButton;
+            final TextView messageView;
+
+            PatternFieldRow(LinearLayout container, FrameLayout fieldBox, EditTextBoldCursor field,
+                            TextView removeButton, TextView messageView) {
+                this.container = container;
+                this.fieldBox = fieldBox;
+                this.field = field;
+                this.removeButton = removeButton;
+                this.messageView = messageView;
+            }
+        }
 
         Row(int account, long dialogId, int[] editIds, int[] editLocalIds, Runnable onChanged) {
             this.account = account;
@@ -263,13 +280,16 @@ public final class EventScheduleHelper {
                 EventScheduleEntry existing = seed.entry;
                 enabled = true;
                 types = existing.types;
-                pattern = existing.pattern;
+                patterns.addAll(existing.normalizedPatterns());
                 regex = existing.regex;
                 delay = existing.delaySeconds;
             } else {
                 NaConfig cfg = NaConfig.INSTANCE;
                 types = cfg.getEventScheduleLastTypes().Int();
-                pattern = cfg.getEventScheduleLastPattern().String();
+                String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
+                if (!TextUtils.isEmpty(firstPattern)) {
+                    patterns.add(firstPattern);
+                }
                 regex = cfg.getEventScheduleLastPatternRegex().Bool();
                 delay = cfg.getEventScheduleLastDelay().Int();
             }
@@ -291,10 +311,208 @@ public final class EventScheduleHelper {
         private CharSequence summary() {
             EventScheduleEntry e = new EventScheduleEntry();
             e.types = types;
-            e.pattern = pattern == null ? "" : pattern;
+            e.setPatterns(EventScheduleEntry.normalizeCommittedPatterns(patterns));
             e.delaySeconds = delay;
             CharSequence s = e.summary(true);
             return TextUtils.isEmpty(s) ? getString(R.string.EventScheduleTriggerOff) : s;
+        }
+
+        private static PatternFieldRow createPatternFieldRow(Context context, String initialText) {
+            LinearLayout container = new LinearLayout(context);
+            container.setOrientation(LinearLayout.VERTICAL);
+
+            FrameLayout box = new FrameLayout(context);
+            box.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection)));
+
+            EditTextBoldCursor field = new EditTextBoldCursor(context);
+            field.setBackground(null);
+            field.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+            field.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+            field.setHintTextColor(Theme.getColor(Theme.key_dialogSearchHint));
+            field.setHint(getString(R.string.EventSchedulePatternHint));
+            field.setCursorSize(dp(18));
+            field.setCursorColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
+            field.setHandlesColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
+            field.setSingleLine(true);
+            field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+            field.setImeOptions(EditorInfo.IME_ACTION_NEXT);
+            field.setMinimumHeight(dp(48));
+            field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(EventScheduleEntry.MAX_PATTERN_LENGTH)});
+            int startPad = dp(12);
+            int endPad = dp(60); // keep end inset reserved even for a sole row (no reflow when remove appears)
+            if (org.telegram.messenger.LocaleController.isRTL) {
+                field.setPadding(endPad, dp(10), startPad, dp(10));
+            } else {
+                field.setPadding(startPad, dp(10), endPad, dp(10));
+            }
+            field.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
+            field.setText(initialText);
+            box.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            TextView remove = new TextView(context);
+            remove.setText("\u2715");
+            remove.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
+            remove.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+            remove.setGravity(Gravity.CENTER);
+            remove.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
+            remove.setFocusable(false);
+            remove.setFocusableInTouchMode(false);
+            remove.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            int removeGravity = Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
+            box.addView(remove, LayoutHelper.createFrame(48, 48, removeGravity));
+
+            TextView message = new TextView(context);
+            message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+            message.setVisibility(android.view.View.GONE);
+            int textGravity = org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT;
+            message.setGravity(textGravity);
+            message.setPadding(dp(2), dp(4), dp(2), 0);
+
+            container.addView(box, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            container.addView(message, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            return new PatternFieldRow(container, box, field, remove, message);
+        }
+
+        private static void clearRowMessage(PatternFieldRow row) {
+            row.messageView.setText(null);
+            row.messageView.setVisibility(android.view.View.GONE);
+        }
+
+        private static void showRowMessage(PatternFieldRow row, String message, boolean error) {
+            row.messageView.setText(message);
+            row.messageView.setTextColor(Theme.getColor(error ? Theme.key_text_RedRegular : Theme.key_dialogTextGray3));
+            row.messageView.setVisibility(android.view.View.VISIBLE);
+        }
+
+        private static void updateRowAccessibility(ArrayList<PatternFieldRow> rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                rows.get(i).removeButton.setContentDescription(
+                        org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleRemovePattern, i + 1));
+            }
+        }
+
+        private static void updateAddRow(ArrayList<PatternFieldRow> rows, org.telegram.ui.Cells.TextCell addRow, TextView footer) {
+            int remaining = EventScheduleEntry.MAX_PATTERN_COUNT - rows.size();
+            addRow.setVisibility(remaining > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (remaining > 0) {
+                footer.setText(org.telegram.messenger.LocaleController.formatPluralString("EventSchedulePatternSlotsLeft", remaining));
+            } else {
+                footer.setText(getString(R.string.EventSchedulePatternSlotsMax));
+            }
+        }
+
+        private static boolean hasAnyPattern(ArrayList<PatternFieldRow> rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                if (!TextUtils.isEmpty(EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString()))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // NagramX: TextCheckCell.setEnabled(boolean) is the only override that reaches the Switch,
+        // but addCheckItem wires the switch's own click straight back to performClick() on the row,
+        // which ignores the enabled flag -- so the single-arg call alone leaves a dimmed row that
+        // still toggles. setEnabled(boolean, animators) drives the alpha fade but calls super, not the
+        // single-arg override, so both calls are required together.
+        private static void syncRegexEnabled(ArrayList<PatternFieldRow> rows, TextCheckCell regexCell) {
+            boolean hasPattern = hasAnyPattern(rows);
+            if (hasPattern == regexCell.isEnabled()) return;
+            regexCell.setTextAndValueAndCheck(
+                    getString(R.string.EventScheduleUseRegex),
+                    getString(hasPattern ? R.string.EventScheduleRegexInfo : R.string.EventScheduleRegexNeedsPattern),
+                    regexCell.isChecked(), true, true);
+            regexCell.setEnabled(hasPattern);
+            regexCell.setEnabled(hasPattern, null);
+        }
+
+        private static EditTextBoldCursor focusedField(ArrayList<PatternFieldRow> rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                if (rows.get(i).field.isFocused()) return rows.get(i).field;
+            }
+            return null;
+        }
+
+        private static void restartFocusedInput(Context context, ArrayList<PatternFieldRow> rows) {
+            EditTextBoldCursor focused = focusedField(rows);
+            if (focused == null) return;
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) context.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.restartInput(focused);
+        }
+
+        private static void focusRow(EditTextBoldCursor field) {
+            field.requestFocus();
+            org.telegram.messenger.AndroidUtilities.showKeyboard(field);
+            field.post(() -> field.requestRectangleOnScreen(new android.graphics.Rect(0, 0, field.getWidth(), field.getHeight()), true));
+        }
+
+        private static boolean validateRegexRow(ArrayList<PatternFieldRow> rows, PatternFieldRow row) {
+            String value = EventScheduleEntry.normalizePattern(row.field.getText().toString());
+            if (TextUtils.isEmpty(value)) {
+                clearRowMessage(row);
+                return true;
+            }
+            if (!EventScheduleEntry.isPatternValid(value, true)) {
+                int index = rows.indexOf(row) + 1;
+                showRowMessage(row, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleInvalidRegexRow, index), true);
+                return false;
+            }
+            clearRowMessage(row);
+            return true;
+        }
+
+        private static void showDuplicateNoticeIfAny(ArrayList<PatternFieldRow> rows, PatternFieldRow row) {
+            String value = EventScheduleEntry.normalizePattern(row.field.getText().toString());
+            if (TextUtils.isEmpty(value)) {
+                clearRowMessage(row);
+                return;
+            }
+            int rowIndex = rows.indexOf(row);
+            for (int i = 0; i < rowIndex; i++) {
+                String before = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
+                if (value.equals(before)) {
+                    showRowMessage(row, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleDuplicatePatternRow, rowIndex + 1), false);
+                    return;
+                }
+            }
+            clearRowMessage(row);
+        }
+
+        private static void clearAllRowMessages(ArrayList<PatternFieldRow> rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                clearRowMessage(rows.get(i));
+            }
+        }
+
+        private static void updateImeActions(Context context, ArrayList<PatternFieldRow> rows, Runnable addRowAction, Runnable doneAction) {
+            for (int i = 0; i < rows.size(); i++) {
+                PatternFieldRow row = rows.get(i);
+                boolean last = i == rows.size() - 1;
+                int action = (last && rows.size() >= EventScheduleEntry.MAX_PATTERN_COUNT)
+                        ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_NEXT;
+                row.field.setImeOptions(action);
+                row.field.setOnEditorActionListener((v, actionId, event) -> {
+                    int index = rows.indexOf(row);
+                    if (index < 0) return false;
+                    if (actionId == EditorInfo.IME_ACTION_DONE) {
+                        doneAction.run();
+                        return true;
+                    }
+                    if (actionId != EditorInfo.IME_ACTION_NEXT) return false;
+                    if (index < rows.size() - 1) {
+                        focusRow(rows.get(index + 1).field);
+                        return true;
+                    }
+                    if (rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT) {
+                        addRowAction.run();
+                    } else {
+                        doneAction.run();
+                    }
+                    return true;
+                });
+            }
+            restartFocusedInput(context, rows);
         }
 
         void openSheet(Context context) {
@@ -310,48 +528,125 @@ public final class EventScheduleHelper {
 
             builder.addTitle(getString(R.string.EventScheduleSectionPattern), false, getString(R.string.EventScheduleMatchInfo));
 
-            FrameLayout patternBox = new FrameLayout(context);
-            patternBox.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection)));
-            EditTextBoldCursor patternField = new EditTextBoldCursor(context);
-            patternField.setBackground(null);
-            patternField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
-            patternField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
-            patternField.setHintTextColor(Theme.getColor(Theme.key_dialogSearchHint));
-            patternField.setHint(getString(R.string.EventSchedulePatternHint));
-            patternField.setCursorSize(dp(18));
-            patternField.setCursorColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
-            patternField.setHandlesColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
-            patternField.setSingleLine(true);
-            patternField.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-            patternField.setImeOptions(EditorInfo.IME_ACTION_DONE);
-            patternField.setPadding(dp(12), dp(10), dp(12), dp(10));
-            patternField.setMinimumHeight(dp(48));
-            patternField.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
-            patternField.setText(pattern);
-            patternBox.addView(patternField, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-            builder.addCustomView(patternBox);
-            patternBox.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 21, 4, 21, 8));
+            LinearLayout patternArea = new LinearLayout(context);
+            patternArea.setOrientation(LinearLayout.VERTICAL);
+            patternArea.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 21, 4, 21, 8));
+            builder.addCustomView(patternArea);
+
+            LinearLayout patternRowsContainer = new LinearLayout(context);
+            patternRowsContainer.setOrientation(LinearLayout.VERTICAL);
+            patternArea.addView(patternRowsContainer, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+            final ArrayList<PatternFieldRow> rows = new ArrayList<>();
+            ArrayList<String> initial = new ArrayList<>(patterns);
+            if (initial.isEmpty()) {
+                initial.add("");
+            }
+            for (int i = 0; i < initial.size() && rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT; i++) {
+                PatternFieldRow row = createPatternFieldRow(context, initial.get(i));
+                rows.add(row);
+                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, i == initial.size() - 1 ? 0 : 8));
+            }
+
+            org.telegram.ui.Cells.TextCell addPatternRow = new org.telegram.ui.Cells.TextCell(context);
+            addPatternRow.setBackground(Theme.getSelectorDrawable(false));
+            addPatternRow.setTextAndIcon(getString(R.string.EventScheduleAddPattern), R.drawable.msg_add, false);
+            patternArea.addView(addPatternRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 0, 2, 0, 0));
+
+            TextView patternFooter = new TextView(context);
+            patternFooter.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+            patternFooter.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
+            patternFooter.setGravity(org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
+            patternFooter.setPadding(dp(2), dp(4), dp(2), dp(2));
+            patternArea.addView(patternFooter, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
             TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
 
-            // NagramX: build the field, seed its text, THEN build regexCell, THEN attach the watcher --
-            // in that order. Attaching the watcher before regexCell exists would have setText() above
-            // fire it against a still-null cell and crash; syncRegexEnabled is the one place that
-            // decides the dependency state, called here for the initial paint and again on every edit
-            // so the two can never drift apart.
-            patternField.addTextChangedListener(new TextWatcher() {
-                @Override
-                public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-
-                @Override
-                public void onTextChanged(CharSequence s, int start, int before, int count) {}
-
-                @Override
-                public void afterTextChanged(Editable s) {
-                    syncRegexEnabled(patternField, regexCell);
+            // NagramX: build initial rows, THEN regexCell, THEN attach watchers and sync once -- appended
+            // rows are allowed to attach after regexCell exists.
+            final Runnable[] doneActionHolder = new Runnable[]{() -> {}};
+            final Runnable[] addRowActionHolder = new Runnable[]{() -> {}};
+            final java.util.function.Consumer<PatternFieldRow> removeRow = (row) -> {
+                int index = rows.indexOf(row);
+                if (index < 0) return;
+                boolean hadFocus = row.field.isFocused();
+                if (rows.size() == 1) {
+                    row.field.setText("");
+                    clearRowMessage(row);
+                    syncRegexEnabled(rows, regexCell);
+                    updateAddRow(rows, addPatternRow, patternFooter);
+                    return;
                 }
-            });
-            syncRegexEnabled(patternField, regexCell);
+                patternRowsContainer.removeView(row.container);
+                rows.remove(index);
+                clearAllRowMessages(rows);
+                updateRowAccessibility(rows);
+                syncRegexEnabled(rows, regexCell);
+                updateAddRow(rows, addPatternRow, patternFooter);
+                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+                if (hadFocus) {
+                    int next = Math.max(0, Math.min(index, rows.size() - 1));
+                    focusRow(rows.get(next).field);
+                }
+            };
+
+            java.util.function.Consumer<PatternFieldRow> attachWatchers = (row) -> {
+                row.field.addTextChangedListener(new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+
+                    @Override
+                    public void onTextChanged(CharSequence s, int start, int before, int count) {}
+
+                    @Override
+                    public void afterTextChanged(Editable s) {
+                        clearRowMessage(row);
+                        syncRegexEnabled(rows, regexCell);
+                    }
+                });
+                row.field.setOnFocusChangeListener((v, hasFocus) -> {
+                    if (hasFocus) return;
+                    clearRowMessage(row);
+                    if (regexCell.isChecked()) {
+                        validateRegexRow(rows, row);
+                    }
+                    if (row.messageView.getVisibility() != android.view.View.VISIBLE) {
+                        showDuplicateNoticeIfAny(rows, row);
+                    }
+                });
+                row.field.setOnKeyListener((v, keyCode, event) -> {
+                    if (keyCode == android.view.KeyEvent.KEYCODE_DEL
+                            && event.getAction() == android.view.KeyEvent.ACTION_DOWN
+                            && row.field.length() == 0 && rows.size() > 1) {
+                        removeRow.accept(row);
+                        return true;
+                    }
+                    return false;
+                });
+                row.removeButton.setOnClickListener(v -> removeRow.accept(row));
+            };
+            for (int i = 0; i < rows.size(); i++) {
+                attachWatchers.accept(rows.get(i));
+            }
+
+            addRowActionHolder[0] = () -> {
+                if (rows.size() >= EventScheduleEntry.MAX_PATTERN_COUNT) return;
+                PatternFieldRow row = createPatternFieldRow(context, "");
+                rows.add(row);
+                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+                attachWatchers.accept(row);
+                clearAllRowMessages(rows);
+                updateRowAccessibility(rows);
+                syncRegexEnabled(rows, regexCell);
+                updateAddRow(rows, addPatternRow, patternFooter);
+                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+                org.telegram.messenger.AndroidUtilities.doOnLayout(patternRowsContainer, () -> focusRow(row.field));
+            };
+            addPatternRow.setOnClickListener(v -> addRowActionHolder[0].run());
+
+            syncRegexEnabled(rows, regexCell);
+            updateRowAccessibility(rows);
+            updateAddRow(rows, addPatternRow, patternFooter);
 
             final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_DELAY_SECONDS};
             int startIndex = 0;
@@ -439,6 +734,7 @@ public final class EventScheduleHelper {
                     return kotlin.Unit.INSTANCE;
                 });
             }
+
             TextView doneButton = builder.addButton(getString(R.string.Done), true, false, it -> {
                 int newTypes = 0;
                 if (voiceCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VOICE;
@@ -446,31 +742,57 @@ public final class EventScheduleHelper {
                 if (videoCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VIDEO;
                 if (photoCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_PHOTO;
                 if (textCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_TEXT;
-                String newPattern = patternField.getText().toString().trim();
+
+                ArrayList<String> trimmed = new ArrayList<>();
+                ArrayList<PatternFieldRow> trimmedRows = new ArrayList<>();
+                for (int i = 0; i < rows.size(); i++) {
+                    String value = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
+                    if (!TextUtils.isEmpty(value)) {
+                        trimmed.add(value);
+                        trimmedRows.add(rows.get(i));
+                    }
+                }
+                ArrayList<String> unique = new ArrayList<>();
+                ArrayList<PatternFieldRow> uniqueRows = new ArrayList<>();
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                for (int i = 0; i < trimmed.size(); i++) {
+                    String value = trimmed.get(i);
+                    if (seen.add(value)) {
+                        unique.add(value);
+                        uniqueRows.add(trimmedRows.get(i));
+                    }
+                }
+
                 boolean newRegex = regexCell.isChecked();
-                if (newTypes == 0 && TextUtils.isEmpty(newPattern)) {
+                clearAllRowMessages(rows);
+                if (newRegex) {
+                    for (int i = 0; i < unique.size(); i++) {
+                        if (!EventScheduleEntry.isPatternValid(unique.get(i), true)) {
+                            PatternFieldRow badRow = uniqueRows.get(i);
+                            showRowMessage(badRow, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleInvalidRegexRow, rows.indexOf(badRow) + 1), true);
+                            focusRow(badRow.field);
+                            AndroidUtil.showInputError(badRow.field);
+                            return kotlin.Unit.INSTANCE;
+                        }
+                    }
+                }
+                if (newTypes == 0 && unique.isEmpty()) {
                     AlertUtil.showToast(getString(R.string.EventScheduleNeedCondition));
                     return kotlin.Unit.INSTANCE;
                 }
-                if (newRegex && !TextUtils.isEmpty(newPattern)) {
-                    try {
-                        Pattern.compile(newPattern);
-                    } catch (Throwable t) {
-                        AndroidUtil.showInputError(patternField);
-                        AlertUtil.showToast(getString(R.string.EventScheduleInvalidRegex));
-                        return kotlin.Unit.INSTANCE;
-                    }
-                }
+
                 int newDelay = stagedDelay[0];
                 enabled = true;
                 userTouchedTrigger = true;
                 types = newTypes;
-                pattern = newPattern;
+                patterns.clear();
+                patterns.addAll(unique);
                 regex = newRegex;
                 delay = newDelay;
                 NaConfig cfg = NaConfig.INSTANCE;
                 cfg.getEventScheduleLastTypes().setConfigInt(types);
-                cfg.getEventScheduleLastPattern().setConfigString(pattern);
+                // PR1 keeps the existing global scalar seed: write only the first normalized pattern.
+                cfg.getEventScheduleLastPattern().setConfigString(patterns.isEmpty() ? "" : patterns.get(0));
                 cfg.getEventScheduleLastPatternRegex().setConfigBool(regex);
                 // NagramX: written unconditionally, like types/pattern/regex above -- this preference is
                 // part of the last submitted trigger configuration, not a record of "did the user touch
@@ -482,42 +804,32 @@ public final class EventScheduleHelper {
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
             });
-            // NagramX: registered after addButton so doneButton is assigned; noAutoDismiss above
-            // means performClick() re-runs the real validation/commit lambda rather than a copy of it.
-            patternField.setOnEditorActionListener((v, actionId, event) -> {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    doneButton.performClick();
-                    return true;
+
+            doneActionHolder[0] = doneButton::performClick;
+            updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+
+            regexCell.setOnClickListener(v -> {
+                if (!regexCell.isEnabled()) {
+                    return;
                 }
-                return false;
+                boolean target = !regexCell.isChecked();
+                regexCell.setChecked(target);
+                if (!target) {
+                    clearAllRowMessages(rows);
+                } else {
+                    for (int i = 0; i < rows.size(); i++) {
+                        validateRegexRow(rows, rows.get(i));
+                    }
+                }
             });
+
             builder.addCancelButton();
             builder.show();
         }
 
-        // NagramX: TextCheckCell.setEnabled(boolean) is the only override that reaches the Switch,
-        // but addCheckItem wires the switch's own click straight back to performClick() on the row,
-        // which ignores the enabled flag -- so the single-arg call alone leaves a dimmed row that
-        // still toggles. setEnabled(boolean, animators) drives the alpha fade but calls super, not the
-        // single-arg override, so both calls are required together.
-        private static void syncRegexEnabled(EditText patternField, TextCheckCell regexCell) {
-            // NagramX: trim to match the Done handler's newPattern, or whitespace-only text would
-            // enable the toggle here but save against the empty pattern that trim() actually commits.
-            boolean hasPattern = !TextUtils.isEmpty(patternField.getText().toString().trim());
-            // Construction seeds (enabled, EventScheduleRegexInfo); skip the redundant re-layout
-            // this would otherwise trigger on every keystroke once state hasn't actually changed.
-            if (hasPattern == regexCell.isEnabled()) return;
-            regexCell.setTextAndValueAndCheck(
-                    getString(R.string.EventScheduleUseRegex),
-                    getString(hasPattern ? R.string.EventScheduleRegexInfo : R.string.EventScheduleRegexNeedsPattern),
-                    regexCell.isChecked(), true, true);
-            regexCell.setEnabled(hasPattern);
-            regexCell.setEnabled(hasPattern, null);
-        }
-
         @Override
         public EventScheduleConfig snapshot() {
-            return enabled ? new EventScheduleConfig(types, pattern, regex, delay) : null;
+            return enabled ? new EventScheduleConfig(types, patterns, regex, delay) : null;
         }
 
         @Override
@@ -530,6 +842,7 @@ public final class EventScheduleHelper {
             // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
+            EventScheduleConfig config = new EventScheduleConfig(types, patterns, regex, delay);
             if (editIds != null && editIds.length > 0) {
                 // Editing an existing scheduled message. The schedule picker fires this commit even when the
                 // user never opened the trigger controls, so a schedule-only edit must not reconfigure or
@@ -542,7 +855,7 @@ public final class EventScheduleHelper {
                     // sheet dismisses; on failure the controller shows the toast itself. No fragment or
                     // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
                     EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
-                            userTouchedTrigger, armed, types, pattern, regex, delay, scheduleDate);
+                            userTouchedTrigger, armed, config, scheduleDate);
                     return;
                 }
                 if (!userTouchedTrigger) {
@@ -561,7 +874,7 @@ public final class EventScheduleHelper {
                 // can't end up with two triggers.
                 if (armed) {
                     boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
-                            types, pattern, regex, delay, scheduleDate);
+                            config, scheduleDate);
                     if (!claimed) {
                         // Another trigger already owns this message (only reachable against data a prior
                         // defect persisted). Leave every trigger untouched; the schedule-date edit still
@@ -583,7 +896,7 @@ public final class EventScheduleHelper {
             }
             EventScheduleEntry entry = new EventScheduleEntry();
             entry.types = types;
-            entry.pattern = pattern == null ? "" : pattern;
+            entry.setPatterns(config.patterns);
             entry.regex = regex;
             entry.delaySeconds = delay;
             entry.createdAt = System.currentTimeMillis();
