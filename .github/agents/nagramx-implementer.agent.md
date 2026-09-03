@@ -253,14 +253,15 @@ those changes there is legitimately no gate run to read — say which of the two
 happened rather than implying it passed.
 
 The release-signed dual-package APK that dazewell installs is a **separate,
-on-request** build, and **you never request it — either build.** Whether this
-change needs a build at all is decided **in your brief**, and there may be two:
-`On-device APK:` (the verification build — who requests it and when — never an
-instruction for you to apply the `build-apk` label or dispatch `staging.yml`
-yourself) and, for a UI-facing change, `Smoke build:` (a separate, earlier
-build the orchestrator requests as soon as you report the compile gate clean,
-to answer one reachability question before round 2 starts — also never yours
-to request). The orchestrator requests the verification build itself, and only
+on-request** build — and for a UI-facing change there can be **two** such
+builds, not one. **You never request either of them.** Whether this change
+needs a build at all is decided **in your brief**: `On-device APK:` (the
+verification build — who requests it and when — never an instruction for you
+to apply the `build-apk` label or dispatch `staging.yml` yourself) and, for a
+UI-facing change, `Smoke build:` (a separate, earlier build the orchestrator
+requests as soon as you report the compile gate clean, to answer one
+reachability question before round 2 starts — also never yours to request).
+The orchestrator requests the verification build itself, and only
 once architect round 2 (and any final-state pass) has cleared — an implementer
 requesting one against its own last commit is exactly the failure mode this rule
 exists to prevent: review can still find Criticals after you think you're done,

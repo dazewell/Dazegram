@@ -691,13 +691,17 @@ Smoke build:    required | not required   (required whenever the change adds or
                   be superseded by review — never describe it as something to
                   verify behaviour against. If the change has no user-visible
                   surface, none gets requested.)
-Diagnostics:    required | not required   (matches Smoke build above — add a
-                  clearly-marked temporary logging commit at the new UI
-                  decision point per `nagramx-workflow` step 3, non-sensitive
-                  operands only, tagged with the literal `NAX_SMOKE_<slug>`
-                  recorded verbatim in the PR body so your Phase 4 grep has an
-                  exact string to check for, removed as its own commit once the
-                  smoke build answers the reachability question.)
+Diagnostics:    required | not required   (required only when the change adds
+                  a *new* decision point per `nagramx-workflow` step 3 — not
+                  automatically whenever Smoke build above is required; a
+                  UI-facing change that reuses an existing, already-reachable
+                  decision point can need a smoke build without diagnostics.
+                  When required: a clearly-marked temporary logging commit at
+                  that decision point, non-sensitive operands only, tagged with
+                  the literal `NAX_SMOKE_<slug>` recorded verbatim in the PR
+                  body so your Phase 4 grep has an exact string to check for,
+                  removed as its own commit once the smoke build answers the
+                  reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
                   implementer never has to guess. If required, say who requests
                   it and when — you do, once architect round 2 and any
