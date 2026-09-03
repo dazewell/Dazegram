@@ -86,6 +86,89 @@ doesn't silently reopen it.
 
 *(Established 2026-09-02.)*
 
+## `ShareAlert.darkTheme` (`= forCall`) is not VoIP-exclusive — it's just a misleading name
+
+`ShareAlert.darkTheme` is assigned `= forCall` in the constructor
+(`ShareAlert.java:452`). It has nothing to do with the app's light/dark theme
+setting, but it is **not** exclusive to the VoIP call-invite screen either —
+an earlier version of this entry claimed that, and it was wrong. Two callers
+pass `forCall = true`: `GroupCallActivity.java:6722` (the VoIP group-call
+invite share, with `copyLink2` non-null so `linkToCopy[1] != null`, reaching
+the `dp(111)` header-height branch — not dead code) and
+`PhotoViewer.java:8780` (ordinary photo/video sharing from the media viewer,
+with `copyLink2 == null`, so it stays on the `dp(58)` branch despite
+`forCall == true`). Every other `ShareAlert` construction site, including the
+`ChatActivity` channel-post share arrow (`ChatActivity.java:42773`), passes
+`forCall = false`.
+
+The header-height ternary that appears throughout the file
+(`dp(darkTheme && linkToCopy[1] != null ? 111 : 58)`, e.g.
+`ShareAlert.java:1170`) branches on `darkTheme`, so a dark-looking screenshot
+of the share sheet still tells you nothing about which branch is live — that
+part holds. It just doesn't mean the caller is a VoIP screen; check the
+actual constructor call and its `copyLink2` argument.
+
+*(Established 2026-09-03.)*
+
+## `allowSelectChildAtPosition`'s `y` is grid-local in the non-fullscreen case; adding `systemInsets.top` double-counts it there
+
+`ShareAlert`'s `gridView` and `searchGridView` both override
+`allowSelectChildAtPosition(x, y)` to gate taps below the header
+(`ShareAlert.java:1168`, `:1253`).
+
+**Non-fullscreen (`isFullscreen == false`) — the only case any current caller
+reaches:** `containerView.onMeasure` sets `getPaddingTop()` to
+`systemInsets.top`, gated by `if (!isFullscreen)` (`ShareAlert.java:699-703`),
+and `onLayout` places every `Gravity.TOP` child, including the grid, at
+`getPaddingTop() + topOffset` (`ShareAlert.java:855`). So in this case the
+grid's `y` already has the status-bar inset netted out before the guard ever
+runs, and adding `+ systemInsets.top` to the threshold double-counts it —
+pushing the tap dead band down over the entire first avatar row, a silent
+miss with no visual feedback that reads to a user as "the app ignored my tap"
+rather than as an error.
+
+**Fullscreen (`isFullscreen == true`):** the `setPadding` call above is
+skipped entirely, so `getPaddingTop()` doesn't carry `systemInsets.top` and
+the coordinate math differs from the case above. No current caller constructs
+`ShareAlert` with `fullScreen = true` — checked every `new ShareAlert(...)`
+and `ShareAlert.createShareAlert(...)` call site in the tree — so this branch
+is presently unexercised. Worth knowing if a future caller ever does pass
+`fullScreen = true`: the fix here was scoped to the reachable
+(non-fullscreen) case only.
+
+The identical `+ systemInsets.top` term is *correct* two hundred lines away,
+in `containerView`'s own `onDraw` (`ShareAlert.java:928`, `:930`): there it
+converts a grid-local `scrollOffsetY` into `containerView`'s own canvas space,
+which is not padding-translated. NagramX's fix removes the extra term at both
+`allowSelectChildAtPosition` call sites, leaving `y >= dp(...)` with nothing
+added.
+
+*(Established 2026-09-03.)*
+
+## Vendored `update to <version>` commits are single-parent squashes, not merges
+
+Commits like `37bd22c0f4` ("update to 12.7.0 (6740)") that bulk-vendor an
+upstream Telegram release have a single parent (`628eabc372`) rather than
+being a 3-way merge. A fork fix living in a file one of these commits
+rewrites is therefore **silently overwritten with no merge conflict to flag
+it** — there's nothing to alert the next vendoring pass that a line it's about
+to replace was deliberately changed. `ShareAlert.java` alone has been
+rewritten by six such bumps since 2025-11.
+
+Concretely, for the exact hook this investigation touched
+(`ShareAlert.java:1169-1170`): `37bd22c0f4`'s diff shows it *replacing*
+`+ AndroidUtilities.statusBarHeight` with `+ systemInsets.top` in
+`allowSelectChildAtPosition` — re-expressing an inset term that was already
+there under a different API, not introducing one from a bare `dp(...)`
+threshold. A vendoring commit rewriting a line doesn't announce whether it's
+carrying a term forward, changing its source, or dropping fork-added
+behaviour; only reading the actual diff tells you which. This is why a
+one-token fork fix in a hot upstream file needs a `// NagramX:` comment
+explaining the *why*: the comment is the only thing that survives to tell a
+future investigator the line was intentional, since the diff itself won't.
+
+*(Established 2026-09-03.)*
+
 ## Release builds strip `Log.v` and `Log.d`
 
 `TMessagesProj/proguard-rules.pro:173-176` has an `-assumenosideeffects` block
