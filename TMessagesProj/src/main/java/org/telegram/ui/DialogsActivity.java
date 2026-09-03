@@ -12318,7 +12318,7 @@ public class DialogsActivity extends BaseFragment implements NotificationCenter.
                 // delegate's live forward selection now, so it matches whatever the dispatch will forward no
                 // matter which presentation opened this picker.
                 final int forwardSpreadSlotCount = delegate != null ? delegate.getForwardSpreadSlotCount() : 0;
-                android.util.Log.d("NAX_SPREAD_DIAG", "gate presenter=" + naxDbgPresenter + " fromMyName=" + forwardSpreadFromMyName + " slotCount=" + forwardSpreadSlotCount + " hasDelegate=" + (delegate != null)); // NagramX: #repost-spread temp diagnostic, remove before merge
+                android.util.Log.e("NAX_SPREAD_DIAG", "gate presenter=" + naxDbgPresenter + " fromMyName=" + forwardSpreadFromMyName + " slotCount=" + forwardSpreadSlotCount + " hasDelegate=" + (delegate != null)); // NagramX: #repost-spread temp diagnostic, remove before merge (Log.e: d/v are stripped in release, see proguard-rules.pro)
                 if (Boolean.TRUE.equals(forwardSpreadFromMyName) && forwardSpreadSlotCount >= 2) {
                     AlertsCreator.createForwardSpreadDatePickerDialog(getParentActivity(), onlyMyselfFinal ? getUserConfig().getClientUserId() : -1, scheduleDelegate, null, getResourceProvider(),
                             new AlertsCreator.ForwardSpread(forwardSpreadSlotCount, messagesCount, intervalSeconds -> forwardSpreadIntervalSeconds = intervalSeconds));

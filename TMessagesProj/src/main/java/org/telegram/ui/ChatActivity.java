@@ -37079,7 +37079,7 @@ public class ChatActivity extends BaseFragment implements
     public int getForwardSpreadSlotCount() {
         ArrayList<MessageObject> naxSel = naxBuildForwardSpreadSelection();
         int naxCount = getMessageHelper().buildCopySpreadSlots(naxSel).size();
-        android.util.Log.d("NAX_SPREAD_DIAG", "slotCount branch=" + (forwardingMessage != null ? "forwardingMessage" : "selectedMessagesIds") + " rawSelectionSize=" + naxSel.size() + " slots=" + naxCount); // NagramX: #repost-spread temp diagnostic, remove before merge
+        android.util.Log.e("NAX_SPREAD_DIAG", "slotCount branch=" + (forwardingMessage != null ? "forwardingMessage" : "selectedMessagesIds") + " rawSelectionSize=" + naxSel.size() + " slots=" + naxCount); // NagramX: #repost-spread temp diagnostic, remove before merge (Log.e: d/v are stripped in release, see proguard-rules.pro)
         return naxCount;
     }
 

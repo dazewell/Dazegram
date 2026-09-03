@@ -82,6 +82,28 @@ that isn't a send-error resolves to `MESSAGE_TYPE_INVALID` in
 (`ChatActivity.java:21147-21154`). The scheduled-message Reschedule path never
 reaches a message in that state. Recorded here as a latent gap with its
 shadowing guard so a future change to `getMessageType` or `processRowSelect`
-doesn't silently reopen it.
+*(Established 2026-09-02.)*
+
+## Release builds strip `Log.v` and `Log.d`
+
+`TMessagesProj/proguard-rules.pro:173-176` has an `-assumenosideeffects` block
+for `android.util.Log` that lists `v(...)` and `d(...)`, so R8 removes every
+`Log.v` and `Log.d` call from the minified release variant. `Log.e`, `Log.i`
+and `Log.w` are not listed and survive. Any diagnostic that has to appear on a
+real device must use one of those three — a `Log.d` line compiles fine and then
+emits nothing once installed.
+
+The **local debug compile gate cannot catch this**:
+`:TMessagesProj:compileDebugJavaWithJavac` builds the non-minified debug
+variant, where the rule does not apply and `Log.d` works. The stripping only
+happens in the minified release build that `staging.yml` produces — which is
+the only variant that ever reaches a phone. So a `Log.d` diagnostic passes the
+gate, passes CI, installs, and is silent, with nothing upstream of the device
+to flag it.
+
+Cost the `#repost-spread` instrumentation a full device test cycle: the
+`NAX_SPREAD_DIAG` logging was written with `Log.d`, produced zero logcat output
+on the installed staging APK, and had to be reissued at `Log.e`. Referenced by
+[PR #270](https://github.com/dazewell/Dazegram/pull/270).
 
 *(Established 2026-09-02.)*
