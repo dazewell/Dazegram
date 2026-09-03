@@ -198,6 +198,17 @@ code are not.
    to-Telegram artifact. If a decision genuinely can't be logged without one of
    those, log that a branch was taken, not the value that chose it.
 
+   **Use `Log.e`, `Log.i` or `Log.w` — never `Log.v` or `Log.d`.**
+   `TMessagesProj/proguard-rules.pro` strips both from the release build via an
+   `-assumenosideeffects` block, and the release-signed minified variant is the
+   only one that ever reaches a device — the local debug compile gate can't
+   catch this, because that rule applies only to the minified variant it never
+   builds. Instrumenting with `Log.d` compiles clean, survives the compile
+   gate, and vanishes from the APK dazewell installs: a full device test cycle
+   was once spent proving only that the measurement didn't exist, and the
+   resulting silence in `adb logcat` came within a hair of being read as
+   evidence about the feature rather than about the log level.
+
    Put the instrumentation in its **own clearly-marked commit** using a
    **single tag literal chosen up front and written verbatim in the PR body**
    (e.g. `NAX_SMOKE_<slug>`) — not merely "a distinctive tag" described in

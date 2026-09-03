@@ -99,7 +99,11 @@ that decision point as part of this same work — booleans, enum/state names,
 ids and counts only, **never** message text, a contact's name or number, a
 token, or anything else that would leave the device in this release-signed,
 uploaded artifact; if a value itself can't be logged safely, log that the
-branch was taken instead of the value. Put it in its **own commit**, clearly
+branch was taken instead of the value. **Use `Log.e`, `Log.i` or `Log.w` —
+never `Log.v` or `Log.d`**, which `TMessagesProj/proguard-rules.pro` strips
+from the release build the smoke build actually installs; see
+`nagramx-workflow` step 3 for why the local compile gate can't catch that
+mistake. Put it in its **own commit**, clearly
 marked, using a **single tag literal you pick up front** (e.g.
 `NAX_SMOKE_<slug>`) and write **verbatim in the PR body** — the orchestrator's
 removal check greps for that exact string, so describing the tag in prose
