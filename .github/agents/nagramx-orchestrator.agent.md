@@ -785,8 +785,8 @@ the implementer reports the compile gate clean, request a build yourself the
 same way you would the verification build in Phase 4 (`build-apk` label or a
 `staging.yml` dispatch — prefer the label; a dispatch is a fallback with a
 condition, see `nagramx-branch-flow`'s "Test before landing" section) and
-confirm it the same way — a matching run on the head commit, green,
-`Upload staging` itself green. Then ask dazewell, with an
+confirm it the same way — a matching run on the head commit, green, with the
+`Upload staging` job itself green. Then ask dazewell, with an
 explicit `ask_user`-equivalent prompt, exactly one question: does the control
 appear, and can you reach it? Nothing else — not correctness, not edge cases.
 This build is disposable by construction: it is superseded by whatever Phase 4

@@ -539,8 +539,11 @@ fails to produce a run — GitHub has been observed to silently drop the
 `pull_request` event for a push, so `ci.yml`, `commit-tag.yml` and the label's
 own `staging.yml` run all fail to fire together, and re-adding the label
 doesn't help. Before dispatching in that situation, check whether the two refs
-would actually differ: `git diff --name-only origin/<branch>...origin/dev --
-'TMessagesProj/src'`. Empty means `dev` has nothing in app source the branch
+would actually differ:
+```powershell
+git diff --name-only origin/<branch>...origin/dev -- 'TMessagesProj/src'
+```
+Empty means `dev` has nothing in app source the branch
 lacks, so the merge ref and the branch head are byte-equivalent there and a
 dispatch is fine. Non-empty means a dispatch builds a ref dazewell will never
 run once this merges — merge `dev` into the branch first and build that
