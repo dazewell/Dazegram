@@ -294,7 +294,7 @@ surfacing only a generic auth error after a ref has already moved.
   tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`
   (`VENDORED_NATIVES`), so a `040000 tree` silently turning into a `160000 commit`
   submodule (as the 12.10.1 default merge did to libyuv and openh264) blocks.
-- Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 62, `strings_nax` ≥
+- Layer floors: `tw/nekomimi` ≥ 172 files, `com/radolyn` = 63, `strings_nax` ≥
   599 entries, `NaConfig` ≥ 262 `addConfig`.
 - Ayu schema: 4 entities, `VERSION=27`, `MIN_SUPPORTED_VERSION=21`, migrations
   wired to the current version.

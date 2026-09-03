@@ -495,8 +495,7 @@ public class ChatActivity extends BaseFragment implements
     private final static int nkbtn_reply_numbers = 2045;
     private final static int nkbtn_clearDeleted = 2100;
     private final static int nkbtn_viewDeleted = 2101;
-    private final static int nkheaderbtn_hide_last_message = 2102;
-    private final static int nkheaderbtn_chat_lock = 2103;
+    private final static int nkheaderbtn_chat_privacy = 2102;
     private final static int nkbtn_personal_replies = 2104;
 
     public int shareAlertDebugMode = DEBUG_SHARE_ALERT_MODE_NORMAL;
@@ -583,7 +582,6 @@ public class ChatActivity extends BaseFragment implements
     private ActionBarMenuItem.Item toTheBeginning;
     private ActionBarMenuItem.Item toTheMessage;
     private ActionBarMenuItem.Item hideTitleItem;
-    private ActionBarMenuItem.Item chatLockItem;
     private PasscodeView chatLockPasscodeView;
     private ActionBarMenuItem.Item bookmarksItem;
     private ClippingImageView animatingImageView;
@@ -5166,13 +5164,8 @@ public class ChatActivity extends BaseFragment implements
                 clearHistoryItem = headerItem.lazilyAddSubItem(clear_history, R.drawable.msg_clear,
                     LocaleController.getString(UserObject.isBotForum(currentUser) ? R.string.ClearAllHistory : R.string.ClearHistory));
             }
-            // NagramX: hide this chat's last message preview in the chat list
-            headerItem.lazilyAddSubItem(nkheaderbtn_hide_last_message, R.drawable.menu_hide_gift, getString(R.string.HideLastMessage));
-            // NagramX: require the app passcode to open this chat (only offered when a passcode is set)
-            if (SharedConfig.passcodeHash.length() > 0) {
-                chatLockItem = headerItem.lazilyAddSubItem(nkheaderbtn_chat_lock, R.drawable.outline_header_lock_24,
-                        getString(com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id) ? R.string.ChatLockDisable : R.string.ChatLockEnable));
-            }
+            // NagramX: one per-chat privacy entry that owns both hide-last-message and require-password.
+            headerItem.lazilyAddSubItem(nkheaderbtn_chat_privacy, R.drawable.outline_header_lock_24, getString(R.string.ChatPrivacy));
             boolean addedSettings = false;
             if (NaConfig.INSTANCE.getChatMenuItemToBeginning().Bool()) headerItem.lazilyAddSubItem(to_the_beginning, R.drawable.ic_upward, getString(R.string.ToTheBeginning));
             if (NaConfig.INSTANCE.getChatMenuItemGoToMessage().Bool()) headerItem.lazilyAddSubItem(to_the_message, R.drawable.msg_go_up, getString(R.string.ToTheMessage));
@@ -48089,22 +48082,8 @@ public class ChatActivity extends BaseFragment implements
             }
         } else if (id == nkbtn_viewDeleted) {
             presentFragment(new AyuViewDeleted(dialog_id));
-        } else if (id == nkheaderbtn_hide_last_message) {
-            com.radolyn.ayugram.hidelastmessage.HideLastMessageDialog.show(ChatActivity.this, dialog_id);
-        } else if (id == nkheaderbtn_chat_lock) {
-            boolean nowLocked = !com.radolyn.ayugram.chatlock.ChatLockController.isLocked(currentAccount, dialog_id);
-            com.radolyn.ayugram.chatlock.ChatLockController.setLocked(currentAccount, dialog_id, nowLocked);
-            if (nowLocked) {
-                // requiring a password also hides this chat's last message in the list -- but keep any
-                // placeholder the user already set instead of resetting it to the default
-                if (!com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, dialog_id)) {
-                    com.radolyn.ayugram.hidelastmessage.HideLastMessageController.setHidden(currentAccount, dialog_id, true, null);
-                }
-                BulletinFactory.of(this).createSimpleBulletin(R.raw.passcode_lock, getString(R.string.ChatLockEnabledHint)).show();
-            }
-            if (chatLockItem != null) {
-                chatLockItem.setText(getString(nowLocked ? R.string.ChatLockDisable : R.string.ChatLockEnable));
-            }
+        } else if (id == nkheaderbtn_chat_privacy) {
+            com.radolyn.ayugram.chatprivacy.ChatPrivacySheet.show(ChatActivity.this, dialog_id);
         } else if (id == nkbtn_bookmarks_manager) {
             presentFragment(new BookmarksActivity(dialog_id));
         } else if (id == nkheaderbtn_upgrade) {

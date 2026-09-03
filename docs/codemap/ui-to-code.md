@@ -3,6 +3,29 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
+## Chat privacy overflow row owns both per-chat privacy controls
+
+The in-chat overflow menu now has one `Chat privacy` row (`nkheaderbtn_chat_privacy`)
+that opens `ChatPrivacySheet.show(...)` (`org/telegram/ui/ChatActivity.java:498`,
+`:5168`, `:48085-48086`).
+
+Inside that sheet, `Hide last message` toggles
+`HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
+opens `HideLastMessageDialog.showPlaceholderEditor(...)` for Save/Cancel editing
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:66-73`, `:106`,
+`:114`; `com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
+
+`Require password` state is read from the persisted lock flag via
+`ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
+still shown when the global app passcode is absent
+(`com/radolyn/ayugram/chatlock/ChatLockController.java:70-80`;
+`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:78-99`, `:119-127`).
+When turned on with a passcode present, the sheet keeps the existing one-way
+coupling: it auto-enables hide only when hide was off, preserving a custom
+placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:127-133`).
+
+*(Established 2026-09-03.)*
+
 ## Selection bar left button ("NoQuote")
 
 The button at the bottom-left of the message-selection action bar is the

@@ -11,13 +11,9 @@ Set a time zone for any personal chat or group through the profile edit view. Th
 <img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
 <img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />
 
-### Hide last message <!-- #hide-last-message -->
+### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password -->
 
-Flag a chat from its in-chat ⋯ menu to swap its last message in the chat list for a placeholder, so someone glancing at your screen can't read it. The placeholder text is set per chat. The real message still shows when you open the chat.
-
-### Require password <!-- #require-password -->
-
-When an app passcode is set, flag a chat from its in-chat ⋯ menu to ask for the passcode (or fingerprint) before it opens. Turning it on also hides the chat's last message in the list. Removing the app passcode entirely leaves flagged chats open until a passcode is set again.
+Each chat now has one `Chat privacy` item in its in-chat ⋯ menu. It opens a single sheet with two controls: `Hide last message` (with editable placeholder text per chat) and `Require password`. Turning on `Require password` still auto-enables `Hide last message` only when it was off, so an existing custom placeholder stays untouched. Turning `Require password` off still does not turn hiding off.
 
 ### Privacy profiles <!-- #privacy-profiles -->
 
