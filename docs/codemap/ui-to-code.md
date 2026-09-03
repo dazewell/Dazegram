@@ -80,13 +80,26 @@ own argument `Bundle`:
 
 The `#repost-spread` spread-interval gate needs the forward slot count. It was
 first threaded as a Bundle int written by **only `openForward`**, so the other
-five presentations reached the gate with the count defaulting to 0 and the
-interval row never appeared — the feature shipped working through one of six
-doors. The durable lesson: **adding a value to one presentation of a shared
-screen has to enumerate the others.** It is now computed at gate time from the
-delegate's live selection (`DialogsActivityDelegate.getForwardSpreadSlotCount`,
-overridden at `ChatActivity.java:37073`) using the same selection logic the
-dispatch forwards, so no presentation can reach the gate with a stale count.
+five presentations — `selectAnotherChat` included — reached the gate with the
+count defaulting to 0 and the interval row never appeared. The durable lesson:
+**adding a value to one presentation of a shared screen has to enumerate the
+others.** It is now computed at gate time from the delegate's live selection
+(`DialogsActivityDelegate.getForwardSpreadSlotCount`, overridden in
+`ChatActivity`) using the same selection logic the dispatch forwards, so no
+presentation can reach the gate with a stale count.
+
+**Unresolved — under investigation, do not record either route as working yet.**
+On device the interval row failed to appear via *both* the fork's NoQuote button
+*and* stock Forward + "Hide sender's name". The `selectAnotherChat` gap above
+accounts for the hide-sender door. It does **not** account for the NoQuote
+button: by code that button routes `makeReplyButtonClick` → `openForward`
+(`ChatsHelper.java:157-166`), which *did* carry the count in the tested build, so
+it should have worked. Either the NoQuote tap actually traverses
+`selectAnotherChat` on that device, or there is a second fault on the
+`openForward` route — four static passes could not decide which. Temporary
+`NAX_SPREAD_DIAG` logging (a `naxDbgPresenter` marker set at each of the six
+sites, read at the gate) was added to settle it by measurement; this note gets
+updated once the logs land.
 
 *(Established 2026-09-02, PR #270.)*
 
