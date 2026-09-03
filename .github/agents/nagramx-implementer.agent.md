@@ -116,7 +116,7 @@ the smoke build (below) — it's the thing that tells you which path the device
 actually took if reachability comes back negative — then revert it as a **new
 commit** once the smoke build confirms reachability, before further review
 continues. Never fold it into a feature commit either way; the orchestrator
-greps the final diff for the literal tag and treats a stray hit as blocking,
+greps the head tree for the literal tag and treats a stray hit as blocking,
 the same as the hard-line greps.
 
 **A design gate before writing a risky part.** If the change touches a cache,

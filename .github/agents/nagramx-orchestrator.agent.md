@@ -912,7 +912,7 @@ Confirm, one by one:
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
 - If the brief marked `Diagnostics: required`, the temporary logging commit and
-  its **literal tag** are gone from the final diff — grep the head tree for
+  its **literal tag** are gone from the head tree — grep the head tree for
   that exact string; the tag was embedded in the log message text itself, so
   the grep runs against code, not the PR body. A PR body with no recorded tag
   literal is itself a finding, since it means there was nothing to check the
