@@ -637,8 +637,20 @@ round has to carry the whole conversation. In one message:
 - State the plan you will execute — already vetted by architect round 1 —
   including how many changes and branches it becomes, so he can redirect once
   instead of discovering it later.
-- Name the decisions you are making unilaterally, so silence is genuine consent
-  rather than an oversight.
+- Name the decisions you are making unilaterally, **each with its cost** —
+  roughly how much implementation it adds, what it forecloses, or what it
+  makes more expensive later — so silence is genuine consent to a known price,
+  not an oversight of one he never saw. A bare choice isn't something anyone
+  can consent to: an orchestrator once framed "preserve existing data" versus
+  "migrate it" as a plain preference, and preserving turned out to cost roughly
+  six times the code, drew three separate Critical findings across three
+  review rounds, and was reversed the moment dazewell learned the real number
+  — at which point all of it was deleted. State the number, or the shape of
+  it, up front and he declines the expensive ones before they're built.
+  That episode is why `nagramx-workflow` step 3 now defaults a changed
+  value's range, set, or format to falling back rather than migrating —
+  when a specialist proposes migration instead, treat it the same as any
+  other unilaterally-decided trade-off and bring it to this gate costed.
 
 Then go. After this point you report progress; you do not ask permission. Come
 back mid-flight only for a genuine blocker:
@@ -674,16 +686,48 @@ Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the dat
                   child renames to this with `rename_branch` before touching a file)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
+Smoke build:    required | not required   (required whenever the change adds or
+                  alters anything a user can see or tap — this is a *separate*
+                  build from the one below, requested by you as soon as it
+                  compiles, before round 2 starts, to answer one question only:
+                  does the control appear and can you reach it? It does not
+                  replace the verification build below, and it is expected to
+                  be superseded by review — never describe it as something to
+                  verify behaviour against. If the change has no user-visible
+                  surface, none gets requested.)
+Diagnostics:    required | not required   (required only when the change adds
+                  a *new* decision point per `nagramx-workflow` step 3 — not
+                  automatically whenever Smoke build above is required; a
+                  UI-facing change that reuses an existing, already-reachable
+                  decision point can need a smoke build without diagnostics.
+                  When required: a clearly-marked temporary logging commit at
+                  that decision point, non-sensitive operands only, using
+                  `Log.e`/`Log.i`/`Log.w` only (see `nagramx-workflow` step 3
+                  for why `Log.v`/`Log.d` don't survive to the device), tagged
+                  with a literal in the `NAX_SMOKE_<slug>` pattern — `<slug>`
+                  replaced with this change's actual slug, not left as a
+                  placeholder, and embedded in the log message text itself so
+                  it's part of the code, not just prose — recorded verbatim
+                  in the PR body too so you know what to grep the head tree
+                  for in Phase 4 — removed as
+                  its own commit once the smoke build answers the
+                  reachability question.)
 On-device APK:  required | not required   (decided here, at the gate, so the
                   implementer never has to guess. If required, say who requests
                   it and when — you do, once architect round 2 and any
                   final-state pass have cleared with nothing Important or above
                   outstanding, never the implementer, and never on its own last
-                  commit. If not required, none gets requested at all.)
+                  commit. If not required, none gets requested at all. This is
+                  the *verification* build, distinct from the smoke build
+                  above — reconciled in `nagramx-workflow` step 9.)
 Trade-off budget: <what may be spent for correctness — an extra query, an extra
                   round trip, memory, a slower rare path — stated explicitly so
                   the implementer doesn't default to optimizing and then defend
-                  that optimization for three review rounds>
+                  that optimization for three review rounds. If a changed value's
+                  range, set, or format is in scope, this is also where you name
+                  the default: fall back per `nagramx-workflow` step 3, unless
+                  you're deliberately overriding that with a costed migration
+                  decision from the gate above.>
 Out of scope:   <explicit list>
 
 ## What dazewell asked for, and why
@@ -734,6 +778,34 @@ state clears, never mid-addition. Rank the additions by the priorities in
 `nagramx-workflow` (risk to the irreplaceable thing first): a scope addition
 that raises the risk of losing the artifact gets scrutiny; a pure tidiness
 addition to green code may not be worth its build at all.
+
+**For a change the brief marked `Smoke build: required`, this phase does not
+end at a green compile gate — it ends at a positive reachability check.** Once
+the implementer reports the compile gate clean, request a build yourself the
+same way you would the verification build in Phase 4 (`build-apk` label or a
+`staging.yml` dispatch) and confirm it the same way — a matching run on the
+head commit, green, `Upload staging` itself green. Then ask dazewell, with an
+explicit `ask_user`-equivalent prompt, exactly one question: does the control
+appear, and can you reach it? Nothing else — not correctness, not edge cases.
+This build is disposable by construction: it is superseded by whatever Phase 4
+review changes, and you must never describe it to him as something to verify
+behaviour against, only reachability. **Do not enter Phase 4's architect
+round 2 or its final-state passes until this comes back positive** — reviewing
+the craftsmanship of a control nobody can reach wastes the round, and a
+fully-reviewed feature has shipped unreachable before precisely because every
+review round upstream of this check reasons about the diff, not the device.
+Once it's positive, tell the implementer to revert its diagnostics commit (see
+`Diagnostics: required` in the brief) as a new commit before you proceed — you
+confirm that removal yourself in Phase 4 below, not this check.
+
+This is a **narrowing** of the one-build rule below, not a second exception to
+it: Phase 4's request is still the single build dazewell tests behaviour
+against, still requested once, still only after round 2 and any final-state
+pass clear. A UI-facing change now costs at most two orchestrator-requested
+builds — one for reachability here, one for behaviour in Phase 4 — never two
+for the same purpose, and the implementer requests neither. A change the brief
+marked `Smoke build: not required` skips straight to Phase 4; do not invent a
+reachability check for a change with no user-visible surface.
 
 ### Phase 4 — Verify, against evidence
 
@@ -847,6 +919,14 @@ Confirm, one by one:
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
+- If the brief marked `Diagnostics: required`, the temporary logging commit and
+  its **literal tag** are gone from the final diff — grep the head tree for
+  that exact string; the tag was embedded in the log message text itself, so
+  the grep runs against code, not the PR body. A PR body with no recorded tag
+  literal is itself a finding: you have no declared string to grep for, even
+  if diagnostic code exists somewhere in the diff. Its removal is not the
+  implementer's call to skip; confirm it here the same mechanical way you
+  confirm the hard-line greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
   never landed, not that it was clean.** Zero threads with zero reviews is not
   evidence.
@@ -948,13 +1028,18 @@ false positive for this codebase. Record the decision and the reason in the
 handback.
 
 **Once review has actually settled — round 2 clean, and any final-state pass
-clean — request the publish build yourself, if the gate said one was required.**
-This is the one and only place the request happens: never the implementer, and
-never before this point. An APK exists only when dazewell is actually about to
-be asked to put his hands on something, which is what makes "a build exists"
-and "he is needed" the same event — a stale build, reviewed-away by a later
-Critical, becomes structurally impossible rather than merely discouraged, and
-the normal case costs exactly one build per change. Apply the `build-apk` label
+clean — request the verification build yourself, if the gate said one was
+required.** This is distinct from the smoke build in Phase 3 (reachability,
+requested before round 2, disposable) — this is the **behaviour** build, and
+this is still the one and only place *its* request happens: never the
+implementer, and never before this point. An APK exists only when dazewell is
+actually about to be asked to put his hands on something, which is what makes
+"a build exists" and "he is needed" the same event — a stale build, reviewed-
+away by a later Critical, becomes structurally impossible rather than merely
+discouraged, and the normal case costs exactly one verification build per
+change (plus, for a UI-facing change, the one smoke build already spent in
+Phase 3 — that is a second build for a different purpose, not a second build
+for this one). Apply the `build-apk` label
 to the pull request, or dispatch `staging.yml` against its head branch — the
 label builds the synthetic `dev`+branch merge ref, a dispatch builds the branch
 head as-is; pick whichever matches what dazewell is meant to test. Then confirm
@@ -976,7 +1061,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; APK build <not requested | green @ sha | red>; behaviour unverified on device
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha>; APK build <not requested | green @ sha | red>; behaviour unverified on device
 Install: <which APK variant>
 
 **Changes**
