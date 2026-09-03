@@ -15987,10 +15987,12 @@ public class ChatActivity extends BaseFragment implements
     // collapse the forward-picker spread fixes, in a second entry point. When such a forward is eligible,
     // re-send each slot as a copy on its own time (base + i*interval) via the shared dispatchForwardSpread
     // instead. Eligibility is decided here, where the staged-preview provenance (drop-author, empty
-    // composer) is known; the forwarding primitives stay unaware of it. Returns true when this path owns
-    // the send - dispatched, or refused it with a bulletin; false leaves the caller's plain forward
-    // untouched. Send-When-Online (0x7ffffffe) is a protocol sentinel, never a real date, so it is excluded
-    // before any slot arithmetic can turn it into garbage times.
+    // composer) is known; the forwarding primitives stay unaware of it. Returns true only when it actually
+    // dispatched the spread; every ineligible case - including a batch that can't all be copied, or a span
+    // past the scheduling horizon - returns false and leaves the caller's plain forward untouched, so a send
+    // the user never asked to spread is never refused, it just goes the ordinary way. Send-When-Online
+    // (0x7ffffffe) is a protocol sentinel, never a real date, so it is excluded before any slot arithmetic
+    // can turn it into garbage times.
     private boolean naxTryStagedForwardSpread(ArrayList<MessageObject> messagesToForward, boolean notify, int rawScheduleDate, int baseScheduleDate, boolean composerEmpty, long payStars) {
         if (messagePreviewParams == null || !messagePreviewParams.hideForwardSendersName) {
             return false;
@@ -16006,14 +16008,11 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         if (!naxSpreadScheduleWithinHorizon(baseScheduleDate, slots.size(), REPOST_SPREAD_INTERVAL_SECONDS)) {
-            BulletinFactory.of(this).createErrorBulletin(getString(R.string.RescheduleSpreadOverflow), themeDelegate).show();
-            return true;
+            return false;
         }
         MessageHelper.CopyPreflightResult preflight = getMessageHelper().preflightSpreadAsCopy(messagesToForward);
         if (!preflight.ok) {
-            int bad = Math.max(1, preflight.unsupportedCount + preflight.missingFileCount);
-            BulletinFactory.of(this).createErrorBulletin(LocaleController.formatPluralString("RepostSpreadUnsupported", bad), themeDelegate).show();
-            return true;
+            return false;
         }
         dispatchForwardSpread(slots, messagesToForward, dialog_id, messagePreviewParams.hideCaption, notify, baseScheduleDate, REPOST_SPREAD_INTERVAL_SECONDS, payStars, true);
         return true;
