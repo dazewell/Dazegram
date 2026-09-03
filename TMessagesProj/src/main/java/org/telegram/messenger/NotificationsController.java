@@ -4956,7 +4956,6 @@ public class NotificationsController extends BaseController implements Notificat
 
         // NagramX: any covered chat present means the real InboxStyle summary would leak its lines; rebuild it generic
         java.util.HashSet<Long> naxCoveredDialogs = com.radolyn.ayugram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, messagesByDialogs);
-        android.util.Log.i("NAX_SMOKE", "NAX_SMOKE_customized-privacy-cover-engine summary coveredCount=" + naxCoveredDialogs.size() + " useSummary=" + useSummaryNotification);
         if (useSummaryNotification && !naxCoveredDialogs.isEmpty()) {
             Notification coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredDialogs);
             if (coverSummary != null) {
@@ -5008,7 +5007,6 @@ public class NotificationsController extends BaseController implements Notificat
                     && com.radolyn.ayugram.chatprivacy.NotificationCoverController.hasCoverableMessage(messageObjects)) {
                 Integer pd = pushDialogs.get(dialogId);
                 int coverCount = Math.max(messageObjects.size(), pd == null ? 0 : pd);
-                android.util.Log.i("NAX_SMOKE", "NAX_SMOKE_customized-privacy-cover-engine child covered grouped=" + useSummaryNotification + " count=" + coverCount);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
                 if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, useSummaryNotification, notificationGroup)) {
                     coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));

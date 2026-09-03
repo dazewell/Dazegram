@@ -181,7 +181,6 @@ public final class ChatPrivacySheet {
         disguiseCell.setOnClickListener(v -> {
             boolean nowDisguised = !NotificationCoverController.isCovered(account, dialogId);
             NotificationCoverController.setEnabled(account, dialogId, nowDisguised);
-            android.util.Log.i("NAX_SMOKE", "NAX_SMOKE_customized-privacy-cover-engine disguise toggled on=" + nowDisguised);
             NotificationsController.getInstance(account).showNotifications();
             if (sheetRef[0] != null) {
                 BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
