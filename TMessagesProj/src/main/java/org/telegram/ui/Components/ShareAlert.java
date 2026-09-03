@@ -1166,7 +1166,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
             @Override
             protected boolean allowSelectChildAtPosition(float x, float y) {
-                // NagramX: y is gridView-local; when !isFullscreen, containerView.onMeasure gives containerView (not this grid) its own top padding of systemInsets.top (:699-703), and containerView.onLayout then positions top-gravity children below that padding (:855), so the inset is already netted out of y here -- upstream's + systemInsets.top double-counted it and dropped the dead band onto the first avatar row (the fullscreen case's coordinate math differs)
+                // NagramX: y is gridView-local; when !isFullscreen, containerView.onMeasure gives containerView (not this grid) its own top padding of systemInsets.top, and containerView.onLayout then positions top-gravity children below that padding, so the inset is already netted out of y here -- upstream's + systemInsets.top double-counted it and dropped the dead band onto the first avatar row (the fullscreen case's coordinate math differs)
                 return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58);
             }
 
@@ -1251,7 +1251,7 @@ public class ShareAlert extends BottomSheet implements NotificationCenter.Notifi
 
             @Override
             protected boolean allowSelectChildAtPosition(float x, float y) {
-                // NagramX: y is gridView-local; when !isFullscreen, containerView.onMeasure gives containerView (not this grid) its own top padding of systemInsets.top (:699-703), and containerView.onLayout then positions top-gravity children below that padding (:855), so the inset is already netted out of y here -- upstream's + systemInsets.top double-counted it and dropped the dead band onto the first avatar row (the fullscreen case's coordinate math differs)
+                // NagramX: y is searchGridView-local; when !isFullscreen, containerView.onMeasure gives containerView (not this grid) its own top padding of systemInsets.top, and containerView.onLayout then positions top-gravity children below that padding, so the inset is already netted out of y here -- upstream's + systemInsets.top double-counted it and dropped the dead band onto the first avatar row (the fullscreen case's coordinate math differs)
                 return y >= dp(darkTheme && linkToCopy[1] != null ? 111 : 58);
             }
 
