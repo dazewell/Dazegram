@@ -86,6 +86,62 @@ doesn't silently reopen it.
 
 *(Established 2026-09-02.)*
 
+## `ShareAlert.darkTheme` is the VoIP call-invite flag, not the app's dark theme
+
+`ShareAlert.darkTheme` is assigned `= forCall` in the constructor
+(`ShareAlert.java:452`). It has nothing to do with the app's light/dark theme
+setting — it's true only for the VoIP call-invite variant of the share sheet.
+The header-height ternary that appears throughout the file
+(`dp(darkTheme && linkToCopy[1] != null ? 111 : 58)`, e.g.
+`ShareAlert.java:1170`) branches on it, so a dark-looking screenshot of the
+share sheet tells you nothing about which branch is live. The `ChatActivity`
+channel-post share arrow constructs with `forCall = false`
+(`ChatActivity.java:42773`), so for that entry point the branch is always the
+plain `58`, regardless of the device's theme. Reasoning from how dark a
+screenshot looks sends you to the wrong constant.
+
+*(Established 2026-09-03.)*
+
+## `allowSelectChildAtPosition`'s `y` is already grid-local; adding `systemInsets.top` double-counts it
+
+`ShareAlert`'s `gridView` and `searchGridView` both override
+`allowSelectChildAtPosition(x, y)` to gate taps below the header
+(`ShareAlert.java:1168`, `:1255`). The `y` handed in is local to the grid
+itself — `containerView`'s `onLayout` already places every `Gravity.TOP` child,
+including the grid, at `getPaddingTop() + topOffset`
+(`ShareAlert.java:855`), and `containerView.onMeasure` sets that
+`getPaddingTop()` to `systemInsets.top` (`ShareAlert.java:701`). So the
+status-bar inset is already netted out of grid-local coordinates before the
+guard ever runs.
+
+Upstream 12.7.0 added a further `+ systemInsets.top` to the guard's threshold
+anyway, double-counting the same inset and pushing the tap dead band down over
+the entire first avatar row — a silent miss with no visual feedback, which
+reads to a user as "the app ignored my tap" rather than as an error. The
+identical `+ systemInsets.top` term is *correct* two hundred lines away, in
+`containerView`'s own `onDraw` (`ShareAlert.java:928`, `:930`): there it
+converts a grid-local `scrollOffsetY` into `containerView`'s own canvas space,
+which is not padding-translated. Upstream applied that container-space
+conversion to a value that was already grid-local. NagramX's fix removes the
+extra term at both call sites, leaving `y >= dp(...)` with nothing added.
+
+*(Established 2026-09-03.)*
+
+## Vendored `update to <version>` commits are single-parent squashes, not merges
+
+Commits like `37bd22c0f4` ("update to 12.7.0 (6740)") that bulk-vendor an
+upstream Telegram release have a single parent (`628eabc372`) rather than
+being a 3-way merge. A fork fix living in a file one of these commits
+rewrites is therefore **silently overwritten with no merge conflict to flag
+it** — there's nothing to alert the next vendoring pass that a line it's about
+to replace was deliberately changed. `ShareAlert.java` alone has been
+rewritten by six such bumps since 2025-11. This is why a one-token fork fix in
+a hot upstream file needs a `// NagramX:` comment explaining the *why*: the
+comment is the only thing that survives to tell a future investigator the
+line was intentional, since the diff itself won't.
+
+*(Established 2026-09-03.)*
+
 ## Release builds strip `Log.v` and `Log.d`
 
 `TMessagesProj/proguard-rules.pro:173-176` has an `-assumenosideeffects` block

@@ -50,6 +50,35 @@ method itself.
 
 *(Established 2026-09-02.)*
 
+## "A clickable child view swallowed the share-sheet avatar tap"
+
+Disproven. `RecyclerListView.onInterceptTouchEvent` has a bail-out that skips
+the row-select gesture when a clickable child sits under the tap point
+(`RecyclerListView.java:1238-1248`), which is the obvious first guess for any
+avatar-vs-label hit-test asymmetry. But neither `ShareDialogCell`'s avatar nor
+its checkbox can trigger it: `BackupImageView extends View`
+(`BackupImageView.java:38`) and `CheckBox2 extends View`
+(`CheckBox2.java:18`), and neither sets `clickable`/`focusable` or overrides
+`onTouchEvent`. `ShareDialogCell.java` itself has zero touch-handling methods,
+and nothing under `org/telegram/ui` attaches a click listener to
+`ShareDialogCell.getImageView()`. The real cause was the grid's
+`allowSelectChildAtPosition` guard rejecting the tap outright — see
+`upstream-traps.md`.
+
+*(Established 2026-09-03.)*
+
+## "The child-coordinate remap is wrong for the share sheet's multi-column grid"
+
+Disproven. `RecyclerListView.onInterceptTouchEvent` remaps a touch into
+child-local coordinates symmetrically on both axes —
+`x = event.getX() - currentChildView.getLeft()`,
+`y = event.getY() - currentChildView.getTop()` (`RecyclerListView.java:1234-1235`).
+There's no column-index term in that remap, so it can't itself produce a
+result that depends on which column (or row) was tapped. Not a source of the
+top-row-only failure.
+
+*(Established 2026-09-03.)*
+
 ## "A shared `#eventschedule` bulk trigger moves sibling messages when one is rescheduled"
 
 Disproven. The untouched-trigger single-message edit path calls

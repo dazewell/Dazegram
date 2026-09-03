@@ -147,6 +147,28 @@ presentation can reach the gate with a stale count.
 
 *(Established 2026-09-02, PR #270.)*
 
+## Channel post share arrow: two different code paths for "quick share sheet"
+
+A single tap on the share arrow under a channel post opens
+`ChatMessageCell.Delegate.didPressSideButton` (`ChatActivity.java:42733`), which
+constructs `new ShareAlert(...)` (`ChatActivity.java:42773`) with `fullScreen`
+and `forCall` both `false`. This is the bottom sheet with a "Send to..." search
+field, a 4-column avatar grid, and a COPY LINK footer.
+
+A **long-press-and-drag** on the same arrow is a completely different widget:
+`didQuickShareStart` (`ChatActivity.java:42652`) opens
+`QuickShareSelectorOverlayLayout` (`org/telegram/ui/Components/quickforward/`),
+a hand-drawn popup with its own bespoke hit-testing. It shares no code with
+`ShareAlert`.
+
+A bug report describing "the quick share sheet" can mean either, and recon
+cannot tell which from the report alone — the two have no code in common, so
+guessing wrong burns a whole investigation cycle in the wrong files. The
+distinguishing marks: `ShareAlert` has the search field and COPY LINK footer;
+`QuickShareSelectorOverlayLayout` does not.
+
+*(Established 2026-09-03.)*
+
 ## Bulk reschedule toolbar button
 
 The fork's selection-toolbar "Reschedule" button (`nkactionbarbtn_reschedule`,
