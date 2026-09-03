@@ -15992,6 +15992,12 @@ public class ChatActivity extends BaseFragment implements
     // untouched. Send-When-Online (0x7ffffffe) is a protocol sentinel, never a real date, so it is excluded
     // before any slot arithmetic can turn it into garbage times.
     private boolean naxTryStagedForwardSpread(ArrayList<MessageObject> messagesToForward, boolean notify, int rawScheduleDate, int baseScheduleDate, boolean composerEmpty, long payStars) {
+        // NagramX: #repost-spread NAX_SMOKE_repost-spread temporary smoke probe, remove before merge. This
+        // hook firing at all, plus the operands that decide the spread, is what a silent non-fire on device
+        // could not show before; logging them here diagnoses it in one run. Log.e survives the release strip
+        // (proguard-rules.pro drops v/d). The literal tag is embedded so removal is a real grep. No message
+        // content or user data beyond the schedule date the orchestrator asked to see.
+        android.util.Log.e("NAX_SMOKE", "NAX_SMOKE_repost-spread enter dropAuthor=" + (messagePreviewParams != null && messagePreviewParams.hideForwardSendersName) + " composerEmpty=" + composerEmpty + " rawDate=" + rawScheduleDate + " sentinel=" + (rawScheduleDate == 0x7ffffffe) + " slots=" + getMessageHelper().buildCopySpreadSlots(messagesToForward).size());
         if (messagePreviewParams == null || !messagePreviewParams.hideForwardSendersName) {
             return false;
         }
