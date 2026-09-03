@@ -92,6 +92,17 @@ Four invariants where getting it wrong is silent and expensive:
   widen the diff and make the next upstream merge more expensive. Raise them as
   separate suggestions.
 
+**Default to fallback, not migration, when you change a stored value's range,
+set, or format.** Clamp an out-of-range value to the nearest valid one, or
+replace it with a sensible default, at the point it's read — never a data
+rewrite, a versioned migration, or per-value grandfathering. The one thing
+that's still mandatory: the app must not crash on an out-of-range, absent,
+unparseable, or otherwise unexpected stored value, wherever it's read. If you
+find yourself reaching for migration instead, that's a scope change, not an
+implementation detail — say so and let the trade-off budget in your brief
+settle it (per `nagramx-workflow` step 3) rather than building it and finding
+out later it wasn't wanted.
+
 **Temporary diagnostics, when your brief says `Diagnostics: required`.** If the
 change adds a decision point that determines whether something is shown, or
 which of several code paths ends up presenting the same screen, add logging at
