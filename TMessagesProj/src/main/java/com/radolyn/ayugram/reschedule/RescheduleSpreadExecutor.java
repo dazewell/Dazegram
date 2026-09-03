@@ -168,7 +168,13 @@ public final class RescheduleSpreadExecutor {
         if (hooks != null) {
             hooks.onAdmission();
         }
-        sendNext(currentAccount, dialogId, targets, 0, 1, new ArrayList<>(), hooks == null ? null : new ArrayList<>(), hooks, serial, fragment);
+        // NagramX: index-aligned, carried through the whole run so verify() can tell "this exact
+        // target was rejected pre-send" from "this target's id happens to already hold the right date".
+        // Must be index-keyed, not id-keyed: target.id can duplicate across targets (see isSendable
+        // rejection accounting below), and an id-keyed check would let one target's successful edit
+        // mask a different, rejected target that happens to share its id.
+        final boolean[] rejected = new boolean[targets.size()];
+        sendNext(currentAccount, dialogId, targets, 0, 1, new ArrayList<>(), hooks == null ? null : new ArrayList<>(), hooks, serial, fragment, rejected);
         return true;
     }
 
@@ -216,7 +222,7 @@ public final class RescheduleSpreadExecutor {
 
     private static void sendNext(int currentAccount, long dialogId, ArrayList<Target> targets, int index, int retriesLeft,
                                  ArrayList<Integer> failedIds, ArrayList<TargetOutcome> outcomes,
-                                 TriggerArmingHooks hooks, long serial, BaseFragment fragment) {
+                                 TriggerArmingHooks hooks, long serial, BaseFragment fragment, boolean[] rejected) {
         // NagramX: fail each invalid target closed rather than send a partial/invalid edit, in a loop
         // rather than a per-target recursive call -- a run with many consecutive invalid targets (e.g.
         // several still-sending album members in a row) must not grow the call stack. Albums are
@@ -227,13 +233,14 @@ public final class RescheduleSpreadExecutor {
         while (cursor < targets.size() && !isSendable(targets.get(cursor))) {
             final Target invalid = targets.get(cursor);
             failedIds.add(invalid.id);
+            rejected[cursor] = true;
             if (outcomes != null) {
                 outcomes.add(new TargetOutcome(invalid.albumIds, invalid.scheduleDate, invalid.repeatPeriod, false));
             }
             cursor++;
         }
         if (cursor >= targets.size()) {
-            verify(currentAccount, dialogId, targets, failedIds, outcomes, hooks, serial, fragment);
+            verify(currentAccount, dialogId, targets, failedIds, outcomes, hooks, serial, fragment, rejected);
             return;
         }
         final int targetIndex = cursor;
@@ -262,7 +269,7 @@ public final class RescheduleSpreadExecutor {
             } else if (error.text != null && error.text.startsWith("FLOOD_WAIT_")) {
                 int wait = Utilities.parseInt(error.text);
                 if (retriesLeft > 0 && wait <= 60) {
-                    AndroidUtilities.runOnUIThread(() -> sendNext(currentAccount, dialogId, targets, targetIndex, retriesLeft - 1, failedIds, outcomes, hooks, serial, fragment), (wait + 1) * 1000L);
+                    AndroidUtilities.runOnUIThread(() -> sendNext(currentAccount, dialogId, targets, targetIndex, retriesLeft - 1, failedIds, outcomes, hooks, serial, fragment, rejected), (wait + 1) * 1000L);
                     return;
                 }
                 failedIds.add(target.id);
@@ -275,12 +282,12 @@ public final class RescheduleSpreadExecutor {
             if (outcomes != null) {
                 outcomes.add(new TargetOutcome(target.albumIds, target.scheduleDate, target.repeatPeriod, applied));
             }
-            sendNext(currentAccount, dialogId, targets, targetIndex + 1, 1, failedIds, outcomes, hooks, serial, fragment);
+            sendNext(currentAccount, dialogId, targets, targetIndex + 1, 1, failedIds, outcomes, hooks, serial, fragment, rejected);
         }, ConnectionsManager.RequestFlagFailOnServerErrors);
     }
 
     private static void verify(int currentAccount, long dialogId, ArrayList<Target> targets, ArrayList<Integer> failedIds,
-                               ArrayList<TargetOutcome> outcomes, TriggerArmingHooks hooks, long serial, BaseFragment fragment) {
+                               ArrayList<TargetOutcome> outcomes, TriggerArmingHooks hooks, long serial, BaseFragment fragment, boolean[] rejected) {
         final TLRPC.TL_messages_getScheduledHistory req = new TLRPC.TL_messages_getScheduledHistory();
         req.peer = MessagesController.getInstance(currentAccount).getInputPeer(dialogId);
         req.hash = 0;
@@ -298,6 +305,16 @@ public final class RescheduleSpreadExecutor {
                 }
                 wrong = 0;
                 for (int i = 0; i < targets.size(); i++) {
+                    // NagramX: a pre-rejected target (this exact index, never sent) must count as wrong
+                    // outright rather than fall through to the id-keyed server-date compare below. Its own
+                    // id can be positive and legitimately hold the requested date already -- coincidentally,
+                    // or because another target elsewhere in this run shares the same id and its edit did
+                    // land -- either of which would otherwise silently report a target we refused to send
+                    // as successful. Index-keyed, not id-keyed, precisely because ids can duplicate.
+                    if (rejected[i]) {
+                        wrong++;
+                        continue;
+                    }
                     Target t = targets.get(i);
                     if (serverDates.get(t.id, -1) != t.scheduleDate) {
                         wrong++;
