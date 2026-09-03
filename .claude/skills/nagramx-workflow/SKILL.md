@@ -179,6 +179,25 @@ code are not.
    files, most of the diff in new code, only a few lines touching anything
    pre-existing.
 
+   **Temporary diagnostics for a new UI decision point.** When the change adds
+   a decision point that determines whether something is shown, or which of
+   several code paths ends up rendering the same screen, add temporary
+   instrumentation right there logging the operands of the decision — and,
+   where more than one path can produce the same screen, which path ran.
+   Reading the diff cannot answer "which of these paths actually executed on
+   the device"; a log line answers it in seconds. A feature that passed a
+   local compile gate, an automated review, and two architect rounds still
+   shipped unreachable once, because every one of those checks reasons about
+   the diff and none of them can see the device state that decides which
+   branch fires — a single log line at that branch would have settled it. Put
+   the instrumentation in its **own clearly-marked commit** so reverting it is
+   trivial, use **one distinctive log tag** so it can be filtered, and say in
+   the PR body that the head carries temporary diagnostics. It comes back out
+   once the smoke build in step 9 has answered the reachability question — as
+   a new commit, never folded into the feature commits — and whoever verifies
+   the branch before it lands confirms it's gone. This is proportional to the
+   smoke build below: a change with no user-visible surface earns neither.
+
 4. **Compile gate (local when the toolchain is there, CI when it isn't).**
    After any Java/Kotlin edit, run the compile check from the repo root:
 
@@ -363,10 +382,10 @@ code are not.
    installs the Unofficial variant over the daily app and tests from the
    uploaded artifact. `commit-tag.yml` also runs and blocks the PR if any
    commit lacks its `#tag`.
-   **Request that build only once review has actually settled** — round-2
-   architect review clean, and any final-state pass clean, nothing Important
-   or above outstanding — never against your own still-under-review commit.
-   An APK requested earlier is stale the moment a later round finds a
+   **Request the verification build only once review has actually settled** —
+   round-2 architect review clean, and any final-state pass clean, nothing
+   Important or above outstanding — never against your own still-under-review
+   commit. An APK requested earlier is stale the moment a later round finds a
    Critical, which is exactly what a build-then-review ordering produced
    once: dazewell installed and tested a build that three subsequent Critical
    findings then invalidated. Under the `nagramx-orchestrator` pipeline this
@@ -375,6 +394,32 @@ code are not.
    the strength of its own final head commit. Working solo, without that
    split, hold yourself to the same ordering: don't reach for the label until
    review is actually done.
+
+   **A UI-facing change earns a second, earlier build first — the smoke
+   build — and it narrows this rule rather than breaking it.** "One build,
+   requested only after review settles" was written against a build meant to
+   verify *behaviour*, and it still holds for that build unchanged. But a
+   fully-reviewed feature has shipped unreachable before — every review round
+   read the diff and confirmed the control renders when its precondition
+   holds; none of them could see that the precondition was never true on a
+   real device, because that isn't a code-reading question. So for a change
+   that adds or alters anything a user can see or tap, once it compiles,
+   request a build immediately and ask dazewell exactly **one** question:
+   does the control appear, and can you reach it? Not correctness, not edge
+   cases, not polish — reachability only, answered in the time it takes to
+   press a button. Round-2 architect review and any final-state pass run
+   **after** that check comes back positive, not before: there is no point
+   reviewing the craftsmanship of code nobody can reach yet.
+
+   The smoke build is disposable by design — expected to be superseded by
+   whatever review finds, and never to be described as a build to verify
+   behaviour against. The **verification build** above is unaffected: still
+   the one build dazewell tests properly, still requested once, still only
+   after round-2 and any final-state pass clear. A UI-facing change now costs
+   at most two orchestrator-requested builds, one per purpose, never two for
+   the same purpose — the implementer still requests neither. A change with
+   no user-visible surface (CI, docs, an internal refactor) gets no smoke
+   build at all; do not turn this into a build on every change.
 
    **When the build is up, ask for the test explicitly — never bury it in a
    handback.** A test request is a *blocking* request for dazewell's hands, and
