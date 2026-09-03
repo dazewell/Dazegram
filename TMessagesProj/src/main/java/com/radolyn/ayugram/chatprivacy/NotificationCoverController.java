@@ -237,6 +237,11 @@ public final class NotificationCoverController {
         return id;
     }
 
+    /** Generic summary channel id, exposed so a covered summary builder never adopts a real per-chat channel. */
+    public static String summaryChannel(int account) {
+        return summaryChannelId(account);
+    }
+
     // ---- Fresh, allow-listed builders ----
 
     private static PendingIntent inertIntent(int account, int requestCode) {

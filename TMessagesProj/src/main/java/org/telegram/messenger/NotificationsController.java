@@ -4856,9 +4856,13 @@ public class NotificationsController extends BaseController implements Notificat
     @SuppressLint("InlinedApi")
     private void showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
-        if (Build.VERSION.SDK_INT >= 26 && !com.radolyn.ayugram.chatprivacy.NotificationCoverController.isCovered(currentAccount, lastDialogId)) {
-            // NagramX: skip the real per-dialog channel validation when the last dialog is covered, since it would create a chat-named channel
-            notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
+        if (Build.VERSION.SDK_INT >= 26) {
+            if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.isCovered(currentAccount, lastDialogId)) {
+                // NagramX: a covered last dialog must not create a chat-named channel, but the summary still needs a valid channel to build/post
+                notificationBuilder.setChannelId(com.radolyn.ayugram.chatprivacy.NotificationCoverController.summaryChannel(currentAccount));
+            } else {
+                notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
+            }
         }
         Notification mainNotification = notificationBuilder.build();
         if (Build.VERSION.SDK_INT <= 19) {
@@ -4954,7 +4958,7 @@ public class NotificationsController extends BaseController implements Notificat
         java.util.HashSet<Long> naxCoveredDialogs = com.radolyn.ayugram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, messagesByDialogs);
         android.util.Log.i("NAX_SMOKE", "NAX_SMOKE_customized-privacy-cover-engine summary coveredCount=" + naxCoveredDialogs.size() + " useSummary=" + useSummaryNotification);
         if (useSummaryNotification && !naxCoveredDialogs.isEmpty()) {
-            Notification coverSummary = naxBuildCoverSummary(preferences, messagesByDialogs, naxCoveredDialogs);
+            Notification coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredDialogs);
             if (coverSummary != null) {
                 mainNotification = coverSummary;
             }
@@ -5829,7 +5833,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     // NagramX: fresh cover-aware summary (real lines for normal dialogs, one generic line per covered dialog)
-    private Notification naxBuildCoverSummary(SharedPreferences preferences, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> covered) {
+    private Notification naxBuildCoverSummary(LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> covered) {
         ArrayList<String> lines = new ArrayList<>();
         java.util.HashSet<Long> emittedCovered = new java.util.HashSet<>();
         boolean[] text = new boolean[1];
