@@ -68,10 +68,14 @@ near-misses too: a feature that does 70% of what was asked changes the request
 from "build this" to "extend that". Name the slug and where it lives.
 
 **2. Prior art in the history.**
-`git log --grep '#<related-slug>'` for anything adjacent, and
-`git log --oneline -S'<symbol>'` for when and why a line appeared. If a previous
-attempt was made and reverted, that is the single most important thing you can
-find — say what broke.
+Check `docs/codemap/` first — its `ui-to-code.md`, `upstream-traps.md`, and
+`dead-ends.md` are already-verified findings from earlier investigations, and
+a hit there is faster than re-deriving it from git archaeology. Re-verify any
+citation you rely on before repeating it — codemap entries drift out of date
+like any other pointer into the code. Then `git log --grep '#<related-slug>'`
+for anything adjacent, and `git log --oneline -S'<symbol>'` for when and why a
+line appeared. If a previous attempt was made and reverted, that is the single
+most important thing you can find — say what broke.
 
 **3. The chokepoint.**
 For anything touching a core flow, find the *one* place every path funnels
@@ -117,7 +121,7 @@ Keep it tight. Facts with citations, then the questions.
 [Already ships / Partially exists / Genuinely new / Can't tell — and one line of why]
 
 ## Prior art
-[Slugs, commits, what happened. "None found" is a valid answer.]
+[Slugs, commits, codemap entries, what happened. "None found" is a valid answer.]
 
 ## Where it hooks
 [The chokepoint, file:line, and the paths you traced to prove it converges.]

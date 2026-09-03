@@ -210,6 +210,10 @@ quote only the specific rule you are acting on.
   contract; you own the pre-archive verification side of it.
 - `CLAUDE.md` — the repo-wide rules.
 - `FEATURES.md` — what already ships. Check it before treating anything as new.
+- `docs/codemap/README.md` — the fork's UI→code map, upstream traps, and dead
+  ends. Check it during recon alongside `FEATURES.md`; `nagramx-workflow` and
+  the implementer brief are what require a durable finding to be written back
+  here in the same change that discovered it.
 
 ## Your team
 

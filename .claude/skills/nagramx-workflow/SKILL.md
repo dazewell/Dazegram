@@ -265,13 +265,14 @@ code are not.
    that needed many rounds to stabilise is precisely the one whose whole nobody
    has read.
 
-6. **Feature doc entry — rides with the feature.** If the change is
-   user-visible, write its entry for `FEATURES.md`: under the right
-   `## section`, a `### Feature name` heading, then a plain-spoken
-   description of what it does and how to use it, no marketing language, with
-   an inline shortcut table or screenshot where neighboring entries do that.
-   Run the prose through the `humanizer` skill so it reads like dazewell
-   wrote it in one pass, matching the surrounding entries.
+6. **Feature doc entry, and any codemap fact the change established — both ride
+   with the change.** If the change is user-visible, write its entry for
+   `FEATURES.md`: under the right `## section`, a `### Feature name` heading,
+   then a plain-spoken description of what it does and how to use it, no
+   marketing language, with an inline shortcut table or screenshot where
+   neighboring entries do that. Run the prose through the `humanizer` skill so
+   it reads like dazewell wrote it in one pass, matching the surrounding
+   entries.
 
    The entry is committed **on the change branch, alongside the code** — it's
    part of the same PR, so the feature and its documentation land together and
@@ -283,6 +284,18 @@ code are not.
    the code is the upstream `-pr` ceremony, which drops the one `FEATURES.md`
    hunk (`git checkout nagram/dev -- FEATURES.md`) so the proposal stays
    code-only — see the `nagramx-branch-flow` skill.
+
+   **Separately: when the change or its investigation establishes a durable
+   fact — a UI→code mapping, an upstream trap, or a hypothesis disproven along
+   the way — write it into `docs/codemap/` as part of this same change, not a
+   follow-up.** This applies whether or not the change is user-visible; a bug
+   fix or a piece of recon that nails down a fact belongs here just as much as
+   a shipped feature. Keep it proportionate — a fact that would save a future
+   investigation real time, not a log of everything read to get there — and
+   carry a `file:line` citation plus the date established, per
+   `docs/codemap/README.md`, which is the source of truth for the three
+   sections, the citation format, and the reader's obligation to re-verify a
+   citation before relying on it.
 
 7. **Commit.**
    - Subject: `<lowercase, imperative summary> #<slug>` — e.g.

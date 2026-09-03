@@ -191,6 +191,14 @@ format of its neighbours — read three neighbouring entries before you write it
 and match their voice. If a `humanizer` skill is available in your session, run
 the prose through it. A user-visible change without its entry will fail CI.
 
+**Separately, if your work on this branch established a durable fact** — a
+UI→code mapping, an upstream trap, or a hypothesis you investigated and
+disproved — write it into `docs/codemap/` in the same pull request, per
+`docs/codemap/README.md`. This applies whether or not the change itself is
+user-visible. Only write down what would save a future investigation real
+time and carries a `file:line` citation you have actually checked against
+this branch's `dev`; skip it if nothing you found rises to that.
+
 ## The pull request
 
 Open it into `dev`, **not as a draft**, once the change compiles (locally or
