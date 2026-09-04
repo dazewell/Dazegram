@@ -15,7 +15,7 @@ the sheet does not need.
 
 The `#eventschedule` editor instead reuses only the local rounded-field recipe
 shape and builds a minimal row (`createPatternFieldRow`) in
-`EventScheduleHelper.java:320-373`, then ports just the needed behavior
+`EventScheduleHelper.java:324-392`, then ports just the needed behavior
 (IME-next/add/remove/focus transfer) at the sheet layer.
 
 *(Established 2026-09-03.)*

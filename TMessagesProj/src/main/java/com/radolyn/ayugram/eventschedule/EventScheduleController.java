@@ -936,7 +936,7 @@ public final class EventScheduleController {
                 // Captured once, on the UI thread, before crossing to the background queue --
                 // matching and any needed compile both run against this one immutable
                 // snapshot, so they can't observe two different generations of the pattern
-                // (see EventScheduleEntry#capturePatternState / #matchesPattern).
+                // (see EventScheduleEntry#capturePatternState / #matchPatternIndex).
                 final EventScheduleEntry.PatternState patternState = entry.capturePatternState();
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {

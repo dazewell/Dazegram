@@ -142,7 +142,10 @@ public final class EventScheduleEntry {
     }
 
     public boolean hasAnyPattern() {
-        return !normalizedPatterns().isEmpty();
+        for (int i = 0; i < patterns.size(); i++) {
+            if (!TextUtils.isEmpty(normalizePattern(patterns.get(i)))) return true;
+        }
+        return !TextUtils.isEmpty(normalizePattern(pattern));
     }
 
     // A well-formed entry holds only strictly positive, server-addressable ids in serverIds and only
@@ -230,7 +233,7 @@ public final class EventScheduleEntry {
      * they're already final for this generation). Must only be called from the UI thread -- the only
      * caller is {@link EventScheduleController#evaluate}, which captures the returned state
      * before handing a match off to the background queue; matching and any needed compile
-     * both then run against that one captured object (see {@link #matchesPattern}).
+     * both then run against that one captured object (see {@link #matchPatternIndex(PatternState, CharSequence)}).
      */
     PatternState capturePatternState() {
         PatternState current = patternState.get();

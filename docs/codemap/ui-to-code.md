@@ -9,7 +9,7 @@ The *Send early on event* sheet's pattern editor is built inside
 `EventScheduleHelper.Row.openSheet()` by creating a caller-owned vertical
 container (`patternArea` + `patternRowsContainer`) and attaching it with
 `BottomBuilder.addCustomView(...)`, then placing the `Add pattern` row inside
-that same container (`EventScheduleHelper.java:518-555`).
+that same container (`EventScheduleHelper.java:564-587`).
 
 That shape is required by `BottomBuilder` internals: the builder keeps a
 private root inside a `ScrollView` (`BottomBuilder.kt:44-55`), and
