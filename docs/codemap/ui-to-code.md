@@ -69,20 +69,27 @@ transport now needed
 
 *(Established 2026-09-03.)*
 
-## Covered-chat open clear path writes suppression on notificationsQueue
+## Covered-chat clear hooks and accepted open-attempt behavior
 
-`ChatActivity` clears covered members only after visibility/passcode gates:
-`clearCoveredNotificationsIfVisible()` bails if the chat-lock overlay is still
-shown or app passcode is pending, then calls
-`NotificationsController.suppressVisibleCoveredDialog(dialog_id)` from
-`onResume`, `onBecomeFullyVisible`, and the post-chat-lock-unlock callback
+`ChatActivity` routes cover-clear attempts through
+`clearCoveredNotificationsIfVisible()`, called from `onResume`,
+`onBecomeFullyVisible`, and the post-chat-lock-unlock callback
 (`org/telegram/ui/ChatActivity.java:3755-3759`, `:3776-3784`, `:29244`,
-`:32179`).
+`:32179`). In that helper, current code checks `MODE_DEFAULT`, nonzero
+`dialog_id`, `chatLockPasscodeView == null`, and app-passcode flags before
+calling `NotificationsController.suppressVisibleCoveredDialog(dialog_id)`
+(`ChatActivity.java:3776-3784`).
 
-`suppressVisibleCoveredDialog(...)` then posts onto `notificationsQueue` and
-runs suppression against the live push snapshot before rebuilding notifications
+`suppressVisibleCoveredDialog(...)` posts onto `notificationsQueue`; the cover
+controller suppression path runs there and then triggers notification rebuild
 (`org/telegram/messenger/NotificationsController.java:3313-3318`;
 `com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:560-593`).
+
+Accepted on-device behavior: attempting to open a protected covered chat may
+consume the current cover before successful visibility (including cancelled or
+failed unlock). This map documents the fork-owned clear hooks above; it does
+not attribute or alter upstream read-state behavior, which is tracked
+separately in issue #286.
 
 *(Established 2026-09-03.)*
 
