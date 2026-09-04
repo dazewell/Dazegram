@@ -131,43 +131,30 @@ the pre-archive verification side (below) for every child session it archives.
     `Start-Process`), stop it using that tool's own stop call against the
     handle/session id it gave you at start time — don't go looking for its PID
     externally.
-11. **Nothing long-running should survive a turn boundary unattended — except
-    a bounded capture explicitly waiting on a pending user action, and even
-    that is bounded.** A session-attached process dies when the session goes
-    idle, but an OS-level process started via `Start-Process` (or similar)
-    does **not** — that gap is exactly what caused the incident this file
-    exists to prevent. If a process must outlive one turn, re-verify it
-    (identity-checked, per rule 7) at the start of the next turn, or stop it.
-    The one sanctioned exception is an ADB/logcat capture kept alive across a
-    turn boundary specifically because it is waiting on dazewell to run a
-    predeclared scenario (an `ask_user`-style block): before that wait begins,
-    record the exact identity (PID/handle, image name, start time), the
-    capture file's absolute path, and a **wall-clock deadline** for the
-    capture window, and enforce that deadline **independently of whether a
-    response ever arrives** — a user who never answers must not leave a
-    capture running indefinitely. When the deadline lapses with no response,
-    stop the capture on the recorded identity exactly as rules 5–6 require,
-    the same as if the scenario had been declared a failure. When the turn
-    *does* resume (dazewell responds), the first thing that turn does is
-    re-verify the recorded identity (PID + image name + start time, rule 7)
-    before touching it — a stale or reused PID is not the capture you
-    started — then stop it, analyze the bounded log, delete the capture file,
-    and verify the deletion, in that order, before doing anything else with
-    the result.
+11. **Nothing long-running should survive a turn boundary unattended.** A
+    session-attached process dies when the session goes idle, but an
+    OS-level process started via `Start-Process` (or similar) does **not** —
+    that gap is exactly what caused the incident this file exists to prevent.
+    If a process must outlive one turn, re-verify it (identity-checked, per
+    rule 7) at the start of the next turn, or stop it. **An ADB/logcat
+    capture never falls into this multi-turn case at all** — per
+    `nagramx-workflow`'s ADB capture protocol, the whole plant → capture →
+    stop → analyze → delete sequence for one scenario runs synchronously in
+    the foreground, inside a single turn, with a declared wall-clock deadline
+    and no `ask_user` (or other suspend point) in between. There is no
+    sanctioned cross-turn exception to this rule; a capture that would need
+    one is a protocol bug, not a case to accommodate here.
 12. **An ephemeral capture file is a fourth cleanup obligation, not a side
     effect of stopping the process.** When a process was started specifically
     to write a file for later reading — most concretely an `adb logcat`
     client redirected to a capture file for smoke-trace analysis — the file
     itself needs cleanup on top of the process (rules 3–4): analyze it, then
-    delete it, **immediately after analysis and before handback or
-    archive** — not necessarily before the turn that started the capture
-    ends, since rule 11's capture exception explicitly allows that wait to
-    span a turn boundary; what must never happen is analysis finishing
-    without cleanup immediately following it. Verify the deletion the same
-    way you verify termination (rule 6) — confirm the file no longer
-    exists — and record that verification. Treat a failed deletion exactly
-    like `stop result: failed to stop`: a hard block on archival, not a
-    footnote. This is distinct from rule 9 (keep the working directory and
+    delete it, immediately, in the same synchronous turn that ran the
+    capture — never held open across a turn boundary (rule 11). Verify the
+    deletion the same way you verify termination (rule 6) — confirm the file
+    no longer exists — and record that verification. Treat a failed deletion
+    exactly like `stop result: failed to stop`: a hard block on archival, not
+    a footnote. This is distinct from rule 9 (keep the working directory and
     logs outside the worktree) — that rule is about *where* the file lives
     while the process runs; this one is about making sure it doesn't outlive
     its purpose at all, wherever it lives.
