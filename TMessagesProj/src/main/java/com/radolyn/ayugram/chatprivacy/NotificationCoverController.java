@@ -229,7 +229,7 @@ public final class NotificationCoverController {
         String key = KEY_CHANNEL + personaId;
         String id = p.getString(key, null);
         if (id == null) {
-            id = TAG_PREFIX + account + "_p" + personaId + "_" + Math.abs(java.util.UUID.randomUUID().getLeastSignificantBits());
+            id = TAG_PREFIX + account + "_p" + personaId + "_" + java.util.UUID.randomUUID();
             p.edit().putString(key, id).apply();
         }
         ensureChannel(id, personaLabel(personaId));
@@ -240,7 +240,7 @@ public final class NotificationCoverController {
         SharedPreferences p = prefs(account);
         String id = p.getString(KEY_SUMMARY_CHANNEL, null);
         if (id == null) {
-            id = TAG_PREFIX + account + "_summary_" + Math.abs(java.util.UUID.randomUUID().getLeastSignificantBits());
+            id = TAG_PREFIX + account + "_summary_" + java.util.UUID.randomUUID();
             p.edit().putString(KEY_SUMMARY_CHANNEL, id).apply();
         }
         ensureChannel(id, LocaleController.getString(R.string.NaxCoverSummaryChannelName));
