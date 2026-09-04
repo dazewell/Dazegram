@@ -127,24 +127,31 @@ actually took if reachability comes back negative — then revert it as a **new
 commit** once the smoke build confirms reachability, before further review
 continues. Never fold it into a feature commit either way; the orchestrator
 greps the final diff for both that literal and the bare `NAX_SMOKE_` prefix,
-and separately inspects the diff for an undeclared added `android.util.Log.`
-call, treating a stray hit on either check as blocking, the same as the
-hard-line greps.
+and separately inspects the diff for an undeclared added Log call — **both
+the fully-qualified `android.util.Log.e(`/`.i(`/`.w(` form and the short
+`Log.e(`/`.i(`/`.w(` form following an added `android.util.Log` import**,
+since a probe you write in a new feature class typically imports `Log`
+rather than fully-qualifying it — treating a stray hit on either check as
+blocking, the same as the hard-line greps.
 
-**If your brief calls for an ADB-traced smoke cycle** (`nagramx-workflow`
-step 9's ADB subsection), plant all four marker classes that cycle needs, not
-just the one decision-point probe above: a liveness/BEGIN marker at an
-unconditionally-reached point carrying build identity
-(`BuildConfig.BUILD_VERSION_STRING` — already embeds the commit's short SHA
-via `COMMIT_ID`, `TMessagesProj/build.gradle:24-26,125` — plus
+**Plant all four marker classes unconditionally, not just the one
+decision-point probe above** (`nagramx-workflow` step 9's ADB subsection):
+a liveness/BEGIN marker at an unconditionally-reached point carrying build
+identity (`BuildConfig.BUILD_VERSION_STRING` — already embeds the commit's
+short SHA via `COMMIT_ID`, `TMessagesProj/build.gradle:24-26,125` — plus
 `BuildConfig.APPLICATION_ID`, the scenario id, and the account index where
 relevant), the expected path marker(s), the forbidden/competing path
 marker(s), and an END/completion marker — all sharing the same
-`NAX_SMOKE_<slug>` family prefix. **You don't run the capture yourself** —
-starting `adb`/`logcat`, prompting dazewell, and reading the log against the
-predeclared markers is the orchestrator's job, per `nagramx-workflow` step 9;
-your part is limited to planting these markers and reverting them, on
-instruction, exactly like the single-probe case above.
+`NAX_SMOKE_<slug>` family prefix. Plant all four **regardless of whether
+dazewell will actually be reachable over ADB at smoke time** — that isn't
+known when you write this commit, and a traced cycle later is only possible
+if the markers already exist now; the orchestrator only offers dazewell the
+`Ready with ADB` choice at all when this field is required, precisely
+because these markers exist by then. **You don't run the capture
+yourself** — starting `adb`/`logcat`, prompting dazewell, and reading the log
+against the predeclared markers is the orchestrator's job, per
+`nagramx-workflow` step 9; your part is limited to planting these markers and
+reverting them, on instruction, exactly like the single-probe case above.
 
 **A design gate before writing a risky part.** If the change touches a cache,
 asynchronous work, or invalidation — any two of the three, or any one plus
