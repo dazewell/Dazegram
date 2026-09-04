@@ -82,7 +82,12 @@ the pre-archive verification side (below) for every child session it archives.
      the ambient/shared server through a plain client (`adb logcat`) — there,
      do not stop the server at all; your responsibility is limited to
      stopping your own client process and keeping its working directory and
-     logs outside the worktree (rule 9) so it cannot hold the tree open.
+     logs outside the worktree (rule 9) so it cannot hold the tree open. If
+     more than one device may be attached (e.g. a phone reachable over
+     ADB-over-WiFi alongside anything else plugged in), pin the target
+     device's serial the same way as an emulator's below and address every
+     client command at it explicitly (`adb -s <recorded-serial> logcat`), so a
+     second device attaching mid-capture can't silently redirect it.
    - **Gradle.** Prefer `--no-daemon` for a one-off invocation so there is no
      daemon to leak in the first place. If you need warm-daemon speed for
      iterative builds, point `GRADLE_USER_HOME` at a session-specific
@@ -131,7 +136,34 @@ the pre-archive verification side (below) for every child session it archives.
     OS-level process started via `Start-Process` (or similar) does **not** —
     that gap is exactly what caused the incident this file exists to prevent.
     If a process must outlive one turn, re-verify it (identity-checked, per
-    rule 7) at the start of the next turn, or stop it.
+    rule 7) at the start of the next turn, or stop it. **An ADB/logcat
+    capture never falls into this multi-turn case at all** — per
+    `nagramx-workflow`'s ADB capture protocol, the single-turn contract
+    covers only the **logger/process and the raw capture artifact it
+    writes**: start logger → capture → stop → analyze → delete runs
+    synchronously in the foreground, inside a single turn, with a declared
+    wall-clock deadline and no `ask_user` (or other suspend point) in
+    between. The source probes the capture reads are a separate concern
+    entirely — they were planted by the implementer in an earlier commit,
+    well before this build exists, and their removal is a later commit of
+    its own; this rule governs only the ephemeral logger and its file, never
+    the source diagnostics. There is no sanctioned cross-turn exception for
+    the logger/artifact either; a capture that would need one is a protocol
+    bug, not a case to accommodate here.
+12. **An ephemeral capture file is a fourth cleanup obligation, not a side
+    effect of stopping the process.** When a process was started specifically
+    to write a file for later reading — most concretely an `adb logcat`
+    client redirected to a capture file for smoke-trace analysis — the file
+    itself needs cleanup on top of the process (rules 3–4): analyze it, then
+    delete it, immediately, in the same synchronous turn that ran the
+    capture — never held open across a turn boundary (rule 11). Verify the
+    deletion the same way you verify termination (rule 6) — confirm the file
+    no longer exists — and record that verification. Treat a failed deletion
+    exactly like `stop result: failed to stop`: a hard block on archival, not
+    a footnote. This is distinct from rule 9 (keep the working directory and
+    logs outside the worktree) — that rule is about *where* the file lives
+    while the process runs; this one is about making sure it doesn't outlive
+    its purpose at all, wherever it lives.
 
 ## Other sessions run concurrently — that is normal, and their processes are not yours
 
@@ -270,11 +302,23 @@ or, one block per item:
               a gradle-daemon row, the isolated GRADLE_USER_HOME cache path when
               used for daemon isolation> | n/a — used the shared/ambient resource
               and did not stop it (rule 8)
+  capture artifact: <absolute $env:TEMP path> — deleted & verified at <timestamp>
+              | n/a — this row produced no capture file (rule 12)
   purpose:    <why it was started>
   stop result: stopped | left running (justified: <why>) | failed to stop
   verified at: <timestamp of the identity-matched termination check> | not
               yet verified
 ```
+
+The `capture artifact` field applies to any row whose process wrote a file
+meant for later reading — most concretely an `adb-client`/`logcat` row backing
+a smoke-trace capture. A row of that kind reporting `n/a` when a capture file
+actually exists, or reporting `deleted & verified` without a timestamp, is
+malformed the same way a missing field is (rule 12). **This field is a claim,
+not proof** — it records what the starter believes it did, but the
+orchestrator-side pre-archive checklist below independently confirms the path
+is actually gone before archiving; a starter's `deleted & verified`
+disposition never substitutes for that independent check.
 
 **Separate from the process ledger**, include this mandatory cache cleanup field in your handback:
 
@@ -305,6 +349,11 @@ the orchestrator to discover. Before you report your work done:
   (using the ledger format above), explicitly still needed and called out as
   such, or explicitly a shared/ambient resource you deliberately left running
   because you don't own it (rule 8).
+- Any capture file a row's process wrote for later reading — most concretely
+  an `adb-client`/`logcat` row backing a smoke-trace capture — is analyzed,
+  then deleted, with that deletion verified before you report done (rule 12).
+  An undeleted or unverified capture artifact is a **hard archive block**,
+  the same as a `stop result: failed to stop` row.
 - Daemon-native shutdown ran **only** where you actually own the resource in
   isolation, per rule 8 — never an unqualified `adb kill-server`,
   `.\gradlew.bat --stop` against the default `GRADLE_USER_HOME`, or unscoped
@@ -312,7 +361,8 @@ the orchestrator to discover. Before you report your work done:
 - Your handback includes the **process ledger** in the format above, always
   present even when empty (`Processes: <none>`). This ledger is reported in
   your handback message only — **never write it into a repository file.** A
-  missing ledger, a malformed row (missing a required field), any row with
+  missing ledger, a malformed row (missing a required field, including an
+  unresolved `capture artifact` disposition per rule 12), any row with
   `stop result: failed to stop`, or any row still `not yet verified` is a
   **hard archive block** — the orchestrator must treat it as if every process
   might still be running and must not archive until it's resolved.
@@ -417,8 +467,10 @@ and it archives **only its own direct children** — never a grandchild.
 1. Read the direct child's process ledger from its report — a leaf implementer's
    handback ledger, or a child orchestrator's ledger carried in its `CLOSED`
    message. A missing ledger, a malformed row, a `stop result: failed to stop`,
-   or an unverified row is a **hard block** — do not archive, and treat every
-   such item as "assume still running." This "missing ledger blocks" rule
+   an unverified row, or a `capture artifact` disposition (rule 12) that is
+   missing, unresolved, or asserted without a timestamp is a **hard block** —
+   do not archive, and treat every such item as "assume still running." This
+   "missing ledger blocks" rule
    applies strictly to a session that **reached `RUNNING`** and so owed a
    self-reported ledger. A session that **never reached `RUNNING`** owes none:
    the pre-`RUNNING` / mis-dispatch cleanup paths in the orchestrator agent file
@@ -432,6 +484,14 @@ and it archives **only its own direct children** — never a grandchild.
 3. **Re-verify every OS-level identity yourself, including rows the ledger
    already marks stopped.** Don't take the starter's word for it: confirm PID
    + image name + start time no longer match (rule 7), for each ledger row.
+   **For any row reporting a `capture artifact` disposition (rule 12),
+   independently confirm the file itself is actually gone** — don't take a
+   `deleted & verified` claim on trust. Check the exact literal path recorded
+   in the ledger: if it still exists, is inaccessible to check, or the path
+   is otherwise unverifiable, that is a **hard block** — do not archive.
+   Don't delete it yourself either: return cleanup to the owning session
+   rather than removing a file on its behalf, since deleting it yourself
+   would hide whether the starter's original claim was ever true.
 4. For a row that is still running: if it's a **shared/ambient daemon**
    (default adb server, default Gradle daemon registry), do **not** stop it —
    per rule 8 that's a cross-session hazard, not a fix, and stopping it here is

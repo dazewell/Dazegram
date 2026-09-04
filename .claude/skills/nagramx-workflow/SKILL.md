@@ -526,6 +526,215 @@ code are not.
    behaviour, checking something in his own chats, or a decision that blocks the
    pipeline. If you need him, ask him — explicitly, one thing at a time.
 
+   **Local `adb` tooling is always available — an invariant, not a condition
+   to check.** The only thing that varies is whether dazewell's phone is
+   currently connected and reachable (he may be outside); never treat the
+   local `adb` executable itself as something that might be missing, and
+   never let a "no device" outcome read as "ADB unavailable" the way a
+   missing tool would. Every verification-build test request, and every
+   smoke-build request for a change with `Diagnostics: required` (the markers
+   that make a trace possible), is an **interactive choice**, not a bare
+   question: at minimum `Ready with connected device — start the bounded
+   capture now` and `Proceed without device trace`. A smoke-build request
+   with no diagnostics planted has nothing to trace against, so it stays the
+   single visual question below unconditionally, with no device-trace option
+   offered at all — see the smoke subsection below; grade that case
+   `Evidence: visual-only (device trace not offered; no markers)`, distinct
+   from either outcome of the choice below, since nothing about device
+   connectivity was ever assessed.
+
+   **Selecting the Ready option is itself the readiness confirmation, and
+   capture starts immediately — there is no separate second confirmation.**
+   After it's selected, resolve and pin the device's serial. **Do not infer
+   disconnection without attempting serial resolution** — the Ready choice
+   only means dazewell believes the device is reachable; the resolution
+   attempt is what actually establishes that. If no device is found
+   reachable, start no capture at all and grade this outcome on its own
+   terms, `Evidence: visual-only (device not connected)` — distinct from a
+   user actively declining the trace (below) and never described as path
+   proof or collateral-log cleanliness. When a device *is* found, run the
+   whole capture as one **synchronous, foreground** operation with a
+   declared fixed wall-clock deadline and a tool wait longer than that
+   deadline, so the wait itself never lapses before the capture's own
+   deadline does. Stop the retained `adb` client as soon as the declared
+   END marker is observed **or** the deadline elapses, whichever comes
+   first — `try`/`finally`, exact identity, and bounded termination
+   verification all apply exactly as `nagramx-process-lifecycle` requires
+   for any process. **Never call `ask_user` while the capture is running,
+   and never let the logger or its capture file cross a turn boundary** —
+   the single-turn contract covers only the **logger/process and the raw
+   capture artifact**: start logger → capture → stop → analyze → delete,
+   all inside one synchronous turn. The source probes themselves are
+   **not** part of this turn — they were already planted by the
+   implementer in an earlier commit, well before this build even exists,
+   and their removal is a separate later commit governed by the post-smoke
+   removal rule below. Conflating the two would claim a single turn plants
+   source code, which no synchronous capture protocol does or needs to do.
+
+   **`Proceed without device trace`** — dazewell actively choosing not to
+   run a device trace, distinct from Ready finding no device — continues
+   exactly as the single visual question described above always has, and
+   is graded `Evidence: visual-only (device trace declined)` — it must
+   never be read as, or upgraded into, a claim of path proof or
+   collateral-log cleanliness.
+
+   **Smoke / `Ready with connected device` is offered only when
+   `Diagnostics: required` planted the markers.** A change with no decision
+   point (`Diagnostics: not required`) has nothing to trace against, so its
+   smoke request stays the single visual question above with no device-trace
+   option offered at all — never dangle that option in front of dazewell for
+   a build that has no markers in it to read. Before capture starts,
+   predeclare one focused scenario and the **mechanical success definition**:
+   the BEGIN/liveness marker present with matching build identity, every
+   expected marker present at its declared count and order, **zero**
+   forbidden/competing markers, and the END/completion marker present. Any
+   forbidden/competing marker firing makes the result **failed or ambiguous —
+   never a success**, regardless of how many expected markers also fired; a
+   wrong path that happens to also touch the right marker is still the wrong
+   path. Reading a partial result: liveness absent means tooling or artifact
+   failure, never a feature verdict; expected absent while forbidden is
+   present means the wrong path fired (failed, per the definition above);
+   expected present but completion absent means a partial capture — rerun,
+   don't conclude from it; the full success definition holding proves
+   traversal only, and a visual confirmation from dazewell is still required
+   to call the behaviour itself correct. Let him run the one scenario within
+   the bounded synchronous window above, then grade the log against this
+   definition. Record `Evidence: ADB-traced (<scenario/marker summary>)`.
+   Once the capture returns (END marker or deadline, whichever came first),
+   analyze and delete the capture file immediately, in the same turn, and
+   verify the deletion — record both the process termination and the
+   artifact deletion as evidence. Once the smoke question is answered, remove
+   the probes exactly as the rule above already requires, before round 2
+   continues — this cycle narrows *how* the reachability question gets
+   answered, it does not change *when* removal happens.
+
+   **Verification / `Ready with connected device`.** No planted probes exist
+   at this point — they came out once the smoke question above was answered,
+   and they never ride into this build; the build dazewell verifies
+   behaviour on is the build that merges. There is no planted path left to
+   confirm here, so this evidence is **never** graded `Evidence: ADB-traced` —
+   that grading is reserved for the marker-based smoke cycle above. Resolve
+   and pin the device serial the same way as smoke, above — **don't infer
+   disconnection without attempting resolution**. If no device is found,
+   start no scan and grade `Evidence: visual-only (device not connected, no
+   collateral scan performed)`. When a device *is* found, it supplies a
+   bounded collateral scan, run synchronously the same way: `main,crash`
+   buffers for the scenario window, filtered to the installed variant's
+   package and its full PID set (including the `:nagramx` process,
+   re-resolved if the app crashes or restarts mid-window). A fatal in that
+   package during the window blocks; a non-fatal exception on or adjacent to
+   the changed code is an Important finding; anything else is counted and
+   non-blocking unless it names changed code or reproduces across two runs —
+   don't demand a baseline capture from unmodified `dev` to compare against.
+   Combine this scan with dazewell's own behaviour verdict and record
+   `Evidence: visual + ADB collateral (<behaviour verdict>; <scan summary>)`.
+   **Verification / `Proceed without device trace`** — dazewell actively
+   declining the trace, distinct from Ready finding no device — is
+   visual-only exactly as before, graded `Evidence: visual-only (device
+   trace declined, no collateral scan performed)` rather than leaving that
+   silent.
+
+   **A later review or fix that changes the traced decision path gets a new
+   cycle, never a reused verdict.** Plant a new, separately-declared
+   diagnostics commit, run one new bounded trace cycle, remove it in another
+   append-only commit, and only then continue — the same plant → capture →
+   remove discipline as the first cycle, never carried forward against code
+   that no longer matches what was traced.
+
+   **Marker discipline.** Every temporary probe's message carries the exact
+   family prefix `NAX_SMOKE_<slug>` — no ad-hoc NAX diagnostic family for this
+   purpose. These four marker classes are planted **unconditionally** as part
+   of the diagnostics commit whenever `Diagnostics: required` — not only once
+   a device later turns out to be connected; that later connectivity decides
+   whether the trace can be *read*, not whether it *exists*, and a smoke
+   `Ready with connected device` request is only ever offered when the
+   markers are already there to read. Declare, before capture, all four
+   marker classes a scenario needs:
+   a liveness/BEGIN marker at an unconditionally-reached point, carrying
+   non-sensitive build identity (`BuildConfig.BUILD_VERSION_STRING`, which
+   already embeds the commit's short SHA via `COMMIT_ID` —
+   `TMessagesProj/build.gradle:24-26,125` — plus `BuildConfig.APPLICATION_ID`
+   for the variant, the scenario id, and the account index where relevant);
+   the expected path marker(s); the forbidden/competing path marker(s); and an
+   END/completion marker. State expected counts and order before capture, not
+   after reading the log. The logging rules from the diagnostics note in step
+   3 apply unchanged: non-sensitive booleans/enums/ids/counts only, never
+   message text, a name, a number, a URL, a token, or anything else
+   user-identifying; avoid `onDraw`/scroll/per-message hot paths; each probe
+   answers one predeclared uncertainty and is one-shot or rate-limited where
+   it could otherwise repeat. When several code paths can produce the same
+   UI, prefer the existing symptom-stack-trace technique
+   (`Log.e(TAG, "<label>", new Throwable())` at the observed symptom, per step
+   3) over guessing which path to instrument.
+
+   **ADB mechanics live entirely in `nagramx-process-lifecycle` — this step
+   does not restate them.** That skill's contract covers pinning the target
+   device's serial, holding the exact process identity, keeping the capture's
+   working directory and output under an absolute `$env:TEMP` path outside
+   every worktree, the synchronous bounded-capture protocol above (a declared
+   wall-clock deadline, a tool wait longer than it, stop on
+   END-marker-or-deadline whichever comes first), prompt stop with bounded
+   verification on success/failure/cancellation/timeout, never stopping by
+   process name, never an unqualified `adb kill-server`, the capture-artifact
+   cleanup obligation (rule 12), and the process-ledger entry. Prefer
+   timestamp-bounded reads over `logcat -c`, which destroys the device's
+   existing buffer for every other consumer of it; detect a truncated
+   capture (the device dropping off mid-window) by the END marker's absence,
+   not by a byte-count guess.
+
+   **Collateral scope is Dazegram, not the phone.** The host-side filter may
+   include a narrow allowlist of system tags that name the package
+   (`AndroidRuntime`, `ActivityManager`, `ActivityTaskManager`, ANR, tombstone
+   lines) — nothing broader. Raw ambient logcat can carry other apps' and even
+   Telegram's own PII-adjacent lines that the planted-probe privacy rule above
+   does not govern, which is exactly why the retention rule below exists.
+
+   **Retention: raw captures are private, ephemeral, and never leave the
+   session.** They live only under an absolute `$env:TEMP` path — never the
+   repo, the worktree, a PR, a commit, `FEATURES.md`, or a codemap entry —
+   and are deleted immediately after analysis, in the same turn as the
+   capture, as part of the same guaranteed cleanup that stops the logcat
+   client (`nagramx-process-lifecycle`'s ephemeral capture-artifact rule).
+   Never quote a raw ambient line outside the session; a report may carry
+   only the declared marker lines plus a sanitized exception class and its
+   top frame, payload elided. Record both the capture deletion and the
+   process termination as evidence, not as an assumption — they are separate
+   obligations and neither implies the other. If deletion fails, report it
+   and block archival rather than treating a live, undeleted capture as
+   harmless.
+
+   **Cleanup verification is two independent checks, and neither substitutes
+   for the other.** Grep the final head tree for both the exact declared
+   `NAX_SMOKE_<slug>` literal **and** the bare `NAX_SMOKE_` prefix — a probe
+   planted under a mistyped or wrong slug still needs to come out. Separately,
+   inspect the final diff for any added Log call that isn't explicitly
+   declared permanent — **every added short `Log.e(`/`.i(`/`.w(` call**,
+   resolved against that file's actual imports (whether `import
+   android.util.Log` was newly added in this diff or already present before
+   it) to confirm it resolves to `android.util.Log`, **and every added
+   fully-qualified `android.util.Log.e(`/`.i(`/`.w(` call**. Checking only
+   calls sitting behind a *newly*-added import would miss a probe dropped
+   into a file that already imported `Log` for an unrelated reason — resolve
+   against the file's imports as they stand, not against what changed in
+   this diff. A probe missing the family prefix entirely would pass the grep
+   above and still be a leftover. Source cleanup, raw-capture deletion, and
+   process termination are three separate things to verify; none of the
+   three is evidence for the other two.
+
+   **Ownership stays split, not duplicated.** This step owns *when, why, and
+   how evidence is graded* (`Evidence: ADB-traced` for a traced smoke cycle;
+   `Evidence: visual + ADB collateral` for a verification build's collateral
+   scan; `Evidence: visual-only` for any of the three device-absent
+   outcomes — not offered, declined, or not connected — distinguished by
+   their parenthetical as defined above, never collapsed into one generic
+   label).
+   `nagramx-process-lifecycle` remains the single normative copy for process
+   identity, start/stop, and archive safety — this step points to it rather
+   than restating its rules. The orchestrator owns prompting, capture,
+   analysis, and evidence grading; the implementer owns planting and removing
+   the diagnostics commit when instructed, exactly as it already does for the
+   smoke build above.
+
    **Don't request the Copilot review — it is automatic.** The
    `dev no-force no-delete + Copilot review` repository ruleset requests it when
    a non-draft PR targets `dev`, so it arrives on its own. Every hand-request
