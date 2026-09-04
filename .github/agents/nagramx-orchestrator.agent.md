@@ -1133,7 +1133,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | Evidence: visual-only (ADB unavailable)>; APK build <not requested | green @ sha | red>; verification Evidence: <ADB-traced (<summary>) | visual-only (ADB unavailable, no collateral scan performed) | not yet run>
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | Evidence: visual-only (ADB unavailable)>; APK build <not requested | green @ sha | red>; verification <Evidence: ADB-traced (<summary>) | Evidence: visual-only (ADB unavailable, no collateral scan performed) | not yet run>
 Install: <which APK variant>
 
 **Changes**
