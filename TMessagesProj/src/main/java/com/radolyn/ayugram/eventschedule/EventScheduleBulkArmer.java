@@ -527,7 +527,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         e.dialogId = dialogId;
         for (int id : albumIds) e.serverIds.add(id);
         e.types = config.types;
-        e.pattern = config.pattern;
+        e.setPatterns(config.patterns);
         e.regex = config.regex;
         e.delaySeconds = config.delaySeconds;
         e.fallbackDate = scheduleDate;

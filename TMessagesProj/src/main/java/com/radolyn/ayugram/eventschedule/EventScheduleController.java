@@ -386,7 +386,7 @@ public final class EventScheduleController {
         entry.revision++;
         removeFromQueue(account, entry);
         entry.types = types;
-        entry.pattern = pattern == null ? "" : pattern;
+        entry.setPatterns(java.util.Collections.singletonList(pattern));
         entry.regex = regex;
         entry.delaySeconds = delaySeconds;
         entry.fallbackDate = fallbackDate;
@@ -455,10 +455,10 @@ public final class EventScheduleController {
      * -- in which case nothing is changed and the caller must not report success.
      */
     public static boolean commitEditArm(int account, long dialogId, int[] serverIds, int[] localIds,
-                                        int types, String pattern, boolean regex, int delaySeconds, int fallbackDate) {
+                                        @NonNull EventScheduleConfig config, int fallbackDate) {
         EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
                 account, dialogId, serverIds, localIds,
-                types, pattern, regex, delaySeconds, fallbackDate, System.currentTimeMillis());
+                config, fallbackDate, System.currentTimeMillis());
         if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
                 || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
             return false;
@@ -495,7 +495,8 @@ public final class EventScheduleController {
         }
         EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
                 account, dialogId, serverIds, negativeLocalIds,
-                built.types, built.pattern, built.regex, built.delaySeconds, built.fallbackDate, built.createdAt);
+                new EventScheduleConfig(built.types, built.normalizedPatterns(), built.regex, built.delaySeconds),
+                built.fallbackDate, built.createdAt);
         if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
                 || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
             return null;
@@ -722,15 +723,15 @@ public final class EventScheduleController {
      * controller is captured across the hop.
      */
     public static void reconcileThenCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
-                                               boolean userTouchedTrigger, boolean armed, int types, String pattern,
-                                               boolean regex, int delaySeconds, int scheduleDate) {
+                                               boolean userTouchedTrigger, boolean armed,
+                                               @NonNull EventScheduleConfig config, int scheduleDate) {
         ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account, dialogId);
         if (snaps.isEmpty()) {
-            finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate);
+            finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate);
             return;
         }
         postDurableLookup(account, snaps, () ->
-                finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, types, pattern, regex, delaySeconds, scheduleDate));
+                finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate));
     }
 
     /**
@@ -752,8 +753,8 @@ public final class EventScheduleController {
     }
 
     private static void finishCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
-                                         boolean userTouchedTrigger, boolean armed, int types, String pattern,
-                                         boolean regex, int delaySeconds, int scheduleDate) {
+                                         boolean userTouchedTrigger, boolean armed,
+                                         @NonNull EventScheduleConfig config, int scheduleDate) {
         if (!userTouchedTrigger) {
             commitEditRefresh(account, dialogId, editIds, editLocalIds, scheduleDate);
             return;
@@ -779,7 +780,7 @@ public final class EventScheduleController {
             return;
         }
         if (armed) {
-            boolean claimed = commitEditArm(account, dialogId, editIds, editLocalIds, types, pattern, regex, delaySeconds, scheduleDate);
+            boolean claimed = commitEditArm(account, dialogId, editIds, editLocalIds, config, scheduleDate);
             if (!claimed) {
                 AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
             }
@@ -925,7 +926,7 @@ public final class EventScheduleController {
                 if (entry.state != EventScheduleEntry.STATE_ARMED || entry.serverIds.isEmpty()
                         || isSuppressed(account, key)) continue;
                 boolean typeSet = entry.types != 0;
-                boolean patternSet = !TextUtils.isEmpty(entry.pattern);
+                boolean patternSet = entry.hasAnyPattern();
                 // OR: a matching type is enough on its own; otherwise the pattern can still match.
                 if (typeSet && entry.matchesType(message, text)) {
                     armWaiting(account, entry, key, entry.revision);
@@ -935,11 +936,11 @@ public final class EventScheduleController {
                 // Captured once, on the UI thread, before crossing to the background queue --
                 // matching and any needed compile both run against this one immutable
                 // snapshot, so they can't observe two different generations of the pattern
-                // (see EventScheduleEntry#capturePatternState / #matchesPattern).
+                // (see EventScheduleEntry#capturePatternState / #matchPatternIndex).
                 final EventScheduleEntry.PatternState patternState = entry.capturePatternState();
                 // A user regex has no timeout: keep it off the main thread (fork precedent: replace-text).
                 Utilities.globalQueue.postRunnable(() -> {
-                    if (!entry.matchesPattern(patternState, text)) return;
+                    if (entry.matchPatternIndex(patternState, text) < 0) return;
                     AndroidUtilities.runOnUIThread(() -> armWaiting(account, entry, key, patternState.revision));
                 });
             }

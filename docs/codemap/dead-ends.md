@@ -5,6 +5,21 @@ killed them. Recorded so the next investigation doesn't spend time re-testing
 a theory that's already dead. Re-verify the citation before relying on it —
 see the README.
 
+## "Reuse `PollEditTextCell` for Send on event pattern rows"
+
+Disproven. `PollEditTextCell` is a poll-specific, heavyweight composite with
+emoji-button, checkbox animation, attach/move affordances, and poll-only
+state machinery (`PollEditTextCell.java:63-89`). Pulling that class into the
+event-schedule sheet would import upstream-fragile behavior and extra surface
+the sheet does not need.
+
+The `#eventschedule` editor instead reuses only the local rounded-field recipe
+shape and builds a minimal row (`createPatternFieldRow`) in
+`EventScheduleHelper.java:324-392`, then ports just the needed behavior
+(IME-next/add/remove/focus transfer) at the sheet layer.
+
+*(Established 2026-09-03.)*
+
 ## "Two independently-forwarded messages can coalesce into one group"
 
 Disproven. `grouped_id` is only remapped onto a newly-sent message when the

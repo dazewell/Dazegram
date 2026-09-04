@@ -631,13 +631,10 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-Gitmodules'         (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsGood $pins) ([ref]$log)) -and $ok
 
     # Guard 11 layer floors
-    $nekPin = [int]$pins['NEKOMIMI_MIN']
-    $radPin = [int]$pins['RADOLYN_EXACT']
-    $strPin = [int]$pins['STRINGS_NAX_MIN']
-    $adcPin = [int]$pins['NACONFIG_ADDCONFIG_MIN']
-    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors ($nekPin - 1) $radPin $strPin $adcPin $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors $nekPin ($radPin - 1) $strPin $adcPin $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors $nekPin $radPin $strPin $adcPin $pins) ([ref]$log)) -and $ok
+    $radExact = [int]$pins['RADOLYN_EXACT']
+    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 171 $radExact 599 262 $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors 172 ($radExact - 1) 599 262 $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors 172 $radExact 599 262 $pins) ([ref]$log)) -and $ok
 
     # Guard 12 Ayu schema
     $ok = (Assert-Fails  'Test-AyuSchema(ver)'  (Test-AyuSchema 4 26 21 $true  $pins) ([ref]$log)) -and $ok

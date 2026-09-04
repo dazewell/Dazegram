@@ -4,6 +4,23 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## `triggerKey()` is firing identity, queue bucket identity, and overview grouping identity
+
+`EventScheduleController.queueKey(...)` composes queue identity as
+`account + dialogId + triggerKey` (`EventScheduleController.java:120-125`), so
+any change in `triggerKey()` repartitions the runtime send queues. The Message
+Triggers screen groups rows by the same key (`MessageTriggersActivity.java:465-479`),
+so it is also the overview grouping identity.
+
+`EventScheduleEntry.triggerKey()` therefore has to stay order-independent and
+injective for arbitrary user text. The current encoding canonicalizes the
+normalized pattern set, sorts with `String` natural order, and length-prefixes
+each element before concatenation (`EventScheduleEntry.java:163-174`). A
+delimiter-only encoding or order-sensitive list key can collide unrelated
+pattern sets, causing both wrong queue sharing and wrong UI grouping.
+
+*(Established 2026-09-03.)*
+
 ## One `schedule_date` per forward batch
 
 `TL_messages_forwardMessages` carries a single `schedule_date` field for the
