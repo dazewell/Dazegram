@@ -12,6 +12,7 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -280,6 +281,7 @@ public final class EventScheduleHelper {
             EventScheduleStore.OwnerSeed seed = editIds != null && editIds.length > 0
                     ? EventScheduleStore.resolveOwnerSeedForEdit(account, dialogId, editIds, editLocalIds)
                     : new EventScheduleStore.OwnerSeed(EventScheduleStore.EditOwner.NONE, null);
+            String setupSeedSource = null;
             if (seed.kind == EventScheduleStore.EditOwner.SINGLE) {
                 EventScheduleEntry existing = seed.entry;
                 enabled = true;
@@ -290,6 +292,7 @@ public final class EventScheduleHelper {
             } else {
                 EventScheduleLastSetup.Setup remembered = EventScheduleLastSetup.get(account);
                 if (remembered != null) {
+                    setupSeedSource = "record";
                     types = remembered.types;
                     patterns.addAll(remembered.patterns);
                     regex = remembered.regex;
@@ -303,6 +306,7 @@ public final class EventScheduleHelper {
                     String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
                     boolean hasLegacy = legacyTypes != 0 || !TextUtils.isEmpty(firstPattern);
                     if (hasLegacy) {
+                        setupSeedSource = "legacy";
                         types = legacyTypes;
                         if (!TextUtils.isEmpty(firstPattern)) {
                             patterns.add(firstPattern);
@@ -310,6 +314,7 @@ public final class EventScheduleHelper {
                         regex = cfg.getEventScheduleLastPatternRegex().Bool();
                         delay = cfg.getEventScheduleLastDelay().Int();
                     } else {
+                        setupSeedSource = "default";
                         types = 0;
                         regex = false;
                         delay = 0;
@@ -324,6 +329,15 @@ public final class EventScheduleHelper {
             // and commit() below even when the sheet is never opened, so it must already be in range the
             // moment the row is constructed, not just once the sheet's controls are shown.
             delay = Math.max(0, Math.min(delay, EventScheduleEntry.MAX_DELAY_SECONDS));
+            if (setupSeedSource != null) {
+                Log.i("EventScheduleHelper",
+                        "NAX_SMOKE_eventschedule_last account=" + account
+                                + " source=" + setupSeedSource
+                                + " patterns=" + patterns.size()
+                                + " types=" + types
+                                + " regex=" + regex
+                                + " delay=" + delay);
+            }
         }
 
         void updateChip() {
