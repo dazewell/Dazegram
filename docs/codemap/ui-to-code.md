@@ -241,6 +241,10 @@ one row checked (`ChatActivity.java:11492`). Its click handler calls
 `performRescheduleSpreadSelectedMessages()` (`ChatActivity.java:4341-4342`),
 which collects **every currently-selected id across both message-list slots**
 (`ChatActivity.java:37447-37454`) before building the reschedule preview. It
+operates on the whole live checkbox set, unlike the single-message
+`OPTION_EDIT_SCHEDULE_TIME` above, which only ever touches the one message the
+menu was opened on.
+
 *(Established 2026-09-02.)*
 
 ## Delay slider and Remember toggle: mode is carried explicitly, not inferred from slider presence
@@ -251,7 +255,7 @@ that both doors above — bulk Reschedule and single-message Edit schedule time 
 set `true`. Whether the delay slider block appears at all is gated at `:4761`:
 shown for a plain new-message sheet whenever `ScheduleTimeHelper.shouldUseDefaultSchedule`
 is true, and shown for a reschedule/edit sheet unless `currentDate` is the
-send-when-online sentinel (`0x7FFFFFE`) — the one case with no real timestamp
+send-when-online sentinel (`0x7FFFFFFE`) — the one case with no real timestamp
 to compute a "from now" delay against.
 
 `naxReschedule` is threaded into two independent places, not read back off
