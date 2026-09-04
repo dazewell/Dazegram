@@ -8,9 +8,9 @@ import org.json.JSONObject;
 import org.telegram.messenger.ApplicationLoader;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Local, per-account seed for the next "Send on event" setup in the sheet.
@@ -23,9 +23,9 @@ public final class EventScheduleLastSetup {
 
     private static final String KEY_SETUP = "setup";
 
-    private static final Map<Integer, Setup> CACHE = new HashMap<>();
-    private static final Map<Integer, Boolean> LOADED = new HashMap<>();
-    private static final Map<Integer, Object> MONITORS = new HashMap<>();
+    private static final Map<Integer, Setup> CACHE = new ConcurrentHashMap<>();
+    private static final Map<Integer, Boolean> LOADED = new ConcurrentHashMap<>();
+    private static final Map<Integer, Object> MONITORS = new ConcurrentHashMap<>();
 
     private EventScheduleLastSetup() {}
 
@@ -48,14 +48,7 @@ public final class EventScheduleLastSetup {
     }
 
     private static Object monitor(int account) {
-        synchronized (MONITORS) {
-            Object lock = MONITORS.get(account);
-            if (lock == null) {
-                lock = new Object();
-                MONITORS.put(account, lock);
-            }
-            return lock;
-        }
+        return MONITORS.computeIfAbsent(account, k -> new Object());
     }
 
     public static Setup get(int account) {
