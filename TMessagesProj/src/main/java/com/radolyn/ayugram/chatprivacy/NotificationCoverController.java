@@ -759,7 +759,9 @@ public final class NotificationCoverController {
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
-                    .setAutoCancel(true)
+                    // NagramX: in Open chat mode we own dismissal in handleInteraction(); letting the system auto-cancel
+                    // can dispatch delete before tap on some devices, which clears tap token state and drops open-chat.
+                    .setAutoCancel(tapMode != TAP_ACTION_OPEN_CHAT)
                     .setOnlyAlertOnce(true)
                     .setShowWhen(false)
                     .setContentIntent(interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId))
