@@ -38,8 +38,9 @@ sheet and calls `setPersona(...)` + the same rebuild; the preview row calls
 `NotificationCoverController.postPreview(...)` and only shows a bulletin result
 (`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:131-151`,
 `:190-223`, `:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
-The UI never posts or cancels a notification itself — it only writes config and
-asks the controller to rebuild, matching the existing settings-write precedent.
+The UI never builds or cancels a notification itself. It writes config and asks
+the controller to rebuild for disguise/persona changes, and it calls controller
+preview posting only for the explicit preview row.
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
