@@ -107,21 +107,33 @@ public final class EventScheduleLastSetup {
         if (TextUtils.isEmpty(value)) return null;
         try {
             JSONObject json = new JSONObject(value);
-            if (json.optInt("v", 1) != 1) return null;
-            int types = json.optInt("types") & EventScheduleEntry.TYPE_MASK;
-            ArrayList<String> rawPatterns = new ArrayList<>();
-            JSONArray patterns = json.optJSONArray("patterns");
-            if (patterns != null) {
-                for (int i = 0; i < patterns.length(); i++) {
-                    Object raw = patterns.opt(i);
-                    if (raw instanceof String) {
-                        rawPatterns.add((String) raw);
-                    }
-                }
+            if (!json.has("v") || !json.has("types") || !json.has("patterns")
+                    || !json.has("regex") || !json.has("delay")) {
+                return null;
             }
+            Object versionValue = json.get("v");
+            Object typesValue = json.get("types");
+            Object regexValue = json.get("regex");
+            Object delayValue = json.get("delay");
+            Object patternsValue = json.get("patterns");
+            if (!isJsonInt(versionValue) || !isJsonInt(typesValue) || !isJsonInt(delayValue)
+                    || !(regexValue instanceof Boolean) || !(patternsValue instanceof JSONArray)) {
+                return null;
+            }
+            if (((Number) versionValue).intValue() != 1) return null;
+            ArrayList<String> rawPatterns = new ArrayList<>();
+            JSONArray patterns = (JSONArray) patternsValue;
+            for (int i = 0; i < patterns.length(); i++) {
+                Object raw = patterns.get(i);
+                if (!(raw instanceof String)) {
+                    return null;
+                }
+                rawPatterns.add((String) raw);
+            }
+            int types = ((Number) typesValue).intValue() & EventScheduleEntry.TYPE_MASK;
             ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(rawPatterns);
-            boolean regex = json.optBoolean("regex");
-            int delay = clampDelay(json.optInt("delay"));
+            boolean regex = (Boolean) regexValue;
+            int delay = clampDelay(((Number) delayValue).intValue());
             if (types == 0 && normalizedPatterns.isEmpty()) return null;
             return new Setup(types, normalizedPatterns, regex, delay);
         } catch (Throwable t) {
@@ -149,5 +161,9 @@ public final class EventScheduleLastSetup {
 
     private static int clampDelay(int value) {
         return Math.max(0, Math.min(value, EventScheduleEntry.MAX_DELAY_SECONDS));
+    }
+
+    private static boolean isJsonInt(Object value) {
+        return value instanceof Integer || value instanceof Long;
     }
 }
