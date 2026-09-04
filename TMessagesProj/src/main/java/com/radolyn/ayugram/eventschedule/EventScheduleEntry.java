@@ -37,6 +37,7 @@ public final class EventScheduleEntry {
     public static final int TYPE_VIDEO = 4;
     public static final int TYPE_PHOTO = 8;
     public static final int TYPE_TEXT = 16;
+    public static final int TYPE_MASK = TYPE_VOICE | TYPE_ROUND | TYPE_VIDEO | TYPE_PHOTO | TYPE_TEXT;
 
     public static final int STATE_ARMED = 0;
     public static final int STATE_WAITING = 1;

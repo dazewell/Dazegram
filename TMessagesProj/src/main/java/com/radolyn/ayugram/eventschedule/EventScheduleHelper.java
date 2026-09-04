@@ -283,27 +283,47 @@ public final class EventScheduleHelper {
             if (seed.kind == EventScheduleStore.EditOwner.SINGLE) {
                 EventScheduleEntry existing = seed.entry;
                 enabled = true;
-                types = existing.types;
+                types = existing.types & EventScheduleEntry.TYPE_MASK;
                 patterns.addAll(existing.normalizedPatterns());
                 regex = existing.regex;
                 delay = existing.delaySeconds;
             } else {
-                NaConfig cfg = NaConfig.INSTANCE;
-                types = cfg.getEventScheduleLastTypes().Int();
-                String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
-                if (!TextUtils.isEmpty(firstPattern)) {
-                    patterns.add(firstPattern);
+                EventScheduleLastSetup.Setup remembered = EventScheduleLastSetup.get(account);
+                if (remembered != null) {
+                    types = remembered.types;
+                    patterns.addAll(remembered.patterns);
+                    regex = remembered.regex;
+                    delay = remembered.delaySeconds;
+                } else {
+                    // NagramX: new trigger seeds are per-account local prefs so they stay device-local and
+                    // avoid cloud-exported globals; legacy NaConfig scalars stay read-only fallback for users
+                    // upgrading with a pre-existing last setup.
+                    NaConfig cfg = NaConfig.INSTANCE;
+                    int legacyTypes = cfg.getEventScheduleLastTypes().Int() & EventScheduleEntry.TYPE_MASK;
+                    String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
+                    boolean hasLegacy = legacyTypes != 0 || !TextUtils.isEmpty(firstPattern);
+                    if (hasLegacy) {
+                        types = legacyTypes;
+                        if (!TextUtils.isEmpty(firstPattern)) {
+                            patterns.add(firstPattern);
+                        }
+                        regex = cfg.getEventScheduleLastPatternRegex().Bool();
+                        delay = cfg.getEventScheduleLastDelay().Int();
+                    } else {
+                        types = 0;
+                        regex = false;
+                        delay = 0;
+                    }
                 }
-                regex = cfg.getEventScheduleLastPatternRegex().Bool();
-                delay = cfg.getEventScheduleLastDelay().Int();
             }
+            types &= EventScheduleEntry.TYPE_MASK;
             // NagramX: unconditional presentation clamp -- an existing trigger predating this cap (or a
             // stale EventScheduleLastDelay recorded before it shipped) can carry a delay above the max.
             // This isn't the actual enforcement (that's EventScheduleStore.persist, which clamps every
             // runtime write regardless of what this field holds), but delay is read directly by snapshot()
             // and commit() below even when the sheet is never opened, so it must already be in range the
             // moment the row is constructed, not just once the sheet's controls are shown.
-            delay = Math.min(delay, EventScheduleEntry.MAX_DELAY_SECONDS);
+            delay = Math.max(0, Math.min(delay, EventScheduleEntry.MAX_DELAY_SECONDS));
         }
 
         void updateChip() {
@@ -821,17 +841,7 @@ public final class EventScheduleHelper {
                 patterns.addAll(unique);
                 regex = newRegex;
                 delay = newDelay;
-                NaConfig cfg = NaConfig.INSTANCE;
-                cfg.getEventScheduleLastTypes().setConfigInt(types);
-                // PR1 keeps the existing global scalar seed: write only the first normalized pattern.
-                cfg.getEventScheduleLastPattern().setConfigString(patterns.isEmpty() ? "" : patterns.get(0));
-                cfg.getEventScheduleLastPatternRegex().setConfigBool(regex);
-                // NagramX: written unconditionally, like types/pattern/regex above -- this preference is
-                // part of the last submitted trigger configuration, not a record of "did the user touch
-                // this one control", so an untouched delay is as much the submitted value as an untouched
-                // pattern is. delay is already capped (seeded clamped in the constructor, re-clamped for
-                // real by EventScheduleStore.persist regardless), so there is nothing left to leak.
-                cfg.getEventScheduleLastDelay().setConfigInt(delay);
+                EventScheduleLastSetup.put(account, types, patterns, regex, delay);
                 updateChip();
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
