@@ -664,4 +664,30 @@
     <!-- Spread a scheduled repost-as-copy over its own times #repost-spread -->
     <string name="RepostSpreadUnsupported_one">Can\'t repost %1$d of these as a copy</string>
     <string name="RepostSpreadUnsupported_other">Can\'t repost %1$d of these as a copy</string>
+    <!-- Disguise notifications (cover) for a chat #customized-privacy -->
+    <string name="NaxCoverSectionTitle">Notifications</string>
+    <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
+    <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
+    <string name="NaxCoverRowTitle">Cover</string>
+    <string name="NaxCoverLimitations">Covers hide the chat name, sender and message. They don\'t change the app name, badge, calls or stories. Notifications only.</string>
+    <string name="NaxCoverSheetTitle">Cover</string>
+    <string name="NaxCoverEnabledHint">Notifications for this chat are now disguised.</string>
+    <string name="NaxCoverDisabledHint">Notifications for this chat are back to normal.</string>
+    <string name="NaxCoverSummaryChannelName">System services</string>
+    <string name="NaxCoverPersonaBackgroundService">Background service</string>
+    <string name="NaxCoverPersonaBuildStatus">Build status</string>
+    <string name="NaxCoverPersonaDeviceMaintenance">Device maintenance</string>
+    <string name="NaxCoverPersonaSystemUpdate">System update</string>
+    <string name="NaxCoverPersonaStorageCleanup">Storage cleanup</string>
+    <string name="NaxCoverPersonaBatteryOptimizer">Battery optimizer</string>
+    <string name="NaxCoverPersonaSyncService">Sync service</string>
+    <string name="NaxCoverPersonaSecurityCheck">Security check</string>
+    <string name="NaxCoverBodyBackgroundService">Running %1$d task(s) in the background.</string>
+    <string name="NaxCoverBodyBuildStatus">%1$d build(s) finished.</string>
+    <string name="NaxCoverBodyDeviceMaintenance">%1$d item(s) need attention.</string>
+    <string name="NaxCoverBodySystemUpdate">%1$d update(s) ready to install.</string>
+    <string name="NaxCoverBodyStorageCleanup">%1$d file(s) can be cleared.</string>
+    <string name="NaxCoverBodyBatteryOptimizer">%1$d app(s) optimized.</string>
+    <string name="NaxCoverBodySyncService">Synced %1$d item(s).</string>
+    <string name="NaxCoverBodySecurityCheck">%1$d check(s) completed.</string>
 </resources>

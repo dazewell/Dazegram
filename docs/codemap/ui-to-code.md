@@ -30,17 +30,40 @@ that opens `ChatPrivacySheet.show(...)` (`org/telegram/ui/ChatActivity.java:498`
 Inside that sheet, `Hide last message` toggles
 `HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
 opens `HideLastMessageDialog.showPlaceholderEditor(...)` for Save/Cancel editing
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:66-73`, `:106`,
-`:114`; `com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:90-99`, `:145-156`;
+`com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
 still shown when the global app passcode is absent
 (`com/radolyn/ayugram/chatlock/ChatLockController.java:70-80`;
-`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:78-99`, `:119-127`).
+`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:101-124`, `:158-168`).
 When turned on with a passcode present, the sheet keeps the existing one-way
 coupling: it auto-enables hide only when hide was off, preserving a custom
-placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:127-133`).
+placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:169-177`).
+
+*(Established 2026-09-03.)*
+
+## Chat privacy sheet's Notifications section drives disguised covers
+
+The same sheet has a `Notifications` header, a `Disguise notifications`
+`TextCheckCell`, and a `Cover` `TextSettingsCell` (visible only while disguise
+is on). The switch toggles `NotificationCoverController.setEnabled(...)` and
+queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
+the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
+sheet and calls `setPersona(...)` + the same rebuild
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java` — cell setup after the
+lock cell, the `disguiseCell`/`coverCell` click listeners, and `showCoverPicker(...)`;
+`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
+cancels a notification itself — it only writes config and asks the controller to
+rebuild, matching the existing settings-write precedent.
+
+Cover config is stored in the account's notifications `SharedPreferences`
+(`MessagesController.getNotificationsSettings(account)`), keyed
+`nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
+generic channels under `nax_cover_v1_channel_<personaId>` /
+`nax_cover_v1_summary_channel`
+(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java`).
 
 *(Established 2026-09-03.)*
 
