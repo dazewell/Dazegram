@@ -779,6 +779,26 @@ state clears, never mid-addition. Rank the additions by the priorities in
 that raises the risk of losing the artifact gets scrutiny; a pure tidiness
 addition to green code may not be worth its build at all.
 
+**Mid-flight disproportionate-slice gate — stop before the next fix/review/APK.**
+This is distinct from ordinary scope addition: a disproportionate optional slice
+(one whose cost assumptions are invalidated mid-flight) stops the loop
+immediately, never batches with ordinary additions. Evidence includes: it reopens
+round-1 design, introduces a new Activity, service, storage, cache, concurrency,
+or lifecycle mechanism solely for itself, accumulates repeated Critical/Important
+findings in the same slice, causes an extra APK/device cycle, or plainly
+dominates elapsed implementation/review/build risk. Do **not** spend another
+implementation fix, re-review cycle, or APK on a disproportionate slice without
+dazewell's decision. When the implementer reports the trigger (see
+`nagramx-implementer` Receiving review findings), stop and ask dazewell:
+which slice is the cost center, what unique overhead is native to it (not the
+rest of the feature), whether the remainder is healthy, and realistic options
+(keep at stated cost, simplify, substitute lower-risk behaviour, or drop).
+Recommend one. The break-even point for "better to ask" is the first evidence,
+whether that appears during implementation, a smoke build, device testing, or
+the review loop (below). This is an allowed exception to the one-gate-per-feature
+rule because cost-assumption invalidation is real mid-flight and needs a decision
+point outside the review loop itself.
+
 **For a change the brief marked `Smoke build: required`, this phase does not
 end at a green compile gate — it ends at a positive reachability check.** Once
 the implementer reports the compile gate clean, request a build yourself the
@@ -937,31 +957,10 @@ Then dispatch `nagramx-architect` for round 2 on the real diff, on a different
 model family from the one the implementer ran. This is a distinct pass from
 round 1, and the implementer's own summary does not substitute for it.
 
-**Mid-flight disproportionate-slice gate.** During round 2 or as early findings
-land, watch for an optional or lower-priority slice becoming the cost center —
-any of: it reopens round-1 design; introduces a new Activity/service/storage
-/cache/concurrency/lifecycle mechanism solely for itself; accumulates repeated
-Critical/Important findings; causes an extra APK/device cycle; or plainly
-dominates elapsed review/implementation risk. This is a distinct gate from
-finding defects: a healthy diff can hide an unhealthy slice. If you see it,
-**stop the loop and interrupt dazewell with evidence:**
-
-- which slice is the cost center
-- what unique risk/time burden is native to it (not the rest of the feature)
-- whether the remainder of the feature is healthy
-- realistic options: keep it at stated cost, simplify it, substitute
-  lower-risk behaviour, or drop it
-
-Recommend one option. Do not spend another fix/review/build cycle on it without
-his decision — the disproportionate slice breaks the cost assumptions from the
-gate and is exactly what the cost-per-slice rule at design time exists to catch.
-**The implementer must report this trigger to their orchestrator with evidence;
-the orchestrator asks dazewell; a child orchestrator sends the question directly
-to him.** This is an allowed exception to the one-gate-per-feature rule because
-cost-assumption invalidation is real mid-flight and needs a decision point.
-
 **The review loop is capped.** Send findings back with `send_session_message`;
-the implementer fixes them as new commits and you re-verify.
+the implementer fixes them as new commits and you re-verify. (Note: a
+disproportionate-slice trigger, if it surfaces during Phase 4 review, is handled
+in Phase 3 above — same gate, stops the loop before another review cycle.)
 
 - **Terminate on a severity floor, not a verdict string:** loop until round 2
   returns **no Critical and no Important findings**. Minor findings are recorded

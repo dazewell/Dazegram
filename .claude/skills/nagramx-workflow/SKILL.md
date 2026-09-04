@@ -102,18 +102,18 @@ code are not.
    subfeatures must cost each one separately in the brief, naming what
    implementation, review, build, or device-test overhead is unique to it —
    never hide a slice inside the total. Mid-flight, if an optional slice
-   reopens design (round-1.5), introduces a new Activity/service/storage/cache
-   /concurrency/lifecycle mechanism solely for itself, accumulates repeated
-   Critical/Important findings, causes an extra APK/device cycle, or plainly
-   dominates elapsed risk, **stop and report it to dazewell with evidence**:
-   which slice, what unique cost, whether the rest is healthy, and options —
-   keep it at stated cost, simplify it, substitute a lower-risk behaviour, or
-   drop it. Do not spend another fix/review/build cycle on it without his
-   decision. The implementer must report the trigger to their orchestrator; the
-   orchestrator asks dazewell; a child orchestrator sends the question directly
-   to him. This is an allowed exception to one-gate-per-feature because
-   cost-assumption invalidation at mid-flight is the thing this rule exists to
-   catch.
+   reopens design (round-1.5), introduces a new Activity, service, storage,
+   cache, concurrency, or lifecycle mechanism solely for itself, accumulates
+   repeated Critical/Important findings, causes an extra APK/device cycle, or
+   plainly dominates elapsed risk, **stop and report it to dazewell with
+   evidence**: which slice, what unique cost, whether the rest is healthy, and
+   options — keep it at stated cost, simplify it, substitute a lower-risk
+   behaviour, or drop it. Do not spend another fix/review/build cycle on it
+   without dazewell's decision. The implementer must report the trigger to
+   their orchestrator; the orchestrator asks dazewell; a child orchestrator
+   sends the question directly to him. This is an allowed exception to
+   one-gate-per-feature because cost-assumption invalidation at mid-flight is
+   the thing this rule exists to catch.
 
 2. **Branch.** Cut a short-lived change branch off `dev` (the trunk), named
    `<YYYY-MM-DD>_<short-slug>` — **the date prefix is mandatory** (the date you

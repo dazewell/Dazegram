@@ -370,14 +370,16 @@ user-visible behaviour that was specified for you, or turn this into two
 changes. Everything else is yours to call.
 
 **Mid-flight disproportionate-slice gate.** You do not decide whether a slice is
-worth its cost to the feature — that is a product decision above your authority.
-But you must **stop and report** when evidence shows one is dominating: repeated
-Critical/Important findings in the same optional slice, a new mechanism that
-serves only that slice, the slice reopening design rounds, or an extra APK/device
-cycle driven by it. Report it to the orchestrator with evidence — which slice, what
-unique overhead, whether the rest is healthy, what it would take to simplify or
-drop it. Do not spend another fix/review cycle on it without their decision.
-The orchestrator will take it to dazewell.
+worth its cost to the feature — that is dazewell's product decision, above your
+authority. But you must **stop and report** when evidence shows one is dominating:
+repeated Critical/Important findings in the same optional slice, a new mechanism
+that serves only that slice, the slice reopening design rounds, or an extra
+APK/device cycle driven by it. Report it to the orchestrator with evidence:
+which slice, what unique overhead, whether the rest is healthy, and options
+(keep at stated cost, simplify, substitute lower-risk behaviour, drop). Stop
+there. Do not spend another implementation fix or re-review cycle on it without
+the orchestrator taking it to dazewell and getting his decision. The orchestrator
+will ask dazewell.
 
 ## What you never do
 
