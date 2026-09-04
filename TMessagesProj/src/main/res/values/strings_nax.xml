@@ -487,6 +487,7 @@
     <string name="DeepLTranslateKey">DeepL API Key</string>
     <string name="DeepLTranslateKeyNotice">Configure DeepL API Key, leave blank to use built-in credentials.</string>
     <string name="DefaultScheduleDelay">Default delay</string>
+    <string name="ScheduleDelay">Delay</string>
     <string name="ScheduleRemember">Remember</string>
     <string name="ScheduleRememberHint">Opens the picker at the delay you last scheduled with, instead of the one on the slider</string>
     <string name="ScheduleRememberHintEmpty">Nothing saved yet — it takes the next delay you schedule, and opens on the one below until then</string>

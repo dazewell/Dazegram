@@ -138,6 +138,10 @@ public final class ScheduleTimeHelper {
     public static final class RememberToggle {
 
         private final long openedAt;
+        // NagramX: reschedule/edit-schedule mode, carried here rather than derived from
+        // onSliderBlock == null now that those sheets can have a slider block too. Both the hint's
+        // wording/show condition and the slider's own title key on this, never on slider presence.
+        public final boolean isReschedule;
         private final Utilities.Callback0Return<Long> selectedTime;
         private Utilities.Callback<Boolean> onSliderBlock;
         private Runnable onPickers;
@@ -148,11 +152,15 @@ public final class ScheduleTimeHelper {
         /**
          * @param openedAt     the minute the wheels were seeded off, the baseline every offset is
          *                     measured from so the header can't disagree with what gets stored
+         * @param isReschedule whether this sheet is moving an already-scheduled message (bulk
+         *                     Reschedule or single-message Edit schedule time), rather than
+         *                     scheduling a new one
          * @param selectedTime the instant the wheels are on right now, device-local whichever
          *                     time-zone tab is showing
          */
-        public RememberToggle(long openedAt, Utilities.Callback0Return<Long> selectedTime) {
+        public RememberToggle(long openedAt, boolean isReschedule, Utilities.Callback0Return<Long> selectedTime) {
             this.openedAt = openedAt;
+            this.isReschedule = isReschedule;
             this.selectedTime = selectedTime;
         }
 
@@ -184,7 +192,7 @@ public final class ScheduleTimeHelper {
             }
             // The sheet still opens where it did — always on a reschedule sheet, and until something
             // is saved elsewhere — so the tap looks like it did nothing. Say what it does instead.
-            if (on && showHint != null && (onSliderBlock == null || getRememberedMinutes() == 0)) {
+            if (on && showHint != null && (isReschedule || getRememberedMinutes() == 0)) {
                 showHint.run();
             }
         }
@@ -286,14 +294,27 @@ public final class ScheduleTimeHelper {
     }
 
     /**
-     * Reschedule sheets carry no delay slider, so their wording can't point at one — and they always
-     * open on the time the message already has, so what they say doesn't depend on anything saved.
+     * Reschedule/edit sheets always open on the message's existing time, so their wording can't
+     * claim to be about a delay pending confirmation the way the new-message sheet's does.
      */
     private static int getHintText(RememberToggle remember) {
-        if (remember.onSliderBlock == null) {
+        if (remember.isReschedule) {
             return R.string.ScheduleRememberHintReschedule;
         }
         return remember.isOn() && getRememberedMinutes() == 0 ? R.string.ScheduleRememberHintEmpty : R.string.ScheduleRememberHint;
+    }
+
+    /**
+     * The slider block's title, in the one place both its initial construction and every later
+     * Remember toggle share so they can't drift apart: Remembered delay whenever Remember is on
+     * (new-message or reschedule alike), otherwise Delay on a reschedule/edit sheet — it isn't a
+     * default anything there — and Default delay on the plain new-message sheet.
+     */
+    private static int getDelayTitle(boolean isReschedule, boolean rememberOn) {
+        if (rememberOn) {
+            return R.string.ScheduleRememberedDelay;
+        }
+        return isReschedule ? R.string.ScheduleDelay : R.string.DefaultScheduleDelay;
     }
 
     public static void setPickersFromTargetTime(long targetTime, Calendar calendar, NumberPicker dayPicker, NumberPicker hourPicker, NumberPicker minutePicker) {
@@ -311,6 +332,12 @@ public final class ScheduleTimeHelper {
         }
     }
 
+    /**
+     * @param rescheduleMode whether this slider is on a Reschedule/Edit schedule time sheet: it
+     *                       still seeds off the saved global default (a harmless read) but dragging
+     *                       must never write that default back, and must never touch Remember's
+     *                       on/off state or its saved offset — only this sheet's own wheels move.
+     */
     public static void addDefaultScheduleSlider(
             Context context,
             LinearLayout container,
@@ -320,6 +347,7 @@ public final class ScheduleTimeHelper {
             NumberPicker hourPicker,
             NumberPicker minutePicker,
             RememberToggle remember,
+            boolean rescheduleMode,
             Runnable onPickersChanged
     ) {
         final LinearLayout quickScheduleLayout = new LinearLayout(context);
@@ -334,7 +362,7 @@ public final class ScheduleTimeHelper {
         final int accentColor = Theme.getColor(Theme.key_player_progress, resourcesProvider);
 
         final TextView quickScheduleTitle = new TextView(context);
-        quickScheduleTitle.setText(getString(R.string.DefaultScheduleDelay));
+        quickScheduleTitle.setText(getString(getDelayTitle(remember.isReschedule, remember.isOn())));
         quickScheduleTitle.setTextColor(accentColor);
         quickScheduleTitle.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 14);
         quickScheduleTitle.setTypeface(AndroidUtilities.bold());
@@ -370,7 +398,7 @@ public final class ScheduleTimeHelper {
             // The header follows the button the moment it's tapped, so the tap is visibly about the
             // delay above. Until something is actually saved the slider still seeds the wheels, so it
             // keeps its value and stays lit; once there's an offset it dims to the fallback it is.
-            quickScheduleTitle.setText(getString(on ? R.string.ScheduleRememberedDelay : R.string.DefaultScheduleDelay));
+            quickScheduleTitle.setText(getString(getDelayTitle(remember.isReschedule, on)));
             updateValue.run();
             final float alpha = getRememberedMinutes() > 0 ? .4f : 1f;
             if (animated) {
@@ -389,15 +417,22 @@ public final class ScheduleTimeHelper {
                 int step = Math.round(progress * (DEFAULT_SCHEDULE_STEP_COUNT - 1));
                 int minutes = getDefaultScheduleMinutes(step);
                 sliderMinutes[0] = minutes;
-                if (NaConfig.INSTANCE.getDefaultScheduledTime().Int() != minutes) {
-                    NaConfig.INSTANCE.getDefaultScheduledTime().setConfigInt(minutes);
-                }
-                // Touching the slider is a fresh choice of delay, so the remembered one is dropped:
-                // it would fight the value the wheels are being set to right here.
-                if (remember.isOn()) {
-                    remember.set(false, true);
-                } else {
+                if (rescheduleMode) {
+                    // NagramX: this sheet is only moving one already-scheduled message, never the
+                    // account-wide next-new-message default, and never Remember's saved offset — so
+                    // just refresh what the header shows, with no config write either side of it.
                     updateRemember.run(true);
+                } else {
+                    if (NaConfig.INSTANCE.getDefaultScheduledTime().Int() != minutes) {
+                        NaConfig.INSTANCE.getDefaultScheduledTime().setConfigInt(minutes);
+                    }
+                    // Touching the slider is a fresh choice of delay, so the remembered one is dropped:
+                    // it would fight the value the wheels are being set to right here.
+                    if (remember.isOn()) {
+                        remember.set(false, true);
+                    } else {
+                        updateRemember.run(true);
+                    }
                 }
                 setPickersFromTargetTime(getTargetTimeFromNow(minutes), calendar, dayPicker, hourPicker, minutePicker);
                 onPickersChanged.run();

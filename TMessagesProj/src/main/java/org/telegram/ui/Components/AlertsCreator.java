@@ -4688,7 +4688,7 @@ public class AlertsCreator {
         // NagramX: shared by the delay slider block and the Remember button in the confirm row;
         // null on a sheet that has no delay to remember (a reminder seeded off a date in a message).
         final ScheduleTimeHelper.RememberToggle naxRemember = ScheduleTimeHelper.canRememberOffset(currentDate, naxReschedule)
-                ? new ScheduleTimeHelper.RememberToggle(naxSeededAt, () -> tz[0] != null
+                ? new ScheduleTimeHelper.RememberToggle(naxSeededAt, naxReschedule, () -> tz[0] != null
                         ? tz[0].getSelectedInstant()
                         : ScheduleTimeHelper.getTargetTimeFromPickers(dayPicker, hourPicker, minutePicker))
                 : null;
@@ -4754,9 +4754,11 @@ public class AlertsCreator {
             com.radolyn.ayugram.reschedule.InfiniteVideoScheduleHelper.installHints(context, container, datePickerColors.textColor, resourcesProvider);
         }
 
-        // NagramX: no delay slider on a reschedule sheet — dragging it rewrites the global default
-        // delay, which shouldn't happen just from moving one already scheduled message.
-        if (!naxReschedule && ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
+        // NagramX: reschedule/edit sheets get the same slider as a new message, but dragging it only
+        // moves this sheet's own wheels — never the account-wide default delay, never Remember's
+        // state. Send-when-online reschedules keep it off: there's no "from now" delay to compute
+        // when the target isn't a real timestamp yet.
+        if (naxReschedule ? currentDate != 0x7FFFFFFE : ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
                     container,
@@ -4766,6 +4768,7 @@ public class AlertsCreator {
                     hourPicker,
                     minutePicker,
                     naxRemember,
+                    naxReschedule,
                     () -> {
                         // NagramX: same peer-mode delegation as the wheel listener; the slider writes
                         // device-local values, so the helper re-expresses them as peer wall-clock in peer mode.

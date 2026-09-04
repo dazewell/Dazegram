@@ -128,15 +128,15 @@ Long-pressing the message input bar's Send button in a chat opens the schedule
 sheet through `ChatActivityEnterView.onSendLongClick`
 (`ChatActivityEnterView.java:5564`), whose "Schedule Message" popup item calls
 `AlertsCreator.createScheduleDatePickerDialog`
-(`ChatActivityEnterView.java:5614`). That call enters the 4-arg overload at
-`AlertsCreator.java:4388` and funnels through five more delegating overloads —
-`:4408` → `:4412` → `:4416` → `:4427` → `:4438` — into the terminal
-implementation at `:4445`, where every schedule sheet is actually built.
+(`ChatActivityEnterView.java:5619`). That call enters the 4-arg overload at
+`AlertsCreator.java:4410` and funnels through five more delegating overloads —
+`:4430` → `:4434` → `:4438` → `:4456` → `:4474` — into the terminal
+implementation at `:4480`, where every schedule sheet is actually built.
 
 **This is a different door from long-pressing Send in the forward chat-picker
 (`DialogsActivity`).** The picker has its own long-press-Send handler,
-`DialogsActivity.onSendLongClick` (`DialogsActivity.java:12208`), whose own
-"Schedule Message" item (`:12265-12281`) calls the *same* `AlertsCreator.java:4388`
+`DialogsActivity.onSendLongClick` (`DialogsActivity.java:12224`), whose own
+"Schedule Message" item (`:12291-12324`) calls the *same* `AlertsCreator.java:4410`
 entry overload directly from the picker's own `writeButton`. The two are easy to
 conflate — both are "long-press Send, choose Schedule" from the user's point of
 view — but they are wired to different widgets, and only one of them fires for
@@ -241,8 +241,44 @@ one row checked (`ChatActivity.java:11492`). Its click handler calls
 `performRescheduleSpreadSelectedMessages()` (`ChatActivity.java:4341-4342`),
 which collects **every currently-selected id across both message-list slots**
 (`ChatActivity.java:37447-37454`) before building the reschedule preview. It
-operates on the whole live checkbox set, unlike the single-message
-`OPTION_EDIT_SCHEDULE_TIME` above, which only ever touches the one message the
-menu was opened on.
-
 *(Established 2026-09-02.)*
+
+## Delay slider and Remember toggle: mode is carried explicitly, not inferred from slider presence
+
+Every schedule sheet's terminal builder (`AlertsCreator.java:4480`) computes
+one `naxReschedule` boolean (`:4490`, `isEditSchedule || reschedule != null`)
+that both doors above — bulk Reschedule and single-message Edit schedule time —
+set `true`. Whether the delay slider block appears at all is gated at `:4761`:
+shown for a plain new-message sheet whenever `ScheduleTimeHelper.shouldUseDefaultSchedule`
+is true, and shown for a reschedule/edit sheet unless `currentDate` is the
+send-when-online sentinel (`0x7FFFFFE`) — the one case with no real timestamp
+to compute a "from now" delay against.
+
+`naxReschedule` is threaded into two independent places, not read back off
+each other:
+
+- `ScheduleTimeHelper.RememberToggle.isReschedule` (`ScheduleTimeHelper.java:144`,
+  set from the constructor call at `AlertsCreator.java:4691`) drives the
+  Remember hint's wording and its show-on-toggle-on condition
+  (`ScheduleTimeHelper.java:301`, `:195`) and the slider block's own title
+  (`getDelayTitle`, `:313`, called from both the block's initial construction
+  at `:365` and its Remember-toggle refresh at `:401`) — Remembered delay when
+  Remember is on, otherwise Delay on a reschedule/edit sheet or Default delay
+  on a new-message one.
+- `addDefaultScheduleSlider`'s own `rescheduleMode` parameter
+  (`ScheduleTimeHelper.java:350`, passed as `naxReschedule` from
+  `AlertsCreator.java:4771`) gates persistence inside `onSeekBarDrag`
+  (`:420-436`): reschedule mode never writes `NaConfig.defaultScheduledTime`
+  and never calls `remember.set(false, true)` (which would toggle Remember off
+  and clear the remembered offset) — it only refreshes the header and moves
+  this sheet's own wheels to `now + selected delay`.
+
+Both flags are always set consistently from the same `naxReschedule` at the
+one call site, but they exist as two separate carriers on purpose: one is a
+display concern (title/hint text), the other is a persistence concern (what a
+drag is allowed to write). Collapsing them back into a single "does this sheet
+have a slider" check was the exact bug this fix closed — the slider used to be
+the only thing standing in for "is this a reschedule sheet" at all, which broke
+the moment reschedule sheets got a slider too.
+
+*(Established 2026-09-04.)*
