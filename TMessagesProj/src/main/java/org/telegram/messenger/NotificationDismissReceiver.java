@@ -11,6 +11,7 @@ package org.telegram.messenger;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.text.TextUtils;
 
 public class NotificationDismissReceiver extends BroadcastReceiver {
 
@@ -22,6 +23,14 @@ public class NotificationDismissReceiver extends BroadcastReceiver {
         int currentAccount = intent.getIntExtra("currentAccount", UserConfig.selectedAccount);
         if (!UserConfig.isValidAccount(currentAccount)) {
             return;
+        }
+        String coverToken = intent.getStringExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_TOKEN);
+        if (!TextUtils.isEmpty(coverToken)) {
+            ApplicationLoader.postInitApplication();
+            int event = intent.getIntExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_EVENT, 0);
+            if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event)) {
+                return;
+            }
         }
         long dialogId = intent.getLongExtra("dialogId", 0);
         int date = intent.getIntExtra("messageDate", 0);
