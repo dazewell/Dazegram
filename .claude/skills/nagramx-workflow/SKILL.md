@@ -532,7 +532,8 @@ code are not.
    `Ready with ADB` and `Proceed without ADB`. Don't start any `adb`/`logcat`
    process until dazewell picks the ADB option **and** separately confirms
    he's actually ready — picking the option only says the phone is reachable
-   over WiFi, not that this is the moment to open a bounded capture window.
+   over ADB (WiFi or USB), not that this is the moment to open a bounded
+   capture window.
    `Proceed without ADB` continues exactly as the single visual question
    described above always has, and is graded `Evidence: visual-only (ADB
    unavailable)` — it must never be read as, or upgraded into, a claim of path
@@ -546,7 +547,8 @@ code are not.
    but the completion marker absent means a partial capture — rerun, don't
    conclude from it; every path marker present proves traversal only, and a
    visual confirmation from dazewell is still required to call the behaviour
-   itself correct. Start a bounded, owned logcat client (mechanics below), let
+   itself correct. Start a bounded, owned logcat client (mechanics live in
+   `nagramx-process-lifecycle`, cited below — not restated here), let
    him run the one scenario, stop capture promptly, and read the bounded log
    against that predeclaration. Record `Evidence: ADB-traced (<scenario/marker
    summary>)`. Once the smoke question is answered, remove the probes exactly

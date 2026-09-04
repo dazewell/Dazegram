@@ -844,8 +844,8 @@ diff, not the device. Once it's positive, tell the implementer to revert its
 diagnostics commit (see `Diagnostics: required` in the brief) as a new commit
 before you proceed — you confirm that removal yourself in Phase 4 below, not
 this check, using the two independent cleanup checks `nagramx-workflow`
-defines (the literal-plus-prefix grep and the undeclared-`Log.`-call diff
-inspection).
+defines (the literal-plus-prefix grep and the undeclared-`android.util.Log.`-
+call diff inspection).
 
 This is a **narrowing** of the one-build rule below, not a second exception to
 it: Phase 4's request is still the single build dazewell tests behaviour
@@ -1133,7 +1133,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | visual-only (ADB unavailable)>; APK build <not requested | green @ sha | red>; verification Evidence: <ADB-traced (<summary>) | visual-only (ADB unavailable, no collateral scan performed) | not yet run>
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | Evidence: visual-only (ADB unavailable)>; APK build <not requested | green @ sha | red>; verification Evidence: <ADB-traced (<summary>) | visual-only (ADB unavailable, no collateral scan performed) | not yet run>
 Install: <which APK variant>
 
 **Changes**
