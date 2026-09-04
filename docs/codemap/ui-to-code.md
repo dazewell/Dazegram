@@ -72,8 +72,9 @@ transport now needed
 ## Covered-chat clear hooks and accepted open-attempt behavior
 
 `ChatActivity` routes cover-clear attempts through
-`clearCoveredNotificationsIfVisible()`, called from `onResume`,
-`onBecomeFullyVisible`, and the post-chat-lock-unlock callback
+`clearCoveredNotificationsIfVisible()`, called from the chat lifecycle path
+that also sets `openedDialogId`, from `onBecomeFullyVisible`, and from the
+post-chat-lock-unlock callback
 (`org/telegram/ui/ChatActivity.java:3755-3759`, `:3776-3784`, `:29244`,
 `:32179`). In that helper, current code checks `MODE_DEFAULT`, nonzero
 `dialog_id`, `chatLockPasscodeView == null`, and app-passcode flags before
