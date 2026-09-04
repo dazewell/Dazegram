@@ -116,11 +116,14 @@ public final class EventScheduleLastSetup {
             Object regexValue = json.get("regex");
             Object delayValue = json.get("delay");
             Object patternsValue = json.get("patterns");
-            if (!isJsonInt(versionValue) || !isJsonInt(typesValue) || !isJsonInt(delayValue)
+            Integer decodedVersion = decodeJsonIntExact(versionValue);
+            Integer decodedTypes = decodeJsonIntExact(typesValue);
+            Integer decodedDelay = decodeJsonIntExact(delayValue);
+            if (decodedVersion == null || decodedTypes == null || decodedDelay == null
                     || !(regexValue instanceof Boolean) || !(patternsValue instanceof JSONArray)) {
                 return null;
             }
-            if (((Number) versionValue).intValue() != 1) return null;
+            if (decodedVersion != 1) return null;
             ArrayList<String> rawPatterns = new ArrayList<>();
             JSONArray patterns = (JSONArray) patternsValue;
             for (int i = 0; i < patterns.length(); i++) {
@@ -130,10 +133,10 @@ public final class EventScheduleLastSetup {
                 }
                 rawPatterns.add((String) raw);
             }
-            int types = ((Number) typesValue).intValue() & EventScheduleEntry.TYPE_MASK;
+            int types = decodedTypes & EventScheduleEntry.TYPE_MASK;
             ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(rawPatterns);
             boolean regex = (Boolean) regexValue;
-            int delay = clampDelay(((Number) delayValue).intValue());
+            int delay = clampDelay(decodedDelay);
             if (types == 0 && normalizedPatterns.isEmpty()) return null;
             return new Setup(types, normalizedPatterns, regex, delay);
         } catch (Throwable t) {
@@ -163,7 +166,18 @@ public final class EventScheduleLastSetup {
         return Math.max(0, Math.min(value, EventScheduleEntry.MAX_DELAY_SECONDS));
     }
 
-    private static boolean isJsonInt(Object value) {
-        return value instanceof Integer || value instanceof Long;
+    private static Integer decodeJsonIntExact(Object value) {
+        if (!(value instanceof Number)) return null;
+        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof Long) {
+            long longValue = (Long) value;
+            if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) return null;
+            return (int) longValue;
+        }
+        double numericValue = ((Number) value).doubleValue();
+        if (!Double.isFinite(numericValue)) return null;
+        if (numericValue != Math.rint(numericValue)) return null;
+        if (numericValue < Integer.MIN_VALUE || numericValue > Integer.MAX_VALUE) return null;
+        return (int) numericValue;
     }
 }
