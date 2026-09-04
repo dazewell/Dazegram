@@ -17,7 +17,7 @@ Each chat now has one `Chat privacy` item in its in-chat ⋯ menu. It opens a si
 
 The same sheet has a `Notifications` section with a `Disguise notifications` switch, off by default. While it is on, that chat uses a generic cover persona instead of real chat/sender/message content. You can pick the persona (`Cover`), choose a `Tap action` (`Hollow` by default, or `Open chat`), and post a safe `Preview notification` from the sheet without changing unread state.
 
-Covered taps/dismissals suppress exactly the represented covered members, and that suppression survives restarts and temporary disable/re-enable of disguise. Opening the chat through a real route (including after passcode/chat-lock success) clears the current cover without marking anything read, and genuinely new members can cover again later. Android limits still apply: app attribution, badges, calls, stories, and any already-pinned old conversation/channel labels remain OS-owned, and Android notification settings stay authoritative.
+Covered taps/dismissals suppress exactly the represented covered members, and that suppression survives restarts and temporary disable/re-enable of disguise. Opening the chat through a real route (including after passcode/chat-lock success) clears the current cover without marking anything read, and genuinely new members can cover again later. Live incoming/ongoing call UI and stories stay outside disguise, while missed-call service notifications are covered generically. Android still owns app attribution, badges, and any already-pinned old conversation/channel labels, and Android notification settings stay authoritative.
 
 ### Privacy profiles <!-- #privacy-profiles -->
 

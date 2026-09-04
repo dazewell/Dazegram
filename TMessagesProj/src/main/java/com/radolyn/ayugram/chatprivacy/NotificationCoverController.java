@@ -34,13 +34,25 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Disguised notifications ("cover") for the per-chat privacy sheet.
  *
  * <p>When a dialog is covered, notification content for that dialog is built only from generic
  * personas. Real identity-bearing surfaces are never reused for covered paths.
+ *
+ * <p>Persistence contract (all values are per-account notifications preferences):
+ * <br>- Namespace: {@code nax_cover_v1_*}.
+ * <br>- Suppression key is scoped by parent dialog id ({@code nax_cover_v1_suppress_state_<dialogId>});
+ * forum topics share the same parent dialog scope.
+ * <br>- Suppression JSON envelope v1: {@code {"v":1,"items":[...],"aliases":[[alias,canonical],...]}}.
+ * <br>- Decode is read-only: {@code v>1} is treated as version-ahead (suppression not applied, never rewritten);
+ * malformed payload is decode-failed (suppression not applied, only an interaction-driven suppression write may
+ * replace it with a fresh v1 payload).
+ * <br>- Bounds: canonical suppression ids keep newest-first capped at 100, alias mappings capped at 200
+ * so per-dialog state stays bounded while preserving remap continuity.
+ * <br>- Interaction tokens and active-token pointers are persisted, survive process restart, and are cleaned by
+ * this controller during interaction handling, reconciliation, cancel-all, disable, and account teardown paths.
  */
 public final class NotificationCoverController {
 
@@ -71,7 +83,7 @@ public final class NotificationCoverController {
     private static final int PREVIEW_ID_BASE = 0x7A40;
     private static final int SUPPRESSION_LIMIT = 100;
     private static final int SUPPRESSION_ALIAS_LIMIT = 200;
-    private static final Object SUPPRESSION_LOCK = new Object();
+    private static final Object COVER_STATE_LOCK = new Object();
 
     private static final int TOKEN_KIND_CHILD_TAP = 1;
     private static final int TOKEN_KIND_CHILD_DISMISS = 2;
@@ -109,11 +121,11 @@ public final class NotificationCoverController {
         final ArrayList<String> canonical = new ArrayList<>();
         final LinkedHashMap<String, String> aliases = new LinkedHashMap<>();
         final boolean decodeFailed;
-        final boolean absent;
+        final boolean versionAhead;
 
-        SuppressionState(boolean decodeFailed, boolean absent) {
+        SuppressionState(boolean decodeFailed, boolean versionAhead) {
             this.decodeFailed = decodeFailed;
-            this.absent = absent;
+            this.versionAhead = versionAhead;
         }
 
         boolean containsCanonical(String id) {
@@ -124,6 +136,7 @@ public final class NotificationCoverController {
     private static final class InteractionRecord {
         int kind;
         int mode;
+        int date;
         long dialogId;
         final LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
     }
@@ -133,14 +146,12 @@ public final class NotificationCoverController {
         public final int suppressedUniqueCount;
         public final int displayCount;
         public final ArrayList<String> representedIds;
-        public final boolean decodeFailed;
 
-        CoverPostPlan(int coveredUniqueCount, int suppressedUniqueCount, int displayCount, ArrayList<String> representedIds, boolean decodeFailed) {
+        CoverPostPlan(int coveredUniqueCount, int suppressedUniqueCount, int displayCount, ArrayList<String> representedIds) {
             this.coveredUniqueCount = coveredUniqueCount;
             this.suppressedUniqueCount = suppressedUniqueCount;
             this.displayCount = displayCount;
             this.representedIds = representedIds;
-            this.decodeFailed = decodeFailed;
         }
 
         public boolean hasRepresentedMembers() {
@@ -232,23 +243,35 @@ public final class NotificationCoverController {
     public static void setEnabled(int account, long dialogId, boolean enabled) {
         if (dialogId == 0) return;
         SharedPreferences p = prefs(account);
-        SharedPreferences.Editor ed = p.edit().putBoolean(KEY_ENABLED + dialogId, enabled);
+        boolean clearPreviewNotification = false;
+        synchronized (COVER_STATE_LOCK) {
+            SharedPreferences.Editor ed = p.edit().putBoolean(KEY_ENABLED + dialogId, enabled);
+            if (enabled) {
+                if (!p.contains(KEY_PERSONA + dialogId)) {
+                    int picked = POOL[(int) Math.floorMod(dialogId, POOL.length)].id;
+                    ed.putInt(KEY_PERSONA + dialogId, picked);
+                }
+                if (!p.contains(KEY_TAP_ACTION + dialogId)) {
+                    ed.putInt(KEY_TAP_ACTION + dialogId, TAP_ACTION_HOLLOW);
+                }
+            } else {
+                clearDialogInteractionState(account, dialogId, p, ed);
+                if (p.getLong(KEY_PREVIEW_DIALOG, 0) == dialogId) {
+                    clearPreviewStateLocked(p, ed);
+                    clearPreviewNotification = true;
+                }
+            }
+            ed.apply();
+        }
         if (enabled) {
-            if (!p.contains(KEY_PERSONA + dialogId)) {
-                int picked = POOL[(int) Math.floorMod(dialogId, POOL.length)].id;
-                ed.putInt(KEY_PERSONA + dialogId, picked);
-            }
-            if (!p.contains(KEY_TAP_ACTION + dialogId)) {
-                ed.putInt(KEY_TAP_ACTION + dialogId, TAP_ACTION_HOLLOW);
-            }
             clearConversationArtifacts(dialogId);
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(internalId(dialogId));
         } else {
-            clearDialogInteractionState(account, dialogId, p, ed);
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(coverTag(account, dialogId), internalId(dialogId));
-            cancelPreviewIfOwner(account, dialogId, p, ed);
         }
-        ed.apply();
+        if (clearPreviewNotification) {
+            cancelPreviewNotification(account);
+        }
     }
 
     public static void setPersona(int account, long dialogId, int personaId) {
@@ -301,69 +324,45 @@ public final class NotificationCoverController {
         return true;
     }
 
-    private static boolean isCoverableMember(MessageObject messageObject) {
+    private static boolean isRepresentableMember(MessageObject messageObject) {
         if (messageObject == null) return false;
         if (messageObject.isStoryPush || messageObject.isStoryMentionPush || messageObject.isLiveStoryPush || messageObject.isStoryReactionPush) {
             return false;
-        }
-        if (messageObject.messageOwner != null && messageObject.messageOwner.action != null) {
-            if (messageObject.messageOwner.action instanceof org.telegram.tgnet.TLRPC.TL_messageActionPhoneCall
-                    || messageObject.messageOwner.action instanceof org.telegram.tgnet.TLRPC.TL_messageActionConferenceCall) {
-                return false;
-            }
         }
         return true;
     }
 
     private static MemberIdentity identityOf(MessageObject messageObject) {
-        if (!isCoverableMember(messageObject)) {
+        if (!isRepresentableMember(messageObject)) {
             return null;
         }
-        String random = messageObject.messageOwner != null ? randomIdentity(messageObject.messageOwner.random_id) : null;
+        if (messageObject.messageOwner == null) {
+            return null;
+        }
+        String random = randomIdentity(messageObject.messageOwner.random_id);
         String message = messageIdentity(messageObject.getId());
-        if (random == null && message == null) {
-            return null;
+        if (random != null) {
+            return new MemberIdentity(random, random, message);
         }
-        return new MemberIdentity(random != null ? random : message, random, message);
-    }
-
-    public static boolean hasCoverableMessage(ArrayList<MessageObject> messages) {
-        if (messages == null) return false;
-        for (int i = 0; i < messages.size(); i++) {
-            if (identityOf(messages.get(i)) != null) {
-                return true;
-            }
+        if (message != null) {
+            return new MemberIdentity(message, null, message);
         }
-        return false;
-    }
-
-    public static int countCoverableMembers(ArrayList<MessageObject> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return 0;
-        }
-        LinkedHashSet<String> ids = new LinkedHashSet<>();
-        for (int i = 0; i < messages.size(); i++) {
-            MemberIdentity identity = identityOf(messages.get(i));
-            if (identity != null && validIdentity(identity.canonicalCandidate)) {
-                ids.add(identity.canonicalCandidate);
-            }
-        }
-        return ids.size();
+        return null;
     }
 
     public static HashSet<Long> collectCovered(int account, LongSparseArray<ArrayList<MessageObject>> byDialog) {
         HashSet<Long> set = new HashSet<>();
         for (int i = 0; i < byDialog.size(); i++) {
             long did = byDialog.keyAt(i);
-            if (isCovered(account, did) && hasCoverableMessage(byDialog.valueAt(i))) {
+            if (isCovered(account, did)) {
                 set.add(did);
             }
         }
         return set;
     }
 
-    public static boolean blocksPopupMessage(int account, long dialogId, MessageObject messageObject) {
-        return dialogId != 0 && isCovered(account, dialogId) && isCoverableMember(messageObject);
+    public static boolean blocksPopupMessage(int account, long dialogId) {
+        return dialogId != 0 && isCovered(account, dialogId);
     }
 
     // ---- Suppression state ----
@@ -390,13 +389,16 @@ public final class NotificationCoverController {
     private static SuppressionState loadSuppressionState(int account, long dialogId) {
         String raw = prefs(account).getString(suppressionStateKey(dialogId), null);
         if (TextUtils.isEmpty(raw)) {
-            return new SuppressionState(false, true);
+            return new SuppressionState(false, false);
         }
         try {
             JSONObject root = new JSONObject(raw);
-            if (root.optInt("v", -1) != 1) {
-                prefs(account).edit().remove(suppressionStateKey(dialogId)).apply();
-                return new SuppressionState(false, false);
+            int version = root.optInt("v", -1);
+            if (version > 1) {
+                return new SuppressionState(false, true);
+            }
+            if (version != 1) {
+                return new SuppressionState(true, false);
             }
             SuppressionState state = new SuppressionState(false, false);
             JSONArray items = root.optJSONArray("items");
@@ -425,36 +427,45 @@ public final class NotificationCoverController {
             trimSuppressionState(state);
             return state;
         } catch (Exception e) {
-            prefs(account).edit().remove(suppressionStateKey(dialogId)).apply();
-            return new SuppressionState(false, false);
+            return new SuppressionState(true, false);
         }
     }
 
-    private static void saveSuppressionState(int account, long dialogId, SuppressionState state) {
-        if (state == null || state.decodeFailed) {
+    private static String serializeSuppressionState(SuppressionState state) throws JSONException {
+        JSONObject root = new JSONObject();
+        root.put("v", 1);
+        JSONArray items = new JSONArray();
+        for (int i = 0; i < state.canonical.size(); i++) {
+            items.put(state.canonical.get(i));
+        }
+        root.put("items", items);
+        JSONArray aliases = new JSONArray();
+        for (Map.Entry<String, String> e : state.aliases.entrySet()) {
+            JSONArray pair = new JSONArray();
+            pair.put(e.getKey());
+            pair.put(e.getValue());
+            aliases.put(pair);
+        }
+        root.put("aliases", aliases);
+        return root.toString();
+    }
+
+    private static void saveSuppressionState(SharedPreferences.Editor ed, long dialogId, SuppressionState state) {
+        if (state == null || state.decodeFailed || state.versionAhead) {
             return;
         }
         trimSuppressionState(state);
         try {
-            JSONObject root = new JSONObject();
-            root.put("v", 1);
-            JSONArray items = new JSONArray();
-            for (int i = 0; i < state.canonical.size(); i++) {
-                items.put(state.canonical.get(i));
-            }
-            root.put("items", items);
-            JSONArray aliases = new JSONArray();
-            for (Map.Entry<String, String> e : state.aliases.entrySet()) {
-                JSONArray pair = new JSONArray();
-                pair.put(e.getKey());
-                pair.put(e.getValue());
-                aliases.put(pair);
-            }
-            root.put("aliases", aliases);
-            prefs(account).edit().putString(suppressionStateKey(dialogId), root.toString()).apply();
+            ed.putString(suppressionStateKey(dialogId), serializeSuppressionState(state));
         } catch (JSONException e) {
             FileLog.e(e);
         }
+    }
+
+    private static void saveSuppressionState(int account, long dialogId, SuppressionState state) {
+        SharedPreferences.Editor ed = prefs(account).edit();
+        saveSuppressionState(ed, dialogId, state);
+        ed.apply();
     }
 
     private static void trimSuppressionState(SuppressionState state) {
@@ -484,7 +495,7 @@ public final class NotificationCoverController {
     }
 
     private static boolean upsertSuppressedIdentity(SuppressionState state, MemberIdentity identity) {
-        if (state == null || state.decodeFailed || identity == null || !validIdentity(identity.canonicalCandidate)) {
+        if (state == null || state.decodeFailed || state.versionAhead || identity == null || !validIdentity(identity.canonicalCandidate)) {
             return false;
         }
         String canonical = resolveCanonical(state, identity.canonicalCandidate);
@@ -492,11 +503,14 @@ public final class NotificationCoverController {
             canonical = identity.canonicalCandidate;
         }
         boolean changed = false;
-        if (state.canonical.remove(canonical)) {
+        int existing = state.canonical.indexOf(canonical);
+        if (existing != 0) {
+            if (existing > 0) {
+                state.canonical.remove(existing);
+            }
+            state.canonical.add(0, canonical);
             changed = true;
         }
-        state.canonical.add(0, canonical);
-        changed = true;
         if (validIdentity(identity.randomAlias)) {
             changed |= putAlias(state, identity.randomAlias, canonical);
         }
@@ -517,35 +531,39 @@ public final class NotificationCoverController {
         return true;
     }
 
-    private static boolean suppressCanonicalList(int account, long dialogId, List<String> represented) {
+    private static boolean suppressCanonicalListLocked(int account, long dialogId, List<String> represented, SharedPreferences.Editor ed, boolean allowDecodeRecovery) {
         if (dialogId == 0 || represented == null || represented.isEmpty()) {
             return false;
         }
-        synchronized (SUPPRESSION_LOCK) {
-            SuppressionState state = loadSuppressionState(account, dialogId);
-            if (state.decodeFailed) {
+        SuppressionState state = loadSuppressionState(account, dialogId);
+        if (state.versionAhead) {
+            return false;
+        }
+        if (state.decodeFailed) {
+            if (!allowDecodeRecovery) {
                 return false;
             }
-            boolean changed = false;
-            for (int i = 0; i < represented.size(); i++) {
-                String id = represented.get(i);
-                if (!validIdentity(id)) {
-                    continue;
-                }
-                changed |= upsertSuppressedIdentity(state, new MemberIdentity(id, null, null));
-            }
-            if (changed) {
-                saveSuppressionState(account, dialogId, state);
-            }
-            return changed;
+            state = new SuppressionState(false, false);
         }
+        boolean changed = false;
+        for (int i = represented.size() - 1; i >= 0; i--) {
+            String id = represented.get(i);
+            if (!validIdentity(id)) {
+                continue;
+            }
+            changed |= upsertSuppressedIdentity(state, new MemberIdentity(id, null, null));
+        }
+        if (changed) {
+            saveSuppressionState(ed, dialogId, state);
+        }
+        return changed;
     }
 
-    public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages, int upstreamCount) {
+    public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new CoverPostPlan(0, 0, 0, new ArrayList<>(), false);
+            return new CoverPostPlan(0, 0, 0, new ArrayList<>());
         }
-        synchronized (SUPPRESSION_LOCK) {
+        synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
             LinkedHashSet<String> all = new LinkedHashSet<>();
             LinkedHashSet<String> visible = new LinkedHashSet<>();
@@ -558,10 +576,10 @@ public final class NotificationCoverController {
                     canonical = id.canonicalCandidate;
                 }
                 all.add(canonical);
-                if (!state.decodeFailed) {
+                if (!state.decodeFailed && !state.versionAhead) {
                     aliasChanged |= upsertAliasOnly(state, id, canonical);
                 }
-                if (state.decodeFailed || state.containsCanonical(canonical)) {
+                if ((!state.decodeFailed && !state.versionAhead) && state.containsCanonical(canonical)) {
                     continue;
                 }
                 visible.add(canonical);
@@ -572,14 +590,13 @@ public final class NotificationCoverController {
             int total = all.size();
             int shown = visible.size();
             int suppressed = Math.max(0, total - shown);
-            int upstreamAdjusted = Math.max(0, upstreamCount - suppressed);
-            int displayCount = shown == 0 ? 0 : Math.max(shown, upstreamAdjusted);
-            return new CoverPostPlan(total, suppressed, displayCount, new ArrayList<>(visible), state.decodeFailed);
+            int displayCount = shown;
+            return new CoverPostPlan(total, suppressed, displayCount, new ArrayList<>(visible));
         }
     }
 
     private static boolean upsertAliasOnly(SuppressionState state, MemberIdentity id, String canonical) {
-        if (state == null || state.decodeFailed || id == null) return false;
+        if (state == null || state.decodeFailed || state.versionAhead || id == null) return false;
         boolean changed = false;
         if (validIdentity(id.randomAlias)) {
             changed |= putAlias(state, id.randomAlias, canonical);
@@ -597,9 +614,9 @@ public final class NotificationCoverController {
         if (dialogId == 0 || pushMessages == null || !isCovered(account, dialogId)) {
             return false;
         }
-        synchronized (SUPPRESSION_LOCK) {
+        synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
-            if (state.decodeFailed) {
+            if (state.decodeFailed || state.versionAhead) {
                 return false;
             }
             LinkedHashMap<String, MemberIdentity> members = new LinkedHashMap<>();
@@ -632,9 +649,9 @@ public final class NotificationCoverController {
         if (dialogId == 0 || randomId == 0 || messageId == 0) {
             return;
         }
-        synchronized (SUPPRESSION_LOCK) {
+        synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
-            if (state.decodeFailed) {
+            if (state.decodeFailed || state.versionAhead) {
                 return;
             }
             String random = randomIdentity(randomId);
@@ -725,7 +742,11 @@ public final class NotificationCoverController {
         try {
             clearConversationArtifacts(dialogId);
             if (representedIds == null || representedIds.isEmpty() || count <= 0) {
-                clearDialogInteractionState(account, dialogId, p, p.edit()).apply();
+                synchronized (COVER_STATE_LOCK) {
+                    SharedPreferences.Editor clearEditor = p.edit();
+                    clearDialogInteractionState(account, dialogId, p, clearEditor);
+                    clearEditor.apply();
+                }
                 return false;
             }
             int personaId = resolvePersonaId(account, dialogId);
@@ -736,10 +757,14 @@ public final class NotificationCoverController {
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(representedIds));
-            SharedPreferences.Editor ed = p.edit();
-            String tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, tapMode, dialogId, snapshots));
-            String dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, TAP_ACTION_HOLLOW, dialogId, snapshots));
-            ed.apply();
+            String tapToken;
+            String dismissToken;
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor ed = p.edit();
+                tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, tapMode, 0, dialogId, snapshots));
+                dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, TAP_ACTION_HOLLOW, 0, dialogId, snapshots));
+                ed.apply();
+            }
 
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
@@ -760,13 +785,17 @@ public final class NotificationCoverController {
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
             return true;
         } catch (Exception t) {
-            clearDialogInteractionState(account, dialogId, p, p.edit()).apply();
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor clearEditor = p.edit();
+                clearDialogInteractionState(account, dialogId, p, clearEditor);
+                clearEditor.apply();
+            }
             FileLog.e("nax cover child post failed", t);
             return false;
         }
     }
 
-    public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog) {
+    public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog, int summaryDate) {
         if (lines == null || lines.isEmpty()) {
             clearSummaryInteractionState(account);
             return null;
@@ -779,17 +808,23 @@ public final class NotificationCoverController {
         }
         inbox.setSummaryText(subText);
 
-        SharedPreferences p = prefs(account);
-        SharedPreferences.Editor ed = p.edit();
         String tapToken;
         String dismissToken;
         try {
-            tapToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_TAP, buildRecord(TOKEN_KIND_SUMMARY_TAP, TAP_ACTION_HOLLOW, 0, representedByDialog));
-            dismissToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_DISMISS, buildRecord(TOKEN_KIND_SUMMARY_DISMISS, TAP_ACTION_HOLLOW, 0, representedByDialog));
-            ed.apply();
+            SharedPreferences p = prefs(account);
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor ed = p.edit();
+                tapToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_TAP, buildRecord(TOKEN_KIND_SUMMARY_TAP, TAP_ACTION_HOLLOW, summaryDate, 0, representedByDialog));
+                dismissToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_DISMISS, buildRecord(TOKEN_KIND_SUMMARY_DISMISS, TAP_ACTION_HOLLOW, summaryDate, 0, representedByDialog));
+                ed.apply();
+            }
         } catch (JSONException e) {
-            clearSummaryInteractionState(p, ed);
-            ed.apply();
+            SharedPreferences p = prefs(account);
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor ed = p.edit();
+                clearSummaryInteractionState(p, ed);
+                ed.apply();
+            }
             FileLog.e(e);
             return null;
         }
@@ -820,17 +855,20 @@ public final class NotificationCoverController {
         if (!notificationManager.areNotificationsEnabled()) {
             return false;
         }
-        SharedPreferences p = prefs(account);
-        SharedPreferences.Editor ed = p.edit();
         try {
             int personaId = resolvePersonaId(account, dialogId);
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int count = 1 + (int) Math.floorMod(dialogId, 4);
 
-            String token = replaceActiveToken(ed, p, KEY_ACTIVE_PREVIEW_TAP, buildRecord(TOKEN_KIND_PREVIEW_TAP, TAP_ACTION_HOLLOW, dialogId, new LongSparseArray<>()));
-            ed.putLong(KEY_PREVIEW_DIALOG, dialogId);
-            ed.apply();
+            String token;
+            SharedPreferences p = prefs(account);
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor ed = p.edit();
+                token = replaceActiveToken(ed, p, KEY_ACTIVE_PREVIEW_TAP, buildRecord(TOKEN_KIND_PREVIEW_TAP, TAP_ACTION_HOLLOW, 0, dialogId, new LongSparseArray<>()));
+                ed.putLong(KEY_PREVIEW_DIALOG, dialogId);
+                ed.apply();
+            }
 
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
@@ -846,8 +884,13 @@ public final class NotificationCoverController {
             notificationManager.notify(previewTag(account), PREVIEW_ID_BASE + account, b.build());
             return true;
         } catch (Exception e) {
-            clearPreviewState(account, p, ed);
-            ed.apply();
+            SharedPreferences p = prefs(account);
+            synchronized (COVER_STATE_LOCK) {
+                SharedPreferences.Editor ed = p.edit();
+                clearPreviewStateLocked(p, ed);
+                ed.apply();
+            }
+            cancelPreviewNotification(account);
             FileLog.e(e);
             return false;
         }
@@ -881,10 +924,11 @@ public final class NotificationCoverController {
         );
     }
 
-    private static InteractionRecord buildRecord(int kind, int mode, long dialogId, LongSparseArray<ArrayList<String>> snapshots) {
+    private static InteractionRecord buildRecord(int kind, int mode, int date, long dialogId, LongSparseArray<ArrayList<String>> snapshots) {
         InteractionRecord record = new InteractionRecord();
         record.kind = kind;
         record.mode = mode;
+        record.date = date;
         record.dialogId = dialogId;
         if (snapshots != null) {
             for (int i = 0; i < snapshots.size(); i++) {
@@ -898,6 +942,9 @@ public final class NotificationCoverController {
                 for (String id : uniq) {
                     if (validIdentity(id)) {
                         safe.add(id);
+                        if (safe.size() >= SUPPRESSION_LIMIT) {
+                            break;
+                        }
                     }
                 }
                 if (!safe.isEmpty()) {
@@ -930,6 +977,7 @@ public final class NotificationCoverController {
         root.put("v", 1);
         root.put("kind", record.kind);
         root.put("mode", record.mode);
+        root.put("date", record.date);
         root.put("dialog", record.dialogId);
         JSONArray snapshots = new JSONArray();
         for (int i = 0; i < record.snapshots.size(); i++) {
@@ -959,6 +1007,7 @@ public final class NotificationCoverController {
             InteractionRecord record = new InteractionRecord();
             record.kind = root.optInt("kind", 0);
             record.mode = root.optInt("mode", TAP_ACTION_HOLLOW);
+            record.date = root.optInt("date", 0);
             record.dialogId = root.optLong("dialog", 0);
             JSONArray snapshots = root.optJSONArray("snapshots");
             if (snapshots != null) {
@@ -973,6 +1022,9 @@ public final class NotificationCoverController {
                         String id = ids.optString(j, null);
                         if (validIdentity(id) && !safe.contains(id)) {
                             safe.add(id);
+                            if (safe.size() >= SUPPRESSION_LIMIT) {
+                                break;
+                            }
                         }
                     }
                     if (!safe.isEmpty()) {
@@ -1001,59 +1053,75 @@ public final class NotificationCoverController {
             return false;
         }
         SharedPreferences p = prefs(account);
-        InteractionRecord record = parseRecord(p.getString(KEY_TOKEN_RECORD + token, null));
-        if (record == null) {
-            return false;
-        }
-        String activeKey = activeKeyForKind(record);
-        if (TextUtils.isEmpty(activeKey)) {
-            return true;
-        }
-        String active = p.getString(activeKey, null);
-        if (!TextUtils.equals(active, token)) {
-            return true;
-        }
-        if ((record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_SUMMARY_TAP || record.kind == TOKEN_KIND_PREVIEW_TAP)
-                && event != INTERACTION_EVENT_TAP) {
-            return true;
-        }
-        if ((record.kind == TOKEN_KIND_CHILD_DISMISS || record.kind == TOKEN_KIND_SUMMARY_DISMISS) && event != INTERACTION_EVENT_DISMISS) {
-            return true;
+        InteractionRecord record;
+        boolean cancelChild = false;
+        boolean cancelPreview = false;
+        boolean openChat = false;
+        long openDialogId = 0;
+        boolean shouldRebuild = false;
+        synchronized (COVER_STATE_LOCK) {
+            record = parseRecord(p.getString(KEY_TOKEN_RECORD + token, null));
+            if (record == null) {
+                return false;
+            }
+            String activeKey = activeKeyForKind(record);
+            if (TextUtils.isEmpty(activeKey)) {
+                return true;
+            }
+            String active = p.getString(activeKey, null);
+            if (!TextUtils.equals(active, token)) {
+                return true;
+            }
+            if ((record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_SUMMARY_TAP || record.kind == TOKEN_KIND_PREVIEW_TAP)
+                    && event != INTERACTION_EVENT_TAP) {
+                return true;
+            }
+            if ((record.kind == TOKEN_KIND_CHILD_DISMISS || record.kind == TOKEN_KIND_SUMMARY_DISMISS) && event != INTERACTION_EVENT_DISMISS) {
+                return true;
+            }
+
+            SharedPreferences.Editor ed = p.edit();
+            if (record.kind == TOKEN_KIND_PREVIEW_TAP) {
+                clearPreviewStateLocked(p, ed);
+                ed.commit();
+                cancelPreview = true;
+            } else {
+                for (int i = 0; i < record.snapshots.size(); i++) {
+                    long did = record.snapshots.keyAt(i);
+                    ArrayList<String> ids = record.snapshots.valueAt(i);
+                    suppressCanonicalListLocked(account, did, ids, ed, true);
+                }
+                if (record.kind == TOKEN_KIND_SUMMARY_DISMISS && record.date > 0) {
+                    int currentDismissDate = p.getInt("dismissDate", 0);
+                    if (record.date > currentDismissDate) {
+                        ed.putInt("dismissDate", record.date);
+                    }
+                }
+
+                if (record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_CHILD_DISMISS) {
+                    clearDialogInteractionState(account, record.dialogId, p, ed);
+                } else {
+                    clearSummaryInteractionState(p, ed);
+                }
+                ed.commit();
+
+                cancelChild = record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_CHILD_DISMISS;
+                openChat = record.kind == TOKEN_KIND_CHILD_TAP && record.mode == TAP_ACTION_OPEN_CHAT;
+                openDialogId = record.dialogId;
+                shouldRebuild = record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_SUMMARY_TAP;
+            }
         }
 
-        boolean touched = false;
-        if (record.kind == TOKEN_KIND_PREVIEW_TAP) {
-            SharedPreferences.Editor previewEditor = p.edit();
-            clearPreviewState(account, p, previewEditor);
-            previewEditor.apply();
+        if (cancelPreview) {
+            cancelPreviewNotification(account);
             return true;
         }
-
-        for (int i = 0; i < record.snapshots.size(); i++) {
-            long did = record.snapshots.keyAt(i);
-            ArrayList<String> ids = record.snapshots.valueAt(i);
-            touched |= suppressCanonicalList(account, did, ids);
-        }
-
-        SharedPreferences.Editor ed = p.edit();
-        if (record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_CHILD_DISMISS) {
+        if (cancelChild) {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(coverTag(account, record.dialogId), internalId(record.dialogId));
-            clearDialogInteractionState(account, record.dialogId, p, ed);
-        } else {
-            clearSummaryInteractionState(p, ed);
         }
-        ed.apply();
-
-        boolean openedChat = false;
-        if (record.kind == TOKEN_KIND_CHILD_TAP && record.mode == TAP_ACTION_OPEN_CHAT) {
-            openDialog(account, record.dialogId);
-            openedChat = true;
+        if (openChat) {
+            openDialog(account, openDialogId);
         }
-        boolean shouldRebuild = touched
-                || record.kind == TOKEN_KIND_CHILD_TAP
-                || record.kind == TOKEN_KIND_CHILD_DISMISS
-                || record.kind == TOKEN_KIND_SUMMARY_TAP
-                || record.kind == TOKEN_KIND_SUMMARY_DISMISS;
         if (shouldRebuild) {
             NotificationsController.getInstance(account).showNotifications();
         }
@@ -1083,10 +1151,12 @@ public final class NotificationCoverController {
     }
 
     public static void clearSummaryInteractionState(int account) {
-        SharedPreferences p = prefs(account);
-        SharedPreferences.Editor ed = p.edit();
-        clearSummaryInteractionState(p, ed);
-        ed.apply();
+        synchronized (COVER_STATE_LOCK) {
+            SharedPreferences p = prefs(account);
+            SharedPreferences.Editor ed = p.edit();
+            clearSummaryInteractionState(p, ed);
+            ed.apply();
+        }
     }
 
     private static void clearSummaryInteractionState(SharedPreferences p, SharedPreferences.Editor ed) {
@@ -1108,17 +1178,13 @@ public final class NotificationCoverController {
         ed.remove(activeKey);
     }
 
-    private static void clearPreviewState(int account, SharedPreferences p, SharedPreferences.Editor ed) {
+    private static void clearPreviewStateLocked(SharedPreferences p, SharedPreferences.Editor ed) {
         removeTokenByActiveKey(p, ed, KEY_ACTIVE_PREVIEW_TAP);
         ed.remove(KEY_PREVIEW_DIALOG);
-        NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(previewTag(account), PREVIEW_ID_BASE + account);
     }
 
-    private static void cancelPreviewIfOwner(int account, long dialogId, SharedPreferences p, SharedPreferences.Editor ed) {
-        long owner = p.getLong(KEY_PREVIEW_DIALOG, 0);
-        if (owner == dialogId) {
-            clearPreviewState(account, p, ed);
-        }
+    private static void cancelPreviewNotification(int account) {
+        NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(previewTag(account), PREVIEW_ID_BASE + account);
     }
 
     private static void clearConversationArtifacts(long dialogId) {
@@ -1164,33 +1230,46 @@ public final class NotificationCoverController {
         }
         NotificationManagerCompat nm = NotificationManagerCompat.from(ApplicationLoader.applicationContext);
         SharedPreferences.Editor ed = preferences.edit();
+        ArrayList<Long> staleDialogs = new ArrayList<>();
         for (Long did : candidates) {
             if (nowPosted.indexOfKey(did) >= 0) continue;
+            staleDialogs.add(did);
             nm.cancel(coverTag(account, did), internalId(did));
-            clearDialogInteractionState(account, did, preferences, ed);
         }
-        if (nowPosted == null || nowPosted.size() == 0) {
-            clearSummaryInteractionState(preferences, ed);
+        synchronized (COVER_STATE_LOCK) {
+            for (int i = 0; i < staleDialogs.size(); i++) {
+                clearDialogInteractionState(account, staleDialogs.get(i), preferences, ed);
+            }
+            if (nowPosted == null || nowPosted.size() == 0) {
+                clearSummaryInteractionState(preferences, ed);
+            }
+            ed.apply();
         }
-        ed.apply();
     }
 
     public static void cancelAll(int account, SharedPreferences preferences) {
         NotificationManagerCompat nm = NotificationManagerCompat.from(ApplicationLoader.applicationContext);
-        SharedPreferences.Editor ed = preferences.edit();
+        ArrayList<Long> coveredDialogs = new ArrayList<>();
         for (Map.Entry<String, ?> e : preferences.getAll().entrySet()) {
             String k = e.getKey();
             if (k.startsWith(KEY_ENABLED)) {
                 long did = parseDialogId(k, KEY_ENABLED);
                 if (did != 0) {
+                    coveredDialogs.add(did);
                     nm.cancel(coverTag(account, did), internalId(did));
-                    clearDialogInteractionState(account, did, preferences, ed);
                 }
             }
         }
-        clearSummaryInteractionState(preferences, ed);
-        clearPreviewState(account, preferences, ed);
-        ed.apply();
+        synchronized (COVER_STATE_LOCK) {
+            SharedPreferences.Editor ed = preferences.edit();
+            for (int i = 0; i < coveredDialogs.size(); i++) {
+                clearDialogInteractionState(account, coveredDialogs.get(i), preferences, ed);
+            }
+            clearSummaryInteractionState(preferences, ed);
+            clearPreviewStateLocked(preferences, ed);
+            ed.apply();
+        }
+        cancelPreviewNotification(account);
     }
 
     public static void deleteChannels(int account, SharedPreferences preferences) {

@@ -34,9 +34,8 @@ is on). The switch toggles `NotificationCoverController.setEnabled(...)` and
 queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
 the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
 sheet and calls `setPersona(...)` + the same rebuild
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java` — cell setup after the
-lock cell, the `disguiseCell`/`coverCell` click listeners, and `showCoverPicker(...)`;
-`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:61-90`, `:200-219`,
+`:249-275`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
 cancels a notification itself — it only writes config and asks the controller to
 rebuild, matching the existing settings-write precedent.
 
@@ -45,7 +44,8 @@ Cover config is stored in the account's notifications `SharedPreferences`
 `nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
 generic channels under `nax_cover_v1_channel_<personaId>` /
 `nax_cover_v1_summary_channel`
-(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java`).
+(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:45-72`,
+`:243-267`, `:682-710`).
 
 *(Established 2026-09-03.)*
 
@@ -56,14 +56,14 @@ and `Preview notification` rows. `Tap action` opens the same single-select
 picker pattern (`PopupHelper.show(...)`) and writes
 `NotificationCoverController.setTapAction(...)`; `Preview notification` calls
 `NotificationCoverController.postPreview(...)` and only shows a bulletin result
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:82-88`, `:143-160`,
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:82-90`, `:143-160`,
 `:221-240`, `:277-303`).
 
 Cover interactions are explicit immutable broadcasts to
 `NotificationDismissReceiver` carrying only an opaque token + event, and that
 receiver routes token callbacks through
 `NotificationCoverController.handleInteraction(...)`
-(`NotificationCoverController.java:837-848`, `:744-783`, `:966-1021`;
+(`NotificationCoverController.java:902-913`, `:915-1028`, `:1039-1117`;
 `org/telegram/messenger/NotificationDismissReceiver.java:27-33`).
 
 *(Established 2026-09-03.)*
@@ -75,13 +75,13 @@ receiver routes token callbacks through
 shown or app passcode is pending, then calls
 `NotificationsController.suppressVisibleCoveredDialog(dialog_id)` from
 `onResume`, `onBecomeFullyVisible`, and the post-chat-lock-unlock callback
-(`org/telegram/ui/ChatActivity.java:3755-3759`, `:3774-3784`, `:29240-29244`,
-`:32176-32179`).
+(`org/telegram/ui/ChatActivity.java:3755-3759`, `:3776-3784`, `:29244`,
+`:32179`).
 
 `suppressVisibleCoveredDialog(...)` then posts onto `notificationsQueue` and
 runs suppression against the live push snapshot before rebuilding notifications
 (`org/telegram/messenger/NotificationsController.java:3313-3318`;
-`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:575-606`).
+`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:602-631`).
 
 *(Established 2026-09-03.)*
 

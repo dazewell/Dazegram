@@ -3774,11 +3774,11 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: once this chat is truly visible (after app/chat passcode gates), suppress currently coverable
     // members for this dialog so covered notifications disappear without touching read state.
     private void clearCoveredNotificationsIfVisible() {
-        boolean blockedMode = chatMode != MODE_DEFAULT;
-        boolean blockedDialog = dialog_id == 0;
-        boolean blockedChatLock = chatLockPasscodeView != null;
-        boolean blockedAppPasscode = AndroidUtilities.needShowPasscode(false) || SharedConfig.isWaitingForPasscodeEnter;
-        if (blockedMode || blockedDialog || blockedChatLock || blockedAppPasscode) {
+        if (chatMode != MODE_DEFAULT
+                || dialog_id == 0
+                || chatLockPasscodeView != null
+                || AndroidUtilities.needShowPasscode(false)
+                || SharedConfig.isWaitingForPasscodeEnter) {
             return;
         }
         getNotificationsController().suppressVisibleCoveredDialog(dialog_id);
