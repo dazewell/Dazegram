@@ -358,7 +358,8 @@ public class MotionBackgroundDrawable extends Drawable {
             parentView.get().invalidate();
         }
         if (postInvalidateParent) {
-            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground);
+            xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onInvalidateMotionBackgroundPosted(this);
+            NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground, this);
             updateAnimation();
             // NagramX: only self-drive the 16ms repost for determinate animation. Indeterminate mode
             // resets posAnimationProgress to 0 every cycle (see updateAnimation), so the repost would
@@ -796,6 +797,7 @@ public class MotionBackgroundDrawable extends Drawable {
 
             if (isNeedGenerateGradient) {
                 Utilities.generateGradient(currentBitmap, phase, progress, colors);
+                xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onProceduralGradientGenerated(this);
             } else {
                 if (progress != 1f) {
                     float part = 1f / ANIMATION_CACHE_BITMAPS_COUNT;

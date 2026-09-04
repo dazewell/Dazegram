@@ -3773,6 +3773,7 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onOwnerDestroyed(glassPatternSmokeOwnerId);
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
@@ -23822,8 +23823,15 @@ public class ChatActivity extends BaseFragment implements
             // NagramX: coalesce a glass-composite refresh onto the next UI frame. Posted rather than run
             // here so it never re-composites inside the wallpaper's own draw pass, and cancel+re-post
             // collapses a burst of animating-frame posts to at most one refresh per frame.
+            xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onInvalidateMotionBackgroundArrival(
+                    glassPatternSmokeOwnerId,
+                    args.length > 0 ? args[0] : null,
+                    AndroidUtilities.screenRefreshRate,
+                    glassCompositeRefreshPending
+            );
             AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
             AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
+            glassCompositeRefreshPending = true;
         } else if (id == NotificationCenter.loadingMessagesFailed) {
             if ((Integer) args[0] == classGuid && args[2] instanceof TLRPC.TL_error) {
                 TLRPC.TL_error e = (TLRPC.TL_error) args[2];
@@ -32944,6 +32952,7 @@ public class ChatActivity extends BaseFragment implements
         // dimensions once AndroidUtilities.displaySize has been updated (deferred by the post).
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
+        glassCompositeRefreshPending = true;
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -51832,9 +51841,12 @@ public class ChatActivity extends BaseFragment implements
     // paused, detached, or before contentView exists — a chat that is off screen or not laid in does no
     // work, and onResume runs it once to catch up.
     private boolean glassCompositeDirty;
+    private final int glassPatternSmokeOwnerId = System.identityHashCode(this);
+    private boolean glassCompositeRefreshPending;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
     private void refreshGlassComposite() {
+        glassCompositeRefreshPending = false;
         if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
             glassCompositeDirty = true;
             return;
@@ -51846,7 +51858,8 @@ public class ChatActivity extends BaseFragment implements
         if (!(wallpaper instanceof MotionBackgroundDrawable)) {
             return;
         }
-        if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper)) {
+        xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onRefreshExecution(glassPatternSmokeOwnerId);
+        if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper, glassPatternSmokeOwnerId)) {
             reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
         }

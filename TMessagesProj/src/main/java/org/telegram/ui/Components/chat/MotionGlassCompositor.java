@@ -3,6 +3,7 @@ package org.telegram.ui.Components.chat;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Rect;
+import android.os.SystemClock;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.ui.Components.MotionBackgroundDrawable;
@@ -69,6 +70,10 @@ public class MotionGlassCompositor extends GlassCompositorBase {
      * the draw happens, not whether a reprime follows. UI thread only.
      */
     public boolean compose(BlurredBackgroundSourceBitmap target, MotionBackgroundDrawable motion, boolean force) {
+        return compose(target, motion, force, 0);
+    }
+
+    public boolean compose(BlurredBackgroundSourceBitmap target, MotionBackgroundDrawable motion, boolean force, int diagnosticsOwnerId) {
         final int targetW = targetWidth();
         final int targetH = targetHeight();
         if (targetW <= 0 || targetH <= 0) {
@@ -82,10 +87,18 @@ public class MotionGlassCompositor extends GlassCompositorBase {
 
         pendingMotion = motion;
         final boolean changed;
+        final long composeStartedNs = diagnosticsOwnerId != 0 ? SystemClock.elapsedRealtimeNanos() : 0L;
         try {
             changed = composeInto(target, targetW, targetH, force || gradientChanged || patternChanged);
         } finally {
             pendingMotion = null;
+        }
+        if (diagnosticsOwnerId != 0) {
+            xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onComposeSample(
+                    diagnosticsOwnerId,
+                    gradientChanged,
+                    SystemClock.elapsedRealtimeNanos() - composeStartedNs
+            );
         }
 
         gradientTracker.set(gradient);

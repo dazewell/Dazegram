@@ -71,8 +71,8 @@ public class WallpaperBitmapProvider {
      * Re-runs the motion-wallpaper composite (gradient + pattern) for an already-attached drawable.
      * Returns true when the proxy changed and the caller should reprime its glass render nodes.
      */
-    public boolean refreshMotionComposite(MotionBackgroundDrawable motionDrawable) {
-        final boolean changed = motionGlassCompositor.compose(sourceBitmap, motionDrawable, true);
+    public boolean refreshMotionComposite(MotionBackgroundDrawable motionDrawable, int diagnosticsOwnerId) {
+        final boolean changed = motionGlassCompositor.compose(sourceBitmap, motionDrawable, true, diagnosticsOwnerId);
         // NagramX: compose() may rebuild the source's cover matrix (setBitmap on a realloc), which drops
         // the keyboard shift back to identity, so re-assert it.
         applyBackgroundTranslation();
