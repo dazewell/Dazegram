@@ -417,12 +417,7 @@ public final class ScheduleTimeHelper {
                 int step = Math.round(progress * (DEFAULT_SCHEDULE_STEP_COUNT - 1));
                 int minutes = getDefaultScheduleMinutes(step);
                 sliderMinutes[0] = minutes;
-                if (rescheduleMode) {
-                    // NagramX: this sheet is only moving one already-scheduled message, never the
-                    // account-wide next-new-message default, and never Remember's saved offset — so
-                    // just refresh what the header shows, with no config write either side of it.
-                    updateRemember.run(true);
-                } else {
+                if (!rescheduleMode) {
                     if (NaConfig.INSTANCE.getDefaultScheduledTime().Int() != minutes) {
                         NaConfig.INSTANCE.getDefaultScheduledTime().setConfigInt(minutes);
                     }
@@ -436,6 +431,15 @@ public final class ScheduleTimeHelper {
                 }
                 setPickersFromTargetTime(getTargetTimeFromNow(minutes), calendar, dayPicker, hourPicker, minutePicker);
                 onPickersChanged.run();
+                if (rescheduleMode) {
+                    // NagramX: this sheet is only moving one already-scheduled message, never the
+                    // account-wide next-new-message default, and never Remember's saved offset — so
+                    // just refresh what the header shows, with no config write either side of it.
+                    // Refreshed after the wheels/peer-zone normalization above, since updateRemember
+                    // reads the live wheel values when Remember is on and NumberPicker.setValue(...,
+                    // false) above doesn't notify listeners on its own.
+                    updateRemember.run(true);
+                }
                 if (stop) {
                     quickScheduleSeekBar.setProgress(getDefaultScheduleProgress(step), true);
                 }

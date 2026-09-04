@@ -4758,7 +4758,7 @@ public class AlertsCreator {
         // moves this sheet's own wheels — never the account-wide default delay, never Remember's
         // state. Send-when-online reschedules keep it off: there's no "from now" delay to compute
         // when the target isn't a real timestamp yet.
-        if (naxReschedule ? currentDate != 0x7FFFFFFE : ScheduleTimeHelper.shouldUseDefaultSchedule(currentDate)) {
+        if (naxRemember != null && (!naxReschedule || currentDate != 0x7FFFFFFE)) {
             ScheduleTimeHelper.addDefaultScheduleSlider(
                     context,
                     container,
