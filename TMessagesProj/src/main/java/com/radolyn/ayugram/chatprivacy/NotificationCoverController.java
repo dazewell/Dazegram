@@ -1,6 +1,5 @@
 package com.radolyn.ayugram.chatprivacy;
 
-import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -20,13 +19,11 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.NotificationsController;
-import org.telegram.messenger.OpenChatReceiver;
 import org.telegram.messenger.R;
 
 import java.util.ArrayList;
@@ -59,7 +56,6 @@ public final class NotificationCoverController {
 
     private static final String KEY_ENABLED = "nax_cover_v1_enabled_";
     private static final String KEY_PERSONA = "nax_cover_v1_persona_";
-    private static final String KEY_TAP_ACTION = "nax_cover_v1_tap_";
     private static final String KEY_SUPPRESSION_STATE = "nax_cover_v1_suppress_state_";
     private static final String KEY_CHANNEL = "nax_cover_v1_channel_";
     private static final String KEY_SUMMARY_CHANNEL = "nax_cover_v1_summary_channel";
@@ -75,9 +71,6 @@ public final class NotificationCoverController {
     public static final String EXTRA_COVER_EVENT = "nax_cover_event";
     public static final int INTERACTION_EVENT_TAP = 1;
     public static final int INTERACTION_EVENT_DISMISS = 2;
-
-    public static final int TAP_ACTION_HOLLOW = 0;
-    public static final int TAP_ACTION_OPEN_CHAT = 1;
 
     private static final String TAG_PREFIX = "naxcover_";
     private static final int SUMMARY_REQUEST_CODE = 0x7A00;
@@ -136,7 +129,6 @@ public final class NotificationCoverController {
 
     private static final class InteractionRecord {
         int kind;
-        int mode;
         int date;
         long dialogId;
         final LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
@@ -168,7 +160,6 @@ public final class NotificationCoverController {
     };
 
     private static final int SAFE_PERSONA_ID = 1;
-    private static final int[] TAP_ACTION_IDS = {TAP_ACTION_HOLLOW, TAP_ACTION_OPEN_CHAT};
 
     private static SharedPreferences prefs(int account) {
         return MessagesController.getNotificationsSettings(account);
@@ -207,36 +198,6 @@ public final class NotificationCoverController {
         return picked;
     }
 
-    public static int resolveTapAction(int account, long dialogId) {
-        int mode;
-        try {
-            mode = prefs(account).getInt(KEY_TAP_ACTION + dialogId, TAP_ACTION_HOLLOW);
-        } catch (ClassCastException e) {
-            return TAP_ACTION_HOLLOW;
-        }
-        return mode == TAP_ACTION_OPEN_CHAT ? TAP_ACTION_OPEN_CHAT : TAP_ACTION_HOLLOW;
-    }
-
-    public static int[] tapActionIds() {
-        return TAP_ACTION_IDS.clone();
-    }
-
-    public static String tapActionLabel(int mode) {
-        return mode == TAP_ACTION_OPEN_CHAT
-                ? LocaleController.getString(R.string.NaxCoverTapActionOpenChat)
-                : LocaleController.getString(R.string.NaxCoverTapActionHollow);
-    }
-
-    public static String activeTapActionLabel(int account, long dialogId) {
-        return tapActionLabel(resolveTapAction(account, dialogId));
-    }
-
-    public static void setTapAction(int account, long dialogId, int mode) {
-        if (dialogId == 0) return;
-        int safe = mode == TAP_ACTION_OPEN_CHAT ? TAP_ACTION_OPEN_CHAT : TAP_ACTION_HOLLOW;
-        prefs(account).edit().putInt(KEY_TAP_ACTION + dialogId, safe).apply();
-    }
-
     public static void setEnabled(int account, long dialogId, boolean enabled) {
         if (dialogId == 0) return;
         SharedPreferences p = prefs(account);
@@ -247,9 +208,6 @@ public final class NotificationCoverController {
                 if (!p.contains(KEY_PERSONA + dialogId)) {
                     int picked = POOL[(int) Math.floorMod(dialogId, POOL.length)].id;
                     ed.putInt(KEY_PERSONA + dialogId, picked);
-                }
-                if (!p.contains(KEY_TAP_ACTION + dialogId)) {
-                    ed.putInt(KEY_TAP_ACTION + dialogId, TAP_ACTION_HOLLOW);
                 }
             } else {
                 clearDialogInteractionState(account, dialogId, p, ed);
@@ -742,7 +700,6 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int internalId = internalId(dialogId);
-            int tapMode = resolveTapAction(account, dialogId);
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(representedIds));
@@ -750,22 +707,18 @@ public final class NotificationCoverController {
             String dismissToken;
             synchronized (COVER_STATE_LOCK) {
                 SharedPreferences.Editor ed = p.edit();
-                tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, tapMode, 0, dialogId, snapshots));
-                dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, TAP_ACTION_HOLLOW, 0, dialogId, snapshots));
+                tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, 0, dialogId, snapshots));
+                dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, 0, dialogId, snapshots));
                 ed.apply();
             }
-            PendingIntent contentIntent = tapMode == TAP_ACTION_OPEN_CHAT
-                    ? interactionActivityIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId)
-                    : interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
+            PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
-                    // NagramX: Open chat uses direct activity delivery and still dismisses via handleInteraction().
-                    // Keep auto-cancel off in that mode so delete-intent handling remains tied to explicit dismiss gestures.
-                    .setAutoCancel(tapMode != TAP_ACTION_OPEN_CHAT)
+                    .setAutoCancel(true)
                     .setOnlyAlertOnce(true)
                     .setShowWhen(false)
                     .setContentIntent(contentIntent)
@@ -808,8 +761,8 @@ public final class NotificationCoverController {
             SharedPreferences p = prefs(account);
             synchronized (COVER_STATE_LOCK) {
                 SharedPreferences.Editor ed = p.edit();
-                tapToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_TAP, buildRecord(TOKEN_KIND_SUMMARY_TAP, TAP_ACTION_HOLLOW, summaryDate, 0, representedByDialog));
-                dismissToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_DISMISS, buildRecord(TOKEN_KIND_SUMMARY_DISMISS, TAP_ACTION_HOLLOW, summaryDate, 0, representedByDialog));
+                tapToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_TAP, buildRecord(TOKEN_KIND_SUMMARY_TAP, summaryDate, 0, representedByDialog));
+                dismissToken = replaceActiveToken(ed, p, KEY_ACTIVE_SUMMARY_DISMISS, buildRecord(TOKEN_KIND_SUMMARY_DISMISS, summaryDate, 0, representedByDialog));
                 ed.apply();
             }
         } catch (JSONException e) {
@@ -859,7 +812,7 @@ public final class NotificationCoverController {
             SharedPreferences p = prefs(account);
             synchronized (COVER_STATE_LOCK) {
                 SharedPreferences.Editor ed = p.edit();
-                token = replaceActiveToken(ed, p, KEY_ACTIVE_PREVIEW_TAP, buildRecord(TOKEN_KIND_PREVIEW_TAP, TAP_ACTION_HOLLOW, 0, dialogId, new LongSparseArray<>()));
+                token = replaceActiveToken(ed, p, KEY_ACTIVE_PREVIEW_TAP, buildRecord(TOKEN_KIND_PREVIEW_TAP, 0, dialogId, new LongSparseArray<>()));
                 ed.putLong(KEY_PREVIEW_DIALOG, dialogId);
                 ed.apply();
             }
@@ -918,25 +871,9 @@ public final class NotificationCoverController {
         );
     }
 
-    private static PendingIntent interactionActivityIntent(int account, String token, int event, int requestCode) {
-        Intent intent = new Intent(ApplicationLoader.applicationContext, com.radolyn.ayugram.chatprivacy.CoverInteractionActivity.class);
-        intent.setAction("nax.cover.activity." + token + "." + event);
-        intent.putExtra("currentAccount", account);
-        intent.putExtra(EXTRA_COVER_TOKEN, token);
-        intent.putExtra(EXTRA_COVER_EVENT, event);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(
-                ApplicationLoader.applicationContext,
-                requestCode ^ token.hashCode() ^ (event << 12),
-                intent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
-        );
-    }
-
-    private static InteractionRecord buildRecord(int kind, int mode, int date, long dialogId, LongSparseArray<ArrayList<String>> snapshots) {
+    private static InteractionRecord buildRecord(int kind, int date, long dialogId, LongSparseArray<ArrayList<String>> snapshots) {
         InteractionRecord record = new InteractionRecord();
         record.kind = kind;
-        record.mode = mode;
         record.date = date;
         record.dialogId = dialogId;
         if (snapshots != null) {
@@ -985,7 +922,6 @@ public final class NotificationCoverController {
         JSONObject root = new JSONObject();
         root.put("v", 1);
         root.put("kind", record.kind);
-        root.put("mode", record.mode);
         root.put("date", record.date);
         root.put("dialog", record.dialogId);
         JSONArray snapshots = new JSONArray();
@@ -1015,7 +951,6 @@ public final class NotificationCoverController {
             }
             InteractionRecord record = new InteractionRecord();
             record.kind = root.optInt("kind", 0);
-            record.mode = root.optInt("mode", TAP_ACTION_HOLLOW);
             record.date = root.optInt("date", 0);
             record.dialogId = root.optLong("dialog", 0);
             JSONArray snapshots = root.optJSONArray("snapshots");
@@ -1057,15 +992,11 @@ public final class NotificationCoverController {
         return null;
     }
 
-    public static boolean handleInteractionFromActivity(Activity activity, int account, String token, int event) {
-        return handleInteractionInternal(account, token, event, activity);
-    }
-
     public static boolean handleInteraction(int account, String token, int event) {
-        return handleInteractionInternal(account, token, event, null);
+        return handleInteractionInternal(account, token, event);
     }
 
-    private static boolean handleInteractionInternal(int account, String token, int event, Activity activity) {
+    private static boolean handleInteractionInternal(int account, String token, int event) {
         if (TextUtils.isEmpty(token) || (event != INTERACTION_EVENT_TAP && event != INTERACTION_EVENT_DISMISS)) {
             return false;
         }
@@ -1073,8 +1004,6 @@ public final class NotificationCoverController {
         InteractionRecord record;
         boolean cancelChild = false;
         boolean cancelPreview = false;
-        boolean openChat = false;
-        long openDialogId = 0;
         boolean shouldRebuild = false;
         synchronized (COVER_STATE_LOCK) {
             record = parseRecord(p.getString(KEY_TOKEN_RECORD + token, null));
@@ -1123,8 +1052,6 @@ public final class NotificationCoverController {
                 ed.commit();
 
                 cancelChild = record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_CHILD_DISMISS;
-                openChat = record.kind == TOKEN_KIND_CHILD_TAP && record.mode == TAP_ACTION_OPEN_CHAT;
-                openDialogId = record.dialogId;
                 shouldRebuild = record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_SUMMARY_TAP;
             }
         }
@@ -1136,35 +1063,10 @@ public final class NotificationCoverController {
         if (cancelChild) {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(coverTag(account, record.dialogId), internalId(record.dialogId));
         }
-        if (openChat && activity != null) {
-            openDialog(activity, account, openDialogId);
-        }
         if (shouldRebuild) {
             NotificationsController.getInstance(account).showNotifications();
         }
         return true;
-    }
-
-    private static void openDialog(Activity activity, int account, long dialogId) {
-        if (dialogId == 0) return;
-        Intent intent = new Intent(ApplicationLoader.applicationContext, OpenChatReceiver.class);
-        intent.setAction("com.tmessages.openchat" + Math.random() + Integer.MAX_VALUE);
-        if (DialogObject.isUserDialog(dialogId)) {
-            intent.putExtra("userId", dialogId);
-        } else if (DialogObject.isChatDialog(dialogId)) {
-            intent.putExtra("chatId", -dialogId);
-        } else if (DialogObject.isEncryptedDialog(dialogId)) {
-            intent.putExtra("encId", DialogObject.getEncryptedChatId(dialogId));
-        } else {
-            return;
-        }
-        intent.putExtra("currentAccount", account);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        try {
-            activity.startActivity(intent);
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
     }
 
     public static void clearSummaryInteractionState(int account) {

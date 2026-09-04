@@ -79,10 +79,6 @@ public final class ChatPrivacySheet {
         coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        final TextSettingsCell tapActionCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
-        tapActionCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(tapActionCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
-
         final TextSettingsCell previewCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
         previewCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(previewCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -141,17 +137,11 @@ public final class ChatPrivacySheet {
                     true
             );
             coverCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
-            tapActionCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             previewCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             if (disguised) {
                 coverCell.setTextAndValue(
                         LocaleController.getString(R.string.NaxCoverRowTitle),
                         NotificationCoverController.activePersonaLabel(account, dialogId),
-                        true
-                );
-                tapActionCell.setTextAndValue(
-                        LocaleController.getString(R.string.NaxCoverTapActionTitle),
-                        NotificationCoverController.activeTapActionLabel(account, dialogId),
                         true
                 );
                 previewCell.setText(
@@ -218,13 +208,6 @@ public final class ChatPrivacySheet {
             showCoverPicker(fragment, account, dialogId, refreshRef[0]);
         });
 
-        tapActionCell.setOnClickListener(v -> {
-            if (!NotificationCoverController.isCovered(account, dialogId)) {
-                return;
-            }
-            showTapActionPicker(fragment, account, dialogId, refreshRef[0]);
-        });
-
         previewCell.setOnClickListener(v -> {
             if (!NotificationCoverController.isCovered(account, dialogId)) {
                 return;
@@ -274,31 +257,4 @@ public final class ChatPrivacySheet {
         );
     }
 
-    private static void showTapActionPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {
-        if (fragment.getParentActivity() == null) {
-            return;
-        }
-        int[] ids = NotificationCoverController.tapActionIds();
-        int active = NotificationCoverController.resolveTapAction(account, dialogId);
-        ArrayList<String> entries = new ArrayList<>(ids.length);
-        int checked = 0;
-        for (int i = 0; i < ids.length; i++) {
-            entries.add(NotificationCoverController.tapActionLabel(ids[i]));
-            if (ids[i] == active) {
-                checked = i;
-            }
-        }
-        PopupHelper.show(
-                entries,
-                LocaleController.getString(R.string.NaxCoverTapActionTitle),
-                checked,
-                fragment.getParentActivity(),
-                which -> {
-                    NotificationCoverController.setTapAction(account, dialogId, ids[which]);
-                    NotificationsController.getInstance(account).showNotifications();
-                    refresh.run();
-                },
-                fragment.getResourceProvider()
-        );
-    }
 }
