@@ -72,6 +72,7 @@ public final class NotificationCoverController {
     private static final int PREVIEW_ID_BASE = 0x7A40;
     private static final int SUPPRESSION_LIMIT = 100;
     private static final int SUPPRESSION_ALIAS_LIMIT = 200;
+    private static final Object SUPPRESSION_LOCK = new Object();
 
     private static final int TOKEN_KIND_CHILD_TAP = 1;
     private static final int TOKEN_KIND_CHILD_DISMISS = 2;
@@ -382,7 +383,8 @@ public final class NotificationCoverController {
         try {
             JSONObject root = new JSONObject(raw);
             if (root.optInt("v", -1) != 1) {
-                return new SuppressionState(true, false);
+                prefs(account).edit().remove(suppressionStateKey(dialogId)).apply();
+                return new SuppressionState(false, false);
             }
             SuppressionState state = new SuppressionState(false, false);
             JSONArray items = root.optJSONArray("items");
@@ -411,7 +413,8 @@ public final class NotificationCoverController {
             trimSuppressionState(state);
             return state;
         } catch (Exception e) {
-            return new SuppressionState(true, false);
+            prefs(account).edit().remove(suppressionStateKey(dialogId)).apply();
+            return new SuppressionState(false, false);
         }
     }
 
@@ -506,57 +509,61 @@ public final class NotificationCoverController {
         if (dialogId == 0 || represented == null || represented.isEmpty()) {
             return false;
         }
-        SuppressionState state = loadSuppressionState(account, dialogId);
-        if (state.decodeFailed) {
-            return false;
-        }
-        boolean changed = false;
-        for (int i = 0; i < represented.size(); i++) {
-            String id = represented.get(i);
-            if (!validIdentity(id)) {
-                continue;
+        synchronized (SUPPRESSION_LOCK) {
+            SuppressionState state = loadSuppressionState(account, dialogId);
+            if (state.decodeFailed) {
+                return false;
             }
-            changed |= upsertSuppressedIdentity(state, new MemberIdentity(id, null, null));
+            boolean changed = false;
+            for (int i = 0; i < represented.size(); i++) {
+                String id = represented.get(i);
+                if (!validIdentity(id)) {
+                    continue;
+                }
+                changed |= upsertSuppressedIdentity(state, new MemberIdentity(id, null, null));
+            }
+            if (changed) {
+                saveSuppressionState(account, dialogId, state);
+            }
+            return changed;
         }
-        if (changed) {
-            saveSuppressionState(account, dialogId, state);
-        }
-        return changed;
     }
 
     public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages, int upstreamCount) {
         if (messages == null || messages.isEmpty()) {
             return new CoverPostPlan(0, 0, 0, new ArrayList<>(), false);
         }
-        SuppressionState state = loadSuppressionState(account, dialogId);
-        LinkedHashSet<String> all = new LinkedHashSet<>();
-        LinkedHashSet<String> visible = new LinkedHashSet<>();
-        boolean aliasChanged = false;
-        for (int i = 0; i < messages.size(); i++) {
-            MemberIdentity id = identityOf(messages.get(i));
-            if (id == null) continue;
-            String canonical = resolveCanonical(state, id.canonicalCandidate);
-            if (!validIdentity(canonical)) {
-                canonical = id.canonicalCandidate;
+        synchronized (SUPPRESSION_LOCK) {
+            SuppressionState state = loadSuppressionState(account, dialogId);
+            LinkedHashSet<String> all = new LinkedHashSet<>();
+            LinkedHashSet<String> visible = new LinkedHashSet<>();
+            boolean aliasChanged = false;
+            for (int i = 0; i < messages.size(); i++) {
+                MemberIdentity id = identityOf(messages.get(i));
+                if (id == null) continue;
+                String canonical = resolveCanonical(state, id.canonicalCandidate);
+                if (!validIdentity(canonical)) {
+                    canonical = id.canonicalCandidate;
+                }
+                all.add(canonical);
+                if (!state.decodeFailed) {
+                    aliasChanged |= upsertAliasOnly(state, id, canonical);
+                }
+                if (state.decodeFailed || state.containsCanonical(canonical)) {
+                    continue;
+                }
+                visible.add(canonical);
             }
-            all.add(canonical);
-            if (!state.decodeFailed) {
-                aliasChanged |= upsertAliasOnly(state, id, canonical);
+            if (aliasChanged) {
+                saveSuppressionState(account, dialogId, state);
             }
-            if (state.decodeFailed || state.containsCanonical(canonical)) {
-                continue;
-            }
-            visible.add(canonical);
+            int total = all.size();
+            int shown = visible.size();
+            int suppressed = Math.max(0, total - shown);
+            int upstreamAdjusted = Math.max(0, upstreamCount - suppressed);
+            int displayCount = shown == 0 ? 0 : Math.max(shown, upstreamAdjusted);
+            return new CoverPostPlan(total, suppressed, displayCount, new ArrayList<>(visible), state.decodeFailed);
         }
-        if (aliasChanged) {
-            saveSuppressionState(account, dialogId, state);
-        }
-        int total = all.size();
-        int shown = visible.size();
-        int suppressed = Math.max(0, total - shown);
-        int upstreamAdjusted = Math.max(0, upstreamCount - suppressed);
-        int displayCount = shown == 0 ? 0 : Math.max(shown, upstreamAdjusted);
-        return new CoverPostPlan(total, suppressed, displayCount, new ArrayList<>(visible), state.decodeFailed);
     }
 
     private static boolean upsertAliasOnly(SuppressionState state, MemberIdentity id, String canonical) {
@@ -578,59 +585,63 @@ public final class NotificationCoverController {
         if (dialogId == 0 || pushMessages == null || !isCovered(account, dialogId)) {
             return false;
         }
-        SuppressionState state = loadSuppressionState(account, dialogId);
-        if (state.decodeFailed) {
-            return false;
-        }
-        LinkedHashMap<String, MemberIdentity> members = new LinkedHashMap<>();
-        for (int i = 0; i < pushMessages.size(); i++) {
-            MessageObject messageObject = pushMessages.get(i);
-            if (messageObject == null || messageObject.getDialogId() != dialogId) {
-                continue;
+        synchronized (SUPPRESSION_LOCK) {
+            SuppressionState state = loadSuppressionState(account, dialogId);
+            if (state.decodeFailed) {
+                return false;
             }
-            MemberIdentity id = identityOf(messageObject);
-            if (id == null) continue;
-            String canonical = resolveCanonical(state, id.canonicalCandidate);
-            if (!validIdentity(canonical)) canonical = id.canonicalCandidate;
-            members.put(canonical, new MemberIdentity(canonical, id.randomAlias, id.messageAlias));
+            LinkedHashMap<String, MemberIdentity> members = new LinkedHashMap<>();
+            for (int i = 0; i < pushMessages.size(); i++) {
+                MessageObject messageObject = pushMessages.get(i);
+                if (messageObject == null || messageObject.getDialogId() != dialogId) {
+                    continue;
+                }
+                MemberIdentity id = identityOf(messageObject);
+                if (id == null) continue;
+                String canonical = resolveCanonical(state, id.canonicalCandidate);
+                if (!validIdentity(canonical)) canonical = id.canonicalCandidate;
+                members.put(canonical, new MemberIdentity(canonical, id.randomAlias, id.messageAlias));
+            }
+            if (members.isEmpty()) {
+                return false;
+            }
+            boolean changed = false;
+            for (MemberIdentity id : members.values()) {
+                changed |= upsertSuppressedIdentity(state, id);
+            }
+            if (changed) {
+                saveSuppressionState(account, dialogId, state);
+            }
+            return true;
         }
-        if (members.isEmpty()) {
-            return false;
-        }
-        boolean changed = false;
-        for (MemberIdentity id : members.values()) {
-            changed |= upsertSuppressedIdentity(state, id);
-        }
-        if (changed) {
-            saveSuppressionState(account, dialogId, state);
-        }
-        return true;
     }
 
     public static void onMessageRemapped(int account, long dialogId, long randomId, int messageId) {
         if (dialogId == 0 || randomId == 0 || messageId == 0) {
             return;
         }
-        SuppressionState state = loadSuppressionState(account, dialogId);
-        if (state.decodeFailed) {
-            return;
-        }
-        String random = randomIdentity(randomId);
-        String mid = messageIdentity(messageId);
-        if (!validIdentity(random) || !validIdentity(mid)) {
-            return;
-        }
-        String canonical = resolveCanonical(state, random);
-        if (!validIdentity(canonical)) {
-            canonical = resolveCanonical(state, mid);
-        }
-        if (!validIdentity(canonical)) {
-            canonical = random;
-        }
-        boolean changed = putAlias(state, random, canonical) | putAlias(state, mid, canonical);
-        if (changed) {
-            trimSuppressionState(state);
-            saveSuppressionState(account, dialogId, state);
+        synchronized (SUPPRESSION_LOCK) {
+            SuppressionState state = loadSuppressionState(account, dialogId);
+            if (state.decodeFailed) {
+                return;
+            }
+            String random = randomIdentity(randomId);
+            String mid = messageIdentity(messageId);
+            if (!validIdentity(random) || !validIdentity(mid)) {
+                return;
+            }
+            String canonical = resolveCanonical(state, random);
+            if (!validIdentity(canonical)) {
+                canonical = resolveCanonical(state, mid);
+            }
+            if (!validIdentity(canonical)) {
+                canonical = random;
+            }
+            boolean changed = putAlias(state, random, canonical) | putAlias(state, mid, canonical);
+            if (changed) {
+                trimSuppressionState(state);
+                saveSuppressionState(account, dialogId, state);
+            }
         }
     }
 
@@ -744,6 +755,10 @@ public final class NotificationCoverController {
     }
 
     public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog) {
+        if (lines == null || lines.isEmpty()) {
+            clearSummaryInteractionState(account);
+            return null;
+        }
         Context ctx = ApplicationLoader.applicationContext;
         NotificationCompat.InboxStyle inbox = new NotificationCompat.InboxStyle();
         inbox.setBigContentTitle(title);
@@ -789,6 +804,10 @@ public final class NotificationCoverController {
             return false;
         }
         Context ctx = ApplicationLoader.applicationContext;
+        NotificationManagerCompat notificationManager = NotificationManagerCompat.from(ctx);
+        if (!notificationManager.areNotificationsEnabled()) {
+            return false;
+        }
         SharedPreferences p = prefs(account);
         SharedPreferences.Editor ed = p.edit();
         try {
@@ -812,7 +831,7 @@ public final class NotificationCoverController {
                     .setContentIntent(interactionIntent(account, token, INTERACTION_EVENT_TAP, PREVIEW_ID_BASE + account))
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setPriority(NotificationCompat.PRIORITY_LOW);
-            NotificationManagerCompat.from(ctx).notify(previewTag(account), PREVIEW_ID_BASE + account, b.build());
+            notificationManager.notify(previewTag(account), PREVIEW_ID_BASE + account, b.build());
             return true;
         } catch (Exception e) {
             clearPreviewState(account, p, ed);

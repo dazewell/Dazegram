@@ -31,9 +31,7 @@ public class NotificationDismissReceiver extends BroadcastReceiver {
             int event = intent.getIntExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_EVENT, 0);
             boolean handled = com.radolyn.ayugram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event);
             Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening dismiss-route event=" + event + " handled=" + handled);
-            if (handled) {
-                return;
-            }
+            return;
         }
         long dialogId = intent.getLongExtra("dialogId", 0);
         int date = intent.getIntExtra("messageDate", 0);

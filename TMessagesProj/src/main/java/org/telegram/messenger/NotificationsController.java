@@ -5966,9 +5966,11 @@ public class NotificationsController extends BaseController implements Notificat
             if (covered.contains(did)) {
                 if (emittedCovered.add(did)) {
                     com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan plan = coverPlans == null ? null : coverPlans.get(did);
-                    int coverCount = plan == null ? 0 : Math.max(0, plan.displayCount);
-                    lines.add(com.radolyn.ayugram.chatprivacy.NotificationCoverController.coverLine(currentAccount, did, coverCount));
-                    count++;
+                    if (plan != null && plan.hasRepresentedMembers()) {
+                        int coverCount = Math.max(0, plan.displayCount);
+                        lines.add(com.radolyn.ayugram.chatprivacy.NotificationCoverController.coverLine(currentAccount, did, coverCount));
+                        count++;
+                    }
                 }
             } else {
                 String message = getStringForMessage(messageObject, false, text, null);
