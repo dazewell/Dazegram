@@ -536,6 +536,7 @@
         <activity
             android:name="com.radolyn.ayugram.chatprivacy.CoverInteractionActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|uiMode"
+            android:taskAffinity="${applicationId}.cover"
             android:excludeFromRecents="true"
             android:theme="@style/Theme.TMessages.Transparent"
             android:exported="false">

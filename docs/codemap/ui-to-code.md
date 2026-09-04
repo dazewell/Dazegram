@@ -66,7 +66,7 @@ immutable **activity** PendingIntent to `CoverInteractionActivity`, which calls
 `NotificationCoverController.handleInteractionFromActivity(...)` and then routes through
 the existing `OpenChatReceiver`/`LaunchActivity` open-chat path after token validation +
 suppression commit
-(`NotificationCoverController.java:768-770`, `:904-927`, `:1062-1167`;
+(`NotificationCoverController.java:752-772`, `:792-836`, `:907-934`, `:1060-1167`;
 `com/radolyn/ayugram/chatprivacy/CoverInteractionActivity.java:13-33`;
 `org/telegram/messenger/NotificationDismissReceiver.java:27-33`;
 `org/telegram/messenger/OpenChatReceiver.java:42-46`;
