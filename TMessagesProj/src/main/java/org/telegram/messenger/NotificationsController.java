@@ -946,8 +946,8 @@ public class NotificationsController extends BaseController implements Notificat
 
     private int addToPopupMessages(ArrayList<MessageObject> popupArrayAdd, MessageObject messageObject, long dialogId, boolean isChannel, SharedPreferences preferences) {
         if (messageObject.isStoryReactionPush) return 0;
-        // NagramX: covered dialogs never enter popup surfaces.
-        if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.blocksPopupMessage(currentAccount, dialogId)) {
+        // NagramX: popup routing may override dialogId for mentions; cover policy is keyed to the message's real dialog.
+        if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.blocksPopupMessage(currentAccount, messageObject.getDialogId())) {
             return 0;
         }
         int popup = 0;
