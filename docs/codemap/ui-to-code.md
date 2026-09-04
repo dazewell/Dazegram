@@ -63,7 +63,8 @@ Cover interactions are explicit immutable broadcasts to
 `NotificationDismissReceiver` carrying only an opaque token + event, and that
 receiver routes token callbacks through
 `NotificationCoverController.handleInteraction(...)`
-(`NotificationCoverController.java:902-913`, `:915-1028`, `:1039-1117`;
+(`NotificationCoverController.java:901-913`, `:915-1037`, `:1039-1117`,
+`:1119-1129`;
 `org/telegram/messenger/NotificationDismissReceiver.java:27-33`).
 
 *(Established 2026-09-03.)*
@@ -81,7 +82,7 @@ shown or app passcode is pending, then calls
 `suppressVisibleCoveredDialog(...)` then posts onto `notificationsQueue` and
 runs suppression against the live push snapshot before rebuilding notifications
 (`org/telegram/messenger/NotificationsController.java:3313-3318`;
-`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:602-631`).
+`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:601-634`).
 
 *(Established 2026-09-03.)*
 

@@ -142,14 +142,10 @@ public final class NotificationCoverController {
     }
 
     public static final class CoverPostPlan {
-        public final int coveredUniqueCount;
-        public final int suppressedUniqueCount;
         public final int displayCount;
         public final ArrayList<String> representedIds;
 
-        CoverPostPlan(int coveredUniqueCount, int suppressedUniqueCount, int displayCount, ArrayList<String> representedIds) {
-            this.coveredUniqueCount = coveredUniqueCount;
-            this.suppressedUniqueCount = suppressedUniqueCount;
+        CoverPostPlan(int displayCount, ArrayList<String> representedIds) {
             this.displayCount = displayCount;
             this.representedIds = representedIds;
         }
@@ -531,7 +527,7 @@ public final class NotificationCoverController {
         return true;
     }
 
-    private static boolean suppressCanonicalListLocked(int account, long dialogId, List<String> represented, SharedPreferences.Editor ed, boolean allowDecodeRecovery) {
+    private static boolean suppressCanonicalListFromInteractionLocked(int account, long dialogId, List<String> represented, SharedPreferences.Editor ed) {
         if (dialogId == 0 || represented == null || represented.isEmpty()) {
             return false;
         }
@@ -540,9 +536,6 @@ public final class NotificationCoverController {
             return false;
         }
         if (state.decodeFailed) {
-            if (!allowDecodeRecovery) {
-                return false;
-            }
             state = new SuppressionState(false, false);
         }
         boolean changed = false;
@@ -561,11 +554,10 @@ public final class NotificationCoverController {
 
     public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new CoverPostPlan(0, 0, 0, new ArrayList<>());
+            return new CoverPostPlan(0, new ArrayList<>());
         }
         synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
-            LinkedHashSet<String> all = new LinkedHashSet<>();
             LinkedHashSet<String> visible = new LinkedHashSet<>();
             boolean aliasChanged = false;
             for (int i = 0; i < messages.size(); i++) {
@@ -575,7 +567,6 @@ public final class NotificationCoverController {
                 if (!validIdentity(canonical)) {
                     canonical = id.canonicalCandidate;
                 }
-                all.add(canonical);
                 if (!state.decodeFailed && !state.versionAhead) {
                     aliasChanged |= upsertAliasOnly(state, id, canonical);
                 }
@@ -587,11 +578,8 @@ public final class NotificationCoverController {
             if (aliasChanged) {
                 saveSuppressionState(account, dialogId, state);
             }
-            int total = all.size();
-            int shown = visible.size();
-            int suppressed = Math.max(0, total - shown);
-            int displayCount = shown;
-            return new CoverPostPlan(total, suppressed, displayCount, new ArrayList<>(visible));
+            int displayCount = visible.size();
+            return new CoverPostPlan(displayCount, new ArrayList<>(visible));
         }
     }
 
@@ -1089,7 +1077,7 @@ public final class NotificationCoverController {
                 for (int i = 0; i < record.snapshots.size(); i++) {
                     long did = record.snapshots.keyAt(i);
                     ArrayList<String> ids = record.snapshots.valueAt(i);
-                    suppressCanonicalListLocked(account, did, ids, ed, true);
+                    suppressCanonicalListFromInteractionLocked(account, did, ids, ed);
                 }
                 if (record.kind == TOKEN_KIND_SUMMARY_DISMISS && record.date > 0) {
                     int currentDismissDate = p.getInt("dismissDate", 0);
@@ -1216,7 +1204,7 @@ public final class NotificationCoverController {
         }
     }
 
-    public static void reconcile(int account, LongSparseArray<Integer> oldPosted, LongSparseArray<Integer> nowPosted, SharedPreferences preferences) {
+    public static void reconcile(int account, LongSparseArray<Integer> oldPosted, LongSparseArray<Integer> nowPosted, SharedPreferences preferences, boolean coverSummaryPosted) {
         HashSet<Long> candidates = new HashSet<>();
         for (int i = 0; i < oldPosted.size(); i++) {
             candidates.add(oldPosted.keyAt(i));
@@ -1240,7 +1228,7 @@ public final class NotificationCoverController {
             for (int i = 0; i < staleDialogs.size(); i++) {
                 clearDialogInteractionState(account, staleDialogs.get(i), preferences, ed);
             }
-            if (nowPosted == null || nowPosted.size() == 0) {
+            if (!coverSummaryPosted) {
                 clearSummaryInteractionState(preferences, ed);
             }
             ed.apply();

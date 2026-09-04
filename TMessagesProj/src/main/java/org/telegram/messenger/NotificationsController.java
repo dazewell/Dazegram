@@ -4216,6 +4216,7 @@ public class NotificationsController extends BaseController implements Notificat
                 }
             }
             LongSparseArray<Integer> naxOldCoverIds = new LongSparseArray<>();
+            boolean naxCoverSummaryPosted = false;
             try {
                 for (int i = 0; i < coverNotificationsIds.size(); i++) {
                     naxOldCoverIds.put(coverNotificationsIds.keyAt(i), coverNotificationsIds.valueAt(i));
@@ -4873,12 +4874,12 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
             }
-            showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, lastMessageObject.messageOwner.date);
+            naxCoverSummaryPosted = showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, lastMessageObject.messageOwner.date);
             scheduleNotificationRepeat();
             } finally {
                 // NagramX: reconcile stale tagged covers from the preflight finally, so an early return or an exception
                 // anywhere in the real-summary construction above cannot skip cover cancellation (fail closed)
-                com.radolyn.ayugram.chatprivacy.NotificationCoverController.reconcile(currentAccount, naxOldCoverIds, coverNotificationsIds, naxPrefs);
+                com.radolyn.ayugram.chatprivacy.NotificationCoverController.reconcile(currentAccount, naxOldCoverIds, coverNotificationsIds, naxPrefs, naxCoverSummaryPosted);
             }
         } catch (Exception e) {
             FileLog.e(e);
@@ -4948,10 +4949,11 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     @SuppressLint("InlinedApi")
-    private void showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, int summaryDismissDate) {
+    private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, int summaryDismissDate) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
+        boolean coverSummaryPosted = false;
 
         boolean useSummaryNotification = Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2);
 
@@ -5002,7 +5004,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (BuildVars.LOGS_ENABLED) {
                 FileLog.d("show summary notification by SDK check");
             }
-            return;
+            return coverSummaryPosted;
         }
 
         if ((useSummaryNotification || naxAnyCovered) && Build.VERSION.SDK_INT >= 26) {
@@ -5880,6 +5882,7 @@ public class NotificationsController extends BaseController implements Notificat
                 if (mainNotification != null) {
                     try {
                         notificationManager.notify(notificationId, mainNotification);
+                        coverSummaryPosted = true;
                     } catch (Exception e) {
                         FileLog.e(e);
                         notificationManager.cancel(notificationId);
@@ -5933,6 +5936,7 @@ public class NotificationsController extends BaseController implements Notificat
                 ShortcutManagerCompat.removeDynamicShortcuts(ApplicationLoader.applicationContext, ids);
             }
         }
+        return coverSummaryPosted;
     }
 
     // NagramX: fresh cover-aware summary (real lines for normal dialogs, one generic line per covered dialog)
