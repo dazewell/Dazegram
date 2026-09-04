@@ -2,6 +2,8 @@ package com.radolyn.ayugram.eventschedule;
 
 import android.content.SharedPreferences;
 
+import androidx.annotation.NonNull;
+
 import org.telegram.messenger.ApplicationLoader;
 
 import java.util.ArrayList;
@@ -75,6 +77,7 @@ public final class EventScheduleStore {
                     // drop the whole entry here rather than let it surface as a phantom armed row.
                     if (entry == null || entry.fallbackDate + 300 < now
                             || entry.hasInvalidIds()
+                            || (entry.types == 0 && !entry.hasAnyPattern())
                             || (entry.serverIds.isEmpty() && entry.localIds.isEmpty()
                             && (entry.bindExpiresAt <= 0 || entry.bindExpiresAt <= now))) {
                         if (ed == null) ed = sp.edit();
@@ -216,7 +219,7 @@ public final class EventScheduleStore {
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
             int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,
-            int types, String pattern, boolean regex, int delaySeconds, int fallbackDate, long freshCreatedAt) {
+            @NonNull EventScheduleConfig config, int fallbackDate, long freshCreatedAt) {
         if (positiveIds == null || positiveIds.length == 0) {
             return new EditClaim(EditClaim.Status.REJECTED_INVALID_IDS, null, null);
         }
@@ -237,10 +240,10 @@ public final class EventScheduleStore {
                 if (!target.serverIds.contains(id)) target.serverIds.add(id);
             }
             target.revision++;
-            target.types = types;
-            target.pattern = pattern == null ? "" : pattern;
-            target.regex = regex;
-            target.delaySeconds = delaySeconds;
+            target.types = config.types;
+            target.setPatterns(config.patterns);
+            target.regex = config.regex;
+            target.delaySeconds = config.delaySeconds;
             target.fallbackDate = fallbackDate;
             target.bindGroupedId = 0;
             target.bindExpiresAt = 0;
@@ -254,10 +257,10 @@ public final class EventScheduleStore {
         for (int id : positiveIds) {
             if (!fresh.serverIds.contains(id)) fresh.serverIds.add(id);
         }
-        fresh.types = types;
-        fresh.pattern = pattern == null ? "" : pattern;
-        fresh.regex = regex;
-        fresh.delaySeconds = delaySeconds;
+        fresh.types = config.types;
+        fresh.setPatterns(config.patterns);
+        fresh.regex = config.regex;
+        fresh.delaySeconds = config.delaySeconds;
         fresh.fallbackDate = fallbackDate;
         fresh.createdAt = freshCreatedAt;
         fresh.bindGroupedId = 0;

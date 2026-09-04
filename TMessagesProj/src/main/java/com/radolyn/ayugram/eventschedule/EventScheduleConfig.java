@@ -1,22 +1,27 @@
 package com.radolyn.ayugram.eventschedule;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
- * Immutable trigger definition captured from the "Send on event" chip when a bulk reschedule
- * sheet is confirmed. Carries only the user-chosen matching config -- the same fields an
- * {@link EventScheduleEntry} stores -- and no per-message state: one config is applied
- * identically to every message the reschedule actually moved. {@code null} stands for "chip
- * left Off", i.e. arm nothing.
+ * Immutable trigger definition captured from the "Send on event" controls.
+ *
+ * <p>Contains only user-selected matching configuration and no per-message state. It is used by
+ * both single-message edit arm/disarm flows and bulk arming. {@code null} still means "trigger
+ * left Off".
  */
 public final class EventScheduleConfig {
 
     public final int types;
-    public final String pattern;
+    public final List<String> patterns;
     public final boolean regex;
     public final int delaySeconds;
 
-    public EventScheduleConfig(int types, String pattern, boolean regex, int delaySeconds) {
+    public EventScheduleConfig(int types, List<String> patterns, boolean regex, int delaySeconds) {
         this.types = types;
-        this.pattern = pattern == null ? "" : pattern;
+        this.patterns = Collections.unmodifiableList(
+                new ArrayList<>(patterns == null ? Collections.emptyList() : patterns));
         this.regex = regex;
         this.delaySeconds = delaySeconds;
     }

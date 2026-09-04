@@ -495,8 +495,8 @@ public class MessageTriggersActivity extends BaseFragment {
             EventScheduleEntry first = group.get(0);
             TLObject peer = resolvePeer(messagesController, first.dialogId);
             String chatTitle = resolveTitle(peer);
-            // triggerKey() guarantees every member of this group shares types/regex/pattern, so
-            // any member's summary(false) speaks for the whole group -- that's what makes it safe
+            // triggerKey() guarantees every member of this group shares types/regex and the same
+            // normalized pattern set, so any member's summary(false) speaks for the whole group -- that's what makes it safe
             // to show the trigger once here instead of repeating it on every row below.
             items.add(new HeaderItem(chatTitle, first.summary(false)));
             for (int i = 0; i < group.size(); i++) {

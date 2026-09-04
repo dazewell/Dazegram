@@ -631,9 +631,10 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-Gitmodules'         (Test-Gitmodules $pins['GITMODULES_BLOB'] $obsGood $pins) ([ref]$log)) -and $ok
 
     # Guard 11 layer floors
-    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 171 64 599 262 $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors 172 63 599 262 $pins) ([ref]$log)) -and $ok
-    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors 172 64 599 262 $pins) ([ref]$log)) -and $ok
+    $radExact = [int]$pins['RADOLYN_EXACT']
+    $ok = (Assert-Fails  'Test-LayerFloors(low)'  (Test-LayerFloors 171 $radExact 599 262 $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LayerFloors(rad)'  (Test-LayerFloors 172 ($radExact - 1) 599 262 $pins) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LayerFloors'       (Test-LayerFloors 172 $radExact 599 262 $pins) ([ref]$log)) -and $ok
 
     # Guard 12 Ayu schema
     $ok = (Assert-Fails  'Test-AyuSchema(ver)'  (Test-AyuSchema 4 26 21 $true  $pins) ([ref]$log)) -and $ok
