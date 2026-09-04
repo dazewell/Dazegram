@@ -32,7 +32,14 @@ public final class GlassPatternSmokeDiagnostics {
     private GlassPatternSmokeDiagnostics() {
     }
 
+    public static int normalizeOwnerId(int ownerId) {
+        return ownerId == 0 ? 1 : ownerId;
+    }
+
     public static void onInvalidateMotionBackgroundPosted(MotionBackgroundDrawable producer) {
+        if (!isLoggingEnabled()) {
+            return;
+        }
         if (producer == null) {
             return;
         }
@@ -43,6 +50,9 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onProceduralGradientGenerated(MotionBackgroundDrawable producer) {
+        if (!isLoggingEnabled()) {
+            return;
+        }
         if (producer == null) {
             return;
         }
@@ -53,6 +63,9 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onInvalidateMotionBackgroundArrival(int ownerId, Object producerArg, float refreshRateHz, boolean refreshPending) {
+        if (!isLoggingEnabled()) {
+            return;
+        }
         synchronized (lock) {
             BurstState state = stateForOwnerLocked(ownerId);
             long now = SystemClock.elapsedRealtime();
@@ -83,6 +96,9 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onRefreshExecution(int ownerId) {
+        if (!isLoggingEnabled()) {
+            return;
+        }
         synchronized (lock) {
             BurstState state = statesByOwner.get(ownerId);
             if (state == null || !state.active) {
@@ -101,6 +117,9 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onComposeSample(int ownerId, boolean gradientChanged, long durationNanos) {
+        if (!isLoggingEnabled()) {
+            return;
+        }
         synchronized (lock) {
             BurstState state = statesByOwner.get(ownerId);
             if (state == null || !state.active) {
@@ -131,6 +150,11 @@ public final class GlassPatternSmokeDiagnostics {
         synchronized (lock) {
             BurstState state = statesByOwner.get(ownerId);
             if (state == null || !state.active || state.arrivals == 0) {
+                return;
+            }
+            if (!isLoggingEnabled()) {
+                state.active = false;
+                state.clearCounters();
                 return;
             }
             long now = SystemClock.elapsedRealtime();
@@ -267,6 +291,10 @@ public final class GlassPatternSmokeDiagnostics {
 
     private static double nanosToMs(long nanos) {
         return nanos / 1_000_000.0d;
+    }
+
+    private static boolean isLoggingEnabled() {
+        return Log.isLoggable(LOG_TAG, Log.INFO);
     }
 
     private static final class ProducerIdentity {

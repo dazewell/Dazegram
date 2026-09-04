@@ -51841,7 +51841,7 @@ public class ChatActivity extends BaseFragment implements
     // paused, detached, or before contentView exists — a chat that is off screen or not laid in does no
     // work, and onResume runs it once to catch up.
     private boolean glassCompositeDirty;
-    private final int glassPatternSmokeOwnerId = System.identityHashCode(this);
+    private final int glassPatternSmokeOwnerId = xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.normalizeOwnerId(System.identityHashCode(this));
     private boolean glassCompositeRefreshPending;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
