@@ -29,15 +29,17 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:169
 ## Chat privacy sheet's Notifications section drives disguised covers
 
 The same sheet has a `Notifications` header, a `Disguise notifications`
-`TextCheckCell`, and a `Cover` `TextSettingsCell` (visible only while disguise
-is on). The switch toggles `NotificationCoverController.setEnabled(...)` and
+`TextCheckCell`, plus `Cover` and `Preview notification` `TextSettingsCell`s
+(visible only while disguise is on). The switch toggles
+`NotificationCoverController.setEnabled(...)` and
 queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
 the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
-sheet and calls `setPersona(...)` + the same rebuild
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:190-208`,
-`:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
-cancels a notification itself — it only writes config and asks the controller to
-rebuild, matching the existing settings-write precedent.
+sheet and calls `setPersona(...)` + the same rebuild; the preview row calls
+`NotificationCoverController.postPreview(...)` and only shows a bulletin result
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:131-151`,
+`:190-223`, `:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
+The UI never posts or cancels a notification itself — it only writes config and
+asks the controller to rebuild, matching the existing settings-write precedent.
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
@@ -49,22 +51,18 @@ generic channels under `nax_cover_v1_channel_<personaId>` /
 
 *(Established 2026-09-03.)*
 
-## Chat privacy sheet owns cover persona and preview rows
-
-When `Disguise notifications` is on, the same sheet shows `Cover` and
-`Preview notification` rows. `Cover` reuses the single-select picker pattern
-(`PopupHelper.show(...)`) and writes `NotificationCoverController.setPersona(...)`;
-`Preview notification` calls `NotificationCoverController.postPreview(...)` and
-only shows a bulletin result
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:78-86`, `:135-153`,
-`:204-223`, `:232-257`).
+## Tokenized broadcast interaction path for covered notifications
 
 All cover interactions now use immutable **broadcast** PendingIntents into the
 non-exported `NotificationDismissReceiver`: child tap/dismiss, summary tap/dismiss,
 and preview tap all resolve via the same tokenized receiver path in
-`NotificationCoverController.handleInteraction(...)`. This is both a platform
-constraint (Android 12+ blocks notification trampolines) and the product decision
-for Hollow-only disguised notifications
+`NotificationCoverController.handleInteraction(...)`.
+
+Android 12+ blocks a notification broadcast receiver from launching the chat
+activity directly. Supporting cover-tap open-chat would therefore require a
+dedicated transparent activity bridge; by product decision, that complexity was
+dropped and covers are Hollow-only, so broadcast is the only interaction
+transport now needed
 (`NotificationCoverController.java:686-725`, `:745-793`, `:796-828`, `:860-955`, `:995-1068`;
 `org/telegram/messenger/NotificationDismissReceiver.java:27-33`).
 
@@ -83,7 +81,7 @@ shown or app passcode is pending, then calls
 `suppressVisibleCoveredDialog(...)` then posts onto `notificationsQueue` and
 runs suppression against the live push snapshot before rebuilding notifications
 (`org/telegram/messenger/NotificationsController.java:3313-3318`;
-`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:601-634`).
+`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:560-593`).
 
 *(Established 2026-09-03.)*
 
