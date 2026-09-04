@@ -285,7 +285,7 @@ public final class NotificationCoverController {
     }
 
     private static boolean validIdentity(String id) {
-        if (TextUtils.isEmpty(id) || id.length() < 4 || id.charAt(1) != ':') {
+        if (TextUtils.isEmpty(id) || id.length() < 3 || id.charAt(1) != ':') {
             return false;
         }
         char kind = id.charAt(0);
@@ -337,6 +337,20 @@ public final class NotificationCoverController {
             }
         }
         return false;
+    }
+
+    public static int countCoverableMembers(ArrayList<MessageObject> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return 0;
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (int i = 0; i < messages.size(); i++) {
+            MemberIdentity identity = identityOf(messages.get(i));
+            if (identity != null && validIdentity(identity.canonicalCandidate)) {
+                ids.add(identity.canonicalCandidate);
+            }
+        }
+        return ids.size();
     }
 
     public static HashSet<Long> collectCovered(int account, LongSparseArray<ArrayList<MessageObject>> byDialog) {

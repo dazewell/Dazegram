@@ -4969,8 +4969,7 @@ public class NotificationsController extends BaseController implements Notificat
         if (naxAnyCovered) {
             for (Long coveredDid : naxCoveredSet) {
                 ArrayList<MessageObject> coveredMessages = messagesByDialogs.get(coveredDid);
-                Integer pd = pushDialogs.get(coveredDid);
-                int upstreamCount = Math.max(coveredMessages == null ? 0 : coveredMessages.size(), pd == null ? 0 : pd);
+                int upstreamCount = com.radolyn.ayugram.chatprivacy.NotificationCoverController.countCoverableMembers(coveredMessages);
                 com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan plan =
                         com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildPostPlan(currentAccount, coveredDid, coveredMessages, upstreamCount);
                 naxCoverPlans.put(coveredDid, plan);
@@ -5102,8 +5101,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (!dialogKey.story && naxCoveredSet.contains(dialogId)) {
                 com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan plan = naxCoverPlans.get(dialogId);
                 if (plan == null) {
-                    Integer pd = pushDialogs.get(dialogId);
-                    int upstreamCount = Math.max(messageObjects == null ? 0 : messageObjects.size(), pd == null ? 0 : pd);
+                    int upstreamCount = com.radolyn.ayugram.chatprivacy.NotificationCoverController.countCoverableMembers(messageObjects);
                     plan = com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildPostPlan(currentAccount, dialogId, messageObjects, upstreamCount);
                     naxCoverPlans.put(dialogId, plan);
                 }
