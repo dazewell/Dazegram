@@ -81,6 +81,7 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.text.style.URLSpan;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -3774,12 +3775,15 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: once this chat is truly visible (after app/chat passcode gates), suppress currently coverable
     // members for this dialog so covered notifications disappear without touching read state.
     private void clearCoveredNotificationsIfVisible() {
-        if (chatMode != MODE_DEFAULT || dialog_id == 0 || chatLockPasscodeView != null) {
+        boolean blockedMode = chatMode != MODE_DEFAULT;
+        boolean blockedDialog = dialog_id == 0;
+        boolean blockedChatLock = chatLockPasscodeView != null;
+        boolean blockedAppPasscode = AndroidUtilities.needShowPasscode(false) || SharedConfig.isWaitingForPasscodeEnter;
+        if (blockedMode || blockedDialog || blockedChatLock || blockedAppPasscode) {
+            Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening visible-clear skipped mode=" + blockedMode + " dialog=" + blockedDialog + " chatLock=" + blockedChatLock + " appPasscode=" + blockedAppPasscode);
             return;
         }
-        if (AndroidUtilities.needShowPasscode(false) || SharedConfig.isWaitingForPasscodeEnter) {
-            return;
-        }
+        Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening visible-clear queued");
         getNotificationsController().suppressVisibleCoveredDialog(dialog_id);
     }
 

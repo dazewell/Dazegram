@@ -12,6 +12,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.text.TextUtils;
+import android.util.Log;
 
 public class NotificationDismissReceiver extends BroadcastReceiver {
 
@@ -28,7 +29,9 @@ public class NotificationDismissReceiver extends BroadcastReceiver {
         if (!TextUtils.isEmpty(coverToken)) {
             ApplicationLoader.postInitApplication();
             int event = intent.getIntExtra(com.radolyn.ayugram.chatprivacy.NotificationCoverController.EXTRA_COVER_EVENT, 0);
-            if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event)) {
+            boolean handled = com.radolyn.ayugram.chatprivacy.NotificationCoverController.handleInteraction(currentAccount, coverToken, event);
+            Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening dismiss-route event=" + event + " handled=" + handled);
+            if (handled) {
                 return;
             }
         }

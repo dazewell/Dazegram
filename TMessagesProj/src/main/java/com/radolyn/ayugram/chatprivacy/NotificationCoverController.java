@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
@@ -77,6 +78,7 @@ public final class NotificationCoverController {
     private static final int TOKEN_KIND_SUMMARY_TAP = 3;
     private static final int TOKEN_KIND_SUMMARY_DISMISS = 4;
     private static final int TOKEN_KIND_PREVIEW_TAP = 5;
+    private static final String SMOKE_LITERAL = "NAX_SMOKE_customized-privacy-hardening";
 
     private NotificationCoverController() {}
 
@@ -978,13 +980,16 @@ public final class NotificationCoverController {
         }
         String active = p.getString(activeKey, null);
         if (!TextUtils.equals(active, token)) {
+            Log.i("NagramX", SMOKE_LITERAL + " interaction stale-active kind=" + record.kind + " event=" + event);
             return true;
         }
         if ((record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_SUMMARY_TAP || record.kind == TOKEN_KIND_PREVIEW_TAP)
                 && event != INTERACTION_EVENT_TAP) {
+            Log.i("NagramX", SMOKE_LITERAL + " interaction ignored-event kind=" + record.kind + " event=" + event);
             return true;
         }
         if ((record.kind == TOKEN_KIND_CHILD_DISMISS || record.kind == TOKEN_KIND_SUMMARY_DISMISS) && event != INTERACTION_EVENT_DISMISS) {
+            Log.i("NagramX", SMOKE_LITERAL + " interaction ignored-event kind=" + record.kind + " event=" + event);
             return true;
         }
 
@@ -993,6 +998,7 @@ public final class NotificationCoverController {
             SharedPreferences.Editor previewEditor = p.edit();
             clearPreviewState(account, p, previewEditor);
             previewEditor.apply();
+            Log.i("NagramX", SMOKE_LITERAL + " interaction preview-consumed");
             return true;
         }
 
@@ -1011,10 +1017,18 @@ public final class NotificationCoverController {
         }
         ed.apply();
 
+        boolean openedChat = false;
         if (record.kind == TOKEN_KIND_CHILD_TAP && record.mode == TAP_ACTION_OPEN_CHAT) {
             openDialog(account, record.dialogId);
+            openedChat = true;
         }
-        if (touched || record.kind == TOKEN_KIND_CHILD_TAP || record.kind == TOKEN_KIND_CHILD_DISMISS || record.kind == TOKEN_KIND_SUMMARY_TAP || record.kind == TOKEN_KIND_SUMMARY_DISMISS) {
+        boolean shouldRebuild = touched
+                || record.kind == TOKEN_KIND_CHILD_TAP
+                || record.kind == TOKEN_KIND_CHILD_DISMISS
+                || record.kind == TOKEN_KIND_SUMMARY_TAP
+                || record.kind == TOKEN_KIND_SUMMARY_DISMISS;
+        Log.i("NagramX", SMOKE_LITERAL + " interaction applied kind=" + record.kind + " mode=" + record.mode + " touched=" + touched + " rebuild=" + shouldRebuild + " openChat=" + openedChat);
+        if (shouldRebuild) {
             NotificationsController.getInstance(account).showNotifications();
         }
         return true;
