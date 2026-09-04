@@ -937,6 +937,29 @@ Then dispatch `nagramx-architect` for round 2 on the real diff, on a different
 model family from the one the implementer ran. This is a distinct pass from
 round 1, and the implementer's own summary does not substitute for it.
 
+**Mid-flight disproportionate-slice gate.** During round 2 or as early findings
+land, watch for an optional or lower-priority slice becoming the cost center —
+any of: it reopens round-1 design; introduces a new Activity/service/storage
+/cache/concurrency/lifecycle mechanism solely for itself; accumulates repeated
+Critical/Important findings; causes an extra APK/device cycle; or plainly
+dominates elapsed review/implementation risk. This is a distinct gate from
+finding defects: a healthy diff can hide an unhealthy slice. If you see it,
+**stop the loop and interrupt dazewell with evidence:**
+
+- which slice is the cost center
+- what unique risk/time burden is native to it (not the rest of the feature)
+- whether the remainder of the feature is healthy
+- realistic options: keep it at stated cost, simplify it, substitute
+  lower-risk behaviour, or drop it
+
+Recommend one option. Do not spend another fix/review/build cycle on it without
+his decision — the disproportionate slice breaks the cost assumptions from the
+gate and is exactly what the cost-per-slice rule at design time exists to catch.
+**The implementer must report this trigger to their orchestrator with evidence;
+the orchestrator asks dazewell; a child orchestrator sends the question directly
+to him.** This is an allowed exception to the one-gate-per-feature rule because
+cost-assumption invalidation is real mid-flight and needs a decision point.
+
 **The review loop is capped.** Send findings back with `send_session_message`;
 the implementer fixes them as new commits and you re-verify.
 
