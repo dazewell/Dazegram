@@ -48,7 +48,6 @@ import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextPaint;
 import android.text.TextUtils;
-import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.util.SparseBooleanArray;
@@ -4191,7 +4190,6 @@ public class NotificationsController extends BaseController implements Notificat
                 naxList.add(naxMsg);
             }
             java.util.HashSet<Long> naxCoveredSet = com.radolyn.ayugram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, naxMessagesByDialogs);
-            Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening preflight coveredDialogs=" + naxCoveredSet.size() + " groupedDialogs=" + naxMessagesByDialogs.size());
             if (!naxCoveredSet.isEmpty()) {
                 AndroidUtilities.runOnUIThread(() -> {
                     boolean popupChanged = false;
@@ -4207,7 +4205,6 @@ public class NotificationsController extends BaseController implements Notificat
                             popupChanged = true;
                         }
                     }
-                    Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening popup-purge changed=" + popupChanged);
                     if (popupChanged) {
                         NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.pushMessagesUpdated);
                     }
@@ -4981,7 +4978,6 @@ public class NotificationsController extends BaseController implements Notificat
 
         Notification mainNotification;
         if (naxAnyCovered) {
-            Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening summary-route covered=" + naxCoveredSet.size() + " representedDialogs=" + naxSummaryRepresented.size() + " grouped=" + useSummaryNotification);
             mainNotification = null;
             if (useSummaryNotification) {
                 Notification coverSummary = null;
@@ -5107,7 +5103,6 @@ public class NotificationsController extends BaseController implements Notificat
                 }
                 int coverCount = plan == null ? 0 : plan.displayCount;
                 ArrayList<String> represented = plan == null ? null : plan.representedIds;
-                Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening child-route grouped=" + useSummaryNotification + " representedMembers=" + (represented == null ? 0 : represented.size()) + " displayCount=" + coverCount);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
                 if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, useSummaryNotification, notificationGroup, represented)) {
                     coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));

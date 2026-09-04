@@ -81,7 +81,6 @@ import android.text.style.ForegroundColorSpan;
 import android.text.style.ImageSpan;
 import android.text.style.URLSpan;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.util.Pair;
 import android.util.Property;
 import android.util.SparseArray;
@@ -3780,10 +3779,8 @@ public class ChatActivity extends BaseFragment implements
         boolean blockedChatLock = chatLockPasscodeView != null;
         boolean blockedAppPasscode = AndroidUtilities.needShowPasscode(false) || SharedConfig.isWaitingForPasscodeEnter;
         if (blockedMode || blockedDialog || blockedChatLock || blockedAppPasscode) {
-            Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening visible-clear skipped mode=" + blockedMode + " dialog=" + blockedDialog + " chatLock=" + blockedChatLock + " appPasscode=" + blockedAppPasscode);
             return;
         }
-        Log.i("NagramX", "NAX_SMOKE_customized-privacy-hardening visible-clear queued");
         getNotificationsController().suppressVisibleCoveredDialog(dialog_id);
     }
 
