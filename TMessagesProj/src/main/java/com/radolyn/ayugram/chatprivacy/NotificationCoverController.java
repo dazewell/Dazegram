@@ -1,5 +1,6 @@
 package com.radolyn.ayugram.chatprivacy;
 
+import android.app.Activity;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -753,18 +754,21 @@ public final class NotificationCoverController {
                 dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, TAP_ACTION_HOLLOW, 0, dialogId, snapshots));
                 ed.apply();
             }
+            PendingIntent contentIntent = tapMode == TAP_ACTION_OPEN_CHAT
+                    ? interactionActivityIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId)
+                    : interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, childChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
-                    // NagramX: in Open chat mode we own dismissal in handleInteraction(); letting the system auto-cancel
-                    // can dispatch delete before tap on some devices, which clears tap token state and drops open-chat.
+                    // NagramX: Open chat uses direct activity delivery and still dismisses via handleInteraction().
+                    // Keep auto-cancel off in that mode so delete-intent handling remains tied to explicit dismiss gestures.
                     .setAutoCancel(tapMode != TAP_ACTION_OPEN_CHAT)
                     .setOnlyAlertOnce(true)
                     .setShowWhen(false)
-                    .setContentIntent(interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId))
+                    .setContentIntent(contentIntent)
                     .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, internalId + 0x31))
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
                     .setPriority(NotificationCompat.PRIORITY_LOW);
@@ -914,6 +918,21 @@ public final class NotificationCoverController {
         );
     }
 
+    private static PendingIntent interactionActivityIntent(int account, String token, int event, int requestCode) {
+        Intent intent = new Intent(ApplicationLoader.applicationContext, com.radolyn.ayugram.chatprivacy.CoverInteractionActivity.class);
+        intent.setAction("nax.cover.activity." + token + "." + event);
+        intent.putExtra("currentAccount", account);
+        intent.putExtra(EXTRA_COVER_TOKEN, token);
+        intent.putExtra(EXTRA_COVER_EVENT, event);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(
+                ApplicationLoader.applicationContext,
+                requestCode ^ token.hashCode() ^ (event << 12),
+                intent,
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+        );
+    }
+
     private static InteractionRecord buildRecord(int kind, int mode, int date, long dialogId, LongSparseArray<ArrayList<String>> snapshots) {
         InteractionRecord record = new InteractionRecord();
         record.kind = kind;
@@ -1038,7 +1057,15 @@ public final class NotificationCoverController {
         return null;
     }
 
+    public static boolean handleInteractionFromActivity(Activity activity, int account, String token, int event) {
+        return handleInteractionInternal(account, token, event, activity);
+    }
+
     public static boolean handleInteraction(int account, String token, int event) {
+        return handleInteractionInternal(account, token, event, null);
+    }
+
+    private static boolean handleInteractionInternal(int account, String token, int event, Activity activity) {
         if (TextUtils.isEmpty(token) || (event != INTERACTION_EVENT_TAP && event != INTERACTION_EVENT_DISMISS)) {
             return false;
         }
@@ -1109,8 +1136,8 @@ public final class NotificationCoverController {
         if (cancelChild) {
             NotificationManagerCompat.from(ApplicationLoader.applicationContext).cancel(coverTag(account, record.dialogId), internalId(record.dialogId));
         }
-        if (openChat) {
-            openDialog(account, openDialogId);
+        if (openChat && activity != null) {
+            openDialog(activity, account, openDialogId);
         }
         if (shouldRebuild) {
             NotificationsController.getInstance(account).showNotifications();
@@ -1118,7 +1145,7 @@ public final class NotificationCoverController {
         return true;
     }
 
-    private static void openDialog(int account, long dialogId) {
+    private static void openDialog(Activity activity, int account, long dialogId) {
         if (dialogId == 0) return;
         Intent intent = new Intent(ApplicationLoader.applicationContext, OpenChatReceiver.class);
         intent.setAction("com.tmessages.openchat" + Math.random() + Integer.MAX_VALUE);
@@ -1132,9 +1159,9 @@ public final class NotificationCoverController {
             return;
         }
         intent.putExtra("currentAccount", account);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         try {
-            ApplicationLoader.applicationContext.startActivity(intent);
+            activity.startActivity(intent);
         } catch (Exception e) {
             FileLog.e(e);
         }

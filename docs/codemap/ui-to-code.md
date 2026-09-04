@@ -59,13 +59,18 @@ picker pattern (`PopupHelper.show(...)`) and writes
 (`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:82-90`, `:143-160`,
 `:221-240`, `:277-303`).
 
-Cover interactions are explicit immutable broadcasts to
-`NotificationDismissReceiver` carrying only an opaque token + event, and that
-receiver routes token callbacks through
-`NotificationCoverController.handleInteraction(...)`
-(`NotificationCoverController.java:901-913`, `:915-1037`, `:1039-1117`,
-`:1119-1129`;
-`org/telegram/messenger/NotificationDismissReceiver.java:27-33`).
+Cover interactions keep opaque token handling but now split transport by tap mode:
+Hollow child taps, child dismiss, summary tap/dismiss, and preview tap stay on immutable
+broadcast PendingIntents to `NotificationDismissReceiver`; Open chat child taps use an
+immutable **activity** PendingIntent to `CoverInteractionActivity`, which calls
+`NotificationCoverController.handleInteractionFromActivity(...)` and then routes through
+the existing `OpenChatReceiver`/`LaunchActivity` open-chat path after token validation +
+suppression commit
+(`NotificationCoverController.java:768-770`, `:904-927`, `:1062-1167`;
+`com/radolyn/ayugram/chatprivacy/CoverInteractionActivity.java:13-33`;
+`org/telegram/messenger/NotificationDismissReceiver.java:27-33`;
+`org/telegram/messenger/OpenChatReceiver.java:42-46`;
+`org/telegram/ui/LaunchActivity.java:1572-1579`, `:3012-3021`, `:3066-3075`).
 
 *(Established 2026-09-03.)*
 
