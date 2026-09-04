@@ -105,13 +105,12 @@ code are not.
    reopens design (round-1.5), introduces a new Activity, service, storage,
    cache, concurrency, or lifecycle mechanism solely for itself, accumulates
    repeated Critical/Important findings, causes an extra APK/device cycle, or
-   plainly dominates elapsed risk, **stop and report it to dazewell with
-   evidence**: which slice, what unique cost, whether the rest is healthy, and
-   options — keep it at stated cost, simplify it, substitute a lower-risk
-   behaviour, or drop it. Do not spend another fix/review/build cycle on it
-   without dazewell's decision. The implementer must report the trigger to
-   their orchestrator; the orchestrator asks dazewell; a child orchestrator
-   sends the question directly to him. This is an allowed exception to
+   plainly dominates elapsed risk, **stop and report it with evidence**: which
+   slice, what unique cost, whether the rest is healthy, and options — keep it at
+   stated cost, simplify it, substitute a lower-risk behaviour, or drop it. Do
+   not spend another fix/review/build cycle on it without dazewell's decision.
+   The implementer must report the trigger to their orchestrator; the orchestrator
+   asks dazewell; a child orchestrator sends the question directly to him. This is an allowed exception to
    one-gate-per-feature because cost-assumption invalidation at mid-flight is
    the thing this rule exists to catch.
 
