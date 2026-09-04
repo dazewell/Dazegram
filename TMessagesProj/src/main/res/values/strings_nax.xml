@@ -530,9 +530,14 @@
     <string name="EventScheduleSectionType">By message type</string>
     <string name="EventScheduleSectionPattern">Or by text</string>
     <string name="EventSchedulePatternHint">Text or caption pattern</string>
+    <string name="EventScheduleAddPattern">Add pattern</string>
+    <string name="EventScheduleRemovePattern">Remove pattern %1$d</string>
+    <string name="EventScheduleInvalidRegexRow">Not a valid regular expression.</string>
+    <string name="EventScheduleDuplicatePatternRow">Same as an earlier pattern. It will be ignored.</string>
+    <string name="EventSchedulePatternMore">+%1$d more</string>
     <string name="EventScheduleUseRegex">Regular expression</string>
     <string name="EventScheduleRegexInfo">Off: wildcards, where * matches anything and ? matches one character. On: a full regular expression, matched anywhere in the text.</string>
-    <string name="EventScheduleMatchInfo">Either is enough on its own. Set at least one.</string>
+    <string name="EventScheduleMatchInfo">A message type or any one pattern is enough. Set at least one.</string>
     <string name="EventScheduleDelayTitle">Delay before sending</string>
     <string name="EventScheduleNoDelay">No delay</string>
     <string name="EventScheduleClear">Remove trigger</string>

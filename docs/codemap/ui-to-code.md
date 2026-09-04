@@ -3,6 +3,24 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
+## Send on event pattern rows are caller-owned custom views, not BottomBuilder items
+
+The *Send early on event* sheet's pattern editor is built inside
+`EventScheduleHelper.Row.openSheet()` by creating a caller-owned vertical
+container (`patternArea` + `patternRowsContainer`) and attaching it with
+`BottomBuilder.addCustomView(...)`, then placing the `Add pattern` row inside
+that same container (`EventScheduleHelper.java:564-587`).
+
+That shape is required by `BottomBuilder` internals: the builder keeps a
+private root inside a `ScrollView` (`BottomBuilder.kt:44-55`), and
+`addItem(...)` always calls `dismiss()` before its listener (`BottomBuilder.kt:212-219`).
+So a dynamic "add another field" row in this sheet cannot be a normal
+BottomBuilder item; it must be caller-owned content wired through
+`addCustomView(...)` (`BottomBuilder.kt:270-272`) so tapping it mutates rows
+without closing the sheet.
+
+*(Established 2026-09-03.)*
+
 ## Chat privacy overflow row owns both per-chat privacy controls
 
 The in-chat overflow menu now has one `Chat privacy` row (`nkheaderbtn_chat_privacy`)
