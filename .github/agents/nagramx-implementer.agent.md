@@ -126,8 +126,25 @@ the smoke build (below) — it's the thing that tells you which path the device
 actually took if reachability comes back negative — then revert it as a **new
 commit** once the smoke build confirms reachability, before further review
 continues. Never fold it into a feature commit either way; the orchestrator
-greps the final diff for the literal tag and treats a stray hit as blocking,
-the same as the hard-line greps.
+greps the final diff for both that literal and the bare `NAX_SMOKE_` prefix,
+and separately inspects the diff for an undeclared added `android.util.Log.`
+call, treating a stray hit on either check as blocking, the same as the
+hard-line greps.
+
+**If your brief calls for an ADB-traced smoke cycle** (`nagramx-workflow`
+step 9's ADB subsection), plant all four marker classes that cycle needs, not
+just the one decision-point probe above: a liveness/BEGIN marker at an
+unconditionally-reached point carrying build identity
+(`BuildConfig.BUILD_VERSION_STRING` — already embeds the commit's short SHA
+via `COMMIT_ID`, `TMessagesProj/build.gradle:24-26,125` — plus
+`BuildConfig.APPLICATION_ID`, the scenario id, and the account index where
+relevant), the expected path marker(s), the forbidden/competing path
+marker(s), and an END/completion marker — all sharing the same
+`NAX_SMOKE_<slug>` family prefix. **You don't run the capture yourself** —
+starting `adb`/`logcat`, prompting dazewell, and reading the log against the
+predeclared markers is the orchestrator's job, per `nagramx-workflow` step 9;
+your part is limited to planting these markers and reverting them, on
+instruction, exactly like the single-probe case above.
 
 **A design gate before writing a risky part.** If the change touches a cache,
 asynchronous work, or invalidation — any two of the three, or any one plus
@@ -391,6 +408,10 @@ will ask dazewell.
   The same goes for the smoke build a UI-facing brief calls for: it is a
   reachability check the orchestrator requests once you report the compile
   gate clean, not something you trigger yourself either.
+- **Never start an `adb`/`logcat` capture, and never prompt dazewell for one.**
+  When your brief calls for an ADB-traced smoke cycle, capture and analysis are
+  the orchestrator's job (`nagramx-workflow` step 9's ADB subsection); yours
+  stops at planting the declared markers and reverting them on instruction.
 - **Never force-push**, amend a pushed commit, or rewrite history.
 - **No destructive git without an explicit instruction** — no `reset --hard`,
   `clean -fd`, branch deletion, or a checkout that discards uncommitted work.

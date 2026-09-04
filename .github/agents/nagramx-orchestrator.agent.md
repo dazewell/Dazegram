@@ -694,7 +694,10 @@ Smoke build:    required | not required   (required whenever the change adds or
                   replace the verification build below, and it is expected to
                   be superseded by review — never describe it as something to
                   verify behaviour against. If the change has no user-visible
-                  surface, none gets requested.)
+                  surface, none gets requested. The test request itself is an
+                  interactive `Ready with ADB` / `Proceed without ADB` choice —
+                  see `nagramx-workflow` step 9's ADB subsection — never a bare
+                  question, and ADB never gates or stalls this check.)
 Diagnostics:    required | not required   (required only when the change adds
                   a *new* decision point per `nagramx-workflow` step 3 — not
                   automatically whenever Smoke build above is required; a
@@ -711,7 +714,12 @@ Diagnostics:    required | not required   (required only when the change adds
                   in the PR body too so you know what to grep the head tree
                   for in Phase 4 — removed as
                   its own commit once the smoke build answers the
-                  reachability question.)
+                  reachability question. If dazewell is reachable over ADB for
+                  the smoke cycle, plant all four marker classes step 9's ADB
+                  subsection requires (liveness/BEGIN with build identity,
+                  expected path, forbidden/competing path, completion) so a
+                  traced cycle is possible without a second diagnostics
+                  commit.)
 On-device APK:  required | not required   (decided here, at the gate, so the
                   implementer never has to guess. If required, say who requests
                   it and when — you do, once architect round 2 and any
@@ -806,19 +814,38 @@ same way you would the verification build in Phase 4 (`build-apk` label or a
 `staging.yml` dispatch — prefer the label; a dispatch is a fallback with a
 condition, see `nagramx-branch-flow`'s "Test before landing" section) and
 confirm it the same way — a matching run on the head commit, green, with the
-`Upload staging` job itself green. Then ask dazewell, with an
-explicit `ask_user`-equivalent prompt, exactly one question: does the control
-appear, and can you reach it? Nothing else — not correctness, not edge cases.
-This build is disposable by construction: it is superseded by whatever Phase 4
-review changes, and you must never describe it to him as something to verify
-behaviour against, only reachability. **Do not enter Phase 4's architect
-round 2 or its final-state passes until this comes back positive** — reviewing
-the craftsmanship of a control nobody can reach wastes the round, and a
-fully-reviewed feature has shipped unreachable before precisely because every
-review round upstream of this check reasons about the diff, not the device.
-Once it's positive, tell the implementer to revert its diagnostics commit (see
-`Diagnostics: required` in the brief) as a new commit before you proceed — you
-confirm that removal yourself in Phase 4 below, not this check.
+`Upload staging` job itself green. Then put the test request to dazewell as an
+**interactive choice**, never a bare question: at minimum `Ready with ADB` and
+`Proceed without ADB` (`ask_user`-equivalent). Don't start any `adb`/`logcat`
+process until he picks the ADB option and separately confirms he's actually
+ready to run the scenario.
+
+- **`Proceed without ADB`** is the question this file has always asked: does
+  the control appear, and can you reach it? Nothing else — not correctness,
+  not edge cases. Record `Evidence: visual-only (ADB unavailable)` — never
+  describe it as path proof or a collateral-log check, because it is neither.
+- **`Ready with ADB`** runs the full ADB-traced smoke cycle defined in
+  `nagramx-workflow` step 9's ADB subsection: predeclare one focused scenario
+  and the four marker classes (liveness/BEGIN, expected, forbidden/competing,
+  completion) before capture, start a bounded owned logcat client per
+  `nagramx-process-lifecycle`, let dazewell run the one scenario, stop
+  promptly, and read the bounded log against the predeclaration — absence of
+  liveness is a tooling verdict, never a feature verdict. Record
+  `Evidence: ADB-traced (<scenario/marker summary>)`.
+
+Either way, this build is disposable by construction: it is superseded by
+whatever Phase 4 review changes, and you must never describe it to him as
+something to verify behaviour against, only reachability. **Do not enter
+Phase 4's architect round 2 or its final-state passes until this comes back
+positive** — reviewing the craftsmanship of a control nobody can reach wastes
+the round, and a fully-reviewed feature has shipped unreachable before
+precisely because every review round upstream of this check reasons about the
+diff, not the device. Once it's positive, tell the implementer to revert its
+diagnostics commit (see `Diagnostics: required` in the brief) as a new commit
+before you proceed — you confirm that removal yourself in Phase 4 below, not
+this check, using the two independent cleanup checks `nagramx-workflow`
+defines (the literal-plus-prefix grep and the undeclared-`Log.`-call diff
+inspection).
 
 This is a **narrowing** of the one-build rule below, not a second exception to
 it: Phase 4's request is still the single build dazewell tests behaviour
@@ -941,14 +968,18 @@ Confirm, one by one:
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
-- If the brief marked `Diagnostics: required`, the temporary logging commit and
-  its **literal tag** are gone from the final diff — grep the head tree for
-  that exact string; the tag was embedded in the log message text itself, so
-  the grep runs against code, not the PR body. A PR body with no recorded tag
-  literal is itself a finding: you have no declared string to grep for, even
-  if diagnostic code exists somewhere in the diff. Its removal is not the
-  implementer's call to skip; confirm it here the same mechanical way you
-  confirm the hard-line greps.
+- If the brief marked `Diagnostics: required`, run **two independent checks**,
+  neither a substitute for the other (`nagramx-workflow` step 9's ADB
+  subsection): grep the head tree for both the exact declared **literal tag**
+  (embedded in the log message text itself, so the grep runs against code, not
+  the PR body — a PR body with no recorded tag literal is itself a finding,
+  even if diagnostic code exists somewhere in the diff) **and** the bare
+  `NAX_SMOKE_` prefix, in case the probe was planted under a mistyped or wrong
+  slug. Separately, inspect the final diff for any added `android.util.Log.`
+  call that isn't explicitly declared permanent — a probe missing the family
+  prefix entirely would pass both greps above and still be a leftover.
+  Removal is not the implementer's call to skip; confirm all of this here the
+  same mechanical way you confirm the hard-line greps.
 - Every review thread is resolved — and **zero reviews means the automated pass
   never landed, not that it was clean.** Zero threads with zero reviews is not
   evidence.
@@ -1075,6 +1106,19 @@ Phase 4 does: a matching run on the head commit, green, with the
 anything is on Telegram, and say in the handback which trigger fired and which
 ref it built. If the gate said no build is required, request none.
 
+**Put this test request to dazewell as the same interactive choice as the
+smoke build** (`nagramx-workflow` step 9's ADB subsection): `Ready with ADB`
+or `Proceed without ADB`, and don't start any `adb`/`logcat` process before he
+picks the ADB option and confirms he's ready. No planted probes exist at this
+point — they were removed once the smoke question was answered, and the build
+under test is the build that merges. `Ready with ADB` adds a bounded
+collateral scan (`main,crash` buffers, scoped to the installed variant's
+package and its full PID set including `:nagramx`, re-resolved across a
+crash/restart) combined with his own behaviour verdict; record
+`Evidence: ADB-traced (<summary>)`. `Proceed without ADB` is visual-only,
+exactly as today, stated plainly as `no collateral scan performed` rather than
+left silent.
+
 ### Phase 5 — Hand back
 
 **The owning orchestrator — root or child — posts this handback directly to
@@ -1089,7 +1133,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha>; APK build <not requested | green @ sha | red>; behaviour unverified on device
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | visual-only (ADB unavailable)>; APK build <not requested | green @ sha | red>; verification Evidence: <ADB-traced (<summary>) | visual-only (ADB unavailable, no collateral scan performed) | not yet run>
 Install: <which APK variant>
 
 **Changes**

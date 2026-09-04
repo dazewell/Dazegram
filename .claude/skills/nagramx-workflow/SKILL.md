@@ -526,6 +526,128 @@ code are not.
    behaviour, checking something in his own chats, or a decision that blocks the
    pipeline. If you need him, ask him — explicitly, one thing at a time.
 
+   **When ADB is reachable, prove the path instead of inferring it — but never
+   let ADB become mandatory.** Every smoke-build and verification-build test
+   request is an **interactive choice**, not a bare question: at minimum
+   `Ready with ADB` and `Proceed without ADB`. Don't start any `adb`/`logcat`
+   process until dazewell picks the ADB option **and** separately confirms
+   he's actually ready — picking the option only says the phone is reachable
+   over WiFi, not that this is the moment to open a bounded capture window.
+   `Proceed without ADB` continues exactly as the single visual question
+   described above always has, and is graded `Evidence: visual-only (ADB
+   unavailable)` — it must never be read as, or upgraded into, a claim of path
+   proof or collateral-log cleanliness.
+
+   **Smoke / `Ready with ADB`.** Before capture starts, predeclare one focused
+   scenario and the interpretation of every outcome it can produce: a
+   liveness/BEGIN marker absent means tooling or artifact failure, never a
+   feature verdict; the expected marker absent while a forbidden/competing
+   marker is present means the wrong path fired; the expected marker present
+   but the completion marker absent means a partial capture — rerun, don't
+   conclude from it; every path marker present proves traversal only, and a
+   visual confirmation from dazewell is still required to call the behaviour
+   itself correct. Start a bounded, owned logcat client (mechanics below), let
+   him run the one scenario, stop capture promptly, and read the bounded log
+   against that predeclaration. Record `Evidence: ADB-traced (<scenario/marker
+   summary>)`. Once the smoke question is answered, remove the probes exactly
+   as the rule above already requires, before round 2 continues — this cycle
+   narrows *how* the reachability question gets answered, it does not change
+   *when* removal happens.
+
+   **Verification / `Ready with ADB`.** No planted probes exist at this
+   point — they came out once the smoke question above was answered, and they
+   never ride into this build; the build dazewell verifies behaviour on is
+   the build that merges. ADB instead supplies a bounded collateral scan:
+   `main,crash` buffers for the scenario window, filtered to the installed
+   variant's package and its full PID set (including the `:nagramx` process,
+   re-resolved if the app crashes or restarts mid-window). A fatal in that
+   package during the window blocks; a non-fatal exception on or adjacent to
+   the changed code is an Important finding; anything else is counted and
+   non-blocking unless it names changed code or reproduces across two runs —
+   don't demand a baseline capture from unmodified `dev` to compare against.
+   Combine this scan with dazewell's own behaviour verdict and record both.
+   **Verification / `Proceed without ADB`** is visual-only exactly as before,
+   and states plainly `no collateral scan performed` rather than leaving that
+   silent.
+
+   **A later review or fix that changes the traced decision path gets a new
+   cycle, never a reused verdict.** Plant a new, separately-declared
+   diagnostics commit, run one new bounded trace cycle, remove it in another
+   append-only commit, and only then continue — the same plant → capture →
+   remove discipline as the first cycle, never carried forward against code
+   that no longer matches what was traced.
+
+   **Marker discipline.** Every temporary probe's message carries the exact
+   family prefix `NAX_SMOKE_<slug>` — no ad-hoc NAX diagnostic family for this
+   purpose. Declare, before capture, all four marker classes a scenario needs:
+   a liveness/BEGIN marker at an unconditionally-reached point, carrying
+   non-sensitive build identity (`BuildConfig.BUILD_VERSION_STRING`, which
+   already embeds the commit's short SHA via `COMMIT_ID` —
+   `TMessagesProj/build.gradle:24-26,125` — plus `BuildConfig.APPLICATION_ID`
+   for the variant, the scenario id, and the account index where relevant);
+   the expected path marker(s); the forbidden/competing path marker(s); and an
+   END/completion marker. State expected counts and order before capture, not
+   after reading the log. The logging rules from the diagnostics note in step
+   3 apply unchanged: non-sensitive booleans/enums/ids/counts only, never
+   message text, a name, a number, a URL, a token, or anything else
+   user-identifying; avoid `onDraw`/scroll/per-message hot paths; each probe
+   answers one predeclared uncertainty and is one-shot or rate-limited where
+   it could otherwise repeat. When several code paths can produce the same
+   UI, prefer the existing symptom-stack-trace technique
+   (`Log.e(TAG, "<label>", new Throwable())` at the observed symptom, per step
+   3) over guessing which path to instrument.
+
+   **ADB mechanics live entirely in `nagramx-process-lifecycle` — this step
+   does not restate them.** That skill's contract covers pinning the target
+   device's serial, holding the exact process identity, keeping the capture's
+   working directory and output under an absolute `$env:TEMP` path outside
+   every worktree, a bounded capture window, prompt stop with bounded
+   verification on success/failure/cancellation/timeout, never stopping by
+   process name, never an unqualified `adb kill-server`, the capture-artifact
+   cleanup obligation, and the process-ledger entry. Prefer timestamp-bounded
+   reads over `logcat -c`, which destroys the device's existing buffer for
+   every other consumer of it; detect WiFi truncation by the END marker's
+   absence, not by a byte-count guess.
+
+   **Collateral scope is Dazegram, not the phone.** The host-side filter may
+   include a narrow allowlist of system tags that name the package
+   (`AndroidRuntime`, `ActivityManager`, `ActivityTaskManager`, ANR, tombstone
+   lines) — nothing broader. Raw ambient logcat can carry other apps' and even
+   Telegram's own PII-adjacent lines that the planted-probe privacy rule above
+   does not govern, which is exactly why the retention rule below exists.
+
+   **Retention: raw captures are private, ephemeral, and never leave the
+   session.** They live only under an absolute `$env:TEMP` path — never the
+   repo, the worktree, a PR, a commit, `FEATURES.md`, or a codemap entry — and
+   are deleted once analysis is done, as part of the same guaranteed cleanup
+   that stops the logcat client (`nagramx-process-lifecycle`'s ephemeral
+   capture-artifact rule). Never quote a raw ambient line outside the session;
+   a report may carry only the declared marker lines plus a sanitized
+   exception class and its top frame, payload elided. Record both the capture
+   deletion and the process termination as evidence, not as an assumption —
+   they are separate obligations and neither implies the other. If deletion
+   fails, report it and block archival rather than treating a live,
+   undeleted capture as harmless.
+
+   **Cleanup verification is two independent checks, and neither substitutes
+   for the other.** Grep the final head tree for both the exact declared
+   `NAX_SMOKE_<slug>` literal **and** the bare `NAX_SMOKE_` prefix — a probe
+   planted under a mistyped or wrong slug still needs to come out. Separately,
+   inspect the final diff for any added `android.util.Log.` call that isn't
+   explicitly declared permanent — a probe missing the family prefix entirely
+   would pass the grep above and still be a leftover. Source cleanup,
+   raw-capture deletion, and process termination are three separate things to
+   verify; none of the three is evidence for the other two.
+
+   **Ownership stays split, not duplicated.** This step owns *when, why, and
+   how evidence is graded* (`Evidence: ADB-traced` vs `Evidence: visual-only`).
+   `nagramx-process-lifecycle` remains the single normative copy for process
+   identity, start/stop, and archive safety — this step points to it rather
+   than restating its rules. The orchestrator owns prompting, capture,
+   analysis, and evidence grading; the implementer owns planting and removing
+   the diagnostics commit when instructed, exactly as it already does for the
+   smoke build above.
+
    **Don't request the Copilot review — it is automatic.** The
    `dev no-force no-delete + Copilot review` repository ruleset requests it when
    a non-draft PR targets `dev`, so it arrives on its own. Every hand-request
