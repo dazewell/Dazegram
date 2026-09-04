@@ -4,6 +4,8 @@ import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.content.Context;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.SpannableStringBuilder;
@@ -12,9 +14,11 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -249,11 +253,11 @@ public final class EventScheduleHelper {
             final LinearLayout container;
             final FrameLayout fieldBox;
             final EditTextBoldCursor field;
-            final TextView removeButton;
+            final ImageView removeButton;
             final TextView messageView;
 
             PatternFieldRow(LinearLayout container, FrameLayout fieldBox, EditTextBoldCursor field,
-                            TextView removeButton, TextView messageView) {
+                            ImageView removeButton, TextView messageView) {
                 this.container = container;
                 this.fieldBox = fieldBox;
                 this.field = field;
@@ -320,9 +324,10 @@ public final class EventScheduleHelper {
         private static PatternFieldRow createPatternFieldRow(Context context, String initialText) {
             LinearLayout container = new LinearLayout(context);
             container.setOrientation(LinearLayout.VERTICAL);
+            container.setMinimumHeight(dp(50));
 
             FrameLayout box = new FrameLayout(context);
-            box.setBackground(Theme.createRoundRectDrawable(dp(10), Theme.getColor(Theme.key_graySection)));
+            box.setMinimumHeight(dp(50));
 
             EditTextBoldCursor field = new EditTextBoldCursor(context);
             field.setBackground(null);
@@ -336,40 +341,53 @@ public final class EventScheduleHelper {
             field.setSingleLine(true);
             field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
             field.setImeOptions(EditorInfo.IME_ACTION_NEXT);
-            field.setMinimumHeight(dp(48));
+            field.setMinimumHeight(dp(50));
             field.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(EventScheduleEntry.MAX_PATTERN_LENGTH)});
-            int startPad = dp(12);
-            int endPad = dp(60); // keep end inset reserved even for a sole row (no reflow when remove appears)
+            int startPad = dp(21);
+            int endPad = dp(70); // keep end inset reserved even for a sole row (no reflow when remove appears)
             if (org.telegram.messenger.LocaleController.isRTL) {
-                field.setPadding(endPad, dp(10), startPad, dp(10));
+                field.setPadding(endPad, dp(15), startPad, dp(15));
             } else {
-                field.setPadding(startPad, dp(10), endPad, dp(10));
+                field.setPadding(startPad, dp(15), endPad, dp(15));
             }
             field.setGravity(Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT));
             field.setText(initialText);
             box.addView(field, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-            TextView remove = new TextView(context);
-            remove.setText("\u2715");
-            remove.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 18);
-            remove.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
-            remove.setGravity(Gravity.CENTER);
+            ImageView remove = new ImageView(context);
+            remove.setImageResource(R.drawable.poll_remove);
+            remove.setScaleType(ImageView.ScaleType.CENTER);
+            remove.setColorFilter(new PorterDuffColorFilter(Theme.getColor(Theme.key_dialogIcon), PorterDuff.Mode.SRC_IN));
             remove.setBackground(Theme.createSelectorDrawable(Theme.getColor(Theme.key_listSelector), 1));
             remove.setFocusable(false);
             remove.setFocusableInTouchMode(false);
             remove.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_YES);
             int removeGravity = Gravity.CENTER_VERTICAL | (org.telegram.messenger.LocaleController.isRTL ? Gravity.LEFT : Gravity.RIGHT);
-            box.addView(remove, LayoutHelper.createFrame(48, 48, removeGravity));
+            box.addView(remove, LayoutHelper.createFrame(
+                    48, 48, removeGravity,
+                    org.telegram.messenger.LocaleController.isRTL ? 17 : 0, 0,
+                    org.telegram.messenger.LocaleController.isRTL ? 0 : 17, 0));
 
             TextView message = new TextView(context);
-            message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
+            message.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
             message.setVisibility(android.view.View.GONE);
             int textGravity = org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT;
             message.setGravity(textGravity);
-            message.setPadding(dp(2), dp(4), dp(2), 0);
+            message.setPadding(dp(21), 0, dp(21), dp(8));
+
+            View divider = new View(context);
+            divider.setBackgroundColor(Theme.getColor(Theme.key_divider));
+            LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1);
+            if (org.telegram.messenger.LocaleController.isRTL) {
+                dividerParams.setMargins(0, 0, dp(21), 0);
+            } else {
+                dividerParams.setMargins(dp(21), 0, 0, 0);
+            }
 
             container.addView(box, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             container.addView(message, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            container.addView(divider, dividerParams);
             return new PatternFieldRow(container, box, field, remove, message);
         }
 
@@ -386,24 +404,34 @@ public final class EventScheduleHelper {
 
         private static void updateRowAccessibility(ArrayList<PatternFieldRow> rows) {
             for (int i = 0; i < rows.size(); i++) {
-                rows.get(i).removeButton.setContentDescription(
+                PatternFieldRow row = rows.get(i);
+                row.removeButton.setContentDescription(
                         org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleRemovePattern, i + 1));
+                row.removeButton.setVisibility(rows.size() > 1 && !isBlankRow(row) ? View.VISIBLE : View.INVISIBLE);
             }
         }
 
-        private static void updateAddRow(ArrayList<PatternFieldRow> rows, org.telegram.ui.Cells.TextCell addRow, TextView footer) {
-            int remaining = EventScheduleEntry.MAX_PATTERN_COUNT - rows.size();
-            addRow.setVisibility(remaining > 0 ? android.view.View.VISIBLE : android.view.View.GONE);
-            if (remaining > 0) {
-                footer.setText(org.telegram.messenger.LocaleController.formatPluralString("EventSchedulePatternSlotsLeft", remaining));
-            } else {
-                footer.setText(getString(R.string.EventSchedulePatternSlotsMax));
-            }
+        private static boolean isBlankRow(PatternFieldRow row) {
+            return TextUtils.isEmpty(EventScheduleEntry.normalizePattern(row.field.getText().toString()));
+        }
+
+        private static void updateAddRow(ArrayList<PatternFieldRow> rows, org.telegram.ui.Cells.TextCell addRow) {
+            boolean show = rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT && !hasBlankRow(rows);
+            addRow.setVisibility(show ? View.VISIBLE : View.GONE);
         }
 
         private static boolean hasAnyPattern(ArrayList<PatternFieldRow> rows) {
             for (int i = 0; i < rows.size(); i++) {
-                if (!TextUtils.isEmpty(EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString()))) {
+                if (!isBlankRow(rows.get(i))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static boolean hasBlankRow(ArrayList<PatternFieldRow> rows) {
+            for (int i = 0; i < rows.size(); i++) {
+                if (isBlankRow(rows.get(i))) {
                     return true;
                 }
             }
@@ -454,8 +482,7 @@ public final class EventScheduleHelper {
                 return true;
             }
             if (!EventScheduleEntry.isPatternValid(value, true)) {
-                int index = rows.indexOf(row) + 1;
-                showRowMessage(row, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleInvalidRegexRow, index), true);
+                showRowMessage(row, getString(R.string.EventScheduleInvalidRegexRow), true);
                 return false;
             }
             clearRowMessage(row);
@@ -472,7 +499,7 @@ public final class EventScheduleHelper {
             for (int i = 0; i < rowIndex; i++) {
                 String before = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
                 if (value.equals(before)) {
-                    showRowMessage(row, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleDuplicatePatternRow, rowIndex + 1), false);
+                    showRowMessage(row, getString(R.string.EventScheduleDuplicatePatternRow), false);
                     return;
                 }
             }
@@ -485,26 +512,30 @@ public final class EventScheduleHelper {
             }
         }
 
-        private static void updateImeActions(Context context, ArrayList<PatternFieldRow> rows, Runnable addRowAction, Runnable doneAction) {
+        private static void updateImeActions(Context context, ArrayList<PatternFieldRow> rows,
+                                             Runnable addRowAction, Runnable doneAction,
+                                             boolean restartInput) {
             for (int i = 0; i < rows.size(); i++) {
                 PatternFieldRow row = rows.get(i);
                 boolean last = i == rows.size() - 1;
-                int action = (last && rows.size() >= EventScheduleEntry.MAX_PATTERN_COUNT)
-                        ? EditorInfo.IME_ACTION_DONE : EditorInfo.IME_ACTION_NEXT;
+                boolean canAppendFromRow = last
+                        && !isBlankRow(row)
+                        && rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT;
+                int action = canAppendFromRow ? EditorInfo.IME_ACTION_NEXT : EditorInfo.IME_ACTION_DONE;
                 row.field.setImeOptions(action);
                 row.field.setOnEditorActionListener((v, actionId, event) -> {
                     int index = rows.indexOf(row);
                     if (index < 0) return false;
-                    if (actionId == EditorInfo.IME_ACTION_DONE) {
-                        doneAction.run();
-                        return true;
-                    }
-                    if (actionId != EditorInfo.IME_ACTION_NEXT) return false;
+                    if (actionId != EditorInfo.IME_ACTION_NEXT
+                            && actionId != EditorInfo.IME_ACTION_DONE
+                            && actionId != EditorInfo.IME_NULL) return false;
                     if (index < rows.size() - 1) {
                         focusRow(rows.get(index + 1).field);
                         return true;
                     }
-                    if (rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT) {
+                    if (rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT
+                            && !hasBlankRow(rows)
+                            && !isBlankRow(row)) {
                         addRowAction.run();
                     } else {
                         doneAction.run();
@@ -512,7 +543,9 @@ public final class EventScheduleHelper {
                     return true;
                 });
             }
-            restartFocusedInput(context, rows);
+            if (restartInput) {
+                restartFocusedInput(context, rows);
+            }
         }
 
         void openSheet(Context context) {
@@ -530,7 +563,6 @@ public final class EventScheduleHelper {
 
             LinearLayout patternArea = new LinearLayout(context);
             patternArea.setOrientation(LinearLayout.VERTICAL);
-            patternArea.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.LEFT, 21, 4, 21, 8));
             builder.addCustomView(patternArea);
 
             LinearLayout patternRowsContainer = new LinearLayout(context);
@@ -545,20 +577,14 @@ public final class EventScheduleHelper {
             for (int i = 0; i < initial.size() && rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT; i++) {
                 PatternFieldRow row = createPatternFieldRow(context, initial.get(i));
                 rows.add(row);
-                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 0, 0, i == initial.size() - 1 ? 0 : 8));
+                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             }
 
             org.telegram.ui.Cells.TextCell addPatternRow = new org.telegram.ui.Cells.TextCell(context);
             addPatternRow.setBackground(Theme.getSelectorDrawable(false));
-            addPatternRow.setTextAndIcon(getString(R.string.EventScheduleAddPattern), R.drawable.msg_add, false);
-            patternArea.addView(addPatternRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 0, 2, 0, 0));
-
-            TextView patternFooter = new TextView(context);
-            patternFooter.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
-            patternFooter.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
-            patternFooter.setGravity(org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
-            patternFooter.setPadding(dp(2), dp(4), dp(2), dp(2));
-            patternArea.addView(patternFooter, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            addPatternRow.setColors(Theme.key_dialogTextBlue2, Theme.key_dialogTextBlue2);
+            addPatternRow.setTextAndIcon(getString(R.string.EventScheduleAddPattern), R.drawable.msg_add, true);
+            patternArea.addView(addPatternRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
 
             TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
 
@@ -569,21 +595,15 @@ public final class EventScheduleHelper {
             final java.util.function.Consumer<PatternFieldRow> removeRow = (row) -> {
                 int index = rows.indexOf(row);
                 if (index < 0) return;
+                if (rows.size() <= 1) return;
                 boolean hadFocus = row.field.isFocused();
-                if (rows.size() == 1) {
-                    row.field.setText("");
-                    clearRowMessage(row);
-                    syncRegexEnabled(rows, regexCell);
-                    updateAddRow(rows, addPatternRow, patternFooter);
-                    return;
-                }
                 patternRowsContainer.removeView(row.container);
                 rows.remove(index);
                 clearAllRowMessages(rows);
                 updateRowAccessibility(rows);
                 syncRegexEnabled(rows, regexCell);
-                updateAddRow(rows, addPatternRow, patternFooter);
-                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+                updateAddRow(rows, addPatternRow);
+                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], true);
                 if (hadFocus) {
                     int next = Math.max(0, Math.min(index, rows.size() - 1));
                     focusRow(rows.get(next).field);
@@ -602,10 +622,17 @@ public final class EventScheduleHelper {
                     public void afterTextChanged(Editable s) {
                         clearRowMessage(row);
                         syncRegexEnabled(rows, regexCell);
+                        updateRowAccessibility(rows);
+                        updateAddRow(rows, addPatternRow);
+                        updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], false);
                     }
                 });
                 row.field.setOnFocusChangeListener((v, hasFocus) -> {
                     if (hasFocus) return;
+                    if (isBlankRow(row) && rows.size() > 1) {
+                        removeRow.accept(row);
+                        return;
+                    }
                     clearRowMessage(row);
                     if (regexCell.isChecked()) {
                         validateRegexRow(rows, row);
@@ -613,11 +640,14 @@ public final class EventScheduleHelper {
                     if (row.messageView.getVisibility() != android.view.View.VISIBLE) {
                         showDuplicateNoticeIfAny(rows, row);
                     }
+                    updateRowAccessibility(rows);
+                    updateAddRow(rows, addPatternRow);
+                    updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], false);
                 });
                 row.field.setOnKeyListener((v, keyCode, event) -> {
                     if (keyCode == android.view.KeyEvent.KEYCODE_DEL
                             && event.getAction() == android.view.KeyEvent.ACTION_DOWN
-                            && row.field.length() == 0 && rows.size() > 1) {
+                            && isBlankRow(row) && rows.size() > 1) {
                         removeRow.accept(row);
                         return true;
                     }
@@ -630,23 +660,23 @@ public final class EventScheduleHelper {
             }
 
             addRowActionHolder[0] = () -> {
-                if (rows.size() >= EventScheduleEntry.MAX_PATTERN_COUNT) return;
+                if (rows.size() >= EventScheduleEntry.MAX_PATTERN_COUNT || hasBlankRow(rows)) return;
                 PatternFieldRow row = createPatternFieldRow(context, "");
                 rows.add(row);
-                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 8, 0, 0));
+                patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
                 attachWatchers.accept(row);
                 clearAllRowMessages(rows);
                 updateRowAccessibility(rows);
                 syncRegexEnabled(rows, regexCell);
-                updateAddRow(rows, addPatternRow, patternFooter);
-                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+                updateAddRow(rows, addPatternRow);
+                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], true);
                 org.telegram.messenger.AndroidUtilities.doOnLayout(patternRowsContainer, () -> focusRow(row.field));
             };
             addPatternRow.setOnClickListener(v -> addRowActionHolder[0].run());
 
             syncRegexEnabled(rows, regexCell);
             updateRowAccessibility(rows);
-            updateAddRow(rows, addPatternRow, patternFooter);
+            updateAddRow(rows, addPatternRow);
 
             final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_DELAY_SECONDS};
             int startIndex = 0;
@@ -769,7 +799,7 @@ public final class EventScheduleHelper {
                     for (int i = 0; i < unique.size(); i++) {
                         if (!EventScheduleEntry.isPatternValid(unique.get(i), true)) {
                             PatternFieldRow badRow = uniqueRows.get(i);
-                            showRowMessage(badRow, org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleInvalidRegexRow, rows.indexOf(badRow) + 1), true);
+                            showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
                             focusRow(badRow.field);
                             AndroidUtil.showInputError(badRow.field);
                             return kotlin.Unit.INSTANCE;
@@ -806,7 +836,7 @@ public final class EventScheduleHelper {
             });
 
             doneActionHolder[0] = doneButton::performClick;
-            updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0]);
+            updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], false);
 
             regexCell.setOnClickListener(v -> {
                 if (!regexCell.isEnabled()) {
