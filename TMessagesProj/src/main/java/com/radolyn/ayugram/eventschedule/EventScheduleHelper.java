@@ -518,10 +518,12 @@ public final class EventScheduleHelper {
             for (int i = 0; i < rows.size(); i++) {
                 PatternFieldRow row = rows.get(i);
                 boolean last = i == rows.size() - 1;
-                boolean canAppendFromRow = last
+                boolean canAppendFromLastRow = last
                         && !isBlankRow(row)
                         && rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT;
-                int action = canAppendFromRow ? EditorInfo.IME_ACTION_NEXT : EditorInfo.IME_ACTION_DONE;
+                int action = (!last || canAppendFromLastRow)
+                        ? EditorInfo.IME_ACTION_NEXT
+                        : EditorInfo.IME_ACTION_DONE;
                 row.field.setImeOptions(action);
                 row.field.setOnEditorActionListener((v, actionId, event) -> {
                     int index = rows.indexOf(row);
