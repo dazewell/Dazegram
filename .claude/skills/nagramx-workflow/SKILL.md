@@ -538,31 +538,45 @@ code are not.
    capture now` and `Proceed without device trace`. A smoke-build request
    with no diagnostics planted has nothing to trace against, so it stays the
    single visual question below unconditionally, with no device-trace option
-   offered at all — see the smoke subsection below.
+   offered at all — see the smoke subsection below; grade that case
+   `Evidence: visual-only (device trace not offered; no markers)`, distinct
+   from either outcome of the choice below, since nothing about device
+   connectivity was ever assessed.
 
    **Selecting the Ready option is itself the readiness confirmation, and
    capture starts immediately — there is no separate second confirmation.**
-   After it's selected, resolve and pin the device's serial; if no device is
-   currently reachable, start no capture at all and fall back to the
-   `Proceed without device trace` path — that is a device-connectivity
-   outcome, never a tooling-unavailable one. Run the whole capture as one
-   **synchronous, foreground** operation with a declared fixed wall-clock
-   deadline and a tool wait longer than that deadline, so the wait itself
-   never lapses before the capture's own deadline does. Stop the retained
-   `adb` client as soon as the declared END marker is observed **or** the
-   deadline elapses, whichever comes first — `try`/`finally`, exact identity,
-   and bounded termination verification all apply exactly as
-   `nagramx-process-lifecycle` requires for any process. **Never call
-   `ask_user` while the capture is running, and never let the logger or its
-   capture file cross a turn boundary** — the whole plant → capture → stop →
-   analyze → delete sequence for one scenario happens inside a single turn,
-   which is what keeps this a synchronous protocol rather than something that
-   needs a cross-turn exception.
+   After it's selected, resolve and pin the device's serial. **Do not infer
+   disconnection without attempting serial resolution** — the Ready choice
+   only means dazewell believes the device is reachable; the resolution
+   attempt is what actually establishes that. If no device is found
+   reachable, start no capture at all and grade this outcome on its own
+   terms, `Evidence: visual-only (device not connected)` — distinct from a
+   user actively declining the trace (below) and never described as path
+   proof or collateral-log cleanliness. When a device *is* found, run the
+   whole capture as one **synchronous, foreground** operation with a
+   declared fixed wall-clock deadline and a tool wait longer than that
+   deadline, so the wait itself never lapses before the capture's own
+   deadline does. Stop the retained `adb` client as soon as the declared
+   END marker is observed **or** the deadline elapses, whichever comes
+   first — `try`/`finally`, exact identity, and bounded termination
+   verification all apply exactly as `nagramx-process-lifecycle` requires
+   for any process. **Never call `ask_user` while the capture is running,
+   and never let the logger or its capture file cross a turn boundary** —
+   the single-turn contract covers only the **logger/process and the raw
+   capture artifact**: start logger → capture → stop → analyze → delete,
+   all inside one synchronous turn. The source probes themselves are
+   **not** part of this turn — they were already planted by the
+   implementer in an earlier commit, well before this build even exists,
+   and their removal is a separate later commit governed by the post-smoke
+   removal rule below. Conflating the two would claim a single turn plants
+   source code, which no synchronous capture protocol does or needs to do.
 
-   `Proceed without device trace` continues exactly as the single visual
-   question described above always has, and is graded `Evidence: visual-only
-   (device not connected)` — it must never be read as, or upgraded into, a
-   claim of path proof or collateral-log cleanliness.
+   **`Proceed without device trace`** — dazewell actively choosing not to
+   run a device trace, distinct from Ready finding no device — continues
+   exactly as the single visual question described above always has, and
+   is graded `Evidence: visual-only (device trace declined)` — it must
+   never be read as, or upgraded into, a claim of path proof or
+   collateral-log cleanliness.
 
    **Smoke / `Ready with connected device` is offered only when
    `Diagnostics: required` planted the markers.** A change with no decision
@@ -599,21 +613,26 @@ code are not.
    and they never ride into this build; the build dazewell verifies
    behaviour on is the build that merges. There is no planted path left to
    confirm here, so this evidence is **never** graded `Evidence: ADB-traced` —
-   that grading is reserved for the marker-based smoke cycle above. The
-   device instead supplies a bounded collateral scan, run synchronously the
-   same way: `main,crash` buffers for the scenario window, filtered to the
-   installed variant's package and its full PID set (including the
-   `:nagramx` process, re-resolved if the app crashes or restarts
-   mid-window). A fatal in that package during the window blocks; a
-   non-fatal exception on or adjacent to the changed code is an Important
-   finding; anything else is counted and non-blocking unless it names changed
-   code or reproduces across two runs — don't demand a baseline capture from
-   unmodified `dev` to compare against. Combine this scan with dazewell's own
-   behaviour verdict and record
+   that grading is reserved for the marker-based smoke cycle above. Resolve
+   and pin the device serial the same way as smoke, above — **don't infer
+   disconnection without attempting resolution**. If no device is found,
+   start no scan and grade `Evidence: visual-only (device not connected, no
+   collateral scan performed)`. When a device *is* found, it supplies a
+   bounded collateral scan, run synchronously the same way: `main,crash`
+   buffers for the scenario window, filtered to the installed variant's
+   package and its full PID set (including the `:nagramx` process,
+   re-resolved if the app crashes or restarts mid-window). A fatal in that
+   package during the window blocks; a non-fatal exception on or adjacent to
+   the changed code is an Important finding; anything else is counted and
+   non-blocking unless it names changed code or reproduces across two runs —
+   don't demand a baseline capture from unmodified `dev` to compare against.
+   Combine this scan with dazewell's own behaviour verdict and record
    `Evidence: visual + ADB collateral (<behaviour verdict>; <scan summary>)`.
-   **Verification / `Proceed without device trace`** is visual-only exactly
-   as before, graded `Evidence: visual-only (device not connected, no
-   collateral scan performed)` rather than leaving that silent.
+   **Verification / `Proceed without device trace`** — dazewell actively
+   declining the trace, distinct from Ready finding no device — is
+   visual-only exactly as before, graded `Evidence: visual-only (device
+   trace declined, no collateral scan performed)` rather than leaving that
+   silent.
 
    **A later review or fix that changes the traced decision path gets a new
    cycle, never a reused verdict.** Plant a new, separately-declared
@@ -703,9 +722,12 @@ code are not.
    three is evidence for the other two.
 
    **Ownership stays split, not duplicated.** This step owns *when, why, and
-   how evidence is graded* (`Evidence: ADB-traced` for a traced smoke cycle,
+   how evidence is graded* (`Evidence: ADB-traced` for a traced smoke cycle;
    `Evidence: visual + ADB collateral` for a verification build's collateral
-   scan, or `Evidence: visual-only` for either without a connected device).
+   scan; `Evidence: visual-only` for any of the three device-absent
+   outcomes — not offered, declined, or not connected — distinguished by
+   their parenthetical as defined above, never collapsed into one generic
+   label).
    `nagramx-process-lifecycle` remains the single normative copy for process
    identity, start/stop, and archive safety — this step points to it rather
    than restating its rules. The orchestrator owns prompting, capture,

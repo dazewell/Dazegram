@@ -836,39 +836,44 @@ optional:
 - **`Diagnostics: not required`** — ask the single visual reachability
   question this file has always asked, with no device-trace option offered
   at all: does the control appear, and can you reach it? Nothing else — not
-  correctness, not edge cases. Record `Evidence: visual-only (device not
-  connected)`.
+  correctness, not edge cases. Record `Evidence: visual-only (device trace
+  not offered; no markers)` — distinct from either outcome below, since
+  device connectivity was never assessed here at all.
 - **`Diagnostics: required`** — the implementer has already planted all four
   marker classes unconditionally (see the brief field), so put the request to
   dazewell as an **interactive choice**: at minimum `Ready with connected
   device — start the bounded capture now` and `Proceed without device trace`
   (`ask_user`-equivalent). Selecting the Ready option **is** the readiness
   confirmation — there is no separate second confirmation — and capture
-  starts immediately: resolve and pin the device's serial, and if none is
-  reachable, start no capture at all and fall back to `Proceed without
-  device trace` rather than treating this as a tooling failure.
-  - **`Proceed without device trace`** is the same single visual question
-    above. Record `Evidence: visual-only (device not connected)` — never
-    describe it as path proof or a collateral-log check, because it is
-    neither.
-  - **`Ready with connected device`** runs the full ADB-traced smoke cycle
-    defined in `nagramx-workflow` step 9's ADB subsection: predeclare one
-    focused scenario and the **mechanical success definition** against the
-    already-planted markers — the BEGIN/liveness marker present with matching
-    build identity, every expected marker at its declared count and order,
-    **zero** forbidden/competing markers, and the END/completion marker
-    present — before capture. Run the whole capture **synchronously in the
-    foreground**, inside this one turn, with a declared wall-clock deadline
-    and a tool wait longer than it; stop on the END marker or the deadline,
-    whichever comes first, per `nagramx-process-lifecycle`. Never call
-    `ask_user` while it's running. Grade the bounded log against the success
-    definition: absence of liveness is a tooling verdict, never a feature
-    verdict; **any forbidden or competing marker present makes the result
-    failed or ambiguous, never a success**, regardless of how many expected
-    markers also fired. Record `Evidence: ADB-traced (<scenario/marker
-    summary>)`. Analyze and delete the capture file immediately, in this same
-    turn, and verify the deletion before doing anything else with the
-    result.
+  starts immediately: resolve and pin the device's serial. **Don't infer
+  disconnection without attempting that resolution** — the Ready choice only
+  means dazewell believes the device is reachable.
+  - **`Proceed without device trace`** — dazewell actively declining the
+    trace — is the same single visual question above. Record `Evidence:
+    visual-only (device trace declined)` — never describe it as path proof
+    or a collateral-log check, because it is neither.
+  - **`Ready with connected device`, no device found** — resolution comes up
+    empty: start no capture at all, and grade this on its own terms,
+    `Evidence: visual-only (device not connected)`, distinct from the
+    declined case above.
+  - **`Ready with connected device`, device found** — runs the full
+    ADB-traced smoke cycle defined in `nagramx-workflow` step 9's ADB
+    subsection: predeclare one focused scenario and the **mechanical success
+    definition** against the already-planted markers — the BEGIN/liveness
+    marker present with matching build identity, every expected marker at
+    its declared count and order, **zero** forbidden/competing markers, and
+    the END/completion marker present — before capture. Run the whole
+    capture **synchronously in the foreground**, inside this one turn, with
+    a declared wall-clock deadline and a tool wait longer than it; stop on
+    the END marker or the deadline, whichever comes first, per
+    `nagramx-process-lifecycle`. Never call `ask_user` while it's running.
+    Grade the bounded log against the success definition: absence of
+    liveness is a tooling verdict, never a feature verdict; **any forbidden
+    or competing marker present makes the result failed or ambiguous, never
+    a success**, regardless of how many expected markers also fired. Record
+    `Evidence: ADB-traced (<scenario/marker summary>)`. Analyze and delete
+    the capture file immediately, in this same turn, and verify the deletion
+    before doing anything else with the result.
 
 Either way, this build is disposable by construction: it is superseded by
 whatever Phase 4 review changes, and you must never describe it to him as
@@ -1156,23 +1161,28 @@ request in Phase 3, this one doesn't depend on `Diagnostics`, since there are
 no probes left to plant against by this point and the collateral scan needs
 no markers: `Ready with connected device — start the bounded capture now` or
 `Proceed without device trace`. Selecting Ready **is** the readiness
-confirmation and starts the capture immediately — resolve and pin the
-device's serial, and if none is reachable, start no capture and fall back to
-`Proceed without device trace` rather than treating this as a tooling
-failure; local `adb` tooling is always available, only device connectivity
-is optional. No planted probes exist at this point — they were removed once
-the smoke question was answered, and the build under test is the build that
-merges. `Ready with connected device` adds a bounded collateral scan
-(`main,crash` buffers, scoped to the installed variant's package and its full
-PID set including `:nagramx`, re-resolved across a crash/restart), run
-synchronously in the foreground within a declared wall-clock deadline exactly
-as the smoke cycle does, combined with his own behaviour verdict; record
-`Evidence: visual + ADB collateral (<behaviour verdict>; <scan summary>)` —
-**never** `Evidence: ADB-traced`, which is reserved for the marker-based
-smoke cycle in Phase 3, since there is no planted path left here to confirm.
-`Proceed without device trace` is visual-only, exactly as today; record
-`Evidence: visual-only (device not connected, no collateral scan performed)`
-rather than leaving that silent.
+confirmation and starts serial resolution immediately; local `adb` tooling
+is always available, only device connectivity is optional, and **you must
+not infer disconnection without attempting that resolution**. No planted
+probes exist at this point — they were removed once the smoke question was
+answered, and the build under test is the build that merges.
+
+- **`Proceed without device trace`** — dazewell actively declining the
+  trace — is visual-only, exactly as today; record `Evidence: visual-only
+  (device trace declined, no collateral scan performed)`.
+- **`Ready with connected device`, no device found** — resolution comes up
+  empty: start no scan and grade this on its own terms, `Evidence:
+  visual-only (device not connected, no collateral scan performed)`,
+  distinct from the declined case above.
+- **`Ready with connected device`, device found** — adds a bounded
+  collateral scan (`main,crash` buffers, scoped to the installed variant's
+  package and its full PID set including `:nagramx`, re-resolved across a
+  crash/restart), run synchronously in the foreground within a declared
+  wall-clock deadline exactly as the smoke cycle does, combined with his own
+  behaviour verdict; record `Evidence: visual + ADB collateral (<behaviour
+  verdict>; <scan summary>)` — **never** `Evidence: ADB-traced`, which is
+  reserved for the marker-based smoke cycle in Phase 3, since there is no
+  planted path left here to confirm.
 
 ### Phase 5 — Hand back
 
@@ -1188,7 +1198,7 @@ Report in this shape:
 ```
 **<what it does, one line>**
 
-PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | Evidence: visual-only (device not connected)>; APK build <not requested | green @ sha | red>; verification <Evidence: visual + ADB collateral (<summary>) | Evidence: visual-only (device not connected, no collateral scan performed) | not yet run>
+PR: <url> — not a draft; CI gate <green @ sha | path-ignored>; smoke build <not required | positive @ sha, Evidence: ADB-traced (<summary>) | Evidence: visual-only (device trace not offered; no markers) | Evidence: visual-only (device trace declined) | Evidence: visual-only (device not connected)>; APK build <not requested | green @ sha | red>; verification <Evidence: visual + ADB collateral (<summary>) | Evidence: visual-only (device trace declined, no collateral scan performed) | Evidence: visual-only (device not connected, no collateral scan performed) | not yet run>
 Install: <which APK variant>
 
 **Changes**

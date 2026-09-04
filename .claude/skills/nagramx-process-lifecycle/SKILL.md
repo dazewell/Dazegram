@@ -138,12 +138,18 @@ the pre-archive verification side (below) for every child session it archives.
     If a process must outlive one turn, re-verify it (identity-checked, per
     rule 7) at the start of the next turn, or stop it. **An ADB/logcat
     capture never falls into this multi-turn case at all** — per
-    `nagramx-workflow`'s ADB capture protocol, the whole plant → capture →
-    stop → analyze → delete sequence for one scenario runs synchronously in
-    the foreground, inside a single turn, with a declared wall-clock deadline
-    and no `ask_user` (or other suspend point) in between. There is no
-    sanctioned cross-turn exception to this rule; a capture that would need
-    one is a protocol bug, not a case to accommodate here.
+    `nagramx-workflow`'s ADB capture protocol, the single-turn contract
+    covers only the **logger/process and the raw capture artifact it
+    writes**: start logger → capture → stop → analyze → delete runs
+    synchronously in the foreground, inside a single turn, with a declared
+    wall-clock deadline and no `ask_user` (or other suspend point) in
+    between. The source probes the capture reads are a separate concern
+    entirely — they were planted by the implementer in an earlier commit,
+    well before this build exists, and their removal is a later commit of
+    its own; this rule governs only the ephemeral logger and its file, never
+    the source diagnostics. There is no sanctioned cross-turn exception for
+    the logger/artifact either; a capture that would need one is a protocol
+    bug, not a case to accommodate here.
 12. **An ephemeral capture file is a fourth cleanup obligation, not a side
     effect of stopping the process.** When a process was started specifically
     to write a file for later reading — most concretely an `adb logcat`
