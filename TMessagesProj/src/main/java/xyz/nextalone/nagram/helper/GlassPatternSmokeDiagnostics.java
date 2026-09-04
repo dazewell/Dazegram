@@ -23,6 +23,7 @@ public final class GlassPatternSmokeDiagnostics {
     private static final long IDLE_SUMMARY_DELAY_MS = 300L;
     private static final int UNKNOWN_PRODUCER_ID = Integer.MIN_VALUE;
     private static final int MAX_COMPOSE_SAMPLES = 1024;
+    private static final int MAX_TRACKED_PRODUCERS = 256;
 
     private static final Object lock = new Object();
     private static final SparseArray<BurstState> statesByOwner = new SparseArray<>();
@@ -46,6 +47,7 @@ public final class GlassPatternSmokeDiagnostics {
         synchronized (lock) {
             int producerId = System.identityHashCode(producer);
             motionPostCountByProducer.put(producerId, motionPostCountByProducer.get(producerId) + 1);
+            trimProducerMapsIfNeededLocked();
         }
     }
 
@@ -59,6 +61,7 @@ public final class GlassPatternSmokeDiagnostics {
         synchronized (lock) {
             int producerId = System.identityHashCode(producer);
             generationCountByProducer.put(producerId, generationCountByProducer.get(producerId) + 1);
+            trimProducerMapsIfNeededLocked();
         }
     }
 
@@ -170,7 +173,7 @@ public final class GlassPatternSmokeDiagnostics {
             int proceduralGenerationCount = generationDelta(state);
             int motionPostCount = motionPostDelta(state);
             summary = String.format(Locale.US,
-                    "%s burst owner=%s durationMs=%d arrivals=%d arrivalsWhileRefreshPending=%d refreshExecutions=%d maxInterExecutionGapMs=%d composeP95Ms=%.2f composeMaxMs=%.2f refreshRateHz=%.1f producers=%s freshCompositeCount=%d proceduralGradientGenerationCount=%d motionPostCount=%d",
+                    "%s burst owner=%s durationMs=%d arrivals=%d arrivalsWhileRefreshPending=%d refreshExecutions=%d maxInterExecutionGapMs=%d composeP95Ms=%.2f composeMaxMs=%.2f refreshRateHz=%.1f producers=%s gradientChangedCompositeCount=%d proceduralGradientGenerationCount=%d motionPostCount=%d",
                     SMOKE_TAG,
                     hex(ownerId),
                     burstDurationMs,
@@ -291,6 +294,19 @@ public final class GlassPatternSmokeDiagnostics {
 
     private static double nanosToMs(long nanos) {
         return nanos / 1_000_000.0d;
+    }
+
+    private static void trimProducerMapsIfNeededLocked() {
+        if (generationCountByProducer.size() <= MAX_TRACKED_PRODUCERS && motionPostCountByProducer.size() <= MAX_TRACKED_PRODUCERS) {
+            return;
+        }
+        generationCountByProducer.clear();
+        motionPostCountByProducer.clear();
+        for (int i = 0; i < statesByOwner.size(); i++) {
+            BurstState state = statesByOwner.valueAt(i);
+            state.generationBaselineByProducer.clear();
+            state.motionPostBaselineByProducer.clear();
+        }
     }
 
     private static boolean isLoggingEnabled() {
