@@ -3755,6 +3755,7 @@ public class ChatActivity extends BaseFragment implements
         chatLockPasscodeView.setDelegate(view -> {
             com.radolyn.ayugram.chatlock.ChatLockController.markUnlocked(currentAccount, dialog_id);
             removeChatLockPasscodeView();
+            clearCoveredNotificationsIfVisible();
         });
         chatLockPasscodeView.onShow(true, false);
     }
@@ -3768,6 +3769,19 @@ public class ChatActivity extends BaseFragment implements
             ((ViewGroup) chatLockPasscodeView.getParent()).removeView(chatLockPasscodeView);
         }
         chatLockPasscodeView = null;
+    }
+
+    // NagramX: once this chat is truly visible (after app/chat passcode gates), suppress currently coverable
+    // members for this dialog so covered notifications disappear without touching read state.
+    private void clearCoveredNotificationsIfVisible() {
+        if (chatMode != MODE_DEFAULT
+                || dialog_id == 0
+                || chatLockPasscodeView != null
+                || AndroidUtilities.needShowPasscode(false)
+                || SharedConfig.isWaitingForPasscodeEnter) {
+            return;
+        }
+        getNotificationsController().suppressVisibleCoveredDialog(dialog_id);
     }
 
     @Override
@@ -29227,6 +29241,7 @@ public class ChatActivity extends BaseFragment implements
     public void onBecomeFullyVisible() {
         isFullyVisible = true;
         super.onBecomeFullyVisible();
+        clearCoveredNotificationsIfVisible();
         // NagramX: #repost-spread. A repost-as-copy batch that finished acking during the forward-picker
         // close animation couldn't show its delete offer yet; now the chat is fully visible, resolve it
         // once. The guard inside re-validates (sources still present/deletable, no open dialog), so a
@@ -32161,6 +32176,7 @@ public class ChatActivity extends BaseFragment implements
 
         if (chatMode == 0) {
             getNotificationsController().setOpenedDialogId(dialog_id, getTopicId());
+            clearCoveredNotificationsIfVisible();
         }
         getMessagesController().setLastVisibleDialogId(dialog_id, chatMode == MODE_SCHEDULED, true);
         if (scrollToTopOnResume) {

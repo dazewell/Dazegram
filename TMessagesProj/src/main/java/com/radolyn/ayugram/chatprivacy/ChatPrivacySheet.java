@@ -79,6 +79,10 @@ public final class ChatPrivacySheet {
         coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        final TextSettingsCell previewCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
+        previewCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
+        container.addView(previewCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         // Always-visible footer stating the cover limitations; stays put whether or not Cover is shown.
         final TextInfoPrivacyCell footerCell = new TextInfoPrivacyCell(context, 21, fragment.getResourceProvider());
         footerCell.setText(LocaleController.getString(R.string.NaxCoverLimitations));
@@ -133,11 +137,16 @@ public final class ChatPrivacySheet {
                     true
             );
             coverCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
+            previewCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             if (disguised) {
                 coverCell.setTextAndValue(
                         LocaleController.getString(R.string.NaxCoverRowTitle),
                         NotificationCoverController.activePersonaLabel(account, dialogId),
                         true
+                );
+                previewCell.setText(
+                        LocaleController.getString(R.string.NaxCoverPreviewTitle),
+                        false
                 );
             }
         };
@@ -199,6 +208,20 @@ public final class ChatPrivacySheet {
             showCoverPicker(fragment, account, dialogId, refreshRef[0]);
         });
 
+        previewCell.setOnClickListener(v -> {
+            if (!NotificationCoverController.isCovered(account, dialogId)) {
+                return;
+            }
+            boolean posted = NotificationCoverController.postPreview(account, dialogId);
+            if (sheetRef[0] != null) {
+                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                        .createSimpleBulletin(
+                                posted ? R.raw.silent_mute : R.raw.silent_unmute,
+                                LocaleController.getString(posted ? R.string.NaxCoverPreviewPosted : R.string.NaxCoverPreviewUnavailable)
+                        ).show();
+            }
+        });
+
         refreshRef[0].run();
 
         builder.setCustomView(container);
@@ -233,4 +256,5 @@ public final class ChatPrivacySheet {
                 fragment.getResourceProvider()
         );
     }
+
 }

@@ -263,6 +263,22 @@ which builds a fresh generic summary instead of the real one when any covered di
 present (`naxBuildCoverSummary` at `:5878`) and swaps each covered child for a fresh
 tagged builder, routing on `naxCoveredSet.contains(dialogId)` (`:5038`+).
 
+## Popup notifications are a third leak surface, separate from summary + children
+
+`popupMessages` is fed from `addToPopupMessages(...)` during new/edit processing,
+outside the summary/child builder flow (`NotificationsController.java:947-977`,
+`:1196-1200`, `:1253-1256`). A cover implementation that only swaps summary/child
+notifications still leaks covered content through popup windows unless this path is
+blocked too.
+
+The hardened cover path now blocks covered members at source
+(`NotificationCoverController.blocksPopupMessage(...)` in `addToPopupMessages`,
+`NotificationsController.java:949-952`) and also purges already-queued popup rows in
+the covered preflight pass (`NotificationsController.java:4194-4210`) so enabling
+disguise mid-stream cannot leave stale covered popup cards behind.
+
+*(Established 2026-09-03.)*
+
 ## `validateChannelId` observes/creates a chat-named OS channel as a side effect
 
 `showExtraNotifications` calls `validateChannelId(lastDialogId, ...)` on the summary

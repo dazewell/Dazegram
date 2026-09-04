@@ -47,23 +47,68 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:169
 ## Chat privacy sheet's Notifications section drives disguised covers
 
 The same sheet has a `Notifications` header, a `Disguise notifications`
-`TextCheckCell`, and a `Cover` `TextSettingsCell` (visible only while disguise
-is on). The switch toggles `NotificationCoverController.setEnabled(...)` and
+`TextCheckCell`, plus `Cover` and `Preview notification` `TextSettingsCell`s
+(visible only while disguise is on). The switch toggles
+`NotificationCoverController.setEnabled(...)` and
 queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
 the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
-sheet and calls `setPersona(...)` + the same rebuild
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java` — cell setup after the
-lock cell, the `disguiseCell`/`coverCell` click listeners, and `showCoverPicker(...)`;
-`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`). The UI never posts or
-cancels a notification itself — it only writes config and asks the controller to
-rebuild, matching the existing settings-write precedent.
+sheet and calls `setPersona(...)` + the same rebuild; the preview row calls
+`NotificationCoverController.postPreview(...)` and only shows a bulletin result
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:131-151`,
+`:190-223`, `:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
+The UI never builds or cancels a notification itself. It writes config and asks
+the controller to rebuild for disguise/persona changes, and it calls controller
+preview posting only for the explicit preview row.
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
 `nax_cover_v1_enabled_<dialogId>` / `nax_cover_v1_persona_<dialogId>`, with lazy
 generic channels under `nax_cover_v1_channel_<personaId>` /
 `nax_cover_v1_summary_channel`
-(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java`).
+(`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:57-68`,
+`:201-229`, `:654-671`).
+
+*(Established 2026-09-03.)*
+
+## Tokenized broadcast interaction path for covered notifications
+
+All cover interactions now use immutable **broadcast** PendingIntents into the
+non-exported `NotificationDismissReceiver`: child tap/dismiss, summary tap/dismiss,
+and preview tap all resolve via the same tokenized receiver path in
+`NotificationCoverController.handleInteraction(...)`.
+
+Android 12+ blocks a notification broadcast receiver from launching the chat
+activity directly. Supporting cover-tap open-chat would therefore require a
+dedicated transparent activity bridge; by product decision, that complexity was
+dropped and covers are Hollow-only, so broadcast is the only interaction
+transport now needed
+(`NotificationCoverController.java:686-725`, `:745-793`, `:796-828`, `:860-955`, `:995-1068`;
+`org/telegram/messenger/NotificationDismissReceiver.java:27-33`).
+
+*(Established 2026-09-03.)*
+
+## Covered-chat clear hooks and accepted open-attempt behavior
+
+`ChatActivity` routes cover-clear attempts through
+`clearCoveredNotificationsIfVisible()`, called from the chat lifecycle path
+that also sets `openedDialogId`, from `onBecomeFullyVisible`, and from the
+post-chat-lock-unlock callback
+(`org/telegram/ui/ChatActivity.java:3755-3759`, `:3776-3784`, `:29244`,
+`:32179`). In that helper, current code checks `MODE_DEFAULT`, nonzero
+`dialog_id`, `chatLockPasscodeView == null`, and app-passcode flags before
+calling `NotificationsController.suppressVisibleCoveredDialog(dialog_id)`
+(`ChatActivity.java:3776-3784`).
+
+`suppressVisibleCoveredDialog(...)` posts onto `notificationsQueue`; the cover
+controller suppression path runs there and then triggers notification rebuild
+(`org/telegram/messenger/NotificationsController.java:3313-3318`;
+`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:560-593`).
+
+Accepted on-device behavior: attempting to open a protected covered chat may
+consume the current cover before successful visibility (including cancelled or
+failed unlock). This map documents the fork-owned clear hooks above; it does
+not attribute or alter upstream read-state behavior, which is tracked
+separately in issue #286.
 
 *(Established 2026-09-03.)*
 

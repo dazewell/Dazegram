@@ -669,7 +669,10 @@
     <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
     <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
     <string name="NaxCoverRowTitle">Cover</string>
-    <string name="NaxCoverLimitations">Covers hide the chat name, sender and message. They don\'t change the app name, badge, calls or stories. Notifications only.</string>
+    <string name="NaxCoverPreviewTitle">Preview notification</string>
+    <string name="NaxCoverPreviewPosted">Preview notification posted.</string>
+    <string name="NaxCoverPreviewUnavailable">Couldn\'t post preview.</string>
+    <string name="NaxCoverLimitations">Covers hide chat name, sender, and message in app notifications. Tapping or dismissing a cover only clears that notification. It never opens the chat and never marks anything read. Attempting to open the real chat in the app clears its cover, even if unlock is cancelled or fails. Live incoming/ongoing call UI and stories remain outside disguise, while missed-call service notifications are covered generically. Android may still show the app as source, badges, and older pinned conversation/channel labels. Android notification settings and user-tuned channels stay authoritative.</string>
     <string name="NaxCoverSheetTitle">Cover</string>
     <string name="NaxCoverEnabledHint">Notifications for this chat are now disguised.</string>
     <string name="NaxCoverDisabledHint">Notifications for this chat are back to normal.</string>
