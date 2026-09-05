@@ -261,6 +261,10 @@ You can apply a chat pattern over your live Material You color. Turn it off by o
 
 The active tab indicator can be drawn with a thin outline in the tab's text colour over a translucent fill, instead of the solid filled pill. Turn on *Tab indicator outline* in Nagram Settings > General, under the folder tab options. It's off by default, so tabs keep the solid fill unless you switch it on.
 
+### Fixed app icon uses Default art <!-- #app-icon-fallback -->
+
+Android's fixed system-level app identity — the icon shown in the app switcher, in system permission dialogs, and (on some OEM skins) in notifications — uses Dazegram's Default icon art. This is separate from the launcher icon you pick under Chat Settings > App Icon: that picker still works exactly as before and changes what shows on your home screen. Choosing a different launcher icon there does not change the fixed system-level icon. On tested ColorOS builds, notifications use this fixed icon rather than the chosen launcher icon.
+
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.
      Slugs kept so old commits stay greppable and the catalog check keeps passing. -->

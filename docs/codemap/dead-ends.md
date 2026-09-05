@@ -5,6 +5,32 @@ killed them. Recorded so the next investigation doesn't spend time re-testing
 a theory that's already dead. Re-verify the citation before relying on it —
 see the README.
 
+## "The enabled launcher activity-alias drives the ColorOS notification icon"
+
+Disproven on the tested ColorOS device, for the pre-change manifest. Selecting
+the Neon launcher icon in Chat Settings flips the enabled activity alias
+through `LauncherIconController.setIcon` (`LauncherIconController.java:27-34`,
+called from `tryFixLauncherIconIfNeeded` at `:11-19`), which changed the
+home-screen icon as expected. But the ColorOS notification stayed on the
+Telegram-blue paper plane rather than following Neon. Notifications never read
+an activity-alias icon in the first place: `NotificationsController` derives
+its small icon purely from `NaConfig.notificationIcon` via
+`getNotificationIconResId()` (`NotificationsController.java:6531-6545`), and
+both `.setSmallIcon(...)` call sites (`:4703`, `:5761`) call that method, not
+any launcher-icon or activity-alias lookup. Before this branch's change, the
+`<application>` node's own `android:icon`/`android:roundIcon` were still the
+Telegram-blue mipmaps (pre-change `AndroidManifest.xml:113`/`:119`), so the
+enabled-alias theory and the fixed-application-icon theory were
+indistinguishable from this evidence alone — both pointed at the same blue
+asset. This entry only kills the activity-alias theory; it does not yet
+confirm the fixed `<application>` icon as the actual ColorOS notification
+source. That requires a smoke build with the alias still on Neon and the
+`<application>` icon repointed to Default (`#app-icon-fallback`), which is
+what the corresponding branch does — see its PR for the confirmed or
+disproven result once smoke testing lands.
+
+*(Established 2026-09-04.)*
+
 ## "Reuse `PollEditTextCell` for Send on event pattern rows"
 
 Disproven. `PollEditTextCell` is a poll-specific, heavyweight composite with
