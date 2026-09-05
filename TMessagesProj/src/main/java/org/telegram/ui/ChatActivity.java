@@ -3774,6 +3774,9 @@ public class ChatActivity extends BaseFragment implements
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
         xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onOwnerDestroyed(glassPatternSmokeOwnerId);
+        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
+        // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
@@ -23820,18 +23823,16 @@ public class ChatActivity extends BaseFragment implements
             if (messageEnterTransitionContainer != null) {
                 messageEnterTransitionContainer.invalidate();
             }
-            // NagramX: coalesce a glass-composite refresh onto the next UI frame. Posted rather than run
-            // here so it never re-composites inside the wallpaper's own draw pass, and cancel+re-post
-            // collapses a burst of animating-frame posts to at most one refresh per frame.
+            // NagramX: measured on 120 Hz with cancel+repost, one burst (64 arrivals) postponed to a single
+            // trailing refresh. Keep one outstanding frame callback instead: the first arrival arms a 30 fps
+            // one-shot and later arrivals while pending do not postpone it.
             xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onInvalidateMotionBackgroundArrival(
                     glassPatternSmokeOwnerId,
                     args.length > 0 ? args[0] : null,
                     AndroidUtilities.screenRefreshRate,
                     glassCompositeRefreshPending
             );
-            AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
-            AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
-            glassCompositeRefreshPending = true;
+            scheduleGlassCompositeRefresh();
         } else if (id == NotificationCenter.loadingMessagesFailed) {
             if ((Integer) args[0] == classGuid && args[2] instanceof TLRPC.TL_error) {
                 TLRPC.TL_error e = (TLRPC.TL_error) args[2];
@@ -51835,33 +51836,55 @@ public class ChatActivity extends BaseFragment implements
 
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
     // only re-samples on a reprime, so it has to be refreshed whenever the wallpaper's content moves: a
-    // gradient rotation on send, or the pattern arriving/fading in after chat open. Driven by the posted,
-    // coalesced runnable below off invalidateMotionBackground, which recomposites unconditionally so the
-    // alpha/colour-filter fades (which move no generation id) are followed. Skipped and marked dirty when
+    // gradient rotation on send, or the pattern arriving/fading in after chat open. invalidateMotionBackground
+    // now arms one 30 fps frame callback at the leading edge, and later arrivals while pending never
+    // postpone it. Recompose stays unconditional so alpha/colour-filter fades (which move no generation id)
+    // are followed. Skipped and marked dirty when
     // paused, detached, or before contentView exists — a chat that is off screen or not laid in does no
     // work, and onResume runs it once to catch up.
+    private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
     private boolean glassCompositeDirty;
     private final int glassPatternSmokeOwnerId = xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.normalizeOwnerId(System.identityHashCode(this));
     private boolean glassCompositeRefreshPending;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
+    private void scheduleGlassCompositeRefresh() {
+        if (glassCompositeRefreshPending) {
+            return;
+        }
+        glassCompositeRefreshPending = true;
+        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance()
+                .addFrameCallbackOnce(glassCompositeRefreshRunnable, GLASS_COMPOSITE_REFRESH_FPS);
+    }
+
     private void refreshGlassComposite() {
         glassCompositeRefreshPending = false;
-        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
-            glassCompositeDirty = true;
-            return;
-        }
-        Drawable wallpaper = contentView.getBackgroundImage();
-        if (wallpaper instanceof ChatBackgroundDrawable) {
-            wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
-        }
-        if (!(wallpaper instanceof MotionBackgroundDrawable)) {
-            return;
-        }
-        xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onRefreshExecution(glassPatternSmokeOwnerId);
-        if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper, glassPatternSmokeOwnerId)) {
-            reprimeGlassRenderNodes();
-            invalidateAllGlassAttachedViews();
+        final long refreshStartedNs = xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.isEnabled()
+                ? SystemClock.elapsedRealtimeNanos() : 0L;
+        try {
+            if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
+                glassCompositeDirty = true;
+                return;
+            }
+            Drawable wallpaper = contentView.getBackgroundImage();
+            if (wallpaper instanceof ChatBackgroundDrawable) {
+                wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
+            }
+            if (!(wallpaper instanceof MotionBackgroundDrawable)) {
+                return;
+            }
+            xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onRefreshExecution(glassPatternSmokeOwnerId);
+            if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper, glassPatternSmokeOwnerId)) {
+                reprimeGlassRenderNodes();
+                invalidateAllGlassAttachedViews();
+            }
+        } finally {
+            if (refreshStartedNs != 0L) {
+                xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onRefreshDurationSample(
+                        glassPatternSmokeOwnerId,
+                        SystemClock.elapsedRealtimeNanos() - refreshStartedNs
+                );
+            }
         }
     }
 

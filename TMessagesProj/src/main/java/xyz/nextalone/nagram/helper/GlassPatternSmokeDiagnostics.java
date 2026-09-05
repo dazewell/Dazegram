@@ -23,6 +23,7 @@ public final class GlassPatternSmokeDiagnostics {
     private static final long IDLE_SUMMARY_DELAY_MS = 300L;
     private static final int UNKNOWN_PRODUCER_ID = Integer.MIN_VALUE;
     private static final int MAX_COMPOSE_SAMPLES = 1024;
+    private static final int MAX_REFRESH_SAMPLES = 1024;
     private static final int MAX_TRACKED_PRODUCERS = 256;
 
     private static final Object lock = new Object();
@@ -37,8 +38,12 @@ public final class GlassPatternSmokeDiagnostics {
         return ownerId == 0 ? 1 : ownerId;
     }
 
+    public static boolean isEnabled() {
+        return isLoggingEnabled();
+    }
+
     public static void onInvalidateMotionBackgroundPosted(MotionBackgroundDrawable producer) {
-        if (!isLoggingEnabled()) {
+        if (!isEnabled()) {
             return;
         }
         if (producer == null) {
@@ -52,7 +57,7 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onProceduralGradientGenerated(MotionBackgroundDrawable producer) {
-        if (!isLoggingEnabled()) {
+        if (!isEnabled()) {
             return;
         }
         if (producer == null) {
@@ -66,7 +71,7 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onInvalidateMotionBackgroundArrival(int ownerId, Object producerArg, float refreshRateHz, boolean refreshPending) {
-        if (!isLoggingEnabled()) {
+        if (!isEnabled()) {
             return;
         }
         synchronized (lock) {
@@ -99,7 +104,7 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onRefreshExecution(int ownerId) {
-        if (!isLoggingEnabled()) {
+        if (!isEnabled()) {
             return;
         }
         synchronized (lock) {
@@ -120,7 +125,7 @@ public final class GlassPatternSmokeDiagnostics {
     }
 
     public static void onComposeSample(int ownerId, boolean gradientChanged, long durationNanos) {
-        if (!isLoggingEnabled()) {
+        if (!isEnabled()) {
             return;
         }
         synchronized (lock) {
@@ -148,6 +153,21 @@ public final class GlassPatternSmokeDiagnostics {
         }
     }
 
+    public static void onRefreshDurationSample(int ownerId, long durationNanos) {
+        if (!isEnabled()) {
+            return;
+        }
+        synchronized (lock) {
+            BurstState state = statesByOwner.get(ownerId);
+            if (state == null || !state.active) {
+                return;
+            }
+            if (state.refreshDurationNanos.size() < MAX_REFRESH_SAMPLES) {
+                state.refreshDurationNanos.add(durationNanos);
+            }
+        }
+    }
+
     private static void emitSummary(int ownerId) {
         final String summary;
         synchronized (lock) {
@@ -155,7 +175,7 @@ public final class GlassPatternSmokeDiagnostics {
             if (state == null || !state.active || state.arrivals == 0) {
                 return;
             }
-            if (!isLoggingEnabled()) {
+            if (!isEnabled()) {
                 state.active = false;
                 state.clearCounters();
                 return;
@@ -170,10 +190,12 @@ public final class GlassPatternSmokeDiagnostics {
             long burstDurationMs = now - state.startedUptimeMs;
             long composeP95Ns = percentile95(state.composeDurationNanos);
             long composeMaxNs = max(state.composeDurationNanos);
+            long refreshP95Ns = percentile95(state.refreshDurationNanos);
+            long refreshMaxNs = max(state.refreshDurationNanos);
             int proceduralGenerationCount = generationDelta(state);
             int motionPostCount = motionPostDelta(state);
             summary = String.format(Locale.US,
-                    "%s burst owner=%s durationMs=%d arrivals=%d arrivalsWhileRefreshPending=%d refreshExecutions=%d maxInterExecutionGapMs=%d composeP95Ms=%.2f composeMaxMs=%.2f refreshRateHz=%.1f producers=%s gradientChangedCompositeCount=%d proceduralGradientGenerationCount=%d motionPostCount=%d",
+                    "%s burst owner=%s durationMs=%d arrivals=%d arrivalsWhileRefreshPending=%d refreshExecutions=%d maxInterExecutionGapMs=%d composeP95Ms=%.2f composeMaxMs=%.2f refreshP95Ms=%.2f refreshMaxMs=%.2f refreshRateHz=%.1f producers=%s gradientChangedCompositeCount=%d proceduralGradientGenerationCount=%d motionPostCount=%d",
                     SMOKE_TAG,
                     hex(ownerId),
                     burstDurationMs,
@@ -183,6 +205,8 @@ public final class GlassPatternSmokeDiagnostics {
                     state.maxInterExecutionGapMs,
                     nanosToMs(composeP95Ns),
                     nanosToMs(composeMaxNs),
+                    nanosToMs(refreshP95Ns),
+                    nanosToMs(refreshMaxNs),
                     state.refreshRateHz,
                     producersSummary(state),
                     state.freshCompositeCount,
@@ -332,6 +356,7 @@ public final class GlassPatternSmokeDiagnostics {
         final SparseIntArray generationBaselineByProducer = new SparseIntArray();
         final SparseIntArray motionPostBaselineByProducer = new SparseIntArray();
         final ArrayList<Long> composeDurationNanos = new ArrayList<>();
+        final ArrayList<Long> refreshDurationNanos = new ArrayList<>();
 
         boolean active;
         long startedUptimeMs;
@@ -369,6 +394,7 @@ public final class GlassPatternSmokeDiagnostics {
             generationBaselineByProducer.clear();
             motionPostBaselineByProducer.clear();
             composeDurationNanos.clear();
+            refreshDurationNanos.clear();
         }
     }
 }
