@@ -21,8 +21,11 @@ its small icon purely from `NaConfig.notificationIcon` via
 `getNotificationIconResId()` (`NotificationsController.java:6531-6545`), and
 both `.setSmallIcon(...)` call sites (`:4703`, `:5761`) call that method, not
 any launcher-icon or activity-alias lookup. Before this branch's change, the
-`<application>` node's own `android:icon`/`android:roundIcon` were still the
-Telegram-blue mipmaps (pre-change `AndroidManifest.xml:113`/`:119`), so the
+`<application>` node's own `android:icon`/`android:roundIcon` still pointed at
+the Telegram-blue mipmaps (`ic_launcher_nagram_blue`/`_round` — see the "before"
+side of commit `cc2b3e0786` in this PR, since this PR's own manifest edit moves
+those attributes to the Default resources and a plain current-tree line
+citation would no longer be reverifiable), so the
 enabled-alias theory and the fixed-application-icon theory were
 indistinguishable from this evidence alone — both pointed at the same blue
 asset. This entry only kills the activity-alias theory; it does not yet
