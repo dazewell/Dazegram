@@ -58,12 +58,30 @@ pre-existing Blue fixed icon and was not part of this investigation.
 
 ## "The notification icon can be made to follow the Chat Settings > App Icon selection at runtime"
 
-Disproven, for two independent reasons — this does not extend or contradict
-the two entries above; it answers the follow-up question of whether the
+Disproven, on three independent grounds — the strongest of them
+device-confirmed — that together mean this does not extend or contradict the
+two entries above; it answers the follow-up question of whether the
 existing per-alias mismatch could be fixed dynamically rather than by picking
 a single fixed icon.
 
-**Reason A — the OEM shade icon this fork can actually influence is
+**Reason A (device-confirmed) — on the tested ColorOS device, the dedicated
+small-icon channel this fork already has doesn't render at all.** Changing
+Nagram Settings › General › Notification Icon
+(`NaConfig.notificationIcon`, the `ConfigCellSelectBox` at
+`NekoGeneralSettingsActivity.java:228-232`) to a visibly different value and
+restarting the app produces **no change whatsoever** in the status bar or
+shade on that device. This is a direct on-device observation, the same
+evidential class as the Neon-launcher/orange-notification test in the entry
+above, not an inference: ColorOS discards the `setSmallIcon()` argument
+entirely and renders only the app-identity icon it derives from
+`ApplicationInfo.icon`. The value `getNotificationIconResId()` computes and
+passes at `NotificationsController.java:4703` and `:5761` is accepted by the
+API and then silently dropped by this OEM shade. This makes the feature
+unbuildable on its own, independent of everything below: **a feature whose
+entire observable effect is discarded by the target device is not a
+feature**, no matter what art it would have used.
+
+**Reason B — the OEM shade icon this fork can actually influence is
 immutable at runtime.** The confirmed source on the tested ColorOS device is
 `ApplicationInfo.icon`, a resource id baked into the manifest and resolved by
 `system_server` from the app's parsed resource table, re-read only at
@@ -76,7 +94,9 @@ runtime candidate considered, and why it's dead:
 - **`setSmallIcon(Icon)` with full-colour art** — since API 21 the platform
   composites the status-bar/notification small icon from its **alpha channel
   only**, discarding colour; `minSdk` is 27 (`build.gradle:36`, established
-  in the entry above), so no supported version behaves differently.
+  in the entry above), so no supported version behaves differently. On this
+  device the point is moot regardless, per Reason A: the argument to
+  `setSmallIcon` isn't rendered at all.
 - **`setLargeIcon`** — the one non-monochrome notification surface, already
   occupied by the conversation avatar
   (`NotificationsController.java:4737`, `:4741`, `:4751`, `:5838`). Repurposing
@@ -92,8 +112,8 @@ runtime candidate considered, and why it's dead:
 - **Per-alias `<activity-alias>` icons** — already disproven on-device by the
   entry above; notifications never read that value at all.
 
-**Reason B — no notification-legal art exists for the picker's icons, even
-setting Reason A aside.** Limiting scope to just the monochrome status-bar
+**Reason C — no notification-legal art exists for the picker's icons, even
+setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
 the 15-entry `LauncherIconController.LauncherIcon` picker
 (`LauncherIconController.java:36-50`) onto:
@@ -137,6 +157,29 @@ the 15-entry `LauncherIconController.LauncherIcon` picker
   `24dp`/`24`-viewport with art filling the box edge-to-edge. Pointing either
   candidate at `setSmallIcon` would render a visibly shrunken glyph inside a
   mostly-empty status-bar icon.
+
+**Standing constraint for future disguise/privacy work.** Reason A narrows
+the earlier framing of the launcher-alias disguise consequence to one
+channel, and makes it absolute rather than merely "the shade keeps showing
+the real icon": on this device, `ApplicationInfo.icon` is not just the icon
+ColorOS *prefers* to show, it is the **only** icon channel ColorOS renders in
+a notification at all — there is no secondary glyph channel to fall back to,
+because the one Android API that exists for that purpose (`setSmallIcon`) is
+confirmed inert here. A launcher-alias disguise hides the app on the home
+screen and **cannot** hide it in the notification shade on this skin, with no
+in-app mitigation available, because the channel it would need to use isn't
+read. Any future disguise or customized-privacy feature on this fork should
+treat that as a hard device-class limitation, not a bug to route around.
+
+**Collateral fact, not a change request.** `NaConfig.notificationIcon` ships
+four selectable options that are inert on the tested ColorOS device — picking
+any of them changes nothing observable there. This is recorded as an observed
+device limitation only. The setting is not fork-broken: it works as designed
+on stock Android and (presumably) other OEM skins that honour `setSmallIcon`,
+this is one OEM's shade behaviour, and this investigation does not propose
+hiding, gating, or annotating the setting for it — that would be adding
+device-specific UI for a single OEM, out of scope for this PR and not asked
+for.
 
 *(Established 2026-09-05.)*
 
