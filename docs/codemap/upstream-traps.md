@@ -319,3 +319,53 @@ never adopt real-chat identity.
 treat `<= 27` conditions as "always true on the oldest supported device."
 
 *(Established 2026-09-03.)*
+
+## Process-global spoiler atlas publishes one full animation generation per pass
+
+`SpoilerEffectBitmapFactory` is a process-global singleton atlas producer
+(`SpoilerEffectBitmapFactory.java:26-47`), and `SpoilerEffect.draw` is the path
+that submits active bounds into that producer (`SpoilerEffect.java:323,329`).
+Text surfaces use this path through spoiler clip-out + draw in `SimpleTextView`
+(`SimpleTextView.java:1210-1218,1247-1248`). Pinned-bar media thumbs use the
+same path via the top-panel `BackupImageView` overlay's embedded
+`SpoilerEffect` (`ChatActivity.java:12765-12791,30841-30843`). In-message media
+particles are a separate renderer (`SpoilerEffect2`) in `ChatMessageCell`
+(`ChatMessageCell.java:15399-15405`) and are not controlled here.
+
+Current invariant: every accepted background publish is one full-atlas
+generation. The update runnable now allocates background bitmap/canvas once,
+then on each accepted pass erases the full bitmap (when reusing) and runs one
+unconditional `doDraw(backgroundCanvas, fullRegion)` before publish copy and
+UI-thread shader swap (`SpoilerEffectBitmapFactory.java:146-168`).
+
+Why partial repaint cannot be coherent on this atlas: producer-side simulation
+advances by cell intersection with the trigger union (`Rect.intersects` in
+`SpoilerEffectBitmapFactory.doDraw`, `SpoilerEffectBitmapFactory.java:96-104`),
+while particle admission is clip-relative with a damage margin
+(`SpoilerEffect.java:342,369-372,464`). At the same time, `applyClip` maps view
+bounds into wrapped atlas coordinates and unions wrapped segments
+(`SpoilerEffectBitmapFactory.java:120-130`). Clipping rasterization to only a
+subset of those intersected cells necessarily mixes generations across adjacent
+texels and overlapping mapped bounds.
+
+Cost facts that stay true regardless of clip strategy:
+`Utilities.copyBitmaps(backgroundBitmap, nextBufferBitmap)` is already a full
+bitmap copy on every accepted pass (`SpoilerEffectBitmapFactory.java:163`);
+native implementation copies the full pixel payload (`image.cpp:1249-1334`,
+contiguous path `memcpy(rowBytes * height)` at `image.cpp:1327`).
+Full draw also already exists on first UI paint and on LiteMode restore
+(`SpoilerEffectBitmapFactory.java:79,86`), so mechanism B aligns publish with
+the existing full-generation paths instead of introducing a new one.
+
+The dirty-union trigger drop is intentionally not fixed here. `checkUpdate` +
+`applyClip` + `clipRegion` remain trigger-only (`SpoilerEffectBitmapFactory.java:112-130`),
+and the callback still clears that union each frame (`SpoilerEffectBitmapFactory.java:136-139`).
+With full-atlas publish, missed trigger unions may reduce temporal smoothness
+but no longer produce spatially mixed generations.
+
+Threading hazard to keep: `isRunning` is cleared only after the UI publish hop
+sets `currentBitmapBuffer` and shader (`SpoilerEffectBitmapFactory.java:165-168`).
+Clearing it earlier would allow a new pass to start writing while the previous
+buffer index is still pending publication.
+
+*(Established 2026-09-04.)*

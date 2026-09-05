@@ -44,6 +44,7 @@ public class SpoilerEffectBitmapFactory {
     private ArrayList<SpoilerEffect> shaderSpoilerEffects;
     private boolean isRunning;
     final int size;
+    private final Rect fullRegion = new Rect();
 
     private SpoilerEffectBitmapFactory() {
         int maxSize = SharedConfig.getDevicePerformanceClass() == SharedConfig.PERFORMANCE_CLASS_HIGH ? AndroidUtilities.dp(150) : AndroidUtilities.dp(100);
@@ -52,6 +53,7 @@ public class SpoilerEffectBitmapFactory {
             size = AndroidUtilities.dp(80);
         }
         this.size = size;
+        fullRegion.set(0, 0, size, size);
         for (int a = 0; a < buffers.length; a++) {
             buffers[a] = new PointsBuffer();
         }
@@ -74,17 +76,17 @@ public class SpoilerEffectBitmapFactory {
                     shaderSpoilerEffects.add(shaderSpoilerEffect);
                 }
             }
-            doDraw(new Canvas(bitmapBuffers[0].bitmap), new Rect(0, 0, size, size));
+            doDraw(new Canvas(bitmapBuffers[0].bitmap), fullRegion);
             shaderPaint.setShader(bitmapBuffers[0].shader);
             lastUpdateTime = System.currentTimeMillis();
-        } else if (isDrawnWithClipRegion && !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SPOILER)) {
+        } else if (isDrawnInBackground && !LiteMode.isEnabled(LiteMode.FLAG_CHAT_SPOILER)) {
             // restore full-drawn texture
 
             currentBitmapBuffer = 0;
-            doDraw(new Canvas(bitmapBuffers[0].bitmap), new Rect(0, 0, size, size));
+            doDraw(new Canvas(bitmapBuffers[0].bitmap), fullRegion);
             shaderPaint.setShader(bitmapBuffers[0].shader);
             lastUpdateTime = System.currentTimeMillis();
-            isDrawnWithClipRegion = false;
+            isDrawnInBackground = false;
         }
 
 
@@ -137,15 +139,13 @@ public class SpoilerEffectBitmapFactory {
         invalidated = false;
     };
 
-    private final Rect clipRegionDump = new Rect();
-    private boolean isDrawnWithClipRegion;
+    private boolean isDrawnInBackground;
 
     private void checkUpdateImpl() {
         long time = System.currentTimeMillis();
         if (time - lastUpdateTime > 32 && !isRunning && !clipRegion.isEmpty()) {
             lastUpdateTime = time;
             isRunning = true;
-            clipRegionDump.set(clipRegion);
 
             final int nextBitmapBuffer = (currentBitmapBuffer + 1) % 2;
             dispatchQueue.postRunnable(() -> {
@@ -158,13 +158,14 @@ public class SpoilerEffectBitmapFactory {
                 } else {
                     backgroundBitmap.eraseColor(Color.TRANSPARENT);
                 }
-                doDraw(backgroundCanvas, clipRegionDump);
+                // NagramX: consumers render at different cadences, so each published atlas must be one full animation generation.
+                doDraw(backgroundCanvas, fullRegion);
                 Utilities.copyBitmaps(backgroundBitmap, bitmapBuffers[nextBitmapBuffer].bitmap);
                 AndroidUtilities.runOnUIThread(() -> {
                     currentBitmapBuffer = nextBitmapBuffer;
                     shaderPaint.setShader(bitmapBuffers[currentBitmapBuffer].shader);
                     isRunning = false;
-                    isDrawnWithClipRegion = true;
+                    isDrawnInBackground = true;
                 });
             });
         }
