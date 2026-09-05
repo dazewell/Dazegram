@@ -107,6 +107,14 @@ android {
         // NagramX: kept in sync by hand with the customTitle default in NaConfig.kt (search that file for "NagramX:")
         resValue 'string', 'NagramX', APP_PACKAGE.endsWith('.beta') ? 'Dazegram' : 'DazegramX'
 
+        // NagramX: fixed <application> icon differs per package variant - Official (Dazegram) keeps its
+        // existing blue icon, Unofficial (DazegramX) uses Default art (#app-icon-fallback). += because AGP
+        // already populates manifestPlaceholders (e.g. applicationId) for the 11+ manifest sites that use it.
+        manifestPlaceholders += [
+                fixedAppIcon     : APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue' : '@mipmap/ic_launcher_nagram',
+                fixedAppIconRound: APP_PACKAGE.endsWith('.beta') ? '@mipmap/ic_launcher_nagram_blue_round' : '@mipmap/ic_launcher_nagram_round'
+        ]
+
         // account type and contact mime types must track applicationId so the two package variants don't collide
         resValue 'string', 'account_type', APP_PACKAGE
         resValue 'string', 'contacts_mime_profile', 'vnd.android.cursor.item/vnd.' + APP_PACKAGE + '.android.profile'

@@ -31,17 +31,28 @@ indistinguishable from this evidence alone — both pointed at the same blue
 asset. This entry only kills the activity-alias theory.
 
 **Positive result (post-smoke).** On dazewell's tested ColorOS device, the
-Unofficial smoke build from PR #291 head `a6938cde4a` was installed with the
-Neon launcher alias still selected in Chat Settings. Triggering a new-message
-notification showed Dazegram's Default/orange icon while the home-screen
-launcher icon remained Neon. With only the `<application>`
-`android:icon`/`android:roundIcon` repointed from the Telegram-blue mipmaps to
-the Default ones (`#app-icon-fallback`) and nothing else changed, this
-confirms — for this device and mode — that the fixed `<application>` icon,
-not the enabled launcher activity alias, is the source ColorOS reads for the
-notification icon. Evidence is visual-only; no device trace was captured, so
-this is tested-device evidence, not a general claim about ColorOS behavior
-across other versions, OEM skins, or notification configurations.
+Unofficial (`nekox.messenger`, DazegramX) smoke build from PR #291 head
+`a6938cde4a` was installed with the Neon launcher alias still selected in Chat
+Settings. That build's `<application>` node carried a direct
+`android:icon="@mipmap/ic_launcher_nagram"`/`android:roundIcon="@mipmap/ic_launcher_nagram_round"`
+(no placeholder yet at that head). Triggering a new-message notification
+showed the Default/orange icon art while the home-screen launcher icon
+remained Neon. With only those two attributes repointed from the
+Telegram-blue mipmaps to the Default ones (`#app-icon-fallback`) and nothing
+else changed, this confirms — for this device and mode — that the fixed
+`<application>` icon, not the enabled launcher activity alias, is the source
+ColorOS reads for the notification icon. Evidence is visual-only; no device
+trace was captured, so this is tested-device evidence, not a general claim
+about ColorOS behavior across other versions, OEM skins, or notification
+configurations. This result still applies after the later variant-scope
+correction: that change replaced the literal resource with a
+`${fixedAppIcon}`/`${fixedAppIconRound}` manifest placeholder resolved per
+package variant (`build.gradle` `manifestPlaceholders`), and for Unofficial
+that placeholder resolves to the same `ic_launcher_nagram`/`_round` pair the
+smoke build already tested — Unofficial's merged manifest icon attributes are
+unchanged, byte-for-byte, by that correction. This entry says nothing about
+Official (`org.telegram.messenger.beta`, Dazegram), which keeps its
+pre-existing Blue fixed icon and was not part of this investigation.
 
 *(Established 2026-09-04, confirmed 2026-09-05.)*
 
