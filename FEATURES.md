@@ -263,7 +263,7 @@ The active tab indicator can be drawn with a thin outline in the tab's text colo
 
 ### Fixed app icon uses Default art <!-- #app-icon-fallback -->
 
-Android's fixed system-level app identity — the icon shown in the app switcher, in system permission dialogs, and (on some OEM skins) in notifications — uses Dazegram's Default icon art. This is separate from the launcher icon you pick under Chat Settings > App Icon: that picker still works exactly as before and changes what shows on your home screen. Choosing a different launcher icon there does not change the fixed system-level icon. On tested ColorOS builds, notifications use this fixed icon rather than the chosen launcher icon.
+Android's fixed system-level app identity — the icon shown in the app switcher and in system permission dialogs — uses Dazegram's Default icon art. This is separate from the launcher icon you pick under Chat Settings > App Icon: that picker still works exactly as before and changes what shows on your home screen. Choosing a different launcher icon there does not change the fixed system-level icon. Some OEM skins, including tested ColorOS builds, are known to substitute a fixed application icon for the notification icon rather than the chosen launcher icon or the small notification icon set separately in Nagram Settings; on those skins this fixed icon is what notifications may show instead of your selected launcher icon.
 
 <!-- Retired entries, plus sync-reconciliation and superseded feature slugs that have no catalog entry of their own.
      The behaviour still ships; it is documented in README instead of here.

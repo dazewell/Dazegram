@@ -9,8 +9,11 @@ see the README.
 
 Disproven on the tested ColorOS device, for the pre-change manifest. Selecting
 the Neon launcher icon in Chat Settings flips the enabled activity alias
-through `LauncherIconController.setIcon` (`LauncherIconController.java:27-34`,
-called from `tryFixLauncherIconIfNeeded` at `:11-19`), which changed the
+through `LauncherIconController.setIcon` (`LauncherIconController.java:27-34`),
+called from the picker's tap handler at `AppIconsSelectorCell.java:136` — not
+from the unrelated `tryFixLauncherIconIfNeeded` startup safety net
+(`LauncherIconController.java:11-19`), which only runs at app launch to catch
+a state where no alias is enabled at all. Selecting Neon changed the
 home-screen icon as expected. But the ColorOS notification stayed on the
 Telegram-blue paper plane rather than following Neon. Notifications never read
 an activity-alias icon in the first place: `NotificationsController` derives
