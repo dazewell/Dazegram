@@ -58,10 +58,13 @@ The trap: **the same stored integer already means a different icon in the two
 codebases.** A user's persisted `1` is upstream's `nagram_notification` but
 this fork's `nagramx_notification` — already a silent divergence, tolerated
 because the fork never re-merges upstream's notification-icon UI wholesale.
-Appending a fifth fork-only value to this same enumeration would collide
-silently with whatever upstream adds as its own next case, and any user who
-had picked that value would see something else after the next reconciliation
-merge, with no error and no migration to catch it. No later upstream commit
+The exposure is not conditional on this fork adding anything further. As
+verified, upstream's domain ends at `case 2`, so the next value upstream
+appends would be `case 3` — which this fork already uses for
+`neko_notification`. A user who had picked NekoX would then silently get
+upstream's new icon after a reconciliation merge, with no error and no
+migration to catch it. Appending further fork-only values (`case 4` and
+beyond) only widens the overlap. No later upstream commit
 extending this domain has been verified, but nothing rules one out — extend
 this behavior with a **new fork-owned `NaConfig` key** instead — one whose
 value domain upstream has no way to write into — never by widening the value
