@@ -28,14 +28,22 @@ those attributes to the Default resources and a plain current-tree line
 citation would no longer be reverifiable), so the
 enabled-alias theory and the fixed-application-icon theory were
 indistinguishable from this evidence alone — both pointed at the same blue
-asset. This entry only kills the activity-alias theory; it does not yet
-confirm the fixed `<application>` icon as the actual ColorOS notification
-source. That requires a smoke build with the alias still on Neon and the
-`<application>` icon repointed to Default (`#app-icon-fallback`), which is
-what the corresponding branch does — see its PR for the confirmed or
-disproven result once smoke testing lands.
+asset. This entry only kills the activity-alias theory.
 
-*(Established 2026-09-04.)*
+**Positive result (post-smoke).** On dazewell's tested ColorOS device, the
+Unofficial smoke build from PR #291 head `a6938cde4a` was installed with the
+Neon launcher alias still selected in Chat Settings. Triggering a new-message
+notification showed Dazegram's Default/orange icon while the home-screen
+launcher icon remained Neon. With only the `<application>`
+`android:icon`/`android:roundIcon` repointed from the Telegram-blue mipmaps to
+the Default ones (`#app-icon-fallback`) and nothing else changed, this
+confirms — for this device and mode — that the fixed `<application>` icon,
+not the enabled launcher activity alias, is the source ColorOS reads for the
+notification icon. Evidence is visual-only; no device trace was captured, so
+this is tested-device evidence, not a general claim about ColorOS behavior
+across other versions, OEM skins, or notification configurations.
+
+*(Established 2026-09-04, confirmed 2026-09-05.)*
 
 ## "Reuse `PollEditTextCell` for Send on event pattern rows"
 
