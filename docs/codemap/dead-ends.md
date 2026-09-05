@@ -117,3 +117,56 @@ also requires the user to explicitly open its controls (`armPending` /
 implicitly as a side effect of an unrelated single-message edit.
 
 *(Established 2026-09-02.)*
+
+## "Spoiler atlas flicker is a coordinate-space mismatch between clip mapping and draw bounds"
+
+Disproven. The atlas clip mapping and spoiler draw bounds are already
+self-consistent: `applyClip` normalizes incoming bounds into atlas-local modulo
+space and unions wrapped segments (`SpoilerEffectBitmapFactory.java:118-130`),
+while the consumer draw path feeds current bounds directly into that same update
+flow (`SpoilerEffect.java:317-329`). Particle admission itself is clip-relative
+with an intentional +/-1dp damage margin (`SpoilerEffect.java:369-372,464`), so
+the fix target is atlas lifetime/completeness, not coordinate remapping.
+
+*(Established 2026-09-04.)*
+
+## "`startSpoilers` / `stopSpoilers` currently freeze and resume spoiler simulation"
+
+Disproven. The lifecycle still posts start/stop notifications
+(`ChatActivity.java:7548,7583`) and cells still forward them into
+`setSuppressUpdates(...)` (`ChatMessageCell.java:401-420`,
+`ChatActionCell.java:210-213`), but `SpoilerEffect` only stores that flag and
+invalidates (`SpoilerEffect.java:105,159-161`) and the active draw/update path
+does not consult it (`SpoilerEffect.java:317-329,342-507`). In this lineage the
+chain is write-only; do not scope fixes around freeze-on-scroll behavior.
+
+*(Established 2026-09-04.)*
+
+## "Spoiler particles are the media/text privacy mask"
+
+Disproven. Media masking comes from the blurred image layer inside the spoiler
+clip (`ChatMessageCell.java:15363-15396`) and from the reusable blur receiver
+path that is generated via stack blur then drawn as a separate layer
+(`BackupImageView.java:104-108,361,470`). Particle noise is a decorative overlay
+drawn after the blur layer (`ChatMessageCell.java:15395-15407`).
+
+Text masking is also structural before particles are drawn: text is rendered
+with spoiler rectangles clipped out (`SimpleTextView.java:1210-1218,1234-1248`),
+and spoiler entities are carried by style runs (`ChatActivity.java:30998`,
+`DialogCell.java:1926,2017`), so plaintext protection is not coupled to atlas
+texture refresh cadence.
+
+*(Established 2026-09-04.)*
+
+## "Composer glass/default-wallpaper work (#287) or paid-media GroupMedia lifecycle caused deterministic spoiler-atlas flicker"
+
+Disproven for this repro pair. The spoiler atlas path is centralized in
+`SpoilerEffectBitmapFactory` and consumed via `SpoilerEffect` draw/update
+(`SpoilerEffectBitmapFactory.java:26-41,143-168`; `SpoilerEffect.java:323-329`).
+Composer glass/default-wallpaper code lives in `ChatActivityEnterView`
+(`ChatActivityEnterView.java:1820-1868,5195-5196`) and paid-media lifecycle work
+lives in `ChatMessageCell`'s `GroupMedia` branch
+(`ChatMessageCell.java:9242-9251,24444-24445`): distinct subsystems, not the
+atlas producer invariant that this fix changes.
+
+*(Established 2026-09-04.)*

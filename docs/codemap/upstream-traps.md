@@ -298,3 +298,28 @@ never adopt real-chat identity.
 treat `<= 27` conditions as "always true on the oldest supported device."
 
 *(Established 2026-09-03.)*
+
+## Process-global spoiler atlas must never publish unpainted texels
+
+`SpoilerEffectBitmapFactory` is a process-global singleton that owns one tiled
+ALPHA_8 atlas (`SpoilerEffectBitmapFactory.java:26-41`). Every `SpoilerEffect`
+instance submits only its own bounds through `checkUpdate(bounds)`
+(`SpoilerEffect.java:317-329`), while the factory keeps a frame-local dirty
+union that is reset right after each Choreographer callback
+(`SpoilerEffectBitmapFactory.java:134-137`) and only dispatches redraw work when
+the `> 32 ms && !isRunning` gate opens (`SpoilerEffectBitmapFactory.java:145`).
+A dirty union captured on one successful pass therefore cannot assume every
+visible spoiler contributed bounds to that pass.
+
+The fixed invariant is now explicit in the renderer: seed the full atlas once
+at background creation, and on later passes clear only the clipped dirty region
+and repaint that same clip before publishing (`SpoilerEffectBitmapFactory.java:159-168`).
+No texel is cleared unless repainted in the same dispatch pass.
+
+History fact: this class still carries both full-atlas and clip-region code
+paths (full seed / full restore at `SpoilerEffectBitmapFactory.java:77-85`,
+clip-region update at `SpoilerEffectBitmapFactory.java:118-130,143-168`), which
+is why the older full-redraw behavior was immune and the clip-region path needed
+a persistent complete atlas.
+
+*(Established 2026-09-04.)*

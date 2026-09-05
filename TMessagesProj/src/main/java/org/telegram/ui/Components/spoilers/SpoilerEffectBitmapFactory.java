@@ -155,10 +155,16 @@ public class SpoilerEffectBitmapFactory {
                 if (backgroundBitmap == null) {
                     backgroundBitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ALPHA_8);
                     backgroundCanvas = new Canvas(backgroundBitmap);
+                    // NagramX: spoiler consumers render on different cadences, so the shared atlas must start fully initialized once.
+                    doDraw(backgroundCanvas, new Rect(0, 0, size, size));
                 } else {
-                    backgroundBitmap.eraseColor(Color.TRANSPARENT);
+                    // NagramX: only clear the region we repaint now, otherwise a consumer that misses this frame samples transparent holes.
+                    backgroundCanvas.save();
+                    backgroundCanvas.clipRect(clipRegionDump);
+                    backgroundCanvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
+                    doDraw(backgroundCanvas, clipRegionDump);
+                    backgroundCanvas.restore();
                 }
-                doDraw(backgroundCanvas, clipRegionDump);
                 Utilities.copyBitmaps(backgroundBitmap, bitmapBuffers[nextBitmapBuffer].bitmap);
                 AndroidUtilities.runOnUIThread(() -> {
                     currentBitmapBuffer = nextBitmapBuffer;
