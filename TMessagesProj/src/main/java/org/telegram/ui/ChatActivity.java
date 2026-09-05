@@ -3787,6 +3787,9 @@ public class ChatActivity extends BaseFragment implements
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
+        // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
+        AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         repostCopyDeleteBatch = null;
         repostCopyDeletePendingOffer = null;
         // NagramX: drop the chat-lock passcode cover if it never got unlocked
@@ -23833,11 +23836,16 @@ public class ChatActivity extends BaseFragment implements
             if (messageEnterTransitionContainer != null) {
                 messageEnterTransitionContainer.invalidate();
             }
-            // NagramX: coalesce a glass-composite refresh onto the next UI frame. Posted rather than run
-            // here so it never re-composites inside the wallpaper's own draw pass, and cancel+re-post
-            // collapses a burst of animating-frame posts to at most one refresh per frame.
-            AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
-            AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
+            // NagramX: measured on 120 Hz with cancel+repost, one burst (64 arrivals) postponed to a single
+            // trailing refresh. Keep one outstanding frame callback instead: the first arrival arms a 30 fps
+            // one-shot and later arrivals while pending do not postpone it.
+            MotionBackgroundDrawable producer = args.length > 0 && args[0] instanceof MotionBackgroundDrawable
+                    ? (MotionBackgroundDrawable) args[0] : null;
+            MotionBackgroundDrawable currentWallpaper = resolveCurrentMotionWallpaper();
+            if (producer != null && currentWallpaper != null && producer != currentWallpaper) {
+                return;
+            }
+            scheduleGlassCompositeRefresh();
         } else if (id == NotificationCenter.loadingMessagesFailed) {
             if ((Integer) args[0] == classGuid && args[2] instanceof TLRPC.TL_error) {
                 TLRPC.TL_error e = (TLRPC.TL_error) args[2];
@@ -32958,8 +32966,10 @@ public class ChatActivity extends BaseFragment implements
         // wallpaper emits no motion notification, so the proxy would keep the old-orientation composite
         // until an unrelated refresh fires. Post the coalesced refresh so it reallocates on the new
         // dimensions once AndroidUtilities.displaySize has been updated (deferred by the post).
+        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
         AndroidUtilities.runOnUIThread(glassCompositeRefreshRunnable);
+        glassCompositeRefreshPending = true;
         if (visibleDialog instanceof DatePickerDialog) {
             visibleDialog.dismiss();
         }
@@ -51841,28 +51851,48 @@ public class ChatActivity extends BaseFragment implements
     }
 
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
-    // only re-samples on a reprime, so it has to be refreshed whenever the wallpaper's content moves: a
-    // gradient rotation on send, or the pattern arriving/fading in after chat open. Driven by the posted,
-    // coalesced runnable below off invalidateMotionBackground, which recomposites unconditionally so the
-    // alpha/colour-filter fades (which move no generation id) are followed. Skipped and marked dirty when
-    // paused, detached, or before contentView exists — a chat that is off screen or not laid in does no
-    // work, and onResume runs it once to catch up.
+    // only re-samples on a reprime, so it has to be refreshed whenever wallpaper content moves. The first
+    // invalidateMotionBackground in a burst arms one 30 fps frame callback and later arrivals while pending
+    // do not postpone it. The notification is emitted from MotionBackgroundDrawable.draw(), so refresh must
+    // stay deferred to a later UI turn: running it synchronously here would re-enter motion.draw() while its
+    // savedBounds/suppression scope is active. Recompose remains forced so alpha/colour-filter fades (no
+    // generation id) are followed. If paused/detached, it marks dirty and onResume runs one catch-up refresh.
+    private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
     private boolean glassCompositeDirty;
+    private boolean glassCompositeRefreshPending;
     private final Runnable glassCompositeRefreshRunnable = this::refreshGlassComposite;
 
-    private void refreshGlassComposite() {
-        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
-            glassCompositeDirty = true;
+    private void scheduleGlassCompositeRefresh() {
+        if (glassCompositeRefreshPending) {
             return;
+        }
+        glassCompositeRefreshPending = true;
+        org.telegram.messenger.utils.Choreographer60FpsContent.getInstance()
+                .addFrameCallbackOnce(glassCompositeRefreshRunnable, GLASS_COMPOSITE_REFRESH_FPS);
+    }
+
+    private MotionBackgroundDrawable resolveCurrentMotionWallpaper() {
+        if (contentView == null) {
+            return null;
         }
         Drawable wallpaper = contentView.getBackgroundImage();
         if (wallpaper instanceof ChatBackgroundDrawable) {
             wallpaper = ((ChatBackgroundDrawable) wallpaper).getDrawable(false);
         }
-        if (!(wallpaper instanceof MotionBackgroundDrawable)) {
+        return wallpaper instanceof MotionBackgroundDrawable ? (MotionBackgroundDrawable) wallpaper : null;
+    }
+
+    private void refreshGlassComposite() {
+        glassCompositeRefreshPending = false;
+        if (isPaused || contentView == null || !contentView.isAttachedToWindow()) {
+            glassCompositeDirty = true;
             return;
         }
-        if (wallpaperBitmapProvider.refreshMotionComposite((MotionBackgroundDrawable) wallpaper)) {
+        MotionBackgroundDrawable wallpaper = resolveCurrentMotionWallpaper();
+        if (wallpaper == null) {
+            return;
+        }
+        if (wallpaperBitmapProvider.refreshMotionComposite(wallpaper)) {
             reprimeGlassRenderNodes();
             invalidateAllGlassAttachedViews();
         }
