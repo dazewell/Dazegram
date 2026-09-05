@@ -4,6 +4,75 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## Editing `TMessagesProj/build.gradle` fails Sync guard check until its blob pin is bumped
+
+Any fork-authored PR that edits `TMessagesProj/build.gradle` — even far from
+the signing block, anywhere in the file — fails the `Sync guard check`
+workflow with `signing-config build.gradle blob changed: <blob>`, because that
+file is blob-pinned whole, not diffed at the hunk level. `Test-SignerBlobs`
+compares the candidate's git blob hash for the whole file against a single
+recorded value and fails on any mismatch (`.github/sync/sync-guard.ps1:303-308`),
+and the pin it checks against lives in `.github/sync/pins.env` as the
+`SIGNING_GRADLE_PATH`/`SIGNING_GRADLE_BLOB` pair (guard 13, signing identity).
+`GRADLE_SURFACE` in the same file documents `build.gradle` as membership-only
+for every other executable-surface file, but `pins.env`'s own comment on that
+line says `build.gradle` is the one exception, blob-pinned instead of just
+tracked — easy to miss because it reads like the opposite of a warning.
+
+The fix is a second, separate commit in the same PR: recompute the blob with
+`git rev-parse HEAD:TMessagesProj/build.gradle` at the final tree (never
+hand-copy a hash out of a CI log) and update `SIGNING_GRADLE_BLOB` in
+`pins.env` to match. There's direct precedent for this exact shape of commit:
+`da79971452` ("repin signing gradle blob for the icon-comment edit
+#dazegram-icons"), a one-line `pins.env` bump in its own commit, done after an
+unrelated `build.gradle` comment edit tripped the same guard.
+
+*(Established 2026-09-05.)*
+
+## `NaConfig.notificationIcon` is a persisted index into an upstream-owned enumeration that has already diverged
+
+The setting and `getNotificationIconResId()` came from upstream Nagram commit
+`bc0f99fb0b` ("feat: add option of changing notification icon", Revincx,
+2023-01-19 — `git show bc0f99fb0b --stat` shows it touching
+`NotificationsController.java`, `NekoGeneralSettingsActivity.java`, and
+`NaConfig.kt`). That commit introduced `getNotificationIconResId()` as
+`private` and non-static, with 3 cases (`case 0` → `offical_notification`,
+`case 1` → `nagram_notification`, `case 2` → `notification`, per that
+commit's diff). The method's signature never diverged — this fork's version
+is still `private int` (`NotificationsController.java:6531-6544`) — only its
+value domain did. Upstream's three cases were `0` → `offical_notification`,
+`1` → `nagram_notification`, `2` → `notification`, defaulting to
+`offical_notification`. This fork's four are `0` → `notification`, `1` →
+`nagramx_notification`, `2` → `nagram_notification`, `3` → `neko_notification`,
+defaulting to `notification`. The divergence is therefore not a uniform
+shift: `offical_notification` left the domain entirely; upstream's `case 2`
+asset (`notification`) became this fork's `case 0` and its default; only
+upstream's `case 1` asset (`nagram_notification`) moved down a slot, to
+`case 2`; and `nagramx_notification` (`case 1`) and `neko_notification`
+(`case 3`) are both new here. The backing config is
+`TMessagesProj/src/main/kotlin/xyz/nextalone/nagram/NaConfig.kt:256-260` (key
+`"NotificationIcon"`, `configTypeInt`, default `1`), surfaced as 4 labels
+(Telegram, NagramX, Nagram, NekoX) at `NekoGeneralSettingsActivity.java:228-232`.
+
+The trap: **the same stored integer already means a different icon in the two
+codebases.** A user's persisted `1` is upstream's `nagram_notification` but
+this fork's `nagramx_notification` — already a silent divergence, tolerated
+because the fork never re-merges upstream's notification-icon UI wholesale.
+The exposure is not conditional on this fork adding anything further. As
+verified, upstream's domain ends at `case 2`, so the next value upstream
+appends would be `case 3` — which this fork already uses for
+`neko_notification`. A user who had picked NekoX would then silently get
+upstream's new icon after a reconciliation merge, with no error and no
+migration to catch it. Appending further fork-only values (`case 4` and
+beyond) only widens the overlap. No later upstream commit
+extending this domain has been verified, but nothing rules one out — extend
+this behavior with a **new fork-owned `NaConfig` key** instead — one whose
+value domain upstream has no way to write into — never by widening the value
+domain of a key
+upstream already owns and may extend.
+
+*(Established 2026-09-05.)*
+
 ## `triggerKey()` is firing identity, queue bucket identity, and overview grouping identity
 
 `EventScheduleController.queueKey(...)` composes queue identity as
