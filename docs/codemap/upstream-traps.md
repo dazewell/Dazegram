@@ -35,17 +35,17 @@ The setting and `getNotificationIconResId()` came from upstream Nagram commit
 `bc0f99fb0b` ("feat: add option of changing notification icon", Revincx,
 2023-01-19 — `git show bc0f99fb0b --stat` shows it touching
 `NotificationsController.java`, `NekoGeneralSettingsActivity.java`, and
-`NaConfig.kt`). Upstream's original method is `public static` with 3 cases
-(`case 0` → `offical_notification`, `case 1` → `nagram_notification`, `case 2`
-→ `notification`, per that commit's diff). This fork's version has diverged
-in both signature and domain: `NotificationsController.getNotificationIconResId()`
-is `private` and non-static, with 4 cases (`NotificationsController.java:6531-6544`)
-— it inserted `nagramx_notification` as a new `case 1` and shifted upstream's
-`case 1`/`case 2` down to `case 2`/`case 3`, while repointing `case 0` from
-upstream's `offical_notification` to this fork's own `notification` asset.
-The backing config is `NaConfig.kt:256-260` (key `"NotificationIcon"`,
-`configTypeInt`, default `1`), surfaced as 4 labels (Telegram, NagramX,
-Nagram, NekoX) at `NekoGeneralSettingsActivity.java:228-232`.
+`NaConfig.kt`). That commit introduced `getNotificationIconResId()` as
+`private` and non-static, with 3 cases (`case 0` → `offical_notification`,
+`case 1` → `nagram_notification`, `case 2` → `notification`, per that
+commit's diff). The method's signature never diverged — this fork's version
+is still `private int` (`NotificationsController.java:6531-6544`) — only its
+value domain did: this fork inserted `nagramx_notification` as a new `case 1`
+and shifted upstream's `case 1`/`case 2` down to `case 2`/`case 3`, while
+repointing `case 0` from upstream's `offical_notification` to this fork's own
+`notification` asset. The backing config is `NaConfig.kt:256-260` (key
+`"NotificationIcon"`, `configTypeInt`, default `1`), surfaced as 4 labels
+(Telegram, NagramX, Nagram, NekoX) at `NekoGeneralSettingsActivity.java:228-232`.
 
 The trap: **the same stored integer already means a different icon in the two
 codebases.** A user's persisted `1` is upstream's `nagram_notification` but
@@ -54,10 +54,12 @@ because the fork never re-merges upstream's notification-icon UI wholesale.
 Appending a fifth fork-only value to this same enumeration would collide
 silently with whatever upstream adds as its own next case, and any user who
 had picked that value would see something else after the next reconciliation
-merge, with no error and no migration to catch it. Extend this behavior with
-a **new fork-owned `NaConfig` key** instead — one whose value domain upstream
-has no way to write into — never by widening the value domain of a key
-upstream already owns and continues to extend.
+merge, with no error and no migration to catch it. No later upstream commit
+extending this domain has been verified, but nothing rules one out — extend
+this behavior with a **new fork-owned `NaConfig` key** instead — one whose
+value domain upstream has no way to write into — never by widening the value
+domain of a key
+upstream already owns and may extend.
 
 *(Established 2026-09-05.)*
 

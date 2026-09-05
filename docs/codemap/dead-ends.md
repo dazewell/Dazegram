@@ -66,22 +66,33 @@ two entries above; it answers the follow-up question of whether the
 existing per-alias mismatch could be fixed dynamically rather than by picking
 a single fixed icon.
 
-**Reason A (device-confirmed) — on the tested ColorOS device, the dedicated
-small-icon channel this fork already has doesn't render at all.** Changing
-Nagram Settings › General › Notification Icon
-(`NaConfig.notificationIcon`, the `ConfigCellSelectBox` at
-`NekoGeneralSettingsActivity.java:228-232`) to a visibly different value and
-restarting the app produces **no change whatsoever** in the status bar or
-shade on that device. This is a direct on-device observation, the same
-evidential class as the Neon-launcher/orange-notification test in the entry
-above, not an inference: ColorOS discards the `setSmallIcon()` argument
-entirely and renders only the app-identity icon it derives from
-`ApplicationInfo.icon`. The value `getNotificationIconResId()` computes and
-passes at `NotificationsController.java:4703` and `:5761` is accepted by the
-API and then silently dropped by this OEM shade. This makes the feature
-unbuildable on its own, independent of everything below: **a feature whose
-entire observable effect is discarded by the target device is not a
-feature**, no matter what art it would have used.
+**Reason A — on the tested ColorOS device, on the new-message notification
+path, the supplied small icon does not appear to render.** Two things were
+directly **observed** on that device, each scoped to that path — this is not
+generalized to calls, silent, grouped, media, or ongoing notifications,
+other ColorOS versions, or other OEM skins, consistent with the evidence
+disclaimer in the entry above:
+1. With the Neon launcher alias enabled, a new-message notification rendered
+   the fixed `<application>` icon, not the alias icon (the entry above).
+2. Changing Nagram Settings › General › Notification Icon
+   (`NaConfig.notificationIcon`, the `ConfigCellSelectBox` at
+   `NekoGeneralSettingsActivity.java:228-232`) from its then-current value to
+   one visibly different option, restarting the app, and sending a message
+   produced no visible change in the status bar or shade. Only that one
+   before/after pair was exercised — not all four values individually.
+
+**Inferred** from those two observations, on this path and this device only:
+the value `getNotificationIconResId()` computes and passes to
+`.setSmallIcon(...)` at `NotificationsController.java:4703` and `:5761` does
+not appear to be rendered, and an application-level icon
+(`ApplicationInfo.icon`) is shown instead. This is an inference from two
+visual tests, not a platform mechanism confirmed by a device trace — no
+`setSmallIcon` rejection or fallback path was observed directly. It is
+nonetheless sufficient to make the feature unbuildable on this path/device
+combination, independent of everything below: a feature whose entire
+observable effect does not appear on the device that motivated the request
+is not a feature there, whatever else it might do elsewhere or on other
+paths.
 
 **Reason B — the OEM shade icon this fork can actually influence is
 immutable at runtime.** The confirmed source on the tested ColorOS device is
@@ -95,10 +106,11 @@ runtime candidate considered, and why it's dead:
   tree.
 - **`setSmallIcon(Icon)` with full-colour art** — since API 21 the platform
   composites the status-bar/notification small icon from its **alpha channel
-  only**, discarding colour; `minSdk` is 27 (`build.gradle:36`, established
-  in the entry above), so no supported version behaves differently. On this
-  device the point is moot regardless, per Reason A: the argument to
-  `setSmallIcon` isn't rendered at all.
+  only**, discarding colour; `minSdk` is 27 (root `build.gradle:36`,
+  established in the entry above), so no supported version behaves
+  differently. On this
+  device and path the point is moot regardless, per Reason A: the evidence
+  suggests the argument to `setSmallIcon` isn't rendered here.
 - **`setLargeIcon`** — the one non-monochrome notification surface, already
   occupied by the conversation avatar
   (`NotificationsController.java:4737`, `:4741`, `:4751`, `:5838`). Repurposing
@@ -118,7 +130,7 @@ runtime candidate considered, and why it's dead:
 setting Reasons A and B aside.** Limiting scope to just the monochrome status-bar
 small icon Android actually composites, there is nothing in the tree to map
 the 15-entry `LauncherIconController.LauncherIcon` picker
-(`LauncherIconController.java:36-50`) onto:
+(`TMessagesProj/src/main/java/org/telegram/ui/LauncherIconController.java:36-51`) onto:
 - Of those 15 entries, 9 (`DEFAULT`, `GOOGLE`, `COLORFUL`, `DARKGREEN`,
   `NEON`, `NIELLO`, `BLUE`, `DARKBLUE`, `BLURBLUE`) resolve to adaptive-icon
   XML under `mipmap-anydpi-v26/` that **all** reference the same monochrome
