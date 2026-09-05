@@ -299,27 +299,52 @@ treat `<= 27` conditions as "always true on the oldest supported device."
 
 *(Established 2026-09-03.)*
 
-## Process-global spoiler atlas must never publish unpainted texels
+## Process-global spoiler atlas publishes one full animation generation per pass
 
-`SpoilerEffectBitmapFactory` is a process-global singleton that owns one tiled
-ALPHA_8 atlas (`SpoilerEffectBitmapFactory.java:26-41`). Every `SpoilerEffect`
-instance submits only its own bounds through `checkUpdate(bounds)`
-(`SpoilerEffect.java:317-329`), while the factory keeps a frame-local dirty
-union that is reset right after each Choreographer callback
-(`SpoilerEffectBitmapFactory.java:134-137`) and only dispatches redraw work when
-the `> 32 ms && !isRunning` gate opens (`SpoilerEffectBitmapFactory.java:145`).
-A dirty union captured on one successful pass therefore cannot assume every
-visible spoiler contributed bounds to that pass.
+`SpoilerEffectBitmapFactory` is a process-global singleton atlas producer
+(`SpoilerEffectBitmapFactory.java:26-47`), and `SpoilerEffect.draw` is the path
+that submits active bounds into that producer (`SpoilerEffect.java:323,329`).
+Text surfaces use this path through spoiler clip-out + draw in `SimpleTextView`
+(`SimpleTextView.java:1210-1218,1247-1248`). Pinned-bar media thumbs use the
+same path via the top-panel `BackupImageView` overlay's embedded
+`SpoilerEffect` (`ChatActivity.java:12765-12791,30841-30843`). In-message media
+particles are a separate renderer (`SpoilerEffect2`) in `ChatMessageCell`
+(`ChatMessageCell.java:15399-15405`) and are not controlled here.
 
-The fixed invariant is now explicit in the renderer: seed the full atlas once
-at background creation, and on later passes clear only the clipped dirty region
-and repaint that same clip before publishing (`SpoilerEffectBitmapFactory.java:159-168`).
-No texel is cleared unless repainted in the same dispatch pass.
+Current invariant: every accepted background publish is one full-atlas
+generation. The update runnable now allocates background bitmap/canvas once,
+then on each accepted pass erases the full bitmap (when reusing) and runs one
+unconditional `doDraw(backgroundCanvas, fullRegion)` before publish copy and
+UI-thread shader swap (`SpoilerEffectBitmapFactory.java:146-168`).
 
-History fact: this class still carries both full-atlas and clip-region code
-paths (full seed / full restore at `SpoilerEffectBitmapFactory.java:77-85`,
-clip-region update at `SpoilerEffectBitmapFactory.java:118-130,143-168`), which
-is why the older full-redraw behavior was immune and the clip-region path needed
-a persistent complete atlas.
+Why partial repaint cannot be coherent on this atlas: producer-side simulation
+advances by cell intersection with the trigger union (`Rect.intersects` in
+`SpoilerEffectBitmapFactory.doDraw`, `SpoilerEffectBitmapFactory.java:96-104`),
+while particle admission is clip-relative with a damage margin
+(`SpoilerEffect.java:342,369-372,464`). At the same time, `applyClip` maps view
+bounds into wrapped atlas coordinates and unions wrapped segments
+(`SpoilerEffectBitmapFactory.java:120-130`). Clipping rasterization to only a
+subset of those intersected cells necessarily mixes generations across adjacent
+texels and overlapping mapped bounds.
+
+Cost facts that stay true regardless of clip strategy:
+`Utilities.copyBitmaps(backgroundBitmap, nextBufferBitmap)` is already a full
+bitmap copy on every accepted pass (`SpoilerEffectBitmapFactory.java:163`);
+native implementation copies the full pixel payload (`image.cpp:1249-1334`,
+contiguous path `memcpy(rowBytes * height)` at `image.cpp:1327`).
+Full draw also already exists on first UI paint and on LiteMode restore
+(`SpoilerEffectBitmapFactory.java:79,86`), so mechanism B aligns publish with
+the existing full-generation paths instead of introducing a new one.
+
+The dirty-union trigger drop is intentionally not fixed here. `checkUpdate` +
+`applyClip` + `clipRegion` remain trigger-only (`SpoilerEffectBitmapFactory.java:112-130`),
+and the callback still clears that union each frame (`SpoilerEffectBitmapFactory.java:136-139`).
+With full-atlas publish, missed trigger unions may reduce temporal smoothness
+but no longer produce spatially mixed generations.
+
+Threading hazard to keep: `isRunning` is cleared only after the UI publish hop
+sets `currentBitmapBuffer` and shader (`SpoilerEffectBitmapFactory.java:165-168`).
+Clearing it earlier would allow a new pass to start writing while the previous
+buffer index is still pending publication.
 
 *(Established 2026-09-04.)*

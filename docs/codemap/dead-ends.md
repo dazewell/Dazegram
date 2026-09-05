@@ -122,11 +122,38 @@ implicitly as a side effect of an unrelated single-message edit.
 
 Disproven. The atlas clip mapping and spoiler draw bounds are already
 self-consistent: `applyClip` normalizes incoming bounds into atlas-local modulo
-space and unions wrapped segments (`SpoilerEffectBitmapFactory.java:118-130`),
+space and unions wrapped segments (`SpoilerEffectBitmapFactory.java:120-130`),
 while the consumer draw path feeds current bounds directly into that same update
-flow (`SpoilerEffect.java:317-329`). Particle admission itself is clip-relative
+flow (`SpoilerEffect.java:323,329`). Particle admission itself is clip-relative
 with an intentional +/-1dp damage margin (`SpoilerEffect.java:369-372,464`), so
 the fix target is atlas lifetime/completeness, not coordinate remapping.
+
+*(Established 2026-09-04.)*
+
+## "Persistent clipped repaint can be made coherent by tuning clear/draw region"
+
+Disproven. In the shared atlas producer, simulation advances by intersection on
+spoiler-cell bounds (`SpoilerEffectBitmapFactory.java:96-104`) while trigger
+regions are modulo-mapped and unioned (`SpoilerEffectBitmapFactory.java:120-130`)
+and particle admission itself is clip-relative with a 1dp margin
+(`SpoilerEffect.java:342,369-372,464`). Under clipped rasterization those three
+surfaces cannot stay generation-coherent at mapped region seams: adjacent texels
+inevitably come from different animation passes. Full-atlas redraw is required
+for coherent published generations.
+
+*(Established 2026-09-04.)*
+
+## "Per-consumer ownership can make shared-atlas partial repaint coherent"
+
+Disproven. The atlas trigger API carries only `Rect region` (`checkUpdate(Rect)`,
+`SpoilerEffectBitmapFactory.java:112-118`) and merges into one shared union
+(`SpoilerEffectBitmapFactory.java:120-130`), with no consumer identity channel.
+Call sites are also content-agnostic view draws: one `DialogCell` can render
+text spoilers and spoilered thumbs in the same draw pass
+(`DialogCell.java:4416-4424,4842-4846`), and pinned-bar spoiler thumbs route
+through a generic `BackupImageView` overlay (`ChatActivity.java:12765-12791`).
+Ownership bookkeeping would still publish mixed generations unless atlas publish
+is full-generation per pass.
 
 *(Established 2026-09-04.)*
 
@@ -162,7 +189,7 @@ texture refresh cadence.
 
 Disproven for this repro pair. The spoiler atlas path is centralized in
 `SpoilerEffectBitmapFactory` and consumed via `SpoilerEffect` draw/update
-(`SpoilerEffectBitmapFactory.java:26-41,143-168`; `SpoilerEffect.java:323-329`).
+(`SpoilerEffectBitmapFactory.java:26-47,146-168`; `SpoilerEffect.java:323,329`).
 Composer glass/default-wallpaper code lives in `ChatActivityEnterView`
 (`ChatActivityEnterView.java:1820-1868,5195-5196`) and paid-media lifecycle work
 lives in `ChatMessageCell`'s `GroupMedia` branch
