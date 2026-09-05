@@ -51837,8 +51837,10 @@ public class ChatActivity extends BaseFragment implements
     // NagramX: a motion wallpaper (gradient + pattern) is composited into the glass proxy and the proxy
     // only re-samples on a reprime, so it has to be refreshed whenever wallpaper content moves. The first
     // invalidateMotionBackground in a burst arms one 30 fps frame callback and later arrivals while pending
-    // do not postpone it. Recompose remains forced so alpha/colour-filter fades (no generation id) are
-    // followed. If paused/detached, it marks dirty and onResume runs one catch-up refresh.
+    // do not postpone it. The notification is emitted from MotionBackgroundDrawable.draw(), so refresh must
+    // stay deferred to a later UI turn: running it synchronously here would re-enter motion.draw() while its
+    // savedBounds/suppression scope is active. Recompose remains forced so alpha/colour-filter fades (no
+    // generation id) are followed. If paused/detached, it marks dirty and onResume runs one catch-up refresh.
     private static final int GLASS_COMPOSITE_REFRESH_FPS = 30;
     private boolean glassCompositeDirty;
     private boolean glassCompositeRefreshPending;
