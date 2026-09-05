@@ -358,7 +358,8 @@ public class MotionBackgroundDrawable extends Drawable {
             parentView.get().invalidate();
         }
         if (postInvalidateParent) {
-            xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onInvalidateMotionBackgroundPosted(this);
+            // NagramX: include the producer instance so consumers can ignore foreign motion drawables
+            // (MessageDrawable's static bubble animator). ThemePreviewActivity ignores the payload.
             NotificationCenter.getGlobalInstance().postNotificationName(NotificationCenter.invalidateMotionBackground, this);
             updateAnimation();
             // NagramX: only self-drive the 16ms repost for determinate animation. Indeterminate mode
@@ -794,10 +795,8 @@ public class MotionBackgroundDrawable extends Drawable {
                     }
                 }
             }
-
             if (isNeedGenerateGradient) {
                 Utilities.generateGradient(currentBitmap, phase, progress, colors);
-                xyz.nextalone.nagram.helper.GlassPatternSmokeDiagnostics.onProceduralGradientGenerated(this);
             } else {
                 if (progress != 1f) {
                     float part = 1f / ANIMATION_CACHE_BITMAPS_COUNT;

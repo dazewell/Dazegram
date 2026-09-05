@@ -35,6 +35,27 @@ Distinct per-message times require distinct forward requests.
 
 *(Established 2026-09-02.)*
 
+## MessageDrawable's static motion background is a foreign invalidate producer
+
+`MessageDrawable` keeps a static `MotionBackgroundDrawable[] motionBackground`
+(`ActionBar/MessageDrawable.java:65`), enables `postInvalidateParent` on those
+instances (`:231`, `:251`), and consumes them as a shader source
+(`getBitmapShader` at `:256`) with bounds updates (`:286`) rather than drawing
+that drawable as the chat wallpaper. In the drawable implementation,
+`postInvalidateParent` posts the global `invalidateMotionBackground`
+notification (`Components/MotionBackgroundDrawable.java:363`) and self-reposts
+its own animation runnable every 16ms while active (`:372`).
+
+That makes MessageDrawable a second app-wide producer of
+`invalidateMotionBackground` events that are unrelated to the current chat
+wallpaper motion. ChatActivity therefore has to ignore producer-mismatch events
+for proxy recomposition (`ChatActivity.java:23831`) so those bubble-animation
+ticks do not drive unnecessary wallpaper composite refreshes. ThemePreview's
+observer branch remains arg-agnostic (`ThemePreviewActivity.java:3599`), so the
+payload is safe for existing preview behavior.
+
+*(Established 2026-09-04.)*
+
 ## Forwarding aliases the source message's media object
 
 The forward path assigns the new local placeholder's media straight from the
