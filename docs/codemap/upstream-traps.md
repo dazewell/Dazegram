@@ -4,6 +4,31 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## Editing `TMessagesProj/build.gradle` fails Sync guard check until its blob pin is bumped
+
+Any fork-authored PR that edits `TMessagesProj/build.gradle` — even far from
+the signing block, anywhere in the file — fails the `Sync guard check`
+workflow with `signing-config build.gradle blob changed: <blob>`, because that
+file is blob-pinned whole, not diffed at the hunk level. `Test-SignerBlobs`
+compares the candidate's git blob hash for the whole file against a single
+recorded value and fails on any mismatch (`.github/sync/sync-guard.ps1:303-308`),
+and the pin it checks against lives in `.github/sync/pins.env` as the
+`SIGNING_GRADLE_PATH`/`SIGNING_GRADLE_BLOB` pair (guard 13, signing identity).
+`GRADLE_SURFACE` in the same file documents `build.gradle` as membership-only
+for every other executable-surface file, but `pins.env`'s own comment on that
+line says `build.gradle` is the one exception, blob-pinned instead of just
+tracked — easy to miss because it reads like the opposite of a warning.
+
+The fix is a second, separate commit in the same PR: recompute the blob with
+`git rev-parse HEAD:TMessagesProj/build.gradle` at the final tree (never
+hand-copy a hash out of a CI log) and update `SIGNING_GRADLE_BLOB` in
+`pins.env` to match. There's direct precedent for this exact shape of commit:
+`da79971452` ("repin signing gradle blob for the icon-comment edit
+#dazegram-icons"), a one-line `pins.env` bump in its own commit, done after an
+unrelated `build.gradle` comment edit tripped the same guard.
+
+*(Established 2026-09-05.)*
+
 ## `triggerKey()` is firing identity, queue bucket identity, and overview grouping identity
 
 `EventScheduleController.queueKey(...)` composes queue identity as
