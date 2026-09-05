@@ -141,7 +141,9 @@ Long-press the Chats nav button (or use the equivalent overflow menu entry when 
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 
-Tap the small bookmark icon in the schedule picker to remember your schedule offset. Instead of defaulting to 10 minutes ahead, the picker will always open to the time offset you last saved. Turn the bookmark off to revert to normal behavior.
+Tap the small bookmark icon in the schedule picker to remember your schedule offset. Instead of defaulting to 10 minutes ahead, a new message's picker will always open to the time offset you last saved. A Reschedule or Edit schedule time picker keeps opening on the message's existing time either way — it only feeds the offset you confirm back into what gets remembered for next time. Turn the bookmark off to revert to normal behavior.
+
+Reschedule and Edit schedule time pickers also get the same delay slider a new message's picker has, so you can jump straight to "10 minutes from now", "2 hours from now", and so on instead of spinning the day/hour/minute wheels by hand. It opens on your saved default delay, same as the new-message slider, but leaving it alone keeps the message's existing scheduled time — only dragging it moves anything, and it moves just this one sheet, never the account-wide default delay or what's remembered. Send-when-online reschedules don't show the slider, since there's no time to compute a delay from.
 
 ### Tidier scheduled selection bar <!-- #scheduled-selection-toolbar -->
 
