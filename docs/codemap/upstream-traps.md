@@ -40,10 +40,17 @@ The setting and `getNotificationIconResId()` came from upstream Nagram commit
 `case 1` → `nagram_notification`, `case 2` → `notification`, per that
 commit's diff). The method's signature never diverged — this fork's version
 is still `private int` (`NotificationsController.java:6531-6544`) — only its
-value domain did: this fork inserted `nagramx_notification` as a new `case 1`
-and shifted upstream's `case 1`/`case 2` down to `case 2`/`case 3`, while
-repointing `case 0` from upstream's `offical_notification` to this fork's own
-`notification` asset. The backing config is `NaConfig.kt:256-260` (key
+value domain did. Upstream's three cases were `0` → `offical_notification`,
+`1` → `nagram_notification`, `2` → `notification`, defaulting to
+`offical_notification`. This fork's four are `0` → `notification`, `1` →
+`nagramx_notification`, `2` → `nagram_notification`, `3` → `neko_notification`,
+defaulting to `notification`. The divergence is therefore not a uniform
+shift: `offical_notification` left the domain entirely; upstream's `case 2`
+asset (`notification`) became this fork's `case 0` and its default; only
+upstream's `case 1` asset (`nagram_notification`) moved down a slot, to
+`case 2`; and `nagramx_notification` (`case 1`) and `neko_notification`
+(`case 3`) are both new here. The backing config is
+`TMessagesProj/src/main/kotlin/xyz/nextalone/nagram/NaConfig.kt:256-260` (key
 `"NotificationIcon"`, `configTypeInt`, default `1`), surfaced as 4 labels
 (Telegram, NagramX, Nagram, NekoX) at `NekoGeneralSettingsActivity.java:228-232`.
 
