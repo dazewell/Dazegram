@@ -483,7 +483,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             // it never reaches performClick. Button rows need to stay enabled for the Hidden/Middle
             // tap-toggle to fire; everything else (headers, footers, placeholders, the scale slider)
             // has no click behaviour, so it can stay disabled as before.
-            return holder.getItemViewType() == TYPE_BUTTON;
+            return baseType(holder.getItemViewType()) == TYPE_BUTTON;
         }
 
         @Override
@@ -753,7 +753,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public int getMovementFlags(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
-            if (viewHolder.getItemViewType() != TYPE_BUTTON) {
+            if (baseType(viewHolder.getItemViewType()) != TYPE_BUTTON) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -761,7 +761,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
-            int type = target.getItemViewType();
+            int type = baseType(target.getItemViewType());
             if (type == TYPE_BUTTON || type == TYPE_PLACEHOLDER) {
                 return true;
             }
@@ -1456,6 +1456,15 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static boolean isSliderRowType(int type) {
         return type == TYPE_SCALE || type == TYPE_SPACING || type == TYPE_GLASS_LIGHT || type == TYPE_GLASS_DARK;
+    }
+
+    // getItemViewType() shifts slider rows by generation * STRIDE so a theme flip forces a real
+    // recreation; every other type stays below the stride. Anything that compares a raw view type
+    // against an unshifted TYPE_* constant has to undo that shift first, the same way
+    // onCreateViewHolder does inline. Harmless today (only slider types are ever shifted) but the
+    // drag/tap-toggle gates below would fail silently if the shift ever grew to cover them.
+    private static int baseType(int viewType) {
+        return viewType % SLIDER_TYPE_GENERATION_STRIDE;
     }
 
     /**
