@@ -22079,6 +22079,18 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 encoderBitrate = bitrate;
             } else if (resultWidth == originalWidth && resultHeight == originalHeight) {
                 bitrate = originalBitrate;
+                // NagramX (#silent-video): the same-dimension tier assigns the source's unclamped originalBitrate. A
+                // silent video serialises its real bitrate through the version-12 blob, and that round trip runs on
+                // every send; the decoder rejects anything above VIDEO_BITRATE_2160, a ceiling that exists to keep an
+                // upstream version collision out of MediaCodec.configure. So a source above 28.4 Mbps would be rejected
+                // on read and fall back to 921600, silently losing the tier the user picked. Cap here in the producer,
+                // before size estimation and serialisation, so the value that ships is already inside the decoder's
+                // domain and the editor's size estimate matches what is encoded. Do not delete this cap without lifting
+                // the decoder ceiling — it is deliberate. Unmuted videos are not silent (sendSilentVideo is false), so
+                // they never pass through this constraint and keep today's behaviour exactly.
+                if (sendSilentVideo && bitrate > MediaController.VIDEO_BITRATE_2160) {
+                    bitrate = MediaController.VIDEO_BITRATE_2160;
+                }
                 encoderBitrate = MediaController.extractRealEncoderBitrate(resultWidth, resultHeight, bitrate, false);
             } else {
                 bitrate = MediaController.makeVideoBitrate(originalHeight, originalWidth, originalBitrate, resultHeight, resultWidth);
