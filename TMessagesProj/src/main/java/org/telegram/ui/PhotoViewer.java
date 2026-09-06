@@ -10221,6 +10221,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         // still dropped because videoEditedInfo.muted stays true below; only the GIF/avatar path forces tier 1 /
         // bitrate -1. This is the one place selectedCompression must NOT be clobbered in the Video sub-state.
         boolean silentVideo = muteVideo && sendSilentVideo && sendPhotoType != SELECT_TYPE_AVATAR;
+        xyz.nextalone.nagram.helper.SilentVideoHelper.naxSmokeDecision(currentAccount, muteVideo, sendSilentVideo, silentVideo, sendPhotoType == SELECT_TYPE_AVATAR); // NAX_SMOKE_silent-video
         if (sendPhotoType != SELECT_TYPE_AVATAR && !muteVideo && (compressItem.getTag() == null || (videoEditedInfo.resultWidth == originalWidth && videoEditedInfo.resultHeight == originalHeight))) {
             videoEditedInfo.resultWidth = originalWidth;
             videoEditedInfo.resultHeight = originalHeight;
@@ -10272,6 +10273,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
         videoEditedInfo.muted = muteVideo || sendPhotoType == SELECT_TYPE_AVATAR;
         videoEditedInfo.naxSilentVideo = silentVideo;
+        xyz.nextalone.nagram.helper.SilentVideoHelper.naxSmokeResult(currentAccount, videoEditedInfo); // NAX_SMOKE_silent-video
         return videoEditedInfo;
     }
 
