@@ -4951,6 +4951,7 @@ public class NotificationsController extends BaseController implements Notificat
     @SuppressLint("InlinedApi")
     private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, int summaryDismissDate) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
+        android.util.Log.i("NAX_SMOKE_wear-messages", "BEGIN build=" + BuildConfig.BUILD_VERSION_STRING + " pkg=" + BuildConfig.APPLICATION_ID + " account=" + currentAccount + " scenario=wear-messages dialogs=" + sortedDialogs.size());
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
         boolean coverSummaryPosted = false;
@@ -4969,6 +4970,7 @@ public class NotificationsController extends BaseController implements Notificat
                 break;
             }
         }
+        android.util.Log.i("NAX_SMOKE_wear-messages", "SUMMARY_SCAN anyWatchOff=" + naxAnyWatchOff + " useSummary=" + useSummaryNotification + " dialogs=" + sortedDialogs.size());
 
         // NagramX: the covered set and grouping were resolved in the preflight (showOrUpdateNotification), and the old
         // real summary + covered dialogs' prior children were already cancelled there. Here we only build the disguised
@@ -5109,10 +5111,14 @@ public class NotificationsController extends BaseController implements Notificat
                 maxId = messageObjects.get(0).getId();
                 lastMessageObject = messageObjects.get(0);
             }
+            if (dialogKey.story) {
+                android.util.Log.i("NAX_SMOKE_wear-messages", "STORY_BRANCH dialog=" + dialogId + " (not governed by watch toggle)");
+            }
 
             // NagramX: route on the immutable preflight set only (no isCovered/prefs re-read), so summary and children
             // agree on one snapshot even if preferences change mid-rebuild; post a fresh tagged cover and skip the real child
             if (!dialogKey.story && naxCoveredSet.contains(dialogId)) {
+                android.util.Log.i("NAX_SMOKE_wear-messages", "COVER_PATH dialog=" + dialogId + " watchEnabled=" + xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, dialogId));
                 com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan plan = naxCoverPlans.get(dialogId);
                 if (plan == null) {
                     plan = com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildPostPlan(currentAccount, dialogId, messageObjects);
@@ -5855,6 +5861,9 @@ public class NotificationsController extends BaseController implements Notificat
             if (!dialogKey.story && !xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, dialogId)) {
                 builder.setLocalOnly(true);
             }
+            if (!dialogKey.story) {
+                android.util.Log.i("NAX_SMOKE_wear-messages", "CHILD_HOOK dialog=" + dialogId + " watchEnabled=" + xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, dialogId));
+            }
             if (avatarBitmap != null) {
                 builder.setLargeIcon(avatarBitmap);
             }
@@ -5892,6 +5901,7 @@ public class NotificationsController extends BaseController implements Notificat
             holders.add(new NotificationHolder(internalId, dialogId, dialogKey.story, topicId, name, user, chat, builder));
             wearNotificationsIds.put(dialogId, internalId);
         }
+        android.util.Log.i("NAX_SMOKE_wear-messages", "END holders=" + holders.size() + " anyWatchOff=" + naxAnyWatchOff + " useSummary=" + useSummaryNotification);
 
         if (useSummaryNotification) {
             if (BuildVars.LOGS_ENABLED) {
