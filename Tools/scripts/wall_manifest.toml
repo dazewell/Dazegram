@@ -131,6 +131,12 @@ caption = "Scrub the preview"
 source = "video-message-closed-captions-playback.png"
 crop = [0, 140, 1080, 1560]
 caption = "Captions on playback"
+# This clip is a real person's face; blur it so the person is unidentifiable
+# while the burned-in caption text at the bottom (the whole point of this
+# panel) stays legible.
+blur = [
+    [100, 760, 970, 1300],   # face and hair
+]
 
 [[wall]]
 output = "privacy-profiles.png"
