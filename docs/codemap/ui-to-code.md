@@ -339,9 +339,9 @@ has no dedicated divider row between one slider group (Toolbar size, Icon
 spacing, Transparency) and the next. The gray separation comes for free from
 the footer row itself: `TYPE_INFO` binds to a bare `TextInfoPrivacyCell` with
 no background set (`onBindViewHolder` bind path around `ComposerLayoutActivity.java:575`,
-row creation `:519-521`), while every other row type in this screen paints
+row creation `:521-523`), while every other row type in this screen paints
 `key_windowBackgroundWhite` over the fragment's `key_windowBackgroundGray`
-background (`:264`, rows at `:514,518,530,534,538`). So removing a `TYPE_INFO`
+background (`:264`, rows at `:515,519,531,535,539`). So removing a `TYPE_INFO`
 row doesn't just remove a footer, it also removes the gray seam after it —
 two slider groups sharing one footer render as one continuous white block,
 which is why the Light/Dark glass sliders were merged onto a single shared
