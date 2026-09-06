@@ -276,13 +276,30 @@ def layout_wall(
     row_width = sum(widths) + (n - 1) * settings.gutter
     start_x = (settings.canvas_width - row_width) // 2
 
-    # Vertical center line for the row, leaving room below for captions.
+    # Vertical center line for the row. `max_card_height()` sizes the whole
+    # row+caption block to exactly span the margin-to-margin band when a
+    # wall is height-bound (card_height == max_card_height): centering and
+    # anchoring the block to the bottom margin then agree, since there is no
+    # slack to place either way. When a wall is instead width-bound (more/
+    # wider panels than the height budget needs, e.g. a 4-panel row), the
+    # block is shorter than that band and *would* leave slack on both the
+    # top and the bottom if simply centered in the full canvas -- that is
+    # the "dead gradient band at the bottom" defect: a wall with room to
+    # spare still reads as leaving the bottom margin unused. Anchoring the
+    # caption's bottom edge to the bottom safe margin instead means any
+    # unavoidable slack (from a row that physically cannot grow further
+    # without violating the margins/gutters/panel count) collects above the
+    # row rather than below the captions.
     ascent, descent = caption_font.getmetrics()
     caption_height = ascent + descent
     reserved_bottom = settings.caption_gap + caption_height
-    center_y = settings.margin + (
-        settings.canvas_height - 2 * settings.margin - reserved_bottom
-    ) // 2
+    center_y = (
+        settings.canvas_height
+        - settings.margin
+        - reserved_bottom
+        - settings.stagger_amplitude
+        - card_height // 2
+    )
 
     laid_out = []
     x = start_x
