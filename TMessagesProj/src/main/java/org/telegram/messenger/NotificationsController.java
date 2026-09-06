@@ -4996,7 +4996,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (useSummaryNotification) {
                 Notification coverSummary = null;
                 try {
-                    coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredSet, naxCoverPlans, naxSummaryRepresented, summaryDismissDate, naxAnyWatchOff);
+                    coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredSet, naxCoverPlans, naxSummaryRepresented, summaryDismissDate);
                 } catch (Exception e) {
                     FileLog.e("nax cover summary build failed", e);
                 }
@@ -5966,12 +5966,19 @@ public class NotificationsController extends BaseController implements Notificat
             java.util.HashSet<Long> covered,
             LongSparseArray<com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan> coverPlans,
             LongSparseArray<ArrayList<String>> representedByDialog,
-            int summaryDismissDate,
-            boolean anyWatchOff
+            int summaryDismissDate
     ) {
         ArrayList<String> lines = new ArrayList<>();
         java.util.HashSet<Long> emittedCovered = new java.util.HashSet<>();
         boolean[] text = new boolean[1];
+        // NagramX: decide this summary's setLocalOnly from the lines it actually emits, NOT the global naxAnyWatchOff.
+        // The cover summary is mixed -- safe decoy coverLine() for covered dialogs, real getStringForMessage text only
+        // for non-covered ones -- so a batch-wide scan would over-suppress on a watch-off dialog that contributed no
+        // line at all (past the 10-line cap, filtered by dismissDate, or null from getStringForMessage).
+        // hasUnsafeRealLine: a non-covered watch-off dialog put real identity text in. hasWatchOnLine: some emitted
+        // line (decoy or real) belongs to a watch-on dialog.
+        boolean hasUnsafeRealLine = false;
+        boolean hasWatchOnLine = false;
         int count = 0;
         for (int i = 0; i < pushMessages.size() && count < 10; i++) {
             MessageObject messageObject = pushMessages.get(i);
@@ -5988,6 +5995,11 @@ public class NotificationsController extends BaseController implements Notificat
                         int coverCount = Math.max(0, plan.displayCount);
                         lines.add(com.radolyn.ayugram.chatprivacy.NotificationCoverController.coverLine(currentAccount, did, coverCount));
                         count++;
+                        // NagramX: a decoy coverLine carries no identity, so it's safe to bridge; it only counts
+                        // toward keeping the summary bridged when its own dialog is watch-on.
+                        if (xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, did)) {
+                            hasWatchOnLine = true;
+                        }
                     }
                 }
             } else {
@@ -5997,11 +6009,24 @@ public class NotificationsController extends BaseController implements Notificat
                 }
                 lines.add(message);
                 count++;
+                // NagramX: a non-covered line is real getStringForMessage text. From a watch-off dialog that's identity
+                // content from a switched-off chat, so the summary must not bridge; from a watch-on dialog it keeps
+                // the summary bridgeable.
+                if (xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, did)) {
+                    hasWatchOnLine = true;
+                } else {
+                    hasUnsafeRealLine = true;
+                }
             }
         }
         String subText = LocaleController.formatPluralString("NewMessages", total_unread_count);
+        // NagramX: suppress from the watch when a switched-off chat exposed real text, OR when nothing emitted belongs
+        // to a watch-on chat at all -- an all-off batch must not bridge even a contentless decoy summary (the ping
+        // dazewell ruled out). The real aggregate summary keeps the global gate; only this mixed summary needs the
+        // line-level decision.
+        boolean localOnly = hasUnsafeRealLine || !hasWatchOnLine;
         return com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildCoverSummary(
-                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate, anyWatchOff);
+                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate, localOnly);
     }
 
     private String cutLastName(String name) {

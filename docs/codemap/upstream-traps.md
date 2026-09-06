@@ -495,11 +495,38 @@ message text drawn from every pushed dialog
 because the *summary* is a separate `Notification` that never received
 `setLocalOnly` at all. So suppressing one chat's watch delivery means gating the
 child **and** the summary; gating only the child leaks the text through the
-summary in the common >=2-unread case. The same is true of the fork's cover
-summary (`NotificationCoverController.buildCoverSummary`) and of covered chats,
-which `continue` out of the loop before the child hook and post their own card.
-This is why `#wear-messages` hooks four sites, not one: the two per-dialog
-`setLocalOnly` sites (`:5852` encrypted, `:5856` watch-off) and a `naxAnyWatchOff`
-scan that gates both the real and cover summaries (`:4968`, `:5014`).
+summary in the common >=2-unread case.
 
-*(Established 2026-09-06, during the #wear-messages build.)*
+The two summaries are gated **differently**, and the difference is load-bearing.
+The **real** aggregate summary always carries real `getStringForMessage` text
+(`:4437`,`:4464`), so it is gated globally: a batch-wide `naxAnyWatchOff` scan
+(`:4968`) sets `setLocalOnly(true)` on it whenever any pushed chat is watch-off
+(`:5013`). The fork's **cover** summary
+(`NotificationCoverController.buildCoverSummary`, assembled in
+`naxBuildCoverSummary`) is *mixed* -- a safe decoy `coverLine()` (a generic
+persona label and a count-based body: no sender name, chat title, dialog id or
+message text) for covered dialogs, and real `getStringForMessage` text (`:6006`)
+only for non-covered ones. It must **not** reuse the global scan. Covered
+children post silently with `GROUP_ALERT_SUMMARY` and delegate their alert to
+this summary, so over-suppressing it -- as an earlier `#wear-messages` revision
+did by reusing `naxAnyWatchOff` -- silences watch *alerting* for every watch-on
+chat in a batch the moment one unrelated chat is switched off (the regression
+dazewell hit on device with "Disguise notification" on). Its `setLocalOnly` is
+instead decided from the lines it actually emits (`:6027`): local-only when a
+non-covered watch-off dialog contributed real text (identity content from a
+switched-off chat), or when nothing emitted belongs to a watch-on dialog at all
+(an all-off batch must not bridge even a contentless decoy ping). Covered chats
+also `continue` out of the child loop before the per-dialog hook and post their
+own card, which enforces the per-chat setting independently.
+
+So `#wear-messages` hooks: the two per-dialog `setLocalOnly` sites (`:5852`
+encrypted, `:5856` watch-off), the global `naxAnyWatchOff` gate on the real
+summary (`:4968`,`:5013`), the line-level gate on the mixed cover summary
+(`:6027`), and the cover child card. **Known limitation, by design, not a bug:**
+when a non-covered watch-off chat genuinely contributes a real line, privacy
+forces the *shared* cover summary local-only, so watch-on children in that same
+batch stay silent (their alert was delegated to a summary that can no longer
+bridge). Eliminating that needs a different grouping/summary design and was
+deferred.
+
+*(Established 2026-09-06, during the #wear-messages build; cover-summary gate corrected in architect round 1.5 after an on-device regression.)*
