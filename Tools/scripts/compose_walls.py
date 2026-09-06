@@ -294,30 +294,28 @@ def layout_wall(
     row_width = sum(widths) + (n - 1) * settings.gutter
     start_x = (settings.canvas_width - row_width) // 2
 
-    # Vertical center line for the row. `max_card_height()` sizes the whole
-    # row+caption block to exactly span the margin-to-margin band when a
-    # wall is height-bound (card_height == max_card_height): centering and
-    # anchoring the block to the bottom margin then agree, since there is no
-    # slack to place either way. When a wall is instead width-bound (more/
-    # wider panels than the height budget needs, e.g. a 4-panel row), the
-    # block is shorter than that band and *would* leave slack on both the
-    # top and the bottom if simply centered in the full canvas -- that is
-    # the "dead gradient band at the bottom" defect: a wall with room to
-    # spare still reads as leaving the bottom margin unused. Anchoring the
-    # caption's bottom edge to the bottom safe margin instead means any
-    # unavoidable slack (from a row that physically cannot grow further
-    # without violating the margins/gutters/panel count) collects above the
-    # row rather than below the captions.
+    # Vertical center line for the row. card_height above is already
+    # "bind-first" scaled: it's the largest a card can be without either
+    # overrunning the available row width (width_fit_height) or the
+    # available vertical budget (max_card_height) -- whichever of those two
+    # constraints is tighter for this wall's panel count/aspect mix is what
+    # actually caps it. That leaves nothing further to grow on the binding
+    # axis. Any slack that's left over is on the *other*, non-binding axis,
+    # and centering the row+caption block in the vertical margin-to-margin
+    # band splits that slack evenly top and bottom -- the one placement
+    # that reads as deliberate padding rather than a layout that slid off
+    # one edge. It also falls out as one uniform rule for every wall: a
+    # height-bound wall (e.g. privacy-profiles, two tall panels) saturates
+    # the vertical budget so there's no slack to place either way, and a
+    # width-bound wall (e.g. hero, four full-width panels) gets its
+    # unavoidable vertical slack split evenly instead of pushed to one
+    # edge -- without this code needing to know which case it's in.
     ascent, descent = caption_font.getmetrics()
     caption_height = ascent + descent
     reserved_bottom = settings.caption_gap + caption_height
-    center_y = (
-        settings.canvas_height
-        - settings.margin
-        - reserved_bottom
-        - settings.stagger_amplitude
-        - card_height // 2
-    )
+    center_y = settings.margin + (
+        settings.canvas_height - 2 * settings.margin - reserved_bottom
+    ) // 2
 
     laid_out = []
     x = start_x
