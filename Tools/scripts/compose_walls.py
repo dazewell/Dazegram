@@ -32,11 +32,15 @@ full-screen 1080x2354 JPGs; each panel's `crop` rectangle in the manifest
 selects the sub-region to composite, in that screenshot's own native pixel
 coordinates.
 
-Determinism: given the same manifest, the same screenshots, and the same
-Pillow version, re-running this script byte-for-byte reproduces its output
-(no timestamps, no randomness, no multithreading). If a change to Pillow
-changes its encoder output, regenerate every wall together rather than mixing
-PNGs written by different Pillow versions.
+Determinism: given the same manifest, the same screenshots, the same Pillow
+version, and the same resolved caption font (the first FONT_CANDIDATES entry
+that exists on disk -- see below), re-running this script byte-for-byte
+reproduces its output (no timestamps, no randomness, no multithreading). This
+is a same-machine guarantee, not a cross-machine one: a different OS, or a
+different font installed at the same candidate path, changes glyph rendering
+and therefore the output bytes. If a change to Pillow changes its encoder
+output, regenerate every wall together rather than mixing PNGs written by
+different Pillow versions.
 """
 
 from __future__ import annotations
@@ -189,9 +193,22 @@ def load_panel_image(
         )
     im = Image.open(src_path).convert("RGB")
 
-    for rect in panel.get("redact", []):
+    redact_rects = panel.get("redact", [])
+    if redact_rects:
         draw = ImageDraw.Draw(im)
-        draw.rectangle(rect, fill=(0, 0, 0))
+        for rect in redact_rects:
+            r_left, r_top, r_right, r_bottom = rect
+            if not (
+                0 <= r_left < r_right <= im.width
+                and 0 <= r_top < r_bottom <= im.height
+            ):
+                raise SystemExit(
+                    f"panel {panel['source']!r} has an invalid redact rect "
+                    f"{rect} for a {im.width}x{im.height} source image; "
+                    "expected 0 <= left < right <= width and "
+                    "0 <= top < bottom <= height"
+                )
+            draw.rectangle(rect, fill=(0, 0, 0))
 
     left, top, right, bottom = panel["crop"]
     if not (0 <= left < right <= im.width and 0 <= top < bottom <= im.height):
