@@ -107,27 +107,31 @@ public class ComposerLayoutActivity extends BaseFragment {
      * Tighter-only, and that is forced rather than chosen - see ComposerToolbarLayout for why
      * anything above 100% is clipped by the row that has to contain it.
      *
-     * <p>Anchors, not the reachable values: {@link #SPACING_BETWEEN_STEPS} subdivides them.
+     * <p>Every reachable value is listed as its own anchor, one percent apart. This is deliberate
+     * and must not be "simplified" back to {85, 90, 95, 100} with SPACING_BETWEEN_STEPS raised to
+     * subdivide them: SlideIntChooseView.getProgress does Math.round(...) / options.betweenSteps as
+     * an integer division (betweenSteps is int), while getValue divides by (float) betweenSteps, so
+     * for betweenSteps > 1 the two stop being inverses and a between-anchor value cannot round-trip.
+     * A rebind then drives the thumb to getProgress(value), which truncates down to the lower
+     * anchor, while the label keeps the exact value - the thumb and number desync. Unit anchors keep
+     * getProgress exact for every value the slider can hold.
      */
     private static final int[] SPACING_STEPS = {
-            85, 90, 95, 100
+            85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100
     };
 
     /**
-     * Five sub-steps between anchors five apart, so the packing slider delivers whole percents.
+     * One sub-step, because every anchor above is already a whole percent, so the packing slider
+     * delivers whole percents with getProgress and getValue as exact inverses.
      *
-     * <p>This is what the bar can express. The seek bar's thumb follows the finger continuously
-     * and is never written back to the value it produced, so with one sub-step - the value landing
-     * only on the four anchors - the thumb, the number and the preview each told the user a
-     * different story about the same setting. A whole percent is also a real step rather than a
-     * finer number over the same four sizes: the cell is round(48 x size x packing), so the
-     * rounding boundary falls every couple of percent, and the range covers eight distinct cell
-     * sizes at 100% size and ten at 125%, against four either way at five-percent values.
-     *
-     * <p>Haptics stay on the anchors: SlideIntChooseView buzzes on a change of step, and a step is
-     * still one anchor, which leaves a detent every five percent along a one-percent track.
+     * <p>Must stay 1. With more than one sub-step, getProgress's integer division truncates any
+     * value that falls between two anchors down to the lower anchor's progress (see SPACING_STEPS),
+     * so the thumb lands left of the label on any rebind, and a scale-dependent floor that is not
+     * itself an anchor draws no dimmed band or a short one. The value range is real, not cosmetic:
+     * the cell is round(48 x size x packing), so the rounding boundary falls every couple of
+     * percent, giving eight distinct cell sizes at 100% size and ten at 125%.
      */
-    private static final int SPACING_BETWEEN_STEPS = 5;
+    private static final int SPACING_BETWEEN_STEPS = 1;
 
     /**
      * Pass-through percent, not opacity - higher shows more wallpaper through the panel. 25%
@@ -800,7 +804,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             int res = floor >= top
                     ? R.string.ComposerSpacingInfoOverriddenLocked
                     : R.string.ComposerSpacingInfoOverridden;
-            return LocaleController.formatString(res, floor, saved);
+            return LocaleController.formatString(res, saved);
         }
         if (floor >= top) {
             return LocaleController.getString(R.string.ComposerSpacingInfoNoRoom);
