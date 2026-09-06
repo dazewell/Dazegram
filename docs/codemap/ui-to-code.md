@@ -334,14 +334,14 @@ the moment reschedule sheets got a slider too.
 
 ## Composer Toolbar screen: a `TYPE_INFO` row *is* the gray gap between slider groups
 
-`ComposerLayoutActivity`'s row list (`buildItems()`, `ComposerLayoutActivity.java:369`)
+`ComposerLayoutActivity`'s row list (`buildItems()`, `ComposerLayoutActivity.java:371`)
 has no dedicated divider row between one slider group (Toolbar size, Icon
 spacing, Transparency) and the next. The gray separation comes for free from
 the footer row itself: `TYPE_INFO` binds to a bare `TextInfoPrivacyCell` with
-no background set (`onBindViewHolder` bind path around `ComposerLayoutActivity.java:625`,
-row creation `:571-572`), while every other row type in this screen paints
+no background set (`onBindViewHolder` bind path around `ComposerLayoutActivity.java:627`,
+row creation `:573-574`), while every other row type in this screen paints
 `key_windowBackgroundWhite` over the fragment's `key_windowBackgroundGray`
-background (`:308`, rows at `:565,569,581,585,589`). So removing a `TYPE_INFO`
+background (`:310`, rows at `:567,571,583,587,591`). So removing a `TYPE_INFO`
 row doesn't just remove a footer, it also removes the gray seam after it —
 two slider groups sharing one footer render as one continuous white block,
 which is why the Light/Dark glass sliders were merged onto a single shared
@@ -351,7 +351,7 @@ footer under Dark rather than each keeping its own.
 
 ## Composer Toolbar screen: `footerText()`'s `default:` arm is a live case, not an error fallback
 
-`footerText(int zone)` (`ComposerLayoutActivity.java:750-768`) returns a
+`footerText(int zone)` (`ComposerLayoutActivity.java:752-770`) returns a
 `CharSequence` and switches on either a negative slider-group id or a
 `ComposerButtons.ZONE_*` constant. Its `default:` arm returns
 `LocaleController.getString(R.string.ComposerLayoutInfo)` — the *resolved*
@@ -365,7 +365,7 @@ wrong row. This is why the Light/Dark glass-transparency merge kept both
 `case GROUP_GLASS_LIGHT:` and `case GROUP_GLASS_DARK:` as explicit fall-through
 labels sharing one return, instead of deleting one and letting it land in
 `default:`. The `GROUP_SPACING` arm is the one that isn't a fixed string: it
-delegates to `spacingFooterText()` (`:783-795`), which picks one of three
+delegates to `spacingFooterText()` (`:785-796`), which picks one of three
 strings from the saved spacing value against `spacingFloor()`, which is why the
 method returns `CharSequence` rather than a `@StringRes int` and why the
 packing footer is rebound (with the packing slider) whenever Toolbar size
