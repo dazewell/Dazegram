@@ -438,3 +438,44 @@ Clearing it earlier would allow a new pass to start writing while the previous
 buffer index is still pending publication.
 
 *(Established 2026-09-04.)*
+
+## The `transtale` -> `translate` package rename means upstream `transtale/*` changes must be ported, and upstream callers of `transtale` symbols silently fail to compile
+
+Fork commit `0887abcd02` ("chore: fix typos & optimize imports") renamed the
+translation package `tw.nekomimi.nekogram.transtale` ->
+`tw.nekomimi.nekogram.translate` (`git show --stat 0887abcd02` shows the git
+rename explicitly as `.../nekogram/{transtale => translate}/Translator.kt`).
+Our live translator is
+`TMessagesProj/src/main/java/tw/nekomimi/nekogram/translate/Translator.kt`; the
+old `transtale/Translator.kt` path no longer exists on `dev`. So any upstream
+change to a file under `transtale/` arrives as a modify/delete conflict
+(deleted on our side), and any upstream code that *calls* a symbol added under
+`transtale/` will not resolve against our tree until the symbol is ported into
+`translate/` by hand.
+
+This bit the 2026-09-06 sync of `NextAlone/Nagram` onto anchor
+`b03d83df87`: upstream added `Translator.translateShowAlert(...)` to its
+`transtale/Translator.kt` and called it from a bot-button long-press menu at
+`981806a992:TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java:41468`
+(the immutable sync snapshot -- cite that, not the moving `nagram/dev` ref,
+which drifts on every upstream push and rots the line number).
+Because the merge produced no conflict at that call site (it landed inside a
+`ChatActivity` region that did conflict, but the call itself was conflict-free
+text), taking upstream's `ChatActivity` hunk without porting the helper would
+have pushed a `dev` that does not compile -- the same silent non-compile class
+`.github/sync/pins.env` records from the 12.10.1 sync. The fix was to port
+`translateShowAlert` into `translate/Translator.kt`, adapted to the fork's
+reworked translate API (no `TranslateDb.currentTarget` cache; `AlertUtil`
+progress/copy/failure dialogs), and take the `ChatActivity` call.
+
+The standing rule this leaves for every future sync: whenever upstream touches
+a `transtale/*` symbol, compare the incoming change against the candidate's
+`translate/*` implementation **and its callers**, and port anything missing.
+Don't lean on a one-shot presence check like `git grep translateShowAlert
+origin/dev` -- that grep succeeds forever once this PR lands and would falsely
+reassure even if a *later* upstream change to the same helper went unported.
+The failure is silent at merge time (upstream callers of `transtale` symbols
+compile against upstream but not against our renamed tree), so it only surfaces
+at the compile gate; that is the check to trust, not a grep.
+
+*(Established 2026-09-06, during the NextAlone/Nagram sync reconciliation, snapshot `981806a992`.)*

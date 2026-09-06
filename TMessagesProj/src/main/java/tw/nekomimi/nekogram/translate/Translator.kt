@@ -1,5 +1,6 @@
 package tw.nekomimi.nekogram.translate
 
+import android.content.Context
 import android.text.TextUtils
 import android.view.View
 import androidx.core.content.edit
@@ -18,6 +19,7 @@ import org.telegram.tgnet.TLRPC
 import tw.nekomimi.nekogram.NekoConfig
 import tw.nekomimi.nekogram.translate.source.*
 import tw.nekomimi.nekogram.ui.PopupBuilder
+import tw.nekomimi.nekogram.utils.AlertUtil
 import tw.nekomimi.nekogram.utils.AppScope
 import tw.nekomimi.nekogram.utils.receiveLazy
 import xyz.nextalone.nagram.NaConfig
@@ -130,6 +132,32 @@ interface Translator {
                     }
                 }
             }
+        }
+
+        @JvmStatic
+        @JvmOverloads
+        fun translateShowAlert(
+            ctx: Context,
+            query: String,
+            to: Locale = NekoConfig.translateToLang.String()?.code2Locale
+                ?: LocaleController.getInstance().currentLocale
+        ) {
+            val pro = AlertUtil.showProgress(ctx)
+            pro.show()
+            translate(to, query, translateCallBack = object : TranslateCallBack {
+                override fun onSuccess(translation: String) {
+                    pro.dismiss()
+                    AlertUtil.showCopyAlert(ctx, translation)
+                }
+
+                override fun onFailed(unsupported: Boolean, message: String) {
+                    pro.dismiss()
+                    AlertUtil.showTransFailedDialog(ctx, unsupported, message) {
+                        pro.show()
+                        translate(to, query, translateCallBack = this)
+                    }
+                }
+            })
         }
 
         @JvmStatic
