@@ -220,7 +220,13 @@ def load_panel_image(
             r_left, r_top, r_right, r_bottom = _validate_rect(
                 rect, im.width, im.height, panel["source"], "redact"
             )
-            draw.rectangle((r_left, r_top, r_right, r_bottom), fill=(0, 0, 0))
+            # ImageDraw.rectangle()'s bottom-right is inclusive, but our rect
+            # contract (matching crop's [left, top, right, bottom]) treats
+            # right/bottom as exclusive -- shift by one so the drawn box
+            # covers exactly the same pixels crop/blur would select.
+            draw.rectangle(
+                (r_left, r_top, r_right - 1, r_bottom - 1), fill=(0, 0, 0)
+            )
 
     # `blur` obscures a region while keeping its shape/color roughly
     # legible -- for content that should read as "there but not published"
@@ -277,9 +283,14 @@ def layout_wall(
         )
     width_fit_height = available_width / sum(aspects)
     card_height = min(width_fit_height, settings.max_card_height(caption_font))
-    card_height = round(card_height)
+    # Floor, not round: rounding a fractional card_height up (and then each
+    # panel width up) can push row_width past available_width, driving
+    # start_x negative and clipping the row off the canvas edges. Flooring
+    # only ever gives back a spare fractional pixel of margin/gutter slack,
+    # never takes the row out of bounds.
+    card_height = int(card_height)
 
-    widths = [round(a * card_height) for a in aspects]
+    widths = [int(a * card_height) for a in aspects]
     row_width = sum(widths) + (n - 1) * settings.gutter
     start_x = (settings.canvas_width - row_width) // 2
 
