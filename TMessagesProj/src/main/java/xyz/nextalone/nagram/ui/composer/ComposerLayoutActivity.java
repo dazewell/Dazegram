@@ -213,6 +213,12 @@ public class ComposerLayoutActivity extends BaseFragment {
      * acted on when the gesture ends. No Runnable, no post, nothing to cancel in onFragmentDestroy.
      */
     private boolean settlePending;
+    /**
+     * The packing slider was moved mid-gesture, so its footer's saved-vs-floor disclosure is stale
+     * and owes a refresh at gesture end. Separate from settlePending because this path refreshes
+     * only the footer, never the slider row the user is still holding.
+     */
+    private boolean spacingFooterRefreshPending;
 
     /**
      * Bumped once per finished theme transition (see getThemeDescriptions()) so getItemViewType()
@@ -289,6 +295,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                     if (settlePending) {
                         settlePending = false;
                         settleSpacingRows();
+                    }
+                    if (spacingFooterRefreshPending) {
+                        spacingFooterRefreshPending = false;
+                        refreshSpacingFooter();
                     }
                 }
                 return handled;
@@ -664,6 +674,19 @@ public class ComposerLayoutActivity extends BaseFragment {
                         }
                         NaConfig.INSTANCE.getComposerToolbarSpacing().setConfigInt(value);
                         rebuildPending = true;
+                        // This write can flip what the footer discloses: a clamped write destroys the
+                        // saved value the Overridden text was promising would come back, so the footer
+                        // has to re-evaluate saved-vs-floor or it keeps promising a value that no
+                        // longer exists. Defer to gesture end like the scale path so the text does not
+                        // change under the finger; the else branch covers the accessibility delegate,
+                        // which drives this with no touch events and one discrete step at a time. Only
+                        // the footer, not this slider row - the thumb is where the user just left it and
+                        // rebinding the row would snap it to the nearest detent.
+                        if (gestureInProgress) {
+                            spacingFooterRefreshPending = true;
+                        } else {
+                            refreshSpacingFooter();
+                        }
                         updatePreview();
                     });
                     // Raise to the real floor after the value has landed: this draws the dimmed
@@ -1049,6 +1072,13 @@ public class ComposerLayoutActivity extends BaseFragment {
      * list, and it refreshes the footer so its three-way disclosure never goes stale. */
     private void settleSpacingRows() {
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_SPACING, GROUP_SPACING));
+        refreshSpacingFooter();
+    }
+
+    /** Rebinds only the packing footer, so its three-way saved-vs-floor disclosure catches up with a
+     * config change without touching the slider row. Shared by the scale settle (floor moved) and the
+     * spacing write (saved value moved) - both can flip which of the three strings is true. */
+    private void refreshSpacingFooter() {
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_INFO, GROUP_SPACING));
     }
 
