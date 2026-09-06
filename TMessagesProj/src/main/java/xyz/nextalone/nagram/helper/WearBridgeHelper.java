@@ -4,7 +4,7 @@ import android.content.SharedPreferences;
 
 import org.telegram.messenger.MessagesController;
 
-// NagramX: owns the key format for the per-chat "Watch Messages" toggle so the settings screen and the two
+// NagramX: owns the key format for the per-chat "Show on Watch" toggle so the settings screen and the two
 // notification-build hooks can't disagree on it. Keyed by raw dialogId, not the topic-aware getSharedPrefKey:
 // a notification batch's DialogKey carries whichever topic pushed into the bucket first, so a topic-aware read
 // would bridge non-deterministically -- which is also why the settings row is hidden on topic screens. Default
