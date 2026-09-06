@@ -479,6 +479,65 @@ compile against upstream but not against our renamed tree), so it only surfaces
 at the compile gate; that is the check to trust, not a grep.
 
 *(Established 2026-09-06, during the NextAlone/Nagram sync reconciliation, snapshot `981806a992`.)*
+
+## `VideoEditedInfo`'s serialised form round-trips on every send, and `parseString` infers `muted` from `bitrate == -1`
+
+The `ve` string is not just a draft/restore mechanism -- the full
+serialise/parse cycle runs on the ordinary send path:
+`SendMessagesHelper.java:4824` -> `:4969` -> `:5269` -> `MessageObject.java:4473`
+-> `MediaController.java:6846`. Crucially `parseString` derives `muted` from the
+legacy bitrate slot (`VideoEditedInfo.java:590-599`) rather than storing it, so
+any field added to the format is subject to that inference on every send, not
+only on restore. Miss this and a change that sets `muted` in memory while also
+writing a real bitrate will have the mute silently discarded at parse time,
+because a non-`-1` bitrate re-derives `muted = false`. Conversion runs off the
+parsed object (`scheduleVideoConvert(message.obj)`,
+`SendMessagesHelper.java:6628` -> `MediaController.java:6592`), so the
+in-memory value never reaches the transcoder. This is why the silent-video
+feature forces the legacy slot to `-1` whenever muted and carries the real
+bitrate in a separate version-12 extension block.
+
+*(Established 2026-09-06, during the silent-video feature build, PR #300.)*
+
+## `MediaController.makeVideoBitrate`'s early return skips its own `maxBitrate` clamp
+
+At `MediaController.java:7018-7021`, `minBitrate` is computed and then
+`if (originalBitrate < minBitrate) return remeasuredBitrate;` returns *before*
+reaching the `maxBitrate` clamp further down (`:7061-7062`). The helper is not
+guaranteed to return a value under its own maximum. A 4096x4096 source at
+35 Mbps resized to 3840x3840 gives `minBitrate` = 36.16 Mbps and returns
+32,812,500 -- above the 28.4 Mbps `VIDEO_BITRATE_2160` tier. This only escapes
+for a near-square source whose long edge exceeds 3840; below that the top tier
+takes the same-dimension branch instead. Any code that assumes the returned
+bitrate sits inside the range the app normally generates will be wrong on
+large near-square sources. Two of three reviewers on PR #300 asserted the
+same-dimension branch was the only path that could produce an unclamped
+bitrate; that is false, and only a direct read of the early return settled it.
+
+*(Established 2026-09-06, during the silent-video feature build, PR #300.)*
+
+## `needConvert()` returns false on `bitrate == -2`, and no conversion means audio is never stripped
+
+`VideoEditedInfo.needConvert()` (`VideoEditedInfo.java:777-780`) returns false
+when `bitrate == -2` (the "Original" quality selection, set in
+`PhotoViewer.updateWidthHeightBitrateForCompression` around `:22055-22058`).
+When it returns false, `prepareSendingMedia` leaves `path` pointing at the
+original file (`SendMessagesHelper.java:11455-11460`) and no conversion is
+scheduled (`:6620-6628`). The transcoder is the only thing that strips the
+audio track, so a muted clip that reaches the send path carrying `-2` uploads
+the untouched source with its sound intact. Treat "muted" and
+"`bitrate == -2`" as a combination that must never be serialised together. It
+is currently unreachable only by accident -- the mute tap normalises the tier
+via `getCurrentVideoEditedInfo()` forcing `selectedCompression = 1`
+(`PhotoViewer.java:10229-10231`), any editor exit re-stores the normalised
+value, and attach-sheet show resets entries
+(`ChatAttachAlertPhotoLayout.java:3916` -> `:1919` ->
+`MediaController.java:534-556`). None of those are load-bearing by design, so
+any change that makes a pre-mute quality tier survive a mute must first ensure
+`-2` cannot reach a muted record.
+
+*(Established 2026-09-06, during the silent-video feature build, PR #300.)*
+
 ## Rounded grouped settings cards already exist upstream as `RecyclerListView.setSections()` — don't hand-roll them
 
 The rounded, flat, shadowless grouped-card look that every fork settings page
