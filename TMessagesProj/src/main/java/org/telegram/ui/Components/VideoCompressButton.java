@@ -72,7 +72,15 @@ public class VideoCompressButton extends View {
     };
 
     public void setState(boolean enabled, boolean muted, int mn) {
-        this.disabled = !enabled || muted;
+        // NagramX (#silent-video): existing three-arg callers keep today's behaviour — disabled follows enabled/muted.
+        setState(enabled, muted, !enabled || muted, mn);
+    }
+
+    // NagramX (#silent-video): the silent-video chip needs the label of an ordinary video ("SD"/"HD" + resolution)
+    // while staying live when muted, so the label (driven by `muted`) and the disabled state are decoupled. The
+    // gallery editor passes `muted && !silentVideo` as `muted` and drives `disabled` itself.
+    public void setState(boolean enabled, boolean muted, boolean disabled, int mn) {
+        this.disabled = disabled;
         if (muted) {
             textDrawable.setText("GIF");
             sizeTextDrawable.setText("", true);

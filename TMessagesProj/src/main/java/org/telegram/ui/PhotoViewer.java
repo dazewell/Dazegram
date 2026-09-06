@@ -382,6 +382,11 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     private boolean allowOrder = true;
 
     private boolean muteVideo;
+    // NagramX (#silent-video): the user tapped the quality chip to "Video" for the current muted clip, choosing a
+    // real silent video over a GIF. It shadows muteVideo's exact lifetime — cleared everywhere muteVideo is cleared
+    // or re-derived — so a fresh mute always starts in the GIF sub-state (dazewell's unmute/re-mute gesture back
+    // to GIF). UI thread only.
+    private boolean sendSilentVideo;
 
     private boolean isUnalivePhoto() {
         if (sendPhotoType == SELECT_TYPE_STICKER) return true;
@@ -6346,6 +6351,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (selectedCompression != -2) {
                 selectedCompression = -2;
                 muteVideo = false;
+                sendSilentVideo = false; // NagramX (#silent-video): Original destroys all edits, including the sub-state
                 editState.reset();
                 cropTransform = new CropTransform();
                 if (paintingOverlay != null) {
@@ -6917,6 +6923,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 return;
             }
             muteVideo = !muteVideo;
+            // NagramX (#silent-video): a fresh mute always lands in the GIF sub-state, and unmute clears the choice —
+            // this is what makes dazewell's unmute/re-mute the way back to GIF. Cleared unconditionally on every toggle.
+            sendSilentVideo = false;
             if (muteHints != null) {
                 for (HintView2 hint : muteHints) {
                     hint.hide();
@@ -6925,7 +6934,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             if (muteVideo) {
                 final HintView2 hint = new HintView2(parentActivity, HintView2.DIRECTION_BOTTOM);
                 hint.setMultilineText(true);
-                hint.setText(getString(R.string.EditorMuteHint));
+                // NagramX (#silent-video): only promise the "tap for a silent video" affordance when the chip is
+                // actually reachable; otherwise keep upstream's GIF-only hint, which is still true in that case.
+                hint.setText(getString(videoConvertSupported && compressionsCount > 1 ? R.string.EditorMuteHintSilentVideo : R.string.EditorMuteHint));
                 hint.setMaxWidthPx(HintView2.cutInFancyHalf(hint.getText(), hint.getTextPaint()));
                 hint.setPadding(dp(6), 0, dp(6), 0);
                 hint.setJoint(0, 12 + 16 - 6);
@@ -7865,11 +7876,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         compressItem.setBackground(Theme.createInsetRoundRectDrawable(0x10FFFFFF, dp(22), dp(4), dp(6)));
 
         selectedCompression = selectCompression();
-        compressItem.setState(videoConvertSupported && compressionsCount > 1, muteVideo, Math.min(resultWidth, resultHeight));
-        compressItem.setContentDescription(getString("AccDescrVideoQuality", R.string.AccDescrVideoQuality));
+        setCompressItemState(videoConvertSupported && compressionsCount > 1);
         itemsLayout.addView(compressItem, LayoutHelper.createLinear(48, 48));
         compressItem.setOnClickListener(v -> {
-            if (isCaptionOpen() || muteVideo) {
+            if (isCaptionOpen() || sendPhotoType == SELECT_TYPE_AVATAR) {
                 return;
             }
             if (currentIndex >= 0 && currentIndex < imagesArrLocals.size()) {
@@ -7895,6 +7905,21 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                     }
                     tooltip.setText(getString("VideoQualityIsTooLow", R.string.VideoQualityIsTooLow));
                     tooltip.show(compressItem);
+                }
+                return;
+            }
+            // NagramX (#silent-video): in the GIF sub-state a tap flips the muted clip to a silent video with no
+            // sheet; in the Video sub-state (and when unmuted) it opens the normal quality sheet. selectedCompression
+            // is left untouched, so the silent video adopts whatever tier is currently selected for the clip.
+            if (muteVideo && !sendSilentVideo) {
+                sendSilentVideo = true;
+                updateWidthHeightBitrateForCompression();
+                updateVideoInfo();
+                if (currentIndex >= 0 && currentIndex < imagesArrLocals.size()) {
+                    Object object = imagesArrLocals.get(currentIndex);
+                    if (object instanceof MediaController.MediaEditState) {
+                        ((MediaController.MediaEditState) object).editedInfo = getCurrentVideoEditedInfo();
+                    }
                 }
                 return;
             }
@@ -10191,18 +10216,23 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             videoEditedInfo.mediaEntities = editState.mediaEntities != null && !editState.mediaEntities.isEmpty() ? editState.mediaEntities : null;
         }
 
+        // NagramX (#silent-video): the user toggled the chip to "Video" for this muted clip — send a real silent
+        // video at the chosen tier instead of a GIF. Never for avatars (chip hidden, muted forced). The audio is
+        // still dropped because videoEditedInfo.muted stays true below; only the GIF/avatar path forces tier 1 /
+        // bitrate -1. This is the one place selectedCompression must NOT be clobbered in the Video sub-state.
+        boolean silentVideo = muteVideo && sendSilentVideo && sendPhotoType != SELECT_TYPE_AVATAR;
         if (sendPhotoType != SELECT_TYPE_AVATAR && !muteVideo && (compressItem.getTag() == null || (videoEditedInfo.resultWidth == originalWidth && videoEditedInfo.resultHeight == originalHeight))) {
             videoEditedInfo.resultWidth = originalWidth;
             videoEditedInfo.resultHeight = originalHeight;
             videoEditedInfo.bitrate = muteVideo ? -1 : originalBitrate;
         } else {
-            if (muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) {
+            if ((muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) && !silentVideo) {
                 selectedCompression = 1;
                 updateWidthHeightBitrateForCompression();
             }
             videoEditedInfo.resultWidth = resultWidth;
             videoEditedInfo.resultHeight = resultHeight;
-            videoEditedInfo.bitrate = muteVideo || sendPhotoType == SELECT_TYPE_AVATAR ? -1 : bitrate;
+            videoEditedInfo.bitrate = (muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) && !silentVideo ? -1 : bitrate;
         }
         videoEditedInfo.cropState = editState.cropState;
         if (videoEditedInfo.cropState != null) {
@@ -10241,6 +10271,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             videoEditedInfo.originalBitrate = originalBitrate;
         }
         videoEditedInfo.muted = muteVideo || sendPhotoType == SELECT_TYPE_AVATAR;
+        videoEditedInfo.naxSilentVideo = silentVideo;
         return videoEditedInfo;
     }
 
@@ -14426,6 +14457,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         actionBarContainer.setSubtitle(null);
         setItemVisible(masksItem, false, true);
         muteVideo = false;
+        sendSilentVideo = false; // NagramX (#silent-video): reset the sub-state alongside muteVideo on every photo show
         if (livePhotoButton != null) {
             livePhotoButton.setValue(true, false);
         }
@@ -15371,6 +15403,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         isCurrentVideo = true;
                     }
                     boolean isMuted = false;
+                    boolean isSilentVideo = false;
                     float start = 0.0f;
                     float end = 1.0f;
                     int compressQuality = -1;
@@ -15381,6 +15414,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         MediaController.PhotoEntry photoEntry = ((MediaController.PhotoEntry) object);
                         if (photoEntry.editedInfo != null) {
                             isMuted = photoEntry.editedInfo.muted;
+                            isSilentVideo = photoEntry.editedInfo.naxSilentVideo;
                             start = photoEntry.editedInfo.start;
                             end = photoEntry.editedInfo.end;
                             compressQuality = photoEntry.editedInfo.compressQuality;
@@ -15390,7 +15424,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         coverPhotoObject = photoEntry.coverPhotoParentObject;
                     }
                     if (sendPhotoType != SELECT_TYPE_NO_SELECT) {
-                        processOpenVideo(currentPathObject, livePhotoVideoOffset, isMuted, start, end, compressQuality, livePhotoTimestampUs);
+                        processOpenVideo(currentPathObject, livePhotoVideoOffset, isMuted, isSilentVideo, start, end, compressQuality, livePhotoTimestampUs);
                         if (isDocumentsPicker || compressQuality == -2) {
                             showVideoTimeline(false, animated);
                             videoAvatarTooltip.setVisibility(View.GONE);
@@ -21686,6 +21720,24 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         }
     }
 
+    // NagramX (#silent-video): single source of truth for the quality chip's appearance. The label shows "GIF" only
+    // in the GIF sub-state; in the silent-video sub-state and when unmuted it shows the resolution tier. The chip
+    // stays clickable/full-opacity whenever it is reachable, in either muted sub-state, and is greyed only when the
+    // quality control is genuinely unavailable. Reading the live fields here means a late processOpenVideo callback
+    // repaints the current choice, never a stale "GIF" over a Video the user already picked.
+    private void setCompressItemState(boolean enabled) {
+        compressItem.setState(enabled, muteVideo && !sendSilentVideo, !enabled, Math.min(resultWidth, resultHeight));
+        final int desc;
+        if (!muteVideo) {
+            desc = R.string.AccDescrVideoQuality;
+        } else if (sendSilentVideo) {
+            desc = R.string.AccDescrVideoSilentState;
+        } else {
+            desc = R.string.AccDescrVideoGifState;
+        }
+        compressItem.setContentDescription(getString(desc));
+    }
+
     public void updateMuteButton() {
         if (videoPlayer != null) {
             videoPlayer.setMute(CastSync.isActive() || muteVideo);
@@ -21705,8 +21757,10 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 }
                 muteDrawable.setMuted(true, true);
                 if (compressItem.getTag() != null) {
-                    compressItem.setAlpha(0.5f);
-                    compressItem.setEnabled(false);
+                    // NagramX (#silent-video): the chip stays live in both muted sub-states; greying is driven only by
+                    // reachability inside setCompressItemState, exactly as in the unmuted branch below.
+                    compressItem.setAlpha(1.0f);
+                    compressItem.setEnabled(true);
                 }
                 if (sendPhotoType == SELECT_TYPE_AVATAR) {
                     videoTimelineView.setMaxProgressDiff(9600.0f / videoDuration);
@@ -21805,7 +21859,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             qualityPicker.originalButton.setTextColor(0xffffffff);
         }
         if (!centerImageIsLivePhoto) {
-            compressItem.setState(videoConvertSupported && compressionsCount > 1, muteVideo, Math.min(resultWidth, resultHeight));
+            setCompressItemState(videoConvertSupported && compressionsCount > 1);
         }
         itemsLayout.requestLayout();
 
@@ -21817,7 +21871,8 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         int height = rotationValue == 90 || rotationValue == 270 ? resultWidth : resultHeight;
 
         boolean needEncoding = needEncoding();
-        if (muteVideo) {
+        boolean silentVideo = muteVideo && sendSilentVideo && sendPhotoType != SELECT_TYPE_AVATAR;
+        if (muteVideo && !silentVideo) {
             int bitrate;
             if (sendPhotoType == SELECT_TYPE_AVATAR) {
                 if (estimatedDuration <= 2000) {
@@ -21835,7 +21890,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         } else if (bitrate == -2) {
             estimatedSize = originalSize;
         } else {
-            calculateEstimatedVideoSize(needEncoding, sendPhotoType == SELECT_TYPE_AVATAR);
+            // NagramX (#silent-video): a silent video estimates like a normal video, but passes isMute so the audio
+            // track the transcoder will strip is excluded from the size (and the upload-progress denominator).
+            calculateEstimatedVideoSize(needEncoding, sendPhotoType == SELECT_TYPE_AVATAR || silentVideo);
         }
 
         if (videoCutStart == 0) {
@@ -22153,7 +22210,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         return new ByteArrayInputStream(output, 0, outPos);
     }
 
-    private void processOpenVideo(final String videoPath, long videoPathOffset, boolean muted, float start, float end, final int compressQuality, long livePhotoTimestampUs) {
+    private void processOpenVideo(final String videoPath, long videoPathOffset, boolean muted, boolean silentVideo, float start, float end, final int compressQuality, long livePhotoTimestampUs) {
         if (currentLoadingVideoRunnable != null) {
             Utilities.globalQueue.cancelRunnable(currentLoadingVideoRunnable);
             currentLoadingVideoRunnable = null;
@@ -22161,6 +22218,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
         videoTimelineView.setVideoPath(videoPath, videoPathOffset, start, end, livePhotoTimestampUs);
         videoPreviewMessageObject = null;
         muteVideo = muted || sendPhotoType == SELECT_TYPE_AVATAR;
+        // NagramX (#silent-video): restore the per-clip sub-state on every index switch. Never for avatars, whose
+        // chip is hidden and muted forced. The caller inits the flag false per pass, so an unedited clip resets to GIF.
+        sendSilentVideo = silentVideo && sendPhotoType != SELECT_TYPE_AVATAR;
 
         compressionsCount = -1;
         rotationValue = 0;
@@ -22214,7 +22274,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         }
 
                         if (!centerImageIsLivePhoto) {
-                            compressItem.setState(compressionsCount > 1, muteVideo, Math.min(resultWidth, resultHeight));
+                            setCompressItemState(compressionsCount > 1);
                         }
                         if (BuildVars.LOGS_ENABLED) {
                             FileLog.d("compressionsCount = " + compressionsCount + " w = " + originalWidth + " h = " + originalHeight + " r = " + rotationValue);
@@ -22222,7 +22282,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                         qualityChooseView.invalidate();
                     } else {
                         if (!centerImageIsLivePhoto) {
-                            compressItem.setState(false, muteVideo, Math.min(resultWidth, resultHeight));
+                            setCompressItemState(false);
                         }
                         compressionsCount = 0;
                     }

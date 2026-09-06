@@ -73,6 +73,13 @@ public class VideoEditedInfo {
     public long naxDraftDialogId;
     public long naxDraftTopicId;
     public boolean muted;
+    // NagramX (#silent-video): the user chose "Video" (a silent real video) over "GIF" in the gallery editor for
+    // this muted clip. It shadows muted's exact lifetime, which is why it lives here and not on MediaEditState —
+    // the entry already carries it transitively through editedInfo, same as muted. See getString()/parseString()
+    // for the serialisation invariant: muted and a real bitrate never coexist in the serialised form.
+    public boolean naxSilentVideo;
+    // NagramX (#silent-video): sanity ceiling for the blob-carried silent-video bitrate; see parseString().
+    private static final int NAX_MAX_SILENT_BITRATE = 100_000_000;
     public float volume = 1f;
     public long originalDuration;
     public TLRPC.InputFile file;
@@ -429,7 +436,7 @@ public class VideoEditedInfo {
 
     public String getString() {
         String filters;
-        if (avatarStartTime != -1 || filterState != null || paintPath != null || blurPath != null || mediaEntities != null && !mediaEntities.isEmpty() || cropState != null) {
+        if (avatarStartTime != -1 || filterState != null || paintPath != null || blurPath != null || mediaEntities != null && !mediaEntities.isEmpty() || cropState != null || naxSilentVideo) {
             int len = 10;
             if (filterState != null) {
                 len += 160;
@@ -449,7 +456,7 @@ public class VideoEditedInfo {
                 blurPathBytes = null;
             }
             SerializedData serializedData = new SerializedData(len);
-            serializedData.writeInt32(11);
+            serializedData.writeInt32(12);
             serializedData.writeInt64(avatarStartTime);
             serializedData.writeInt32(originalBitrate);
             if (filterState != null) {
@@ -551,12 +558,21 @@ public class VideoEditedInfo {
             } else {
                 serializedData.writeInt32(TLRPC.TL_null.constructor);
             }
+            // NagramX (#silent-video): version 12. The legacy bitrate slot (args[6]) is forced to -1 whenever muted
+            // (see the format string below), so parseString's `muted = bitrate == -1` inference stays true by
+            // construction and its meaning is unchanged. The real encoder bitrate for a silent video travels here
+            // instead, and the silent-video flag with it. A missing / truncated / version-colliding blob parses back
+            // to bitrate == -1 -> muted == true -> a silent video at 921600 bps. Never audible. Do not "optimise" the
+            // -1 away. Not carried in originalBitrate: the convertor applies that as a Math.min ceiling after the
+            // -1 -> 921600 clamp, so it can only lower the target, never raise it.
+            serializedData.writeBool(naxSilentVideo);
+            serializedData.writeInt32(bitrate);
             filters = Utilities.bytesToHex(serializedData.toByteArray());
             serializedData.cleanup();
         } else {
             filters = "";
         }
-        return String.format(Locale.US, "-1_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_-%s_%s", startTime, endTime, rotationValue, originalWidth, originalHeight, bitrate, resultWidth, resultHeight, originalDuration, framerate, videoOffset, filters, originalPath);
+        return String.format(Locale.US, "-1_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_%d_-%s_%s", startTime, endTime, rotationValue, originalWidth, originalHeight, muted ? -1 : bitrate, resultWidth, resultHeight, originalDuration, framerate, videoOffset, filters, originalPath);
     }
 
     public boolean parseString(String string) {
@@ -697,6 +713,22 @@ public class VideoEditedInfo {
                                     part.part = collage.parts.get(i);
                                     part.readParams(serializedData, false);
                                     collageParts.add(part);
+                                }
+                            }
+                        }
+                        if (version >= 12) {
+                            // NagramX (#silent-video): NEVER assign muted here — muted derives only from the legacy
+                            // bitrate slot above, and reintroducing it here would make this flag load-bearing for
+                            // audio again. Clamp the blob-carried bitrate: a future upstream version-12 collision
+                            // would read foreign bytes as this int (arbitrary large), which flows unclamped into
+                            // KEY_BIT_RATE and can make encoder.configure throw. Reject anything non-positive or above
+                            // a sane ceiling and leave the legacy -1 -> 921600 silent fallback in place.
+                            boolean naxSilent = serializedData.readBool(false);
+                            int naxBitrate = serializedData.readInt32(false);
+                            if (naxSilent) {
+                                naxSilentVideo = true;
+                                if (naxBitrate > 0 && naxBitrate <= NAX_MAX_SILENT_BITRATE) {
+                                    bitrate = naxBitrate;
                                 }
                             }
                         }
