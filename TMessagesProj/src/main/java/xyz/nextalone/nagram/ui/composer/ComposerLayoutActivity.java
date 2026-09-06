@@ -14,6 +14,7 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.SystemClock;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -29,6 +30,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
@@ -316,6 +318,12 @@ public class ComposerLayoutActivity extends BaseFragment {
         previewCell = new PreviewCell(context);
         frameLayout.addView(previewCell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, previewHeight(), Gravity.TOP | Gravity.LEFT));
         updatePreview();
+
+        // NAX_SMOKE_composer-spacing temporary diagnostics - reverted after the smoke build.
+        Log.i("NAX_SMOKE", "NAX_SMOKE_composer-spacing BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
+                + " app=" + BuildConfig.APPLICATION_ID + " account=" + UserConfig.selectedAccount
+                + " savedSpacing=" + NaConfig.INSTANCE.getComposerToolbarSpacing().Int()
+                + " floor=" + spacingFloor());
 
         return fragmentView;
     }
@@ -614,6 +622,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_INFO:
                     ((TextInfoPrivacyCell) holder.itemView).setText(footerText(item.zone));
+                    // NAX_SMOKE_composer-spacing temporary diagnostics - reverted after the smoke build.
+                    if (item.zone == GROUP_SPACING) {
+                        int naxSaved = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();
+                        int naxFloor = spacingFloor();
+                        String naxVariant = naxSaved < naxFloor ? "overridden" : (naxFloor == 100 ? "noroom" : "plain");
+                        Log.i("NAX_SMOKE", "NAX_SMOKE_composer-spacing FOOTER_BOUND footer=" + naxVariant + " saved=" + naxSaved + " floor=" + naxFloor);
+                    }
                     break;
                 case TYPE_SCALE:
                     SlideIntChooseView scaleView = (SlideIntChooseView) holder.itemView;
@@ -650,6 +665,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                     break;
                 case TYPE_SPACING:
                     SlideIntChooseView spacingView = (SlideIntChooseView) holder.itemView;
+                    // NAX_SMOKE_composer-spacing temporary diagnostics - reverted after the smoke build.
+                    if (gestureInProgress) {
+                        Log.e("NAX_SMOKE", "NAX_SMOKE_composer-spacing FORBIDDEN spacing row rebind mid-gesture");
+                    }
                     spacingView.setLabel(LocaleController.getString(R.string.ComposerSpacingAccDescr));
                     spacingView.set(currentSpacing(), spacingOptions(), value -> {
                         if (value == NaConfig.INSTANCE.getComposerToolbarSpacing().Int()) {
@@ -1037,6 +1056,11 @@ public class ComposerLayoutActivity extends BaseFragment {
      * new floor the thumb and printed value too, without a change animation in the middle of the
      * list, and it refreshes the footer so its three-way disclosure never goes stale. */
     private void settleSpacingRows() {
+        // NAX_SMOKE_composer-spacing temporary diagnostics - reverted after the smoke build.
+        int naxSaved = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();
+        int naxFloor = spacingFloor();
+        String naxVariant = naxSaved < naxFloor ? "overridden" : (naxFloor == 100 ? "noroom" : "plain");
+        Log.i("NAX_SMOKE", "NAX_SMOKE_composer-spacing SETTLE saved=" + naxSaved + " floor=" + naxFloor + " footer=" + naxVariant);
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_SPACING, GROUP_SPACING));
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_INFO, GROUP_SPACING));
     }
