@@ -351,9 +351,10 @@ footer under Dark rather than each keeping its own.
 
 ## Composer Toolbar screen: `footerText()`'s `default:` arm is a live case, not an error fallback
 
-`footerText(int zone)` (`ComposerLayoutActivity.java:668-687`) switches on
-either a negative slider-group id or a `ComposerButtons.ZONE_*` constant. Its
-`default:` arm returns `R.string.ComposerLayoutInfo` — that's not a guard for
+`footerText(int zone)` (`ComposerLayoutActivity.java:716-734`) returns a
+`CharSequence` and switches on either a negative slider-group id or a
+`ComposerButtons.ZONE_*` constant. Its `default:` arm returns
+`R.string.ComposerLayoutInfo` — that's not a guard for
 an impossible value, it's the real, reachable case for `ZONE_HIDDEN`, which
 has no explicit `case` label of its own. Deleting or repurposing a `case`
 label in this switch without checking what falls through to `default:` is
@@ -361,6 +362,11 @@ silent: nothing crashes or fails to compile, a footer just renders under the
 wrong row. This is why the Light/Dark glass-transparency merge kept both
 `case GROUP_GLASS_LIGHT:` and `case GROUP_GLASS_DARK:` as explicit fall-through
 labels sharing one return, instead of deleting one and letting it land in
-`default:`.
+`default:`. The `GROUP_SPACING` arm is the one that isn't a fixed string: it
+delegates to `spacingFooterText()` (`:743-754`), which picks one of three
+strings from the saved spacing value against `spacingFloor()`, which is why the
+method returns `CharSequence` rather than a `@StringRes int` and why the
+packing footer is rebound (with the packing slider) whenever Toolbar size
+settles.
 
-*(Established 2026-09-06.)*
+*(Established 2026-09-06; footerText signature and disclosure updated 2026-09-06 for #composer-spacing.)*

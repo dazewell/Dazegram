@@ -509,3 +509,11 @@ never fails CI and never shows in a static screenshot. On any such page,
 and free.
 
 *(Established 2026-09-06, adopting the treatment on `ComposerLayoutActivity`.)*
+
+## `SlideIntChooseView` swallows the seek bar's drag-end signal
+
+`SeekBarView` does expose a gesture-end callback — `onSeekBarDrag(boolean stop, float progress)` (`SeekBarView.java:96`) with `stop` true on the terminal `ACTION_UP`/`ACTION_CANCEL`, plus `onSeekBarPressed`/`onSeekBarReleased` (`:286`/`:313`). But `SlideIntChooseView`'s anonymous delegate (`SlideIntChooseView.java:96-115`) throws all of that away: it ignores `stop`, overrides neither pressed callback, narrows the reported callback to `Utilities.Callback<Integer>` (a bare value, no drag-state), keeps `seekBarView` private with no accessor, and — because `setReportChanges(true)` is on for the composer's Toolbar-size slider (`SlideIntChooseView.java:94`) — fires continuously on every step crossed during a drag with no way for a caller to tell a mid-drag step from the last one. So a consumer that needs "the drag ended" cannot get it from this widget.
+
+The fork-only workaround, used by `ComposerLayoutActivity` for the packing-row settle, is to override `dispatchTouchEvent` on the fragment's own root `FrameLayout` (`ComposerLayoutActivity.java:262`) and treat `ACTION_UP`/`ACTION_CANCEL` there as the gesture-end edge. `SlideIntChooseView` calls `requestDisallowInterceptTouchEvent(true)` on `ACTION_DOWN` (`:86-89`), which suppresses the `RecyclerView`'s *interception* but never *dispatch*, so the root still sees every event including the terminal one. Do **not** reach for a debounce/quiet-interval timer instead — users hold this slider still to read the live preview, so a timer fires mid-gesture with the finger down. And do **not** try to add a `getSeekBarView()` accessor or an `onSeekBarPressed` forward to fix it at source: `SlideIntChooseView` and `SeekBarView` carry zero fork edits and are touched by nearly every upstream bump, so an edit there is a permanent rebase tax.
+
+*(Established 2026-09-06, #composer-spacing.)*
