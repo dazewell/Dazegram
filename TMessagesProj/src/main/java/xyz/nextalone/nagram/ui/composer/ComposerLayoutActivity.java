@@ -330,7 +330,8 @@ public class ComposerLayoutActivity extends BaseFragment {
         items.add(new Item(TYPE_INFO, GROUP_SPACING, null));
         items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_LIGHT, null));
         items.add(new Item(TYPE_GLASS_LIGHT, GROUP_GLASS_LIGHT, null));
-        items.add(new Item(TYPE_INFO, GROUP_GLASS_LIGHT, null));
+        // Light and Dark describe the same glass surfaces, so they share one footer instead of
+        // saying it twice — the shared text sits under Dark, closing both sliders at once.
         items.add(new Item(TYPE_SLIDER_HEADER, GROUP_GLASS_DARK, null));
         items.add(new Item(TYPE_GLASS_DARK, GROUP_GLASS_DARK, null));
         items.add(new Item(TYPE_INFO, GROUP_GLASS_DARK, null));
@@ -672,9 +673,8 @@ public class ComposerLayoutActivity extends BaseFragment {
             case GROUP_SPACING:
                 return R.string.ComposerSpacingInfo;
             case GROUP_GLASS_LIGHT:
-                return R.string.ComposerGlassLightInfo;
             case GROUP_GLASS_DARK:
-                return R.string.ComposerGlassDarkInfo;
+                return R.string.ComposerGlassInfo;
             case ComposerButtons.ZONE_START:
                 return R.string.ComposerZoneLeadingInfo;
             case ComposerButtons.ZONE_MIDDLE:
