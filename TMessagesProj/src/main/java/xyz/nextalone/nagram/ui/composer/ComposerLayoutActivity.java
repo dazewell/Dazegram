@@ -290,8 +290,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                 // setSeekBarDrag fires inside that super call, so settling first would rebind the
                 // packing row off a stale value; on ACTION_CANCEL no drag callback fires at all, and
                 // the settle just picks up the values earlier ACTION_MOVEs already wrote.
-                // SlideIntChooseView disables the RecyclerView's interception for the gesture, never
-                // dispatch, so this root still sees the terminal event either way.
+                // This root sees the whole sequence, terminal event included, because it is the
+                // dispatch root - nothing above it can steal dispatch. SlideIntChooseView's
+                // requestDisallowInterceptTouchEvent only stops the RecyclerView intercepting, which
+                // is what keeps moves flowing to the slider; it is not what lets the root see UP/CANCEL.
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     gestureInProgress = false;
                     if (settlePending) {
@@ -770,11 +772,14 @@ public class ComposerLayoutActivity extends BaseFragment {
     }
 
     /**
-     * The packing footer says one of three things depending on how the saved value sits against the
+     * The packing footer says one of a few things depending on how the saved value sits against the
      * scale-dependent floor, so a user reads which state they are in before touching the slider that
      * would overwrite a hidden value. Overridden wins whenever a saved value is hidden - telling the
      * user it still exists and will return is worth more than the "no room" line, which is reserved
-     * for the case where nothing is hidden and the slider genuinely cannot move.
+     * for the case where nothing is hidden and the slider genuinely cannot move. When the floor has
+     * reached the top of the range the hidden value is still disclosed, but without the "moving the
+     * slider replaces it" warning: every candidate there clamps to the top, so the slider cannot
+     * write and nothing can replace the saved value.
      *
      * The saved value is clamped into the slider's expressible range before it is compared or
      * printed: the number shown as "your saved X%" has to be the value that would actually be
@@ -783,13 +788,17 @@ public class ComposerLayoutActivity extends BaseFragment {
      * value that can never return at any toolbar size and promise a comeback that cannot happen.
      */
     private static CharSequence spacingFooterText() {
-        int saved = Math.max(SPACING_STEPS[0], Math.min(SPACING_STEPS[SPACING_STEPS.length - 1],
-                NaConfig.INSTANCE.getComposerToolbarSpacing().Int()));
+        int min = SPACING_STEPS[0];
+        int top = SPACING_STEPS[SPACING_STEPS.length - 1];
+        int saved = Math.max(min, Math.min(top, NaConfig.INSTANCE.getComposerToolbarSpacing().Int()));
         int floor = spacingFloor();
         if (saved < floor) {
-            return LocaleController.formatString(R.string.ComposerSpacingInfoOverridden, floor, saved);
+            int res = floor >= top
+                    ? R.string.ComposerSpacingInfoOverriddenLocked
+                    : R.string.ComposerSpacingInfoOverridden;
+            return LocaleController.formatString(res, floor, saved);
         }
-        if (floor == 100) {
+        if (floor >= top) {
             return LocaleController.getString(R.string.ComposerSpacingInfoNoRoom);
         }
         return LocaleController.getString(R.string.ComposerSpacingInfo);

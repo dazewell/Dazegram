@@ -375,9 +375,12 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * <p>A stored value below what is reachable at the current scale is not rewritten: a toolbar-size
      * drag never writes composerToolbarSpacing, so shrinking the toolbar leaves the saved value
      * intact and this method just reports the floor instead. Moving the packing slider while it is
-     * clamped is a different matter - SlideIntChooseView clamps the new value up to minValueAllowed
-     * before its own change test, so the next drag writes the clamped floor and the saved value is
-     * gone. That is by design; the packing footer is what discloses it before the user drags.
+     * clamped is more subtle - SlideIntChooseView clamps the new value up to minValueAllowed before
+     * its own change test, so a drag that stays on the floor yields the value already installed,
+     * fails the test and writes nothing; only changing the slider to a genuinely different effective
+     * value replaces the hidden saved one. Where the floor has reached the top of the range every
+     * candidate clamps to that top, so no drag can write at all. The packing footer discloses which
+     * of these states the user is in before they drag.
      */
     public static int spacingPercent() {
         int percent = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();

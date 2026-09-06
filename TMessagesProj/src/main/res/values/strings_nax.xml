@@ -640,6 +640,7 @@
     <string name="ComposerSpacingAccDescr">Icon spacing</string>
     <string name="ComposerSpacingInfo">Packs icons closer without shrinking them.</string>
     <string name="ComposerSpacingInfoOverridden">Showing %1$d%%. Your saved %2$d%% will come back once Toolbar size is bigger, but moving Icon spacing now replaces it.</string>
+    <string name="ComposerSpacingInfoOverriddenLocked">Showing %1$d%%. Your saved %2$d%% will come back once Toolbar size is bigger.</string>
     <string name="ComposerSpacingInfoNoRoom">Icon spacing can\'t move at this Toolbar size. Make Toolbar size bigger to use this slider.</string>
     <string name="ComposerGlassLight">Transparency in light theme</string>
     <string name="ComposerGlassLightAccDescr">Transparency in light theme</string>
