@@ -389,3 +389,34 @@ lives in `ChatMessageCell`'s `GroupMedia` branch
 atlas producer invariant that this fix changes.
 
 *(Established 2026-09-04.)*
+
+## "Our own settings page can use real Material Components / Material 3 widgets, since it's fork-owned"
+
+Disproven — it is impossible in this fork, not merely expensive, on two
+independent grounds, so a "material 3 redesign" of any settings page cannot be
+built out of actual MDC widgets.
+
+1. Classpath. `TMessagesProj/build.gradle:250` globally excludes
+   `androidx.recyclerview:recyclerview`, because the fork vendors a modified
+   RecyclerView in-source (including the `ItemTouchHelper` these settings pages
+   drag with). Material Components hard-depends on `androidx.recyclerview`: keep
+   the exclude and MDC compiles but dies on a device with `NoSuchMethodError`;
+   lift it and two RecyclerView classes collide on one classpath. Separately,
+   `com.google.android.material.color.utilities` is ALREADY vendored in-source
+   for `MonetHelper.java:11`, so pulling in the Material AAR is a duplicate-class
+   D8/R8 failure. Two collisions, each fatal on its own.
+
+2. Theming. Bridging Telegram's theme keys into XML `?attr/` values so MDC
+   widgets track the app theme cannot work: the app's colours are runtime values
+   resolved per frame from user-loaded `.attheme` data
+   (`Theme.getColor(key, resourcesProvider)`), while `?attr/` and MDC theming
+   resolve compile-time resource values. `DynamicColors`/Monet is not a
+   counterexample — it builds overlays from FRAMEWORK resources
+   (`android.R.color.system_accent1_*`, the very ones `MonetHelper.java:27-65`
+   reads), not from the app's theme engine.
+
+What the redesign actually wanted — the M3 grouped-card look — was already a
+one-line call to `RecyclerListView.setSections()`, the house treatment used
+everywhere else in Settings, with no MDC involved. See upstream-traps.md.
+
+*(Established 2026-09-06.)*
