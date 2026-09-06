@@ -55,6 +55,8 @@ import org.telegram.ui.PhotoViewer;
 
 import java.util.ArrayList;
 
+import xyz.nextalone.nagram.NaConfig;
+
 public class MentionsContainerView extends FrameLayout implements NotificationCenter.NotificationCenterDelegate {
 
     private final Theme.ResourcesProvider resourcesProvider;
