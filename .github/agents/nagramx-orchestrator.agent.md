@@ -686,6 +686,21 @@ Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the dat
                   child renames to this with `rename_branch` before touching a file)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
+Codemap:        required | not required   (judged on what the work *learned*,
+                  not on what it shipped, so it is decided independently of
+                  User-visible above. Required whenever the change establishes
+                  a durable fact: a UI→code mapping, an upstream trap, or a
+                  hypothesis it disproved. It lands in `docs/codemap/` **in
+                  this same change**, per `CLAUDE.md` and
+                  `docs/codemap/README.md` — never as a follow-up, because the
+                  `file:line` citations are only cheap while the tree is still
+                  in the implementer's head, and they are unrecoverable once
+                  the branch is archived. A change is routinely
+                  `User-visible: no` and `Codemap: required` at the same time —
+                  an internal fix that maps a trap ships no user-facing
+                  behaviour at all — which is exactly why this is its own
+                  field and not a clause of the one above. Name the target
+                  file and the claim if recon already knows them.)
 Smoke build:    required | not required   (required whenever the change adds or
                   alters anything a user can see or tap — this is a *separate*
                   build from the one below, requested by you as soon as it
@@ -1010,6 +1025,12 @@ Confirm, one by one:
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
 - A user-visible change has its `FEATURES.md` entry in the same pull request.
+- A change the brief marked `Codemap: required` has its `docs/codemap/` entry in
+  the same pull request. Check the diff for it rather than taking the child's
+  word — a branch that touched no codemap file when the brief required one is a
+  finding. This is the last cheap moment to catch it: after the branch is
+  archived the citations that made the entry worth writing are gone, and
+  reconstructing them costs another full recon.
 - If the brief marked `Diagnostics: required`, run **two independent checks**,
   neither a substitute for the other (`nagramx-workflow` step 9's ADB
   subsection): grep the head tree for both the exact declared **literal tag**
