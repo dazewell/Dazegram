@@ -286,10 +286,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                     gestureInProgress = true;
                 }
                 boolean handled = super.dispatchTouchEvent(ev);
-                // UP/CANCEL only after super has run: the slider's own terminal setSeekBarDrag fires
-                // inside that super call, so settling first would rebind the packing row off a stale
-                // value. SlideIntChooseView disables the RecyclerView's interception for the gesture,
-                // never dispatch, so this root still sees the terminal event.
+                // Settle after super has run, not before. On ACTION_UP the slider's own terminal
+                // setSeekBarDrag fires inside that super call, so settling first would rebind the
+                // packing row off a stale value; on ACTION_CANCEL no drag callback fires at all, and
+                // the settle just picks up the values earlier ACTION_MOVEs already wrote.
+                // SlideIntChooseView disables the RecyclerView's interception for the gesture, never
+                // dispatch, so this root still sees the terminal event either way.
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     gestureInProgress = false;
                     if (settlePending) {
