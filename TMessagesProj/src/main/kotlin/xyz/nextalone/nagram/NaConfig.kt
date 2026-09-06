@@ -586,7 +586,7 @@ object NaConfig {
         addConfig(
             "DisableFlagSecure",
             ConfigItem.configTypeBool,
-            true
+            false
         )
     val centerActionBarTitle =
         addConfig(
@@ -1358,6 +1358,12 @@ object NaConfig {
     val tabStyleStroke =
         addConfig(
             "TabStyleStroke",
+            ConfigItem.configTypeBool,
+            false
+        )
+    val addCommaAfterMention =
+        addConfig(
+            "AddCommaAfterMention",
             ConfigItem.configTypeBool,
             false
         )

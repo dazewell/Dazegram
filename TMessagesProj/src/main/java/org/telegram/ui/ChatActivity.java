@@ -7711,7 +7711,7 @@ public class ChatActivity extends BaseFragment implements
             int start = mentionContainer.getAdapter().getResultStartPosition();
             int len = mentionContainer.getAdapter().getResultLength();
             if (mentionContainer.getAdapter().isLocalHashtagHint(position)) {
-                chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + "@" + ChatObject.getPublicUsername(currentChat) + " ", false);
+                chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + "@" + ChatObject.getPublicUsername(currentChat) + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                 return;
             } else if (mentionContainer.getAdapter().isGlobalHashtagHint(position)) {
                 chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + " ", false);
@@ -7761,7 +7761,7 @@ public class ChatActivity extends BaseFragment implements
                 } else {
                     String username = ChatObject.getPublicUsername(chat);
                     if (username != null) {
-                        chatActivityEnterView.replaceWithText(start, len, "@" + username + " ", false);
+                        chatActivityEnterView.replaceWithText(start, len, "@" + username + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                     }
                 }
             } else if (object instanceof TLRPC.User) {
@@ -7770,10 +7770,10 @@ public class ChatActivity extends BaseFragment implements
                     searchUserMessages(user, null);
                 } else {
                     if (UserObject.getPublicUsername(user) != null) {
-                        chatActivityEnterView.replaceWithText(start, len, "@" + UserObject.getPublicUsername(user) + " ", false);
+                        chatActivityEnterView.replaceWithText(start, len, "@" + UserObject.getPublicUsername(user) + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                     } else {
                         String name = UserObject.getFirstName(user, false);
-                        Spannable spannable = new SpannableString("@" + name + " ");
+                        Spannable spannable = new SpannableString("@" + name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                         spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     }
@@ -7939,7 +7939,7 @@ public class ChatActivity extends BaseFragment implements
                 TLRPC.User user = (TLRPC.User) object;
                 if (!(searchingForUser && searchContainer.getVisibility() == View.VISIBLE) && user != null) {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString("@" + name + " ");
+                    Spannable spannable = new SpannableString("@" + name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     return true;
@@ -10824,9 +10824,9 @@ public class ChatActivity extends BaseFragment implements
         actionModeOtherItem.addSubItem(nkbtn_unpin, R.drawable.msg_unpin, LocaleController.getString("UnpinMessage", R.string.UnpinMessage));
         if (!noforward)
             actionModeOtherItem.addSubItem(nkbtn_savemessage, R.drawable.menu_saved, LocaleController.getString("AddToSavedMessages", R.string.AddToSavedMessages));
-        if (NekoConfig.showRepeat.Bool() && !noforward)
+        if (NekoConfig.showRepeat.Bool() && !noforward && !(NaConfig.INSTANCE.getDisableRepeatInChannel().Bool() && isChannel()))
             actionModeOtherItem.addSubItem(nkbtn_repeat, R.drawable.msg_repeat, LocaleController.getString("Repeat", R.string.Repeat));
-        if (NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NaConfig.INSTANCE.getAutoReplaceRepeat().Bool() && noforward)) {
+        if ((NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NaConfig.INSTANCE.getAutoReplaceRepeat().Bool() && noforward)) && !(NaConfig.INSTANCE.getDisableRepeatInChannel().Bool() && isChannel())) {
             actionModeOtherItem.addSubItem(nkbtn_repeatascopy, R.drawable.msg_repeat, LocaleController.getString("RepeatAsCopy", R.string.RepeatAsCopy));
         }
         if (NekoConfig.showMessageHide.Bool()) {
@@ -41033,7 +41033,7 @@ public class ChatActivity extends BaseFragment implements
                 }
                 String username = ChatObject.getPublicUsername(chat);
                 if (username != null) {
-                    sb.append("@").append(username).append(" ");
+                    sb.append("@").append(username).append(NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " ");
                 } else {
                     return;
                 }
@@ -41059,10 +41059,10 @@ public class ChatActivity extends BaseFragment implements
                 }
                 String username = UserObject.getPublicUsername(user);
                 if (username != null) {
-                    sb.append("@").append(username).append(" ");
+                    sb.append("@").append(username).append(NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " ");
                 } else {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString(name + " ");
+                    Spannable spannable = new SpannableString(name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     sb.append(spannable);
                 }
@@ -41432,6 +41432,9 @@ public class ChatActivity extends BaseFragment implements
 
             final TL_keyboard.TL_inlineButtonTypeUrl buttonTypeUrl = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUrl.class);
             final TL_keyboard.TL_inlineButtonTypeCopy buttonTypeCopy = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCopy.class);
+            final TL_keyboard.TL_inlineButtonTypeSwitchInline buttonTypeSwitchInline = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeSwitchInline.class);
+            final TL_keyboard.TL_inlineButtonTypeCallback buttonTypeCallback = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCallback.class);
+            final TL_keyboard.TL_inlineButtonTypeUserProfile buttonTypeUserProfile = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUserProfile.class);
 
             if (getParentActivity() == null || bottomChannelButtonsLayout.getVisibility() == View.VISIBLE &&
                     buttonTypeUrl == null && buttonTypeCopy == null &&
@@ -41454,7 +41457,19 @@ public class ChatActivity extends BaseFragment implements
                     if (!NekoConfig.disableVibration.Bool())
                     cell.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
                 } catch (Exception ignore) {}
+                return true;
             }
+            Utilities.Callback<String> copyCallback = (text) -> {
+                AndroidUtilities.addToClipboard(text);
+                BulletinFactory.of(ChatActivity.this).createCopyBulletin(formatString(R.string.ExactTextCopied, text)).show();
+            };
+            ItemOptions.makeOptions(ChatActivity.this, cell, true)
+                .add(R.drawable.msg_copy, getString(R.string.Copy), () -> copyCallback.run(button.getText()))
+                .addIf(getParentActivity() != null && !TextUtils.isEmpty(button.getText()), R.drawable.msg_translate, getString(R.string.Translate), () -> Translator.translateShowAlert(getParentActivity(), button.getText()))
+                .addIf(buttonTypeSwitchInline != null, R.drawable.msg_copy, getString(R.string.CopyInlineQuery), () -> copyCallback.run(buttonTypeSwitchInline.query))
+                .addIf(buttonTypeCallback != null, R.drawable.msg_copy, getString(R.string.CopyCallback), () -> copyCallback.run(tw.nekomimi.nekogram.ui.MessageHelper.getTextOrBase64(buttonTypeCallback.data)))
+                .addIf(buttonTypeUserProfile != null, R.drawable.msg_copy, getString(R.string.CopyID), () -> copyCallback.run(String.valueOf(buttonTypeUserProfile.user_id)))
+                .show();
             return true;
         }
 
@@ -46290,10 +46305,6 @@ public class ChatActivity extends BaseFragment implements
         if (checkSlowMode(chatActivityEnterView.getSendButton())) {
             return;
         }
-        if (NaConfig.INSTANCE.getDisableRepeatInChannel().Bool() && isChannel()) {
-            BulletinFactory.of(this).createSimpleBulletin(R.raw.error, getString(R.string.DisableRepeatInChannelError)).show();
-            return;
-        }
         final ArrayList<MessageObject> messages = new ArrayList<>();
         if (selectedObject != null) {
             messages.add(selectedObject);
@@ -48503,12 +48514,12 @@ public class ChatActivity extends BaseFragment implements
                     }
                     boolean allowRepeat = currentUser != null
                             || (currentChat != null && ChatObject.canSendMessages(currentChat));
-                    if (allowRepeat && NekoConfig.showRepeat.Bool() && !noforward) {
+                    if (allowRepeat && NekoConfig.showRepeat.Bool() && !noforward && !(NaConfig.INSTANCE.getDisableRepeatInChannel().Bool() && isChannel())) {
                         items.add(LocaleController.getString(R.string.Repeat));
                         options.add(nkbtn_repeat);
                         icons.add(R.drawable.msg_repeat);
                     }
-                    if (allowRepeat && (NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NaConfig.INSTANCE.getAutoReplaceRepeat().Bool() && noforward))){
+                    if (allowRepeat && (NaConfig.INSTANCE.getShowRepeatAsCopy().Bool() || (NaConfig.INSTANCE.getAutoReplaceRepeat().Bool() && noforward)) && !(NaConfig.INSTANCE.getDisableRepeatInChannel().Bool() && isChannel())){
                         items.add(LocaleController.getString(R.string.RepeatAsCopy));
                         options.add(nkbtn_repeatascopy);
                         icons.add(R.drawable.msg_repeat);
