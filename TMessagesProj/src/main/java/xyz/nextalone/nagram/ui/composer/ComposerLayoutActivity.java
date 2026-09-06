@@ -270,6 +270,12 @@ public class ComposerLayoutActivity extends BaseFragment {
         itemTouchHelper.attachToRecyclerView(listView);
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, 0, previewHeight(), 0, 0));
         listView.setAdapter(adapter = new ListAdapter(context));
+        // Adopt the same rounded grouped-card treatment every other settings page uses. The one-arg
+        // overload resolves to setSections(dp(12), dp(16), true) and the default section-exclusion
+        // predicate, matching the two fork settings base classes; card boundaries then come purely
+        // from where the TextInfoPrivacyCell footers sit, detected live per frame.
+        listView.setSections(true);
+        actionBar.setAdaptiveBackground(listView);
 
         // Pinned rather than scrolled with the list: it is the feedback surface for every drag, so
         // it has to stay on screen while the user works down a twenty-row list.
@@ -884,6 +890,11 @@ public class ComposerLayoutActivity extends BaseFragment {
                 listView.cancelClickRunnables(false);
                 if (viewHolder != null) {
                     viewHolder.itemView.setPressed(true);
+                    // Tells RecyclerListView.top()/bottom() to follow the row's animated Y instead
+                    // of its settled layout bounds, so the section card edge tracks the lifted row.
+                    // Cleared in clearView, which is the only callback that runs on drop (this one
+                    // gets viewHolder == null on the transition to idle).
+                    viewHolder.itemView.setTag(R.id.dragging, true);
                 }
             }
             boolean arm = false;
@@ -908,6 +919,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         public void clearView(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
+            viewHolder.itemView.setTag(R.id.dragging, null);
             setStartZoneArmed(false);
             clearPendingStartSwap();
             // A cross-section move can empty the source zone (Middle/Trailing/Hidden need a fresh
