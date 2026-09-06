@@ -169,13 +169,14 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
         watchRow = -1;
         if (!DialogObject.isEncryptedDialog(dialogId)) {
             previewRow = rowCount++;
-            if (DialogObject.isUserDialog(dialogId)) {
-                storiesRow = rowCount++;
-            }
-            // NagramX: per-chat "Show on Watch" toggle. Hidden on secret chats (already local-only) and on topic
-            // screens (topicId != 0) -- the setting keys by raw dialogId and can't address a single topic.
+            // NagramX: per-chat "Show on Watch" toggle, sits directly under Message Preview (before the Stories
+            // row). Hidden on secret chats (already local-only) and on topic screens (topicId != 0) -- the
+            // setting keys by raw dialogId and can't address a single topic.
             if (topicId == 0) {
                 watchRow = rowCount++;
+            }
+            if (DialogObject.isUserDialog(dialogId)) {
+                storiesRow = rowCount++;
             }
         } else {
             previewRow = -1;
