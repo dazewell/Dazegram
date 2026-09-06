@@ -32,15 +32,18 @@ full-screen 1080x2354 JPGs; each panel's `crop` rectangle in the manifest
 selects the sub-region to composite, in that screenshot's own native pixel
 coordinates.
 
-Determinism: given the same manifest, the same screenshots, the same Pillow
-version, and the same resolved caption font (the first FONT_CANDIDATES entry
-that exists on disk -- see below), re-running this script byte-for-byte
-reproduces its output (no timestamps, no randomness, no multithreading). This
-is a same-machine guarantee, not a cross-machine one: a different OS, or a
-different font installed at the same candidate path, changes glyph rendering
-and therefore the output bytes. If a change to Pillow changes its encoder
-output, regenerate every wall together rather than mixing PNGs written by
-different Pillow versions.
+Determinism: given the same manifest, the same screenshots, and the same
+Pillow version, re-running this script byte-for-byte reproduces its output
+(no timestamps, no randomness, no multithreading). The caption font
+(Tools/scripts/fonts/Inter-VariableFont.ttf, see load_font() below) is
+vendored in the repository rather than resolved from whatever happens to be
+installed on the machine running this, so it no longer varies output across
+machines or after an OS update -- the remaining cross-machine variable is
+your installed Pillow (and its bundled FreeType) version, since a different
+FreeType build can rasterize the same font file's hinting slightly
+differently. If a change to Pillow changes its encoder or rasterizer output,
+regenerate every wall together rather than mixing PNGs written by different
+Pillow versions.
 """
 
 from __future__ import annotations
@@ -58,17 +61,21 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 SCRIPT_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = SCRIPT_DIR / "wall_manifest.toml"
 
-# Fonts tried in order; the first one that exists on disk is used. This
-# script is only ever run by hand on dazewell's Windows machine, so the
-# Windows paths come first, but the Linux/macOS entries cost nothing and mean
-# a checkout on another OS still renders something instead of hard-failing.
-FONT_CANDIDATES = [
-    Path(r"C:\Windows\Fonts\segoeuib.ttf"),
-    Path(r"C:\Windows\Fonts\arialbd.ttf"),
-    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
-    Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
-    Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
-]
+# A repository-owned font, not a system one: determinism is the entire
+# reason this tool exists ("same inputs, same output" is what makes
+# regenerating a wall a re-run instead of a hand-rebuild in an external
+# editor), and a font resolved from wherever the OS happens to have it
+# installed breaks that guarantee -- a missing/updated system font would
+# silently change every caption's glyph rendering, and therefore the output
+# bytes, for a reason nobody could see from the manifest or the diff.
+#
+# Inter (SIL Open Font License 1.1, license file alongside it in fonts/) is
+# a bold humanist/geometric UI sans designed for on-screen legibility at
+# small sizes -- the same brief as the captions here -- and is the closest
+# visual match to the previously hand-set Segoe UI Bold captions. It ships
+# as a single variable font; `load_font()` below selects its "Bold" named
+# instance rather than needing a separate static-weight file.
+CAPTION_FONT_PATH = SCRIPT_DIR / "fonts" / "Inter-VariableFont.ttf"
 
 
 def find_repo_root(start: Path) -> Path:
@@ -88,14 +95,23 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
-    for path in FONT_CANDIDATES:
-        if path.exists():
-            return ImageFont.truetype(str(path), size)
-    raise SystemExit(
-        "no bold sans-serif font found (looked for: "
-        + ", ".join(str(p) for p in FONT_CANDIDATES)
-        + "); install one of these or add its path to FONT_CANDIDATES"
-    )
+    if not CAPTION_FONT_PATH.exists():
+        raise SystemExit(
+            f"caption font not found at {CAPTION_FONT_PATH}; this tool "
+            "depends on a repository-owned font for deterministic output "
+            "and deliberately does not fall back to a system font -- "
+            "restore Tools/scripts/fonts/ instead of installing one locally"
+        )
+    font = ImageFont.truetype(str(CAPTION_FONT_PATH), size)
+    try:
+        font.set_variation_by_name("Bold")
+    except OSError as exc:
+        raise SystemExit(
+            f"{CAPTION_FONT_PATH} does not expose a 'Bold' named variation "
+            f"instance ({exc}); this file may have been replaced with a "
+            "different build of the font"
+        ) from None
+    return font
 
 
 @dataclass
