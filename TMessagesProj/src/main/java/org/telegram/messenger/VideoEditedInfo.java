@@ -78,8 +78,10 @@ public class VideoEditedInfo {
     // the entry already carries it transitively through editedInfo, same as muted. See getString()/parseString()
     // for the serialisation invariant: muted and a real bitrate never coexist in the serialised form.
     public boolean naxSilentVideo;
-    // NagramX (#silent-video): sanity ceiling for the blob-carried silent-video bitrate; see parseString().
-    private static final int NAX_MAX_SILENT_BITRATE = 100_000_000;
+    // NagramX (#silent-video): sanity ceiling for the blob-carried silent-video bitrate; see parseString(). Tied to
+    // the highest target this app ever generates (VIDEO_BITRATE_2160, 28.4 Mbps) so a colliding upstream payload
+    // cannot slip a plausible-looking but unsupported bitrate into MediaCodec.configure.
+    private static final int NAX_MAX_SILENT_BITRATE = MediaController.VIDEO_BITRATE_2160;
     public float volume = 1f;
     public long originalDuration;
     public TLRPC.InputFile file;
@@ -561,10 +563,11 @@ public class VideoEditedInfo {
             // NagramX (#silent-video): version 12. The legacy bitrate slot (args[6]) is forced to -1 whenever muted
             // (see the format string below), so parseString's `muted = bitrate == -1` inference stays true by
             // construction and its meaning is unchanged. The real encoder bitrate for a silent video travels here
-            // instead, and the silent-video flag with it. A missing / truncated / version-colliding blob parses back
-            // to bitrate == -1 -> muted == true -> a silent video at 921600 bps. Never audible. Do not "optimise" the
-            // -1 away. Not carried in originalBitrate: the convertor applies that as a Math.min ceiling after the
-            // -1 -> 921600 clamp, so it can only lower the target, never raise it.
+            // instead, next to a TL bool recording whether the user chose silent video (true) or left the clip a GIF
+            // (false). The decoder treats a valid explicit false as a genuine GIF, and treats a missing / truncated /
+            // garbage extension on a muted record as "couldn't tell" -> silent video with bitrate left at -1 -> 921600
+            // bps. Never audible. Do not "optimise" the -1 away. Not carried in originalBitrate: the convertor applies
+            // that as a Math.min ceiling after the -1 -> 921600 clamp, so it can only lower the target, never raise it.
             serializedData.writeBool(naxSilentVideo);
             serializedData.writeInt32(bitrate);
             filters = Utilities.bytesToHex(serializedData.toByteArray());
@@ -717,19 +720,37 @@ public class VideoEditedInfo {
                             }
                         }
                         if (version >= 12) {
-                            // NagramX (#silent-video): NEVER assign muted here — muted derives only from the legacy
-                            // bitrate slot above, and reintroducing it here would make this flag load-bearing for
-                            // audio again. Clamp the blob-carried bitrate: a future upstream version-12 collision
-                            // would read foreign bytes as this int (arbitrary large), which flows unclamped into
-                            // KEY_BIT_RATE and can make encoder.configure throw. Reject anything non-positive or above
-                            // a sane ceiling and leave the legacy -1 -> 921600 silent fallback in place.
-                            boolean naxSilent = serializedData.readBool(false);
-                            int naxBitrate = serializedData.readInt32(false);
-                            if (naxSilent) {
-                                naxSilentVideo = true;
-                                if (naxBitrate > 0 && naxBitrate <= NAX_MAX_SILENT_BITRATE) {
-                                    bitrate = naxBitrate;
+                            // NagramX (#silent-video): the silent-video extension is a TL bool (chose silent video, not
+                            // GIF) plus the real encoder bitrate. Two rules this block must never break: it must not
+                            // assign muted (that derives only from the legacy bitrate slot above; reintroducing it here
+                            // makes the flag load-bearing for audio again), and it must not trust the carried bitrate
+                            // blindly (a future upstream version-12 collision reads foreign bytes as this int, otherwise
+                            // flowing unclamped into KEY_BIT_RATE where encoder.configure can throw).
+                            //
+                            // Fail-safe, for a legacy-muted record only: a truncated extension (< 8 bytes left) or a
+                            // bool constructor that is neither true nor false means "couldn't tell", and degrades to
+                            // naxSilentVideo = true with the legacy bitrate == -1 left in place -> 921600 bps -> a
+                            // silent video, never audible. A valid, explicit boolFalse is different: it means the record
+                            // was genuinely a GIF, so naxSilentVideo stays false. "Couldn't tell" and "explicitly a GIF"
+                            // must not collapse into the same branch, which is why this reads the raw TL-bool
+                            // constructor rather than readBool(false) — that would fold malformed data into false and
+                            // misclassify a damaged silent video as a GIF. The 8 bytes are consumed whenever present so
+                            // the stream position stays correct for any future version block appended after this one.
+                            if (serializedData.remaining() >= 8) {
+                                int naxBoolConstructor = serializedData.readInt32(false);
+                                int naxBitrate = serializedData.readInt32(false);
+                                if (muted) {
+                                    if (naxBoolConstructor == 0x997275b5) { // TL_boolTrue: user chose silent video
+                                        naxSilentVideo = true;
+                                        if (naxBitrate > 0 && naxBitrate <= NAX_MAX_SILENT_BITRATE) {
+                                            bitrate = naxBitrate;
+                                        }
+                                    } else if (naxBoolConstructor != 0xbc799737) { // not TL_boolFalse: malformed -> silent
+                                        naxSilentVideo = true;
+                                    }
                                 }
+                            } else if (muted) {
+                                naxSilentVideo = true;
                             }
                         }
                         serializedData.cleanup();
