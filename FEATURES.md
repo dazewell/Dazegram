@@ -47,6 +47,12 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 Clear Message Database now removes only the media this install has database rows for, preventing a second install sharing the Downloads folder from having its media wiped.
 
+### Keep a chat's messages off your watch <!-- #wear-messages -->
+
+Each chat's Notifications screen (open a chat → its name → Notifications, or long-press it in the list → Notifications) now has a **Watch Messages** switch under Message Preview. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification stays exactly as it was — same alert, same content, same actions. It's on by default, so nothing changes until you turn a chat off.
+
+This covers messages only. An incoming call from that chat still rings the watch, which is why the switch says "Watch Messages" and not "Watch Notifications". It takes effect on the next notification for that chat, not retroactively — a message already on the watch stays there. The switch is per account, and doesn't appear on secret chats (their notifications never bridge anyway) or on a forum's individual topic screens — set it on the forum's main chat and it governs every topic together.
+
 ## Composer and input
 
 ### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->

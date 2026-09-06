@@ -479,3 +479,27 @@ compile against upstream but not against our renamed tree), so it only surfaces
 at the compile gate; that is the check to trust, not a grep.
 
 *(Established 2026-09-06, during the NextAlone/Nagram sync reconciliation, snapshot `981806a992`.)*
+
+## The aggregated group summary notification bridges every pushed chat's message text to Wear, even when a chat's own child notification is `setLocalOnly`
+
+`NotificationsController.showExtraNotifications(...)` builds one per-dialog
+child notification per chat plus, when `useSummaryNotification` is true
+(`sortedDialogs.size() > 1`, or API <= O_MR1), a single aggregate summary from
+`notificationBuilder` — the `mBuilder` first assembled back in
+`showOrUpdateNotification`. That summary's `InboxStyle` is not a count: it adds
+up to 10 lines of real `getStringForMessage(...)` output — sender names and
+message text drawn from every pushed dialog
+(`NotificationsController.java:4437,4464`). The trap: a per-dialog child getting
+`setLocalOnly(true)` (encrypted chats have always done this, at
+`:5852`) does **not** stop that chat's text riding to a paired Wear OS watch,
+because the *summary* is a separate `Notification` that never received
+`setLocalOnly` at all. So suppressing one chat's watch delivery means gating the
+child **and** the summary; gating only the child leaks the text through the
+summary in the common >=2-unread case. The same is true of the fork's cover
+summary (`NotificationCoverController.buildCoverSummary`) and of covered chats,
+which `continue` out of the loop before the child hook and post their own card.
+This is why `#wear-messages` hooks four sites, not one: the two per-dialog
+`setLocalOnly` sites (`:5852` encrypted, `:5856` watch-off) and a `naxAnyWatchOff`
+scan that gates both the real and cover summaries (`:4968`, `:5014`).
+
+*(Established 2026-09-06, during the #wear-messages build.)*

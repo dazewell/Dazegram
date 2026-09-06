@@ -4957,6 +4957,19 @@ public class NotificationsController extends BaseController implements Notificat
 
         boolean useSummaryNotification = Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2);
 
+        // NagramX: the aggregate summary's InboxStyle carries other chats' sender names and message text, and it never
+        // gets setLocalOnly on its own. If any pushed chat has "Watch Messages" off, suppress the whole summary from a
+        // bridged Wear device (its per-dialog child is already suppressed at the setLocalOnly hook below); the phone shade
+        // is unaffected. Skip story pseudo-dialogs -- they aggregate every story pusher and aren't governed by this toggle.
+        boolean naxAnyWatchOff = false;
+        for (int naxI = 0; naxI < sortedDialogs.size(); naxI++) {
+            DialogKey naxDk = sortedDialogs.get(naxI);
+            if (!naxDk.story && !xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, naxDk.dialogId)) {
+                naxAnyWatchOff = true;
+                break;
+            }
+        }
+
         // NagramX: the covered set and grouping were resolved in the preflight (showOrUpdateNotification), and the old
         // real summary + covered dialogs' prior children were already cancelled there. Here we only build the disguised
         // summary/children from that one immutable snapshot; the real summary is never built or posted when covered, and
@@ -4983,7 +4996,7 @@ public class NotificationsController extends BaseController implements Notificat
             if (useSummaryNotification) {
                 Notification coverSummary = null;
                 try {
-                    coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredSet, naxCoverPlans, naxSummaryRepresented, summaryDismissDate);
+                    coverSummary = naxBuildCoverSummary(messagesByDialogs, naxCoveredSet, naxCoverPlans, naxSummaryRepresented, summaryDismissDate, naxAnyWatchOff);
                 } catch (Exception e) {
                     FileLog.e("nax cover summary build failed", e);
                 }
@@ -4995,6 +5008,10 @@ public class NotificationsController extends BaseController implements Notificat
         } else {
             if (Build.VERSION.SDK_INT >= 26) {
                 notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
+            }
+            // NagramX: suppress the aggregate summary from a bridged Wear device when any pushed chat is watch-off (see naxAnyWatchOff above)
+            if (naxAnyWatchOff) {
+                notificationBuilder.setLocalOnly(true);
             }
             mainNotification = notificationBuilder.build();
         }
@@ -5834,6 +5851,10 @@ public class NotificationsController extends BaseController implements Notificat
             if (DialogObject.isEncryptedDialog(dialogId)) {
                 builder.setLocalOnly(true);
             }
+            // NagramX: keep this chat's message off a bridged Wear device when its per-chat "Watch Messages" toggle is off; the phone notification is untouched. Stories aggregate every pusher, so they aren't governed by a per-chat toggle.
+            if (!dialogKey.story && !xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, dialogId)) {
+                builder.setLocalOnly(true);
+            }
             if (avatarBitmap != null) {
                 builder.setLargeIcon(avatarBitmap);
             }
@@ -5945,7 +5966,8 @@ public class NotificationsController extends BaseController implements Notificat
             java.util.HashSet<Long> covered,
             LongSparseArray<com.radolyn.ayugram.chatprivacy.NotificationCoverController.CoverPostPlan> coverPlans,
             LongSparseArray<ArrayList<String>> representedByDialog,
-            int summaryDismissDate
+            int summaryDismissDate,
+            boolean anyWatchOff
     ) {
         ArrayList<String> lines = new ArrayList<>();
         java.util.HashSet<Long> emittedCovered = new java.util.HashSet<>();
@@ -5979,7 +6001,7 @@ public class NotificationsController extends BaseController implements Notificat
         }
         String subText = LocaleController.formatPluralString("NewMessages", total_unread_count);
         return com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildCoverSummary(
-                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate);
+                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate, anyWatchOff);
     }
 
     private String cutLastName(String name) {
