@@ -183,7 +183,12 @@ def _require_plain_png_filename(raw: object, *, context: str) -> str:
     if not isinstance(raw, str) or not raw:
         raise SystemExit(f"{context}: output must be a non-empty string, got {raw!r}")
     path = Path(raw)
-    if len(path.parts) != 1 or path.is_absolute():
+    # Check path.anchor explicitly rather than relying only on is_absolute():
+    # a Windows drive-relative value like "C:foo.png" is *not* is_absolute()
+    # (it's relative to the current directory on that drive), but it still
+    # carries a non-empty anchor, and joining it onto out_dir would ignore
+    # out_dir entirely rather than raising.
+    if len(path.parts) != 1 or path.anchor:
         raise SystemExit(
             f"{context}: output must be a plain filename with no directory "
             f"separators, drive, or '..', got {raw!r}"
@@ -264,16 +269,16 @@ def validate_manifest_shape(manifest: dict, manifest_path: Path) -> None:
         if not isinstance(wall, dict):
             raise SystemExit(f"{wall_context}: must be a table, got {wall!r}")
         output = _require_plain_png_filename(wall.get("output"), context=wall_context)
-        # Compare case-insensitively: Windows (the only OS this tool targets)
-        # treats "Hero.png" and "hero.png" as the same file, so two walls
-        # with differently-cased names would otherwise pass this check and
-        # then silently overwrite each other's output.
+        # Compare case-insensitively: Windows and other case-insensitive
+        # filesystems treat "Hero.png" and "hero.png" as the same file, so
+        # two walls with differently-cased names would otherwise pass this
+        # check and then silently overwrite each other's output.
         output_key = output.casefold()
         if output_key in seen_outputs:
             raise SystemExit(
                 f"duplicate wall output {output!r} -- every [[wall]] needs a "
-                "unique output filename (case-insensitively, since Windows "
-                "treats differently-cased names as the same file)"
+                "unique output filename (case-insensitively, since some "
+                "filesystems treat differently-cased names as the same file)"
             )
         seen_outputs.add(output_key)
         wall_context = f"wall {output!r}"
