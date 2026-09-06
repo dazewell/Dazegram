@@ -562,12 +562,14 @@ public class VideoEditedInfo {
             }
             // NagramX (#silent-video): version 12. The legacy bitrate slot (args[6]) is forced to -1 whenever muted
             // (see the format string below), so parseString's `muted = bitrate == -1` inference stays true by
-            // construction and its meaning is unchanged. The real encoder bitrate for a silent video travels here
-            // instead, next to a TL bool recording whether the user chose silent video (true) or left the clip a GIF
-            // (false). The decoder treats a valid explicit false as a genuine GIF, and treats a missing / truncated /
-            // garbage extension on a muted record as "couldn't tell" -> silent video with bitrate left at -1 -> 921600
-            // bps. Never audible. Do not "optimise" the -1 away. Not carried in originalBitrate: the convertor applies
-            // that as a Math.min ceiling after the -1 -> 921600 clamp, so it can only lower the target, never raise it.
+            // construction and its meaning is unchanged. Because that slot is now always -1 for a muted clip, the real
+            // encoder bitrate travels here instead — for a silent video and equally for a force-muted GIF-panel send,
+            // both of which would otherwise lose their target on the every-send round trip. The TL bool records which
+            // it is: true = silent video, false = genuine GIF. parseString restores the carried bitrate for either
+            // valid bool, but a missing / truncated / garbage extension on a muted record degrades to a silent video
+            // with bitrate left at -1 -> 921600 bps. Never audible. Do not "optimise" the -1 away. Not carried in
+            // originalBitrate: the convertor applies that as a Math.min ceiling after the -1 -> 921600 clamp, so it can
+            // only lower the target, never raise it.
             serializedData.writeBool(naxSilentVideo);
             serializedData.writeInt32(bitrate);
             filters = Utilities.bytesToHex(serializedData.toByteArray());
@@ -731,22 +733,30 @@ public class VideoEditedInfo {
                             // bool constructor that is neither true nor false means "couldn't tell", and degrades to
                             // naxSilentVideo = true with the legacy bitrate == -1 left in place -> 921600 bps -> a
                             // silent video, never audible. A valid, explicit boolFalse is different: it means the record
-                            // was genuinely a GIF, so naxSilentVideo stays false. "Couldn't tell" and "explicitly a GIF"
-                            // must not collapse into the same branch, which is why this reads the raw TL-bool
-                            // constructor rather than readBool(false) — that would fold malformed data into false and
-                            // misclassify a damaged silent video as a GIF. The 8 bytes are consumed whenever present so
-                            // the stream position stays correct for any future version block appended after this one.
+                            // was genuinely a GIF, so naxSilentVideo stays false — but its carried bitrate is still
+                            // restored below, because a force-muted GIF-panel send needs its real target back too.
+                            // "Couldn't tell" and "explicitly a GIF" must not collapse into the same branch, which is
+                            // why this reads the raw TL-bool constructor rather than readBool(false) — that would fold
+                            // malformed data into false and misclassify a damaged silent video as a GIF. The 8 bytes are
+                            // consumed whenever present so the stream position stays correct for any future version
+                            // block appended after this one.
                             if (serializedData.remaining() >= 8) {
                                 int naxBoolConstructor = serializedData.readInt32(false);
                                 int naxBitrate = serializedData.readInt32(false);
                                 if (muted) {
-                                    if (naxBoolConstructor == 0x997275b5) { // TL_boolTrue: user chose silent video
+                                    boolean naxBoolTrue = naxBoolConstructor == 0x997275b5;  // TL_boolTrue: chose silent video
+                                    boolean naxBoolFalse = naxBoolConstructor == 0xbc799737; // TL_boolFalse: genuine GIF send
+                                    if (naxBoolTrue) {
                                         naxSilentVideo = true;
-                                        if (naxBitrate > 0 && naxBitrate <= NAX_MAX_SILENT_BITRATE) {
-                                            bitrate = naxBitrate;
-                                        }
-                                    } else if (naxBoolConstructor != 0xbc799737) { // not TL_boolFalse: malformed -> silent
+                                    } else if (!naxBoolFalse) { // neither: malformed -> silent fail-safe, bitrate left at -1
                                         naxSilentVideo = true;
+                                    }
+                                    // Restore the real target for any record carrying a valid bool — a silent video or a
+                                    // force-muted GIF send — since the legacy slot is now always -1 for a muted clip.
+                                    // muted stays from that slot and naxSilentVideo is untouched here, so a GIF stays a
+                                    // GIF; only its bitrate comes back. A malformed bool restores nothing.
+                                    if ((naxBoolTrue || naxBoolFalse) && naxBitrate > 0 && naxBitrate <= NAX_MAX_SILENT_BITRATE) {
+                                        bitrate = naxBitrate;
                                     }
                                 }
                             } else if (muted) {

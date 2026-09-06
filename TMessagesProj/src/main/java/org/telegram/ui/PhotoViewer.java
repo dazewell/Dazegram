@@ -7909,8 +7909,9 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 return;
             }
             // NagramX (#silent-video): in the GIF sub-state a tap flips the muted clip to a silent video with no
-            // sheet; in the Video sub-state (and when unmuted) it opens the normal quality sheet. selectedCompression
-            // is left untouched, so the silent video adopts whatever tier is currently selected for the clip.
+            // sheet; in the Video sub-state (and when unmuted) it opens the normal quality sheet. A fresh mute has
+            // already run getCurrentVideoEditedInfo(), which forces selectedCompression = 1, so the silent video
+            // starts at tier 1 (480p); the quality sheet is one more tap away, in the Video sub-state.
             if (muteVideo && !sendSilentVideo) {
                 sendSilentVideo = true;
                 updateWidthHeightBitrateForCompression();
@@ -10232,7 +10233,12 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
             }
             videoEditedInfo.resultWidth = resultWidth;
             videoEditedInfo.resultHeight = resultHeight;
-            videoEditedInfo.bitrate = (muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) && !silentVideo ? -1 : bitrate;
+            // NagramX (#silent-video): a muted clip must never carry bitrate -2. needConvert() returns false on -2, so
+            // nothing is scheduled and the unconverted original — which still has its audio — is uploaded. The (muteVideo
+            // || avatar) branch already forces -1 for GIF/avatar; the extra `bitrate == -2` guard forces it for a silent
+            // video sitting on the "Original" tier too, so it encodes at 921600 and stays silent. Inert today (the mute
+            // tap normalises the tier), but the invariant is cheap to state and the audio leak is not.
+            videoEditedInfo.bitrate = (muteVideo || sendPhotoType == SELECT_TYPE_AVATAR) && (!silentVideo || bitrate == -2) ? -1 : bitrate;
         }
         videoEditedInfo.cropState = editState.cropState;
         if (videoEditedInfo.cropState != null) {
@@ -21726,7 +21732,7 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
     // quality control is genuinely unavailable. Reading the live fields here means a late processOpenVideo callback
     // repaints the current choice, never a stale "GIF" over a Video the user already picked.
     private void setCompressItemState(boolean enabled) {
-        compressItem.setState(enabled, muteVideo && !sendSilentVideo, !enabled, Math.min(resultWidth, resultHeight));
+        compressItem.setState(muteVideo && !sendSilentVideo, !enabled, Math.min(resultWidth, resultHeight));
         final int desc;
         if (!muteVideo) {
             desc = R.string.AccDescrVideoQuality;
@@ -22079,21 +22085,29 @@ public class PhotoViewer implements NotificationCenter.NotificationCenterDelegat
                 encoderBitrate = bitrate;
             } else if (resultWidth == originalWidth && resultHeight == originalHeight) {
                 bitrate = originalBitrate;
-                // NagramX (#silent-video): the same-dimension tier assigns the source's unclamped originalBitrate. A
-                // silent video serialises its real bitrate through the version-12 blob, and that round trip runs on
-                // every send; the decoder rejects anything above VIDEO_BITRATE_2160, a ceiling that exists to keep an
-                // upstream version collision out of MediaCodec.configure. So a source above 28.4 Mbps would be rejected
-                // on read and fall back to 921600, silently losing the tier the user picked. Cap here in the producer,
-                // before size estimation and serialisation, so the value that ships is already inside the decoder's
-                // domain and the editor's size estimate matches what is encoded. Do not delete this cap without lifting
-                // the decoder ceiling — it is deliberate. Unmuted videos are not silent (sendSilentVideo is false), so
-                // they never pass through this constraint and keep today's behaviour exactly.
+                // NagramX (#silent-video): a silent video serialises its real bitrate through the version-12 blob, and
+                // that round trip runs on every send; the decoder rejects anything above VIDEO_BITRATE_2160 (a ceiling
+                // that keeps an upstream version collision out of MediaCodec.configure), so an over-ceiling value is
+                // rejected on read and the clip drops to the 921600 fallback, silently losing the tier the user picked.
+                // Both quality branches can exceed the ceiling — this same-dimension one assigns the source's unclamped
+                // originalBitrate straight from metadata, and the resized branch below can too (see the note there) — so
+                // both cap identically, before size estimation and serialisation, so the shipped value is inside the
+                // decoder's domain and the editor's size estimate matches what is encoded. Do not delete either cap
+                // without lifting the decoder ceiling — they are deliberate. Unmuted and GIF sends are not silent
+                // (sendSilentVideo false), so they never pass through this and keep today's behaviour exactly.
                 if (sendSilentVideo && bitrate > MediaController.VIDEO_BITRATE_2160) {
                     bitrate = MediaController.VIDEO_BITRATE_2160;
                 }
                 encoderBitrate = MediaController.extractRealEncoderBitrate(resultWidth, resultHeight, bitrate, false);
             } else {
                 bitrate = MediaController.makeVideoBitrate(originalHeight, originalWidth, originalBitrate, resultHeight, resultWidth);
+                // NagramX (#silent-video): makeVideoBitrate is not guaranteed to be under the ceiling — its early return
+                // at MediaController.java:7019-7021 (originalBitrate < minBitrate -> return remeasuredBitrate) skips the
+                // maxBitrate clamp just below it, so a large resized target can come back above VIDEO_BITRATE_2160. Cap
+                // it the same as the same-dimension branch above, for the same serialisation reason.
+                if (sendSilentVideo && bitrate > MediaController.VIDEO_BITRATE_2160) {
+                    bitrate = MediaController.VIDEO_BITRATE_2160;
+                }
                 encoderBitrate = MediaController.extractRealEncoderBitrate(resultWidth, resultHeight, bitrate, false);
             }
             videoFramesSize = (long) (encoderBitrate / 8 * videoDuration / 1000);
