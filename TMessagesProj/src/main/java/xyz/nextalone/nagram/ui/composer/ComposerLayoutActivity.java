@@ -286,6 +286,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                     gestureInProgress = true;
                 }
                 boolean handled = super.dispatchTouchEvent(ev);
+                if (action == MotionEvent.ACTION_DOWN && !handled) {
+                    // Nothing under this DOWN claimed the gesture - a tap on the pinned preview
+                    // strip, which is not touchable - so no matching UP/CANCEL will reach this root
+                    // to clear the flag. Drop it now, or a later non-touch (accessibility) Toolbar
+                    // size change would set a pending settle that never runs.
+                    gestureInProgress = false;
+                }
                 // Settle after super has run, not before. On ACTION_UP the slider's own terminal
                 // setSeekBarDrag fires inside that super call, so settling first would rebind the
                 // packing row off a stale value; on ACTION_CANCEL no drag callback fires at all, and
