@@ -270,6 +270,12 @@ public class ComposerLayoutActivity extends BaseFragment {
         itemTouchHelper.attachToRecyclerView(listView);
         frameLayout.addView(listView, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT, Gravity.TOP | Gravity.LEFT, 0, previewHeight(), 0, 0));
         listView.setAdapter(adapter = new ListAdapter(context));
+        // Adopt the same rounded grouped-card treatment every other settings page uses. The one-arg
+        // overload resolves to setSections(dp(12), dp(16), true) and the default section-exclusion
+        // predicate, matching the two fork settings base classes; card boundaries then come purely
+        // from where the TextInfoPrivacyCell footers sit, detected live per frame.
+        listView.setSections(true);
+        actionBar.setAdaptiveBackground(listView);
 
         // Pinned rather than scrolled with the list: it is the feedback surface for every drag, so
         // it has to stay on screen while the user works down a twenty-row list.
@@ -483,7 +489,7 @@ public class ComposerLayoutActivity extends BaseFragment {
             // it never reaches performClick. Button rows need to stay enabled for the Hidden/Middle
             // tap-toggle to fire; everything else (headers, footers, placeholders, the scale slider)
             // has no click behaviour, so it can stay disabled as before.
-            return holder.getItemViewType() == TYPE_BUTTON;
+            return baseType(holder.getItemViewType()) == TYPE_BUTTON;
         }
 
         @Override
@@ -753,7 +759,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public int getMovementFlags(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
-            if (viewHolder.getItemViewType() != TYPE_BUTTON) {
+            if (baseType(viewHolder.getItemViewType()) != TYPE_BUTTON) {
                 return makeMovementFlags(0, 0);
             }
             return makeMovementFlags(ItemTouchHelper.UP | ItemTouchHelper.DOWN, 0);
@@ -761,7 +767,7 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         @Override
         public boolean canDropOver(@NonNull RecyclerView recyclerView, @NonNull RecyclerView.ViewHolder current, @NonNull RecyclerView.ViewHolder target) {
-            int type = target.getItemViewType();
+            int type = baseType(target.getItemViewType());
             if (type == TYPE_BUTTON || type == TYPE_PLACEHOLDER) {
                 return true;
             }
@@ -884,6 +890,14 @@ public class ComposerLayoutActivity extends BaseFragment {
                 listView.cancelClickRunnables(false);
                 if (viewHolder != null) {
                     viewHolder.itemView.setPressed(true);
+                    // During a drag, make RecyclerListView.top()/bottom() read this row's settled
+                    // layout bounds (getTop()/getBottom()) instead of its translation-inclusive
+                    // getY(), so the section card stays anchored to the row's slot while
+                    // ItemTouchHelper translates the lifted view. Cleared in clearView so post-drop
+                    // move/fling/settle animations use getY() again; a tag left set would freeze the
+                    // card edge at the layout position. clearView is the only place it can be
+                    // cleared, since this callback gets viewHolder == null on the transition to idle.
+                    viewHolder.itemView.setTag(R.id.dragging, true);
                 }
             }
             boolean arm = false;
@@ -908,6 +922,7 @@ public class ComposerLayoutActivity extends BaseFragment {
         public void clearView(RecyclerView recyclerView, RecyclerView.ViewHolder viewHolder) {
             super.clearView(recyclerView, viewHolder);
             viewHolder.itemView.setPressed(false);
+            viewHolder.itemView.setTag(R.id.dragging, null);
             setStartZoneArmed(false);
             clearPendingStartSwap();
             // A cross-section move can empty the source zone (Middle/Trailing/Hidden need a fresh
@@ -1456,6 +1471,15 @@ public class ComposerLayoutActivity extends BaseFragment {
 
     private static boolean isSliderRowType(int type) {
         return type == TYPE_SCALE || type == TYPE_SPACING || type == TYPE_GLASS_LIGHT || type == TYPE_GLASS_DARK;
+    }
+
+    // getItemViewType() shifts slider rows by generation * STRIDE so a theme flip forces a real
+    // recreation; every other type stays below the stride. Anything that compares a raw view type
+    // against an unshifted TYPE_* constant has to undo that shift first, the same way
+    // onCreateViewHolder does inline. Harmless today (only slider types are ever shifted) but the
+    // drag/tap-toggle gates below would fail silently if the shift ever grew to cover them.
+    private static int baseType(int viewType) {
+        return viewType % SLIDER_TYPE_GENERATION_STRIDE;
     }
 
     /**

@@ -479,3 +479,33 @@ compile against upstream but not against our renamed tree), so it only surfaces
 at the compile gate; that is the check to trust, not a grep.
 
 *(Established 2026-09-06, during the NextAlone/Nagram sync reconciliation, snapshot `981806a992`.)*
+## Rounded grouped settings cards already exist upstream as `RecyclerListView.setSections()` — don't hand-roll them
+
+The rounded, flat, shadowless grouped-card look that every fork settings page
+wears is one call, not a layout you build: `listView.setSections(true)`. The
+one-arg overload resolves to `setSections(dp(12), dp(16), true)` and thence to
+the DEFAULT section-exclusion predicate (`RecyclerListView.java:3284-3296`),
+so card boundaries fall wherever an excluded cell (`TextInfoPrivacyCell`,
+`ShadowSectionCell`, ...) sits and are auto-detected live per frame. Both fork
+settings base classes already call the same one-arg form
+(`BaseNekoSettingsActivity.java:146`, `BaseNekoXSettingsActivity.java:125`), so
+a page only misses the treatment if it extends `BaseFragment` directly and
+never opted in. Prefer the one-arg overload over the explicit-parameter form:
+the latter re-declares the exclusion predicate in fork code, a fork-local copy
+of an upstream list that drifts silently on the next sync.
+
+The trap sits next door: `RecyclerListView` also takes `forcedSections`, which
+pins card ranges to STATIC adapter positions. It is safe only where drag stays
+inside one section — `FiltersSetupActivity` uses it for exactly that
+(`FiltersSetupActivity.java:1162-1176`, intra-section reorder). On a page whose
+drag crosses section boundaries it fails twice at once, because a forced range
+also SUPPRESSES auto-detection for its positions in the draw loop
+(`RecyclerListView.java:3529-3534`). If the page mutates its item list live
+mid-drag (as a cross-zone reorder does), the forced range holds pre-drag
+positions for the whole gesture: it draws a card at the wrong bounds AND hides
+the correct auto-detected one, self-correcting only on release — a defect that
+never fails CI and never shows in a static screenshot. On any such page,
+`setSections(true)` alone is the whole answer; auto-detection is correct, live
+and free.
+
+*(Established 2026-09-06, adopting the treatment on `ComposerLayoutActivity`.)*
