@@ -890,10 +890,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                 listView.cancelClickRunnables(false);
                 if (viewHolder != null) {
                     viewHolder.itemView.setPressed(true);
-                    // Tells RecyclerListView.top()/bottom() to follow the row's animated Y instead
-                    // of its settled layout bounds, so the section card edge tracks the lifted row.
-                    // Cleared in clearView, which is the only callback that runs on drop (this one
-                    // gets viewHolder == null on the transition to idle).
+                    // During a drag, make RecyclerListView.top()/bottom() read this row's settled
+                    // layout bounds (getTop()/getBottom()) instead of its translation-inclusive
+                    // getY(), so the section card stays anchored to the row's slot while
+                    // ItemTouchHelper translates the lifted view. Cleared in clearView so post-drop
+                    // move/fling/settle animations use getY() again; a tag left set would freeze the
+                    // card edge at the layout position. clearView is the only place it can be
+                    // cleared, since this callback gets viewHolder == null on the transition to idle.
                     viewHolder.itemView.setTag(R.id.dragging, true);
                 }
             }
