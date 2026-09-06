@@ -56,7 +56,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = SCRIPT_DIR / "wall_manifest.toml"
@@ -264,12 +264,18 @@ def validate_manifest_shape(manifest: dict, manifest_path: Path) -> None:
         if not isinstance(wall, dict):
             raise SystemExit(f"{wall_context}: must be a table, got {wall!r}")
         output = _require_plain_png_filename(wall.get("output"), context=wall_context)
-        if output in seen_outputs:
+        # Compare case-insensitively: Windows (the only OS this tool targets)
+        # treats "Hero.png" and "hero.png" as the same file, so two walls
+        # with differently-cased names would otherwise pass this check and
+        # then silently overwrite each other's output.
+        output_key = output.casefold()
+        if output_key in seen_outputs:
             raise SystemExit(
                 f"duplicate wall output {output!r} -- every [[wall]] needs a "
-                "unique output filename"
+                "unique output filename (case-insensitively, since Windows "
+                "treats differently-cased names as the same file)"
             )
-        seen_outputs.add(output)
+        seen_outputs.add(output_key)
         wall_context = f"wall {output!r}"
 
         panels = wall.get("panel")
@@ -448,7 +454,11 @@ def load_panel_image(
     try:
         with Image.open(src_path) as src_im:
             im = src_im.convert("RGB")
-    except UnidentifiedImageError as exc:
+    except OSError as exc:
+        # Covers Pillow's UnidentifiedImageError (an unrecognised format) as
+        # well as a recognised-but-truncated/corrupt file -- both subclass
+        # OSError, and both are realistic after a bad file copy into
+        # docs/screenshots/, so both get the same named, non-traceback error.
         raise SystemExit(
             f"could not decode source screenshot {src_path} for panel "
             f"{panel['source']!r}: {exc}"
@@ -688,8 +698,15 @@ def main() -> int:
     try:
         with args.manifest.open("rb") as f:
             manifest = tomllib.load(f)
-    except FileNotFoundError:
-        raise SystemExit(f"manifest not found: {args.manifest}")
+    except OSError as exc:
+        # Covers a missing file as well as less common but realistic
+        # mistakes -- a directory given instead of a file, a permission
+        # error -- not just FileNotFoundError.
+        raise SystemExit(f"could not open manifest {args.manifest}: {exc}") from None
+    except UnicodeDecodeError as exc:
+        raise SystemExit(
+            f"manifest {args.manifest} is not valid UTF-8: {exc}"
+        ) from None
     except tomllib.TOMLDecodeError as exc:
         raise SystemExit(f"could not parse manifest {args.manifest}: {exc}") from None
 
