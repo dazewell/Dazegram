@@ -121,6 +121,7 @@ public class NekoChatSettingsActivity extends BaseNekoXSettingsActivity implemen
     ArrayList<ConfigCellCheckBox> premiumElementsRows = ((ConfigCellTextCheck2) premiumElementsToggleRow).getCheckBox();
     private final AbstractConfigCell unreadBadgeOnBackButton = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.unreadBadgeOnBackButton));
     private final AbstractConfigCell sendCommentAfterForwardRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.sendCommentAfterForward));
+    private final AbstractConfigCell addCommaAfterMentionRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getAddCommaAfterMention()));
     private final AbstractConfigCell useChatAttachMediaMenuRow = cellGroup.appendCell(new ConfigCellTextCheck(NekoConfig.useChatAttachMediaMenu, getString(R.string.UseChatAttachEnterMenuNotice)));
     private final AbstractConfigCell quickScheduleButtonRow = cellGroup.appendCell(new ConfigCellTextCheck(NaConfig.INSTANCE.getQuickScheduleButton(), getString(R.string.QuickScheduleButtonNotice)));
     private final AbstractConfigCell inputTextSizeRow = cellGroup.appendCell(new ConfigCellCustom("InputTextSize", ConfigCellCustom.CUSTOM_ITEM_InputTextSize, false));

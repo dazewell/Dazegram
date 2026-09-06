@@ -8059,7 +8059,7 @@ public class ChatActivity extends BaseFragment implements
             int start = mentionContainer.getAdapter().getResultStartPosition();
             int len = mentionContainer.getAdapter().getResultLength();
             if (mentionContainer.getAdapter().isLocalHashtagHint(position)) {
-                chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + "@" + ChatObject.getPublicUsername(currentChat) + " ", false);
+                chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + "@" + ChatObject.getPublicUsername(currentChat) + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                 return;
             } else if (mentionContainer.getAdapter().isGlobalHashtagHint(position)) {
                 chatActivityEnterView.replaceWithText(start, len, mentionContainer.getAdapter().getHashtagHint() + " ", false);
@@ -8109,7 +8109,7 @@ public class ChatActivity extends BaseFragment implements
                 } else {
                     String username = ChatObject.getPublicUsername(chat);
                     if (username != null) {
-                        chatActivityEnterView.replaceWithText(start, len, "@" + username + " ", false);
+                        chatActivityEnterView.replaceWithText(start, len, "@" + username + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                     }
                 }
             } else if (object instanceof TLRPC.User) {
@@ -8118,10 +8118,10 @@ public class ChatActivity extends BaseFragment implements
                     searchUserMessages(user, null);
                 } else {
                     if (UserObject.getPublicUsername(user) != null) {
-                        chatActivityEnterView.replaceWithText(start, len, "@" + UserObject.getPublicUsername(user) + " ", false);
+                        chatActivityEnterView.replaceWithText(start, len, "@" + UserObject.getPublicUsername(user) + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "), false);
                     } else {
                         String name = UserObject.getFirstName(user, false);
-                        Spannable spannable = new SpannableString(name + " ");
+                        Spannable spannable = new SpannableString(name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                         spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                         chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     }
@@ -8284,7 +8284,7 @@ public class ChatActivity extends BaseFragment implements
             } else if (object instanceof TLRPC.User user) {
                 if (!(searchingForUser && searchContainer.getVisibility() == View.VISIBLE) && user != null) {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString(name + " ");
+                    Spannable spannable = new SpannableString(name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     chatActivityEnterView.replaceWithText(start, len, spannable, false);
                     return true;
@@ -43280,7 +43280,7 @@ public class ChatActivity extends BaseFragment implements
                 }
                 String username = ChatObject.getPublicUsername(chat);
                 if (username != null) {
-                    sb.append("@").append(username).append(" ");
+                    sb.append("@").append(username).append(NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " ");
                 } else {
                     return;
                 }
@@ -43306,10 +43306,10 @@ public class ChatActivity extends BaseFragment implements
                 }
                 String username = UserObject.getPublicUsername(user);
                 if (username != null) {
-                    sb.append("@").append(username).append(" ");
+                    sb.append("@").append(username).append(NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " ");
                 } else {
                     String name = UserObject.getFirstName(user, false);
-                    Spannable spannable = new SpannableString(name + " ");
+                    Spannable spannable = new SpannableString(name + (NaConfig.INSTANCE.getAddCommaAfterMention().Bool() ? ", " : " "));
                     spannable.setSpan(new URLSpanUserMention("" + user.id, 3), 0, spannable.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     sb.append(spannable);
                 }
@@ -43679,6 +43679,10 @@ public class ChatActivity extends BaseFragment implements
 
             final TL_keyboard.TL_inlineButtonTypeUrl buttonTypeUrl = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUrl.class);
             final TL_keyboard.TL_inlineButtonTypeCopy buttonTypeCopy = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCopy.class);
+            final TL_keyboard.TL_inlineButtonTypeSwitchInline buttonTypeSwitchInline = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeSwitchInline.class);
+            final TL_keyboard.TL_inlineButtonTypeCallback buttonTypeCallback = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeCallback.class);
+            final TL_keyboard.TL_inlineButtonTypeUserProfile buttonTypeUserProfile = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUserProfile.class);
+
             if (getParentActivity() == null || bottomChannelButtonsLayout.getVisibility() == View.VISIBLE &&
                     buttonTypeUrl == null && buttonTypeCopy == null &&
                     !TLKeyboardHelper.isType(button, TL_keyboard.TL_inlineButtonTypeSwitchInline.class) &&
@@ -43696,39 +43700,23 @@ public class ChatActivity extends BaseFragment implements
             }
             if (buttonTypeUrl != null) {
                 openClickableLink(null, buttonTypeUrl.url, true, cell, cell.getMessageObject(), false);
-            } else {
-                byte[] data = button.getData();
-                TL_keyboard.TL_inlineButtonTypeSwitchInline buttonTypeSwitchInline = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeSwitchInline.class);
-                TL_keyboard.TL_inlineButtonTypeUserProfile buttonTypeUserProfile = TLKeyboardHelper.getType(button, TL_keyboard.TL_inlineButtonTypeUserProfile.class);
-                String query = buttonTypeSwitchInline != null ? buttonTypeSwitchInline.query : null;
-                long userId = buttonTypeUserProfile != null ? buttonTypeUserProfile.user_id : 0;
-                BottomSheet.Builder builder = new BottomSheet.Builder(getParentActivity(), false, themeDelegate);
-                builder.setTitle(button.getText());
-                builder.setItems(new CharSequence[]{
-                        getString(R.string.Copy),
-                        data != null ? getString(R.string.CopyCallback) : null,
-                        query != null ? getString(R.string.CopyInlineQuery) : null,
-                        userId != 0 ? getString(R.string.CopyID) : null}, (dialog, which) -> {
-                    if (which == 0) {
-                        AndroidUtilities.addToClipboard(button.getText());
-                    } else if (which == 1) {
-                        AndroidUtilities.addToClipboard(getMessageHelper().getTextOrBase64(data));
-                    } else if (which == 2) {
-                        AndroidUtilities.addToClipboard(query);
-                    } else if (which == 3) {
-                        AndroidUtilities.addToClipboard(String.valueOf(userId));
-                    }
-                    createUndoView();
-                    if (undoView == null) {
-                        return;
-                    }
-                    undoView.showWithAction(0, UndoView.ACTION_TEXT_COPIED, null);
-                });
-                showDialog(builder.create());
+                try {
+                    if (!NekoConfig.disableVibration.Bool())
+                    cell.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
+                } catch (Exception ignore) {}
+                return true;
             }
-            try {
-                if (!NekoConfig.disableVibration.Bool()) cell.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS, HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING);
-            } catch (Exception ignore) {}
+            Utilities.Callback<String> copyCallback = (text) -> {
+                AndroidUtilities.addToClipboard(text);
+                BulletinFactory.of(ChatActivity.this).createCopyBulletin(formatString(R.string.ExactTextCopied, text)).show();
+            };
+            ItemOptions.makeOptions(ChatActivity.this, cell, true)
+                .add(R.drawable.msg_copy, getString(R.string.Copy), () -> copyCallback.run(button.getText()))
+                .addIf(getParentActivity() != null && !TextUtils.isEmpty(button.getText()), R.drawable.msg_translate, getString(R.string.Translate), () -> Translator.translateShowAlert(getParentActivity(), button.getText()))
+                .addIf(buttonTypeSwitchInline != null, R.drawable.msg_copy, getString(R.string.CopyInlineQuery), () -> copyCallback.run(buttonTypeSwitchInline.query))
+                .addIf(buttonTypeCallback != null, R.drawable.msg_copy, getString(R.string.CopyCallback), () -> copyCallback.run(getMessageHelper().getTextOrBase64(buttonTypeCallback.data)))
+                .addIf(buttonTypeUserProfile != null, R.drawable.msg_copy, getString(R.string.CopyID), () -> copyCallback.run(String.valueOf(buttonTypeUserProfile.user_id)))
+                .show();
             return true;
         }
 
