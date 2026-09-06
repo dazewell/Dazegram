@@ -401,7 +401,14 @@ def make_vertical_gradient(
         t = y / max(height - 1, 1)
         row = tuple(round(top[c] + (bottom[c] - top[c]) * t) for c in range(3))
         gradient.putpixel((0, y), row)
-    return gradient.resize((width, height))
+    # NEAREST, not left to Pillow's default: this is a horizontal-only
+    # stretch of a column that is already a single solid color per row, so
+    # every resampling filter would produce the same pixels anyway -- but
+    # relying on an unspecified default still leaves the output dependent
+    # on whatever Pillow's default happens to be, which this script
+    # otherwise pins explicitly (see the PNG encoder options in
+    # build_walls()).
+    return gradient.resize((width, height), Image.NEAREST)
 
 
 def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
