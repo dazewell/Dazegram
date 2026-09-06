@@ -286,21 +286,18 @@ public class ComposerLayoutActivity extends BaseFragment {
                     gestureInProgress = true;
                 }
                 boolean handled = super.dispatchTouchEvent(ev);
-                if (action == MotionEvent.ACTION_DOWN && !handled) {
-                    // Nothing under this DOWN claimed the gesture - a tap on the pinned preview
-                    // strip, which is not touchable - so no matching UP/CANCEL will reach this root
-                    // to clear the flag. Drop it now, or a later non-touch (accessibility) Toolbar
-                    // size change would set a pending settle that never runs.
-                    gestureInProgress = false;
-                }
                 // Settle after super has run, not before. On ACTION_UP the slider's own terminal
                 // setSeekBarDrag fires inside that super call, so settling first would rebind the
                 // packing row off a stale value; on ACTION_CANCEL no drag callback fires at all, and
                 // the settle just picks up the values earlier ACTION_MOVEs already wrote.
-                // This root sees the whole sequence, terminal event included, because it is the
-                // dispatch root - nothing above it can steal dispatch. SlideIntChooseView's
-                // requestDisallowInterceptTouchEvent only stops the RecyclerView intercepting, which
-                // is what keeps moves flowing to the slider; it is not what lets the root see UP/CANCEL.
+                // This root sees the terminal UP/CANCEL because the DOWN was consumed: a consumed
+                // DOWN makes this root the touch target for the rest of the gesture. Every region of
+                // the root is covered by a child that consumes - the pinned preview strip above,
+                // whose onInterceptTouchEvent/onTouchEvent both return true, and the scrollable list
+                // below - so the flag set on DOWN always gets a matching terminal event to clear it.
+                // SlideIntChooseView's requestDisallowInterceptTouchEvent only stops the RecyclerView
+                // intercepting, which keeps moves flowing to the slider; it is not what delivers the
+                // terminal event here.
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     gestureInProgress = false;
                     if (settlePending) {
@@ -1537,6 +1534,11 @@ public class ComposerLayoutActivity extends BaseFragment {
 
         // Purely a display surface sitting above a drag and drop list: without this a horizontal
         // fling would scroll the toolbar's middle group, or take the gesture off the list below.
+        // Returning true is also load-bearing for the root's gesture flag (see the frameLayout
+        // dispatchTouchEvent above): it consumes the strip's DOWN, which is what makes the matching
+        // UP/CANCEL reach that root override and clear gestureInProgress. A future change that lets
+        // touches through here must clear the flag on an unconsumed DOWN, or the accessibility
+        // settle can strand.
         @Override
         public boolean onInterceptTouchEvent(MotionEvent event) {
             return true;
