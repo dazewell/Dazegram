@@ -518,7 +518,18 @@ The fork-only workaround, used by `ComposerLayoutActivity` for the packing-row s
 
 *(Established 2026-09-06, #composer-spacing.)*
 
-## A falling `minValueAllowed` on `SlideIntChooseView` does not move the thumb back down
+## `SlideIntChooseView.getProgress` and `getValue` are not inverses when `betweenSteps > 1`
+
+`SlideIntChooseView` maps a value to a track position with `getProgress` (`:186-197`) and a track position back to a value with `getValue` (`:199-207`), but the two use different arithmetic. `getProgress` computes `Math.round(...) / options.betweenSteps` (`:192`), and because `Math.round(float)` returns `int` and `Options.betweenSteps` is declared `int` (`:345`), that is an **integer division**: for any value that falls between two anchors, the sub-anchor term truncates to `0`, so the value collapses onto its *lower* anchor's track position. `getValue` divides the analogous term by `(float) options.betweenSteps` (`:204`), a float division, so it *does* return real sub-anchor values. The round trip therefore fails: `getValue` hands out `89`, but `getProgress(89)` returns the track position of `85`, not of `89`.
+
+With `betweenSteps == 1` the division is `/1` and both are exact, so this only bites a caller that configures a step table with anchors more than one unit apart and a `betweenSteps > 1` to subdivide them. Two distinct symptoms follow, both silent:
+
+- **Thumb desyncs from its own label on rebind.** `set()` (`:172-184`) drives the thumb with `setProgress(getProgress(value))` while `updateTexts` prints the exact `value`. A between-anchor value lands the thumb on the lower anchor while the label reads the true number. A user's own drag hides this (the thumb rests at the raw finger position and is never re-derived); the first *rebind* of the row exposes it.
+- **`setMinValueAllowed` misdraws the dimmed floor band.** It sets `minProgress` to `getProgress(floor)` (`:230`), so a floor that is not itself an anchor truncates: a floor of `88` over anchors `{85,90,95,100}` yields `getProgress(88)=0` and **no band renders**; a floor of `93` yields `getProgress(93)=0.333` (the position of `90`) so the band renders but **stops short** of the real floor.
+
+The fix is fork-side and does not touch the widget: list every reachable value as its own anchor and set `betweenSteps = 1`, so `getProgress` has nothing to truncate. In the composer layout editor this was `SPACING_STEPS`/`SPACING_BETWEEN_STEPS` in `ComposerLayoutActivity`, moved from `{85,90,95,100}` + `5` to the full `85..100` + `1`. Do not "simplify" such a table back to sparse anchors with a larger `betweenSteps` — it reintroduces both symptoms.
+
+*(Established 2026-09-06, #composer-spacing.)*
 
 `SlideIntChooseView.setMinValueAllowed` (`:222-233`) enforces its floor purely through `seekBarView.setMinProgress(getProgress(value))`, and the enforcement is one-directional. `SeekBarView.setProgress(float, boolean)` clamps the new thumb position against `minThumbX()` (`SeekBarView.java:411-412`), and `minThumbX()` (`:353-355`) is derived from `minProgress` — the value left over from the *previous* call. `setMinProgress` (`:229-234`) only re-applies progress when `getProgress() < minProgress`, i.e. it corrects the thumb **upward** only. So *raising* the floor moves a too-low thumb up, but *lowering* the floor never moves a too-high thumb back down.
 
