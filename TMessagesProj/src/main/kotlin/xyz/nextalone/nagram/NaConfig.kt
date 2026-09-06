@@ -1671,6 +1671,12 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    val addCommaAfterMention =
+        addConfig(
+            "AddCommaAfterMention",
+            ConfigItem.configTypeBool,
+            false
+        )
 
     val preferredTranslateTargetLangList = ArrayList<String>()
     fun updatePreferredTranslateTargetLangList() {
