@@ -56,7 +56,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, UnidentifiedImageError
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = SCRIPT_DIR / "wall_manifest.toml"
@@ -89,9 +89,20 @@ def find_repo_root(start: Path) -> Path:
     )
 
 
-def hex_to_rgb(value: str) -> tuple[int, int, int]:
-    value = value.lstrip("#")
-    return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))  # noqa: E203
+def hex_to_rgb(value: str, *, field: str) -> tuple[int, int, int]:
+    raw = value.lstrip("#")
+    if len(raw) != 6:
+        raise SystemExit(
+            f"settings.{field} must be a 6-digit hex color like '#121C31', "
+            f"got {value!r}"
+        )
+    try:
+        return tuple(int(raw[i : i + 2], 16) for i in (0, 2, 4))  # noqa: E203
+    except ValueError:
+        raise SystemExit(
+            f"settings.{field} must be a 6-digit hex color like '#121C31', "
+            f"got {value!r}"
+        ) from None
 
 
 def load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -112,6 +123,74 @@ def load_font(size: int) -> ImageFont.FreeTypeFont:
             "different build of the font"
         ) from None
     return font
+
+
+# --- Path confinement -------------------------------------------------
+#
+# This is a personal, hand-run tool with no adversarial input -- nobody is
+# attacking wall_manifest.toml. The real risk is dazewell mistyping a path
+# months from now (a stray leading "/", a "..", a wall `output` that's
+# accidentally an absolute path) and silently overwriting a file outside
+# docs/images/, or a `--check` run -- which is supposed to be read-only --
+# writing to disk anyway because an absolute `output` bypasses its temp
+# directory (joining an absolute path onto a base with `/` in pathlib
+# discards the base entirely; it does not raise). The checks below turn
+# that into a clear, immediate failure instead of a silent one.
+
+
+def _confined_settings_dir(
+    repo_root: Path, raw: str, expected_relative: str, *, field: str
+) -> Path:
+    """Resolve settings.<field> and require it to be exactly the repo's
+    canonical docs/screenshots or docs/images directory -- not merely
+    somewhere under the repo, but that specific documented path."""
+    resolved = (repo_root / raw).resolve()
+    expected = (repo_root / expected_relative).resolve()
+    if resolved != expected:
+        raise SystemExit(
+            f"settings.{field} must resolve to {expected} (the documented "
+            f"{expected_relative}/ directory), got {resolved} (from {raw!r})"
+        )
+    return resolved
+
+
+def _confine_source(raw: str, screenshots_dir: Path, *, panel_context: str) -> Path:
+    """Resolve a panel's `source` against screenshots_dir and require the
+    result to stay inside it -- rejects an absolute path or a '..' that
+    would otherwise let a panel read (and this tool only reads sources, so
+    only read, not write) a file from outside docs/screenshots/."""
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        raise SystemExit(
+            f"{panel_context}: source {raw!r} must be relative to "
+            f"screenshots_dir ({screenshots_dir}), not an absolute path"
+        )
+    resolved = (screenshots_dir / candidate).resolve()
+    if not resolved.is_relative_to(screenshots_dir):
+        raise SystemExit(
+            f"{panel_context}: source {raw!r} resolves to {resolved}, "
+            f"outside screenshots_dir ({screenshots_dir}); remove any '..' "
+            "components"
+        )
+    return resolved
+
+
+def _require_plain_png_filename(raw: object, *, context: str) -> str:
+    """Require a wall's `output` to be a bare '<name>.png' filename -- no
+    directory separators, no drive/UNC anchor, no '..' -- so it can be
+    safely joined onto either the real output_dir or --check's temp
+    directory without a chance of writing outside it."""
+    if not isinstance(raw, str) or not raw:
+        raise SystemExit(f"{context}: output must be a non-empty string, got {raw!r}")
+    path = Path(raw)
+    if len(path.parts) != 1 or path.is_absolute():
+        raise SystemExit(
+            f"{context}: output must be a plain filename with no directory "
+            f"separators, drive, or '..', got {raw!r}"
+        )
+    if not raw.endswith(".png"):
+        raise SystemExit(f"{context}: output must end in .png, got {raw!r}")
+    return raw
 
 
 @dataclass
@@ -151,14 +230,18 @@ class Settings:
             shadow_blur=s["shadow_blur"],
             shadow_offset_y=s["shadow_offset_y"],
             shadow_opacity=shadow_opacity,
-            bg_top=hex_to_rgb(s["bg_top"]),
-            bg_bottom=hex_to_rgb(s["bg_bottom"]),
-            caption_color=hex_to_rgb(s["caption_color"]),
+            bg_top=hex_to_rgb(s["bg_top"], field="bg_top"),
+            bg_bottom=hex_to_rgb(s["bg_bottom"], field="bg_bottom"),
+            caption_color=hex_to_rgb(s["caption_color"], field="caption_color"),
             caption_font_size=s["caption_font_size"],
             caption_gap=s["caption_gap"],
             stagger_amplitude=s["stagger_amplitude"],
-            screenshots_dir=(repo_root / s["screenshots_dir"]).resolve(),
-            output_dir=(repo_root / s["output_dir"]).resolve(),
+            screenshots_dir=_confined_settings_dir(
+                repo_root, s["screenshots_dir"], "docs/screenshots", field="screenshots_dir"
+            ),
+            output_dir=_confined_settings_dir(
+                repo_root, s["output_dir"], "docs/images", field="output_dir"
+            ),
         )
 
     def max_card_height(self, caption_font: ImageFont.FreeTypeFont) -> int:
@@ -219,15 +302,23 @@ def _validate_rect(
 def load_panel_image(
     panel: dict, screenshots_dir: Path
 ) -> Image.Image:
-    src_path = screenshots_dir / panel["source"]
+    src_path = _confine_source(
+        panel["source"], screenshots_dir, panel_context=f"panel {panel['source']!r}"
+    )
     if not src_path.exists():
         raise SystemExit(
             f"source screenshot not found: {src_path}\n"
             "docs/screenshots/ is gitignored and populated by hand -- copy "
             "the raw captures there before running this tool."
         )
-    with Image.open(src_path) as src_im:
-        im = src_im.convert("RGB")
+    try:
+        with Image.open(src_path) as src_im:
+            im = src_im.convert("RGB")
+    except UnidentifiedImageError as exc:
+        raise SystemExit(
+            f"could not decode source screenshot {src_path} for panel "
+            f"{panel['source']!r}: {exc}"
+        ) from None
 
     redact_rects = panel.get("redact", [])
     if redact_rects:
@@ -401,11 +492,14 @@ def render_wall(wall: dict, settings: Settings, caption_font: ImageFont.FreeType
 def build_walls(settings: Settings, manifest: dict, only: str | None, out_dir: Path) -> list[Path]:
     caption_font = load_font(settings.caption_font_size)
     written = []
-    for wall in manifest["wall"]:
-        if only is not None and wall["output"] != only:
+    for i, wall in enumerate(manifest["wall"]):
+        output_name = _require_plain_png_filename(
+            wall.get("output"), context=f"wall #{i + 1}"
+        )
+        if only is not None and output_name != only:
             continue
         image = render_wall(wall, settings, caption_font)
-        out_path = out_dir / wall["output"]
+        out_path = out_dir / output_name
         # Explicit encoder options rather than Pillow's defaults, so output
         # stays byte-identical even if a future Pillow version changes its
         # PNG default compression level.
