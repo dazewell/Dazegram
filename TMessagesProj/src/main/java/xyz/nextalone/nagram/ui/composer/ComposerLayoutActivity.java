@@ -670,6 +670,13 @@ public class ComposerLayoutActivity extends BaseFragment {
                         Log.e("NAX_SMOKE", "NAX_SMOKE_composer-spacing FORBIDDEN spacing row rebind mid-gesture");
                     }
                     spacingView.setLabel(LocaleController.getString(R.string.ComposerSpacingAccDescr));
+                    // Floor down, then apply, then floor up. set() below drives the seek bar to the
+                    // value's progress, and SeekBarView clamps that progress up against whatever floor
+                    // the previous bind left behind - so when the toolbar just grew and the floor fell,
+                    // applying the value against the old higher floor strands the thumb to the right of
+                    // a label that already moved. Dropping the allowed minimum to the slider's own floor
+                    // first makes set() land unclamped.
+                    spacingView.setMinValueAllowed(SPACING_STEPS[0]);
                     spacingView.set(currentSpacing(), spacingOptions(), value -> {
                         if (value == NaConfig.INSTANCE.getComposerToolbarSpacing().Int()) {
                             return;
@@ -678,8 +685,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                         rebuildPending = true;
                         updatePreview();
                     });
-                    // After set(), not before: setMinValueAllowed returns early while options is
-                    // still null, so the order is what makes the floor stick.
+                    // Raise to the real floor after the value has landed: this draws the dimmed
+                    // unreachable band and clamps a genuinely-below-floor saved value up to it. A
+                    // falling floor must be lowered before set() (above) or the thumb strands; a
+                    // rising floor must be applied after or a value below it would not clamp up. On the
+                    // first bind of a freshly created view the pre-call no-ops while options is still
+                    // null, so this call is also what makes the floor stick at all.
                     spacingView.setMinValueAllowed(spacingFloor());
                     break;
                 case TYPE_GLASS_LIGHT:
