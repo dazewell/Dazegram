@@ -202,6 +202,19 @@ public class ComposerLayoutActivity extends BaseFragment {
     private boolean startZoneArmed;
 
     /**
+     * A finger is down somewhere on the screen. Set on the root's ACTION_DOWN, cleared on UP/CANCEL
+     * (see createView). While it is true the toolbar-size drag defers the packing row's rebind
+     * rather than firing it on every step crossed - the packing thumb and its footer stay put until
+     * the gesture ends, then settle once.
+     */
+    private boolean gestureInProgress;
+    /**
+     * A toolbar-size change arrived mid-gesture and the packing rows still owe a rebind. Cleared and
+     * acted on when the gesture ends. No Runnable, no post, nothing to cancel in onFragmentDestroy.
+     */
+    private boolean settlePending;
+
+    /**
      * Bumped once per finished theme transition (see getThemeDescriptions()) so getItemViewType()
      * can hand the four slider rows a view type RecyclerView has never bound before. A view-type
      * mismatch between what an already bound/cached/pooled holder reports and what the adapter now
@@ -259,7 +272,28 @@ public class ComposerLayoutActivity extends BaseFragment {
         ActionBarMenuItem other = actionBar.createMenu().addItem(0, R.drawable.ic_ab_other);
         other.addSubItem(reset_id, R.drawable.msg_reset_solar, LocaleController.getString(R.string.ComposerLayoutReset));
 
-        FrameLayout frameLayout = new FrameLayout(context);
+        FrameLayout frameLayout = new FrameLayout(context) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent ev) {
+                int action = ev.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    gestureInProgress = true;
+                }
+                boolean handled = super.dispatchTouchEvent(ev);
+                // UP/CANCEL only after super has run: the slider's own terminal setSeekBarDrag fires
+                // inside that super call, so settling first would rebind the packing row off a stale
+                // value. SlideIntChooseView disables the RecyclerView's interception for the gesture,
+                // never dispatch, so this root still sees the terminal event.
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    gestureInProgress = false;
+                    if (settlePending) {
+                        settlePending = false;
+                        settleSpacingRows();
+                    }
+                }
+                return handled;
+            }
+        };
         fragmentView = frameLayout;
         frameLayout.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
 
@@ -579,7 +613,7 @@ public class ComposerLayoutActivity extends BaseFragment {
                     ((PlaceholderCell) holder.itemView).textView.setText(LocaleController.getString(R.string.ComposerZoneEmpty));
                     break;
                 case TYPE_INFO:
-                    ((TextInfoPrivacyCell) holder.itemView).setText(LocaleController.getString(footerText(item.zone)));
+                    ((TextInfoPrivacyCell) holder.itemView).setText(footerText(item.zone));
                     break;
                 case TYPE_SCALE:
                     SlideIntChooseView scaleView = (SlideIntChooseView) holder.itemView;
@@ -592,10 +626,17 @@ public class ComposerLayoutActivity extends BaseFragment {
                         rebuildPending = true;
                         // How tight the icons can be packed depends on the scale - a smaller row
                         // reaches the cell floor sooner - so the other slider's allowed range has to
-                        // follow this one live. Rebinding just that row rather than notifying the
-                        // adapter keeps the change animation, and any isComputingLayout() exposure,
-                        // out of the middle of this drag.
-                        AndroidUtilities.updateVisibleRow(listView, spacingRowPosition());
+                        // follow this one. Defer that rebind to the end of the gesture instead of
+                        // firing it on every step crossed: rebinding the packing row mid-drag is what
+                        // made its thumb and footer jump under the user's finger. The else branch is
+                        // load-bearing, not a guard - the accessibility delegate drives this slider
+                        // with no touch events at all, so a TalkBack change would never settle
+                        // otherwise, and it steps one value at a time so it has no jump to defer.
+                        if (gestureInProgress) {
+                            settlePending = true;
+                        } else {
+                            settleSpacingRows();
+                        }
                         updatePreview();
                     });
                     // Cleared to the options' own minimum rather than Integer.MIN_VALUE: getProgress
@@ -672,24 +713,43 @@ public class ComposerLayoutActivity extends BaseFragment {
         }
     }
 
-    private static int footerText(int zone) {
+    private static CharSequence footerText(int zone) {
         switch (zone) {
             case GROUP_SCALE:
-                return R.string.ComposerScaleInfo;
+                return LocaleController.getString(R.string.ComposerScaleInfo);
             case GROUP_SPACING:
-                return R.string.ComposerSpacingInfo;
+                return spacingFooterText();
             case GROUP_GLASS_LIGHT:
             case GROUP_GLASS_DARK:
-                return R.string.ComposerGlassInfo;
+                return LocaleController.getString(R.string.ComposerGlassInfo);
             case ComposerButtons.ZONE_START:
-                return R.string.ComposerZoneLeadingInfo;
+                return LocaleController.getString(R.string.ComposerZoneLeadingInfo);
             case ComposerButtons.ZONE_MIDDLE:
-                return R.string.ComposerZoneScrollingInfo;
+                return LocaleController.getString(R.string.ComposerZoneScrollingInfo);
             case ComposerButtons.ZONE_END:
-                return R.string.ComposerZoneTrailingInfo;
+                return LocaleController.getString(R.string.ComposerZoneTrailingInfo);
             default:
-                return R.string.ComposerLayoutInfo;
+                return LocaleController.getString(R.string.ComposerLayoutInfo);
         }
+    }
+
+    /**
+     * The packing footer says one of three things depending on how the saved value sits against the
+     * scale-dependent floor, so a user reads which state they are in before touching the slider that
+     * would overwrite a hidden value. Overridden wins whenever a saved value is hidden - telling the
+     * user it still exists and will return is worth more than the "no room" line, which is reserved
+     * for the case where nothing is hidden and the slider genuinely cannot move.
+     */
+    private static CharSequence spacingFooterText() {
+        int saved = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();
+        int floor = spacingFloor();
+        if (saved < floor) {
+            return LocaleController.formatString(R.string.ComposerSpacingInfoOverridden, floor, saved);
+        }
+        if (floor == 100) {
+            return LocaleController.getString(R.string.ComposerSpacingInfoNoRoom);
+        }
+        return LocaleController.getString(R.string.ComposerSpacingInfo);
     }
 
     /** One lookup for every TYPE_SLIDER_HEADER row - a binary ternary worked while there were only
@@ -971,9 +1031,22 @@ public class ComposerLayoutActivity extends BaseFragment {
         return ComposerToolbarLayout.spacingPercent();
     }
 
-    private int spacingRowPosition() {
+    /** Rebinds the packing slider and its footer once, together, off the toolbar-size gesture's end
+     * (see the root's dispatchTouchEvent). A direct onBindViewHolder on the two attached children,
+     * not a notify - it moves the dimmed band, the min label, and when the saved value is below the
+     * new floor the thumb and printed value too, without a change animation in the middle of the
+     * list, and it refreshes the footer so its three-way disclosure never goes stale. */
+    private void settleSpacingRows() {
+        AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_SPACING, GROUP_SPACING));
+        AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_INFO, GROUP_SPACING));
+    }
+
+    /** Position of the one row with this type in this group, or NO_POSITION. Both the packing slider
+     * and its footer are found through here so the two scanners cannot drift apart. */
+    private int rowPosition(int type, int zone) {
         for (int i = 0; i < items.size(); i++) {
-            if (items.get(i).type == TYPE_SPACING) {
+            Item item = items.get(i);
+            if (item.type == type && item.zone == zone) {
                 return i;
             }
         }
