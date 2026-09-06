@@ -941,7 +941,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         boolean value = preferences.getBoolean("stories_" + key, isInTop5Peers || preferences.contains("EnableAllStories") && preferences.getBoolean("EnableAllStories", true));
                         checkCell.setTextAndCheck(LocaleController.getString(R.string.StoriesSoundEnabled), value, true);
                     } else if (position == watchRow) {
-                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NotificationsWatchMessagesEnabled), preferences.getBoolean("nax_wear_" + dialogId, true), true);
+                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NotificationsShowOnWatch), preferences.getBoolean("nax_wear_" + dialogId, true), true);
                     }
                     break;
                 }
