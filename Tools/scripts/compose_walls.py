@@ -160,10 +160,19 @@ def _confine_source(raw: str, screenshots_dir: Path, *, panel_context: str) -> P
     would otherwise let a panel read (and this tool only reads sources, so
     only read, not write) a file from outside docs/screenshots/."""
     candidate = Path(raw)
-    if candidate.is_absolute():
+    # Reject any drive/UNC anchor outright, not just is_absolute(): a
+    # Windows drive-relative value like "C:foo.png" is not is_absolute(),
+    # and if its drive letter happens to match screenshots_dir's, joining
+    # it below silently treats it as plain-relative rather than raising --
+    # an accident of how PureWindowsPath.__truediv__ handles same-drive
+    # components, not a guarantee. A `source` is documented as relative to
+    # screenshots_dir, so any anchor is rejected rather than relied upon to
+    # resolve safely.
+    if candidate.anchor:
         raise SystemExit(
             f"{panel_context}: source {raw!r} must be relative to "
-            f"screenshots_dir ({screenshots_dir}), not an absolute path"
+            f"screenshots_dir ({screenshots_dir}), not an absolute or "
+            "drive/UNC-anchored path"
         )
     resolved = (screenshots_dir / candidate).resolve()
     if not resolved.is_relative_to(screenshots_dir):
