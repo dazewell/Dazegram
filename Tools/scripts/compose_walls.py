@@ -120,6 +120,12 @@ class Settings:
     @classmethod
     def from_toml(cls, data: dict, repo_root: Path) -> "Settings":
         s = data["settings"]
+        shadow_opacity = s["shadow_opacity"]
+        if not (0.0 <= shadow_opacity <= 1.0):
+            raise SystemExit(
+                f"settings.shadow_opacity must be between 0 and 1, got "
+                f"{shadow_opacity!r}"
+            )
         return cls(
             canvas_width=s["canvas_width"],
             canvas_height=s["canvas_height"],
@@ -128,7 +134,7 @@ class Settings:
             corner_radius=s["corner_radius"],
             shadow_blur=s["shadow_blur"],
             shadow_offset_y=s["shadow_offset_y"],
-            shadow_opacity=s["shadow_opacity"],
+            shadow_opacity=shadow_opacity,
             bg_top=hex_to_rgb(s["bg_top"]),
             bg_bottom=hex_to_rgb(s["bg_bottom"]),
             caption_color=hex_to_rgb(s["caption_color"]),
@@ -204,7 +210,8 @@ def load_panel_image(
             "docs/screenshots/ is gitignored and populated by hand -- copy "
             "the raw captures there before running this tool."
         )
-    im = Image.open(src_path).convert("RGB")
+    with Image.open(src_path) as src_im:
+        im = src_im.convert("RGB")
 
     redact_rects = panel.get("redact", [])
     if redact_rects:
@@ -315,10 +322,16 @@ def layout_wall(
 
 
 def render_wall(wall: dict, settings: Settings, caption_font: ImageFont.FreeTypeFont) -> Image.Image:
+    panel_list = wall.get("panel")
+    if not panel_list:
+        raise SystemExit(
+            f"wall {wall.get('output', '<unnamed>')!r} has no [[wall.panel]] "
+            "entries; every [[wall]] table in the manifest needs at least one"
+        )
     panels_raw = [
-        load_panel_image(p, settings.screenshots_dir) for p in wall["panel"]
+        load_panel_image(p, settings.screenshots_dir) for p in panel_list
     ]
-    captions = [p["caption"] for p in wall["panel"]]
+    captions = [p["caption"] for p in panel_list]
     laid_out = layout_wall(panels_raw, captions, settings, caption_font)
 
     canvas = make_vertical_gradient(
