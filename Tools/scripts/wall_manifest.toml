@@ -62,11 +62,10 @@ source = "time-zone-chat-header-pill-and-message-time.png"
 crop = [0, 0, 1080, 1010]
 caption = "See it in the chat"
 # This crop is a real conversation; blur out the reply-quote author name
-# ("Dmitriy B", red text) so only the UI chrome (header pill, dual
-# timestamps) stays legible. Everything else in the shot is throwaway
-# test content.
+# (red text) so only the UI chrome (header pill, dual timestamps) stays
+# legible. Everything else in the shot is throwaway test content.
 blur = [
-    [40, 495, 300, 560],   # "Dmitriy B" quote author name
+    [40, 495, 300, 560],   # reply-quote author name
 ]
 
 [[wall]]
