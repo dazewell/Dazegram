@@ -1,0 +1,87 @@
+# Data for compose_walls.py -- see that script's header for how to run it.
+#
+# Each [[wall]] becomes one PNG under `output_dir`, built from an ordered list
+# of [[wall.panel]] entries. A panel names a source screenshot (relative to
+# `screenshots_dir`), a `crop` rectangle in that screenshot's native pixel
+# coordinates as [left, top, right, bottom], and a one-line `caption`.
+#
+# Optional per-panel `redact`: a list of [left, top, right, bottom] rectangles,
+# also in the *source* screenshot's native coordinates (not crop-relative),
+# painted solid black before the crop is taken. Use this to black out anything
+# in a screenshot that must not be published (e.g. a personal deep link).
+#
+# Optional per-panel `blur`: same rectangle format and coordinate space as
+# `redact`, applied before the crop as well, but Gaussian-blurred instead of
+# blacked out -- the shape stays roughly readable as "a message" or "a photo"
+# while its actual content (real names, message text, a real profile photo)
+# becomes illegible. Use this instead of `redact` where blacking the region
+# out entirely would look wrong (e.g. a chat bubble full of real text).
+#
+# Panels are laid out left to right in a single row. Every panel keeps its
+# crop's native aspect ratio; the tool derives each panel's on-canvas size
+# from the layout rules in [settings] rather than from anything specified here.
+
+[settings]
+canvas_width = 1680
+canvas_height = 1000
+margin = 60                 # safe margin on all four canvas edges
+gutter = 40                 # horizontal gap between adjacent cards
+corner_radius = 24          # panel corner radius at final on-canvas size
+shadow_blur = 30            # Gaussian blur radius for the drop shadow
+shadow_offset_y = 12        # vertical offset of the drop shadow
+shadow_opacity = 0.20       # drop shadow opacity, 0..1 (of solid black)
+bg_top = "#121C31"          # canvas background gradient, top
+bg_bottom = "#1A304A"       # canvas background gradient, bottom
+caption_color = "#7AB2FF"
+caption_font_size = 34
+caption_gap = 18            # gap between card bottom and top of caption text
+stagger_amplitude = 35      # +/- vertical offset alternated across panels
+screenshots_dir = "docs/screenshots"   # gitignored, local-only raw captures
+output_dir = "docs/images"             # committed composited output
+
+[[wall]]
+output = "hero.png"
+
+[[wall.panel]]
+source = "time-zone-sheet-point-in-time.jpg"
+crop = [0, 834, 1080, 2354]
+caption = "Compare hours"
+
+[[wall.panel]]
+source = "time-zone-sheet-range-selected.jpg"
+crop = [0, 732, 1080, 2354]
+caption = "Pick a range"
+
+[[wall.panel]]
+source = "time-zone-schedule-peer-tab.jpg"
+crop = [0, 888, 1080, 2354]
+caption = "Schedule for them"
+
+[[wall.panel]]
+source = "generic-chat-page-time-zone-pill-time-in-chat-replies.jpg"
+crop = [0, 0, 1080, 970]
+caption = "See it in the chat"
+# This crop is a real conversation; blur out the avatar photo and every
+# real name/message line so only the UI chrome (bubble shapes, timestamps)
+# stays legible. Kept as one rect per message bubble rather than per line,
+# matching the box-shaped blur the previous hand-made hero.png used.
+blur = [
+    [930, 100, 1080, 265],   # header avatar photo + story-ring badge
+    [385, 260, 670, 320],    # "Hey what's up" sent bubble text
+    [10, 340, 775, 670],     # received bubble: Pickle Dill quote + reply
+    [220, 690, 1075, 960],   # sent bubble: dazewell quote + reply
+]
+
+[[wall]]
+output = "privacy-profiles.png"
+
+[[wall.panel]]
+source = "privacy-profiles-config.jpg"
+crop = [0, 324, 1080, 1651]
+caption = "Profiles & timeouts"
+redact = [[50, 1565, 690, 1622]]
+
+[[wall.panel]]
+source = "privacy-profiles-easy-switch.jpg"
+crop = [100, 935, 655, 2130]
+caption = "Switch in one tap"

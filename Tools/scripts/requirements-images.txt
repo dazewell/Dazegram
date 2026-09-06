@@ -1,0 +1,10 @@
+# Dependencies for Tools/scripts/compose_walls.py only.
+#
+# Deliberately NOT merged into requirements.txt: that file is installed by
+# .github/workflows/staging.yml on every publish build (for upload.py), and
+# that build never touches this script. Keeping this separate means an
+# imaging library is never downloaded on a build that doesn't need it.
+#
+# Install with:
+#   pip install -r Tools/scripts/requirements-images.txt
+Pillow==12.3.0

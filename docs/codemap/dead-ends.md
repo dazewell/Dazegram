@@ -411,3 +411,44 @@ carried bitrate from the version-12 extension for any muted record with a
 valid bool.
 
 *(Established 2026-09-06, during the silent-video feature build, PR #300.)*
+
+## "Our own settings page can use real Material Components / Material 3 widgets, since it's fork-owned"
+
+Not viable under the fork's current dependency and theming architecture. Not a
+proof of permanent impossibility — the classpath side has conceivable
+workarounds — but a hard blocker to the naive "just add the Material AAR"
+approach, on two independent grounds, so a "material 3 redesign" of any settings
+page can't be dropped in out of actual MDC widgets without rearchitecting first.
+
+1. Classpath. `TMessagesProj/build.gradle:250` globally excludes
+   `androidx.recyclerview:recyclerview`, because the fork vendors a modified
+   RecyclerView in-source (including the `ItemTouchHelper` these settings pages
+   drag with). Material Components hard-depends on `androidx.recyclerview`, so
+   either the exclude stays and MDC links against the vendored copy — whether
+   that binds or breaks at runtime depends on whether the fork's modified
+   RecyclerView kept ABI compatibility, which nobody has traced — or the exclude
+   is lifted and two RecyclerView classes collide on one classpath. Separately
+   and independently verified: `com.google.android.material.color.utilities` is
+   ALREADY vendored in-source for `MonetHelper.java:11`, so pulling in the
+   Material AAR is a duplicate-class D8/R8 failure at build time. That one is a
+   reproducible build failure, not a prediction; it could in principle be worked
+   around (exclude the utilities package from the AAR, or drop the vendored
+   copy), which is exactly why this is "not worth it", not "impossible".
+
+2. Theming. Making MDC widgets follow the app theme is the genuinely
+   architectural blocker. The app's colours are runtime values resolved per
+   frame from user-loaded `.attheme` data
+   (`Theme.getColor(key, resourcesProvider)`); MDC theming resolves against
+   `?attr/` resource values, which a bridge could only satisfy by pre-generating
+   a theme overlay per palette — undefined for arbitrary user-supplied
+   `.attheme` files, of which there is no fixed set. That is a real impossibility
+   for the general case, not merely a cost. `DynamicColors`/Monet is not a
+   counterexample: it builds its overlays from a FIXED set of FRAMEWORK resources
+   (`android.R.color.system_accent1_*`, the very ones `MonetHelper.java:27-65`
+   reads), not from the app's open-ended theme engine.
+
+What the redesign actually wanted — the M3 grouped-card look — was already a
+one-line call to `RecyclerListView.setSections()`, the house treatment used
+everywhere else in Settings, with no MDC involved. See upstream-traps.md.
+
+*(Established 2026-09-06.)*
