@@ -193,6 +193,119 @@ def _require_plain_png_filename(raw: object, *, context: str) -> str:
     return raw
 
 
+# --- Manifest validation ------------------------------------------------
+#
+# This tool runs by hand, rarely, months apart -- a raw KeyError/TypeError
+# or a Pillow traceback several calls deep from the actual mistake turns a
+# routine manifest edit into an archaeology session. Everything below runs
+# as one pass before any rendering, so a malformed manifest fails fast with
+# a message naming the offending wall/panel/field rather than partway
+# through building the first wall.
+
+_REQUIRED_SETTINGS: dict[str, type | tuple[type, ...]] = {
+    "canvas_width": int,
+    "canvas_height": int,
+    "margin": int,
+    "gutter": int,
+    "corner_radius": int,
+    "shadow_blur": int,
+    "shadow_offset_y": int,
+    "shadow_opacity": (int, float),
+    "bg_top": str,
+    "bg_bottom": str,
+    "caption_color": str,
+    "caption_font_size": int,
+    "caption_gap": int,
+    "stagger_amplitude": int,
+    "screenshots_dir": str,
+    "output_dir": str,
+}
+
+
+def _check_rect_shape(rect: object, *, context: str) -> None:
+    if not isinstance(rect, (list, tuple)) or len(rect) != 4:
+        raise SystemExit(
+            f"{context}: must be a 4-element [left, top, right, bottom] "
+            f"list, got {rect!r}"
+        )
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in rect):
+        raise SystemExit(f"{context}: all four values must be integers, got {rect!r}")
+    left, top, right, bottom = rect
+    if not (left < right and top < bottom):
+        raise SystemExit(
+            f"{context}: rect {rect!r} must have left < right and top < bottom"
+        )
+
+
+def validate_manifest_shape(manifest: dict, manifest_path: Path) -> None:
+    """Check required keys, types, rect shapes, and duplicate wall outputs.
+    Does not touch the filesystem or need Settings -- see
+    validate_manifest_sources() for the confinement pass that does."""
+    settings = manifest.get("settings")
+    if not isinstance(settings, dict):
+        raise SystemExit(f"{manifest_path}: missing or malformed [settings] table")
+    for key, expected_type in _REQUIRED_SETTINGS.items():
+        if key not in settings:
+            raise SystemExit(f"{manifest_path}: [settings] is missing required key {key!r}")
+        value = settings[key]
+        if not isinstance(value, expected_type) or isinstance(value, bool):
+            raise SystemExit(
+                f"{manifest_path}: settings.{key} must be a "
+                f"{expected_type}, got {value!r}"
+            )
+
+    walls = manifest.get("wall")
+    if not isinstance(walls, list) or not walls:
+        raise SystemExit(f"{manifest_path}: needs at least one [[wall]] table")
+
+    seen_outputs: set[str] = set()
+    for i, wall in enumerate(walls, start=1):
+        wall_context = f"wall #{i}"
+        if not isinstance(wall, dict):
+            raise SystemExit(f"{wall_context}: must be a table, got {wall!r}")
+        output = _require_plain_png_filename(wall.get("output"), context=wall_context)
+        if output in seen_outputs:
+            raise SystemExit(
+                f"duplicate wall output {output!r} -- every [[wall]] needs a "
+                "unique output filename"
+            )
+        seen_outputs.add(output)
+        wall_context = f"wall {output!r}"
+
+        panels = wall.get("panel")
+        if not isinstance(panels, list) or not panels:
+            raise SystemExit(
+                f"{wall_context}: needs at least one [[wall.panel]] entry"
+            )
+        for j, panel in enumerate(panels, start=1):
+            panel_context = f"{wall_context} panel #{j}"
+            if not isinstance(panel, dict):
+                raise SystemExit(f"{panel_context}: must be a table, got {panel!r}")
+            source = panel.get("source")
+            if not isinstance(source, str) or not source:
+                raise SystemExit(
+                    f"{panel_context}: source must be a non-empty string, "
+                    f"got {source!r}"
+                )
+            caption = panel.get("caption")
+            if not isinstance(caption, str) or not caption:
+                raise SystemExit(
+                    f"{panel_context}: caption must be a non-empty string, "
+                    f"got {caption!r}"
+                )
+            _check_rect_shape(panel.get("crop"), context=f"{panel_context} crop")
+            for kind in ("redact", "blur"):
+                rects = panel.get(kind, [])
+                if not isinstance(rects, list):
+                    raise SystemExit(
+                        f"{panel_context}: {kind} must be a list of rects, "
+                        f"got {rects!r}"
+                    )
+                for k, rect in enumerate(rects, start=1):
+                    _check_rect_shape(rect, context=f"{panel_context} {kind} #{k}")
+
+
+
 @dataclass
 class Settings:
     canvas_width: int
@@ -262,6 +375,20 @@ class Settings:
                 "loosen margin/stagger_amplitude/caption sizing"
             )
         return budget
+
+
+def validate_manifest_sources(manifest: dict, settings: Settings) -> None:
+    """Confine every panel's `source` inside settings.screenshots_dir. Runs
+    once, up front, so a stray absolute path or '..' fails with a clear
+    wall/panel-named message instead of surfacing later as a confusing
+    "file not found" for a path nobody wrote by hand."""
+    for wall in manifest["wall"]:
+        for j, panel in enumerate(wall["panel"], start=1):
+            _confine_source(
+                panel["source"],
+                settings.screenshots_dir,
+                panel_context=f"wall {wall['output']!r} panel #{j}",
+            )
 
 
 def make_vertical_gradient(
@@ -370,13 +497,17 @@ def layout_wall(
     captions: list[str],
     settings: Settings,
     caption_font: ImageFont.FreeTypeFont,
+    wall_name: str,
 ) -> list[LaidOutPanel]:
     n = len(panels_raw)
     if n == 0:
         raise SystemExit("a wall must have at least one panel")
     for im, caption in zip(panels_raw, captions):
         if im.width <= 0 or im.height <= 0:
-            raise SystemExit(f"panel {caption!r} has a zero-size crop after loading")
+            raise SystemExit(
+                f"wall {wall_name!r} panel {caption!r} has a zero-size crop "
+                "after loading"
+            )
     aspects = [im.width / im.height for im in panels_raw]
 
     available_width = (
@@ -384,9 +515,10 @@ def layout_wall(
     )
     if available_width <= 0:
         raise SystemExit(
-            "settings leave no horizontal room for any card "
-            f"(canvas_width={settings.canvas_width}, margin={settings.margin}, "
-            f"gutter={settings.gutter}, panel count={n})"
+            f"wall {wall_name!r}: settings leave no horizontal room for any "
+            f"card (canvas_width={settings.canvas_width}, "
+            f"margin={settings.margin}, gutter={settings.gutter}, "
+            f"panel count={n})"
         )
     width_fit_height = available_width / sum(aspects)
     card_height = min(width_fit_height, settings.max_card_height(caption_font))
@@ -396,8 +528,21 @@ def layout_wall(
     # only ever gives back a spare fractional pixel of margin/gutter slack,
     # never takes the row out of bounds.
     card_height = int(card_height)
+    if card_height <= 0:
+        raise SystemExit(
+            f"wall {wall_name!r}: computed card height is {card_height}px "
+            f"for {n} panel(s) -- widen the canvas, shrink the margins/"
+            "gutter, or use fewer/wider panels"
+        )
 
     widths = [int(a * card_height) for a in aspects]
+    for caption, width in zip(captions, widths):
+        if width <= 0:
+            raise SystemExit(
+                f"wall {wall_name!r} panel {caption!r}: computed width is "
+                f"{width}px at card_height={card_height}px -- its crop's "
+                "aspect ratio is too extreme for this canvas/panel count"
+            )
     row_width = sum(widths) + (n - 1) * settings.gutter
     start_x = (settings.canvas_width - row_width) // 2
 
@@ -448,7 +593,8 @@ def render_wall(wall: dict, settings: Settings, caption_font: ImageFont.FreeType
         load_panel_image(p, settings.screenshots_dir) for p in panel_list
     ]
     captions = [p["caption"] for p in panel_list]
-    laid_out = layout_wall(panels_raw, captions, settings, caption_font)
+    wall_name = wall.get("output", "<unnamed>")
+    laid_out = layout_wall(panels_raw, captions, settings, caption_font, wall_name)
 
     canvas = make_vertical_gradient(
         settings.canvas_width, settings.canvas_height, settings.bg_top, settings.bg_bottom
@@ -532,9 +678,17 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = find_repo_root(SCRIPT_DIR)
-    with args.manifest.open("rb") as f:
-        manifest = tomllib.load(f)
+    try:
+        with args.manifest.open("rb") as f:
+            manifest = tomllib.load(f)
+    except FileNotFoundError:
+        raise SystemExit(f"manifest not found: {args.manifest}")
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"could not parse manifest {args.manifest}: {exc}") from None
+
+    validate_manifest_shape(manifest, args.manifest)
     settings = Settings.from_toml(manifest, repo_root)
+    validate_manifest_sources(manifest, settings)
 
     if args.check:
         with tempfile.TemporaryDirectory() as tmp:
