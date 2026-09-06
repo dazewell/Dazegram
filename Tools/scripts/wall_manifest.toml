@@ -73,17 +73,17 @@ output = "chat-privacy.png"
 
 [[wall.panel]]
 source = "chat-privacy-hidden-vs-normal-chat-list.png"
-crop = [0, 385, 1080, 655]
+crop = [0, 0, 1080, 1150]
 caption = "Hidden from the list"
 
 [[wall.panel]]
 source = "chat-privacy-sheet-both-switches-on.png"
-crop = [0, 800, 1080, 1350]
+crop = [0, 778, 1080, 1860]
 caption = "Your call, per chat"
 
 [[wall.panel]]
 source = "chat-privacy-disguise-notification.png"
-crop = [0, 0, 1080, 270]
+crop = [0, 0, 550, 270]
 caption = "Or disguise the alert"
 
 [[wall]]
@@ -91,22 +91,22 @@ output = "composer.png"
 
 [[wall.panel]]
 source = "composer-layout-editor-drag-list.png"
-crop = [0, 545, 1080, 1450]
+crop = [0, 545, 1080, 1678]
 caption = "Reorder the buttons"
 
 [[wall.panel]]
 source = "composer-layout-editor-sliders.png"
-crop = [0, 500, 1080, 1330]
+crop = [0, 0, 1080, 1445]
 caption = "Size and spacing"
 
 [[wall.panel]]
 source = "composer-toolbar-live-in-chat-text-selected.png"
-crop = [0, 140, 1080, 1230]
+crop = [0, 0, 1080, 1345]
 caption = "Live in your chat"
 
 [[wall.panel]]
 source = "fullscreen-input-expanded.png"
-crop = [0, 140, 1080, 1220]
+crop = [0, 140, 1080, 1330]
 caption = "Expand to full screen"
 
 [[wall]]
@@ -114,7 +114,7 @@ output = "video-messages.png"
 
 [[wall.panel]]
 source = "pre-video-message-options-infinite-recording-and-external-mic.jpg"
-crop = [0, 900, 1080, 1750]
+crop = [0, 900, 1080, 2010]
 caption = "Set up before you record"
 
 [[wall.panel]]
@@ -124,7 +124,7 @@ caption = "Controls while recording"
 
 [[wall.panel]]
 source = "video-message-preview-scrub-midpoint.png"
-crop = [0, 900, 1080, 2160]
+crop = [0, 390, 1080, 1350]
 caption = "Scrub the preview"
 
 [[wall.panel]]
