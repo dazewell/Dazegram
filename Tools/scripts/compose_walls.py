@@ -54,12 +54,16 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 SCRIPT_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = SCRIPT_DIR / "wall_manifest.toml"
 
-# Fonts tried in order; the first one that exists on disk is used. Segoe UI
-# Bold ships with every Windows install, which is what this script is ever
-# run on.
+# Fonts tried in order; the first one that exists on disk is used. This
+# script is only ever run by hand on dazewell's Windows machine, so the
+# Windows paths come first, but the Linux/macOS entries cost nothing and mean
+# a checkout on another OS still renders something instead of hard-failing.
 FONT_CANDIDATES = [
     Path(r"C:\Windows\Fonts\segoeuib.ttf"),
     Path(r"C:\Windows\Fonts\arialbd.ttf"),
+    Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
 ]
 
 
@@ -190,6 +194,12 @@ def load_panel_image(
         draw.rectangle(rect, fill=(0, 0, 0))
 
     left, top, right, bottom = panel["crop"]
+    if not (0 <= left < right <= im.width and 0 <= top < bottom <= im.height):
+        raise SystemExit(
+            f"panel {panel['source']!r} has an invalid crop {panel['crop']} "
+            f"for a {im.width}x{im.height} source image; expected "
+            "0 <= left < right <= width and 0 <= top < bottom <= height"
+        )
     return im.crop((left, top, right, bottom))
 
 
@@ -210,11 +220,22 @@ def layout_wall(
     caption_font: ImageFont.FreeTypeFont,
 ) -> list[LaidOutPanel]:
     n = len(panels_raw)
+    if n == 0:
+        raise SystemExit("a wall must have at least one panel")
+    for im, caption in zip(panels_raw, captions):
+        if im.width <= 0 or im.height <= 0:
+            raise SystemExit(f"panel {caption!r} has a zero-size crop after loading")
     aspects = [im.width / im.height for im in panels_raw]
 
     available_width = (
         settings.canvas_width - 2 * settings.margin - (n - 1) * settings.gutter
     )
+    if available_width <= 0:
+        raise SystemExit(
+            "settings leave no horizontal room for any card "
+            f"(canvas_width={settings.canvas_width}, margin={settings.margin}, "
+            f"gutter={settings.gutter}, panel count={n})"
+        )
     width_fit_height = available_width / sum(aspects)
     card_height = min(width_fit_height, settings.max_card_height(caption_font))
     card_height = round(card_height)
@@ -298,7 +319,10 @@ def build_walls(settings: Settings, manifest: dict, only: str | None, out_dir: P
             continue
         image = render_wall(wall, settings, caption_font)
         out_path = out_dir / wall["output"]
-        image.save(out_path, format="PNG")
+        # Explicit encoder options rather than Pillow's defaults, so output
+        # stays byte-identical even if a future Pillow version changes its
+        # PNG default compression level.
+        image.save(out_path, format="PNG", compress_level=6, optimize=False)
         written.append(out_path)
         print(f"wrote {out_path}  {image.width}x{image.height}  {out_path.stat().st_size} bytes")
     if only is not None and not written:
