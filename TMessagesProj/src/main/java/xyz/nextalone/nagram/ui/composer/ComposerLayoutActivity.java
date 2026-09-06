@@ -773,9 +773,16 @@ public class ComposerLayoutActivity extends BaseFragment {
      * would overwrite a hidden value. Overridden wins whenever a saved value is hidden - telling the
      * user it still exists and will return is worth more than the "no room" line, which is reserved
      * for the case where nothing is hidden and the slider genuinely cannot move.
+     *
+     * The saved value is clamped into the slider's expressible range before it is compared or
+     * printed: the number shown as "your saved X%" has to be the value that would actually be
+     * restored, and spacingPercent() clamps to this same range, so a stored integer below the
+     * minimum reads back as the minimum rather than as itself. Printing the raw integer would name a
+     * value that can never return at any toolbar size and promise a comeback that cannot happen.
      */
     private static CharSequence spacingFooterText() {
-        int saved = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();
+        int saved = Math.max(SPACING_STEPS[0], Math.min(SPACING_STEPS[SPACING_STEPS.length - 1],
+                NaConfig.INSTANCE.getComposerToolbarSpacing().Int()));
         int floor = spacingFloor();
         if (saved < floor) {
             return LocaleController.formatString(R.string.ComposerSpacingInfoOverridden, floor, saved);
