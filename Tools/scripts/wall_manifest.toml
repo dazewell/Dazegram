@@ -10,6 +10,13 @@
 # painted solid black before the crop is taken. Use this to black out anything
 # in a screenshot that must not be published (e.g. a personal deep link).
 #
+# Optional per-panel `blur`: same rectangle format and coordinate space as
+# `redact`, applied before the crop as well, but Gaussian-blurred instead of
+# blacked out -- the shape stays roughly readable as "a message" or "a photo"
+# while its actual content (real names, message text, a real profile photo)
+# becomes illegible. Use this instead of `redact` where blacking the region
+# out entirely would look wrong (e.g. a chat bubble full of real text).
+#
 # Panels are laid out left to right in a single row. Every panel keeps its
 # crop's native aspect ratio; the tool derives each panel's on-canvas size
 # from the layout rules in [settings] rather than from anything specified here.
@@ -54,6 +61,16 @@ caption = "Schedule for them"
 source = "generic-chat-page-time-zone-pill-time-in-chat-replies.jpg"
 crop = [0, 0, 1080, 970]
 caption = "See it in the chat"
+# This crop is a real conversation; blur out the avatar photo and every
+# real name/message line so only the UI chrome (bubble shapes, timestamps)
+# stays legible. Kept as one rect per message bubble rather than per line,
+# matching the box-shaped blur the previous hand-made hero.png used.
+blur = [
+    [930, 100, 1080, 265],   # header avatar photo + story-ring badge
+    [385, 260, 670, 320],    # "Hey what's up" sent bubble text
+    [10, 340, 775, 670],     # received bubble: Pickle Dill quote + reply
+    [220, 690, 1075, 960],   # sent bubble: dazewell quote + reply
+]
 
 [[wall]]
 output = "privacy-profiles.png"
