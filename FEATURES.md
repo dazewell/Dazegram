@@ -57,9 +57,11 @@ It takes effect on the next notification for that chat, not retroactively — a 
 
 ## Composer and input
 
-### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->
+### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles --> <!-- #toggle-formatting -->
 
 The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text. Light and dark theme share one base transparency formula for this glass; how much wallpaper shows through each is set separately (see Composer glass transparency below), rather than light theme carrying its own fixed, noticeably more opaque override.
+
+Bold, Italic, Monospace, Strikethrough, Underline, and Spoiler now toggle: select text that already has one of those styles and tap the same button again — from this toolbar, the platform's own selection popup, or the chat header's overflow formatting menu — and it comes off, instead of nothing happening. Quote and Code (the language-tagged block) toggle off too, but only when the selection sits entirely inside one existing block (a bare caret placed inside one counts too); select across a block's edge or only part of it and the button is left alone rather than risk stacking a second, overlapping block on top. Turning a quote off removes the quote formatting itself but doesn't try to undo any paragraph break it inserted, so a collapsible quote can leave a blank line behind on screen (never in the sent message). Regular still clears every style in the selection at once, unchanged. One known gap: a run that's both bold and a hyperlink is stored as a single combined span the toggle can't see through, so re-tapping Bold on a formatted link still does nothing — same as it always has.
 
 ### Send and mic inside the input <!-- #composer-input -->
 
@@ -103,7 +105,7 @@ The text you type in the compose box has its own size, separate from chat bubble
 
 ### Physical keyboard hotkeys <!-- #keyboard-hotkeys -->
 
-Matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings.
+Matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software keyboards. Can be disabled in settings. `Ctrl+B`/`I`/`U`/etc. and `Ctrl+Shift+X`/`M`/`P` already toggled a style off when re-run on already-styled text; that same toggle-off now works everywhere those styles are reachable (see Composer toolbar above), so the keyboard and the pointer paths agree.
 
 | Shortcut | Action |
 |---|---|

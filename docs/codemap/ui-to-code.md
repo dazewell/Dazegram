@@ -303,9 +303,6 @@ is true, and shown for a reschedule/edit sheet unless `currentDate` is the
 send-when-online sentinel (`0x7FFFFFFE`) — the one case with no real timestamp
 to compute a "from now" delay against.
 
-`naxReschedule` is threaded into two independent places, not read back off
-each other:
-
 - `ScheduleTimeHelper.RememberToggle.isReschedule` (`ScheduleTimeHelper.java:144`,
   set from the constructor call at `AlertsCreator.java:4691`) drives the
   Remember hint's wording and its show-on-toggle-on condition
@@ -372,3 +369,41 @@ packing footer is rebound (with the packing slider) whenever Toolbar size
 settles.
 
 *(Established 2026-09-06; footerText signature and disclosure updated 2026-09-06 for #composer-spacing; citations re-verified against `5b73e5a15c`.)*
+
+## Tapping a formatting button on already-styled text toggles it off, via `makeSelectedX`, not `toggleStyleForSelection`
+
+Four surfaces reach the composer's rich-text formatting: the platform text-selection popup
+(`ChatActivity.fillActionModeMenu` → `ActionMode.Callback` → `EditTextCaption.performMenuAction(int)`,
+`EditTextCaption.java:1243-1273`), the fork's glass composer toolbar
+(`ComposerFormattingActions.apply()` → `editText.performMenuAction(...)`), the chat header's
+overflow formatting menu (`ChatActivity.java:4609-4671`, calls `makeSelectedBold()` etc.
+**directly**, bypassing `performMenuAction` entirely), and physical-keyboard shortcuts split across
+two independent paths (`ChatActivityEnterView`'s own `dispatchKeyEvent` →
+`toggleStyleForSelection(int)` for one set of keys, and `EditTextCaption.onKeyShortcut` →
+`HotkeyController.handleTextStyleShortcut` → `performMenuAction` for another, see
+`HotkeyController.java:248-294`). All but the direct-dispatch keyboard path funnel into the
+`makeSelectedBold`/`Italic`/`Mono`/`Strike`/`Underline`/`Spoiler`/`Quote`/`Code` methods in
+`EditTextCaption.java` — that shared point, not `performMenuAction`, is where `#toggle-formatting`
+added toggle-off, because it's the only chokepoint all three non-hotkey-only surfaces share.
+
+`EditTextCaption.toggleStyleForSelection(int)` (`EditTextCaption.java:388-419`) is a **different,
+older, keyboard-only** toggle mechanism — an upstream import from commit `80c604047e` ("update to
+12.9.0 (6966)", 2026-07-17), wired only to `ChatActivityEnterView`'s `dispatchKeyEvent` path. It was
+never reachable from the popup, the toolbar, or the header menu, and `#toggle-formatting`
+deliberately does **not** route the six flag-based styles through it for the other three surfaces:
+it reads raw `getSelectionStart()/End()` and ignores the `selectionStart`/`selectionEnd` override
+those three surfaces rely on, it clears every other inline style when adding Mono (the popup's
+plain `makeSelectedMono()` merge does not), and its `addStyle` call hardcodes
+entity-intersection=true where the popup/toolbar path respects `allowTextEntitiesIntersection`
+(secret chats). Instead, each `makeSelectedX` gained its own removal branch
+(`removeStyleIfFullyApplied(int)`, `EditTextCaption.java:175-196`, for the six flag-based styles;
+inline containment checks in `makeSelectedQuote`/`makeSelectedCode` for Quote and the language-tagged
+Code block) that detects "already fully applied" and removes instead of adding, reusing
+`getCurrentStyle(int,int)` (`EditTextCaption.java:966-1000`) and the span-splitting
+`addStyle`/`removeStyle` primitives (`EditTextCaption.java:1004-1067`) `toggleStyleForSelection`
+already used — so both toggle mechanisms share their span-detection primitives without sharing
+selection-resolution or merge semantics. Don't assume a future formatting change can just call
+`toggleStyleForSelection` to get toggle behaviour on the popup/toolbar/header-menu surfaces; it
+can't, for the reasons above.
+
+*(Established 2026-09-06, `#toggle-formatting`.)*

@@ -590,6 +590,26 @@ then, the per-chat hooks are honest about what they do — they keep a chat's *o
 notification off the watch — and `FEATURES.md` states the summary limitation
 plainly rather than implying full suppression.
 
+## Two independent "any overlap hides the Quote button" gates, one of them a private upstream method
+
+`EditTextBoldCursor.shouldShowQuoteButton()` (`EditTextBoldCursor.java:1213-1236`, private, pure
+upstream — git log shows only version-bump commits, zero `// NagramX:` markers before this entry)
+decides whether the platform's own text-selection popup (`FloatingToolbar`, wired via
+`floatingToolbar.setQuoteShowVisible(this::shouldShowQuoteButton)`, `EditTextBoldCursor.java:1194`)
+shows a Quote item at all. Before `#toggle-formatting` it hid the item the moment *any*
+`QuoteSpan.QuoteStyleSpan` overlapped the selection, so a quote could be added but never removed
+from that surface. `ComposerFormattingActions.isQuoteAvailable(Editable,int,int)`
+(`ComposerFormattingActions.java:229-241`, fork-owned) enables/disables the glass composer
+toolbar's Quote button on the *identical* condition, independently. Both had to be relaxed in the
+same change to make quote toggle-off reachable outside the header overflow menu and the
+`Ctrl+Shift+.` hotkey (the two paths that already called `makeSelectedQuote()` directly): now
+enabled/shown when there's no overlap (add) OR the selection exactly contains one quote block
+(remove), still hidden/disabled only for a partial/non-containing overlap. The
+`EditTextBoldCursor.java` edit is the one sanctioned upstream-file touch for this change — everything
+else lives in `EditTextCaption.java` and the fork-owned `ComposerFormattingActions.java`.
+
+*(Established 2026-09-06, `#toggle-formatting`.)*
+
 Key-format note for a future edit in this area: `WearBridgeHelper` owns the
 `nax_wear_<dialogId>` format, but `ProfileNotificationsActivity` repeats the
 `"nax_wear_" + dialogId` literal inline for both its read and its write, so a

@@ -231,6 +231,13 @@ public final class ComposerFormattingActions {
             return false;
         }
         QuoteSpan.QuoteStyleSpan[] spans = ((Spanned) editable).getSpans(start, end, QuoteSpan.QuoteStyleSpan.class);
-        return spans == null || spans.length == 0;
+        if (spans == null || spans.length == 0) {
+            return true;
+        }
+        // Also enable as a toggle-off when the selection exactly contains one existing quote block;
+        // any other overlap (partial, non-containing) stays disabled so the button can never create
+        // a second overlapping quote block on top of a messy selection. start/end here are already
+        // normalized (min/max) by refresh(), the only caller.
+        return spans.length == 1 && editable.getSpanStart(spans[0]) <= start && editable.getSpanEnd(spans[0]) >= end;
     }
 }
