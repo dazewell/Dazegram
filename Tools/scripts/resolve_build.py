@@ -4,7 +4,8 @@ Rules:
 - pull_request:labeled build requests are always test builds.
 - workflow_dispatch is test only on one unique open exact-head same-repo/ref
   PR targeting dev; no-match is staging; ambiguity/errors fail closed.
-- push builds are always staging; metadata lookup is best-effort only.
+- push builds are always staging; metadata uses a relaxed selector and may
+  safely fall back to empty on lookup uncertainty.
 """
 import json
 import os
@@ -26,7 +27,7 @@ class ResolveError(RuntimeError):
 
 def gh_get(url: str, token: str):
     if not token:
-        raise ResolveError("missing token")
+        raise ResolveError("missing_token")
     req = urllib.request.Request(
         url,
         headers={
@@ -51,57 +52,6 @@ def gh_get(url: str, token: str):
 
 def _as_dict(value):
     return value if isinstance(value, dict) else {}
-
-
-def _is_exact_candidate(pr, head_sha, head_repo_full_name, head_ref_name, base_repo_full_name, base_ref_name):
-    if not isinstance(pr, dict):
-        return False
-    if pr.get("state") != "open":
-        return False
-
-    head = _as_dict(pr.get("head"))
-    head_repo = _as_dict(head.get("repo"))
-    base = _as_dict(pr.get("base"))
-    base_repo = _as_dict(base.get("repo"))
-
-    return (
-        head.get("sha") == head_sha
-        and head_repo.get("full_name") == head_repo_full_name
-        and head.get("ref") == head_ref_name
-        and base_repo.get("full_name") == base_repo_full_name
-        and base.get("ref") == base_ref_name
-    )
-
-
-def find_associated_pr(repo_full_name, head_sha, token, head_repo_full_name, head_ref_name, base_ref_name="dev"):
-    if not (repo_full_name and head_sha and head_repo_full_name and head_ref_name):
-        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "missing_lookup_inputs", "pr": None}
-
-    try:
-        data = gh_get(f"https://api.github.com/repos/{repo_full_name}/commits/{head_sha}/pulls", token)
-    except ResolveError as exc:
-        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": str(exc), "pr": None}
-
-    if not isinstance(data, list):
-        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "unexpected_response_shape", "pr": None}
-
-    matches = [
-        pr for pr in data
-        if _is_exact_candidate(
-            pr=pr,
-            head_sha=head_sha,
-            head_repo_full_name=head_repo_full_name,
-            head_ref_name=head_ref_name,
-            base_repo_full_name=repo_full_name,
-            base_ref_name=base_ref_name,
-        )
-    ]
-    if not matches:
-        return {"outcome": OUTCOME_NO_MATCH, "error": "", "pr": None}
-    if len(matches) > 1:
-        numbers = ",".join(str(_as_dict(pr).get("number")) for pr in matches)
-        return {"outcome": OUTCOME_AMBIGUOUS, "error": f"multiple_exact_matches:{numbers}", "pr": None}
-    return {"outcome": OUTCOME_UNIQUE_MATCH, "error": "", "pr": matches[0]}
 
 
 def _pr_value(pr, key, default=""):
@@ -130,6 +80,87 @@ def _staging_result(lookup_outcome, pr=None):
     }
 
 
+def load_associated_prs(repo_full_name, head_sha, token):
+    if not (repo_full_name and head_sha and token):
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "missing_lookup_inputs", "prs": []}
+    try:
+        data = gh_get(f"https://api.github.com/repos/{repo_full_name}/commits/{head_sha}/pulls", token)
+    except ResolveError as exc:
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": str(exc), "prs": []}
+
+    if not isinstance(data, list):
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "unexpected_response_shape", "prs": []}
+    if any(not isinstance(pr, dict) for pr in data):
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "unexpected_pr_item_shape", "prs": []}
+    return {"outcome": "ok", "error": "", "prs": data}
+
+
+def _is_dispatch_preview_candidate(
+    pr,
+    head_sha,
+    head_repo_full_name,
+    head_ref_name,
+    base_repo_full_name,
+    base_ref_name,
+):
+    if pr.get("state") != "open":
+        return False
+    head = _as_dict(pr.get("head"))
+    head_repo = _as_dict(head.get("repo"))
+    base = _as_dict(pr.get("base"))
+    base_repo = _as_dict(base.get("repo"))
+    return (
+        head.get("sha") == head_sha
+        and head_repo.get("full_name") == head_repo_full_name
+        and head.get("ref") == head_ref_name
+        and base_repo.get("full_name") == base_repo_full_name
+        and base.get("ref") == base_ref_name
+    )
+
+
+def select_dispatch_preview_pr(candidates, repo_full_name, head_sha, head_repo_full_name, head_ref_name, base_ref_name="dev"):
+    if not (repo_full_name and head_sha and head_repo_full_name and head_ref_name):
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "missing_dispatch_selector_inputs", "pr": None}
+    matches = [
+        pr for pr in candidates
+        if _is_dispatch_preview_candidate(
+            pr=pr,
+            head_sha=head_sha,
+            head_repo_full_name=head_repo_full_name,
+            head_ref_name=head_ref_name,
+            base_repo_full_name=repo_full_name,
+            base_ref_name=base_ref_name,
+        )
+    ]
+    if not matches:
+        return {"outcome": OUTCOME_NO_MATCH, "error": "", "pr": None}
+    if len(matches) > 1:
+        numbers = ",".join(str(_as_dict(pr).get("number")) for pr in matches)
+        return {"outcome": OUTCOME_AMBIGUOUS, "error": f"multiple_exact_matches:{numbers}", "pr": None}
+    return {"outcome": OUTCOME_UNIQUE_MATCH, "error": "", "pr": matches[0]}
+
+
+def _is_push_metadata_candidate(pr, base_repo_full_name, base_ref_name):
+    base = _as_dict(pr.get("base"))
+    base_repo = _as_dict(base.get("repo"))
+    return base_repo.get("full_name") == base_repo_full_name and base.get("ref") == base_ref_name
+
+
+def select_push_metadata_pr(candidates, repo_full_name, pushed_ref_name):
+    if not (repo_full_name and pushed_ref_name):
+        return {"outcome": OUTCOME_LOOKUP_ERROR, "error": "missing_push_selector_inputs", "pr": None}
+    matches = [
+        pr for pr in candidates
+        if _is_push_metadata_candidate(pr, base_repo_full_name=repo_full_name, base_ref_name=pushed_ref_name)
+    ]
+    if not matches:
+        return {"outcome": OUTCOME_NO_MATCH, "error": "", "pr": None}
+    if len(matches) > 1:
+        numbers = ",".join(str(_as_dict(pr).get("number")) for pr in matches)
+        return {"outcome": OUTCOME_AMBIGUOUS, "error": f"multiple_base_matches:{numbers}", "pr": None}
+    return {"outcome": OUTCOME_UNIQUE_MATCH, "error": "", "pr": matches[0]}
+
+
 def resolve(event_name, head_sha, repo_full_name, token, head_repo_full_name, head_ref_name, pr_event=None):
     if event_name == "pull_request":
         pr_event = _as_dict(pr_event)
@@ -142,17 +173,23 @@ def resolve(event_name, head_sha, repo_full_name, token, head_repo_full_name, he
             "lookup_outcome": "event_payload",
         }
 
-    lookup = find_associated_pr(
-        repo_full_name=repo_full_name,
-        head_sha=head_sha,
-        token=token,
-        head_repo_full_name=head_repo_full_name,
-        head_ref_name=head_ref_name,
-    )
-    outcome = lookup["outcome"]
-    pr = lookup["pr"]
+    loaded = load_associated_prs(repo_full_name=repo_full_name, head_sha=head_sha, token=token)
+    if loaded["outcome"] == OUTCOME_LOOKUP_ERROR:
+        if event_name == "workflow_dispatch":
+            raise ResolveError(f"dispatch_lookup_not_conclusive:{OUTCOME_LOOKUP_ERROR}:{loaded.get('error', '')}")
+        return _staging_result(lookup_outcome=OUTCOME_LOOKUP_ERROR)
+    candidates = loaded["prs"]
 
     if event_name == "workflow_dispatch":
+        lookup = select_dispatch_preview_pr(
+            candidates=candidates,
+            repo_full_name=repo_full_name,
+            head_sha=head_sha,
+            head_repo_full_name=head_repo_full_name,
+            head_ref_name=head_ref_name,
+        )
+        outcome = lookup["outcome"]
+        pr = lookup["pr"]
         if outcome == OUTCOME_UNIQUE_MATCH:
             return {
                 "build_type": "test",
@@ -167,11 +204,17 @@ def resolve(event_name, head_sha, repo_full_name, token, head_repo_full_name, he
         raise ResolveError(f"dispatch_lookup_not_conclusive:{outcome}:{lookup.get('error', '')}")
 
     if event_name == "push":
-        # Push classification is event-invariant staging. Metadata lookup is
-        # best-effort only and must never affect build type or label mutation.
-        if outcome == OUTCOME_UNIQUE_MATCH:
-            return _staging_result(lookup_outcome=outcome, pr=pr)
-        return _staging_result(lookup_outcome=outcome)
+        # Push classification is event-invariant staging. Metadata selection is
+        # relaxed to preserve post-land PR context on squash merges, and it must
+        # never affect build type or label mutation.
+        lookup = select_push_metadata_pr(
+            candidates=candidates,
+            repo_full_name=repo_full_name,
+            pushed_ref_name=head_ref_name,
+        )
+        if lookup["outcome"] == OUTCOME_UNIQUE_MATCH:
+            return _staging_result(lookup_outcome=lookup["outcome"], pr=lookup["pr"])
+        return _staging_result(lookup_outcome=lookup["outcome"])
 
     return _staging_result(lookup_outcome="unsupported_event")
 
