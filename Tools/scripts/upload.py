@@ -21,12 +21,23 @@ VARIANTS = (
     ("Unofficial", "nekox.messenger"),
 )
 
-# staging.yml passes "staging" for a push/dispatch build and "test" for a
-# labeled PR preview. Anything else (or a missing value, e.g. a local run)
-# falls back to the staging rocket rather than leaving the caption headless.
+# staging.yml resolves "test" for any build associated with an open PR (a
+# labeled preview or a dispatch fallback that lands on one) and "staging" for
+# a true dev/release-candidate build (a push to dev, or a dispatch with no
+# associated PR). Anything else (or a missing value, e.g. a local run) falls
+# back to the staging rocket rather than leaving the caption headless.
 BUILD_EMOJI = {
     "staging": "🚀",
     "test": "🧪",
+}
+
+# A trailing, searchable Telegram hashtag so builds of each kind can be found
+# later. "rc" reads as "release candidate" -- these are the dev-branch builds
+# that are candidates to actually ship, as opposed to a PR preview. Keyed the
+# same as BUILD_EMOJI, same fallback.
+BUILD_HASHTAG = {
+    "staging": "#rc",
+    "test": "#test",
 }
 
 # A pathologically long PR title or commit subject must not eat the whole
@@ -140,6 +151,10 @@ def get_caption(commit_msg_budget=None) -> str:
         escaped_commit_message = truncate_text(escaped_commit_message, commit_msg_budget, escaped=True)
     return f"{header}\n\n<b>Commit Message:</b>\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
+def get_hashtag() -> str:
+    tag = BUILD_HASHTAG.get(build_type, "#rc")
+    return f"\n\n{tag}"
+
 def get_document() -> list["InputMediaDocument"]:
     documents = []
     for build_label, _ in VARIANTS:
@@ -153,8 +168,13 @@ def get_document() -> list["InputMediaDocument"]:
     # units (tg_len) — not Python's len(). Split the budget so the commit
     # message always keeps a share (it used to be starved to "…" by a long
     # summary); the summary then takes whatever the message doesn't need.
+    # The trailing hashtag is reserved right alongside the header/meta
+    # overhead -- never truncated -- so it survives regardless of how long
+    # everything else is; it's the thing that makes a build searchable later,
+    # so losing it to a long AI summary or commit message would defeat the point.
     limit = 1024
-    overhead = tg_len(get_caption(commit_msg_budget=0))
+    hashtag = get_hashtag()
+    overhead = tg_len(get_caption(commit_msg_budget=0)) + tg_len(hashtag)
     content_budget = max(0, limit - overhead)
     # Measure the same escaped string the caption will actually carry, so the
     # reserve and the final trim (both in get_caption, both escaped-then-cut)
@@ -164,7 +184,7 @@ def get_document() -> list["InputMediaDocument"]:
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
-    documents[-1].caption = base_caption + ai_summary
+    documents[-1].caption = base_caption + ai_summary + hashtag
     return documents
 
 def get_metadata():
