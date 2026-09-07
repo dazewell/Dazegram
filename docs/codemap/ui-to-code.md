@@ -13,30 +13,41 @@ the builder swaps to `SectionsLinearLayout` + `SectionsScrollView`
 (`BottomBuilder.kt:45-67`).
 
 Section-mode-only card chrome is also gated there: title `HeaderCell`s and the
-button strip are tagged `RecyclerListView.TAG_NOT_SECTION`,
-the button strip background is gray, and `create()` applies gray sheet/nav-bar
-background (`BottomBuilder.kt:74-82`, `:107-121`, `:293-299`).
+button strip are tagged `RecyclerListView.TAG_NOT_SECTION`, the button strip
+background is gray, and `create()` applies gray sheet/nav-bar background
+(`BottomBuilder.kt:74-82`, `:299-305`). In sections mode, `addTitle(...)` now
+wraps the builder-owned `HeaderCell` in a full-width `FrameLayout` so
+`SectionsScrollView` groups the title as one atomic card member instead of
+recursing into HeaderCell's inset children (`BottomBuilder.kt:107-127`).
 `EventScheduleHelper` is the only caller opting in:
 `new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true)`
-(`EventScheduleHelper.java:576`).
+(`EventScheduleHelper.java:641`).
 
 *(Updated 2026-09-07.)*
 
 ## Send on event card membership and collapse behavior
 
-The *Send early on event* sheet declares non-card disclosure rows explicitly:
-`typeHeader`, `textHeader`, and the explanatory `patternInfo` text are all
-tagged `TAG_NOT_SECTION` (`EventScheduleHelper.java:587-590`, `:626-639`).
-The type card is therefore exactly the five type `TextCheckCell`s, and the
-text card is `patternArea` + regex row (`EventScheduleHelper.java:592-607`,
-`:666-670`).
+The *Send early on event* sheet now uses a local `DisclosureHeaderCell`
+subclass of `TextSettingsCell` for both collapsible group headers, with summary
+value text, `arrow_more` rotation, and explicit accessibility state text
+(`EventScheduleHelper.java:275-337`). These disclosure rows are section
+members (not tagged out), so each group header sits inside its card with its
+controls directly beneath it.
 
-`patternInfo` is now a direct root child (not nested in `patternArea`) and its
-visibility follows text-group collapse with the same sync callback as
-`patternArea`/regex (`EventScheduleHelper.java:632-639`, `:816-824`). Delay UI
-is wrapped in a full-width `FrameLayout` before adding it so section drawing
-treats it as one card, and when the destructive Remove row is present a tagged
-12dp spacer separates delay from Remove (`EventScheduleHelper.java:952-960`).
+A tagged gray spacer splits the two group runs into two cards
+(`EventScheduleHelper.java:688-691`). Card membership is:
+type header + five type rows for the first card, then text header +
+`patternArea` + regex row for the second card (`EventScheduleHelper.java:653-727`).
+`patternInfo` is now a `TextInfoPrivacyCell` placed *after* regex, outside the
+card run by class-based exclusion, and hidden/shown with the text group
+(`EventScheduleHelper.java:726-728`, `:871-880`).
+
+Divider behavior is now explicit: header dividers draw only while expanded,
+type rows clear the last divider in the group, and regex is always the text
+card's last row with no bottom divider (`EventScheduleHelper.java:858-868`).
+Delay UI remains wrapped in a full-width `FrameLayout` so sections treat it as
+one card, and the remove separator now uses literal `12` dp units (no double-dp)
+(`EventScheduleHelper.java:996-1016`).
 
 Hidden-group validation behavior remains in the same code path: Done expands a
 collapsed text group before showing row-level invalid-regex feedback, and
@@ -73,10 +84,14 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197
 `ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it
 in `SectionsScrollView`, with gray sheet/nav-bar backgrounds applied after
 `builder.create()` and before `showDialog()` (`ChatPrivacySheet.java:53`,
-`:268-296`). Card membership is split by tags: title, notifications header,
+:268-297`). Card membership is split by tags: title, notifications header,
 and `How covers work` disclosure are marked `TAG_NOT_SECTION`; card 1 is
 hide/placeholder/require-password and card 2 is disguise/cover/preview
 (`ChatPrivacySheet.java:61`, `:79`, `:96-99`).
+
+The sections scroll migration now explicitly attaches `content` as
+`MATCH_PARENT x WRAP_CONTENT` under the `SectionsScrollView`, matching the
+builder sections path (`ChatPrivacySheet.java:271`).
 
 The notifications behavior wiring is unchanged in ownership: switch -> 
 `setEnabled(...)` + notifications rebuild, cover picker -> `setPersona(...)` +
@@ -84,13 +99,13 @@ rebuild, preview -> `postPreview(...)` + bulletin feedback
 (`ChatPrivacySheet.java:219-257`, `:397-418`;
 `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
 
-Bulletin offset logic now captures the base delegate once at
-`onOpenAnimationEnd()` (`baseBulletinDelegateRef`) and installs a per-show
-wrapper anchored to the row that raised the bulletin. The wrapper preserves
+Bulletin offset logic still captures a base delegate once and installs a
+per-show row-anchored wrapper, but now hardens base resolution so a wrapper
+cannot be captured as its own base if a bulletin fires before open-animation
+completion (`ChatPrivacySheet.java:277-285`, `:309-389`). The wrapper preserves
 base top offset (status-bar fallback), computes bottom offset from row position
 with clamp bounds, and returns `bottomOffsetAnimated() = false`
-(`ChatPrivacySheet.java:49`, `:277-288`, `:300-389`; `Bulletin.java:690-698`,
-`:743-745`).
+(`ChatPrivacySheet.java:330-419`; `Bulletin.java:690-698`, `:743-745`).
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
