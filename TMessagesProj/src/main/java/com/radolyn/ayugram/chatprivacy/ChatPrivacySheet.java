@@ -268,6 +268,7 @@ public final class ChatPrivacySheet {
         final SectionsScrollView scrollView = new SectionsScrollView(context, content, fragment.getResourceProvider(), true);
         scrollView.setFillViewport(true);
         scrollView.setVerticalScrollBarEnabled(false);
+        scrollView.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         LinearLayout wrapper = new LinearLayout(context);
         wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -281,10 +282,7 @@ public final class ChatPrivacySheet {
                     return;
                 }
                 if (baseBulletinDelegateRef[0] == null) {
-                    Object existingTag = sheet.container.getTag(R.id.bulletin_delegate_tag);
-                    if (existingTag instanceof Bulletin.Delegate) {
-                        baseBulletinDelegateRef[0] = (Bulletin.Delegate) existingTag;
-                    }
+                    baseBulletinDelegateRef[0] = resolveBaseBulletinDelegate(sheet.container);
                 }
             }
         });
@@ -309,86 +307,129 @@ public final class ChatPrivacySheet {
     }
 
     private static void installRowAnchoredDelegate(FrameLayout container, Bulletin.Delegate[] baseRef, View anchor) {
-        Bulletin.addDelegate(container, new Bulletin.Delegate() {
-            @Override
-            public int getTopOffset(int tag) {
-                Bulletin.Delegate base = baseRef[0];
-                return base != null ? base.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
-            }
+        if (baseRef[0] == null) {
+            baseRef[0] = resolveBaseBulletinDelegate(container);
+        }
+        Bulletin.addDelegate(container, new RowAnchoredBulletinDelegate(container, baseRef, anchor));
+    }
 
-            @Override
-            public int getBottomOffset(int tag) {
-                Bulletin.Delegate base = baseRef[0];
-                int fallback = AndroidUtilities.dp(46 + 8);
-                int baseOffset = base != null ? base.getBottomOffset(tag) : 0;
-                if (anchor == null || anchor.getVisibility() != View.VISIBLE || !anchor.isAttachedToWindow() || anchor.getHeight() <= 0) {
-                    return baseOffset + fallback;
-                }
-                int[] containerLoc = new int[2];
-                int[] anchorLoc = new int[2];
-                container.getLocationInWindow(containerLoc);
-                anchor.getLocationInWindow(anchorLoc);
-                int anchorTop = anchorLoc[1] - containerLoc[1];
-                int rawOffset = container.getHeight() - anchorTop + AndroidUtilities.dp(8);
-                int maxOffset = container.getHeight() - AndroidUtilities.dp(56) - AndroidUtilities.statusBarHeight;
-                int upperBound = Math.max(fallback, maxOffset);
-                int anchoredOffset = Math.max(fallback, Math.min(rawOffset, upperBound));
-                return baseOffset + anchoredOffset;
-            }
+    private static Bulletin.Delegate resolveBaseBulletinDelegate(FrameLayout container) {
+        if (container == null) {
+            return null;
+        }
+        Object existingTag = container.getTag(R.id.bulletin_delegate_tag);
+        if (!(existingTag instanceof Bulletin.Delegate)) {
+            return null;
+        }
+        if (existingTag instanceof RowAnchoredBulletinDelegate) {
+            return ((RowAnchoredBulletinDelegate) existingTag).getBaseDelegate();
+        }
+        return (Bulletin.Delegate) existingTag;
+    }
 
-            @Override
-            public boolean bottomOffsetAnimated() {
-                return false;
-            }
+    private static final class RowAnchoredBulletinDelegate implements Bulletin.Delegate {
+        private final FrameLayout container;
+        private final Bulletin.Delegate[] baseRef;
+        private final Bulletin.Delegate fallbackBase;
+        private final View anchor;
 
-            @Override
-            public int getLeftPadding() {
-                Bulletin.Delegate base = baseRef[0];
-                return base != null ? base.getLeftPadding() : 0;
-            }
+        RowAnchoredBulletinDelegate(FrameLayout container, Bulletin.Delegate[] baseRef, View anchor) {
+            this.container = container;
+            this.baseRef = baseRef;
+            this.anchor = anchor;
+            this.fallbackBase = baseRef[0];
+        }
 
-            @Override
-            public int getRightPadding() {
-                Bulletin.Delegate base = baseRef[0];
-                return base != null ? base.getRightPadding() : 0;
-            }
+        Bulletin.Delegate getBaseDelegate() {
+            return fallbackBase;
+        }
 
-            @Override
-            public boolean clipWithGradient(int tag) {
-                Bulletin.Delegate base = baseRef[0];
-                return base != null && base.clipWithGradient(tag);
+        private Bulletin.Delegate base() {
+            Bulletin.Delegate base = baseRef[0];
+            if (base == null || base == this) {
+                base = fallbackBase;
             }
+            return base == this ? null : base;
+        }
 
-            @Override
-            public void onBottomOffsetChange(float offset) {
-                Bulletin.Delegate base = baseRef[0];
-                if (base != null) {
-                    base.onBottomOffsetChange(offset);
-                }
-            }
+        @Override
+        public int getTopOffset(int tag) {
+            Bulletin.Delegate base = base();
+            return base != null ? base.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
+        }
 
-            @Override
-            public void onShow(Bulletin bulletin) {
-                Bulletin.Delegate base = baseRef[0];
-                if (base != null) {
-                    base.onShow(bulletin);
-                }
+        @Override
+        public int getBottomOffset(int tag) {
+            Bulletin.Delegate base = base();
+            int fallback = AndroidUtilities.dp(46 + 8);
+            int baseOffset = base != null ? base.getBottomOffset(tag) : 0;
+            if (anchor == null || anchor.getVisibility() != View.VISIBLE || !anchor.isAttachedToWindow() || anchor.getHeight() <= 0) {
+                return baseOffset + fallback;
             }
+            int[] containerLoc = new int[2];
+            int[] anchorLoc = new int[2];
+            container.getLocationInWindow(containerLoc);
+            anchor.getLocationInWindow(anchorLoc);
+            int anchorTop = anchorLoc[1] - containerLoc[1];
+            int rawOffset = container.getHeight() - anchorTop + AndroidUtilities.dp(8);
+            int maxOffset = container.getHeight() - AndroidUtilities.dp(56) - AndroidUtilities.statusBarHeight;
+            int upperBound = Math.max(fallback, maxOffset);
+            int anchoredOffset = Math.max(fallback, Math.min(rawOffset, upperBound));
+            return baseOffset + anchoredOffset;
+        }
 
-            @Override
-            public void onHide(Bulletin bulletin) {
-                Bulletin.Delegate base = baseRef[0];
-                if (base != null) {
-                    base.onHide(bulletin);
-                }
-            }
+        @Override
+        public boolean bottomOffsetAnimated() {
+            return false;
+        }
 
-            @Override
-            public boolean allowLayoutChanges() {
-                Bulletin.Delegate base = baseRef[0];
-                return base == null || base.allowLayoutChanges();
+        @Override
+        public int getLeftPadding() {
+            Bulletin.Delegate base = base();
+            return base != null ? base.getLeftPadding() : 0;
+        }
+
+        @Override
+        public int getRightPadding() {
+            Bulletin.Delegate base = base();
+            return base != null ? base.getRightPadding() : 0;
+        }
+
+        @Override
+        public boolean clipWithGradient(int tag) {
+            Bulletin.Delegate base = base();
+            return base != null && base.clipWithGradient(tag);
+        }
+
+        @Override
+        public void onBottomOffsetChange(float offset) {
+            Bulletin.Delegate base = base();
+            if (base != null) {
+                base.onBottomOffsetChange(offset);
             }
-        });
+        }
+
+        @Override
+        public void onShow(Bulletin bulletin) {
+            Bulletin.Delegate base = base();
+            if (base != null) {
+                base.onShow(bulletin);
+            }
+        }
+
+        @Override
+        public void onHide(Bulletin bulletin) {
+            Bulletin.Delegate base = base();
+            if (base != null) {
+                base.onHide(bulletin);
+            }
+        }
+
+        @Override
+        public boolean allowLayoutChanges() {
+            Bulletin.Delegate base = base();
+            return base == null || base.allowLayoutChanges();
+        }
     }
 
     private static void showCoverPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {
