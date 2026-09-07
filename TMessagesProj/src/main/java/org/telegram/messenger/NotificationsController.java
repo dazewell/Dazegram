@@ -4957,19 +4957,6 @@ public class NotificationsController extends BaseController implements Notificat
 
         boolean useSummaryNotification = Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2);
 
-        // NagramX: the aggregate summary's InboxStyle carries other chats' sender names and message text, and it never
-        // gets setLocalOnly on its own. If any pushed chat has "Show on Watch" off, suppress the whole summary from a
-        // bridged Wear device (its per-dialog child is already suppressed at the setLocalOnly hook below); the phone shade
-        // is unaffected. Skip story pseudo-dialogs -- they aggregate every story pusher and aren't governed by this toggle.
-        boolean naxAnyWatchOff = false;
-        for (int naxI = 0; naxI < sortedDialogs.size(); naxI++) {
-            DialogKey naxDk = sortedDialogs.get(naxI);
-            if (!naxDk.story && !xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, naxDk.dialogId)) {
-                naxAnyWatchOff = true;
-                break;
-            }
-        }
-
         // NagramX: the covered set and grouping were resolved in the preflight (showOrUpdateNotification), and the old
         // real summary + covered dialogs' prior children were already cancelled there. Here we only build the disguised
         // summary/children from that one immutable snapshot; the real summary is never built or posted when covered, and
@@ -5008,10 +4995,6 @@ public class NotificationsController extends BaseController implements Notificat
         } else {
             if (Build.VERSION.SDK_INT >= 26) {
                 notificationBuilder.setChannelId(validateChannelId(lastDialogId, lastTopicId, chatName, vibrationPattern, ledColor, sound, importance, isDefault, isInApp, isSilent, chatType));
-            }
-            // NagramX: suppress the aggregate summary from a bridged Wear device when any pushed chat is watch-off (see naxAnyWatchOff above)
-            if (naxAnyWatchOff) {
-                notificationBuilder.setLocalOnly(true);
             }
             mainNotification = notificationBuilder.build();
         }
@@ -5971,14 +5954,6 @@ public class NotificationsController extends BaseController implements Notificat
         ArrayList<String> lines = new ArrayList<>();
         java.util.HashSet<Long> emittedCovered = new java.util.HashSet<>();
         boolean[] text = new boolean[1];
-        // NagramX: decide this summary's setLocalOnly from the lines it actually emits, NOT the global naxAnyWatchOff.
-        // The cover summary is mixed -- safe decoy coverLine() for covered dialogs, real getStringForMessage text only
-        // for non-covered ones -- so a batch-wide scan would over-suppress on a watch-off dialog that contributed no
-        // line at all (past the 10-line cap, filtered by dismissDate, or null from getStringForMessage).
-        // hasUnsafeRealLine: a non-covered watch-off dialog put real identity text in. hasWatchOnLine: some emitted
-        // line (decoy or real) belongs to a watch-on dialog.
-        boolean hasUnsafeRealLine = false;
-        boolean hasWatchOnLine = false;
         int count = 0;
         for (int i = 0; i < pushMessages.size() && count < 10; i++) {
             MessageObject messageObject = pushMessages.get(i);
@@ -5995,11 +5970,6 @@ public class NotificationsController extends BaseController implements Notificat
                         int coverCount = Math.max(0, plan.displayCount);
                         lines.add(com.radolyn.ayugram.chatprivacy.NotificationCoverController.coverLine(currentAccount, did, coverCount));
                         count++;
-                        // NagramX: a decoy coverLine carries no identity, so it's safe to bridge; it only counts
-                        // toward keeping the summary bridged when its own dialog is watch-on.
-                        if (xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, did)) {
-                            hasWatchOnLine = true;
-                        }
                     }
                 }
             } else {
@@ -6009,24 +5979,11 @@ public class NotificationsController extends BaseController implements Notificat
                 }
                 lines.add(message);
                 count++;
-                // NagramX: a non-covered line is real getStringForMessage text. From a watch-off dialog that's identity
-                // content from a switched-off chat, so the summary must not bridge; from a watch-on dialog it keeps
-                // the summary bridgeable.
-                if (xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, did)) {
-                    hasWatchOnLine = true;
-                } else {
-                    hasUnsafeRealLine = true;
-                }
             }
         }
         String subText = LocaleController.formatPluralString("NewMessages", total_unread_count);
-        // NagramX: suppress from the watch when a switched-off chat exposed real text, OR when nothing emitted belongs
-        // to a watch-on chat at all -- an all-off batch must not bridge even a contentless decoy summary (the ping
-        // dazewell ruled out). The real aggregate summary keeps the global gate; only this mixed summary needs the
-        // line-level decision.
-        boolean localOnly = hasUnsafeRealLine || !hasWatchOnLine;
         return com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildCoverSummary(
-                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate, localOnly);
+                currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate);
     }
 
     private String cutLastName(String name) {

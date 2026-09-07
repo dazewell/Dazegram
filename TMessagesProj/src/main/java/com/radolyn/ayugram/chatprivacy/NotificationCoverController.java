@@ -747,7 +747,7 @@ public final class NotificationCoverController {
         }
     }
 
-    public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog, int summaryDate, boolean localOnly) {
+    public static Notification buildCoverSummary(int account, String group, String title, List<String> lines, String subText, LongSparseArray<ArrayList<String>> representedByDialog, int summaryDate) {
         if (lines == null || lines.isEmpty()) {
             clearSummaryInteractionState(account);
             return null;
@@ -790,12 +790,6 @@ public final class NotificationCoverController {
                 .setAutoCancel(true)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
-                // NagramX: caller (naxBuildCoverSummary) decides localOnly from the lines this summary actually emits --
-                // local-only when a non-covered watch-off dialog exposed real text, or when nothing emitted belongs to a
-                // watch-on chat. NOT the global naxAnyWatchOff (that gates the real summary); reusing it here silenced
-                // watch-on chats' alerts whenever any unrelated chat was watch-off, because covered children delegate
-                // their alert to this summary via GROUP_ALERT_SUMMARY.
-                .setLocalOnly(localOnly)
                 .setContentIntent(interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, SUMMARY_REQUEST_CODE))
                 .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, SUMMARY_REQUEST_CODE + 0x11))
                 .setStyle(inbox)
