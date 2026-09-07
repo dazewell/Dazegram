@@ -664,6 +664,22 @@
     <string name="RepeatAsCopyDeleteHint_one">Reposted as a copy. The original message is still here.</string>
     <string name="RepeatAsCopyDeleteHint_other">Reposted as a copy. %1$d original messages are still here.</string>
     <string name="RepeatAsCopyDeleteUnavailable">Can\'t delete the originals anymore</string>
+    <!-- Change the reply target of a scheduled message via cancel+resend requeue #scheduled-reply-target -->
+    <string name="ScheduledReplyTargetMenu">Change scheduled message reply</string>
+    <string name="ScheduledReplyTargetSet">Reply</string>
+    <string name="ScheduledReplyTargetChange">Change reply</string>
+    <string name="ScheduledReplyTargetRemove">Remove reply</string>
+    <string name="ScheduledReplyTargetRemoveConfirm">This scheduled message will be resent without its reply. Continue?</string>
+    <string name="ScheduledReplyTargetConfirmHint">Long-press a message and choose Reply to pick it for this scheduled message.</string>
+    <string name="ScheduledReplyTargetConfirmButton">Confirm reply target</string>
+    <string name="ScheduledReplyTargetAdded">Reply added</string>
+    <string name="ScheduledReplyTargetChanged">Reply changed</string>
+    <string name="ScheduledReplyTargetRemoved">Reply removed</string>
+    <string name="ScheduledReplyTargetUnsupported">Can\'t change this message\'s reply</string>
+    <string name="ScheduledReplyTargetGone">That message isn\'t there anymore</string>
+    <string name="ScheduledReplyTargetAlreadyGone">This message already went out — nothing to change</string>
+    <string name="ScheduledReplyTargetSendFailed">Couldn\'t change the reply. Try again.</string>
+    <string name="ScheduledReplyTargetDuplicateRisk">Couldn\'t confirm the change went through — check Scheduled Messages for a duplicate.</string>
     <!-- Spread a scheduled repost-as-copy over its own times #repost-spread -->
     <string name="RepostSpreadUnsupported_one">Can\'t repost %1$d of these as a copy</string>
     <string name="RepostSpreadUnsupported_other">Can\'t repost %1$d of these as a copy</string>

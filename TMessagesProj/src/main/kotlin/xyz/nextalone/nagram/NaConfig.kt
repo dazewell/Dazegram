@@ -180,6 +180,14 @@ object NaConfig {
             ConfigItem.configTypeBool,
             false
         )
+    // NagramX: #scheduled-reply-target. Gates Reply/Change reply/Remove reply on scheduled
+    // messages (client-side cancel+resend requeue, since editMessage has no reply_to field).
+    val showScheduledReplyTarget =
+        addConfig(
+            "ScheduledReplyTarget",
+            ConfigItem.configTypeBool,
+            false
+        )
     val doubleTapAction =
         addConfig(
             "DoubleTapAction",

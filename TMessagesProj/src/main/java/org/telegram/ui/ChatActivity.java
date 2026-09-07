@@ -396,6 +396,7 @@ import tw.nekomimi.nekogram.filters.ReactionFilter;
 import tw.nekomimi.nekogram.filters.RegexFilterEditActivity;
 import tw.nekomimi.nekogram.helpers.ChatsHelper;
 import tw.nekomimi.nekogram.helpers.MessageHelper;
+import tw.nekomimi.nekogram.helpers.ScheduledReplyTargetHelper;
 import tw.nekomimi.nekogram.helpers.TranscribeHelper;
 import tw.nekomimi.nekogram.helpers.remote.EmojiHelper;
 import tw.nekomimi.nekogram.helpers.remote.PagePreviewRulesHelper;
@@ -1240,6 +1241,9 @@ public class ChatActivity extends BaseFragment implements
     };
 
     private ChatActivityDelegate chatActivityDelegate;
+    // NagramX: #scheduled-reply-target. Non-null only while this fragment is acting as the reply
+    // picker pushed for that flow; holds ids only (finding 9/10), never a MessageObject.
+    private ScheduledReplyTargetHelper.PickState scheduledReplyPick;
     private RecyclerAnimationScrollHelper chatScrollHelper;
 
     private int postponedScrollMinMessageId;
@@ -1430,6 +1434,12 @@ public class ChatActivity extends BaseFragment implements
 
     public final static int OPTION_VIEW_STATISTICS = 115;
     public final static int OPTION_WELCOME_REVERT = 116;
+
+    // NagramX: #scheduled-reply-target. Cancel+resend requeue that changes which message this
+    // scheduled message replies to; see ScheduledReplyTargetHelper for the mechanism.
+    public final static int OPTION_SET_REPLY_TARGET = 117;
+    public final static int OPTION_CHANGE_REPLY_TARGET = 118;
+    public final static int OPTION_REMOVE_REPLY_TARGET = 119;
 
     private final static int OPTION_COPY_PHOTO = 150;
     private final static int OPTION_COPY_PHOTO_AS_STICKER = 151;
@@ -1727,6 +1737,13 @@ public class ChatActivity extends BaseFragment implements
         }
 
         default void onReport() {
+
+        }
+
+        // NagramX: #scheduled-reply-target. Fired by the pushed picker fragment once the user has
+        // confirmed a reply target; replyTarget is already re-resolved from the picker's own live
+        // window (never a stale MessageObject held across the pick).
+        default void onScheduledReplyTargetConfirmed(MessageObject replyTarget) {
 
         }
     }
@@ -3784,9 +3801,38 @@ public class ChatActivity extends BaseFragment implements
         getNotificationsController().suppressVisibleCoveredDialog(dialog_id);
     }
 
+    // NagramX: #scheduled-reply-target. The one hook where a reply pick is confirmed -- re-resolves
+    // the target from this (picker) fragment's own live window (finding 10) right before handing
+    // off to the delegate, since it may have gone stale during the pick.
+    private void confirmScheduledReplyPick(int replyToMsgId) {
+        if (scheduledReplyPick == null) {
+            return;
+        }
+        scheduledReplyPick = null;
+        MessageObject target = messagesDict[0].get(replyToMsgId);
+        if (target == null) {
+            if (BulletinFactory.canShowBulletin(this)) {
+                BulletinFactory.of(this).createErrorBulletin(LocaleController.getString(R.string.ScheduledReplyTargetGone)).show();
+            }
+            finishFragment();
+            return;
+        }
+        if (chatActivityDelegate != null) {
+            chatActivityDelegate.onScheduledReplyTargetConfirmed(target);
+        }
+        finishFragment();
+    }
+
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        // NagramX: #scheduled-reply-target. Backing out (back button/gesture, process death) before
+        // confirm just drops the pick state -- the original scheduled message is untouched (nothing
+        // was ever sent or deleted before confirm, per P5).
+        if (scheduledReplyPick != null) {
+            ScheduledReplyTargetHelper.hideConfirmAffordance(scheduledReplyPick);
+            scheduledReplyPick = null;
+        }
         org.telegram.messenger.utils.Choreographer60FpsContent.getInstance().removeFrameCallbackOnce(glassCompositeRefreshRunnable);
         // NagramX: keep cancelling the Handler arm too — onConfigurationChanged still uses runOnUIThread.
         AndroidUtilities.cancelRunOnUIThread(glassCompositeRefreshRunnable);
@@ -16402,6 +16448,19 @@ public class ChatActivity extends BaseFragment implements
     public void showFieldPanel(boolean show, MessageObject messageObjectToReply, MessageObject messageObjectToEdit, ArrayList<MessageObject> messageObjectsToForward, TLRPC.WebPage webPage, boolean notify, int scheduleDate, ReplyQuote quote, boolean cancel, long payStars, MessageSuggestionParams suggestionParams, boolean animated) {
         if (chatActivityEnterView == null) {
             return;
+        }
+
+        if (scheduledReplyPick != null) {
+            // NagramX: #scheduled-reply-target. Single hook that shows/hides the confirm affordance
+            // as the reply-preview state comes and goes while picking. The text field is left
+            // enabled but its content is never read by the requeue, which resends the ORIGINAL
+            // message's own text/media -- so any stray typed text here is simply ignored.
+            if (show && messageObjectToReply != null) {
+                final int replyToMsgId = messageObjectToReply.getId();
+                ScheduledReplyTargetHelper.showConfirmAffordance(this, scheduledReplyPick, () -> confirmScheduledReplyPick(replyToMsgId));
+            } else {
+                ScheduledReplyTargetHelper.hideConfirmAffordance(scheduledReplyPick);
+            }
         }
 
         chatActivityEnterView.setSuggestionButtonVisible(!show && ChatObject.isMonoForum(currentChat), animated);
@@ -36920,6 +36979,60 @@ public class ChatActivity extends BaseFragment implements
                 preserveDim = true;
                 break;
             }
+            case OPTION_SET_REPLY_TARGET:
+            case OPTION_CHANGE_REPLY_TARGET: {
+                // NagramX: #scheduled-reply-target. Always push a fresh chat instance in normal
+                // mode (architect Q2 ruling) -- never pop back to one that might already be on the
+                // stack. The picker only ever carries ids; both original and target are re-resolved
+                // at confirm time (finding 10), never a MessageObject held across the pick.
+                if (getParentActivity() == null || selectedObject == null) {
+                    break;
+                }
+                final long pickDialogId = dialog_id;
+                final int pickOriginalId = selectedObject.getId();
+                final int pickKind = option == OPTION_CHANGE_REPLY_TARGET ? ScheduledReplyTargetHelper.KIND_CHANGE : ScheduledReplyTargetHelper.KIND_ADD;
+                Bundle args = new Bundle();
+                if (currentEncryptedChat != null) {
+                    args.putInt("enc_id", currentEncryptedChat.id);
+                } else if (currentChat != null) {
+                    args.putLong("chat_id", currentChat.id);
+                } else {
+                    args.putLong("user_id", currentUser.id);
+                }
+                ChatActivity picker = new ChatActivity(args);
+                if (isTopic) {
+                    ForumUtilities.applyTopic(picker, MessagesStorage.TopicKey.of(getDialogId(), getTopicId()));
+                }
+                picker.scheduledReplyPick = new ScheduledReplyTargetHelper.PickState(pickDialogId, pickOriginalId);
+                final ChatActivity scheduledFragment = this;
+                picker.chatActivityDelegate = new ChatActivityDelegate() {
+                    @Override
+                    public void onScheduledReplyTargetConfirmed(MessageObject replyTarget) {
+                        ScheduledReplyTargetHelper.requeue(scheduledFragment, currentAccount, pickDialogId, pickOriginalId, replyTarget, pickKind);
+                    }
+                };
+                presentFragment(picker, false);
+                break;
+            }
+            case OPTION_REMOVE_REPLY_TARGET: {
+                if (getParentActivity() == null || selectedObject == null) {
+                    break;
+                }
+                final long removeDialogId = dialog_id;
+                final int removeOriginalId = selectedObject.getId();
+                // NagramX: #scheduled-reply-target. Confirm-before, never Undo-after (architect
+                // finding 5 -- matches the #eventschedule precedent this fork already removed
+                // Undo-after from, for the same reason: can't tell "still pending" from
+                // "already at the server" without another round trip).
+                AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity(), themeDelegate);
+                builder.setTitle(LocaleController.getString(R.string.ScheduledReplyTargetRemove));
+                builder.setMessage(LocaleController.getString(R.string.ScheduledReplyTargetRemoveConfirm));
+                builder.setNegativeButton(LocaleController.getString(R.string.Cancel), null);
+                builder.setPositiveButton(LocaleController.getString(R.string.ScheduledReplyTargetRemove), (dialog, which) ->
+                        ScheduledReplyTargetHelper.requeue(ChatActivity.this, currentAccount, removeDialogId, removeOriginalId, null, ScheduledReplyTargetHelper.KIND_REMOVE));
+                showDialog(builder.create());
+                break;
+            }
             case OPTION_COPY_PHOTO: {
                 boolean isSticker = selectedObject.isAnyKindOfSticker();
                 MessageHelper.addMessageToClipboard(selectedObject, () -> {
@@ -51309,6 +51422,21 @@ public class ChatActivity extends BaseFragment implements
                     items.add(LocaleController.getString(R.string.Edit));
                     options.add(OPTION_EDIT);
                     icons.add(R.drawable.msg_edit);
+                }
+                // NagramX: #scheduled-reply-target. Rows are hidden outright when any gate fails
+                // (toggle off, album, repeating, armed trigger, unsupported content, imminent fire) --
+                // never shown-then-refused-on-tap. That bulletin is reserved for the async-only races
+                // (target/original gone by confirm) that can't be precomputed here.
+                if (chatMode == MODE_SCHEDULED && ScheduledReplyTargetHelper.isEligible(currentAccount, selectedObject, selectedObjectGroup)) {
+                    boolean hasReply = selectedObject.messageOwner.reply_to != null;
+                    items.add(LocaleController.getString(hasReply ? R.string.ScheduledReplyTargetChange : R.string.ScheduledReplyTargetSet));
+                    options.add(hasReply ? OPTION_CHANGE_REPLY_TARGET : OPTION_SET_REPLY_TARGET);
+                    icons.add(R.drawable.menu_reply);
+                    if (hasReply) {
+                        items.add(LocaleController.getString(R.string.ScheduledReplyTargetRemove));
+                        options.add(OPTION_REMOVE_REPLY_TARGET);
+                        icons.add(R.drawable.msg_clear);
+                    }
                 }
                 if (ChatObject.isMonoForum(currentChat) && selectedObject.getGroupId() == 0 && selectedObjectGroup == null && message != null && message.messageOwner != null && message.messageOwner.suggested_post == null && message.messageOwner.action == null) {
                     items.add(LocaleController.getString(R.string.EditOfferAdd));

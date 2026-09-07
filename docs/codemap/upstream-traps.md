@@ -756,3 +756,19 @@ Any guard written as "reject absolute paths, then join" therefore lets drive-rel
 Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
+
+## `TL_messages_editMessage` has no `reply_to` field at all -- there is no in-place protocol edit for a message's reply target
+
+Checked every `reply_to` occurrence in `TLRPC.java` (~30 hits): they all belong to `sendMessage`, `sendMedia`, `forwardMessages`, `TL_inputReplyToMessage`, or the *incoming* `Message.reply_to` / `MessageReplyHeader` read side. `TL_messages_editMessage`'s full field set (`TLRPC.java:53018-53069`, and its layer-226 legacy variant at `:53074-53106`) is `flags, no_webpage, invert_media, peer, id, message, media, reply_markup, entities, schedule_date, schedule_repeat_period, quick_reply_shortcut_id, rich_message` -- no `reply_to` / `reply_to_msg_id` anywhere on it. This is a protocol-level gap, not a client oversight: the RPC this fork's only "edit an existing message" chokepoint (`SendMessagesHelper.editMessage`, e.g. `SendMessagesHelper.java:2961`, `:2965`, `:3500`) builds simply cannot carry a reply-to change, for a sent message or a scheduled one alike.
+
+Any future "edit reply-to in place" idea can be closed against this citation without re-deriving it -- the only way to change what a message replies to is to resend it as a new message and, for a not-yet-delivered scheduled message, cancel the original once the resend is confirmed (`#scheduled-reply-target`).
+
+*(Established 2026-09-06, #scheduled-reply-target.)*
+
+## `TL_messages_forwardMessages` looks like a server-side requeue shortcut for scheduled messages but has no scheduled-namespace id flag -- it can silently forward the wrong message
+
+`TL_messages_forwardMessages` (`TLRPC.java:51677-51702`, dispatched from `SendMessagesHelper.java:2628-2670`) already carries `reply_to`, `schedule_date`, *and* `schedule_repeat_period` in its request, which makes it look like a ready-made way to requeue a scheduled message with a new reply target server-side, without a client-side resend. It is a trap: the request's `id` list has no flag identifying those ids as living in the peer's *scheduled* message-id namespace. Scheduled and regular message ids for the same peer are different, overlapping id spaces (a scheduled message and a live one can share the same numeric id), so a scheduled message's id passed as `req.id` is read by the server in the peer's *regular* namespace instead -- silently forwarding whatever unrelated live message happens to hold that id, not the scheduled message the caller meant.
+
+This was investigated and rejected for `#scheduled-reply-target`; do not re-investigate it, cite this entry if it comes up again. The requeue mechanism that feature uses instead is a client-side resend-then-cancel through `MessageHelper.sendMessageAsCopy` (`MessageHelper.java:1329-1374`), which builds its own `sendMessage`-family request per message rather than trying to move an existing one server-side.
+
+*(Established 2026-09-06, #scheduled-reply-target.)*

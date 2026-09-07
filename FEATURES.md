@@ -155,6 +155,12 @@ Tap the small bookmark icon in the schedule picker to remember your schedule off
 
 Reschedule and Edit schedule time pickers also get the same delay slider a new message's picker has, so you can jump straight to "10 minutes from now", "2 hours from now", and so on instead of spinning the day/hour/minute wheels by hand. It opens on your saved default delay, same as the new-message slider, but leaving it alone keeps the message's existing scheduled time — only dragging it moves anything, and it moves just this one sheet, never the account-wide default delay or what's remembered. Send-when-online reschedules don't show the slider, since there's no time to compute a delay from.
 
+### Change a scheduled message's reply target <!-- #scheduled-reply-target -->
+
+Off by default, turn it on in settings. Long-press a scheduled message and you'll find *Reply*, or *Change reply* and *Remove reply* if it already has one, between Edit and Reschedule. Picking Reply or Change reply pushes the real chat so you can long-press any already-sent message and tap its own Reply, the same way you'd pick a reply target while composing; confirm and the scheduled item reappears in the same spot with the new target, its text, media, and schedule time (including send-when-online) all unchanged. Remove reply asks you to confirm first, then clears it the same way.
+
+There's no true in-place edit for this — Telegram's editMessage has no reply-to field at all — so under the hood this resends a copy with the new target and only cancels the original once that resend is confirmed at the server, never the other way around. If the cancel doesn't go through, you'll end up with both messages still scheduled rather than losing the one you had; just delete the extra by hand. Media is re-uploaded on confirm, same cost as any other resend. Not offered on albums, on messages that repeat, on messages an armed *Send on event* trigger is already pointing at, or on content that can't be resent (polls, locations, contacts, or media that's fallen out of the local cache) — nor once the message is close enough to firing that there's no time left to change it safely.
+
 ### Tidier scheduled selection bar <!-- #scheduled-selection-toolbar -->
 
 When you select messages in the scheduled view, the top bar keeps just Send Now, Reschedule, and Delete, tucking Copy and Forward into the overflow menu.

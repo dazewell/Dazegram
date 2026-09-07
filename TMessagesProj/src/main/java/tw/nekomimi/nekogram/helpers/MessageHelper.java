@@ -1711,6 +1711,19 @@ public class MessageHelper extends BaseController {
         return true;
     }
 
+    // NagramX: #scheduled-reply-target. Same needsFile/getPathToMessage check sendMessagesAsCopy
+    // already runs before dispatching (see :1394-1399 above) but exposed for a caller that must
+    // preflight file availability BEFORE committing to any mutation, since eviction from cache is
+    // genuinely time-variant between menu-open and confirm.
+    public boolean canResendLocally(MessageObject messageObject) {
+        if (messageObject == null || messageObject.messageOwner == null) {
+            return false;
+        }
+        boolean needsFile = !messageObject.isSticker() && !messageObject.isAnimatedSticker() && !messageObject.isAnimatedEmoji() &&
+                (messageObject.isPhoto() || messageObject.isVideo() || messageObject.isRoundVideo() || messageObject.getDocument() != null);
+        return !needsFile || !TextUtils.isEmpty(getPathToMessage(messageObject, currentAccount));
+    }
+
     private boolean canSendSingleMessageAsCopy(MessageObject messageObject) {
         if (messageObject == null || messageObject.messageOwner == null) {
             return false;
