@@ -305,9 +305,12 @@ public class ComposerLayoutActivity extends BaseFragment {
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     gestureInProgress = false;
                     // Snap every slider thumb onto its value's track position. On release SeekBarView
-                    // keeps the raw finger pixel - it reports the released progress through
-                    // setSeekBarDrag but never moves thumbX (SeekBarView.java:280), and its own snap
-                    // path is gated on needVisuallyDivideSteps() which this widget hard-codes false -
+                    // never canonicalizes the position to a step: its ACTION_UP handler may reposition
+                    // thumbX to the raw finger pixel (SeekBarView.java:259-262) before reporting the
+                    // released progress through setSeekBarDrag (SeekBarView.java:280), and the only
+                    // place thumbX gets rounded at all - onDraw's needVisuallyDivideSteps() branch
+                    // (SeekBarView.java:503-505), which this widget hard-codes false - rounds a
+                    // draw-local shadow of thumbX (SeekBarView.java:496), never the stored field -
                     // so a thumb dropped between two steps rests off-detent while the label above
                     // already shows the nearest value. Re-binding each slider row drives its thumb to
                     // getProgress(value). Fired for all four rows unconditionally rather than
@@ -1105,11 +1108,14 @@ public class ComposerLayoutActivity extends BaseFragment {
         return ComposerToolbarLayout.spacingPercent();
     }
 
-    /** Rebinds the packing slider and its footer once, together, off the toolbar-size gesture's end
-     * (see the root's dispatchTouchEvent). A direct onBindViewHolder on the two attached children,
-     * not a notify - it moves the dimmed band, the min label, and when the saved value is below the
-     * new floor the thumb and printed value too, without a change animation in the middle of the
-     * list, and it refreshes the footer so its three-way disclosure never goes stale. */
+    /** Rebinds the packing slider and its footer once, together, for a toolbar-size change that never
+     * goes through a gesture at all - the accessibility branch of the TYPE_SCALE bind, which drives
+     * the scale slider one discrete step at a time with no touch events to defer against, so this
+     * settle fires immediately instead of waiting for a gesture end that will never arrive. A direct
+     * onBindViewHolder on the two attached children, not a notify - it moves the dimmed band, the min
+     * label, and when the saved value is below the new floor the thumb and printed value too, without
+     * a change animation in the middle of the list, and it refreshes the footer so its three-way
+     * disclosure never goes stale. */
     private void settleSpacingRows() {
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_SPACING, GROUP_SPACING));
         refreshSpacingFooter();
