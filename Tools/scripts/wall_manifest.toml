@@ -90,19 +90,19 @@ caption = "Or disguise the alert"
 output = "composer.png"
 
 [[wall.panel]]
+source = "composer-toolbar-live-in-chat-text-selected.png"
+crop = [0, 0, 1080, 1345]
+caption = "Actions under the field"
+
+[[wall.panel]]
 source = "composer-layout-editor-drag-list.png"
 crop = [0, 545, 1080, 1678]
-caption = "Reorder the buttons"
+caption = "Arrange it yourself"
 
 [[wall.panel]]
 source = "composer-layout-editor-sliders.png"
 crop = [0, 0, 1080, 1445]
 caption = "Size and spacing"
-
-[[wall.panel]]
-source = "composer-toolbar-live-in-chat-text-selected.png"
-crop = [0, 0, 1080, 1345]
-caption = "Live in your chat"
 
 [[wall.panel]]
 source = "fullscreen-input-expanded.png"
