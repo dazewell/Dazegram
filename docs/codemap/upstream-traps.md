@@ -4,6 +4,33 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## SectionsScrollView sectioning differs from RecyclerListView defaults
+
+`SectionsScrollView.isSectionView(...)` excludes only views tagged
+`RecyclerListView.TAG_NOT_SECTION` plus `TextInfoPrivacyCell`,
+`ShadowSectionCell`, and `HintInnerCell` (`SectionsScrollView.java:36-41`).
+Unlike `RecyclerListView`'s section checker, it does **not** auto-exclude
+`CollapseTextCell` or `GraySectionCell`
+(`RecyclerListView.java:3289`). So disclosure/header rows that should stay on
+gray must be explicitly tagged `TAG_NOT_SECTION`; otherwise they get pulled
+into white rounded cards.
+
+Card width also comes from the first child in a section run: background bounds
+use `from` child X/width (`SectionsScrollView.java:151-154`). If the first
+section member has horizontal margins (for example a caption row with 21dp
+insets), that narrower width becomes the whole card width. Margined captions
+belong outside the card run (tagged out, or moved outside the grouped container)
+to keep card edges aligned.
+
+There is also a known cosmetic corner trap with hidden rows: child gathering
+skips `GONE` children (`SectionsScrollView.java:93`), but clip-neighbor checks
+in `clipChild(...)` read previous/next children by index on the full parent
+list without a visibility gate (`SectionsScrollView.java:178-181`). Repeated
+collapse/expand can therefore leave transient corner clipping artifacts around
+a row whose hidden neighbor still influences `prev/next` detection.
+
+*(Established 2026-09-07.)*
+
 ## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
 `NotificationCoverController.ensureChannel(...)` still no-ops when the channel

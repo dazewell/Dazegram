@@ -4,8 +4,8 @@ import android.content.Context;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.radolyn.ayugram.chatlock.ChatLockController;
@@ -28,6 +28,8 @@ import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RecyclerListView;
+import org.telegram.ui.Components.SectionsScrollView;
 
 import tw.nekomimi.nekogram.helpers.PopupHelper;
 
@@ -44,10 +46,11 @@ public final class ChatPrivacySheet {
         final int account = fragment.getCurrentAccount();
         final Context context = fragment.getParentActivity();
         final BottomSheet[] sheetRef = new BottomSheet[1];
+        final Bulletin.Delegate[] baseBulletinDelegateRef = new Bulletin.Delegate[1];
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, fragment.getResourceProvider());
 
-        LinearLayout content = new LinearLayout(context);
+        LinearLayout content = new SectionsScrollView.SectionsLinearLayout(context);
         content.setOrientation(LinearLayout.VERTICAL);
 
         TextView titleView = new TextView(context);
@@ -55,6 +58,7 @@ public final class ChatPrivacySheet {
         titleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, fragment.getResourceProvider()));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setTypeface(AndroidUtilities.bold());
+        titleView.setTag(RecyclerListView.TAG_NOT_SECTION);
         content.addView(titleView, LayoutHelper.createLinearRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.TOP, 22, 12, 22, 8));
 
         final TextCheckCell hideCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
@@ -72,6 +76,7 @@ public final class ChatPrivacySheet {
 
         final HeaderCell notificationsHeader = new HeaderCell(context, fragment.getResourceProvider());
         notificationsHeader.setText(LocaleController.getString(R.string.NaxCoverSectionTitle));
+        notificationsHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
         content.addView(notificationsHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextCheckCell disguiseCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
@@ -88,9 +93,10 @@ public final class ChatPrivacySheet {
 
         final boolean[] limitationsExpanded = {false};
         final CollapseTextCell limitationsHeader = new CollapseTextCell(context, fragment.getResourceProvider());
-        limitationsHeader.setColor(Theme.key_dialogTextBlack);
+        limitationsHeader.setColor(Theme.key_windowBackgroundWhiteBlueText4);
         limitationsHeader.setBackground(Theme.createSelectorDrawable(
                 Theme.getColor(Theme.key_dialogButtonSelector, fragment.getResourceProvider()), Theme.RIPPLE_MASK_ALL));
+        limitationsHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
         final Runnable updateLimitationsHeader = () -> {
             String label = LocaleController.getString(R.string.NaxCoverHowItWorks);
             limitationsHeader.set(label, !limitationsExpanded[0]);
@@ -197,8 +203,14 @@ public final class ChatPrivacySheet {
                     HideLastMessageController.setHidden(account, dialogId, true, null);
                 }
                 if (sheetRef[0] != null) {
-                    BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
-                            .createSimpleBulletin(R.raw.passcode_lock, LocaleController.getString(R.string.ChatLockEnabledHint)).show();
+                    showAnchoredBulletin(
+                            sheetRef[0],
+                            fragment.getResourceProvider(),
+                            baseBulletinDelegateRef,
+                            lockCell,
+                            R.raw.passcode_lock,
+                            LocaleController.getString(R.string.ChatLockEnabledHint)
+                    );
                 }
             }
             refreshRef[0].run();
@@ -209,11 +221,14 @@ public final class ChatPrivacySheet {
             NotificationCoverController.setEnabled(account, dialogId, nowDisguised);
             NotificationsController.getInstance(account).showNotifications();
             if (sheetRef[0] != null) {
-                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
-                        .createSimpleBulletin(
-                                nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
-                                LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint)
-                        ).show();
+                showAnchoredBulletin(
+                        sheetRef[0],
+                        fragment.getResourceProvider(),
+                        baseBulletinDelegateRef,
+                        disguiseCell,
+                        nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
+                        LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint)
+                );
             }
             refreshRef[0].run();
         });
@@ -231,11 +246,14 @@ public final class ChatPrivacySheet {
             }
             boolean posted = NotificationCoverController.postPreview(account, dialogId);
             if (sheetRef[0] != null) {
-                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
-                        .createSimpleBulletin(
-                                posted ? R.raw.silent_mute : R.raw.silent_unmute,
-                                LocaleController.getString(posted ? R.string.NaxCoverPreviewPosted : R.string.NaxCoverPreviewUnavailable)
-                        ).show();
+                showAnchoredBulletin(
+                        sheetRef[0],
+                        fragment.getResourceProvider(),
+                        baseBulletinDelegateRef,
+                        previewCell,
+                        posted ? R.raw.silent_mute : R.raw.silent_unmute,
+                        LocaleController.getString(posted ? R.string.NaxCoverPreviewPosted : R.string.NaxCoverPreviewUnavailable)
+                );
             }
         });
 
@@ -247,10 +265,9 @@ public final class ChatPrivacySheet {
 
         refreshRef[0].run();
 
-        final ScrollView scrollView = new ScrollView(context);
+        final SectionsScrollView scrollView = new SectionsScrollView(context, content, fragment.getResourceProvider(), true);
         scrollView.setFillViewport(true);
         scrollView.setVerticalScrollBarEnabled(false);
-        scrollView.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         LinearLayout wrapper = new LinearLayout(context);
         wrapper.setOrientation(LinearLayout.VERTICAL);
@@ -263,73 +280,115 @@ public final class ChatPrivacySheet {
                 if (sheet == null || sheet.container == null) {
                     return;
                 }
-                Object existingTag = sheet.container.getTag(R.id.bulletin_delegate_tag);
-                Bulletin.Delegate existing = existingTag instanceof Bulletin.Delegate ? (Bulletin.Delegate) existingTag : null;
-                final int bottomOffset = AndroidUtilities.dp(46 + 8);
-                Bulletin.addDelegate(sheet.container, new Bulletin.Delegate() {
-                    @Override
-                    public int getTopOffset(int tag) {
-                        return existing != null ? existing.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
+                if (baseBulletinDelegateRef[0] == null) {
+                    Object existingTag = sheet.container.getTag(R.id.bulletin_delegate_tag);
+                    if (existingTag instanceof Bulletin.Delegate) {
+                        baseBulletinDelegateRef[0] = (Bulletin.Delegate) existingTag;
                     }
-
-                    @Override
-                    public int getBottomOffset(int tag) {
-                        int baseOffset = existing != null ? existing.getBottomOffset(tag) : 0;
-                        return baseOffset + bottomOffset;
-                    }
-
-                    @Override
-                    public boolean bottomOffsetAnimated() {
-                        return existing == null || existing.bottomOffsetAnimated();
-                    }
-
-                    @Override
-                    public int getLeftPadding() {
-                        return existing != null ? existing.getLeftPadding() : 0;
-                    }
-
-                    @Override
-                    public int getRightPadding() {
-                        return existing != null ? existing.getRightPadding() : 0;
-                    }
-
-                    @Override
-                    public boolean clipWithGradient(int tag) {
-                        return existing != null && existing.clipWithGradient(tag);
-                    }
-
-                    @Override
-                    public void onBottomOffsetChange(float offset) {
-                        if (existing != null) {
-                            existing.onBottomOffsetChange(offset);
-                        }
-                    }
-
-                    @Override
-                    public void onShow(Bulletin bulletin) {
-                        if (existing != null) {
-                            existing.onShow(bulletin);
-                        }
-                    }
-
-                    @Override
-                    public void onHide(Bulletin bulletin) {
-                        if (existing != null) {
-                            existing.onHide(bulletin);
-                        }
-                    }
-
-                    @Override
-                    public boolean allowLayoutChanges() {
-                        return existing == null || existing.allowLayoutChanges();
-                    }
-                });
+                }
             }
         });
 
         builder.setCustomView(wrapper);
         sheetRef[0] = builder.create();
+        int gray = Theme.getColor(Theme.key_windowBackgroundGray, fragment.getResourceProvider());
+        sheetRef[0].setBackgroundColor(gray);
+        sheetRef[0].fixNavigationBar(gray);
         fragment.showDialog(sheetRef[0]);
+    }
+
+    private static void showAnchoredBulletin(BottomSheet sheet, Theme.ResourcesProvider resourcesProvider,
+                                             Bulletin.Delegate[] baseRef, View anchor, int iconResId, String text) {
+        if (sheet == null || sheet.container == null) {
+            return;
+        }
+        installRowAnchoredDelegate(sheet.container, baseRef, anchor);
+        BulletinFactory.of(sheet.container, resourcesProvider)
+                .createSimpleBulletin(iconResId, text)
+                .show();
+    }
+
+    private static void installRowAnchoredDelegate(FrameLayout container, Bulletin.Delegate[] baseRef, View anchor) {
+        Bulletin.addDelegate(container, new Bulletin.Delegate() {
+            @Override
+            public int getTopOffset(int tag) {
+                Bulletin.Delegate base = baseRef[0];
+                return base != null ? base.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
+            }
+
+            @Override
+            public int getBottomOffset(int tag) {
+                Bulletin.Delegate base = baseRef[0];
+                int fallback = AndroidUtilities.dp(46 + 8);
+                int baseOffset = base != null ? base.getBottomOffset(tag) : 0;
+                if (anchor == null || anchor.getVisibility() != View.VISIBLE || !anchor.isAttachedToWindow() || anchor.getHeight() <= 0) {
+                    return baseOffset + fallback;
+                }
+                int[] containerLoc = new int[2];
+                int[] anchorLoc = new int[2];
+                container.getLocationInWindow(containerLoc);
+                anchor.getLocationInWindow(anchorLoc);
+                int anchorTop = anchorLoc[1] - containerLoc[1];
+                int rawOffset = container.getHeight() - anchorTop + AndroidUtilities.dp(8);
+                int maxOffset = container.getHeight() - AndroidUtilities.dp(56) - AndroidUtilities.statusBarHeight;
+                int upperBound = Math.max(fallback, maxOffset);
+                int anchoredOffset = Math.max(fallback, Math.min(rawOffset, upperBound));
+                return baseOffset + anchoredOffset;
+            }
+
+            @Override
+            public boolean bottomOffsetAnimated() {
+                return false;
+            }
+
+            @Override
+            public int getLeftPadding() {
+                Bulletin.Delegate base = baseRef[0];
+                return base != null ? base.getLeftPadding() : 0;
+            }
+
+            @Override
+            public int getRightPadding() {
+                Bulletin.Delegate base = baseRef[0];
+                return base != null ? base.getRightPadding() : 0;
+            }
+
+            @Override
+            public boolean clipWithGradient(int tag) {
+                Bulletin.Delegate base = baseRef[0];
+                return base != null && base.clipWithGradient(tag);
+            }
+
+            @Override
+            public void onBottomOffsetChange(float offset) {
+                Bulletin.Delegate base = baseRef[0];
+                if (base != null) {
+                    base.onBottomOffsetChange(offset);
+                }
+            }
+
+            @Override
+            public void onShow(Bulletin bulletin) {
+                Bulletin.Delegate base = baseRef[0];
+                if (base != null) {
+                    base.onShow(bulletin);
+                }
+            }
+
+            @Override
+            public void onHide(Bulletin bulletin) {
+                Bulletin.Delegate base = baseRef[0];
+                if (base != null) {
+                    base.onHide(bulletin);
+                }
+            }
+
+            @Override
+            public boolean allowLayoutChanges() {
+                Bulletin.Delegate base = baseRef[0];
+                return base == null || base.allowLayoutChanges();
+            }
+        });
     }
 
     private static void showCoverPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {

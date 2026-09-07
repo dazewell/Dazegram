@@ -3,24 +3,45 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
-## Send on event sheet keeps dynamic rows in caller-owned custom views
+## BottomBuilder section cards are opt-in and isolated to Early Send
 
-The *Send early on event* sheet now inserts two custom `CollapseTextCell`
-headers (`By message type`, `Or by text`) and keeps all dynamic text-pattern
-rows in caller-owned content (`patternArea` + `patternRowsContainer`) wired
-with `BottomBuilder.addCustomView(...)` (`EventScheduleHelper.java:585-616`).
-The five type check rows and regex row are still normal `addCheckItem(...)`
-cells, and collapse/expand works by toggling those known views
-`VISIBLE/GONE` in place (`EventScheduleHelper.java:591-599`, `:646`,
-`:793-801`, `:827-838`).
+`BottomBuilder` now has a fourth constructor arg `sections` defaulting `false`,
+so existing callers keep the old layout path by default
+(`BottomBuilder.kt:32-43`). In default mode, root/content behavior stays the
+same (`LinearLayout` root under a plain `ScrollView`); in sections mode only,
+the builder swaps to `SectionsLinearLayout` + `SectionsScrollView`
+(`BottomBuilder.kt:45-67`).
 
-This still depends on `BottomBuilder`'s stock behavior: `addItem(...)` dismisses
-before running its listener, while `addCustomView(...)` hosts caller-owned UI
-that can mutate in place (`BottomBuilder.kt:212-219`, `:270-272`). Hidden-group
-validation is now explicit: Done expands the text group first, then runs the
-existing row message/focus/shake path inside `AndroidUtilities.doOnLayout(...)`
-for invalid regex, and no-condition failure expands collapsed actionable groups
-before the existing toast (`EventScheduleHelper.java:846-850`, `:977-993`).
+Section-mode-only card chrome is also gated there: title `HeaderCell`s and the
+button strip are tagged `RecyclerListView.TAG_NOT_SECTION`,
+the button strip background is gray, and `create()` applies gray sheet/nav-bar
+background (`BottomBuilder.kt:74-82`, `:107-121`, `:293-299`).
+`EventScheduleHelper` is the only caller opting in:
+`new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true)`
+(`EventScheduleHelper.java:576`).
+
+*(Updated 2026-09-07.)*
+
+## Send on event card membership and collapse behavior
+
+The *Send early on event* sheet declares non-card disclosure rows explicitly:
+`typeHeader`, `textHeader`, and the explanatory `patternInfo` text are all
+tagged `TAG_NOT_SECTION` (`EventScheduleHelper.java:587-590`, `:626-639`).
+The type card is therefore exactly the five type `TextCheckCell`s, and the
+text card is `patternArea` + regex row (`EventScheduleHelper.java:592-607`,
+`:666-670`).
+
+`patternInfo` is now a direct root child (not nested in `patternArea`) and its
+visibility follows text-group collapse with the same sync callback as
+`patternArea`/regex (`EventScheduleHelper.java:632-639`, `:816-824`). Delay UI
+is wrapped in a full-width `FrameLayout` before adding it so section drawing
+treats it as one card, and when the destructive Remove row is present a tagged
+12dp spacer separates delay from Remove (`EventScheduleHelper.java:952-960`).
+
+Hidden-group validation behavior remains in the same code path: Done expands a
+collapsed text group before showing row-level invalid-regex feedback, and
+no-condition failure expands actionable groups before the existing toast
+(`EventScheduleHelper.java:1000-1030`).
 
 *(Updated 2026-09-07.)*
 
@@ -47,29 +68,29 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197
 
 *(Updated 2026-09-07.)*
 
-## Chat privacy notifications/disclosure wiring is sheet-local
+## Chat privacy card membership and anchored bulletin wiring
 
-The `Notifications` block now has active controls only (`Disguise notifications`,
-`Cover`, `Preview notification`) plus a collapsed `How covers work` disclosure
-footer. `refreshRef[0]` only drives control visibility/content from disguise
-state; disclosure expansion is a separate sheet-local boolean toggled only by
-the `CollapseTextCell` click (`ChatPrivacySheet.java:74-118`, `:152-169`,
-`:242-246`).
+`ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it
+in `SectionsScrollView`, with gray sheet/nav-bar backgrounds applied after
+`builder.create()` and before `showDialog()` (`ChatPrivacySheet.java:53`,
+`:268-296`). Card membership is split by tags: title, notifications header,
+and `How covers work` disclosure are marked `TAG_NOT_SECTION`; card 1 is
+hide/placeholder/require-password and card 2 is disguise/cover/preview
+(`ChatPrivacySheet.java:61`, `:79`, `:96-99`).
 
-The switch still toggles `NotificationCoverController.setEnabled(...)` and
-queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
-the `Cover` row still opens the reused single-select `PopupHelper.show(...)`
-radio sheet and applies `setPersona(...)` + rebuild; the preview row still calls
-`NotificationCoverController.postPreview(...)` and only shows bulletin feedback
-(`ChatPrivacySheet.java:209-219`, `:225`, `:232-239`, `:335-356`;
+The notifications behavior wiring is unchanged in ownership: switch -> 
+`setEnabled(...)` + notifications rebuild, cover picker -> `setPersona(...)` +
+rebuild, preview -> `postPreview(...)` + bulletin feedback
+(`ChatPrivacySheet.java:219-257`, `:397-418`;
 `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
 
-For layout and bulletin clearance on short screens, the custom content is wrapped
-in a `ScrollView`, and a combined bulletin delegate is installed in
-`BottomSheetDelegate.onOpenAnimationEnd()` before show-time wiring completes.
-That delegate keeps the stock top offset contract and adds a fixed bottom
-clearance offset (`ChatPrivacySheet.java:250-332`; `BottomSheet.java:1241-1251`;
-`Bulletin.java:690-698`, `:743-745`).
+Bulletin offset logic now captures the base delegate once at
+`onOpenAnimationEnd()` (`baseBulletinDelegateRef`) and installs a per-show
+wrapper anchored to the row that raised the bulletin. The wrapper preserves
+base top offset (status-bar fallback), computes bottom offset from row position
+with clamp bounds, and returns `bottomOffsetAnimated() = false`
+(`ChatPrivacySheet.java:49`, `:277-288`, `:300-389`; `Bulletin.java:690-698`,
+`:743-745`).
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
