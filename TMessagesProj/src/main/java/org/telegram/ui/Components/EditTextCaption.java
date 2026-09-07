@@ -634,24 +634,25 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             start = getSelectionStart();
             end = getSelectionEnd();
         }
+        // NagramX: normalize a reversed selection once, up front -- putQuoteToEditable clamps but
+        // does not reorder, so a reversed range reaching it (or the containment check below) can
+        // still misbehave otherwise.
+        if (start > end) {
+            final int tmp = start;
+            start = end;
+            end = tmp;
+        }
 
         final Editable currentText = getText();
-        int rangeStart = start;
-        int rangeEnd = end;
-        if (rangeStart > rangeEnd) {
-            final int tmp = rangeStart;
-            rangeStart = rangeEnd;
-            rangeEnd = tmp;
-        }
         // NagramX: toggle-off when the selection exactly contains one existing quote block (a
         // collapsed caret inside a block counts as containment too, matching the hotkey's
         // no-selection quote call). Any other overlap (partial, non-containing) is a silent no-op --
         // putQuoteToEditable has no overlap guard of its own and would happily create a second,
         // overlapping quote block on top of the first.
-        QuoteSpan[] overlappingQuotes = currentText.getSpans(rangeStart, rangeEnd, QuoteSpan.class);
+        QuoteSpan[] overlappingQuotes = currentText.getSpans(start, end, QuoteSpan.class);
         if (overlappingQuotes != null && overlappingQuotes.length > 0) {
-            if (isSingleSpanContaining(currentText, rangeStart, rangeEnd, overlappingQuotes)) {
-                removeQuoteSpans(currentText, rangeStart, rangeEnd);
+            if (isSingleSpanContaining(currentText, start, end, overlappingQuotes)) {
+                removeQuoteSpans(currentText, start, end);
                 invalidateSpoilers();
                 resetFontMetricsCache();
             }
