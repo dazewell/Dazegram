@@ -20,7 +20,7 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the glass action row live in a chat with text selected, the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, and the message field expanded to full screen.">
 </p>
 
-**Privacy profiles:** Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
+**Privacy profiles:** Named auto-lock timeouts you can turn on temporarily — for now, for a set stretch of time, or until a given moment. Long-press the Settings tab in the chat list to swap between them, instead of digging back into settings every time you need a longer or shorter leash.
 
 <p align="center">
 <img src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them.">
