@@ -766,6 +766,10 @@ public final class NotificationCoverController {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
         try {
+            // NAX_SMOKE_disguise_alerting: liveness marker, reached on every cover child post attempt
+            // regardless of opt-in state, so its absence on device means postChild wasn't reached at all.
+            android.util.Log.i("NotificationCoverController", "NAX_SMOKE_disguise_alerting_BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                    + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " scenario=postChild account=" + account);
             clearConversationArtifacts(dialogId);
             if (representedIds == null || representedIds.isEmpty() || count <= 0) {
                 synchronized (COVER_STATE_LOCK) {
@@ -815,7 +819,24 @@ public final class NotificationCoverController {
                     b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
                 }
             }
-            NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
+            Notification built = b.build();
+            // NAX_SMOKE_disguise_alerting: which of the two competing outcomes actually fired for this
+            // opted-in dialog, read back from the built notification rather than re-derived - EXPECTED is
+            // the fix working (child alert not swallowed by the group), FORBIDDEN would mean
+            // GROUP_ALERT_SUMMARY still muted an opted-in dialog's child.
+            if (alertEnabled) {
+                boolean groupAlertSummaryApplied = grouped && NotificationCompat.getGroupAlertBehavior(built) == NotificationCompat.GROUP_ALERT_SUMMARY;
+                if (groupAlertSummaryApplied) {
+                    android.util.Log.e("NotificationCoverController", "NAX_SMOKE_disguise_alerting_FORBIDDEN account=" + account
+                            + " grouped=" + grouped + " groupAlertSummaryApplied=true (should be impossible for an opted-in dialog)");
+                } else {
+                    android.util.Log.i("NotificationCoverController", "NAX_SMOKE_disguise_alerting_EXPECTED account=" + account
+                            + " grouped=" + grouped + " channel=alert onlyAlertOnce=false groupAlertSummaryApplied=false");
+                }
+            }
+            NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, built);
+            // NAX_SMOKE_disguise_alerting: completion marker - the notify() call above returned normally.
+            android.util.Log.i("NotificationCoverController", "NAX_SMOKE_disguise_alerting_END account=" + account + " alertEnabled=" + alertEnabled);
             return true;
         } catch (Exception t) {
             synchronized (COVER_STATE_LOCK) {
