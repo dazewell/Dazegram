@@ -556,7 +556,7 @@ and it archives **only its own direct children** — never a grandchild.
      the app's session tooling, e.g. `create_session`): after 1–5 pass clean,
      call the app's `archive_session` operation **exactly once**, as the
      final operation. **Treat it as one-shot and destructive, not a
-     recoverable step** — owns stopping the session's CLI process and
+     recoverable step** — it owns stopping the session's CLI process and
      removing its worktree as one unit. **Never manually run
      `git worktree remove`, `git worktree prune`, or delete the directory
      first** — a manual removal ahead of it is exactly the failure mode that
