@@ -114,10 +114,16 @@ class BottomBuilder(
         }
         if (sections) {
             headerCell.tag = RecyclerListView.TAG_NOT_SECTION
+            val headerContainer = FrameLayout(ctx)
+            headerContainer.addView(headerCell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP or Gravity.START))
+            rootView.addView(headerContainer, LayoutHelper.createLinear(-1, -2).apply {
+                bottomMargin = dp(8f)
+            })
+        } else {
+            rootView.addView(headerCell, LayoutHelper.createLinear(-1, -2).apply {
+                bottomMargin = dp(8f)
+            })
         }
-        rootView.addView(headerCell, LayoutHelper.createLinear(-1, -2).apply {
-            bottomMargin = dp(8f)
-        })
         return headerCell
     }
 

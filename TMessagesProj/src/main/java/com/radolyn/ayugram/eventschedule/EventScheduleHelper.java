@@ -15,6 +15,7 @@ import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -23,12 +24,15 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.DialogObject;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
-import org.telegram.ui.Cells.CollapseTextCell;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
+import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
@@ -265,6 +269,65 @@ public final class EventScheduleHelper {
                 this.field = field;
                 this.removeButton = removeButton;
                 this.messageView = messageView;
+            }
+        }
+
+        private static final class DisclosureHeaderCell extends TextSettingsCell {
+            private final ImageView arrowView;
+            private CharSequence titleText = "";
+            private CharSequence summaryText = "";
+            private boolean expanded;
+
+            DisclosureHeaderCell(Context context) {
+                super(context, 21);
+                setBackground(Theme.getSelectorDrawable(false));
+                setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                setTextValueColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
+                if (LocaleController.isRTL) {
+                    getValueTextView().setPadding(dp(26), 0, 0, 0);
+                } else {
+                    getValueTextView().setPadding(0, 0, dp(26), 0);
+                }
+
+                arrowView = new ImageView(context);
+                arrowView.setScaleType(ImageView.ScaleType.CENTER);
+                arrowView.setScaleX(0.6f);
+                arrowView.setScaleY(0.6f);
+                arrowView.setImageResource(R.drawable.arrow_more);
+                arrowView.setColorFilter(new PorterDuffColorFilter(
+                        Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2), PorterDuff.Mode.SRC_IN));
+                addView(arrowView, LayoutHelper.createFrameRelatively(20, 20, Gravity.CENTER_VERTICAL | Gravity.END));
+            }
+
+            void bind(CharSequence title, CharSequence summary, boolean expanded) {
+                this.titleText = title;
+                this.summaryText = summary;
+                this.expanded = expanded;
+                setTextAndValue(title, summary, false, expanded);
+                arrowView.animate().cancel();
+                arrowView.animate().rotation(expanded ? 180f : 0f)
+                        .setDuration(340)
+                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
+                        .start();
+                setContentDescription(composeAccessibilityText());
+            }
+
+            private CharSequence composeAccessibilityText() {
+                String state = getString(expanded ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed);
+                if (TextUtils.isEmpty(summaryText)) {
+                    return titleText + ", " + state;
+                }
+                return titleText + ", " + summaryText + ", " + state;
+            }
+
+            @Override
+            public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setClassName(android.widget.Button.class.getName());
+                info.setClickable(true);
+                info.setCheckable(true);
+                info.setChecked(expanded);
+                info.setText(composeAccessibilityText());
             }
         }
 
@@ -582,12 +645,10 @@ public final class EventScheduleHelper {
             final Runnable[] updateTextHeader = new Runnable[]{() -> {}};
             final Runnable[] syncGroupVisibility = new Runnable[]{() -> {}};
             final Runnable[] collapseTextGroup = new Runnable[]{() -> {}};
+            final Runnable[] syncTypeDividers = new Runnable[]{() -> {}};
+            final Runnable[] syncTextDividers = new Runnable[]{() -> {}};
 
-            final CollapseTextCell typeHeader = new CollapseTextCell(context, null);
-            typeHeader.setColor(Theme.key_dialogTextBlue2);
-            typeHeader.setBackground(Theme.createSelectorDrawable(
-                    Theme.getColor(Theme.key_dialogButtonSelector), Theme.RIPPLE_MASK_ALL));
-            typeHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
+            final DisclosureHeaderCell typeHeader = new DisclosureHeaderCell(context);
             builder.addCustomView(typeHeader);
 
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null,
@@ -622,21 +683,13 @@ public final class EventScheduleHelper {
             typeGroup.add(photoCell);
             typeGroup.add(textCell);
 
-            final CollapseTextCell textHeader = new CollapseTextCell(context, null);
-            textHeader.setColor(Theme.key_dialogTextBlue2);
-            textHeader.setBackground(Theme.createSelectorDrawable(
-                    Theme.getColor(Theme.key_dialogButtonSelector), Theme.RIPPLE_MASK_ALL));
-            textHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
-            builder.addCustomView(textHeader);
+            View sectionSpacer = builder.addCustomView(new View(context));
+            sectionSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            sectionSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            sectionSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
 
-            TextView patternInfo = new TextView(context);
-            patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
-            patternInfo.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
-            patternInfo.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
-            patternInfo.setGravity(org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
-            patternInfo.setTag(RecyclerListView.TAG_NOT_SECTION);
-            builder.addCustomView(patternInfo);
-            patternInfo.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 21, 0, 21, 6));
+            final DisclosureHeaderCell textHeader = new DisclosureHeaderCell(context);
+            builder.addCustomView(textHeader);
 
             LinearLayout patternArea = new LinearLayout(context);
             patternArea.setOrientation(LinearLayout.VERTICAL);
@@ -668,6 +721,9 @@ public final class EventScheduleHelper {
                         updateTextHeader[0].run();
                         return kotlin.Unit.INSTANCE;
                     });
+            final TextInfoPrivacyCell patternInfo = new TextInfoPrivacyCell(context, 21);
+            patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
+            builder.addCustomView(patternInfo);
 
             // NagramX: build initial rows, THEN regexCell, THEN attach watchers and sync once -- appended
             // rows are allowed to attach after regexCell exists.
@@ -797,21 +853,17 @@ public final class EventScheduleHelper {
                 }
                 return summary;
             };
-            updateTypeHeader[0] = () -> {
-                String label = getString(R.string.EventScheduleSectionType);
-                if (!typeExpanded[0]) {
-                    label = label + ": " + typeSummary.get();
+            syncTypeDividers[0] = () -> {
+                for (int i = 0; i < typeGroup.size(); i++) {
+                    typeGroup.get(i).setDivider(typeExpanded[0] && i < typeGroup.size() - 1);
                 }
-                typeHeader.set(label, !typeExpanded[0]);
-                typeHeader.setContentDescription(label + ", " + getString(typeExpanded[0] ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed));
+            };
+            syncTextDividers[0] = () -> regexCell.setDivider(false);
+            updateTypeHeader[0] = () -> {
+                typeHeader.bind(getString(R.string.EventScheduleSectionType), typeSummary.get(), typeExpanded[0]);
             };
             updateTextHeader[0] = () -> {
-                String label = getString(R.string.EventScheduleSectionPattern);
-                if (!textExpanded[0]) {
-                    label = label + ": " + textSummary.get();
-                }
-                textHeader.set(label, !textExpanded[0]);
-                textHeader.setContentDescription(label + ", " + getString(textExpanded[0] ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed));
+                textHeader.bind(getString(R.string.EventScheduleSectionPattern), textSummary.get(), textExpanded[0]);
             };
             syncGroupVisibility[0] = () -> {
                 int typeVisibility = typeExpanded[0] ? View.VISIBLE : View.GONE;
@@ -819,9 +871,11 @@ public final class EventScheduleHelper {
                     typeGroup.get(i).setVisibility(typeVisibility);
                 }
                 int textVisibility = textExpanded[0] ? View.VISIBLE : View.GONE;
-                patternInfo.setVisibility(textVisibility);
                 patternArea.setVisibility(textVisibility);
                 regexCell.setVisibility(textVisibility);
+                patternInfo.setVisibility(textVisibility);
+                syncTypeDividers[0].run();
+                syncTextDividers[0].run();
             };
             collapseTextGroup[0] = () -> {
                 EditTextBoldCursor focused = focusedField(rows);
@@ -957,7 +1011,7 @@ public final class EventScheduleHelper {
                 View removeSpacer = builder.addCustomView(new View(context));
                 removeSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
                 removeSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
-                removeSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, dp(12)));
+                removeSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 12));
                 builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                     enabled = false;
                     userTouchedTrigger = true;
