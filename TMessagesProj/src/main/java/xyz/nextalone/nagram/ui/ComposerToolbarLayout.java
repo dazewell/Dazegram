@@ -369,9 +369,18 @@ public final class ComposerToolbarLayout extends FrameLayout {
      * a cell has around its glyph, which is the only thing that sets the gap between two icons.
      *
      * <p>Snapped up to the lowest step that is not swallowed by the cell floor. The settings slider
-     * blocks the same steps through SlideIntChooseView.setMinValueAllowed, and that clamp never fires
-     * the change callback, so a stored value below what is reachable legitimately survives in config -
-     * the row and the slider both read it through this one method so they cannot disagree.
+     * blocks the same steps through SlideIntChooseView.setMinValueAllowed, and the row and the
+     * slider both read the value through this one method so they cannot disagree.
+     *
+     * <p>A stored value below what is reachable at the current scale is not rewritten: a toolbar-size
+     * drag never writes composerToolbarSpacing, so shrinking the toolbar leaves the saved value
+     * intact and this method just reports the floor instead. Moving the packing slider while it is
+     * clamped is more subtle - SlideIntChooseView clamps the new value up to minValueAllowed before
+     * its own change test, so a drag that stays on the floor yields the value already installed,
+     * fails the test and writes nothing; only changing the slider to a genuinely different effective
+     * value replaces the hidden saved one. Where the floor has reached the top of the range every
+     * candidate clamps to that top, so no drag can write at all. The packing footer discloses which
+     * of these states the user is in before they drag.
      */
     public static int spacingPercent() {
         int percent = NaConfig.INSTANCE.getComposerToolbarSpacing().Int();

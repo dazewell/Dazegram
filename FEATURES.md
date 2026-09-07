@@ -75,7 +75,7 @@ Cut, Copy, and Paste are available as composer toolbar buttons, added through th
 
 ### Composer toolbar size <!-- #composer-scale --> <!-- #composer-spacing -->
 
-The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. At small toolbar sizes, the tightest spacing steps will grey out to prevent icons from overlapping.
+The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. At small toolbar sizes the tightest spacing steps grey out so icons can't overlap, and the footer then tells you whether you're seeing your saved value or a temporary substitute that comes back once the toolbar is bigger.
 
 ### Composer glass transparency <!-- #composer-transparency -->
 
