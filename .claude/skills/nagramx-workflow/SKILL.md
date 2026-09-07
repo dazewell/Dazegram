@@ -35,16 +35,27 @@ code are not.
 - **Machine matters: don't assume you can build.** Machines differ, so check
   which one you're on before deciding — `$env:COMPUTERNAME` answers it (it
   reports `ZENBOO`; compare case-insensitively, PowerShell's `-eq` already is).
-  - **`ZenBoo` — run the gate.** JDK 21 (`JAVA_HOME` →
-    `C:\Program Files\Microsoft\jdk-21.0.12.8-hotspot`) and the Android SDK
-    (`ANDROID_HOME` → `C:\Users\dazewell\AppData\Local\Android\Sdk`) are both
-    installed and on the environment, so no `local.properties` is needed.
-    Measured on the privacy-profiles worktree: **~9 min cold** (fresh daemon,
-    no configuration cache), **~15 s after a normal source edit**, ~8 s when
-    nothing changed. Run the gate here rather than waiting on CI — after the
-    first run of a session it's effectively free. Give a cold run a 10-minute
-    budget and don't kill it early. A full `assemble` is still heavy; leave
-    artifacts to CI or to dazewell.
+  - **`ZenBoo` — run the gate, but one concurrent build only.** JDK 21
+    (`JAVA_HOME` → `C:\Program Files\Microsoft\jdk-21.0.12.8-hotspot`) and the
+    Android SDK (`ANDROID_HOME` →
+    `C:\Users\dazewell\AppData\Local\Android\Sdk`) are both installed and on
+    the environment, so no `local.properties` is needed. Measured on the
+    privacy-profiles worktree: **~9 min cold** (fresh daemon, no configuration
+    cache), **~15 s after a normal source edit**, ~8 s when nothing changed.
+    Run the gate here rather than waiting on CI — after the first run of a
+    session it's effectively free. Give a cold run a 10-minute budget and
+    don't kill it early. A full `assemble` is still heavy; leave artifacts to
+    CI or to dazewell.
+    **This machine only has headroom for one local compile gate at a time** —
+    a second concurrent build contends with the first for the same CPU/JDK/
+    Gradle daemon and both end up slower than either would have been alone,
+    slower than just waiting on CI. Before starting, check whether ZenBoo is
+    already busy: `.\gradlew.bat --status` lists any registered daemon and
+    whether it's `IDLE` or `BUSY`. If one shows `BUSY`, another session's
+    build is already running there — **do not queue behind it.** Treat the
+    toolchain as unavailable for this run and fall back to CI exactly as the
+    quick toolchain check below does. Don't infer "busy" from anything else
+    (e.g. another session merely existing); check the daemon status itself.
   - **Surface Book 2 — don't build at all.** Too slow: even the compile gate
     drags and a full `assemble` runs for an hour-plus. Treat the toolchain as
     unavailable and fall back to CI exactly as step 4 describes.

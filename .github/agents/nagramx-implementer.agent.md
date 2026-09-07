@@ -202,7 +202,13 @@ When the brief says local:
 Run it in the worktree your branch is checked out in. On `ZenBoo` the toolchain
 is installed and this is the default: budget ~9 minutes for the first run of a
 session and ~15 seconds after each later edit, and don't kill a cold run early
-because it looks stuck.
+because it looks stuck. **ZenBoo only has headroom for one concurrent local
+build** — the orchestrator checked this before assigning you `local`, but if
+you discover mid-run that another session's build is now contending for the
+same daemon (the compile is far slower than the budget above, or
+`.\gradlew.bat --status` shows another daemon `BUSY`), stop, don't queue
+behind it, and switch to CI as the gate exactly as you would for an
+environment failure. Report the switch either way.
 
 If it fails on the environment rather than on your code — no SDK, no JDK, no
 network for the Gradle distribution — **stop and switch to CI as the gate**. Do
