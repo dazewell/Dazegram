@@ -381,6 +381,23 @@ code are not.
    it reads like dazewell wrote it in one pass, matching the surrounding
    entries.
 
+   **Keep every entry to the basic definition, not an engineering writeup.**
+   One short paragraph — rarely two — stating what the feature does and how to
+   use, configure, or turn it off. Write for someone skimming the catalog to
+   remember what the app does, not for someone auditing its exact behaviour:
+   leave out edge cases, "known gap" caveats, internal implementation
+   rationale, and step-by-step interaction nuances unless a user genuinely
+   cannot use the feature without that sentence. If a paragraph is only
+   defensible as "explaining why it works this way," it belongs in a code
+   comment or a codemap entry, not here. When a feature already has an entry
+   and evolves further, **extend that entry** (add the new `<!-- #slug -->`
+   beside the existing heading, fold the new behaviour into the existing
+   prose) instead of stacking a new heading and a new paragraph on top — a
+   heading that only ever grows is exactly how an entry turns into a wall of
+   text. If you find yourself touching an entry that has already grown past
+   this bar, trim it back down to size as part of the same change rather than
+   adding to it.
+
    The entry is committed **on the change branch, alongside the code** — it's
    part of the same PR, so the feature and its documentation land together and
    never drift. Mark the entry with its `<!-- #slug -->` (beside the `###`
