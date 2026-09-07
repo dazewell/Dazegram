@@ -59,6 +59,59 @@ permissions:
   models: read
 
 jobs:
+  # Resolve once, up front, whether this run is a PR-preview ("test") or a
+  # true dev/release-candidate build ("staging"), and whether a dispatch
+  # fallback landed on an open PR that still carries a stale build-apk label.
+  # Classification is by resolved PR association (an open PR whose head is
+  # exactly this commit), not raw event name -- a workflow_dispatch fallback
+  # substituting for a dropped `labeled` webhook is a test build too, exactly
+  # like the labeled run it's standing in for. Every downstream job/step reads
+  # these outputs instead of re-deriving PR association itself, so the build
+  # classification, the Telegram caption's PR header, and label cleanup can
+  # never disagree with each other.
+  resolve:
+    name: Resolve build classification
+    runs-on: ubuntu-latest
+    # Same event filter the build job applies: a label event only matters here
+    # when it's the build-apk one. Without this, an unrelated label (e.g.
+    # "bug") would still spend a checkout, a Python setup and a GitHub API
+    # call on a run that every downstream job already treats as a no-op.
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.label.name == 'build-apk')
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      build_type: ${{ steps.classify.outputs.build_type }}
+      pr_number: ${{ steps.classify.outputs.pr_number }}
+      pr_title: ${{ steps.classify.outputs.pr_title }}
+      pr_body: ${{ steps.classify.outputs.pr_body }}
+      unlabel_pr_number: ${{ steps.classify.outputs.unlabel_pr_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+          submodules: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: 3.12
+      - name: Classify build and resolve associated PR
+        id: classify
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          # HEAD_SHA is only used on the non-pull_request path (push/dispatch);
+          # PR_NUMBER/TITLE/BODY come straight from the event payload there.
+          HEAD_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python Tools/scripts/resolve_build.py
   # Remove the build-apk label at the start of a labeled run so re-applying it
   # re-triggers a build — the label behaves as a repeatable button. Kept as its
   # own single job (not folded into the matrix, where it would run once per
@@ -69,21 +122,30 @@ jobs:
   unlabel:
     name: Remove build-apk label
     runs-on: ubuntu-latest
-    # Same-repo only: a fork PR gets a read-only token, so the label DELETE below
-    # would 403. dazewell's flow is all same-repo branches, so this never fires on
-    # a legitimate request — it just keeps a stray fork PR from a doomed run.
-    if: github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository
+    needs:
+      - resolve
+    # Same-repo only for the labeled path: a fork PR gets a read-only token, so
+    # the label DELETE below would 403. dazewell's flow is all same-repo
+    # branches, so this never fires on a legitimate request — it just keeps a
+    # stray fork PR from a doomed run. No repo check needed on the dispatch
+    # path: a dispatch always runs with this repo's own token regardless of
+    # which PR its resolved head belongs to, and removing a label only writes
+    # to this repo's issue object, never to the PR's head repo.
+    if: >-
+      (github.event_name == 'pull_request' && github.event.action == 'labeled' && github.event.label.name == 'build-apk' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' && needs.resolve.outputs.unlabel_pr_number != '')
     permissions:
       pull-requests: write
     steps:
       - name: Remove label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number || needs.resolve.outputs.unlabel_pr_number }}
         run: |
           CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels/build-apk")
+            "https://api.github.com/repos/${{ github.repository }}/issues/$PR_NUMBER/labels/build-apk")
           echo "DELETE label -> HTTP $CODE"
           # 200 removed, 404 already gone — both fine. Anything else is a real error.
           if [ "$CODE" != "200" ] && [ "$CODE" != "404" ]; then
@@ -185,6 +247,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+      - resolve
     # The default success() here would inherit the skip of unlabel through the
     # needs chain (unlabel is skipped on push and workflow_dispatch), which would
     # silently drop the Telegram upload on exactly the two paths that must always
@@ -220,9 +283,10 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          RES_PR_NUMBER: ${{ needs.resolve.outputs.pr_number }}
+          RES_PR_TITLE: ${{ needs.resolve.outputs.pr_title }}
+          RES_PR_BODY: ${{ needs.resolve.outputs.pr_body }}
           REPO: ${{ github.repository }}
           PUSH_SHA: ${{ github.sha }}
           PUSH_BRANCH: ${{ github.ref_name }}
@@ -262,32 +326,10 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           }
 
-          # Resolve the PR this build belongs to. On a pull_request run the
-          # payload already has it; on a push or a manual dispatch, ask the
-          # associated-PRs API (dazewell squash-merges, so the squashed commit
-          # on dev correctly maps back to its PR). No match is a normal case
-          # here (a dispatch on a branch with no PR, or a direct push) — not
-          # an error, and handled downstream by upload.py's header fallback.
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            RES_PR_NUMBER="$PR_NUMBER"
-            RES_PR_TITLE="$PR_TITLE"
-            RES_PR_BODY="$PR_BODY"
-          else
-            PR_JSON=$(curl -s -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/commits/$HEAD_SHA/pulls") || PR_JSON="[]"
-            # A non-array JSON response (rate limit, auth failure, transient
-            # error) or outright unparseable body (empty/garbled from a
-            # network hiccup) must resolve to "no PR found" rather than
-            # aborting the whole upload under set -e -- the "|| true" catches
-            # jq itself failing to parse, the "if type == array" guard catches
-            # a well-formed-but-wrong-shaped JSON error object.
-            RES_PR_NUMBER=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].number // empty) else empty end') || true
-            RES_PR_TITLE=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].title // empty) else empty end') || true
-            RES_PR_BODY=$(echo "$PR_JSON" | jq -r 'if type == "array" then (.[0].body // empty) else empty end') || true
-          fi
-          # jq -r renders a JSON null body as the literal string "null".
-          [ "$RES_PR_BODY" != "null" ] || RES_PR_BODY=""
+          # PR association was already resolved once, up front, by the
+          # `resolve` job (single source of truth so build classification,
+          # this caption metadata, and label cleanup can never disagree with
+          # each other).
           echo "resolved PR: number=${RES_PR_NUMBER:-<none>} title=${RES_PR_TITLE:-<none>}"
           write_output pr_number "$RES_PR_NUMBER"
           write_output pr_title "$RES_PR_TITLE"
@@ -422,6 +464,7 @@ jobs:
           PUSH_SHA: ${{ github.sha }}
           PUSH_BRANCH: ${{ github.ref_name }}
           BUILD_TIMESTAMP: ${{ needs.build.outputs.build_timestamp }}
+          BUILD_TYPE: ${{ needs.resolve.outputs.build_type }}
           AI_SUMMARY: ${{ steps.prepare.outputs.ai_summary }}
           PR_NUMBER: ${{ steps.prepare.outputs.pr_number }}
           PR_TITLE: ${{ steps.prepare.outputs.pr_title }}
@@ -429,15 +472,18 @@ jobs:
           set -e
           # A pull_request run is checked out at the merge ref, so fetch the real
           # PR head to read its commit message; a push is already at that commit.
+          # BUILD_TYPE itself comes from the `resolve` job (by resolved PR
+          # association, not raw event name) -- checkout ref selection here is
+          # unrelated and still keys off EVENT_NAME, since a pull_request run's
+          # workspace is checked out at the synthetic merge ref regardless of
+          # whether that run classifies as test or staging.
           if [ "$EVENT_NAME" = "pull_request" ]; then
             SHA="$PR_HEAD_SHA"
             export BRANCH="$PR_HEAD_REF"
-            BUILD_TYPE="test"
             git fetch --depth=1 origin "$SHA"
           else
             SHA="$PUSH_SHA"
             export BRANCH="$PUSH_BRANCH"
-            BUILD_TYPE="staging"
           fi
           export COMMIT_ID="$SHA"
           export COMMIT_URL="$SERVER_URL/$REPO/commit/$SHA"
