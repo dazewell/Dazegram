@@ -19,3 +19,6 @@ TMessagesProj/jni/ffmpeg/build_android
 # Raw README marketing screenshots stay local; only the composited docs/images/
 # outputs get committed.
 docs/screenshots/
+
+# Compiled bytecode cache left behind by running Tools/scripts/*.py.
+__pycache__/

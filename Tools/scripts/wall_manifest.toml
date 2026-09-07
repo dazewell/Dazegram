@@ -110,7 +110,7 @@ crop = [0, 140, 1080, 1330]
 caption = "Expand to full screen"
 
 [[wall]]
-output = "video-messages.png"
+output = "video-recording.png"
 
 [[wall.panel]]
 source = "pre-video-message-options-infinite-recording-and-external-mic.jpg"
@@ -118,9 +118,29 @@ crop = [0, 900, 1080, 2010]
 caption = "Set up before you record"
 
 [[wall.panel]]
+source = "video-message-buttons-layout.jpg"
+crop = [0, 1350, 1080, 2354]
+caption = "Controls while recording"
+
+[[wall.panel]]
 source = "video-message-preview-scrub-midpoint.png"
 crop = [0, 1600, 1080, 2192]
 caption = "Scrub the preview"
+
+[[wall]]
+output = "video-watching.png"
+
+[[wall.panel]]
+source = "video-message-player-panel-mute-and-loop.png"
+crop = [0, 140, 1080, 1300]
+caption = "Mute, loop, or speed it up"
+# This clip is a real person's face; the crop already excludes the two
+# real-name reply-quote bubbles further down the chat, but the round video
+# itself is unavoidable here since the player panel we're showing sits
+# right above it, so blur the face the same way the captions panel does.
+blur = [
+    [255, 415, 765, 905],   # face only
+]
 
 [[wall.panel]]
 source = "video-message-closed-captions-playback.png"

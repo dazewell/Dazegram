@@ -32,10 +32,16 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
 </p>
 
-**Video messages:** A round message is a video like any other — so it finally behaves like one. Scrub the preview before you send, and keep recording past Telegram's limit, with a buzz to warn you before it cuts. The ones you receive can carry captions too, once transcription is set up.
+**Recording video messages:** A round message is a video like any other — so it finally behaves like one. Set the mic and camera before you start, keep recording past Telegram's limit with a buzz to warn you before it cuts, and scrub the preview before you send.
 
 <p align="center">
-<img src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
+<img src="docs/images/video-recording.png" alt="Three views of Dazegram's video message recording: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording screen's zoom and flash controls, and the preview with its scrub timeline.">
+</p>
+
+**Watching video messages:** Sometimes you just can't play the sound. The player panel under the chat title lets you mute a round message, loop it, or change its speed — and with transcription set up, read it as captions instead.
+
+<p align="center">
+<img src="docs/images/video-watching.png" alt="Two views of Dazegram's video message playback: the player panel under the chat title with its mute, loop, and speed controls, and captions burned into video playback matching the transcription bubble below it.">
 </p>
 
 **Everyday reliability:** Normal composing already saved your draft. Editing a message, scheduling one, and recording a round video didn't — now they do. Back out by accident, lock the app, or switch away mid-recording, and what you had is still waiting when you come back.
