@@ -390,6 +390,43 @@ atlas producer invariant that this fix changes.
 
 *(Established 2026-09-04.)*
 
+## "App-authored `android.util.Log.i` from a staging build can be read over `adb logcat` on dazewell's device"
+
+Not observed, so not a reliable diagnostics channel on this device — treat it as
+a dead end for on-device tracing until something proves otherwise. While bringing
+up the wear-messages toggle we planted six `android.util.Log.i` markers in
+`NotificationsController.showExtraNotifications` (a BEGIN liveness marker that is
+the unconditional first statement of the method, plus the per-path markers). The
+`org.telegram.messenger.beta` staging build carrying them was confirmed installed
+and running at the exact head commit, and it was writing to logcat during the
+window. Two bounded captures (`adb logcat -b main,crash`, ~150s each), the second
+with a deliberate inbound message into a toggled-off chat that provably drives
+`showExtraNotifications`, both returned **zero** matching lines — not even BEGIN.
+
+The app-side causes were excluded. The reachability logic was correct: BEGIN is
+unconditional at method entry, and its only caller `showOrUpdateNotification`
+early-returns unless a push message or story is pending
+(`NotificationsController.java:4158`), which explains a capture with no inbound
+message but not the second one. R8 was excluded too: `proguard-rules.pro:173-176`
+strips only `Log.v`/`Log.d` via `-assumenosideeffects`, so `Log.i`/`.w`/`.e`
+survive the minified staging build. Separately, a shell-authored tag
+(`adb shell log -t <tag>`) was visible in the same buffer, and an ART runtime
+line tagged with the process name (`I .messenger.beta: Compiler allocated ...`)
+was initially and wrongly read as proof app logging escapes — that is Android's
+runtime logging, not app-authored output, so it proves nothing.
+
+Suspected cause, not proven: the device is a OnePlus on ColorOS/OxygenOS, whose
+ROM is known to filter logcat output from non-debuggable third-party apps, and
+the staging build is `minifyEnabled=true` and release-signed
+(`TMessagesProj/build.gradle:192-201`), so it qualifies for that filtering. The
+takeaway for the next change: do not rely on `adb logcat` to confirm on-device
+reachability of app-authored logs from a staging/release build on this device;
+the wear-messages smoke gate was instead confirmed visually by dazewell. If
+on-device log tracing is genuinely needed, a `debuggable=true` build (e.g. the
+`debug` type) is the thing to try, not another `Log.i` capture from staging.
+
+*(Established 2026-09-06.)*
+
 ## "The base fork preserved the encoder bitrate for force-muted GIF-panel sends"
 
 Disproven -- it dropped the mute instead. During PR #300 review it was argued

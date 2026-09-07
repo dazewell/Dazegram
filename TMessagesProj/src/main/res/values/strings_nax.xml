@@ -696,6 +696,7 @@
     <string name="NaxCoverBodyBatteryOptimizer">%1$d app(s) optimized.</string>
     <string name="NaxCoverBodySyncService">Synced %1$d item(s).</string>
     <string name="NaxCoverBodySecurityCheck">%1$d check(s) completed.</string>
+    <string name="NotificationsShowOnWatch">Show on Watch</string>
     <string name="EditorMuteHintSilentVideo">Sound is now muted, so the video will loop like a GIF. Tap the quality button to send it as a silent video instead.</string>
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>

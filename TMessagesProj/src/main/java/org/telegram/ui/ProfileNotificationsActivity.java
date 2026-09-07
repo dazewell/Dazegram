@@ -92,6 +92,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
     private int avatarSectionRow;
     private int enableRow;
     private int previewRow;
+    private int watchRow;
     private int soundRow;
     private int vibrateRow;
     private int smartRow;
@@ -165,8 +166,15 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
             enableRow = -1;
         }
         storiesRow = -1;
+        watchRow = -1;
         if (!DialogObject.isEncryptedDialog(dialogId)) {
             previewRow = rowCount++;
+            // NagramX: per-chat "Show on Watch" toggle, sits directly under Message Preview (before the Stories
+            // row). Hidden on secret chats (already local-only) and on topic screens (topicId != 0) -- the
+            // setting keys by raw dialogId and can't address a single topic.
+            if (topicId == 0) {
+                watchRow = rowCount++;
+            }
             if (DialogObject.isUserDialog(dialogId)) {
                 storiesRow = rowCount++;
             }
@@ -453,6 +461,11 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 TextCheckCell checkCell = (TextCheckCell) view;
                 MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("content_preview_" + key, !checkCell.isChecked()).apply();
                 checkCell.setChecked(!checkCell.isChecked());
+            } else if (position == watchRow) {
+                TextCheckCell checkCell = (TextCheckCell) view;
+                boolean value = !checkCell.isChecked();
+                checkCell.setChecked(value);
+                MessagesController.getNotificationsSettings(currentAccount).edit().putBoolean("nax_wear_" + dialogId, value).apply();
             } else if (position == callsVibrateRow) {
                 showDialog(AlertsCreator.createVibrationSelectDialog(getParentActivity(), dialogId, topicId, "calls_vibrate_" + key, () -> {
                     if (adapter != null) {
@@ -631,7 +644,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         break;
                     }
                     case ListAdapter.VIEW_TYPE_TEXT_CHECK: {
-                        if (position == previewRow) {
+                        if (position == previewRow || position == watchRow) {
                             TextCheckCell checkCell = (TextCheckCell) holder.itemView;
                             checkCell.setEnabled(notificationsEnabled, animators);
                         }
@@ -682,7 +695,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
 
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            if (holder.getAdapterPosition() == previewRow) {
+            if (holder.getAdapterPosition() == previewRow || holder.getAdapterPosition() == watchRow) {
                 return notificationsEnabled;
             } else if (holder.getAdapterPosition() == customResetRow) {
                 return true;
@@ -928,6 +941,8 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         String key = NotificationsController.getSharedPrefKey(dialogId, topicId);
                         boolean value = preferences.getBoolean("stories_" + key, isInTop5Peers || preferences.contains("EnableAllStories") && preferences.getBoolean("EnableAllStories", true));
                         checkCell.setTextAndCheck(LocaleController.getString(R.string.StoriesSoundEnabled), value, true);
+                    } else if (position == watchRow) {
+                        checkCell.setTextAndCheck(LocaleController.getString(R.string.NotificationsShowOnWatch), preferences.getBoolean("nax_wear_" + dialogId, true), true);
                     }
                     break;
                 }
@@ -977,6 +992,8 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                         checkCell.setEnabled(notificationsEnabled, null);
                     } else if (holder.getAdapterPosition() == storiesRow) {
                         checkCell.setEnabled(notificationsEnabled, null);
+                    } else if (holder.getAdapterPosition() == watchRow) {
+                        checkCell.setEnabled(notificationsEnabled, null);
                     } else {
                         checkCell.setEnabled(true, null);
                     }
@@ -1000,7 +1017,7 @@ public class ProfileNotificationsActivity extends BaseFragment implements Notifi
                 return VIEW_TYPE_USER;
             } else if (position == avatarSectionRow || position == customResetShadowRow) {
                 return VIEW_TYPE_SHADOW;
-            } else if (position == enableRow || position == previewRow || position == storiesRow) {
+            } else if (position == enableRow || position == previewRow || position == storiesRow || position == watchRow) {
                 return VIEW_TYPE_TEXT_CHECK;
             }
             return VIEW_TYPE_HEADER;

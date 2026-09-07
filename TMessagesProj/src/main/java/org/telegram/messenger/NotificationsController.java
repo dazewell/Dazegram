@@ -5834,6 +5834,10 @@ public class NotificationsController extends BaseController implements Notificat
             if (DialogObject.isEncryptedDialog(dialogId)) {
                 builder.setLocalOnly(true);
             }
+            // NagramX: keep this chat's message off a bridged Wear device when its per-chat "Show on Watch" toggle is off; the phone notification is untouched. Stories aggregate every pusher, so they aren't governed by a per-chat toggle.
+            if (!dialogKey.story && !xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(currentAccount, dialogId)) {
+                builder.setLocalOnly(true);
+            }
             if (avatarBitmap != null) {
                 builder.setLargeIcon(avatarBitmap);
             }

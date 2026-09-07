@@ -729,6 +729,11 @@ public final class NotificationCoverController {
                 b.setGroup(group);
                 b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
             }
+            // NagramX: watch-off wins over cover -- a covered chat that is also "Show on Watch" off must not send even
+            // its contentless decoy card to a bridged Wear device (the ping-without-content case that was ruled out).
+            if (!xyz.nextalone.nagram.helper.WearBridgeHelper.isWatchEnabled(account, dialogId)) {
+                b.setLocalOnly(true);
+            }
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
             return true;
         } catch (Exception t) {

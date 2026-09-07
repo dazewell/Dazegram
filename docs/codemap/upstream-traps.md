@@ -480,6 +480,66 @@ at the compile gate; that is the check to trust, not a grep.
 
 *(Established 2026-09-06, during the NextAlone/Nagram sync reconciliation, snapshot `981806a992`.)*
 
+## The aggregated group summary notification bridges every pushed chat's message text to Wear, even when a chat's own child notification is `setLocalOnly`
+
+`NotificationsController.showExtraNotifications(...)` posts one per-dialog child
+notification per chat plus, when `useSummaryNotification` is true — API 27
+(`O_MR1`) and below unconditionally, otherwise only when more than one non-story
+message dialog is pushed (`sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2)`,
+`NotificationsController.java:4958`) —
+a single aggregate summary built from `notificationBuilder` — the `mBuilder`
+first assembled back in `showOrUpdateNotification`. That summary's `InboxStyle`
+is not a count: it adds up to 10 lines of real `getStringForMessage(...)` output
+— sender names and message text drawn from every pushed dialog
+(`NotificationsController.java:4443`) — and it is **never** given `setLocalOnly`.
+The trap: giving a per-dialog child `setLocalOnly(true)` (encrypted chats have
+always done this, `:5834`; the `#wear-messages` per-chat "Show on Watch" toggle
+does it at `:5838`) does **not** stop that chat's text riding to a paired Wear OS
+watch, because the *summary* is a separate `Notification` without `setLocalOnly`.
+So a per-chat "keep this off the watch" control governs the child but not the
+shared summary; whenever Android builds that summary it can still preview a
+switched-off chat on the watch — and on API 27 and below it builds one even for a
+single unread chat, so a lone switched-off chat is not fully hidden there either.
+
+This is upstream behaviour, and it is exactly how Telegram already treats secret
+chats: their child is local-only (`:5834`) while the aggregate summary that
+previews them is not. **`#wear-messages` deliberately does not fix it** — the
+shipped feature is the two per-dialog hooks only (child `setLocalOnly` at the
+shared builder chokepoint `:5838`, and the disguised-cover child card in
+`NotificationCoverController.postChild:734`). The accepted, product-approved
+consequence is the summary leak above. Three cheaper summary fixes were tried
+across review and rejected, so do not re-derive them:
+
+- **Gate the whole summary local-only when any pushed chat is watch-off** (an
+  early revision's batch-wide `naxAnyWatchOff` scan). Wrong: the fork's disguised
+  "cover" children post silently with `GROUP_ALERT_SUMMARY`
+  (`NotificationCoverController.java:730`) and delegate their alert to the
+  summary, so blanking the summary silenced watch *alerting* for every watch-on
+  chat in a batch the moment one unrelated chat was switched off — a real
+  on-device regression with "Disguise notification" on.
+- **Re-arm the children with `GROUP_ALERT_CHILDREN`** so they alert without the
+  summary. Dead: children fall back to `OTHER_NOTIFICATIONS_CHANNEL`, which is
+  created with sound/vibration/lights disabled (`:292-296`), so flipping alert
+  ownership to the children mutes everything anyway.
+- **Redact the summary content** to a safe-representative form. Viable but not
+  bought: it needs a safe representative across both the `InboxStyle` branch and
+  the non-inbox branch, plus title, ticker, person, actions, channel and the Wear
+  dismissal id — and Samsung skips the inbox summary path entirely (`allowSummary`
+  false, `:4366-4367`), so the redaction would have to cover a second
+  construction path too. Deferred by product decision, not overlooked.
+
+Eliminating the leak properly needs a different grouping/summary design. Until
+then, the per-chat hooks are honest about what they do — they keep a chat's *own*
+notification off the watch — and `FEATURES.md` states the summary limitation
+plainly rather than implying full suppression.
+
+Key-format note for a future edit in this area: `WearBridgeHelper` owns the
+`nax_wear_<dialogId>` format, but `ProfileNotificationsActivity` repeats the
+`"nax_wear_" + dialogId` literal inline for both its read and its write, so a
+rename of the key must touch the settings screen too, not just the helper.
+
+*(Established 2026-09-06, during the #wear-messages build; three review rounds on the summary region ended by dropping all summary suppression to the two per-chat hooks only.)*
+
 ## `VideoEditedInfo`'s serialised form round-trips on every send, and `parseString` infers `muted` from `bitrate == -1`
 
 The `ve` string is not just a draft/restore mechanism -- the full
