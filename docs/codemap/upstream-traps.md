@@ -483,8 +483,10 @@ at the compile gate; that is the check to trust, not a grep.
 ## The aggregated group summary notification bridges every pushed chat's message text to Wear, even when a chat's own child notification is `setLocalOnly`
 
 `NotificationsController.showExtraNotifications(...)` posts one per-dialog child
-notification per chat plus, when `useSummaryNotification` is true
-(`sortedDialogs.size() > 1`, or API <= O_MR1; `NotificationsController.java:4958`),
+notification per chat plus, when `useSummaryNotification` is true — API 27
+(`O_MR1`) and below unconditionally, otherwise only when more than one non-story
+message dialog is pushed (`sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2)`,
+`NotificationsController.java:4958`) —
 a single aggregate summary built from `notificationBuilder` — the `mBuilder`
 first assembled back in `showOrUpdateNotification`. That summary's `InboxStyle`
 is not a count: it adds up to 10 lines of real `getStringForMessage(...)` output
@@ -495,8 +497,9 @@ always done this, `:5834`; the `#wear-messages` per-chat "Show on Watch" toggle
 does it at `:5838`) does **not** stop that chat's text riding to a paired Wear OS
 watch, because the *summary* is a separate `Notification` without `setLocalOnly`.
 So a per-chat "keep this off the watch" control governs the child but not the
-shared summary; whenever two or more chats are unread the summary can still
-preview a switched-off chat on the watch.
+shared summary; whenever Android builds that summary it can still preview a
+switched-off chat on the watch — and on API 27 and below it builds one even for a
+single unread chat, so a lone switched-off chat is not fully hidden there either.
 
 This is upstream behaviour, and it is exactly how Telegram already treats secret
 chats: their child is local-only (`:5834`) while the aggregate summary that
@@ -529,6 +532,11 @@ Eliminating the leak properly needs a different grouping/summary design. Until
 then, the per-chat hooks are honest about what they do — they keep a chat's *own*
 notification off the watch — and `FEATURES.md` states the summary limitation
 plainly rather than implying full suppression.
+
+Key-format note for a future edit in this area: `WearBridgeHelper` owns the
+`nax_wear_<dialogId>` format, but `ProfileNotificationsActivity` repeats the
+`"nax_wear_" + dialogId` literal inline for both its read and its write, so a
+rename of the key must touch the settings screen too, not just the helper.
 
 *(Established 2026-09-06, during the #wear-messages build; three review rounds on the summary region ended by dropping all summary suppression to the two per-chat hooks only.)*
 
