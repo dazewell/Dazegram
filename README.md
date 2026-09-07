@@ -35,7 +35,7 @@ This README covers the highlights. The full list, with what each one does, is in
 **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
 
 <p align="center">
-<img width="100%" src="docs/images/video-messages.png" alt="Four views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the in-recording controls with the zoom slider and camera flip, the recording preview with the scrub timeline, and captions burned into video playback.">
+<img width="100%" src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
 </p>
 
 **Everyday reliability:** The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.

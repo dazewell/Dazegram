@@ -118,11 +118,6 @@ crop = [0, 900, 1080, 2010]
 caption = "Set up before you record"
 
 [[wall.panel]]
-source = "video-message-buttons-layout.jpg"
-crop = [0, 380, 1080, 2020]
-caption = "Controls while recording"
-
-[[wall.panel]]
 source = "video-message-preview-scrub-midpoint.png"
 crop = [0, 390, 1080, 1350]
 caption = "Scrub the preview"
