@@ -49,9 +49,11 @@ Clear Message Database now removes only the media this install has database rows
 
 ### Keep a chat's messages off your watch <!-- #wear-messages -->
 
-Each chat's Notifications screen (open a chat → its name → Notifications, or long-press it in the list → Notifications) now has a **Show on Watch** switch under Message Preview. Turn it off and that chat's message notifications stop reaching a paired Wear OS watch, while the phone notification stays exactly as it was — same alert, same content, same actions. It's on by default, so nothing changes until you turn a chat off.
+Each chat's Notifications screen (open a chat → its name → Notifications, or long-press it in the list → Notifications) now has a **Show on Watch** switch under Message Preview. Turn it off and that chat's own message notification stops reaching a paired Wear OS watch, while the phone notification stays exactly as it was — same alert, same content, same actions. It's on by default, so nothing changes until you turn a chat off.
 
-This covers messages only. An incoming call from that chat still rings the watch, which is why the switch says "Show on Watch" on a screen whose other rows are all about messages, not "Watch Notifications". It takes effect on the next notification for that chat, not retroactively — a message already on the watch stays there. The switch is per account, and doesn't appear on secret chats (their notifications never bridge anyway) or on a forum's individual topic screens — set it on the forum's main chat and it governs every topic together.
+Two things it deliberately doesn't do. It silences a chat's own notification, not the single grouped summary Android shows when two or more chats are unread at once — so that summary can still put a one-line preview of a switched-off chat on the watch. This is the same split Telegram already applies to secret chats (the chat's own notification is kept off the watch, the shared summary is not); it's long-standing behaviour left as-is, not something new. And it covers messages only: an incoming call from a switched-off chat still rings the watch, which is why the switch says "Show on Watch" on a screen whose other rows are all about messages, not "Watch Notifications".
+
+It takes effect on the next notification for that chat, not retroactively — a message already on the watch stays there. The switch is per account, and doesn't appear on secret chats (whose own message notifications are already kept off the watch) or on a forum's individual topic screens — set it on the forum's main chat and it governs every topic together.
 
 ## Composer and input
 

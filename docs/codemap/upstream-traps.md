@@ -482,54 +482,55 @@ at the compile gate; that is the check to trust, not a grep.
 
 ## The aggregated group summary notification bridges every pushed chat's message text to Wear, even when a chat's own child notification is `setLocalOnly`
 
-`NotificationsController.showExtraNotifications(...)` builds one per-dialog
-child notification per chat plus, when `useSummaryNotification` is true
-(`sortedDialogs.size() > 1`, or API <= O_MR1), a single aggregate summary from
-`notificationBuilder` — the `mBuilder` first assembled back in
-`showOrUpdateNotification`. That summary's `InboxStyle` is not a count: it adds
-up to 10 lines of real `getStringForMessage(...)` output — sender names and
-message text drawn from every pushed dialog
-(`NotificationsController.java:4437,4464`). The trap: a per-dialog child getting
-`setLocalOnly(true)` (encrypted chats have always done this, at
-`:5852`) does **not** stop that chat's text riding to a paired Wear OS watch,
-because the *summary* is a separate `Notification` that never received
-`setLocalOnly` at all. So suppressing one chat's watch delivery means gating the
-child **and** the summary; gating only the child leaks the text through the
-summary in the common >=2-unread case.
+`NotificationsController.showExtraNotifications(...)` posts one per-dialog child
+notification per chat plus, when `useSummaryNotification` is true
+(`sortedDialogs.size() > 1`, or API <= O_MR1; `NotificationsController.java:4958`),
+a single aggregate summary built from `notificationBuilder` — the `mBuilder`
+first assembled back in `showOrUpdateNotification`. That summary's `InboxStyle`
+is not a count: it adds up to 10 lines of real `getStringForMessage(...)` output
+— sender names and message text drawn from every pushed dialog
+(`NotificationsController.java:4443`) — and it is **never** given `setLocalOnly`.
+The trap: giving a per-dialog child `setLocalOnly(true)` (encrypted chats have
+always done this, `:5834`; the `#wear-messages` per-chat "Show on Watch" toggle
+does it at `:5838`) does **not** stop that chat's text riding to a paired Wear OS
+watch, because the *summary* is a separate `Notification` without `setLocalOnly`.
+So a per-chat "keep this off the watch" control governs the child but not the
+shared summary; whenever two or more chats are unread the summary can still
+preview a switched-off chat on the watch.
 
-The two summaries are gated **differently**, and the difference is load-bearing.
-The **real** aggregate summary always carries real `getStringForMessage` text
-(`:4437`,`:4464`), so it is gated globally: a batch-wide `naxAnyWatchOff` scan
-(`:4968`) sets `setLocalOnly(true)` on it whenever any pushed chat is watch-off
-(`:5013`). The fork's **cover** summary
-(`NotificationCoverController.buildCoverSummary`, assembled in
-`naxBuildCoverSummary`) is *mixed* -- a safe decoy `coverLine()` (a generic
-persona label and a count-based body: no sender name, chat title, dialog id or
-message text) for covered dialogs, and real `getStringForMessage` text (`:6006`)
-only for non-covered ones. It must **not** reuse the global scan. Covered
-children post silently with `GROUP_ALERT_SUMMARY` and delegate their alert to
-this summary, so over-suppressing it -- as an earlier `#wear-messages` revision
-did by reusing `naxAnyWatchOff` -- silences watch *alerting* for every watch-on
-chat in a batch the moment one unrelated chat is switched off (the regression
-dazewell hit on device with "Disguise notification" on). Its `setLocalOnly` is
-instead decided from the lines it actually emits (`:6027`): local-only when a
-non-covered watch-off dialog contributed real text (identity content from a
-switched-off chat), or when nothing emitted belongs to a watch-on dialog at all
-(an all-off batch must not bridge even a contentless decoy ping). Covered chats
-also `continue` out of the child loop before the per-dialog hook and post their
-own card, which enforces the per-chat setting independently.
+This is upstream behaviour, and it is exactly how Telegram already treats secret
+chats: their child is local-only (`:5834`) while the aggregate summary that
+previews them is not. **`#wear-messages` deliberately does not fix it** — the
+shipped feature is the two per-dialog hooks only (child `setLocalOnly` at the
+shared builder chokepoint `:5838`, and the disguised-cover child card in
+`NotificationCoverController.postChild:734`). The accepted, product-approved
+consequence is the summary leak above. Three cheaper summary fixes were tried
+across review and rejected, so do not re-derive them:
 
-So `#wear-messages` hooks: the two per-dialog `setLocalOnly` sites (`:5852`
-encrypted, `:5856` watch-off), the global `naxAnyWatchOff` gate on the real
-summary (`:4968`,`:5013`), the line-level gate on the mixed cover summary
-(`:6027`), and the cover child card. **Known limitation, by design, not a bug:**
-when a non-covered watch-off chat genuinely contributes a real line, privacy
-forces the *shared* cover summary local-only, so watch-on children in that same
-batch stay silent (their alert was delegated to a summary that can no longer
-bridge). Eliminating that needs a different grouping/summary design and was
-deferred.
+- **Gate the whole summary local-only when any pushed chat is watch-off** (an
+  early revision's batch-wide `naxAnyWatchOff` scan). Wrong: the fork's disguised
+  "cover" children post silently with `GROUP_ALERT_SUMMARY`
+  (`NotificationCoverController.java:730`) and delegate their alert to the
+  summary, so blanking the summary silenced watch *alerting* for every watch-on
+  chat in a batch the moment one unrelated chat was switched off — a real
+  on-device regression with "Disguise notification" on.
+- **Re-arm the children with `GROUP_ALERT_CHILDREN`** so they alert without the
+  summary. Dead: children fall back to `OTHER_NOTIFICATIONS_CHANNEL`, which is
+  created with sound/vibration/lights disabled (`:292-296`), so flipping alert
+  ownership to the children mutes everything anyway.
+- **Redact the summary content** to a safe-representative form. Viable but not
+  bought: it needs a safe representative across both the `InboxStyle` branch and
+  the non-inbox branch, plus title, ticker, person, actions, channel and the Wear
+  dismissal id — and Samsung skips the inbox summary path entirely (`allowSummary`
+  false, `:4366-4367`), so the redaction would have to cover a second
+  construction path too. Deferred by product decision, not overlooked.
 
-*(Established 2026-09-06, during the #wear-messages build; cover-summary gate corrected in architect round 1.5 after an on-device regression.)*
+Eliminating the leak properly needs a different grouping/summary design. Until
+then, the per-chat hooks are honest about what they do — they keep a chat's *own*
+notification off the watch — and `FEATURES.md` states the summary limitation
+plainly rather than implying full suppression.
+
+*(Established 2026-09-06, during the #wear-messages build; three review rounds on the summary region ended by dropping all summary suppression to the two per-chat hooks only.)*
 
 ## `VideoEditedInfo`'s serialised form round-trips on every send, and `parseString` infers `muted` from `bitrate == -1`
 
