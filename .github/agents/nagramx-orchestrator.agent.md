@@ -683,7 +683,10 @@ specialist reports **verbatim** and lead with the fixed block:
 ```
 Slug:           <slug>
 Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the date;
-                  child renames to this with `rename_branch` before touching a file)
+                  child renames to this with `rename_branch` before touching a file.
+                  If the tool returns it with `_` flattened to `-`, that is expected
+                  kebab-case normalization, not a failure — do not retry the rename
+                  or re-derive anything to "fix" it; both separators are valid.)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
 Codemap:        required | not required   (judged on what the work *learned*,
