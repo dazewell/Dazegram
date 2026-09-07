@@ -4,7 +4,6 @@ import android.content.Context;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -25,7 +24,6 @@ import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
-import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
@@ -46,7 +44,6 @@ public final class ChatPrivacySheet {
         final int account = fragment.getCurrentAccount();
         final Context context = fragment.getParentActivity();
         final BottomSheet[] sheetRef = new BottomSheet[1];
-        final Bulletin.Delegate[] baseBulletinDelegateRef = new Bulletin.Delegate[1];
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, fragment.getResourceProvider());
 
@@ -203,14 +200,9 @@ public final class ChatPrivacySheet {
                     HideLastMessageController.setHidden(account, dialogId, true, null);
                 }
                 if (sheetRef[0] != null) {
-                    showAnchoredBulletin(
-                            sheetRef[0],
-                            fragment.getResourceProvider(),
-                            baseBulletinDelegateRef,
-                            lockCell,
-                            R.raw.passcode_lock,
-                            LocaleController.getString(R.string.ChatLockEnabledHint)
-                    );
+                    BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                            .createSimpleBulletin(R.raw.passcode_lock, LocaleController.getString(R.string.ChatLockEnabledHint))
+                            .show();
                 }
             }
             refreshRef[0].run();
@@ -221,14 +213,11 @@ public final class ChatPrivacySheet {
             NotificationCoverController.setEnabled(account, dialogId, nowDisguised);
             NotificationsController.getInstance(account).showNotifications();
             if (sheetRef[0] != null) {
-                showAnchoredBulletin(
-                        sheetRef[0],
-                        fragment.getResourceProvider(),
-                        baseBulletinDelegateRef,
-                        disguiseCell,
-                        nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
-                        LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint)
-                );
+                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                        .createSimpleBulletin(
+                                nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
+                                LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint))
+                        .show();
             }
             refreshRef[0].run();
         });
@@ -246,14 +235,11 @@ public final class ChatPrivacySheet {
             }
             boolean posted = NotificationCoverController.postPreview(account, dialogId);
             if (sheetRef[0] != null) {
-                showAnchoredBulletin(
-                        sheetRef[0],
-                        fragment.getResourceProvider(),
-                        baseBulletinDelegateRef,
-                        previewCell,
-                        posted ? R.raw.silent_mute : R.raw.silent_unmute,
-                        LocaleController.getString(posted ? R.string.NaxCoverPreviewPosted : R.string.NaxCoverPreviewUnavailable)
-                );
+                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                        .createSimpleBulletin(
+                                posted ? R.raw.silent_mute : R.raw.silent_unmute,
+                                LocaleController.getString(posted ? R.string.NaxCoverPreviewPosted : R.string.NaxCoverPreviewUnavailable))
+                        .show();
             }
         });
 
@@ -274,162 +260,12 @@ public final class ChatPrivacySheet {
         wrapper.setOrientation(LinearLayout.VERTICAL);
         wrapper.addView(scrollView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
 
-        builder.setDelegate(new BottomSheet.BottomSheetDelegate() {
-            @Override
-            public void onOpenAnimationEnd() {
-                BottomSheet sheet = sheetRef[0];
-                if (sheet == null || sheet.container == null) {
-                    return;
-                }
-                if (baseBulletinDelegateRef[0] == null) {
-                    baseBulletinDelegateRef[0] = resolveBaseBulletinDelegate(sheet.container);
-                }
-            }
-        });
-
         builder.setCustomView(wrapper);
         sheetRef[0] = builder.create();
         int gray = Theme.getColor(Theme.key_windowBackgroundGray, fragment.getResourceProvider());
         sheetRef[0].setBackgroundColor(gray);
         sheetRef[0].fixNavigationBar(gray);
         fragment.showDialog(sheetRef[0]);
-    }
-
-    private static void showAnchoredBulletin(BottomSheet sheet, Theme.ResourcesProvider resourcesProvider,
-                                             Bulletin.Delegate[] baseRef, View anchor, int iconResId, String text) {
-        if (sheet == null || sheet.container == null) {
-            return;
-        }
-        installRowAnchoredDelegate(sheet.container, baseRef, anchor);
-        BulletinFactory.of(sheet.container, resourcesProvider)
-                .createSimpleBulletin(iconResId, text)
-                .show();
-    }
-
-    private static void installRowAnchoredDelegate(FrameLayout container, Bulletin.Delegate[] baseRef, View anchor) {
-        if (baseRef[0] == null) {
-            baseRef[0] = resolveBaseBulletinDelegate(container);
-        }
-        Bulletin.addDelegate(container, new RowAnchoredBulletinDelegate(container, baseRef, anchor));
-    }
-
-    private static Bulletin.Delegate resolveBaseBulletinDelegate(FrameLayout container) {
-        if (container == null) {
-            return null;
-        }
-        Object existingTag = container.getTag(R.id.bulletin_delegate_tag);
-        if (!(existingTag instanceof Bulletin.Delegate)) {
-            return null;
-        }
-        if (existingTag instanceof RowAnchoredBulletinDelegate) {
-            return ((RowAnchoredBulletinDelegate) existingTag).getBaseDelegate();
-        }
-        return (Bulletin.Delegate) existingTag;
-    }
-
-    private static final class RowAnchoredBulletinDelegate implements Bulletin.Delegate {
-        private final FrameLayout container;
-        private final Bulletin.Delegate[] baseRef;
-        private final Bulletin.Delegate fallbackBase;
-        private final View anchor;
-
-        RowAnchoredBulletinDelegate(FrameLayout container, Bulletin.Delegate[] baseRef, View anchor) {
-            this.container = container;
-            this.baseRef = baseRef;
-            this.anchor = anchor;
-            this.fallbackBase = baseRef[0];
-        }
-
-        Bulletin.Delegate getBaseDelegate() {
-            return fallbackBase;
-        }
-
-        private Bulletin.Delegate base() {
-            Bulletin.Delegate base = baseRef[0];
-            if (base == null || base == this) {
-                base = fallbackBase;
-            }
-            return base == this ? null : base;
-        }
-
-        @Override
-        public int getTopOffset(int tag) {
-            Bulletin.Delegate base = base();
-            return base != null ? base.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
-        }
-
-        @Override
-        public int getBottomOffset(int tag) {
-            Bulletin.Delegate base = base();
-            int fallback = AndroidUtilities.dp(46 + 8);
-            int baseOffset = base != null ? base.getBottomOffset(tag) : 0;
-            if (anchor == null || anchor.getVisibility() != View.VISIBLE || !anchor.isAttachedToWindow() || anchor.getHeight() <= 0) {
-                return baseOffset + fallback;
-            }
-            int[] containerLoc = new int[2];
-            int[] anchorLoc = new int[2];
-            container.getLocationInWindow(containerLoc);
-            anchor.getLocationInWindow(anchorLoc);
-            int anchorTop = anchorLoc[1] - containerLoc[1];
-            int rawOffset = container.getHeight() - anchorTop + AndroidUtilities.dp(8);
-            int maxOffset = container.getHeight() - AndroidUtilities.dp(56) - AndroidUtilities.statusBarHeight;
-            int upperBound = Math.max(fallback, maxOffset);
-            int anchoredOffset = Math.max(fallback, Math.min(rawOffset, upperBound));
-            return baseOffset + anchoredOffset;
-        }
-
-        @Override
-        public boolean bottomOffsetAnimated() {
-            return false;
-        }
-
-        @Override
-        public int getLeftPadding() {
-            Bulletin.Delegate base = base();
-            return base != null ? base.getLeftPadding() : 0;
-        }
-
-        @Override
-        public int getRightPadding() {
-            Bulletin.Delegate base = base();
-            return base != null ? base.getRightPadding() : 0;
-        }
-
-        @Override
-        public boolean clipWithGradient(int tag) {
-            Bulletin.Delegate base = base();
-            return base != null && base.clipWithGradient(tag);
-        }
-
-        @Override
-        public void onBottomOffsetChange(float offset) {
-            Bulletin.Delegate base = base();
-            if (base != null) {
-                base.onBottomOffsetChange(offset);
-            }
-        }
-
-        @Override
-        public void onShow(Bulletin bulletin) {
-            Bulletin.Delegate base = base();
-            if (base != null) {
-                base.onShow(bulletin);
-            }
-        }
-
-        @Override
-        public void onHide(Bulletin bulletin) {
-            Bulletin.Delegate base = base();
-            if (base != null) {
-                base.onHide(bulletin);
-            }
-        }
-
-        @Override
-        public boolean allowLayoutChanges() {
-            Bulletin.Delegate base = base();
-            return base == null || base.allowLayoutChanges();
-        }
     }
 
     private static void showCoverPicker(BaseFragment fragment, int account, long dialogId, Runnable refresh) {
