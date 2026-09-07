@@ -4,6 +4,63 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
+## An app can never change an existing notification channel's importance in code; only the user can, via system settings
+
+`NotificationCoverController.ensureChannel` (`NotificationCoverController.java:665-679`)
+no-ops the moment `nm.getNotificationChannel(id) != null` (line 669), because
+`createNotificationChannel` on an existing id is a silent no-op on Android and
+there is no API for an app to change an existing channel's importance in
+place, in either direction. Only the *user* has that control, freely, in
+either direction, through Android's own per-app notification settings - the
+app is locked out entirely, not merely restricted to lowering. The only way
+for the app itself to offer a *higher*-alerting variant of an
+already-shipped channel is a brand-new channel id; the old one is left
+completely untouched, in whatever state the user's own Android settings put
+it in.
+
+This is why the per-chat "alert normally" toggle for disguised chats
+(`#disguise-alerting`) mints a *second* channel per persona
+(`NotificationCoverController.ensureAlertChannel`, `NotificationCoverController.java:708-720`,
+`IMPORTANCE_DEFAULT` + vibration) instead of trying to raise the existing
+silent one - the app can't touch the existing channel's importance at all.
+Minting a new id per *dialog* instead of per *persona* was rejected for
+channel-count growth, not data loss: a fresh id can be minted without ever
+touching a dialog's existing channel either way, but per-dialog means one
+channel pair per *dialog* (unbounded, and N dialogs sharing a persona would
+each mint their own instead of sharing one), where per-persona means one pair
+per *persona* (bounded by the persona pool). `deleteChannels`
+(`NotificationCoverController.java:1283-1302`) has exactly
+one call site (`NotificationsController.java:409`, immediately followed by a
+full `editor.clear()`) and isn't shaped for a targeted single-channel
+migration - it wipes every cover channel for the account at once, which is
+only safe
+because its one caller is a full account-level teardown.
+
+*(Established 2026-09-06, `#disguise-alerting`.)*
+
+## `GROUP_ALERT_SUMMARY` mutes a grouped child notification regardless of its own channel's importance
+
+`useSummaryNotification` (`NotificationsController.java:4958`) is
+`Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2)`.
+`minSdk=27` equals `O_MR1` numerically, so the SDK clause is only true on API
+27 exactly - on API 28+ it's false and the actual gate is the dialog-count
+check. In practice that check is still the common case: the moment more than
+one covered dialog has a pending notification (more than two if a story push
+is also pending), grouping kicks in regardless of API level. When a child notification
+is posted with `setGroup(...)` *and* `setGroupAlertBehavior(GROUP_ALERT_SUMMARY)`
+(`NotificationCoverController.java` `postChild`, pre-`#disguise-alerting`
+unconditionally set both whenever `grouped` was true), the child's own alert is
+suppressed in favour of the group summary's - **an IMPORTANCE_DEFAULT/HIGH
+child channel does not override this**, only the summary notification (always
+`IMPORTANCE_LOW` for cover) would actually alert. A feature that grants a
+child notification a louder channel without also skipping
+`GROUP_ALERT_SUMMARY` for that child is inert the moment a second covered chat
+has a pending message - the exact trap `#disguise-alerting`'s alert-tier
+channel had to route around by conditionally omitting
+`setGroupAlertBehavior(GROUP_ALERT_SUMMARY)` only for opted-in dialogs.
+
+*(Established 2026-09-06, `#disguise-alerting`.)*
+
 ## Editing `TMessagesProj/build.gradle` fails Sync guard check until its blob pin is bumped
 
 Any fork-authored PR that edits `TMessagesProj/build.gradle` — even far from

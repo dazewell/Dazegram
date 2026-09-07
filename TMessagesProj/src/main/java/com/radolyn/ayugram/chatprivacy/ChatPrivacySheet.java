@@ -75,6 +75,10 @@ public final class ChatPrivacySheet {
         disguiseCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(disguiseCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
+        final TextCheckCell alertCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
+        alertCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
+        container.addView(alertCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
         final TextSettingsCell coverCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
         coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
         container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
@@ -136,9 +140,17 @@ public final class ChatPrivacySheet {
                     true,
                     true
             );
+            alertCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             coverCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             previewCell.setVisibility(disguised ? View.VISIBLE : View.GONE);
             if (disguised) {
+                alertCell.setTextAndValueAndCheck(
+                        LocaleController.getString(R.string.NaxCoverAlertTitle),
+                        LocaleController.getString(R.string.NaxCoverAlertSubtitle),
+                        NotificationCoverController.isAlertEnabled(account, dialogId),
+                        true,
+                        true
+                );
                 coverCell.setTextAndValue(
                         LocaleController.getString(R.string.NaxCoverRowTitle),
                         NotificationCoverController.activePersonaLabel(account, dialogId),
@@ -197,6 +209,26 @@ public final class ChatPrivacySheet {
                                 nowDisguised ? R.raw.silent_mute : R.raw.silent_unmute,
                                 LocaleController.getString(nowDisguised ? R.string.NaxCoverEnabledHint : R.string.NaxCoverDisabledHint)
                         ).show();
+            }
+            refreshRef[0].run();
+        });
+
+        alertCell.setOnClickListener(v -> {
+            if (!NotificationCoverController.isCovered(account, dialogId)) {
+                return;
+            }
+            boolean nowAlerting = !NotificationCoverController.isAlertEnabled(account, dialogId);
+            boolean applied = NotificationCoverController.setAlertEnabled(account, dialogId, nowAlerting);
+            if (applied) {
+                NotificationsController.getInstance(account).showNotifications();
+            }
+            if (sheetRef[0] != null) {
+                int raw = applied ? (nowAlerting ? R.raw.silent_unmute : R.raw.silent_mute) : R.raw.silent_mute;
+                int text = !applied
+                        ? R.string.NaxCoverAlertFailedHint
+                        : (nowAlerting ? R.string.NaxCoverAlertEnabledHint : R.string.NaxCoverAlertDisabledHint);
+                BulletinFactory.of(sheetRef[0].container, fragment.getResourceProvider())
+                        .createSimpleBulletin(raw, LocaleController.getString(text)).show();
             }
             refreshRef[0].run();
         });
