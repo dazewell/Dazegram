@@ -66,7 +66,6 @@ public final class NotificationCoverController {
     private static final String KEY_ACTIVE_SUMMARY_DISMISS = "nax_cover_v1_active_summary_dismiss";
     private static final String KEY_ACTIVE_PREVIEW_TAP = "nax_cover_v1_active_preview_tap";
     private static final String KEY_PREVIEW_DIALOG = "nax_cover_v1_preview_dialog";
-    private static final String KEY_ALERT_ENABLED = "nax_cover_v1_alert_";
     private static final String ALERT_CHANNEL_SUFFIX = "_alert";
 
     public static final String EXTRA_COVER_TOKEN = "nax_cover_token";
@@ -234,31 +233,6 @@ public final class NotificationCoverController {
     public static void setPersona(int account, long dialogId, int personaId) {
         if (dialogId == 0 || personaById(personaId) == null) return;
         prefs(account).edit().putInt(KEY_PERSONA + dialogId, personaId).apply();
-    }
-
-    /** Whether this dialog's cover is opted into alerting (sound/vibration/watch) instead of staying silent. */
-    public static boolean isAlertEnabled(int account, long dialogId) {
-        return dialogId != 0 && prefs(account).getBoolean(KEY_ALERT_ENABLED + dialogId, false);
-    }
-
-    /**
-     * Turns alerting on/off for this dialog's cover. Turning on mints/verifies this persona's alert-tier
-     * channel first and only persists the flag if that channel actually came up at IMPORTANCE_DEFAULT or
-     * above with notifications enabled for the app - never leaves the dialog silently believing it will
-     * alert when the platform won't actually do it. Turning off never touches the channel itself, so any
-     * future re-enable doesn't lose whatever tuning Android's own settings applied to it in the meantime.
-     */
-    public static boolean setAlertEnabled(int account, long dialogId, boolean enabled) {
-        if (dialogId == 0) return false;
-        if (!enabled) {
-            prefs(account).edit().putBoolean(KEY_ALERT_ENABLED + dialogId, false).apply();
-            return true;
-        }
-        if (!verifyAlertChannel(account, resolvePersonaId(account, dialogId))) {
-            return false;
-        }
-        prefs(account).edit().putBoolean(KEY_ALERT_ENABLED + dialogId, true).apply();
-        return true;
     }
 
     public static int[] personaIds() {
@@ -701,10 +675,9 @@ public final class NotificationCoverController {
         return id;
     }
 
-    // Second, opt-in channel per persona: same cover identity, but IMPORTANCE_DEFAULT with vibration on,
-    // so an opted-in dialog alerts (and reaches the paired watch) without touching the silent channel
-    // every other dialog on that persona keeps using. See docs/codemap/upstream-traps.md for why this is
-    // a second channel rather than raising the existing one's importance.
+    // Second channel tier per persona: same cover identity, but IMPORTANCE_DEFAULT with vibration on.
+    // postChild routes into this tier whenever upstream says the event is non-silent, without touching
+    // the silent channel tier used when upstream marks an event silent.
     private static void ensureAlertChannel(String id, String name) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = systemManager();
@@ -734,25 +707,6 @@ public final class NotificationCoverController {
         return id;
     }
 
-    /**
-     * Mints/verifies the alert-tier channel for this persona and confirms it actually came up able to
-     * alert. createNotificationChannel returns void and never throws on a rejected importance, so the
-     * only way to know it worked is reading the channel back afterwards.
-     */
-    private static boolean verifyAlertChannel(int account, int personaId) {
-        if (!NotificationManagerCompat.from(ApplicationLoader.applicationContext).areNotificationsEnabled()) {
-            return false;
-        }
-        String id = alertChannelId(account, personaId);
-        if (Build.VERSION.SDK_INT < 26) {
-            return true;
-        }
-        NotificationManager nm = systemManager();
-        if (nm == null) return false;
-        NotificationChannel channel = nm.getNotificationChannel(id);
-        return channel != null && channel.getImportance() >= NotificationManager.IMPORTANCE_DEFAULT;
-    }
-
     // ---- Notification build helpers ----
 
     public static String coverLine(int account, long dialogId, int count) {
@@ -762,7 +716,7 @@ public final class NotificationCoverController {
         return LocaleController.getString(p.labelRes) + ": " + LocaleController.formatString(p.bodyRes, count);
     }
 
-    public static boolean postChild(int account, long dialogId, int count, boolean grouped, String group, ArrayList<String> representedIds) {
+    public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
         try {
@@ -779,7 +733,6 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int internalId = internalId(dialogId);
-            boolean alertEnabled = isAlertEnabled(account, dialogId);
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(representedIds));
@@ -793,15 +746,13 @@ public final class NotificationCoverController {
             }
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertEnabled ? alertChannelId(account, personaId) : childChannelId(account, personaId))
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, silent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    // Opted-in dialogs must re-alert on every rebuild, not just the first time this
-                    // stable-tagged notification is shown - see docs/codemap/upstream-traps.md.
-                    .setOnlyAlertOnce(!alertEnabled)
+                    .setOnlyAlertOnce(silent)
                     .setShowWhen(false)
                     .setContentIntent(contentIntent)
                     .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, internalId + 0x31))
@@ -809,9 +760,7 @@ public final class NotificationCoverController {
                     .setPriority(NotificationCompat.PRIORITY_LOW);
             if (grouped) {
                 b.setGroup(group);
-                // GROUP_ALERT_SUMMARY mutes the child regardless of its own channel's importance; an
-                // opted-in dialog must keep its own alert, so it's the one case that skips this line.
-                if (!alertEnabled) {
+                if (silent) {
                     b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
                 }
             }
@@ -898,7 +847,6 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int count = 1 + (int) Math.floorMod(dialogId, 4);
-            boolean alertEnabled = isAlertEnabled(account, dialogId);
 
             String token;
             SharedPreferences p = prefs(account);
@@ -909,15 +857,13 @@ public final class NotificationCoverController {
                 ed.apply();
             }
 
-            // Same channel/onlyAlertOnce choice as postChild - otherwise Preview would confirm alerting
-            // works when the real path (which grouping can mute) hasn't been exercised at all.
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertEnabled ? alertChannelId(account, personaId) : childChannelId(account, personaId))
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    .setOnlyAlertOnce(!alertEnabled)
+                    .setOnlyAlertOnce(false)
                     .setShowWhen(false)
                     .setContentIntent(interactionIntent(account, token, INTERACTION_EVENT_TAP, PREVIEW_ID_BASE + account))
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
