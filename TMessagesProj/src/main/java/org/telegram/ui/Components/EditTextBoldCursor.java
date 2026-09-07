@@ -1218,8 +1218,22 @@ public class EditTextBoldCursor extends EditTextEffects {
         if (text == null) {
             return false;
         }
-        QuoteSpan.QuoteStyleSpan[] spans = ((Spanned) text).getSpans(getSelectionStart(), getSelectionEnd(), QuoteSpan.QuoteStyleSpan.class);
-        return spans == null || spans.length == 0;
+        int start = getSelectionStart();
+        int end = getSelectionEnd();
+        if (start > end) {
+            int tmp = start;
+            start = end;
+            end = tmp;
+        }
+        QuoteSpan.QuoteStyleSpan[] spans = ((Spanned) text).getSpans(start, end, QuoteSpan.QuoteStyleSpan.class);
+        if (spans == null || spans.length == 0) {
+            return true;
+        }
+        // NagramX: also show the button (as a toggle-off) when the selection exactly contains a
+        // single existing quote block, instead of hiding it for any overlap -- lets the popup's
+        // Quote item remove a quote, not just add one. Any other overlap (partial, non-containing)
+        // stays hidden so tapping it can never create a second overlapping quote block.
+        return spans.length == 1 && text.getSpanStart(spans[0]) <= start && text.getSpanEnd(spans[0]) >= end;
     }
 
     @Override

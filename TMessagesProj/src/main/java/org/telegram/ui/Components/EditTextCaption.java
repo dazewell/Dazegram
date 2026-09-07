@@ -162,13 +162,53 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         return allowTextEntitiesIntersection;
     }
 
+    // NagramX: shared toggle-off check for the six flag-based inline styles below (bold/italic/
+    // mono/strike/underline/spoiler), reused so the selection popup, composer glass toolbar, and
+    // header overflow menu can all remove a style that's already fully applied, not just add one.
+    // Deliberately does NOT route through toggleStyleForSelection(int): that method reads raw
+    // getSelectionStart()/End() and ignores the selectionStart/selectionEnd override these callers
+    // rely on, gives mono side effects on unrelated styles that this additive path doesn't have,
+    // and its addStyle primitive hardcodes entity-intersection=true where applyTextStyleToSelection
+    // respects allowTextEntitiesIntersection (secret chats). Consumes+clears the override on the
+    // true branch only, so the unchanged add path immediately after (which also consumes the
+    // override) still sees it on the false branch.
+    private boolean removeStyleIfFullyApplied(int flag) {
+        int start;
+        int end;
+        if (selectionStart >= 0 && selectionEnd >= 0) {
+            start = selectionStart;
+            end = selectionEnd;
+        } else {
+            start = getSelectionStart();
+            end = getSelectionEnd();
+        }
+        if (start > end) {
+            final int tmp = start;
+            start = end;
+            end = tmp;
+        }
+        if (start < 0 || end < 0 || start >= end || (getCurrentStyle(start, end) & flag) == 0) {
+            return false;
+        }
+        selectionStart = selectionEnd = -1;
+        removeStyle(flag, start, end);
+        return true;
+    }
+
     public void makeSelectedBold() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_BOLD)) {
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_BOLD;
         applyTextStyleToSelection(new TextStyleSpan(run));
     }
 
     public void makeSelectedSpoiler() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_SPOILER)) {
+            // removeStyle() already calls invalidateSpoilers() internally for this flag.
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_SPOILER;
         applyTextStyleToSelection(new TextStyleSpan(run));
@@ -176,18 +216,59 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     }
 
     public void makeSelectedItalic() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_ITALIC)) {
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_ITALIC;
         applyTextStyleToSelection(new TextStyleSpan(run));
     }
 
     public void makeSelectedMono() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_MONO)) {
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_MONO;
         applyTextStyleToSelection(new TextStyleSpan(run));
     }
 
     public void makeSelectedCode() {
+        final int start;
+        final int end;
+        if (selectionStart >= 0 && selectionEnd >= 0) {
+            start = selectionStart;
+            end = selectionEnd;
+            selectionStart = selectionEnd = -1;
+        } else {
+            start = getSelectionStart();
+            end = getSelectionEnd();
+        }
+
+        // NagramX: resolved above, before any dialog UI is built, so the toggle-off check below sees
+        // the correct start/end and can skip building the dialog entirely on the remove path.
+        final Editable currentText = getText();
+        int rangeStart = start;
+        int rangeEnd = end;
+        if (rangeStart > rangeEnd) {
+            final int tmp = rangeStart;
+            rangeStart = rangeEnd;
+            rangeEnd = tmp;
+        }
+        // Toggle-off when the selection exactly contains one existing code block; any other overlap
+        // (partial, non-containing) is a silent no-op rather than reopening the dialog to retag it,
+        // so a messy selection can never end up stacking a second CodeHighlighting.Span on the range.
+        CodeHighlighting.Span[] overlappingCode = currentText.getSpans(rangeStart, rangeEnd, CodeHighlighting.Span.class);
+        if (overlappingCode != null && overlappingCode.length > 0) {
+            if (isSingleSpanContaining(currentText, rangeStart, rangeEnd, overlappingCode)) {
+                removeCodeSpans(currentText, rangeStart, rangeEnd);
+                if (delegate != null) {
+                    delegate.onSpansChanged();
+                }
+            }
+            return;
+        }
+
         AlertDialog.Builder builder;
         if (adaptiveCreateLinkDialog) {
             builder = new AlertDialogDecor.Builder(getContext(), resourcesProvider);
@@ -216,18 +297,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         editText.setPadding(0, 0, 0, 0);
         builder.setView(editText);
 
-        final int start;
-        final int end;
-        if (selectionStart >= 0 && selectionEnd >= 0) {
-            start = selectionStart;
-            end = selectionEnd;
-            selectionStart = selectionEnd = -1;
-        } else {
-            start = getSelectionStart();
-            end = getSelectionEnd();
-        }
-
-        var styleSpans = getText().getSpans(start, end, CodeHighlighting.Span.class);
+        var styleSpans = currentText.getSpans(start, end, CodeHighlighting.Span.class);
         if (styleSpans != null) {
             for (var oldSpan : styleSpans) {
                 if (!TextUtils.isEmpty(oldSpan.lng)) {
@@ -294,12 +364,18 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     }
 
     public void makeSelectedStrike() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_STRIKE)) {
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_STRIKE;
         applyTextStyleToSelection(new TextStyleSpan(run));
     }
 
     public void makeSelectedUnderline() {
+        if (removeStyleIfFullyApplied(TextStyleSpan.FLAG_STYLE_UNDERLINE)) {
+            return;
+        }
         TextStyleSpan.TextStyleRun run = new TextStyleSpan.TextStyleRun();
         run.flags |= TextStyleSpan.FLAG_STYLE_UNDERLINE;
         applyTextStyleToSelection(new TextStyleSpan(run));
@@ -554,7 +630,31 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             start = getSelectionStart();
             end = getSelectionEnd();
         }
-        final int setSelection = QuoteSpan.putQuoteToEditable(getText(), start, end, collapse);
+
+        final Editable currentText = getText();
+        int rangeStart = start;
+        int rangeEnd = end;
+        if (rangeStart > rangeEnd) {
+            final int tmp = rangeStart;
+            rangeStart = rangeEnd;
+            rangeEnd = tmp;
+        }
+        // NagramX: toggle-off when the selection exactly contains one existing quote block (a
+        // collapsed caret inside a block counts as containment too, matching the hotkey's
+        // no-selection quote call). Any other overlap (partial, non-containing) is a silent no-op --
+        // putQuoteToEditable has no overlap guard of its own and would happily create a second,
+        // overlapping quote block on top of the first.
+        QuoteSpan[] overlappingQuotes = currentText.getSpans(rangeStart, rangeEnd, QuoteSpan.class);
+        if (overlappingQuotes != null && overlappingQuotes.length > 0) {
+            if (isSingleSpanContaining(currentText, rangeStart, rangeEnd, overlappingQuotes)) {
+                removeQuoteSpans(currentText, rangeStart, rangeEnd);
+                invalidateSpoilers();
+                resetFontMetricsCache();
+            }
+            return;
+        }
+
+        final int setSelection = QuoteSpan.putQuoteToEditable(currentText, start, end, collapse);
         if (setSelection >= 0) {
             setSelection(setSelection);
             resetFontMetricsCache();
@@ -968,6 +1068,46 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         }
     }
 
+    // NagramX: "a quote is three spans" removal, shared by Regular's clear-all
+    // (applyTextStyleToSelection(null)) and the quote toggle-off branch in makeSelectedQuote, so
+    // there is exactly one place in this upstream-merged file that knows a quote block is a
+    // QuoteSpan + its QuoteStyleSpan + an optional QuoteCollapsedPart.
+    private void removeQuoteSpans(Editable editable, int start, int end) {
+        QuoteSpan[] quotes = editable.getSpans(start, end, QuoteSpan.class);
+        for (int i = 0; i < quotes.length; ++i) {
+            editable.removeSpan(quotes[i]);
+            editable.removeSpan(quotes[i].styleSpan);
+            if (quotes[i].collapsedSpan != null) {
+                editable.removeSpan(quotes[i].collapsedSpan);
+            }
+        }
+        if (quotes.length > 0) {
+            invalidateQuotes(true);
+        }
+    }
+
+    // NagramX: strip every CodeHighlighting.Span in range, shared by Regular's clear-all and the
+    // code toggle-off branch in makeSelectedCode, for the same single-source-of-truth reason above.
+    private void removeCodeSpans(Editable editable, int start, int end) {
+        CodeHighlighting.Span[] code = editable.getSpans(start, end, CodeHighlighting.Span.class);
+        for (int i = 0; i < code.length; ++i) {
+            editable.removeSpan(code[i]);
+        }
+    }
+
+    // NagramX: the containment rule used to gate quote/code toggle-off -- true only when exactly
+    // one span overlaps [start,end) and it fully contains the range (a collapsed start==end caret
+    // sitting inside a block counts as contained too). Any other overlap (partial, or more than one
+    // span) is deliberately not a match, so a messy selection is left as a silent no-op by the
+    // caller rather than falling through into creating a second overlapping block.
+    private static <T> boolean isSingleSpanContaining(Editable editable, int start, int end, T[] spans) {
+        if (spans == null || spans.length != 1) {
+            return false;
+        }
+        Object span = spans[0];
+        return editable.getSpanStart(span) <= start && editable.getSpanEnd(span) >= end;
+    }
+
     private void applyTextStyleToSelection(TextStyleSpan span) {
         int start;
         int end;
@@ -983,20 +1123,8 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
         if (span == null) {
             Editable editable = getText();
-            CodeHighlighting.Span[] code = editable.getSpans(start, end, CodeHighlighting.Span.class);
-            for (int i = 0; i < code.length; ++i)
-                editable.removeSpan(code[i]);
-            QuoteSpan[] quotes = editable.getSpans(start, end, QuoteSpan.class);
-            for (int i = 0; i < quotes.length; ++i) {
-                editable.removeSpan(quotes[i]);
-                editable.removeSpan(quotes[i].styleSpan);
-                if (quotes[i].collapsedSpan != null) {
-                    editable.removeSpan(quotes[i].collapsedSpan);
-                }
-            }
-            if (quotes.length > 0) {
-                invalidateQuotes(true);
-            }
+            removeCodeSpans(editable, start, end);
+            removeQuoteSpans(editable, start, end);
             // NagramX: when allowTextEntitiesIntersection is on, addStyleToText merges
             // (never clears) a style span that sits strictly inside the selection, so
             // "Regular" left an interior spoiler/format untouched (e.g. spoiler a word,
