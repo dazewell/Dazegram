@@ -234,8 +234,8 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
     }
 
     public void makeSelectedCode() {
-        final int start;
-        final int end;
+        int start;
+        int end;
         if (selectionStart >= 0 && selectionEnd >= 0) {
             start = selectionStart;
             end = selectionEnd;
@@ -244,17 +244,20 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
             start = getSelectionStart();
             end = getSelectionEnd();
         }
+        // NagramX: normalize a reversed selection (e.g. Shift+Up) right away, before start/end are
+        // used for anything -- getSpans/subSequence/setSpan below all assume start <= end and can
+        // throw or misbehave on an inverted range otherwise.
+        if (start > end) {
+            final int tmp = start;
+            start = end;
+            end = tmp;
+        }
+        final int rangeStart = start;
+        final int rangeEnd = end;
 
         // NagramX: resolved above, before any dialog UI is built, so the toggle-off check below sees
         // the correct start/end and can skip building the dialog entirely on the remove path.
         final Editable currentText = getText();
-        int rangeStart = start;
-        int rangeEnd = end;
-        if (rangeStart > rangeEnd) {
-            final int tmp = rangeStart;
-            rangeStart = rangeEnd;
-            rangeEnd = tmp;
-        }
         // Toggle-off when the selection exactly contains one existing code block; any other overlap
         // (partial, non-containing) is a silent no-op rather than reopening the dialog to retag it,
         // so a messy selection can never end up stacking a second CodeHighlighting.Span on the range.
@@ -297,7 +300,7 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
         editText.setPadding(0, 0, 0, 0);
         builder.setView(editText);
 
-        var styleSpans = currentText.getSpans(start, end, CodeHighlighting.Span.class);
+        var styleSpans = currentText.getSpans(rangeStart, rangeEnd, CodeHighlighting.Span.class);
         if (styleSpans != null) {
             for (var oldSpan : styleSpans) {
                 if (!TextUtils.isEmpty(oldSpan.lng)) {
@@ -309,24 +312,25 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
 
         builder.setPositiveButton(LocaleController.getString(R.string.OK), (dialogInterface, i) -> {
             Editable editable = getText();
-            CharacterStyle[] spans = editable.getSpans(start, end, CharacterStyle.class);
+            CharacterStyle[] spans = editable.getSpans(rangeStart, rangeEnd, CharacterStyle.class);
             if (spans != null && spans.length > 0) {
                 for (CharacterStyle oldSpan : spans) {
                     int spanStart = editable.getSpanStart(oldSpan);
                     int spanEnd = editable.getSpanEnd(oldSpan);
                     editable.removeSpan(oldSpan);
-                    if (spanStart < start) {
-                        editable.setSpan(oldSpan, spanStart, start, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    if (spanStart < rangeStart) {
+                        editable.setSpan(oldSpan, spanStart, rangeStart, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     }
-                    if (spanEnd > end) {
-                        editable.setSpan(oldSpan, end, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                    if (spanEnd > rangeEnd) {
+                        editable.setSpan(oldSpan, rangeEnd, spanEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
                     }
                 }
             }
             try {
                 var language = editText.getText().toString();
-                editable.setSpan(new CodeHighlighting.Span(true, 0, null, language, editable.subSequence(start, end).toString()), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                editable.setSpan(new CodeHighlighting.Span(true, 0, null, language, editable.subSequence(rangeStart, rangeEnd).toString()), rangeStart, rangeEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
             } catch (Exception ignore) {
+
 
             }
             if (delegate != null) {
