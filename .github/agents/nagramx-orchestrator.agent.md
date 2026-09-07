@@ -777,8 +777,15 @@ name, and the skill's "ask which machine you're on" has no answer in an
 unattended session. Resolve the machine yourself with `$env:COMPUTERNAME` —
 it reports `ZENBOO`, where the toolchain is installed and the gate is `local`
 (~9 min cold, ~15 s per later edit); elsewhere apply the skill's toolchain
-check and fall back to `CI-only`. And **never write the brief into a repo
-file** — it would land in the diff.
+check and fall back to `CI-only`. **ZenBoo only has headroom for one
+concurrent local build** — before assigning `local`, check
+`.\gradlew.bat --status` in the main checkout (or any worktree on that
+machine); if a daemon shows `BUSY`, another session is already compiling
+there, so assign `CI-only` for this brief instead of queueing behind it. Two
+sessions contending for the same daemon end up slower than either waiting on
+CI alone, which is the whole point of deciding this centrally rather than
+letting each implementer decide for itself. And **never write the brief into
+a repo file** — it would land in the diff.
 
 **If recon shows the change touches a cache, asynchronous work, or
 invalidation** — any two of the three, or any one plus multi-threading —
