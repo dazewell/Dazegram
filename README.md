@@ -11,31 +11,31 @@ This README covers the highlights. The full list, with what each one does, is in
 **Time zones:** Set a time zone on any chat or group and see their local time right in the header. Tap it to line up a moment across both zones and drop it straight into your message.
 
 <p align="center">
-<img width="100%" src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: the hour-comparison grid with the message-format token chips, the range picker with both accounts' hours, the schedule-message sheet split between your time and theirs, and the chat header clock pill next to messages showing dual local times.">
+<img src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: the hour-comparison grid with the message-format token chips, the range picker with both accounts' hours, the schedule-message sheet split between your time and theirs, and the chat header clock pill next to messages showing dual local times.">
 </p>
 
 **Composer:** Reorder most of the composer's row: emoji, attachments, formatting, schedule, into the layout you actually reach for.
 
 <p align="center">
-<img width="100%" src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, the toolbar live in a chat with text selected, and the message field expanded to full screen.">
+<img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, the toolbar live in a chat with text selected, and the message field expanded to full screen.">
 </p>
 
 **Privacy profiles:** Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
 
 <p align="center">
-<img width="100%" src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them.">
+<img src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them.">
 </p>
 
 **Chat privacy:** Hide a chat's last message from the list, or lock the whole chat behind your passcode — your call, per chat. Turn on disguise notifications and incoming alerts show a cover instead of the real sender and message.
 
 <p align="center">
-<img width="100%" src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic sync alert instead of the real sender and message.">
+<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic sync alert instead of the real sender and message.">
 </p>
 
 **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
 
 <p align="center">
-<img width="100%" src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
+<img src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
 </p>
 
 **Everyday reliability:** The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.
