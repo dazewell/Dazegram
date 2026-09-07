@@ -1,5 +1,6 @@
 package tw.nekomimi.nekogram.helpers;
 
+import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.annotation.Nullable;
@@ -7,6 +8,7 @@ import androidx.annotation.Nullable;
 import com.radolyn.ayugram.eventschedule.EventScheduleStore;
 
 import org.telegram.messenger.BaseController;
+import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.MessagesController;
@@ -158,6 +160,11 @@ public final class ScheduledReplyTargetHelper extends BaseController {
      * re-resolved by the caller from its own live window (finding 10 -- never a stale reference).
      */
     public static void requeue(ChatActivity scheduledFragment, int account, long dialogId, int originalMessageId, @Nullable MessageObject replyTarget, int kind) {
+        // NAX_SMOKE_scheduled-reply-target BEGIN: unconditionally reached the moment the user
+        // confirms Reply/Change reply/Remove reply -- to be removed once the smoke build confirms
+        // reachability.
+        Log.i("NagramX", "NAX_SMOKE_scheduled-reply-target BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
+                + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " kind=" + kind);
         MessageObject original = scheduledFragment.messagesDict[0].get(originalMessageId);
         if (original == null || original.messageOwner == null || isImminentOrPast(account, original.messageOwner)) {
             showError(scheduledFragment, R.string.ScheduledReplyTargetAlreadyGone);
@@ -226,12 +233,17 @@ public final class ScheduledReplyTargetHelper extends BaseController {
             return;
         }
         pendingByLocalId.remove(oldId);
+        // NAX_SMOKE_scheduled-reply-target EXPECTED: resend confirmed landed at the server, about
+        // to dispatch the cancel -- this is the required ordering (resend before cancel).
+        Log.i("NagramX", "NAX_SMOKE_scheduled-reply-target EXPECTED resend-confirmed account=" + currentAccount + " originalId=" + pending.originalMessageId);
         // P1/P2: only cancel the original once the resend is actually confirmed landed at the
         // server -- never before. This RPC is fire-and-forget on failure
         // (MessagesController.java:9586-9618, no error path to us), which is exactly why it's last.
         ArrayList<Integer> toDelete = new ArrayList<>();
         toDelete.add(pending.originalMessageId);
         MessagesController.getInstance(currentAccount).deleteMessages(toDelete, null, null, pending.dialogId, 0, false, ChatActivity.MODE_SCHEDULED);
+        // NAX_SMOKE_scheduled-reply-target END: full resend-then-cancel sequence completed.
+        Log.i("NagramX", "NAX_SMOKE_scheduled-reply-target END cancel-dispatched account=" + currentAccount + " originalId=" + pending.originalMessageId);
         ChatActivity fragment = pending.fragmentRef.get();
         if (fragment != null && BulletinFactory.canShowBulletin(fragment)) {
             int textRes;
@@ -257,6 +269,9 @@ public final class ScheduledReplyTargetHelper extends BaseController {
             return;
         }
         pendingByLocalId.remove(localId);
+        // NAX_SMOKE_scheduled-reply-target FORBIDDEN: resend failed -- this path must never be
+        // followed by a cancel dispatch (the competing outcome to the EXPECTED path above).
+        Log.w("NagramX", "NAX_SMOKE_scheduled-reply-target FORBIDDEN resend-failed account=" + currentAccount + " originalId=" + pending.originalMessageId);
         // P2: resend failed (observed asynchronously) -- abort before any cancel. The original is
         // untouched; only the failed resend attempt itself is gone.
         ChatActivity fragment = pending.fragmentRef.get();
