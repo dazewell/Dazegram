@@ -716,3 +716,23 @@ The thumb-vs-label desync above is not limited to the `betweenSteps > 1` case �
 The consequence bites any caller that rebinds one of these sliders with both a new value and a lower floor in a single `set()` + `setMinValueAllowed()` pair, when `set()` runs first: `set()` drives `setProgress` while `minProgress` is still the old, higher floor, so the thumb is clamped to the old floor's position even though `updateTexts` moves the printed label to the new value. Label and thumb then disagree until something else rebinds the row. In the composer layout editor this surfaced as: Toolbar size 100%→75%→100% across two gestures left Icon spacing reading 85 with the thumb pinned hard right (`ComposerLayoutActivity`'s `TYPE_SPACING` bind). The fix, all fork-side, is to drop the allowed minimum to the slider's own floor **before** `set()` so the value lands unclamped, then raise it to the real floor **after** — never edit `SeekBarView`/`SlideIntChooseView` for it.
 
 *(Established 2026-09-06, #composer-spacing.)*
+
+## `Tools/scripts/requirements.txt` is installed by every publish build, so anything added there taxes the APK pipeline
+
+`staging.yml` runs `python -m pip install -r Tools/scripts/requirements.txt` immediately before invoking `upload.py`, the script that posts a finished build to Telegram (`.github/workflows/staging.yml:454-456`). That requirements file exists for `upload.py` alone — it pins the pyrogram client and its crypto extension, nothing else. Any dependency added to it is therefore downloaded and installed on **every** publish build, including builds that never touch the tool that needs it.
+
+This is not visible from `requirements.txt` itself, which looks like a general-purpose manifest for `Tools/scripts/`. It is not. When the README wall compositor needed Pillow, the dependency went into a separate `Tools/scripts/requirements-images.txt` specifically to keep it off the build path; that file carries the reasoning inline, but only someone already editing it would see it.
+
+Before adding a Python dependency anywhere under `Tools/scripts/`, decide which file it belongs in: the CI-installed one, or a separate manifest installed by hand. Getting it wrong costs build minutes on every publish, permanently, for no benefit.
+
+*(Established 2026-09-06, #docs, PR #294.)*
+
+## `Path.is_absolute()` is `False` for Windows drive-relative paths, so confinement checks need `path.anchor`
+
+A path like `C:foo.png` has a drive but no root, so Python reports `Path("C:foo.png").is_absolute()` as `False` on Windows. Joining it does **not** behave like a relative path, though: `PureWindowsPath.__truediv__` replaces the drive component, so `out_dir / "C:foo.png"` silently discards `out_dir` entirely.
+
+Any guard written as "reject absolute paths, then join" therefore lets drive-relative values straight through and writes outside the directory it was meant to confine. The correct test is `path.anchor`, which is `"C:"` for exactly these values and empty for a genuine relative path.
+
+Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
+
+*(Established 2026-09-06, #docs, PR #294.)*
