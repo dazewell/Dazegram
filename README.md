@@ -29,7 +29,7 @@ This README covers the highlights. The full list, with what each one does, is in
 **Chat privacy:** Hide a chat's last message from the list, or lock the whole chat behind your passcode — your call, per chat. Turn on disguise notifications and incoming alerts show a cover instead of the real sender and message.
 
 <p align="center">
-<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic sync alert instead of the real sender and message.">
+<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
 </p>
 
 **Video messages:** Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.

@@ -83,7 +83,7 @@ caption = "Your call, per chat"
 
 [[wall.panel]]
 source = "chat-privacy-disguise-notification.png"
-crop = [0, 0, 500, 270]
+crop = [0, 0, 510, 202]
 caption = "Or disguise the alert"
 
 [[wall]]
@@ -119,7 +119,7 @@ caption = "Set up before you record"
 
 [[wall.panel]]
 source = "video-message-preview-scrub-midpoint.png"
-crop = [0, 390, 1080, 1350]
+crop = [0, 1600, 1080, 2192]
 caption = "Scrub the preview"
 
 [[wall.panel]]
