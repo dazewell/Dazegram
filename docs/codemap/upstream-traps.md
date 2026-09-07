@@ -733,6 +733,6 @@ A path like `C:foo.png` has a drive but no root, so Python reports `Path("C:foo.
 
 Any guard written as "reject absolute paths, then join" therefore lets drive-relative values straight through and writes outside the directory it was meant to confine. The correct test is `path.anchor`, which is `"C:"` for exactly these values and empty for a genuine relative path.
 
-Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
+Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
