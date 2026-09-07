@@ -135,7 +135,7 @@ The schedule picker — for a new message, or from Reschedule — also has a *Se
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 
-Tap the bookmark icon in the schedule picker to remember your schedule offset — new messages then default to that offset instead of 10 minutes ahead. Reschedule and Edit-schedule pickers get the same delay slider, but keep opening on the message's existing time unless you drag it. Turn the bookmark off to revert to normal behavior.
+Tap the bookmark icon in the schedule picker to remember your schedule offset — new messages then default to that offset instead of 10 minutes ahead. Reschedule and Edit schedule pickers get the same delay slider, but keep opening on the message's existing time unless you drag it. Turn the bookmark off to revert to normal behavior.
 
 ### Tidier scheduled selection bar <!-- #scheduled-selection-toolbar -->
 
@@ -187,7 +187,7 @@ When camera mode is set to Ask, the camera choice popup has an External Micropho
 
 ### Infinite video message <!-- #infinite-video -->
 
-*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. In a scheduled chat (camera mode set to Ask), each stitched segment is scheduled a couple of minutes after the one before it. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
+*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. In a scheduled chat (camera mode set to Ask), each stitched segment is scheduled 2 minutes after the one before it. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
 
 ### Warning before a round video message hits its limit <!-- #video-limit-warning -->
 
