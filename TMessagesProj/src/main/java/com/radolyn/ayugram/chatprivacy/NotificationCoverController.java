@@ -730,7 +730,7 @@ public final class NotificationCoverController {
                 p.edit().putString(key, id).apply();
             }
         }
-        ensureAlertChannel(id, personaLabel(personaId));
+        ensureAlertChannel(id, LocaleController.formatString(R.string.NaxCoverAlertChannelName, personaLabel(personaId)));
         return id;
     }
 

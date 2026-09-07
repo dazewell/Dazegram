@@ -673,6 +673,7 @@
     <string name="NaxCoverAlertEnabledHint">This chat\'s cover will alert like a normal notification now.</string>
     <string name="NaxCoverAlertDisabledHint">This chat\'s cover is quiet again.</string>
     <string name="NaxCoverAlertFailedHint">Couldn\'t turn on alerts for this cover.</string>
+    <string name="NaxCoverAlertChannelName">%1$s (alerting)</string>
     <string name="NaxCoverRowTitle">Cover</string>
     <string name="NaxCoverPreviewTitle">Preview notification</string>
     <string name="NaxCoverPreviewPosted">Preview notification posted.</string>
