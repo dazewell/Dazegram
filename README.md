@@ -8,7 +8,7 @@ This README covers the highlights. The full list, with what each one does, is in
 
 ## Highlights
 
-**Time zones:** Stop doing the math in your head. Set a chat or group's time zone once from its profile screen, and their local time is simply there in the header every time you open it. Tap it to line up a moment across both zones and drop it straight into your message.
+**Time zones:** Stop doing the math in your head. Set a chat or group's time zone once from its profile screen, and their local time sits in the header and beside every message — so you can see what time it was for them when they said it. Tap it to line up a moment across both zones and drop it straight into your message.
 
 <p align="center">
 <img src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: the hour-comparison grid with the message-format token chips, the range picker with both accounts' hours, the schedule-message sheet split between your time and theirs, and the chat header clock pill next to messages showing dual local times.">
