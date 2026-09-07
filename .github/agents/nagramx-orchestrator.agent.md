@@ -245,6 +245,10 @@ conditional.** If a paused session is waiting for plan approval, first confirm
 with `get_session` that it is actually a `nagramx-implementer` leaf; only then
 unblock it with `respond_to_session_plan` — dazewell asked implementer sessions
 to run unattended, so a real implementer should never stall waiting for a human.
+**If `get_session` shows it is no longer paused for plan approval, do not call
+`respond_to_session_plan` at all** — the session already moved on (or another
+turn already answered it); that is normal progress, not a tool problem to
+retry or double-check.
 **A child *orchestrator* paused in plan mode is a dispatch error, not something
 to approve** — it should always have been dispatched `kickoff.mode: autopilot`,
 so blanket-approving it would paper over a broken dispatch. Abort and
@@ -683,7 +687,10 @@ specialist reports **verbatim** and lead with the fixed block:
 ```
 Slug:           <slug>
 Branch:         <YYYY-MM-DD>_<slug>   (use verbatim — do not re-derive the date;
-                  child renames to this with `rename_branch` before touching a file)
+                  child renames to this with `rename_branch` before touching a file.
+                  If the tool returns it with `_` flattened to `-`, that is expected
+                  kebab-case normalization, not a failure — do not retry the rename
+                  or re-derive anything to "fix" it; both separators are valid.)
 Compile gate:   local | CI-only       (decided here; you have nobody to ask)
 User-visible:   yes/no  -> FEATURES.md entry required under "## <section>"
 Codemap:        required | not required   (judged on what the work *learned*,
