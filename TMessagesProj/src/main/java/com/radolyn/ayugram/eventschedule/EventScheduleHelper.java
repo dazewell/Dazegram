@@ -3,6 +3,7 @@ package com.radolyn.ayugram.eventschedule;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -24,7 +25,6 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import org.telegram.messenger.DialogObject;
-import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
@@ -273,43 +273,49 @@ public final class EventScheduleHelper {
         }
 
         private static final class DisclosureHeaderCell extends TextSettingsCell {
-            private final ImageView arrowView;
             private CharSequence titleText = "";
             private CharSequence summaryText = "";
             private boolean expanded;
+            private boolean initialized;
+            private float arrowRotation;
+            private ValueAnimator arrowAnimator;
 
             DisclosureHeaderCell(Context context) {
                 super(context, 21);
                 setBackground(Theme.getSelectorDrawable(false));
                 setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
-                setTextValueColor(Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2));
-                if (LocaleController.isRTL) {
-                    getValueTextView().setPadding(dp(26), 0, 0, 0);
-                } else {
-                    getValueTextView().setPadding(0, 0, dp(26), 0);
-                }
-
-                arrowView = new ImageView(context);
-                arrowView.setScaleType(ImageView.ScaleType.CENTER);
-                arrowView.setScaleX(0.6f);
-                arrowView.setScaleY(0.6f);
-                arrowView.setImageResource(R.drawable.arrow_more);
-                arrowView.setColorFilter(new PorterDuffColorFilter(
-                        Theme.getColor(Theme.key_windowBackgroundWhiteGrayText2), PorterDuff.Mode.SRC_IN));
-                addView(arrowView, LayoutHelper.createFrameRelatively(20, 20, Gravity.CENTER_VERTICAL | Gravity.END));
             }
 
             void bind(CharSequence title, CharSequence summary, boolean expanded) {
+                boolean stateChanged = initialized && this.expanded != expanded;
                 this.titleText = title;
                 this.summaryText = summary;
                 this.expanded = expanded;
-                setTextAndValue(title, summary, false, expanded);
-                arrowView.animate().cancel();
-                arrowView.animate().rotation(expanded ? 180f : 0f)
-                        .setDuration(340)
-                        .setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT)
-                        .start();
-                setContentDescription(composeAccessibilityText());
+                float targetRotation = expanded ? 180f : 0f;
+                if (arrowAnimator != null) {
+                    arrowAnimator.cancel();
+                    arrowAnimator = null;
+                }
+                if (!initialized) {
+                    initialized = true;
+                    arrowRotation = targetRotation;
+                    applyText();
+                    return;
+                }
+                if (!stateChanged) {
+                    arrowRotation = targetRotation;
+                    applyText();
+                    return;
+                }
+                arrowAnimator = ValueAnimator.ofFloat(arrowRotation, targetRotation);
+                arrowAnimator.setDuration(340);
+                arrowAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+                arrowAnimator.addUpdateListener(animator -> {
+                    arrowRotation = (float) animator.getAnimatedValue();
+                    applyText();
+                });
+                applyText();
+                arrowAnimator.start();
             }
 
             private CharSequence composeAccessibilityText() {
@@ -320,13 +326,24 @@ public final class EventScheduleHelper {
                 return titleText + ", " + summaryText + ", " + state;
             }
 
+            private void applyText() {
+                SpannableStringBuilder titleWithArrow = new SpannableStringBuilder();
+                titleWithArrow.append(titleText).append(' ');
+                int spanStart = titleWithArrow.length();
+                titleWithArrow.append('\uFFFC');
+                ColoredImageSpan arrowSpan = new ColoredImageSpan(R.drawable.arrow_more);
+                arrowSpan.setScale(0.6f, 0.6f);
+                arrowSpan.rotate(arrowRotation);
+                titleWithArrow.setSpan(arrowSpan, spanStart, spanStart + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                setTextAndValue(titleWithArrow, summaryText, false, expanded);
+                setContentDescription(composeAccessibilityText());
+            }
+
             @Override
             public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
                 super.onInitializeAccessibilityNodeInfo(info);
                 info.setClassName(android.widget.Button.class.getName());
                 info.setClickable(true);
-                info.setCheckable(true);
-                info.setChecked(expanded);
                 info.setText(composeAccessibilityText());
             }
         }
