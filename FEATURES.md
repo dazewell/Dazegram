@@ -147,9 +147,9 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 ### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread -->
 
-*Repost as Copy* (off by default, turn it on in settings) re-sends a message without a "Forwarded from" header, keeping its original reply target and quote — media is re-uploaded, so it costs the upload again. After it succeeds, you're offered to delete the originals. To keep both the reply and the "Forwarded from" header without re-uploading, select the message and its reply target and use plain Repost instead.
+*Repost as Copy* (off by default, turn it on in settings) re-sends a message without a "Forwarded from" header, keeping its original reply target and quote — media is re-uploaded, so it costs the upload again. Reposting a single message this way into the same chat offers to delete the original once it succeeds; to keep both the reply and the "Forwarded from" header without re-uploading, select the message and its reply target and use plain Repost instead.
 
-Reposting several messages this way — the selection bar's *NoQuote* button, or Forward with the sender's name hidden — also schedules each one on its own time, three minutes apart, instead of stacking them all on one shared timestamp, so you can reschedule or edit them individually afterwards. This only applies when every item can be reposted as a copy; anything that can't (polls, locations, contacts) sends the whole batch as an ordinary forward on one shared time instead.
+Reposting several messages this way — the selection bar's *NoQuote* button, or Forward with the sender's name hidden — sends them as copies to a chat you pick, without offering to delete the originals, and schedules each one on its own time, three minutes apart, instead of stacking them all on one shared timestamp, so you can reschedule or edit them individually afterwards. This only applies when every item can be reposted as a copy; anything that can't (polls, locations, contacts) sends the whole batch as an ordinary forward on one shared time instead.
 
 ### Pin or number several messages at once <!-- #bulk-actions -->
 
@@ -187,7 +187,7 @@ When camera mode is set to Ask, the camera choice popup has an External Micropho
 
 ### Infinite video message <!-- #infinite-video -->
 
-*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. In a scheduled chat (camera mode set to Ask), each stitched segment is scheduled 2 minutes after the one before it. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
+*Infinite Recording* stitches 60-second round video message segments end to end instead of stopping at the usual cap. Toggle it from the camera overlay while recording — off by default, and unavailable during slow mode, paid messages, secret chats, or view-once. In a scheduled chat (camera mode set to Ask), the first segment needs at least 3 minutes' lead time (rather than the stock 1 minute) so each following segment can keep its 2-minute spacing. N-Settings → Chat → Camera → *Infinite Recording cap* sets how long it can run before it stops itself: 10 (default), 15, 20, 30, 60 minutes, or Unlimited.
 
 ### Warning before a round video message hits its limit <!-- #video-limit-warning -->
 
