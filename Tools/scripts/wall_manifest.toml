@@ -43,33 +43,96 @@ output_dir = "docs/images"             # committed composited output
 output = "hero.png"
 
 [[wall.panel]]
-source = "time-zone-sheet-point-in-time.jpg"
-crop = [0, 834, 1080, 2354]
+source = "time-zone-sheet-point-in-time.png"
+crop = [0, 662, 1080, 2192]
 caption = "Compare hours"
 
 [[wall.panel]]
-source = "time-zone-sheet-range-selected.jpg"
-crop = [0, 732, 1080, 2354]
+source = "time-zone-sheet-range-selected.png"
+crop = [0, 566, 1080, 2192]
 caption = "Pick a range"
 
 [[wall.panel]]
-source = "time-zone-schedule-peer-tab.jpg"
-crop = [0, 888, 1080, 2354]
+source = "time-zone-schedule-peer-tab.png"
+crop = [0, 624, 1080, 2192]
 caption = "Schedule for them"
 
 [[wall.panel]]
-source = "generic-chat-page-time-zone-pill-time-in-chat-replies.jpg"
-crop = [0, 0, 1080, 970]
+source = "time-zone-chat-header-pill-and-message-time.png"
+crop = [0, 0, 1080, 1010]
 caption = "See it in the chat"
-# This crop is a real conversation; blur out the avatar photo and every
-# real name/message line so only the UI chrome (bubble shapes, timestamps)
-# stays legible. Kept as one rect per message bubble rather than per line,
-# matching the box-shaped blur the previous hand-made hero.png used.
+# This crop is a real conversation; blur out the reply-quote author name
+# (red text) so only the UI chrome (header pill, dual timestamps) stays
+# legible. Everything else in the shot is throwaway test content.
 blur = [
-    [930, 100, 1080, 265],   # header avatar photo + story-ring badge
-    [385, 260, 670, 320],    # "Hey what's up" sent bubble text
-    [10, 340, 775, 670],     # received bubble: Pickle Dill quote + reply
-    [220, 690, 1075, 960],   # sent bubble: dazewell quote + reply
+    [40, 495, 300, 560],   # reply-quote author name
+]
+
+[[wall]]
+output = "chat-privacy.png"
+
+[[wall.panel]]
+source = "chat-privacy-hidden-vs-normal-chat-list.png"
+crop = [0, 0, 1080, 1150]
+caption = "Hidden from the list"
+
+[[wall.panel]]
+source = "chat-privacy-sheet-both-switches-on.png"
+crop = [0, 790, 1080, 1858]
+caption = "Your call, per chat"
+
+[[wall.panel]]
+source = "chat-privacy-disguise-notification.png"
+crop = [0, 0, 510, 202]
+caption = "Or disguise the alert"
+
+[[wall]]
+output = "composer.png"
+
+[[wall.panel]]
+source = "composer-toolbar-live-in-chat-text-selected.png"
+crop = [0, 0, 1080, 1345]
+caption = "Actions under the field"
+
+[[wall.panel]]
+source = "composer-layout-editor-drag-list.png"
+crop = [0, 545, 1080, 1678]
+caption = "Arrange it yourself"
+
+[[wall.panel]]
+source = "composer-layout-editor-sliders.png"
+crop = [0, 0, 1080, 1445]
+caption = "Size and spacing"
+
+[[wall.panel]]
+source = "fullscreen-input-expanded.png"
+crop = [0, 140, 1080, 1330]
+caption = "Expand to full screen"
+
+[[wall]]
+output = "video-messages.png"
+
+[[wall.panel]]
+source = "pre-video-message-options-infinite-recording-and-external-mic.jpg"
+crop = [0, 900, 1080, 2010]
+caption = "Set up before you record"
+
+[[wall.panel]]
+source = "video-message-preview-scrub-midpoint.png"
+crop = [0, 1600, 1080, 2192]
+caption = "Scrub the preview"
+
+[[wall.panel]]
+source = "video-message-closed-captions-playback.png"
+crop = [0, 700, 1080, 1930]
+caption = "Captions on playback"
+# This clip is a real person's face; blur it so the person is unidentifiable.
+# The panel's whole point is the match between the video's burned-in captions
+# and our transcription bubble below, so both must stay legible -- the blur
+# rectangle is scoped tightly to the face and clears the caption bar by a
+# wide margin.
+blur = [
+    [225, 760, 610, 1280],   # face only
 ]
 
 [[wall]]

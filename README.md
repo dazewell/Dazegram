@@ -8,43 +8,37 @@ This README covers the highlights. The full list, with what each one does, is in
 
 ## Highlights
 
-<table>
-<tr>
-<td colspan="2" valign="top">
-<strong>Time zones:</strong> Set a time zone on any chat or group and see their local time right in the header. Tap it to line up a moment across both zones and drop it straight into your message.
+**Time zones:** Stop doing the math in your head. Set a chat or group's time zone once from its profile screen, and their local time sits in the header and beside every message — so you can see what time it was for them when they said it. Tap it to line up a moment across both zones and drop it straight into your message.
+
 <p align="center">
-<img width="560" src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: comparing hours side by side on an hour grid, picking a time range, scheduling a message for the other person's time, and the converted time showing up in the chat header and next to a message.">
+<img src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: the hour-comparison grid with the message-format token chips, the range picker with both accounts' hours, the schedule-message sheet split between your time and theirs, and the chat header clock pill next to messages showing dual local times.">
 </p>
-</td>
-</tr>
-<tr>
-<td valign="top" width="50%">
-<strong>Composer:</strong> Reorder most of the composer's row: emoji, attachments, formatting, schedule, into the layout you actually reach for.
+
+**Composer:** Every editor you use has a toolbar. Messages never did — so Dazegram built one. Cut, copy, paste, formatting, quote, schedule, attach, in blurred glass under the message field. You decide which buttons are there, in what order, and how big.
+
 <p align="center">
-<img width="200" src="docs/images/composer.png" alt="The composer toolbar settings screen, showing size and spacing sliders and the buttons you can drag into the toolbar.">
+<img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the glass action row live in a chat with text selected, the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, and the message field expanded to full screen.">
 </p>
-</td>
-<td valign="top" width="50%">
-<strong>Privacy profiles:</strong> Save named auto-lock timeouts and switch between them with a long-press, instead of digging back into settings every time you need a longer or shorter leash.
+
+**Privacy profiles:** Your auto-lock shouldn't be the same at home as it is on a train. Save named timeouts and switch to one temporarily — for now, for a set stretch of time, or until a given moment. Long-press the Settings tab in the chat list to swap between them.
+
 <p align="center">
-<img width="300" src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them.">
+<img src="docs/images/privacy-profiles.png" alt="Two views of Dazegram's privacy profiles: the passcode settings page listing the Safe and Unsafe auto-lock profiles with their timeouts, and the long-press quick-switch menu for jumping between them.">
 </p>
-</td>
-</tr>
-<tr>
-<td valign="top" width="50%">
-<strong>Video messages:</strong> Record round video messages past Telegram's limit, with a warning buzz before it cuts and captions, once you've set up transcription.
+
+**Chat privacy:** Locking the whole app is a blunt instrument when only one chat is sensitive. Hide a chat's last message from the list, or put the chat itself behind your passcode — your call, per chat, from its ⋯ menu. Turn on disguise notifications and alerts show a cover instead of the real sender and message.
+
 <p align="center">
-<img width="300" src="docs/images/video-messages.png" alt="Two views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, and the redesigned in-recording controls with the zoom slider, camera flip, and send.">
+<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
 </p>
-</td>
-<td valign="top" width="50%">
-<strong>Everyday reliability:</strong> The scheduled-message composer and message editing keep what you typed if you back out by accident, lock the app, or minimize it. Normal composing already autosaves, so nothing changes there.
-<br><br>
-<strong>Private chats:</strong> Hide a chat's last message from the list, or lock the whole chat behind your passcode (which hides it too): your call, per chat.
-</td>
-</tr>
-</table>
+
+**Video messages:** A round message is a video like any other — so it finally behaves like one. Scrub the preview before you send, and keep recording past Telegram's limit, with a buzz to warn you before it cuts. The ones you receive can carry captions too, once transcription is set up.
+
+<p align="center">
+<img src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
+</p>
+
+**Everyday reliability:** Normal composing already saved your draft. Editing a message, scheduling one, and recording a round video didn't — now they do. Back out by accident, lock the app, or switch away mid-recording, and what you had is still waiting when you come back.
 
 There's more: [FEATURES.md](FEATURES.md) has all of it, with what each one does and where to find it in the app.
 
