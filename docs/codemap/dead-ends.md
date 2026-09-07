@@ -390,6 +390,28 @@ atlas producer invariant that this fix changes.
 
 *(Established 2026-09-04.)*
 
+## "The base fork preserved the encoder bitrate for force-muted GIF-panel sends"
+
+Disproven -- it dropped the mute instead. During PR #300 review it was argued
+that the new serialisation regressed edited GIF-panel sends by losing their
+encoder bitrate, on the premise that `origin/dev` preserved it. Tracing the
+full round trip disproves the premise. `ChatActivityEnterView.java:14813-14817`
+force-sets `muted = true` on those sends, and such a record genuinely can carry
+a positive bitrate (the `SELECT_TYPE_GIF` editor hides the mute button and
+quality chip -- `PhotoViewer.java:15466`, `:15477` -- so `muteVideo` is false
+and `PhotoViewer.java:10235` writes the tier bitrate). On the base fork
+`getString()` wrote that positive bitrate into the legacy slot, so the very
+next `parseString()` inferred `muted = false` and the forced mute was silently
+discarded before the transcoder ever saw it -- the audio survived. The base
+fork did not preserve bitrate *and* mute; it preserved bitrate *instead of*
+mute. Anyone tempted to "restore the old behaviour" by writing a real bitrate
+into the legacy slot for a muted record would be reintroducing that audio
+leak. The fix taken in PR #300 keeps the legacy slot at `-1` and restores the
+carried bitrate from the version-12 extension for any muted record with a
+valid bool.
+
+*(Established 2026-09-06, during the silent-video feature build, PR #300.)*
+
 ## "Our own settings page can use real Material Components / Material 3 widgets, since it's fork-owned"
 
 Not viable under the fork's current dependency and theming architecture. Not a
