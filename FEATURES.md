@@ -131,7 +131,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval (give messages three minutes or more of spacing — Telegram's own scheduler can run a minute or two late).
 
-The schedule picker — for a new message, or from Reschedule — also has a *Send on event* row: set a trigger (up to five text patterns as glob or regex, a voice match, or a video match) and the message sends the moment it fires instead of waiting for its scheduled fallback time. Several messages can share one trigger and send one after another in order. Manage every trigger currently armed from the Chats nav button's overflow menu → *Message Triggers*, where you can see what each is waiting for and remove one.
+The schedule picker — for a new message, or from Reschedule — also has a *Send on event* row: set a trigger (up to five text patterns as glob or regex, a voice match, or a video match) and the message sends the moment it fires instead of waiting for its scheduled fallback time. Several messages can share one trigger and send one after another in order. A disguised chat (see *Disguise notifications* above) shows no heads-up for an armed or fired trigger, so it leaks no trigger activity. Manage every trigger currently armed from the Chats nav button's overflow menu → *Message Triggers*, where you can see what each is waiting for and remove one.
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 

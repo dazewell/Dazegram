@@ -52,7 +52,12 @@ the shipped history and code may not.
 
 Your brief names the branch as `<YYYY-MM-DD>_<slug>`. **Use that name verbatim
 — do not re-derive the date**, because the orchestrator's verification commands
-key off it and its day and yours may differ.
+key off it and its day and yours may differ. **If `rename_branch` returns the
+name with `_` flattened to `-` (e.g. `2026-08-05-video-cc`), that is expected,
+not a failure** — the tool normalizes to kebab-case and is one-shot, so do not
+retry the rename or re-derive anything to "fix" it. See `nagramx-branch-flow`'s
+"Branch naming" section: both separators are valid and equal everywhere in the
+stack.
 
 If your session already put you on a dedicated worktree and branch, rename the
 branch to that name. Prefer the `rename_branch` tool where you have it,

@@ -7,6 +7,8 @@ import android.content.Intent;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
+import com.radolyn.ayugram.chatprivacy.NotificationCoverController;
+
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.LocaleController;
@@ -42,6 +44,8 @@ final class EventScheduleNotifier {
         try {
             Context context = ApplicationLoader.applicationContext;
             if (context == null) return;
+            // Disguised chats must not leak activity via the shade either, so skip the heads-up entirely.
+            if (NotificationCoverController.isCovered(account, dialogId)) return;
 
             String name = resolveName(account, dialogId);
             int id = idBase + (account << 24) + (int) (dialogId ^ (dialogId >>> 32));
