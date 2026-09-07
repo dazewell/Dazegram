@@ -90,11 +90,18 @@ def resolve(event_name, head_sha, repo, token, pr_event=None):
         }
 
     labels = {label.get("name") for label in (pr.get("labels") or []) if isinstance(label, dict)}
-    # Only a dispatch can be substituting for a dropped labeled event -- a
-    # push to dev is never "for" a PR in the sense that would strand a label.
-    unlabel_pr_number = pr.get("number") if event_name == "workflow_dispatch" and "build-apk" in labels else None
+    # Only a dispatch can be a fallback for a dropped labeled event -- a push
+    # to dev is never "for" a PR in the sense that would strand a label, and
+    # is never a preview build either, even on the (fast-forward, not
+    # merge-commit) edge case where its landed SHA happens to equal some
+    # other still-open PR's head exactly. pr_number/title/body are still
+    # resolved here so a push's Telegram caption keeps its PR header link,
+    # exactly like before this file existed -- only build_type and label
+    # cleanup are dispatch-only.
+    is_dispatch = event_name == "workflow_dispatch"
+    unlabel_pr_number = pr.get("number") if is_dispatch and "build-apk" in labels else None
     return {
-        "build_type": "test",
+        "build_type": "test" if is_dispatch else "staging",
         "pr_number": pr.get("number"),
         "pr_title": pr.get("title") or "",
         "pr_body": pr.get("body") or "",

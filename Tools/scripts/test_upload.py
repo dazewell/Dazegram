@@ -2,7 +2,7 @@
 the trailing #test/#rc hashtag always survives Telegram's 1024-unit caption
 budget regardless of how long the commit message or AI summary are.
 
-Run with: python -m unittest Tools/scripts/test_upload.py
+Run with: python -m unittest Tools.scripts.test_upload
 
 upload.py imports pyrogram at module level (Client, error types, InputMediaDocument)
 purely for typing/wiring that these tests never exercise (no network send here),

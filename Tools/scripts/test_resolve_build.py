@@ -1,5 +1,5 @@
 """Regression coverage for resolve_build.py's classification and label-cleanup
-decisions. Run with: python -m unittest Tools/scripts/test_resolve_build.py
+decisions. Run with: python -m unittest Tools.scripts.test_resolve_build
 (no network, no GitHub Actions runtime needed -- find_associated_pr is
 monkeypatched so these exercise pure decision logic only).
 """
@@ -69,15 +69,20 @@ class ResolveTests(unittest.TestCase):
         self.assertEqual(result["build_type"], "staging")
         self.assertIsNone(result["unlabel_pr_number"])
 
-    def test_push_never_queues_unlabel_even_if_pr_resolves(self):
-        # A push landing a PR's squashed commit onto dev can still resolve an
-        # associated PR (usually now-merged/closed and filtered out anyway,
-        # but guard the push branch explicitly): a push is never "for" a PR
-        # in the sense that would strand a label, so it must never mutate one.
+    def test_push_is_always_staging_even_if_an_open_pr_resolves(self):
+        # A push to dev is never a preview build, full stop -- not even on the
+        # edge case where its landed SHA happens to equal some other still-
+        # open PR's head exactly (e.g. a fast-forward push rather than a
+        # merge commit). Only a dispatch fallback can classify as test or
+        # strand a label; a push never mutates one either way. pr_number is
+        # still populated from the resolved PR so the Telegram caption keeps
+        # its PR header link for a push-triggered build, same as before this
+        # file existed.
         pr = make_pr(number=316, head_sha="deadbee", labels=("build-apk",))
         with mock.patch.object(resolve_build, "find_associated_pr", return_value=pr):
             result = resolve_build.resolve("push", "deadbee", "dazewell/Dazegram", "tok")
-        self.assertEqual(result["build_type"], "test")
+        self.assertEqual(result["build_type"], "staging")
+        self.assertEqual(result["pr_number"], 316)
         self.assertIsNone(result["unlabel_pr_number"])
 
     def test_find_associated_pr_filters_closed_pr(self):
