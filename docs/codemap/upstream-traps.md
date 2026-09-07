@@ -6,8 +6,8 @@ Re-verify the citation before relying on it — see the README.
 
 ## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
-`NotificationCoverController.ensureChannel` (`NotificationCoverController.java:665-678`)
-no-ops the moment `nm.getNotificationChannel(id) != null` (line 668), because
+`NotificationCoverController.ensureChannel` (`NotificationCoverController.java:665-679`)
+no-ops the moment `nm.getNotificationChannel(id) != null` (line 669), because
 `createNotificationChannel` on an existing id is a silent no-op on Android and
 there is no API for an app to change an existing channel's importance in
 place, in either direction. Only the *user* has that control, freely, in
@@ -26,7 +26,7 @@ silent one - the app can't touch the existing channel's importance at all,
 and minting a new id per *dialog* instead of per *persona* would have meant
 migrating (delete + recreate) any channel a dialog already had, which throws
 away anything the user tuned for it in Android's own notification settings.
-`deleteChannels` (`NotificationCoverController.java:1283-1300`) has exactly
+`deleteChannels` (`NotificationCoverController.java:1283-1302`) has exactly
 one call site (`NotificationsController.java:409`, immediately followed by a
 full `editor.clear()`) and isn't shaped for a targeted single-channel
 migration - it wipes every cover channel for the account at once, which is
