@@ -4,30 +4,33 @@ Non-obvious behaviour in base-fork code that has already bitten someone.
 What the trap is, where it lives, and what it costs if you miss it.
 Re-verify the citation before relying on it — see the README.
 
-## A notification channel's importance is fixed at creation; only the app can raise it, and only via a new channel id
+## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
 `NotificationCoverController.ensureChannel` (`NotificationCoverController.java:665-678`)
-no-ops the moment `nm.getNotificationChannel(id) != null` (line 668), so once a
-channel exists at some importance, nothing short of the user manually lowering
-it (or the OS on channel deletion) can ever change that importance again -
-`createNotificationChannel` on an existing id is a silent no-op on Android, and
-there is no API to raise an existing channel's importance in place. The only
-way for the app itself to offer a *higher*-alerting variant of an
+no-ops the moment `nm.getNotificationChannel(id) != null` (line 668), because
+`createNotificationChannel` on an existing id is a silent no-op on Android and
+there is no API for an app to change an existing channel's importance in
+place, in either direction. Only the *user* has that control, freely, in
+either direction, through Android's own per-app notification settings - the
+app is locked out entirely, not merely restricted to lowering. The only way
+for the app itself to offer a *higher*-alerting variant of an
 already-shipped channel is a brand-new channel id; the old one is left
-untouched, in whatever state the user's own Android settings put it in.
+completely untouched, in whatever state the user's own Android settings put
+it in.
 
 This is why the per-chat "alert normally" toggle for disguised chats
 (`#disguise-alerting`) mints a *second* channel per persona
 (`NotificationCoverController.alertChannelId`, `NotificationCoverController.java:722-735`,
 `IMPORTANCE_DEFAULT` + vibration) instead of trying to raise the existing
-silent one - raising it in place isn't possible, and minting a new id per
-*dialog* instead of per *persona* would have meant migrating (delete +
-recreate) any channel a dialog already had, which throws away anything the
-user tuned for it in Android's own notification settings. `deleteChannels`
-(`NotificationCoverController.java:1283-1300`) has exactly one call site
-(`NotificationsController.java:409`, immediately followed by a full
-`editor.clear()`) and isn't shaped for a targeted single-channel migration -
-it wipes every cover channel for the account at once, which is only safe
+silent one - the app can't touch the existing channel's importance at all,
+and minting a new id per *dialog* instead of per *persona* would have meant
+migrating (delete + recreate) any channel a dialog already had, which throws
+away anything the user tuned for it in Android's own notification settings.
+`deleteChannels` (`NotificationCoverController.java:1283-1300`) has exactly
+one call site (`NotificationsController.java:409`, immediately followed by a
+full `editor.clear()`) and isn't shaped for a targeted single-channel
+migration - it wipes every cover channel for the account at once, which is
+only safe
 because its one caller is a full account-level teardown.
 
 *(Established 2026-09-06, `#disguise-alerting`.)*
