@@ -120,7 +120,12 @@ public final class ScheduledReplyTargetHelper extends BaseController {
         if (EventScheduleStore.findByMessage(account, message.getDialogId(), message.getId()) != null) {
             return false;
         }
-        return MessageHelper.getInstance(account).canSendMessageAsCopy(message, null);
+        MessageHelper helper = MessageHelper.getInstance(account);
+        // NagramX: FEATURES.md promises these rows are hidden for media that's fallen out of the
+        // local cache, not shown-then-refused -- canSendMessageAsCopy alone doesn't check local
+        // file presence, so this needs its own check. Re-checked again at confirm time in
+        // requeue() since eviction is genuinely time-variant between menu-open and confirm.
+        return helper.canResendLocally(message) && helper.canSendMessageAsCopy(message, null);
     }
 
     // Mirrors just the staleness half of MessageObject.canEditMessage's scheduled gate
