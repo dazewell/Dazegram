@@ -57,7 +57,7 @@ It takes effect on the next notification for that chat, not retroactively — a 
 
 ## Composer and input
 
-### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles -->
+### Composer toolbar <!-- #composer-toolbar --> <!-- #composer-bubbles --> <!-- #toggle-formatting -->
 
 The separate glass text pill holds Send or mic at its trailing end. A row of action bubbles sits below it, drawn in the same blurred glass. Quote, Spoiler, Select All, and Clear stay in the toolbar and enable when text is selected or the field has text. Light and dark theme share one base transparency formula for this glass; how much wallpaper shows through each is set separately (see Composer glass transparency below), rather than light theme carrying its own fixed, noticeably more opaque override.
 
