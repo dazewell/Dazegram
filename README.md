@@ -32,7 +32,7 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
 </p>
 
-**Video messages:** Record round messages past Telegram's limit — a buzz warns you before it cuts, and you can scrub the preview before sending. On the receiving end, round messages others send you can show captions, once you've set up transcription.
+**Video messages:** A round message is a video like any other — so it finally behaves like one. Scrub the preview before you send, and keep recording past Telegram's limit, with a buzz to warn you before it cuts. The ones you receive can carry captions too, once transcription is set up.
 
 <p align="center">
 <img src="docs/images/video-messages.png" alt="Three views of Dazegram's video messages: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording preview with the scrub timeline, and captions burned into video playback.">
