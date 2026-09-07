@@ -114,7 +114,7 @@ public final class ScheduledReplyTargetHelper extends BaseController {
         if (message.messageOwner.schedule_repeat_period != 0) {
             return false;
         }
-        if (isImminentOrPast(account, message.messageOwner)) {
+        if (isStaleOrSent(account, message.messageOwner)) {
             return false;
         }
         if (EventScheduleStore.findByMessage(account, message.getDialogId(), message.getId()) != null) {
@@ -128,11 +128,10 @@ public final class ScheduledReplyTargetHelper extends BaseController {
         return helper.canResendLocally(message) && helper.canSendMessageAsCopy(message, null);
     }
 
-    // Mirrors just the staleness half of MessageObject.canEditMessage's scheduled gate
-    // (MessageObject.java:11786), without that method's other edit-only restrictions (forwarded /
-    // round-video / sticker exclusions don't belong here) -- this is the same "about to fire"
-    // window the sibling Edit/Reschedule rows already refuse on.
-    private static boolean isImminentOrPast(int account, TLRPC.Message message) {
+    // Mirrors MessageObject.canEditMessage's scheduled gate (MessageObject.java:11786): refuses
+    // once the message is already stale/effectively sent (date more than ~60s in the past), not an
+    // imminent-future cutoff -- same staleness window the sibling Edit/Reschedule rows use.
+    private static boolean isStaleOrSent(int account, TLRPC.Message message) {
         return message.date < ConnectionsManager.getInstance(account).getCurrentTime() - 60;
     }
 
@@ -141,10 +140,14 @@ public final class ScheduledReplyTargetHelper extends BaseController {
         if (!BulletinFactory.canShowBulletin(fragment)) {
             return;
         }
+        // NagramX: negative duration means Bulletin never schedules its own auto-hide
+        // (Bulletin.java:398) -- picking a reply target can take arbitrarily long, so this must
+        // persist until confirm/abandon explicitly hides it, not the ~2.75s default.
         Bulletin bulletin = BulletinFactory.of(fragment).createSimpleBulletin(
                 R.raw.chats_infotip,
                 LocaleController.getString(R.string.ScheduledReplyTargetConfirmHint),
                 LocaleController.getString(R.string.ScheduledReplyTargetConfirmButton),
+                -1,
                 onConfirm);
         bulletin.show();
         pick.activeBulletin = bulletin;
@@ -171,7 +174,7 @@ public final class ScheduledReplyTargetHelper extends BaseController {
         Log.i("NagramX", "NAX_SMOKE_scheduled-reply-target BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
                 + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " kind=" + kind);
         MessageObject original = scheduledFragment.messagesDict[0].get(originalMessageId);
-        if (original == null || original.messageOwner == null || isImminentOrPast(account, original.messageOwner)) {
+        if (original == null || original.messageOwner == null || isStaleOrSent(account, original.messageOwner)) {
             showError(scheduledFragment, R.string.ScheduledReplyTargetAlreadyGone);
             return;
         }

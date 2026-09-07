@@ -51424,9 +51424,10 @@ public class ChatActivity extends BaseFragment implements
                     icons.add(R.drawable.msg_edit);
                 }
                 // NagramX: #scheduled-reply-target. Rows are hidden outright when any gate fails
-                // (toggle off, album, repeating, armed trigger, unsupported content, imminent fire) --
-                // never shown-then-refused-on-tap. That bulletin is reserved for the async-only races
-                // (target/original gone by confirm) that can't be precomputed here.
+                // (toggle off, album, repeating, armed trigger, unsupported content, already stale
+                // per the same window Edit/Reschedule use) -- never shown-then-refused-on-tap. That
+                // bulletin is reserved for the async-only races (target/original gone by confirm)
+                // that can't be precomputed here.
                 if (chatMode == MODE_SCHEDULED && ScheduledReplyTargetHelper.isEligible(currentAccount, selectedObject, selectedObjectGroup)) {
                     boolean hasReply = selectedObject.messageOwner.reply_to != null;
                     items.add(LocaleController.getString(hasReply ? R.string.ScheduledReplyTargetChange : R.string.ScheduledReplyTargetSet));
