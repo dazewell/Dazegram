@@ -31,6 +31,7 @@ import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SeekBarView;
 
 import java.util.ArrayList;
@@ -572,7 +573,7 @@ public final class EventScheduleHelper {
         }
 
         void openSheet(Context context) {
-            BottomBuilder builder = new BottomBuilder(context);
+            BottomBuilder builder = new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true);
             builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
 
             final boolean[] typeExpanded = {false};
@@ -583,9 +584,10 @@ public final class EventScheduleHelper {
             final Runnable[] collapseTextGroup = new Runnable[]{() -> {}};
 
             final CollapseTextCell typeHeader = new CollapseTextCell(context, null);
-            typeHeader.setColor(Theme.key_dialogTextBlack);
+            typeHeader.setColor(Theme.key_dialogTextBlue2);
             typeHeader.setBackground(Theme.createSelectorDrawable(
                     Theme.getColor(Theme.key_dialogButtonSelector), Theme.RIPPLE_MASK_ALL));
+            typeHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
             builder.addCustomView(typeHeader);
 
             TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null,
@@ -621,21 +623,24 @@ public final class EventScheduleHelper {
             typeGroup.add(textCell);
 
             final CollapseTextCell textHeader = new CollapseTextCell(context, null);
-            textHeader.setColor(Theme.key_dialogTextBlack);
+            textHeader.setColor(Theme.key_dialogTextBlue2);
             textHeader.setBackground(Theme.createSelectorDrawable(
                     Theme.getColor(Theme.key_dialogButtonSelector), Theme.RIPPLE_MASK_ALL));
+            textHeader.setTag(RecyclerListView.TAG_NOT_SECTION);
             builder.addCustomView(textHeader);
-
-            LinearLayout patternArea = new LinearLayout(context);
-            patternArea.setOrientation(LinearLayout.VERTICAL);
-            builder.addCustomView(patternArea);
 
             TextView patternInfo = new TextView(context);
             patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
             patternInfo.setTextColor(Theme.getColor(Theme.key_dialogTextGray3));
             patternInfo.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12);
             patternInfo.setGravity(org.telegram.messenger.LocaleController.isRTL ? Gravity.RIGHT : Gravity.LEFT);
-            patternArea.addView(patternInfo, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 21, 0, 21, 6));
+            patternInfo.setTag(RecyclerListView.TAG_NOT_SECTION);
+            builder.addCustomView(patternInfo);
+            patternInfo.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 21, 0, 21, 6));
+
+            LinearLayout patternArea = new LinearLayout(context);
+            patternArea.setOrientation(LinearLayout.VERTICAL);
+            builder.addCustomView(patternArea);
 
             LinearLayout patternRowsContainer = new LinearLayout(context);
             patternRowsContainer.setOrientation(LinearLayout.VERTICAL);
@@ -814,6 +819,7 @@ public final class EventScheduleHelper {
                     typeGroup.get(i).setVisibility(typeVisibility);
                 }
                 int textVisibility = textExpanded[0] ? View.VISIBLE : View.GONE;
+                patternInfo.setVisibility(textVisibility);
                 patternArea.setVisibility(textVisibility);
                 regexCell.setVisibility(textVisibility);
             };
@@ -943,9 +949,15 @@ public final class EventScheduleHelper {
             delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
             final float initialDelayProgress = startIndex / (float) (delayValues.length - 1);
             org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
-            builder.addCustomView(delayLayout);
+            FrameLayout delayCardContainer = new FrameLayout(context);
+            delayCardContainer.addView(delayLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            builder.addCustomView(delayCardContainer);
 
             if (enabled) {
+                View removeSpacer = builder.addCustomView(new View(context));
+                removeSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+                removeSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+                removeSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, dp(12)));
                 builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                     enabled = false;
                     userTouchedTrigger = true;

@@ -23,11 +23,18 @@ import org.telegram.ui.Cells.TextCell
 import org.telegram.ui.Cells.TextCheckCell
 import org.telegram.ui.Components.EditTextBoldCursor
 import org.telegram.ui.Components.LayoutHelper
+import org.telegram.ui.Components.RecyclerListView
+import org.telegram.ui.Components.SectionsScrollView
 import tw.nekomimi.nekogram.ui.cells.HeaderCell
 import java.util.LinkedList
 
 
-class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor: Int = Theme.getColor(Theme.key_dialogBackground)) {
+class BottomBuilder(
+    val ctx: Context,
+    val needFocus: Boolean = true,
+    val bgColor: Int = Theme.getColor(Theme.key_dialogBackground),
+    val sections: Boolean = false
+) {
     constructor(ctx: Context) : this(ctx, true)
     constructor(ctx: Context, needFocus: Boolean) : this(ctx, needFocus, Theme.getColor(Theme.key_dialogBackground))
 
@@ -35,22 +42,27 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
 
     private var onShowListener: DialogInterface.OnShowListener? = null
 
-    private val rootView = LinearLayout(ctx).apply {
+    private val rootView: LinearLayout = (if (sections) {
+        SectionsScrollView.SectionsLinearLayout(ctx)
+    } else {
+        LinearLayout(ctx)
+    }).apply {
         orientation = LinearLayout.VERTICAL
     }
     private val rtl = (if (LocaleController.isRTL) Gravity.RIGHT else Gravity.LEFT)
 
     init {
+        val scrollView: ScrollView = if (sections) {
+            SectionsScrollView(ctx, rootView, null, true)
+        } else {
+            ScrollView(ctx)
+        }
+        scrollView.isFillViewport = true
+        scrollView.isVerticalScrollBarEnabled = false
+        scrollView.addView(rootView, FrameLayout.LayoutParams(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT))
+
         builder.setCustomView(LinearLayout(ctx).apply {
-
-            addView(ScrollView(ctx).apply {
-
-                addView(this@BottomBuilder.rootView)
-                isFillViewport = true
-                isVerticalScrollBarEnabled = false
-
-            }, LinearLayout.LayoutParams(-1, -1))
-
+            addView(scrollView, LinearLayout.LayoutParams(-1, -1))
         })
     }
 
@@ -59,7 +71,10 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
 
         FrameLayout(ctx).apply {
 
-            setBackgroundColor(bgColor)
+            setBackgroundColor(if (sections) Theme.getColor(Theme.key_windowBackgroundGray) else bgColor)
+            if (sections) {
+                tag = RecyclerListView.TAG_NOT_SECTION
+            }
 
             this@BottomBuilder.rootView.addView(this, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 50, Gravity.LEFT or Gravity.BOTTOM))
 
@@ -96,6 +111,9 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
         headerCell.setText(if (title is String) AndroidUtilities.replaceTags(title) else title)
         subTitle?.also {
             headerCell.setText2(it)
+        }
+        if (sections) {
+            headerCell.tag = RecyclerListView.TAG_NOT_SECTION
         }
         rootView.addView(headerCell, LayoutHelper.createLinear(-1, -2).apply {
             bottomMargin = dp(8f)
@@ -274,6 +292,11 @@ class BottomBuilder(val ctx: Context, val needFocus: Boolean = true, val bgColor
 
     fun create(): BottomSheet {
         return builder.create().also {
+            if (sections) {
+                val gray = Theme.getColor(Theme.key_windowBackgroundGray)
+                it.setBackgroundColor(gray)
+                it.fixNavigationBar(gray)
+            }
             onShowListener?.also(it::setOnShowListener)
         }
     }
