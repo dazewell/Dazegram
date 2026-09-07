@@ -119,8 +119,11 @@ caption = "Set up before you record"
 
 [[wall.panel]]
 source = "video-message-buttons-layout.jpg"
-crop = [0, 1350, 1080, 2354]
+crop = [0, 1590, 1080, 2354]
 caption = "Controls while recording"
+# Starts cleanly below the round preview circle (its bottom edge sits at
+# native y=1583, verified against the source) rather than slicing through
+# it -- this panel is about the control row, not the preview.
 
 [[wall.panel]]
 source = "video-message-preview-scrub-midpoint.png"
@@ -132,28 +135,22 @@ output = "video-watching.png"
 
 [[wall.panel]]
 source = "video-message-player-panel-mute-and-loop.png"
-crop = [0, 140, 1080, 1300]
+crop = [0, 0, 1080, 500]
 caption = "Mute, loop, or speed it up"
-# This clip is a real person's face; the crop already excludes the two
-# real-name reply-quote bubbles further down the chat, but the round video
-# itself is unavoidable here since the player panel we're showing sits
-# right above it, so blur the face the same way the captions panel does.
-blur = [
-    [255, 415, 765, 905],   # face only
-]
+# Cropped above the real face rather than blurred through it: this includes
+# the chat header and the player panel and stops right before the hair
+# begins (verified against the source -- no column has hair/skin above
+# y=506), so no blur or redaction is needed. The player-panel controls are
+# the subject of this panel; the video content underneath isn't.
 
 [[wall.panel]]
 source = "video-message-closed-captions-playback.png"
-crop = [0, 700, 1080, 1930]
+crop = [0, 1300, 1080, 1930]
 caption = "Captions on playback"
-# This clip is a real person's face; blur it so the person is unidentifiable.
-# The panel's whole point is the match between the video's burned-in captions
-# and our transcription bubble below, so both must stay legible -- the blur
-# rectangle is scoped tightly to the face and clears the caption bar by a
-# wide margin.
-blur = [
-    [225, 760, 610, 1280],   # face only
-]
+# Cropped below the real face rather than blurred through it: the face ends
+# around y=1280 (verified against the source), and everything the panel
+# needs -- the burned-in subtitle and the transcription bubble below it --
+# sits well below that, so no blur or redaction is needed.
 
 [[wall]]
 output = "privacy-profiles.png"
