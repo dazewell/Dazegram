@@ -668,6 +668,11 @@
     <string name="NaxCoverSectionTitle">Notifications</string>
     <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
     <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
+    <string name="NaxCoverAlertTitle">Alert normally</string>
+    <string name="NaxCoverAlertSubtitle">Sound, vibration, and your watch fire for this cover, like any other notification. It still shows as the cover, not the real chat.</string>
+    <string name="NaxCoverAlertEnabledHint">This chat\'s cover will alert like a normal notification now.</string>
+    <string name="NaxCoverAlertDisabledHint">This chat\'s cover is quiet again.</string>
+    <string name="NaxCoverAlertFailedHint">Couldn\'t turn on alerts for this cover.</string>
     <string name="NaxCoverRowTitle">Cover</string>
     <string name="NaxCoverPreviewTitle">Preview notification</string>
     <string name="NaxCoverPreviewPosted">Preview notification posted.</string>
