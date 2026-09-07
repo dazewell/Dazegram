@@ -29,8 +29,12 @@ recursing into HeaderCell's inset children (`BottomBuilder.kt:107-127`).
 
 The *Send early on event* sheet now uses a local `DisclosureHeaderCell`
 subclass of `TextSettingsCell` for both collapsible group headers, with summary
-value text, `arrow_more` rotation, and explicit accessibility state text
-(`EventScheduleHelper.java:275-337`). These disclosure rows are section
+value text and explicit accessibility state text
+(`EventScheduleHelper.java:274-346`). The disclosure cue is an inline
+`ColoredImageSpan(R.drawable.arrow_more)` appended to the title text and rotated
+with the same 340ms `EASE_OUT_QUINT` curve when expanded/collapsed, so the cue
+measures with the title in the stock `TextSettingsCell` layout path.
+These disclosure rows are section
 members (not tagged out), so each group header sits inside its card with its
 controls directly beneath it.
 
@@ -44,15 +48,15 @@ card run by class-based exclusion, and hidden/shown with the text group
 
 Divider behavior is now explicit: header dividers draw only while expanded,
 type rows clear the last divider in the group, and regex is always the text
-card's last row with no bottom divider (`EventScheduleHelper.java:858-868`).
+card's last row with no bottom divider (`EventScheduleHelper.java:867-877`).
 Delay UI remains wrapped in a full-width `FrameLayout` so sections treat it as
 one card, and the remove separator now uses literal `12` dp units (no double-dp)
-(`EventScheduleHelper.java:996-1016`).
+(`EventScheduleHelper.java:1015-1035`).
 
 Hidden-group validation behavior remains in the same code path: Done expands a
 collapsed text group before showing row-level invalid-regex feedback, and
 no-condition failure expands actionable groups before the existing toast
-(`EventScheduleHelper.java:1000-1030`).
+(`EventScheduleHelper.java:1059-1089`).
 
 *(Updated 2026-09-07.)*
 
@@ -79,7 +83,7 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197
 
 *(Updated 2026-09-07.)*
 
-## Chat privacy card membership and anchored bulletin wiring
+## Chat privacy card membership and stock bulletin placement
 
 `ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it
 in `SectionsScrollView`, with gray sheet/nav-bar backgrounds applied after
@@ -96,16 +100,14 @@ builder sections path (`ChatPrivacySheet.java:271`).
 The notifications behavior wiring is unchanged in ownership: switch -> 
 `setEnabled(...)` + notifications rebuild, cover picker -> `setPersona(...)` +
 rebuild, preview -> `postPreview(...)` + bulletin feedback
-(`ChatPrivacySheet.java:219-257`, `:397-418`;
+(`ChatPrivacySheet.java:211-242`;
 `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
 
-Bulletin offset logic still captures a base delegate once and installs a
-per-show row-anchored wrapper, but now hardens base resolution so a wrapper
-cannot be captured as its own base if a bulletin fires before open-animation
-completion (`ChatPrivacySheet.java:277-285`, `:309-389`). The wrapper preserves
-base top offset (status-bar fallback), computes bottom offset from row position
-with clamp bounds, and returns `bottomOffsetAnimated() = false`
-(`ChatPrivacySheet.java:330-419`; `Bulletin.java:690-698`, `:743-745`).
+Require password / Disguise / Preview bulletins now call
+`BulletinFactory.of(sheetRef[0].container, rp).createSimpleBulletin(...).show()`
+directly under the existing `sheetRef[0] != null` guards, with no custom
+delegate, offset host, or row-anchor wrapper (`ChatPrivacySheet.java:194-203`,
+`:212-220`, `:236-243`).
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
