@@ -555,16 +555,17 @@ and it archives **only its own direct children** — never a grandchild.
    - **App-managed child session** (the normal case — a session created via
      the app's session tooling, e.g. `create_session`): after 1–5 pass clean,
      call the app's `archive_session` operation **exactly once**, as the
-     final operation. **Never manually run `git worktree remove`,
-     `git worktree prune`, or delete the directory first** — `archive_session`
-     owns stopping the session's CLI process and removing its worktree as one
-     unit, and a manual removal ahead of it is exactly the failure mode that
+     final operation. **Treat it as one-shot and destructive, not a
+     recoverable step** — owns stopping the session's CLI process and
+     removing its worktree as one unit. **Never manually run
+     `git worktree remove`, `git worktree prune`, or delete the directory
+     first** — a manual removal ahead of it is exactly the failure mode that
      motivated this file: the app record is left pointing at a directory that
      no longer has `.git`. If `archive_session` fails, or only partially
-     removes the worktree, **do not retry it, do not manually repair or prune
-     it, and do not force anything through** — report the exact
-     failure/process/handle evidence and leave the app session record intact
-     for manual recovery.
+     removes the worktree, **that failure is terminal, not retryable: do not
+     call it again, do not manually repair or prune it, and do not force
+     anything through** — report the exact failure/process/handle evidence
+     and leave the app session record intact for manual recovery.
    - **Manually managed worktree** (not owned by an app session — e.g. one
      you created yourself with `git worktree add` for a throwaway check):
      after 1–5 pass clean, `git worktree remove`, run from outside the
