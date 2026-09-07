@@ -78,12 +78,12 @@ caption = "Hidden from the list"
 
 [[wall.panel]]
 source = "chat-privacy-sheet-both-switches-on.png"
-crop = [0, 778, 1080, 1860]
+crop = [0, 790, 1080, 1858]
 caption = "Your call, per chat"
 
 [[wall.panel]]
 source = "chat-privacy-disguise-notification.png"
-crop = [0, 0, 550, 270]
+crop = [0, 0, 500, 270]
 caption = "Or disguise the alert"
 
 [[wall]]
@@ -129,7 +129,7 @@ caption = "Scrub the preview"
 
 [[wall.panel]]
 source = "video-message-closed-captions-playback.png"
-crop = [0, 140, 1080, 1930]
+crop = [0, 700, 1080, 1930]
 caption = "Captions on playback"
 # This clip is a real person's face; blur it so the person is unidentifiable.
 # The panel's whole point is the match between the video's burned-in captions
