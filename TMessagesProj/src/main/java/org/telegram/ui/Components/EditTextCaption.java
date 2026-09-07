@@ -655,6 +655,14 @@ public class EditTextCaption extends EditTextBoldCursor implements FloatingToolb
                 removeQuoteSpans(currentText, start, end);
                 invalidateSpoilers();
                 resetFontMetricsCache();
+                // NagramX: removeQuoteSpans is a plain span mutation, unlike the add path below
+                // which invalidateQuotes(true)/putQuoteToEditable indirectly notify -- tell the
+                // delegate explicitly so the glass toolbar's button state and the composer's
+                // rendering both refresh immediately, the same as every other span mutation in
+                // this file (e.g. removeStyle, removeCodeSpans' caller in makeSelectedCode).
+                if (delegate != null) {
+                    delegate.onSpansChanged();
+                }
             }
             return;
         }
