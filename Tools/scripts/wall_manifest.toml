@@ -136,7 +136,7 @@ output = "video-watching.png"
 [[wall.panel]]
 source = "video-message-player-panel-mute-and-loop.png"
 crop = [0, 0, 1080, 500]
-caption = "Mute, loop, or speed it up"
+caption = "Mute and playback modes"
 # Cropped above the real face rather than blurred through it: this includes
 # the chat header and the player panel and stops right before the hair
 # begins (verified against the source -- no column has hair/skin above

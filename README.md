@@ -38,7 +38,7 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/video-recording.png" alt="Three views of Dazegram's video message recording: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording screen's zoom and flash controls, and the preview with its scrub timeline.">
 </p>
 
-**Watching video messages:** Sometimes you just can't play the sound. The player panel under the chat title lets you mute a round message, loop it, or change its speed — and with transcription set up, read it as captions instead.
+**Watching video messages:** Sometimes you just can't play the sound. The player panel under the chat title lets you mute a round message outright, or set how they play — once, all of them in a row, or the same one on repeat. With transcription set up, you can read it as captions instead.
 
 <p align="center">
 <img src="docs/images/video-watching.png" alt="Two views of Dazegram's video message playback: the player panel under the chat title with its mute, loop, and speed controls, and captions burned into video playback matching the transcription bubble below it.">
