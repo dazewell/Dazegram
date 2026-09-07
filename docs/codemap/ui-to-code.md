@@ -3,23 +3,26 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
-## Send on event pattern rows are caller-owned custom views, not BottomBuilder items
+## Send on event sheet keeps dynamic rows in caller-owned custom views
 
-The *Send early on event* sheet's pattern editor is built inside
-`EventScheduleHelper.Row.openSheet()` by creating a caller-owned vertical
-container (`patternArea` + `patternRowsContainer`) and attaching it with
-`BottomBuilder.addCustomView(...)`, then placing the `Add pattern` row inside
-that same container (`EventScheduleHelper.java:564-587`).
+The *Send early on event* sheet now inserts two custom `CollapseTextCell`
+headers (`By message type`, `Or by text`) and keeps all dynamic text-pattern
+rows in caller-owned content (`patternArea` + `patternRowsContainer`) wired
+with `BottomBuilder.addCustomView(...)` (`EventScheduleHelper.java:585-616`).
+The five type check rows and regex row are still normal `addCheckItem(...)`
+cells, and collapse/expand works by toggling those known views
+`VISIBLE/GONE` in place (`EventScheduleHelper.java:591-599`, `:646`,
+`:793-801`, `:827-838`).
 
-That shape is required by `BottomBuilder` internals: the builder keeps a
-private root inside a `ScrollView` (`BottomBuilder.kt:44-55`), and
-`addItem(...)` always calls `dismiss()` before its listener (`BottomBuilder.kt:212-219`).
-So a dynamic "add another field" row in this sheet cannot be a normal
-BottomBuilder item; it must be caller-owned content wired through
-`addCustomView(...)` (`BottomBuilder.kt:270-272`) so tapping it mutates rows
-without closing the sheet.
+This still depends on `BottomBuilder`'s stock behavior: `addItem(...)` dismisses
+before running its listener, while `addCustomView(...)` hosts caller-owned UI
+that can mutate in place (`BottomBuilder.kt:212-219`, `:270-272`). Hidden-group
+validation is now explicit: Done expands the text group first, then runs the
+existing row message/focus/shake path inside `AndroidUtilities.doOnLayout(...)`
+for invalid regex, and no-condition failure expands collapsed actionable groups
+before the existing toast (`EventScheduleHelper.java:846-850`, `:977-993`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
 
 ## Chat privacy overflow row owns both per-chat privacy controls
 
@@ -30,35 +33,43 @@ that opens `ChatPrivacySheet.show(...)` (`org/telegram/ui/ChatActivity.java:498`
 Inside that sheet, `Hide last message` toggles
 `HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
 opens `HideLastMessageDialog.showPlaceholderEditor(...)` for Save/Cancel editing
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:90-99`, `:145-156`;
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:173`, `:181`;
 `com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
 still shown when the global app passcode is absent
 (`com/radolyn/ayugram/chatlock/ChatLockController.java:70-80`;
-`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:101-124`, `:158-168`).
+`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:123-151`, `:186-194`).
 When turned on with a passcode present, the sheet keeps the existing one-way
 coupling: it auto-enables hide only when hide was off, preserving a custom
-placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:169-177`).
+placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197-204`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
 
-## Chat privacy sheet's Notifications section drives disguised covers
+## Chat privacy notifications/disclosure wiring is sheet-local
 
-The same sheet has a `Notifications` header, a `Disguise notifications`
-`TextCheckCell`, plus `Cover` and `Preview notification` `TextSettingsCell`s
-(visible only while disguise is on). The switch toggles
-`NotificationCoverController.setEnabled(...)` and
+The `Notifications` block now has active controls only (`Disguise notifications`,
+`Cover`, `Preview notification`) plus a collapsed `How covers work` disclosure
+footer. `refreshRef[0]` only drives control visibility/content from disguise
+state; disclosure expansion is a separate sheet-local boolean toggled only by
+the `CollapseTextCell` click (`ChatPrivacySheet.java:74-118`, `:152-169`,
+`:242-246`).
+
+The switch still toggles `NotificationCoverController.setEnabled(...)` and
 queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
-the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
-sheet and calls `setPersona(...)` + the same rebuild; the preview row calls
-`NotificationCoverController.postPreview(...)` and only shows a bulletin result
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:131-151`,
-`:190-223`, `:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
-The UI never builds or cancels a notification itself. It writes config and asks
-the controller to rebuild for disguise/persona changes, and it calls controller
-preview posting only for the explicit preview row.
+the `Cover` row still opens the reused single-select `PopupHelper.show(...)`
+radio sheet and applies `setPersona(...)` + rebuild; the preview row still calls
+`NotificationCoverController.postPreview(...)` and only shows bulletin feedback
+(`ChatPrivacySheet.java:209-219`, `:225`, `:232-239`, `:335-356`;
+`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
+
+For layout and bulletin clearance on short screens, the custom content is wrapped
+in a `ScrollView`, and a combined bulletin delegate is installed in
+`BottomSheetDelegate.onOpenAnimationEnd()` before show-time wiring completes.
+That delegate keeps the stock top offset contract and adds a fixed bottom
+clearance offset (`ChatPrivacySheet.java:250-332`; `BottomSheet.java:1241-1251`;
+`Bulletin.java:690-698`, `:743-745`).
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
@@ -68,7 +79,7 @@ generic channels under `nax_cover_v1_channel_<personaId>` /
 (`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:57-68`,
 `:201-229`, `:654-671`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
 
 ## Tokenized broadcast interaction path for covered notifications
 

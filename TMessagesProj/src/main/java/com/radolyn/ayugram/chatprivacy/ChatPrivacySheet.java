@@ -5,6 +5,7 @@ import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import com.radolyn.ayugram.chatlock.ChatLockController;
@@ -19,10 +20,12 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
+import org.telegram.ui.Cells.CollapseTextCell;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
+import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.Components.LayoutHelper;
 
@@ -44,49 +47,63 @@ public final class ChatPrivacySheet {
 
         BottomSheet.Builder builder = new BottomSheet.Builder(context, false, fragment.getResourceProvider());
 
-        LinearLayout container = new LinearLayout(context);
-        container.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout content = new LinearLayout(context);
+        content.setOrientation(LinearLayout.VERTICAL);
 
         TextView titleView = new TextView(context);
         titleView.setText(LocaleController.getString(R.string.ChatPrivacyTitle));
         titleView.setTextColor(Theme.getColor(Theme.key_dialogTextBlack, fragment.getResourceProvider()));
         titleView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 20);
         titleView.setTypeface(AndroidUtilities.bold());
-        container.addView(titleView, LayoutHelper.createLinearRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.TOP, 22, 12, 22, 8));
+        content.addView(titleView, LayoutHelper.createLinearRelatively(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.START | Gravity.TOP, 22, 12, 22, 8));
 
         final TextCheckCell hideCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
         hideCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(hideCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(hideCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextSettingsCell placeholderCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
         placeholderCell.setCanDisable(true);
         placeholderCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(placeholderCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(placeholderCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextCheckCell lockCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
         lockCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(lockCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(lockCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final HeaderCell notificationsHeader = new HeaderCell(context, fragment.getResourceProvider());
         notificationsHeader.setText(LocaleController.getString(R.string.NaxCoverSectionTitle));
-        container.addView(notificationsHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(notificationsHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextCheckCell disguiseCell = new TextCheckCell(context, 21, true, fragment.getResourceProvider());
         disguiseCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(disguiseCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(disguiseCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextSettingsCell coverCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
         coverCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(coverCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final TextSettingsCell previewCell = new TextSettingsCell(context, 21, fragment.getResourceProvider());
         previewCell.setBackground(Theme.getSelectorDrawable(false, fragment.getResourceProvider()));
-        container.addView(previewCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        content.addView(previewCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
-        // Always-visible footer stating the cover limitations; stays put whether or not Cover is shown.
-        final TextInfoPrivacyCell footerCell = new TextInfoPrivacyCell(context, 21, fragment.getResourceProvider());
-        footerCell.setText(LocaleController.getString(R.string.NaxCoverLimitations));
-        container.addView(footerCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+        final boolean[] limitationsExpanded = {false};
+        final CollapseTextCell limitationsHeader = new CollapseTextCell(context, fragment.getResourceProvider());
+        limitationsHeader.setColor(Theme.key_dialogTextBlack);
+        limitationsHeader.setBackground(Theme.createSelectorDrawable(
+                Theme.getColor(Theme.key_dialogButtonSelector, fragment.getResourceProvider()), Theme.RIPPLE_MASK_ALL));
+        final Runnable updateLimitationsHeader = () -> {
+            String label = LocaleController.getString(R.string.NaxCoverHowItWorks);
+            limitationsHeader.set(label, !limitationsExpanded[0]);
+            limitationsHeader.setContentDescription(label + ", " + LocaleController.getString(
+                    limitationsExpanded[0] ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed));
+        };
+        updateLimitationsHeader.run();
+        content.addView(limitationsHeader, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 0));
+
+        final TextInfoPrivacyCell limitationsCell = new TextInfoPrivacyCell(context, 21, fragment.getResourceProvider());
+        limitationsCell.setText(LocaleController.getString(R.string.NaxCoverLimitations));
+        limitationsCell.setVisibility(View.GONE);
+        content.addView(limitationsCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
 
         final Runnable[] refreshRef = new Runnable[1];
         refreshRef[0] = () -> {
@@ -222,9 +239,95 @@ public final class ChatPrivacySheet {
             }
         });
 
+        limitationsHeader.setOnClickListener(v -> {
+            limitationsExpanded[0] = !limitationsExpanded[0];
+            limitationsCell.setVisibility(limitationsExpanded[0] ? View.VISIBLE : View.GONE);
+            updateLimitationsHeader.run();
+        });
+
         refreshRef[0].run();
 
-        builder.setCustomView(container);
+        final ScrollView scrollView = new ScrollView(context);
+        scrollView.setFillViewport(true);
+        scrollView.setVerticalScrollBarEnabled(false);
+        scrollView.addView(content, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+
+        LinearLayout wrapper = new LinearLayout(context);
+        wrapper.setOrientation(LinearLayout.VERTICAL);
+        wrapper.addView(scrollView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.MATCH_PARENT));
+
+        builder.setDelegate(new BottomSheet.BottomSheetDelegate() {
+            @Override
+            public void onOpenAnimationEnd() {
+                BottomSheet sheet = sheetRef[0];
+                if (sheet == null || sheet.container == null) {
+                    return;
+                }
+                Object existingTag = sheet.container.getTag(R.id.bulletin_delegate_tag);
+                Bulletin.Delegate existing = existingTag instanceof Bulletin.Delegate ? (Bulletin.Delegate) existingTag : null;
+                final int bottomOffset = AndroidUtilities.dp(46 + 8);
+                Bulletin.addDelegate(sheet.container, new Bulletin.Delegate() {
+                    @Override
+                    public int getTopOffset(int tag) {
+                        return existing != null ? existing.getTopOffset(tag) : AndroidUtilities.statusBarHeight;
+                    }
+
+                    @Override
+                    public int getBottomOffset(int tag) {
+                        int baseOffset = existing != null ? existing.getBottomOffset(tag) : 0;
+                        return baseOffset + bottomOffset;
+                    }
+
+                    @Override
+                    public boolean bottomOffsetAnimated() {
+                        return existing == null || existing.bottomOffsetAnimated();
+                    }
+
+                    @Override
+                    public int getLeftPadding() {
+                        return existing != null ? existing.getLeftPadding() : 0;
+                    }
+
+                    @Override
+                    public int getRightPadding() {
+                        return existing != null ? existing.getRightPadding() : 0;
+                    }
+
+                    @Override
+                    public boolean clipWithGradient(int tag) {
+                        return existing != null && existing.clipWithGradient(tag);
+                    }
+
+                    @Override
+                    public void onBottomOffsetChange(float offset) {
+                        if (existing != null) {
+                            existing.onBottomOffsetChange(offset);
+                        }
+                    }
+
+                    @Override
+                    public void onShow(Bulletin bulletin) {
+                        if (existing != null) {
+                            existing.onShow(bulletin);
+                        }
+                    }
+
+                    @Override
+                    public void onHide(Bulletin bulletin) {
+                        if (existing != null) {
+                            existing.onHide(bulletin);
+                        }
+                    }
+
+                    @Override
+                    public boolean allowLayoutChanges() {
+                        return existing == null || existing.allowLayoutChanges();
+                    }
+                });
+            }
+        });
+
+        builder.setCustomView(wrapper);
         sheetRef[0] = builder.create();
         fragment.showDialog(sheetRef[0]);
     }
