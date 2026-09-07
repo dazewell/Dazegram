@@ -304,12 +304,25 @@ public class ComposerLayoutActivity extends BaseFragment {
                 // terminal event here.
                 if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                     gestureInProgress = false;
-                    if (settlePending) {
-                        settlePending = false;
-                        settleSpacingRows();
-                    }
-                    if (spacingFooterRefreshPending) {
-                        spacingFooterRefreshPending = false;
+                    // Snap every slider thumb onto its value's track position. On release SeekBarView
+                    // keeps the raw finger pixel - it reports the released progress through
+                    // setSeekBarDrag but never moves thumbX (SeekBarView.java:280), and its own snap
+                    // path is gated on needVisuallyDivideSteps() which this widget hard-codes false -
+                    // so a thumb dropped between two steps rests off-detent while the label above
+                    // already shows the nearest value. Re-binding each slider row drives its thumb to
+                    // getProgress(value). Fired for all four rows unconditionally rather than
+                    // hit-testing the dragged one: updateVisibleRow skips any holder whose adapter
+                    // position no longer matches, so the binds are cheap and a snap racing a rebuild
+                    // is a no-op, not a stale bind. Correct only because every options table here uses
+                    // betweenSteps == 1 (see docs/codemap/upstream-traps.md); a betweenSteps > 1
+                    // slider would be mis-snapped on every touch-up. This also subsumes settlePending's
+                    // spacing-row rebind, so that row binds once per gesture end, not twice - only its
+                    // footer still needs the deferred refresh.
+                    boolean footerNeedsRefresh = settlePending || spacingFooterRefreshPending;
+                    settlePending = false;
+                    spacingFooterRefreshPending = false;
+                    snapSliderRows();
+                    if (footerNeedsRefresh) {
                         refreshSpacingFooter();
                     }
                 }
@@ -691,9 +704,10 @@ public class ComposerLayoutActivity extends BaseFragment {
                         // has to re-evaluate saved-vs-floor or it keeps promising a value that no
                         // longer exists. Defer to gesture end like the scale path so the text does not
                         // change under the finger; the else branch covers the accessibility delegate,
-                        // which drives this with no touch events and one discrete step at a time. Only
-                        // the footer, not this slider row - the thumb is where the user just left it and
-                        // rebinding the row would snap it to the nearest detent.
+                        // which drives this with no touch events and one discrete step at a time. This
+                        // flag now defers only the footer - the thumb itself is snapped to its value at
+                        // gesture end by snapSliderRows(), which is intended: under unit anchors
+                        // (betweenSteps == 1) the nearest detent is exactly the value the label shows.
                         if (gestureInProgress) {
                             spacingFooterRefreshPending = true;
                         } else {
@@ -1099,6 +1113,22 @@ public class ComposerLayoutActivity extends BaseFragment {
     private void settleSpacingRows() {
         AndroidUtilities.updateVisibleRow(listView, rowPosition(TYPE_SPACING, GROUP_SPACING));
         refreshSpacingFooter();
+    }
+
+    /** Snaps every slider thumb to its value's canonical track position, called once at gesture end
+     * (see the root's dispatchTouchEvent). This is the whole point of the settle: SeekBarView leaves
+     * thumbX at the raw finger pixel on release rather than re-deriving it, so a thumb dragged and let
+     * go inside one step's band sits off the detent its label already names. Re-running each slider
+     * row's bind path drives its thumb to getProgress(value). Scans items by type rather than the
+     * attached children so an off-screen slider is skipped for free, and never runs mid-gesture - the
+     * settlePending / spacingFooterRefreshPending deferrals exist so a row is never rebound under the
+     * finger. */
+    private void snapSliderRows() {
+        for (int i = 0; i < items.size(); i++) {
+            if (isSliderRowType(items.get(i).type)) {
+                AndroidUtilities.updateVisibleRow(listView, i);
+            }
+        }
     }
 
     /** Rebinds only the packing footer, so its three-way saved-vs-floor disclosure catches up with a
