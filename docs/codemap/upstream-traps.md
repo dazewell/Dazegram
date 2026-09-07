@@ -20,13 +20,16 @@ it in.
 
 This is why the per-chat "alert normally" toggle for disguised chats
 (`#disguise-alerting`) mints a *second* channel per persona
-(`NotificationCoverController.alertChannelId`, `NotificationCoverController.java:722-735`,
+(`NotificationCoverController.ensureAlertChannel`, `NotificationCoverController.java:708-720`,
 `IMPORTANCE_DEFAULT` + vibration) instead of trying to raise the existing
-silent one - the app can't touch the existing channel's importance at all,
-and minting a new id per *dialog* instead of per *persona* would have meant
-migrating (delete + recreate) any channel a dialog already had, which throws
-away anything the user tuned for it in Android's own notification settings.
-`deleteChannels` (`NotificationCoverController.java:1283-1302`) has exactly
+silent one - the app can't touch the existing channel's importance at all.
+Minting a new id per *dialog* instead of per *persona* was rejected for
+channel-count growth, not data loss: a fresh id can be minted without ever
+touching a dialog's existing channel either way, but per-dialog means one
+channel pair per *dialog* (unbounded, and N dialogs sharing a persona would
+each mint their own instead of sharing one), where per-persona means one pair
+per *persona* (bounded by the persona pool). `deleteChannels`
+(`NotificationCoverController.java:1283-1302`) has exactly
 one call site (`NotificationsController.java:409`, immediately followed by a
 full `editor.clear()`) and isn't shaped for a targeted single-channel
 migration - it wipes every cover channel for the account at once, which is
@@ -37,11 +40,13 @@ because its one caller is a full account-level teardown.
 
 ## `GROUP_ALERT_SUMMARY` mutes a grouped child notification regardless of its own channel's importance
 
-`useSummaryNotification` (`NotificationsController.java:4958`) is true the
-moment a second dialog has a pending cover notification, since
-`minSdk=27 > O_MR1` makes the SDK-version half of that condition always true -
-this is not a rare multi-chat edge case, it's the common case the instant more
-than one covered chat has an unread message at once. When a child notification
+`useSummaryNotification` (`NotificationsController.java:4958`) is
+`Build.VERSION.SDK_INT <= Build.VERSION_CODES.O_MR1 || sortedDialogs.size() > (storyPushMessages.isEmpty() ? 1 : 2)`.
+`minSdk=27` equals `O_MR1` numerically, so the SDK clause is only true on API
+27 exactly - on API 28+ it's false and the actual gate is the dialog-count
+check. In practice that check is still the common case: the moment more than
+one covered dialog has a pending notification (more than two if a story push
+is also pending), grouping kicks in regardless of API level. When a child notification
 is posted with `setGroup(...)` *and* `setGroupAlertBehavior(GROUP_ALERT_SUMMARY)`
 (`NotificationCoverController.java` `postChild`, pre-`#disguise-alerting`
 unconditionally set both whenever `grouped` was true), the child's own alert is
