@@ -14,7 +14,7 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/hero.png" alt="Four views of Dazegram's time zone tools: the hour-comparison grid with the message-format token chips, the range picker with both accounts' hours, the schedule-message sheet split between your time and theirs, and the chat header clock pill next to messages showing dual local times.">
 </p>
 
-**Composer:** An action row Telegram doesn't have — and neither does Nagram, the fork this one tracks — cut, copy, paste, formatting, quote, schedule, attach, in blurred glass under the message field, with send and the mic moved inside the field itself. You decide which buttons are there, in what order, and how big.
+**Composer:** An action row built for Dazegram — cut, copy, paste, formatting, quote, schedule, attach — in blurred glass under the message field, with send and the mic moved inside the field itself. You decide which buttons are there, in what order, and how big.
 
 <p align="center">
 <img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the glass action row live in a chat with text selected, the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, and the message field expanded to full screen.">
