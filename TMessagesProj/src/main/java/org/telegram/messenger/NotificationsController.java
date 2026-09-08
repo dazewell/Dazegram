@@ -4190,7 +4190,42 @@ public class NotificationsController extends BaseController implements Notificat
                 naxList.add(naxMsg);
             }
             java.util.HashSet<Long> naxCoveredSet = com.radolyn.ayugram.chatprivacy.NotificationCoverController.collectCovered(currentAccount, naxMessagesByDialogs);
+            final boolean naxRebuildSuppressed = !notifyAboutLast || MediaController.getInstance().isRecordingAudio();
+            final LongSparseArray<Boolean> naxCoverSuppressed = new LongSparseArray<>();
             if (!naxCoveredSet.isEmpty()) {
+                for (Long naxCovDid : naxCoveredSet) {
+                    ArrayList<MessageObject> coveredMessages = naxMessagesByDialogs.get(naxCovDid);
+                    if (coveredMessages == null || coveredMessages.isEmpty()) {
+                        continue;
+                    }
+                    MessageObject firstCovered = coveredMessages.get(0);
+                    long coveredTopicId = MessageObject.getTopicId(currentAccount, firstCovered.messageOwner, getMessagesController().isForum(firstCovered));
+                    long coveredOverrideId = naxCovDid;
+                    if (firstCovered.messageOwner.mentioned) {
+                        coveredOverrideId = firstCovered.getFromChatId();
+                    }
+                    long coveredChatId = firstCovered.messageOwner.peer_id.chat_id != 0
+                            ? firstCovered.messageOwner.peer_id.chat_id
+                            : firstCovered.messageOwner.peer_id.channel_id;
+                    boolean coveredIsChannel = false;
+                    if (coveredChatId != 0) {
+                        TLRPC.Chat coveredChat = getMessagesController().getChat(coveredChatId);
+                        if (coveredChat == null && firstCovered.isFcmMessage()) {
+                            coveredIsChannel = firstCovered.localChannel;
+                        } else {
+                            coveredIsChannel = ChatObject.isChannel(coveredChat) && !coveredChat.megagroup;
+                        }
+                    }
+                    int coveredNotifyOverride = getNotifyOverride(naxPrefs, coveredOverrideId, coveredTopicId);
+                    boolean coveredEnabled;
+                    if (coveredNotifyOverride == -1) {
+                        coveredEnabled = isGlobalNotificationsEnabled(naxCovDid, coveredIsChannel, firstCovered.isReactionPush, firstCovered.isReactionPush);
+                    } else {
+                        coveredEnabled = coveredNotifyOverride != 2;
+                    }
+                    boolean coveredSoundEnabled = naxPrefs.getBoolean("sound_enabled_" + getSharedPrefKey(naxCovDid, coveredTopicId), true);
+                    naxCoverSuppressed.put(naxCovDid, !coveredEnabled || isSilentMessage(firstCovered) || !coveredSoundEnabled);
+                }
                 AndroidUtilities.runOnUIThread(() -> {
                     boolean popupChanged = false;
                     for (int i = popupMessages.size() - 1; i >= 0; i--) {
@@ -4874,7 +4909,7 @@ public class NotificationsController extends BaseController implements Notificat
                     mBuilder.addAction(R.drawable.ic_ab_reply, LocaleController.getString(R.string.Reply), PendingIntent.getBroadcast(ApplicationLoader.applicationContext, 2, replyIntent, PendingIntent.FLAG_MUTABLE | PendingIntent.FLAG_UPDATE_CURRENT));
                 }
             }
-            naxCoverSummaryPosted = showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, lastMessageObject.messageOwner.date);
+            naxCoverSummaryPosted = showExtraNotifications(mBuilder, detailText, dialog_id, topicId, chatName, vibrationPattern, ledColor, sound, configImportance, isDefault, isInApp, notifyDisabled, chatType, naxSortedDialogs, naxMessagesByDialogs, naxCoveredSet, naxCoverSuppressed, naxRebuildSuppressed, lastMessageObject.messageOwner.date);
             scheduleNotificationRepeat();
             } finally {
                 // NagramX: reconcile stale tagged covers from the preflight finally, so an early return or an exception
@@ -4949,7 +4984,7 @@ public class NotificationsController extends BaseController implements Notificat
     }
 
     @SuppressLint("InlinedApi")
-    private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, int summaryDismissDate) {
+    private boolean showExtraNotifications(NotificationCompat.Builder notificationBuilder, String summary, long lastDialogId, long lastTopicId, String chatName, long[] vibrationPattern, int ledColor, Uri sound, int importance, boolean isDefault, boolean isInApp, boolean isSilent, int chatType, ArrayList<DialogKey> sortedDialogs, LongSparseArray<ArrayList<MessageObject>> messagesByDialogs, java.util.HashSet<Long> naxCoveredSet, LongSparseArray<Boolean> naxCoverSuppressed, boolean naxRebuildSuppressed, int summaryDismissDate) {
         FileLog.d("showExtraNotifications pushMessages.size()=" + pushMessages.size());
 
         SharedPreferences preferences = getAccountInstance().getNotificationsSettings();
@@ -5103,7 +5138,8 @@ public class NotificationsController extends BaseController implements Notificat
                 }
                 int coverCount = plan == null ? 0 : plan.displayCount;
                 ArrayList<String> represented = plan == null ? null : plan.representedIds;
-                boolean coverSilent = lastMessageObject == null ? isSilent : isSilentMessage(lastMessageObject);
+                Boolean naxDialogSuppressed = naxCoverSuppressed.get(dialogId);
+                boolean coverSilent = naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
                 if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, coverSilent, useSummaryNotification, notificationGroup, represented)) {
                     coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
