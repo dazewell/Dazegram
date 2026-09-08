@@ -655,6 +655,10 @@ public final class EventScheduleHelper {
         void openSheet(Context context) {
             BottomBuilder builder = new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true);
             builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
+            View introSpacer = builder.addCustomView(new View(context));
+            introSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            introSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            introSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 4));
 
             final boolean[] typeExpanded = {false};
             final boolean[] textExpanded = {false};
@@ -741,6 +745,10 @@ public final class EventScheduleHelper {
             final TextInfoPrivacyCell patternInfo = new TextInfoPrivacyCell(context, 21);
             patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
             builder.addCustomView(patternInfo);
+            View textDelaySpacer = builder.addCustomView(new View(context));
+            textDelaySpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            textDelaySpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            textDelaySpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
 
             // NagramX: build initial rows, THEN regexCell, THEN attach watchers and sync once -- appended
             // rows are allowed to attach after regexCell exists.
