@@ -5116,7 +5116,7 @@ public class NotificationsController extends BaseController implements Notificat
                 Boolean naxDialogSuppressed = naxCoverSuppressed.get(dialogId);
                 boolean coverSilent = naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
-                if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, coverSilent, useSummaryNotification, notificationGroup, represented)) {
+                if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, coverSilent, useSummaryNotification, notificationGroup, represented, plan != null && plan.representedOverCapacity)) {
                     coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
                 }
                 continue;

@@ -62,6 +62,7 @@ public final class NotificationCoverController {
     private static final String KEY_TOKEN_RECORD = "nax_cover_v1_token_";
     private static final String KEY_ACTIVE_CHILD_TAP = "nax_cover_v1_active_child_tap_";
     private static final String KEY_ACTIVE_CHILD_DISMISS = "nax_cover_v1_active_child_dismiss_";
+    private static final String KEY_ACTIVE_CHILD_MEMBERS = "nax_cover_v1_active_child_members_";
     private static final String KEY_ACTIVE_SUMMARY_TAP = "nax_cover_v1_active_summary_tap";
     private static final String KEY_ACTIVE_SUMMARY_DISMISS = "nax_cover_v1_active_summary_dismiss";
     private static final String KEY_ACTIVE_PREVIEW_TAP = "nax_cover_v1_active_preview_tap";
@@ -79,6 +80,10 @@ public final class NotificationCoverController {
     private static final int SUPPRESSION_LIMIT = 100;
     private static final int SUPPRESSION_ALIAS_LIMIT = 200;
     private static final Object COVER_STATE_LOCK = new Object();
+    private static final int ACTIVE_MEMBERS_VERSION = 1;
+    private static final String ACTIVE_MEMBERS_VERSION_KEY = "v";
+    private static final String ACTIVE_MEMBERS_IDS_KEY = "ids";
+    private static final String ACTIVE_MEMBERS_OVER_CAPACITY_KEY = "over_capacity";
 
     private static final int TOKEN_KIND_CHILD_TAP = 1;
     private static final int TOKEN_KIND_CHILD_DISMISS = 2;
@@ -135,13 +140,27 @@ public final class NotificationCoverController {
         final LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
     }
 
+    private static final class ActiveChildMembersState {
+        final boolean present;
+        final boolean overCapacity;
+        final ArrayList<String> ids;
+
+        ActiveChildMembersState(boolean present, boolean overCapacity, ArrayList<String> ids) {
+            this.present = present;
+            this.overCapacity = overCapacity;
+            this.ids = ids;
+        }
+    }
+
     public static final class CoverPostPlan {
         public final int displayCount;
         public final ArrayList<String> representedIds;
+        public final boolean representedOverCapacity;
 
-        CoverPostPlan(int displayCount, ArrayList<String> representedIds) {
+        CoverPostPlan(int displayCount, ArrayList<String> representedIds, boolean representedOverCapacity) {
             this.displayCount = displayCount;
             this.representedIds = representedIds;
+            this.representedOverCapacity = representedOverCapacity;
         }
 
         public boolean hasRepresentedMembers() {
@@ -514,7 +533,7 @@ public final class NotificationCoverController {
 
     public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new CoverPostPlan(0, new ArrayList<>());
+            return new CoverPostPlan(0, new ArrayList<>(), false);
         }
         synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
@@ -539,7 +558,8 @@ public final class NotificationCoverController {
                 saveSuppressionState(account, dialogId, state);
             }
             int displayCount = visible.size();
-            return new CoverPostPlan(displayCount, new ArrayList<>(visible));
+            boolean representedOverCapacity = displayCount > SUPPRESSION_LIMIT;
+            return new CoverPostPlan(displayCount, new ArrayList<>(visible), representedOverCapacity);
         }
     }
 
@@ -716,12 +736,14 @@ public final class NotificationCoverController {
         return LocaleController.getString(p.labelRes) + ": " + LocaleController.formatString(p.bodyRes, count);
     }
 
-    public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds) {
+    public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds, boolean representedOverCapacity) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
+        int internalId = internalId(dialogId);
         try {
             clearConversationArtifacts(dialogId);
-            if (representedIds == null || representedIds.isEmpty() || count <= 0) {
+            ArrayList<String> represented = sanitizeRepresentedIds(representedIds);
+            if (represented.isEmpty() || count <= 0) {
                 synchronized (COVER_STATE_LOCK) {
                     SharedPreferences.Editor clearEditor = p.edit();
                     clearDialogInteractionState(account, dialogId, p, clearEditor);
@@ -732,21 +754,28 @@ public final class NotificationCoverController {
             int personaId = resolvePersonaId(account, dialogId);
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
-            int internalId = internalId(dialogId);
+            boolean hadPrevious;
+            boolean forceSilentForMigration;
+            boolean forceSilentForOverCapacity;
             boolean hasRepresentedGrowth;
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
-            snapshots.put(dialogId, new ArrayList<>(representedIds));
+            snapshots.put(dialogId, new ArrayList<>(represented));
             String tapToken;
             String dismissToken;
             synchronized (COVER_STATE_LOCK) {
-                hasRepresentedGrowth = hasRepresentedGrowthLocked(p, dialogId, representedIds);
+                hadPrevious = hasActiveChildTokenLocked(p, dialogId);
+                SuppressionState suppressionState = loadSuppressionState(account, dialogId);
+                ActiveChildMembersState previousMembers = readActiveChildMembersLocked(p, dialogId, suppressionState);
+                forceSilentForMigration = !previousMembers.present && hadPrevious;
+                forceSilentForOverCapacity = representedOverCapacity;
+                hasRepresentedGrowth = hasRepresentedGrowthLocked(previousMembers, represented);
                 SharedPreferences.Editor ed = p.edit();
                 tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, 0, dialogId, snapshots));
                 dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, 0, dialogId, snapshots));
                 ed.apply();
             }
-            boolean effectiveSilent = silent || !hasRepresentedGrowth;
+            boolean effectiveSilent = silent || forceSilentForMigration || forceSilentForOverCapacity || !hasRepresentedGrowth;
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
             NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, effectiveSilent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
@@ -773,6 +802,14 @@ public final class NotificationCoverController {
                 b.setLocalOnly(true);
             }
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
+            synchronized (COVER_STATE_LOCK) {
+                String activeTap = p.getString(activeChildTapKey(dialogId), null);
+                if (TextUtils.equals(activeTap, tapToken)) {
+                    SharedPreferences.Editor membershipEditor = p.edit();
+                    putActiveChildMembersLocked(membershipEditor, dialogId, represented, representedOverCapacity);
+                    membershipEditor.apply();
+                }
+            }
             return true;
         } catch (Exception t) {
             synchronized (COVER_STATE_LOCK) {
@@ -780,6 +817,7 @@ public final class NotificationCoverController {
                 clearDialogInteractionState(account, dialogId, p, clearEditor);
                 clearEditor.apply();
             }
+            NotificationManagerCompat.from(ctx).cancel(coverTag(account, dialogId), internalId);
             FileLog.e("nax cover child post failed", t);
             return false;
         }
@@ -898,6 +936,10 @@ public final class NotificationCoverController {
 
     private static String activeChildDismissKey(long dialogId) {
         return KEY_ACTIVE_CHILD_DISMISS + dialogId;
+    }
+
+    private static String activeChildMembersKey(long dialogId) {
+        return KEY_ACTIVE_CHILD_MEMBERS + dialogId;
     }
 
     private static PendingIntent interactionIntent(int account, String token, int event, int requestCode) {
@@ -1025,52 +1067,109 @@ public final class NotificationCoverController {
         }
     }
 
-    private static ArrayList<String> representedSnapshotForToken(SharedPreferences p, String token, long dialogId) {
-        if (TextUtils.isEmpty(token)) {
-            return null;
-        }
-        InteractionRecord record = parseRecord(p.getString(KEY_TOKEN_RECORD + token, null));
-        if (record == null) {
-            return null;
-        }
-        ArrayList<String> ids = record.snapshots.get(dialogId);
-        if (ids == null || ids.isEmpty()) {
-            return null;
-        }
+    private static ArrayList<String> sanitizeRepresentedIds(ArrayList<String> representedIds) {
         ArrayList<String> safe = new ArrayList<>();
-        for (int i = 0; i < ids.size(); i++) {
-            String id = ids.get(i);
-            if (validIdentity(id) && !safe.contains(id)) {
+        if (representedIds == null) {
+            return safe;
+        }
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (int i = 0; i < representedIds.size(); i++) {
+            String id = representedIds.get(i);
+            if (validIdentity(id) && seen.add(id)) {
                 safe.add(id);
             }
         }
-        return safe.isEmpty() ? null : safe;
+        return safe;
     }
 
-    private static boolean hasRepresentedGrowthLocked(SharedPreferences p, long dialogId, ArrayList<String> representedIds) {
+    private static ActiveChildMembersState readActiveChildMembersLocked(SharedPreferences p, long dialogId, SuppressionState suppressionState) {
+        String raw = p.getString(activeChildMembersKey(dialogId), null);
+        if (TextUtils.isEmpty(raw)) {
+            return new ActiveChildMembersState(false, false, new ArrayList<>());
+        }
+        try {
+            JSONObject root = new JSONObject(raw);
+            if (root.optInt(ACTIVE_MEMBERS_VERSION_KEY, -1) != ACTIVE_MEMBERS_VERSION) {
+                return new ActiveChildMembersState(true, true, new ArrayList<>());
+            }
+            if (root.optBoolean(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, false)) {
+                return new ActiveChildMembersState(true, true, new ArrayList<>());
+            }
+            JSONArray idsArray = root.optJSONArray(ACTIVE_MEMBERS_IDS_KEY);
+            if (idsArray == null) {
+                return new ActiveChildMembersState(false, false, new ArrayList<>());
+            }
+            ArrayList<String> ids = new ArrayList<>();
+            LinkedHashSet<String> seen = new LinkedHashSet<>();
+            for (int i = 0; i < idsArray.length(); i++) {
+                String rawId = idsArray.optString(i, null);
+                if (!validIdentity(rawId)) {
+                    continue;
+                }
+                String resolved = resolveCanonical(suppressionState, rawId);
+                if (!validIdentity(resolved)) {
+                    continue;
+                }
+                if (seen.add(resolved)) {
+                    ids.add(resolved);
+                }
+            }
+            return new ActiveChildMembersState(true, false, ids);
+        } catch (Exception e) {
+            return new ActiveChildMembersState(true, true, new ArrayList<>());
+        }
+    }
+
+    private static void putActiveChildMembersLocked(SharedPreferences.Editor ed, long dialogId, ArrayList<String> representedIds, boolean representedOverCapacity) {
+        String key = activeChildMembersKey(dialogId);
+        if (representedOverCapacity) {
+            JSONObject root = new JSONObject();
+            try {
+                root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
+                root.put(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, true);
+                ed.putString(key, root.toString());
+            } catch (JSONException e) {
+                FileLog.e(e);
+            }
+            return;
+        }
+        JSONObject root = new JSONObject();
+        JSONArray ids = new JSONArray();
+        for (int i = 0; i < representedIds.size(); i++) {
+            ids.put(representedIds.get(i));
+        }
+        try {
+            root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
+            root.put(ACTIVE_MEMBERS_IDS_KEY, ids);
+            ed.putString(key, root.toString());
+        } catch (JSONException e) {
+            FileLog.e(e);
+        }
+    }
+
+    private static boolean hasRepresentedGrowthLocked(ActiveChildMembersState previousMembers, ArrayList<String> representedIds) {
         if (representedIds == null || representedIds.isEmpty()) {
             return false;
         }
-        String tapToken = p.getString(activeChildTapKey(dialogId), null);
-        String dismissToken = p.getString(activeChildDismissKey(dialogId), null);
-        boolean hadPrevious = !TextUtils.isEmpty(tapToken) || !TextUtils.isEmpty(dismissToken);
-
-        ArrayList<String> previous = representedSnapshotForToken(p, tapToken, dialogId);
-        if (previous == null) {
-            previous = representedSnapshotForToken(p, dismissToken, dialogId);
+        if (previousMembers == null || !previousMembers.present) {
+            return true;
         }
-        if (previous == null) {
-            return !hadPrevious;
+        if (previousMembers.overCapacity) {
+            return false;
         }
-
-        LinkedHashSet<String> oldIds = new LinkedHashSet<>(previous);
+        LinkedHashSet<String> oldIds = new LinkedHashSet<>(previousMembers.ids);
         for (int i = 0; i < representedIds.size(); i++) {
-            String id = representedIds.get(i);
-            if (validIdentity(id) && !oldIds.contains(id)) {
+            if (!oldIds.contains(representedIds.get(i))) {
                 return true;
             }
         }
         return false;
+    }
+
+    private static boolean hasActiveChildTokenLocked(SharedPreferences p, long dialogId) {
+        String tapToken = p.getString(activeChildTapKey(dialogId), null);
+        String dismissToken = p.getString(activeChildDismissKey(dialogId), null);
+        return !TextUtils.isEmpty(tapToken) || !TextUtils.isEmpty(dismissToken);
     }
 
     private static String activeKeyForKind(InteractionRecord record) {
@@ -1177,6 +1276,7 @@ public final class NotificationCoverController {
     private static SharedPreferences.Editor clearDialogInteractionState(int account, long dialogId, SharedPreferences p, SharedPreferences.Editor ed) {
         removeTokenByActiveKey(p, ed, activeChildTapKey(dialogId));
         removeTokenByActiveKey(p, ed, activeChildDismissKey(dialogId));
+        ed.remove(activeChildMembersKey(dialogId));
         return ed;
     }
 
@@ -1235,6 +1335,9 @@ public final class NotificationCoverController {
             String k = e.getKey();
             if (k.startsWith(KEY_ENABLED)) {
                 long did = parseDialogId(k, KEY_ENABLED);
+                if (did != 0) candidates.add(did);
+            } else if (k.startsWith(KEY_ACTIVE_CHILD_MEMBERS)) {
+                long did = parseDialogId(k, KEY_ACTIVE_CHILD_MEMBERS);
                 if (did != 0) candidates.add(did);
             }
         }
