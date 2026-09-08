@@ -5103,8 +5103,9 @@ public class NotificationsController extends BaseController implements Notificat
                 }
                 int coverCount = plan == null ? 0 : plan.displayCount;
                 ArrayList<String> represented = plan == null ? null : plan.representedIds;
+                boolean coverSilent = lastMessageObject == null ? isSilent : isSilentMessage(lastMessageObject);
                 // NagramX: record as live only when the post actually landed, so a failed post is reconciled away rather than masking a stale cover
-                if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, isSilent, useSummaryNotification, notificationGroup, represented)) {
+                if (com.radolyn.ayugram.chatprivacy.NotificationCoverController.postChild(currentAccount, dialogId, coverCount, coverSilent, useSummaryNotification, notificationGroup, represented)) {
                     coverNotificationsIds.put(dialogId, com.radolyn.ayugram.chatprivacy.NotificationCoverController.internalId(dialogId));
                 }
                 continue;
