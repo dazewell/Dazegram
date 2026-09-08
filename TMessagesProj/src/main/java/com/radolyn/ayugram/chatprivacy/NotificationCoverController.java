@@ -9,7 +9,6 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Build;
 import android.text.TextUtils;
-import android.util.Log;
 
 import androidx.collection.LongSparseArray;
 import androidx.core.app.NotificationCompat;
@@ -20,7 +19,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.MessageObject;
@@ -69,8 +67,6 @@ public final class NotificationCoverController {
     private static final String KEY_ACTIVE_PREVIEW_TAP = "nax_cover_v1_active_preview_tap";
     private static final String KEY_PREVIEW_DIALOG = "nax_cover_v1_preview_dialog";
     private static final String ALERT_CHANNEL_SUFFIX = "_alert";
-    private static final String SMOKE_TAG = "NAX_SMOKE_feature-sheet-tuning";
-    private static final String SMOKE_SCENARIO = "covered_non_silent_alert_path";
 
     public static final String EXTRA_COVER_TOKEN = "nax_cover_token";
     public static final String EXTRA_COVER_EVENT = "nax_cover_event";
@@ -723,20 +719,9 @@ public final class NotificationCoverController {
     public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
-        int representedCount = representedIds == null ? 0 : representedIds.size();
-        Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN scenario=" + SMOKE_SCENARIO
-                + " build=" + BuildConfig.BUILD_VERSION_STRING
-                + " app=" + BuildConfig.APPLICATION_ID
-                + " account=" + account
-                + " silent=" + silent
-                + " grouped=" + grouped
-                + " represented=" + representedCount);
-        boolean posted = false;
-        String endState = "started";
         try {
             clearConversationArtifacts(dialogId);
             if (representedIds == null || representedIds.isEmpty() || count <= 0) {
-                endState = "skipped-empty";
                 synchronized (COVER_STATE_LOCK) {
                     SharedPreferences.Editor clearEditor = p.edit();
                     clearDialogInteractionState(account, dialogId, p, clearEditor);
@@ -748,11 +733,6 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int internalId = internalId(dialogId);
-            if (silent) {
-                Log.w(SMOKE_TAG, SMOKE_TAG + " FORBIDDEN scenario=" + SMOKE_SCENARIO + " selected=silent-tier account=" + account + " count=" + count);
-            } else {
-                Log.i(SMOKE_TAG, SMOKE_TAG + " EXPECTED scenario=" + SMOKE_SCENARIO + " selected=alert-tier account=" + account + " count=" + count);
-            }
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(representedIds));
@@ -790,11 +770,8 @@ public final class NotificationCoverController {
                 b.setLocalOnly(true);
             }
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
-            posted = true;
-            endState = "posted";
             return true;
         } catch (Exception t) {
-            endState = "exception-" + t.getClass().getSimpleName();
             synchronized (COVER_STATE_LOCK) {
                 SharedPreferences.Editor clearEditor = p.edit();
                 clearDialogInteractionState(account, dialogId, p, clearEditor);
@@ -802,16 +779,6 @@ public final class NotificationCoverController {
             }
             FileLog.e("nax cover child post failed", t);
             return false;
-        } finally {
-            Log.i(SMOKE_TAG, SMOKE_TAG + " END scenario=" + SMOKE_SCENARIO
-                    + " build=" + BuildConfig.BUILD_VERSION_STRING
-                    + " app=" + BuildConfig.APPLICATION_ID
-                    + " account=" + account
-                    + " silent=" + silent
-                    + " grouped=" + grouped
-                    + " represented=" + representedCount
-                    + " posted=" + posted
-                    + " state=" + endState);
         }
     }
 
