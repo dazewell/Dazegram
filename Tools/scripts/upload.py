@@ -21,12 +21,19 @@ VARIANTS = (
     ("Unofficial", "nekox.messenger"),
 )
 
-# staging.yml passes "staging" for a push/dispatch build and "test" for a
-# labeled PR preview. Anything else (or a missing value, e.g. a local run)
-# falls back to the staging rocket rather than leaving the caption headless.
+# staging.yml resolves build_type once up front. "test" covers PR-associated
+# builds, and "staging" covers true dev/release-candidate builds. Anything else
+# (or a missing value, e.g. a local run) falls back to the staging rocket.
 BUILD_EMOJI = {
     "staging": "🚀",
     "test": "🧪",
+}
+
+# Trailing searchable tag by build kind; appended after budget accounting so it
+# always survives as the final caption text.
+BUILD_HASHTAG = {
+    "staging": "#rc",
+    "test": "#test",
 }
 
 # A pathologically long PR title or commit subject must not eat the whole
@@ -140,6 +147,10 @@ def get_caption(commit_msg_budget=None) -> str:
         escaped_commit_message = truncate_text(escaped_commit_message, commit_msg_budget, escaped=True)
     return f"{header}\n\n<b>Commit Message:</b>\n<blockquote expandable>{escaped_commit_message}</blockquote>"
 
+def get_hashtag() -> str:
+    tag = BUILD_HASHTAG.get(build_type, "#rc")
+    return f"\n\n{tag}"
+
 def get_document() -> list["InputMediaDocument"]:
     documents = []
     for build_label, _ in VARIANTS:
@@ -152,9 +163,12 @@ def get_document() -> list["InputMediaDocument"]:
     # Telegram caps captions at 1024 chars, measured as visible text in UTF-16
     # units (tg_len) — not Python's len(). Split the budget so the commit
     # message always keeps a share (it used to be starved to "…" by a long
-    # summary); the summary then takes whatever the message doesn't need.
+    # generated summary); the summary then takes whatever the message doesn't
+    # need. Reserve the trailing hashtag in the same budget so it is always the
+    # final visible content.
     limit = 1024
-    overhead = tg_len(get_caption(commit_msg_budget=0))
+    hashtag = get_hashtag()
+    overhead = tg_len(get_caption(commit_msg_budget=0)) + tg_len(hashtag)
     content_budget = max(0, limit - overhead)
     # Measure the same escaped string the caption will actually carry, so the
     # reserve and the final trim (both in get_caption, both escaped-then-cut)
@@ -164,7 +178,7 @@ def get_document() -> list["InputMediaDocument"]:
     ai_summary = get_ai_summary(max_inner=max(0, content_budget - msg_reserve))
     room = limit - overhead - tg_len(ai_summary)
     base_caption = get_caption(commit_msg_budget=max(0, room))
-    documents[-1].caption = base_caption + ai_summary
+    documents[-1].caption = base_caption + ai_summary + hashtag
     return documents
 
 def get_metadata():
