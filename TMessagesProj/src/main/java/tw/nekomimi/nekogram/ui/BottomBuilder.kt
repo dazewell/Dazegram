@@ -114,7 +114,8 @@ class BottomBuilder(
         }
         if (sections) {
             headerCell.tag = RecyclerListView.TAG_NOT_SECTION
-            val headerContainer = FrameLayout(ctx)
+            // NagramX: bottom inset must be padding, not a margin - the section background follows this wrapper's measured height
+            val headerContainer = FrameLayout(ctx).apply { setPadding(0, 0, 0, dp(15f)) }
             headerContainer.addView(headerCell, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, Gravity.TOP or Gravity.START))
             rootView.addView(headerContainer, LayoutHelper.createLinear(-1, -2).apply {
                 bottomMargin = dp(8f)
