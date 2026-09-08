@@ -5998,6 +5998,7 @@ public class NotificationsController extends BaseController implements Notificat
                 currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate);
     }
 
+    // NagramX: mirror the nearby upstream mute/sound suppression resolution for covered preflight and keep this aligned when that block changes.
     private boolean naxCoveredDialogSuppressed(SharedPreferences preferences, long dialogId, MessageObject firstCovered) {
         long coveredTopicId = MessageObject.getTopicId(currentAccount, firstCovered.messageOwner, getMessagesController().isForum(firstCovered));
         long coveredOverrideId = dialogId;
