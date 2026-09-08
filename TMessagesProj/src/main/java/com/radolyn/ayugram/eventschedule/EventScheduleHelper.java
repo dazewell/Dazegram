@@ -3,6 +3,7 @@ package com.radolyn.ayugram.eventschedule;
 import static org.telegram.messenger.AndroidUtilities.dp;
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffColorFilter;
@@ -12,10 +13,10 @@ import android.text.SpannableStringBuilder;
 import android.text.Spanned;
 import android.text.TextUtils;
 import android.text.TextWatcher;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -28,9 +29,13 @@ import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextInfoPrivacyCell;
+import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.ColoredImageSpan;
+import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
 import org.telegram.ui.Components.LayoutHelper;
+import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SeekBarView;
 
 import java.util.ArrayList;
@@ -264,6 +269,82 @@ public final class EventScheduleHelper {
                 this.field = field;
                 this.removeButton = removeButton;
                 this.messageView = messageView;
+            }
+        }
+
+        private static final class DisclosureHeaderCell extends TextSettingsCell {
+            private CharSequence titleText = "";
+            private CharSequence summaryText = "";
+            private boolean expanded;
+            private boolean initialized;
+            private float arrowRotation;
+            private ValueAnimator arrowAnimator;
+
+            DisclosureHeaderCell(Context context) {
+                super(context, 21);
+                setBackground(Theme.getSelectorDrawable(false));
+                setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+            }
+
+            void bind(CharSequence title, CharSequence summary, boolean expanded) {
+                boolean stateChanged = initialized && this.expanded != expanded;
+                this.titleText = title;
+                this.summaryText = summary;
+                this.expanded = expanded;
+                float targetRotation = expanded ? 180f : 0f;
+                if (arrowAnimator != null) {
+                    arrowAnimator.cancel();
+                    arrowAnimator = null;
+                }
+                if (!initialized) {
+                    initialized = true;
+                    arrowRotation = targetRotation;
+                    applyText();
+                    return;
+                }
+                if (!stateChanged) {
+                    arrowRotation = targetRotation;
+                    applyText();
+                    return;
+                }
+                arrowAnimator = ValueAnimator.ofFloat(arrowRotation, targetRotation);
+                arrowAnimator.setDuration(340);
+                arrowAnimator.setInterpolator(CubicBezierInterpolator.EASE_OUT_QUINT);
+                arrowAnimator.addUpdateListener(animator -> {
+                    arrowRotation = (float) animator.getAnimatedValue();
+                    applyText();
+                });
+                applyText();
+                arrowAnimator.start();
+            }
+
+            private CharSequence composeAccessibilityText() {
+                String state = getString(expanded ? R.string.AccDescrExpanded : R.string.AccDescrCollapsed);
+                if (TextUtils.isEmpty(summaryText)) {
+                    return titleText + ", " + state;
+                }
+                return titleText + ", " + summaryText + ", " + state;
+            }
+
+            private void applyText() {
+                SpannableStringBuilder titleWithArrow = new SpannableStringBuilder();
+                titleWithArrow.append(titleText).append(' ');
+                int spanStart = titleWithArrow.length();
+                titleWithArrow.append('\uFFFC');
+                ColoredImageSpan arrowSpan = new ColoredImageSpan(R.drawable.arrow_more);
+                arrowSpan.setScale(0.6f, 0.6f);
+                arrowSpan.rotate(arrowRotation);
+                titleWithArrow.setSpan(arrowSpan, spanStart, spanStart + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+                setTextAndValue(titleWithArrow, summaryText, false, expanded);
+                setContentDescription(composeAccessibilityText());
+            }
+
+            @Override
+            public void onInitializeAccessibilityNodeInfo(AccessibilityNodeInfo info) {
+                super.onInitializeAccessibilityNodeInfo(info);
+                info.setClassName(android.widget.Button.class.getName());
+                info.setClickable(true);
+                info.setText(composeAccessibilityText());
             }
         }
 
@@ -572,17 +653,64 @@ public final class EventScheduleHelper {
         }
 
         void openSheet(Context context) {
-            BottomBuilder builder = new BottomBuilder(context);
+            BottomBuilder builder = new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true);
             builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
+            View introSpacer = builder.addCustomView(new View(context));
+            introSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            introSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            introSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 4));
 
-            builder.addTitle(getString(R.string.EventScheduleSectionType), false, null);
-            TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null);
-            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.EventScheduleTypeRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null);
-            TextCheckCell videoCell = builder.addCheckItem(getString(R.string.AttachVideo), (types & EventScheduleEntry.TYPE_VIDEO) != 0, false, null);
-            TextCheckCell photoCell = builder.addCheckItem(getString(R.string.AttachPhoto), (types & EventScheduleEntry.TYPE_PHOTO) != 0, false, null);
-            TextCheckCell textCell = builder.addCheckItem(getString(R.string.EventScheduleTypeText), (types & EventScheduleEntry.TYPE_TEXT) != 0, false, null);
+            final boolean[] typeExpanded = {false};
+            final boolean[] textExpanded = {false};
+            final Runnable[] updateTypeHeader = new Runnable[]{() -> {}};
+            final Runnable[] updateTextHeader = new Runnable[]{() -> {}};
+            final Runnable[] syncGroupVisibility = new Runnable[]{() -> {}};
+            final Runnable[] collapseTextGroup = new Runnable[]{() -> {}};
+            final Runnable[] syncTypeDividers = new Runnable[]{() -> {}};
+            final Runnable[] syncTextDividers = new Runnable[]{() -> {}};
 
-            builder.addTitle(getString(R.string.EventScheduleSectionPattern), false, getString(R.string.EventScheduleMatchInfo));
+            final DisclosureHeaderCell typeHeader = new DisclosureHeaderCell(context);
+            builder.addCustomView(typeHeader);
+
+            TextCheckCell voiceCell = builder.addCheckItem(getString(R.string.AttachAudio), (types & EventScheduleEntry.TYPE_VOICE) != 0, false, null,
+                    (cell, isChecked) -> {
+                        updateTypeHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            TextCheckCell roundCell = builder.addCheckItem(getString(R.string.AttachRound), (types & EventScheduleEntry.TYPE_ROUND) != 0, false, null,
+                    (cell, isChecked) -> {
+                        updateTypeHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            TextCheckCell videoCell = builder.addCheckItem(getString(R.string.AttachVideo), (types & EventScheduleEntry.TYPE_VIDEO) != 0, false, null,
+                    (cell, isChecked) -> {
+                        updateTypeHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            TextCheckCell photoCell = builder.addCheckItem(getString(R.string.AttachPhoto), (types & EventScheduleEntry.TYPE_PHOTO) != 0, false, null,
+                    (cell, isChecked) -> {
+                        updateTypeHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            TextCheckCell textCell = builder.addCheckItem(getString(R.string.EventScheduleTypeText), (types & EventScheduleEntry.TYPE_TEXT) != 0, false, null,
+                    (cell, isChecked) -> {
+                        updateTypeHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            final ArrayList<TextCheckCell> typeGroup = new ArrayList<>();
+            typeGroup.add(voiceCell);
+            typeGroup.add(roundCell);
+            typeGroup.add(videoCell);
+            typeGroup.add(photoCell);
+            typeGroup.add(textCell);
+
+            View sectionSpacer = builder.addCustomView(new View(context));
+            sectionSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            sectionSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            sectionSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+
+            final DisclosureHeaderCell textHeader = new DisclosureHeaderCell(context);
+            builder.addCustomView(textHeader);
 
             LinearLayout patternArea = new LinearLayout(context);
             patternArea.setOrientation(LinearLayout.VERTICAL);
@@ -609,7 +737,18 @@ public final class EventScheduleHelper {
             addPatternRow.setTextAndIcon(getString(R.string.EventScheduleAddPattern), R.drawable.msg_add, true);
             patternArea.addView(addPatternRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
 
-            TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo), null);
+            TextCheckCell regexCell = builder.addCheckItem(getString(R.string.EventScheduleUseRegex), regex, false, getString(R.string.EventScheduleRegexInfo),
+                    (cell, isChecked) -> {
+                        updateTextHeader[0].run();
+                        return kotlin.Unit.INSTANCE;
+                    });
+            final TextInfoPrivacyCell patternInfo = new TextInfoPrivacyCell(context, 21);
+            patternInfo.setText(getString(R.string.EventScheduleMatchInfo));
+            builder.addCustomView(patternInfo);
+            View textDelaySpacer = builder.addCustomView(new View(context));
+            textDelaySpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            textDelaySpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            textDelaySpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
 
             // NagramX: build initial rows, THEN regexCell, THEN attach watchers and sync once -- appended
             // rows are allowed to attach after regexCell exists.
@@ -627,6 +766,7 @@ public final class EventScheduleHelper {
                 syncRegexEnabled(rows, regexCell);
                 updateAddRow(rows, addPatternRow);
                 updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], true);
+                updateTextHeader[0].run();
                 if (hadFocus) {
                     int next = Math.max(0, Math.min(index, rows.size() - 1));
                     focusRow(rows.get(next).field);
@@ -648,6 +788,7 @@ public final class EventScheduleHelper {
                         updateRowAccessibility(rows);
                         updateAddRow(rows, addPatternRow);
                         updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], false);
+                        updateTextHeader[0].run();
                     }
                 });
                 row.field.setOnFocusChangeListener((v, hasFocus) -> {
@@ -657,15 +798,16 @@ public final class EventScheduleHelper {
                         return;
                     }
                     clearRowMessage(row);
-                    if (regexCell.isChecked()) {
+                    if (regexCell.isChecked() && textExpanded[0]) {
                         validateRegexRow(rows, row);
                     }
-                    if (row.messageView.getVisibility() != android.view.View.VISIBLE) {
+                    if (textExpanded[0] && row.messageView.getVisibility() != android.view.View.VISIBLE) {
                         showDuplicateNoticeIfAny(rows, row);
                     }
                     updateRowAccessibility(rows);
                     updateAddRow(rows, addPatternRow);
                     updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], false);
+                    updateTextHeader[0].run();
                 });
                 row.field.setOnKeyListener((v, keyCode, event) -> {
                     if (keyCode == android.view.KeyEvent.KEYCODE_DEL
@@ -693,13 +835,122 @@ public final class EventScheduleHelper {
                 syncRegexEnabled(rows, regexCell);
                 updateAddRow(rows, addPatternRow);
                 updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], true);
+                updateTextHeader[0].run();
                 org.telegram.messenger.AndroidUtilities.doOnLayout(patternRowsContainer, () -> focusRow(row.field));
             };
             addPatternRow.setOnClickListener(v -> addRowActionHolder[0].run());
 
+            java.util.function.Supplier<String> typeSummary = () -> {
+                ArrayList<String> selected = new ArrayList<>();
+                if (voiceCell.isChecked()) selected.add(getString(R.string.AttachAudio));
+                if (roundCell.isChecked()) selected.add(getString(R.string.AttachRound));
+                if (videoCell.isChecked()) selected.add(getString(R.string.AttachVideo));
+                if (photoCell.isChecked()) selected.add(getString(R.string.AttachPhoto));
+                if (textCell.isChecked()) selected.add(getString(R.string.EventScheduleTypeText));
+                if (selected.isEmpty()) {
+                    return getString(R.string.EventScheduleTriggerOff);
+                }
+                if (selected.size() <= 2) {
+                    return TextUtils.join(", ", selected);
+                }
+                return selected.get(0) + ", " + selected.get(1) + " "
+                        + org.telegram.messenger.LocaleController.formatString(R.string.EventSchedulePatternMore, selected.size() - 2);
+            };
+            java.util.function.Supplier<String> textSummary = () -> {
+                ArrayList<String> unique = new ArrayList<>();
+                java.util.HashSet<String> seen = new java.util.HashSet<>();
+                for (int i = 0; i < rows.size(); i++) {
+                    String value = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
+                    if (TextUtils.isEmpty(value) || !seen.add(value)) {
+                        continue;
+                    }
+                    unique.add(value);
+                }
+                if (unique.isEmpty()) {
+                    return getString(R.string.EventScheduleTriggerOff);
+                }
+                String summary = unique.get(0);
+                if (unique.size() > 1) {
+                    summary = summary + " " + org.telegram.messenger.LocaleController.formatString(R.string.EventSchedulePatternMore, unique.size() - 1);
+                }
+                if (regexCell.isChecked()) {
+                    summary = summary + " \u00b7 " + getString(R.string.EventScheduleUseRegex);
+                }
+                return summary;
+            };
+            syncTypeDividers[0] = () -> {
+                for (int i = 0; i < typeGroup.size(); i++) {
+                    typeGroup.get(i).setDivider(typeExpanded[0] && i < typeGroup.size() - 1);
+                }
+            };
+            syncTextDividers[0] = () -> regexCell.setDivider(false);
+            updateTypeHeader[0] = () -> {
+                typeHeader.bind(getString(R.string.EventScheduleSectionType), typeSummary.get(), typeExpanded[0]);
+            };
+            updateTextHeader[0] = () -> {
+                textHeader.bind(getString(R.string.EventScheduleSectionPattern), textSummary.get(), textExpanded[0]);
+            };
+            syncGroupVisibility[0] = () -> {
+                int typeVisibility = typeExpanded[0] ? View.VISIBLE : View.GONE;
+                for (int i = 0; i < typeGroup.size(); i++) {
+                    typeGroup.get(i).setVisibility(typeVisibility);
+                }
+                int textVisibility = textExpanded[0] ? View.VISIBLE : View.GONE;
+                patternArea.setVisibility(textVisibility);
+                regexCell.setVisibility(textVisibility);
+                patternInfo.setVisibility(textVisibility);
+                syncTypeDividers[0].run();
+                syncTextDividers[0].run();
+            };
+            collapseTextGroup[0] = () -> {
+                EditTextBoldCursor focused = focusedField(rows);
+                if (focused != null) {
+                    // Collapsing hides the text group; dismiss keyboard/focus first so no hidden input keeps focus.
+                    org.telegram.messenger.AndroidUtilities.hideKeyboard(focused);
+                    focused.clearFocus();
+                }
+                clearAllRowMessages(rows);
+                boolean hasPattern = hasAnyPattern(rows);
+                for (int i = rows.size() - 1; i >= 0; i--) {
+                    PatternFieldRow row = rows.get(i);
+                    if (isBlankRow(row) && (hasPattern || rows.size() > 1)) {
+                        removeRow.accept(row);
+                    }
+                }
+                if (!hasAnyPattern(rows)) {
+                    while (rows.size() > 1) {
+                        removeRow.accept(rows.get(rows.size() - 1));
+                    }
+                }
+                clearAllRowMessages(rows);
+                textExpanded[0] = false;
+                syncGroupVisibility[0].run();
+                updateTextHeader[0].run();
+            };
+            typeHeader.setOnClickListener(v -> {
+                typeExpanded[0] = !typeExpanded[0];
+                syncGroupVisibility[0].run();
+                updateTypeHeader[0].run();
+            });
+            textHeader.setOnClickListener(v -> {
+                if (textExpanded[0]) {
+                    collapseTextGroup[0].run();
+                } else {
+                    textExpanded[0] = true;
+                    syncGroupVisibility[0].run();
+                    updateTextHeader[0].run();
+                }
+            });
+
             syncRegexEnabled(rows, regexCell);
             updateRowAccessibility(rows);
             updateAddRow(rows, addPatternRow);
+            boolean hasAnyCondition = (types & EventScheduleEntry.TYPE_MASK) != 0 || hasAnyPattern(rows);
+            typeExpanded[0] = !hasAnyCondition;
+            textExpanded[0] = false;
+            syncGroupVisibility[0].run();
+            updateTypeHeader[0].run();
+            updateTextHeader[0].run();
 
             final int[] delayValues = {0, 2, 5, 10, 15, 20, 25, EventScheduleEntry.MAX_DELAY_SECONDS};
             int startIndex = 0;
@@ -777,9 +1028,15 @@ public final class EventScheduleHelper {
             delayLayout.addView(delaySeekBar, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48, 13, 0, 13, 0));
             final float initialDelayProgress = startIndex / (float) (delayValues.length - 1);
             org.telegram.messenger.AndroidUtilities.doOnLayout(delaySeekBar, () -> delaySeekBar.setProgress(initialDelayProgress));
-            builder.addCustomView(delayLayout);
+            FrameLayout delayCardContainer = new FrameLayout(context);
+            delayCardContainer.addView(delayLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+            builder.addCustomView(delayCardContainer);
 
             if (enabled) {
+                View removeSpacer = builder.addCustomView(new View(context));
+                removeSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+                removeSpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+                removeSpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 12));
                 builder.addItem(getString(R.string.EventScheduleClear), R.drawable.msg_delete, true, it -> {
                     enabled = false;
                     userTouchedTrigger = true;
@@ -822,14 +1079,32 @@ public final class EventScheduleHelper {
                     for (int i = 0; i < unique.size(); i++) {
                         if (!EventScheduleEntry.isPatternValid(unique.get(i), true)) {
                             PatternFieldRow badRow = uniqueRows.get(i);
-                            showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
-                            focusRow(badRow.field);
-                            AndroidUtil.showInputError(badRow.field);
+                            if (!textExpanded[0]) {
+                                textExpanded[0] = true;
+                                syncGroupVisibility[0].run();
+                                updateTextHeader[0].run();
+                                org.telegram.messenger.AndroidUtilities.doOnLayout(patternArea, () -> {
+                                    showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
+                                    focusRow(badRow.field);
+                                    AndroidUtil.showInputError(badRow.field);
+                                });
+                            } else {
+                                showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
+                                focusRow(badRow.field);
+                                AndroidUtil.showInputError(badRow.field);
+                            }
                             return kotlin.Unit.INSTANCE;
                         }
                     }
                 }
                 if (newTypes == 0 && unique.isEmpty()) {
+                    if (!typeExpanded[0] || !textExpanded[0]) {
+                        typeExpanded[0] = true;
+                        textExpanded[0] = true;
+                        syncGroupVisibility[0].run();
+                        updateTypeHeader[0].run();
+                        updateTextHeader[0].run();
+                    }
                     AlertUtil.showToast(getString(R.string.EventScheduleNeedCondition));
                     return kotlin.Unit.INSTANCE;
                 }
@@ -864,6 +1139,7 @@ public final class EventScheduleHelper {
                         validateRegexRow(rows, rows.get(i));
                     }
                 }
+                updateTextHeader[0].run();
             });
 
             builder.addCancelButton();

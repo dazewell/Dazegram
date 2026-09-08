@@ -13,7 +13,9 @@ Set a time zone for any personal chat or group through the profile edit view. Th
 
 ### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password --> <!-- #disguise-alerting -->
 
-Each chat has one `Chat privacy` item in its ⋯ menu, opening a sheet with `Hide last message` (custom placeholder text) and `Require password`. The same sheet has `Disguise notifications`, which swaps that chat's real content for a cover persona you pick, with a `Preview notification` button to test it and an `Alert normally` switch if you want sound, vibration, and watch alerts through the cover instead of the default silence. Calls and stories are never disguised.
+Each chat has one `Chat privacy` item in its ⋯ menu, opening one sheet with `Hide last message` (custom placeholder text) and `Require password`. Turning `Require password` on still auto-enables hiding only when hiding was off; turning it off does not turn hiding off.
+
+The same sheet has `Disguise notifications` with cover persona selection and `Preview notification`. The old per-chat `Alert normally` row is gone: covered notifications now follow Telegram's own silent-vs-alert signal per event, and can alert only when that covered dialog has newly represented members since its last posted cover. Mute/per-chat sound/channel/watch tuning stays in Telegram/Android settings. The sheet uses compact section cards (privacy card, notifications card, collapsed `How covers work` footer disclosure), and its bulletins use Telegram's stock bottom placement.
 
 ### Privacy profiles <!-- #privacy-profiles -->
 
@@ -131,7 +133,9 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval (give messages three minutes or more of spacing — Telegram's own scheduler can run a minute or two late).
 
-The schedule picker — for a new message, or from Reschedule — also has a *Send on event* row: set a trigger (up to five text patterns as glob or regex, a voice match, or a video match) and the message sends the moment it fires instead of waiting for its scheduled fallback time. Several messages can share one trigger and send one after another in order. A disguised chat (see *Disguise notifications* above) shows no heads-up for an armed or fired trigger, so it leaks no trigger activity. Manage every trigger currently armed from the Chats nav button's overflow menu → *Message Triggers*, where you can see what each is waiting for and remove one.
+*Send on event* can be armed in the schedule picker or directly from bulk *Reschedule*. One trigger can watch message type, text patterns, or both, then send early while each message keeps its fallback schedule. The trigger sheet labels are now explicit (`Video message`, `Any text message`) and use compact collapsible section cards (`By message type`, `Or by text`) with summaries when collapsed. Hidden invalid regex rows still auto-expand on Done and focus the exact row error.
+
+Armed triggers are managed from Chats nav ⋯ → *Message Triggers*. A disguised chat still suppresses trigger fire/stop heads-up alerts so trigger activity is not exposed through notifications.
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 

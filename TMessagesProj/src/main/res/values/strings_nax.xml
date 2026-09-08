@@ -527,7 +527,7 @@
     <string name="EventScheduleTriggerOff">Off</string>
     <string name="EventScheduleTriggerInFlight">Available after all messages finish sending. Reopen this sheet to add a trigger.</string>
     <string name="EventScheduleTitle">Send early on event</string>
-    <string name="EventScheduleTypeText">Text message</string>
+    <string name="EventScheduleTypeText">Any text message</string>
     <string name="EventScheduleSectionType">By message type</string>
     <string name="EventScheduleSectionPattern">Or by text</string>
     <string name="EventSchedulePatternHint">Text or caption pattern</string>
@@ -544,7 +544,6 @@
     <string name="EventScheduleClear">Remove trigger</string>
     <string name="EventScheduleNeedCondition">Select a message type or enter a pattern</string>
     <string name="EventScheduleInvalidRegex">That regular expression isn\'t valid. Fix it, or turn off Regular expression.</string>
-    <string name="EventScheduleTypeRound">Round video</string>
     <string name="EventScheduleRegexNeedsPattern">Enter a pattern first</string>
     <string name="EventScheduleArmed">Will be sent early if a matching message arrives while the app is running, otherwise at the scheduled time</string>
     <string name="EventScheduleSentNotification">Scheduled message sent early by a trigger</string>
@@ -671,14 +670,10 @@
     <string name="NaxCoverSectionTitle">Notifications</string>
     <string name="NaxCoverDisguiseTitle">Disguise notifications</string>
     <string name="NaxCoverDisguiseSubtitle">Show this chat as something else in your notifications, so a glance doesn\'t give it away.</string>
-    <string name="NaxCoverAlertTitle">Alert normally</string>
-    <string name="NaxCoverAlertSubtitle">This cover will sound, vibrate, and reach your watch like any other notification. It still shows as the cover, not the real chat.</string>
-    <string name="NaxCoverAlertEnabledHint">This chat\'s cover will alert like a normal notification now.</string>
-    <string name="NaxCoverAlertDisabledHint">This chat\'s cover is quiet again.</string>
-    <string name="NaxCoverAlertFailedHint">Couldn\'t turn on alerts for this cover.</string>
     <string name="NaxCoverAlertChannelName">%1$s (alerting)</string>
     <string name="NaxCoverRowTitle">Cover</string>
     <string name="NaxCoverPreviewTitle">Preview notification</string>
+    <string name="NaxCoverHowItWorks">How covers work</string>
     <string name="NaxCoverPreviewPosted">Preview notification posted.</string>
     <string name="NaxCoverPreviewUnavailable">Couldn\'t post preview.</string>
     <string name="NaxCoverLimitations">Covers hide chat name, sender, and message in app notifications. Tapping or dismissing a cover only clears that notification. It never opens the chat and never marks anything read. Attempting to open the real chat in the app clears its cover, even if unlock is cancelled or fails. Live incoming/ongoing call UI and stories remain outside disguise, while missed-call service notifications are covered generically. Android may still show the app as source, badges, and older pinned conversation/channel labels. Android notification settings and user-tuned channels stay authoritative.</string>

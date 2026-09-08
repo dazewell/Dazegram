@@ -3,23 +3,117 @@
 "When the user taps X, the code that runs is Y." Re-verify the citation
 before relying on it — see the README.
 
-## Send on event pattern rows are caller-owned custom views, not BottomBuilder items
+## BottomBuilder section cards are opt-in and isolated to Early Send
 
-The *Send early on event* sheet's pattern editor is built inside
-`EventScheduleHelper.Row.openSheet()` by creating a caller-owned vertical
-container (`patternArea` + `patternRowsContainer`) and attaching it with
-`BottomBuilder.addCustomView(...)`, then placing the `Add pattern` row inside
-that same container (`EventScheduleHelper.java:564-587`).
+`BottomBuilder` now has a fourth constructor arg `sections` defaulting `false`,
+so existing callers keep the old layout path by default
+(`BottomBuilder.kt:32-43`). In default mode, root/content behavior stays the
+same (`LinearLayout` root under a plain `ScrollView`); in sections mode only,
+the builder swaps to `SectionsLinearLayout` + `SectionsScrollView`
+(`BottomBuilder.kt:45-67`).
 
-That shape is required by `BottomBuilder` internals: the builder keeps a
-private root inside a `ScrollView` (`BottomBuilder.kt:44-55`), and
-`addItem(...)` always calls `dismiss()` before its listener (`BottomBuilder.kt:212-219`).
-So a dynamic "add another field" row in this sheet cannot be a normal
-BottomBuilder item; it must be caller-owned content wired through
-`addCustomView(...)` (`BottomBuilder.kt:270-272`) so tapping it mutates rows
-without closing the sheet.
+Section-mode-only chrome is also gated there: the button strip is tagged
+`RecyclerListView.TAG_NOT_SECTION`, the strip background is gray, and
+`create()` applies gray sheet/nav-bar background (`BottomBuilder.kt:70-82`,
+`:299-305`). In sections mode, `addTitle(...)` wraps the builder-owned
+`HeaderCell` in a full-width `FrameLayout`; the inner `HeaderCell` is tagged
+out while the wrapper remains the section member (`BottomBuilder.kt:107-121`).
+`EventScheduleHelper` is the only caller opting in:
+`new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true)`
+(`EventScheduleHelper.java:656`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
+
+## Send on event card membership and collapse behavior
+
+The *Send early on event* sheet now uses a local `DisclosureHeaderCell`
+subclass of `TextSettingsCell` for both collapsible group headers, with summary
+value text and explicit accessibility state text
+(`EventScheduleHelper.java:274-346`). The disclosure cue is an inline
+`ColoredImageSpan(R.drawable.arrow_more)` appended to the title text and rotated
+with the same 340ms `EASE_OUT_QUINT` curve when expanded/collapsed, so the cue
+measures with the title in the stock `TextSettingsCell` layout path.
+These disclosure rows are section
+members (not tagged out), so each group header sits inside its card with its
+controls directly beneath it.
+
+Card ownership now has permanent boundaries that do not depend on descendant
+visibility: an intro/type boundary spacer immediately after `addTitle(...)`,
+the existing permanent type/text spacer, and a permanent text/delay spacer
+after `patternInfo` (`EventScheduleHelper.java:658-661`, `:707-710`, `:748-751`).
+With those boundaries, composition stays stable as four primary cards: intro title
+card, type card (header + five type rows), text card (header + `patternArea` +
+regex row), and delay card (`EventScheduleHelper.java:657`, `:668-702`,
+`:712-740`, `:1031-1033`). If trigger state is already enabled, the optional
+remove action still appears after those four cards with its own tagged gray
+spacer (`EventScheduleHelper.java:1035-1044`).
+
+`patternInfo` remains a `TextInfoPrivacyCell` after regex, outside card
+grouping by `SectionsScrollView.isSectionView(...)` class exclusion
+(`EventScheduleHelper.java:745-747`; `SectionsScrollView.java:36-41`). Text
+collapse still toggles `patternArea`, regex, and `patternInfo` visibility, but
+the permanent boundaries keep text and delay as separate card runs even when
+the text descendants are `GONE` (`EventScheduleHelper.java:893-901`;
+`SectionsScrollView.java:91-98`).
+
+Divider behavior is now explicit: header dividers draw only while expanded,
+type rows clear the last divider in the group, and regex is always the text
+card's last row with no bottom divider (`EventScheduleHelper.java:885-890`).
+Delay UI remains wrapped in a full-width `FrameLayout` so sections treat it as
+one card, and the remove separator now uses literal `12` dp units (no double-dp)
+(`EventScheduleHelper.java:1031-1039`).
+
+Hidden-group validation behavior remains in the same code path: Done expands a
+collapsed text group before showing row-level invalid-regex feedback, and
+no-condition failure expands actionable groups before the existing toast
+(`EventScheduleHelper.java:1067-1108`).
+
+*(Updated 2026-09-07.)*
+
+## Covered notification silent-tier decision in mixed rebuilds
+
+Covered-child silent/alert selection is now explicitly split by scope.
+Preflight captures a rebuild-wide suppression bit
+`naxRebuildSuppressed = !notifyAboutLast || isRecordingAudio()` and builds an
+immutable per-covered-dialog map `naxCoverSuppressed`, keyed from the covered
+snapshot (`naxMessagesByDialogs`) using the extracted read-only helper
+`naxCoveredDialogSuppressed(...)` (notify override/global-enabled, message
+silence, per-chat `sound_enabled_`) (`NotificationsController.java:4193-4202`,
+`:6001-6029`).
+
+`showExtraNotifications(...)` now receives both values and derives child
+`coverSilent` as:
+`naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`,
+then passes that into `NotificationCoverController.postChild(...)`
+(`NotificationsController.java:4887`, `:4962`, `:5117-5119`). Inside
+`postChild(...)`, growth is no longer derived from capped token snapshots.
+Authoritative baseline now lives in per-dialog exact-membership prefs
+(`KEY_ACTIVE_CHILD_MEMBERS`), while token snapshots stay capped interaction
+payloads only (`NotificationCoverController.java:65`, `:739-776`, `:972-1038`).
+
+Ordering is now split deliberately: under `COVER_STATE_LOCK`, child posting
+reads prior exact membership (resolving stored ids through current alias map),
+computes growth/migration/over-capacity, and rotates only tap/dismiss token
+records first (`NotificationCoverController.java:767-776`, `:1085-1169`); after
+`notify(...)` succeeds, it re-locks and writes the new membership baseline only
+when the active tap pointer still equals this post's token (CAS guard),
+preventing stale rewrites after concurrent interaction or rebuild
+(`NotificationCoverController.java:803-811`).
+
+Over-capacity represented sets (`displayCount > SUPPRESSION_LIMIT`) are marked
+explicitly in `buildPostPlan` and always forced silent; the stored baseline is
+an explicit sentinel (`over_capacity`) rather than a truncated id list
+(`NotificationCoverController.java:561-562`, `:771`, `:1095`, `:1125-1134`).
+Migration is also explicit: missing membership + existing active child token
+forces silent for that post and seeds baseline only after successful notify/CAS
+(`NotificationCoverController.java:767-770`, `:778`, `:803-811`).
+
+Cleanup ownership is centralized: membership state is cleared only by
+`clearDialogInteractionState(...)`, and stale/orphan membership keys are pulled
+into reconcile candidate scanning through the membership prefix
+(`NotificationCoverController.java:1278-1282`, `:1341-1343`).
+
+*(Updated 2026-09-07.)*
 
 ## Chat privacy overflow row owns both per-chat privacy controls
 
@@ -30,35 +124,45 @@ that opens `ChatPrivacySheet.show(...)` (`org/telegram/ui/ChatActivity.java:498`
 Inside that sheet, `Hide last message` toggles
 `HideLastMessageController.setHidden(...)`, and the `Placeholder text` value row
 opens `HideLastMessageDialog.showPlaceholderEditor(...)` for Save/Cancel editing
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:90-99`, `:145-156`;
+(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:173`, `:181`;
 `com/radolyn/ayugram/hidelastmessage/HideLastMessageDialog.java:113-172`).
 
 `Require password` state is read from the persisted lock flag via
 `ChatLockController.isFlagged(...)` (not `isLocked(...)`), so a stored flag is
 still shown when the global app passcode is absent
 (`com/radolyn/ayugram/chatlock/ChatLockController.java:70-80`;
-`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:101-124`, `:158-168`).
+`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:123-151`, `:186-194`).
 When turned on with a passcode present, the sheet keeps the existing one-way
 coupling: it auto-enables hide only when hide was off, preserving a custom
-placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:169-177`).
+placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197-204`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
 
-## Chat privacy sheet's Notifications section drives disguised covers
+## Chat privacy card membership and stock bulletin placement
 
-The same sheet has a `Notifications` header, a `Disguise notifications`
-`TextCheckCell`, plus `Cover` and `Preview notification` `TextSettingsCell`s
-(visible only while disguise is on). The switch toggles
-`NotificationCoverController.setEnabled(...)` and
-queues a rebuild through `NotificationsController.getInstance(account).showNotifications()`;
-the `Cover` row opens the reused single-select `PopupHelper.show(...)` radio
-sheet and calls `setPersona(...)` + the same rebuild; the preview row calls
-`NotificationCoverController.postPreview(...)` and only shows a bulletin result
-(`com/radolyn/ayugram/chatprivacy/ChatPrivacySheet.java:70-84`, `:131-151`,
-`:190-223`, `:232-257`; `tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
-The UI never builds or cancels a notification itself. It writes config and asks
-the controller to rebuild for disguise/persona changes, and it calls controller
-preview posting only for the explicit preview row.
+`ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it
+in `SectionsScrollView`, with gray sheet/nav-bar backgrounds applied after
+`builder.create()` and before `showDialog()` (`ChatPrivacySheet.java:53`,
+:268-297`). Card membership is split by tags: title, notifications header,
+and `How covers work` disclosure are marked `TAG_NOT_SECTION`; card 1 is
+hide/placeholder/require-password and card 2 is disguise/cover/preview
+(`ChatPrivacySheet.java:61`, `:79`, `:96-99`).
+
+The sections scroll migration now explicitly attaches `content` as
+`MATCH_PARENT x WRAP_CONTENT` under the `SectionsScrollView`, matching the
+builder sections path (`ChatPrivacySheet.java:271`).
+
+The notifications behavior wiring is unchanged in ownership: switch -> 
+`setEnabled(...)` + notifications rebuild, cover picker -> `setPersona(...)` +
+rebuild, preview -> `postPreview(...)` + bulletin feedback
+(`ChatPrivacySheet.java:211-242`;
+`tw/nekomimi/nekogram/helpers/PopupHelper.java:32-54`).
+
+Require password / Disguise / Preview bulletins now call
+`BulletinFactory.of(sheetRef[0].container, rp).createSimpleBulletin(...).show()`
+directly under the existing `sheetRef[0] != null` guards, with no custom
+delegate, offset host, or row-anchor wrapper (`ChatPrivacySheet.java:194-203`,
+`:212-220`, `:236-243`).
 
 Cover config is stored in the account's notifications `SharedPreferences`
 (`MessagesController.getNotificationsSettings(account)`), keyed
@@ -68,7 +172,7 @@ generic channels under `nax_cover_v1_channel_<personaId>` /
 (`com/radolyn/ayugram/chatprivacy/NotificationCoverController.java:57-68`,
 `:201-229`, `:654-671`).
 
-*(Established 2026-09-03.)*
+*(Updated 2026-09-07.)*
 
 ## Tokenized broadcast interaction path for covered notifications
 

@@ -62,11 +62,11 @@ public final class NotificationCoverController {
     private static final String KEY_TOKEN_RECORD = "nax_cover_v1_token_";
     private static final String KEY_ACTIVE_CHILD_TAP = "nax_cover_v1_active_child_tap_";
     private static final String KEY_ACTIVE_CHILD_DISMISS = "nax_cover_v1_active_child_dismiss_";
+    private static final String KEY_ACTIVE_CHILD_MEMBERS = "nax_cover_v1_active_child_members_";
     private static final String KEY_ACTIVE_SUMMARY_TAP = "nax_cover_v1_active_summary_tap";
     private static final String KEY_ACTIVE_SUMMARY_DISMISS = "nax_cover_v1_active_summary_dismiss";
     private static final String KEY_ACTIVE_PREVIEW_TAP = "nax_cover_v1_active_preview_tap";
     private static final String KEY_PREVIEW_DIALOG = "nax_cover_v1_preview_dialog";
-    private static final String KEY_ALERT_ENABLED = "nax_cover_v1_alert_";
     private static final String ALERT_CHANNEL_SUFFIX = "_alert";
 
     public static final String EXTRA_COVER_TOKEN = "nax_cover_token";
@@ -80,6 +80,10 @@ public final class NotificationCoverController {
     private static final int SUPPRESSION_LIMIT = 100;
     private static final int SUPPRESSION_ALIAS_LIMIT = 200;
     private static final Object COVER_STATE_LOCK = new Object();
+    private static final int ACTIVE_MEMBERS_VERSION = 1;
+    private static final String ACTIVE_MEMBERS_VERSION_KEY = "v";
+    private static final String ACTIVE_MEMBERS_IDS_KEY = "ids";
+    private static final String ACTIVE_MEMBERS_OVER_CAPACITY_KEY = "over_capacity";
 
     private static final int TOKEN_KIND_CHILD_TAP = 1;
     private static final int TOKEN_KIND_CHILD_DISMISS = 2;
@@ -136,13 +140,27 @@ public final class NotificationCoverController {
         final LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
     }
 
+    private static final class ActiveChildMembersState {
+        final boolean present;
+        final boolean overCapacity;
+        final ArrayList<String> ids;
+
+        ActiveChildMembersState(boolean present, boolean overCapacity, ArrayList<String> ids) {
+            this.present = present;
+            this.overCapacity = overCapacity;
+            this.ids = ids;
+        }
+    }
+
     public static final class CoverPostPlan {
         public final int displayCount;
         public final ArrayList<String> representedIds;
+        public final boolean representedOverCapacity;
 
-        CoverPostPlan(int displayCount, ArrayList<String> representedIds) {
+        CoverPostPlan(int displayCount, ArrayList<String> representedIds, boolean representedOverCapacity) {
             this.displayCount = displayCount;
             this.representedIds = representedIds;
+            this.representedOverCapacity = representedOverCapacity;
         }
 
         public boolean hasRepresentedMembers() {
@@ -234,31 +252,6 @@ public final class NotificationCoverController {
     public static void setPersona(int account, long dialogId, int personaId) {
         if (dialogId == 0 || personaById(personaId) == null) return;
         prefs(account).edit().putInt(KEY_PERSONA + dialogId, personaId).apply();
-    }
-
-    /** Whether this dialog's cover is opted into alerting (sound/vibration/watch) instead of staying silent. */
-    public static boolean isAlertEnabled(int account, long dialogId) {
-        return dialogId != 0 && prefs(account).getBoolean(KEY_ALERT_ENABLED + dialogId, false);
-    }
-
-    /**
-     * Turns alerting on/off for this dialog's cover. Turning on mints/verifies this persona's alert-tier
-     * channel first and only persists the flag if that channel actually came up at IMPORTANCE_DEFAULT or
-     * above with notifications enabled for the app - never leaves the dialog silently believing it will
-     * alert when the platform won't actually do it. Turning off never touches the channel itself, so any
-     * future re-enable doesn't lose whatever tuning Android's own settings applied to it in the meantime.
-     */
-    public static boolean setAlertEnabled(int account, long dialogId, boolean enabled) {
-        if (dialogId == 0) return false;
-        if (!enabled) {
-            prefs(account).edit().putBoolean(KEY_ALERT_ENABLED + dialogId, false).apply();
-            return true;
-        }
-        if (!verifyAlertChannel(account, resolvePersonaId(account, dialogId))) {
-            return false;
-        }
-        prefs(account).edit().putBoolean(KEY_ALERT_ENABLED + dialogId, true).apply();
-        return true;
     }
 
     public static int[] personaIds() {
@@ -540,7 +533,7 @@ public final class NotificationCoverController {
 
     public static CoverPostPlan buildPostPlan(int account, long dialogId, ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
-            return new CoverPostPlan(0, new ArrayList<>());
+            return new CoverPostPlan(0, new ArrayList<>(), false);
         }
         synchronized (COVER_STATE_LOCK) {
             SuppressionState state = loadSuppressionState(account, dialogId);
@@ -565,7 +558,8 @@ public final class NotificationCoverController {
                 saveSuppressionState(account, dialogId, state);
             }
             int displayCount = visible.size();
-            return new CoverPostPlan(displayCount, new ArrayList<>(visible));
+            boolean representedOverCapacity = displayCount > SUPPRESSION_LIMIT;
+            return new CoverPostPlan(displayCount, new ArrayList<>(visible), representedOverCapacity);
         }
     }
 
@@ -701,10 +695,9 @@ public final class NotificationCoverController {
         return id;
     }
 
-    // Second, opt-in channel per persona: same cover identity, but IMPORTANCE_DEFAULT with vibration on,
-    // so an opted-in dialog alerts (and reaches the paired watch) without touching the silent channel
-    // every other dialog on that persona keeps using. See docs/codemap/upstream-traps.md for why this is
-    // a second channel rather than raising the existing one's importance.
+    // Second channel tier per persona: same cover identity, but IMPORTANCE_DEFAULT with vibration on.
+    // postChild routes into this tier whenever upstream says the event is non-silent, without touching
+    // the silent channel tier used when upstream marks an event silent.
     private static void ensureAlertChannel(String id, String name) {
         if (Build.VERSION.SDK_INT < 26) return;
         NotificationManager nm = systemManager();
@@ -734,25 +727,6 @@ public final class NotificationCoverController {
         return id;
     }
 
-    /**
-     * Mints/verifies the alert-tier channel for this persona and confirms it actually came up able to
-     * alert. createNotificationChannel returns void and never throws on a rejected importance, so the
-     * only way to know it worked is reading the channel back afterwards.
-     */
-    private static boolean verifyAlertChannel(int account, int personaId) {
-        if (!NotificationManagerCompat.from(ApplicationLoader.applicationContext).areNotificationsEnabled()) {
-            return false;
-        }
-        String id = alertChannelId(account, personaId);
-        if (Build.VERSION.SDK_INT < 26) {
-            return true;
-        }
-        NotificationManager nm = systemManager();
-        if (nm == null) return false;
-        NotificationChannel channel = nm.getNotificationChannel(id);
-        return channel != null && channel.getImportance() >= NotificationManager.IMPORTANCE_DEFAULT;
-    }
-
     // ---- Notification build helpers ----
 
     public static String coverLine(int account, long dialogId, int count) {
@@ -762,12 +736,14 @@ public final class NotificationCoverController {
         return LocaleController.getString(p.labelRes) + ": " + LocaleController.formatString(p.bodyRes, count);
     }
 
-    public static boolean postChild(int account, long dialogId, int count, boolean grouped, String group, ArrayList<String> representedIds) {
+    public static boolean postChild(int account, long dialogId, int count, boolean silent, boolean grouped, String group, ArrayList<String> representedIds, boolean representedOverCapacity) {
         Context ctx = ApplicationLoader.applicationContext;
         SharedPreferences p = prefs(account);
+        int internalId = internalId(dialogId);
         try {
             clearConversationArtifacts(dialogId);
-            if (representedIds == null || representedIds.isEmpty() || count <= 0) {
+            ArrayList<String> represented = sanitizeRepresentedIds(representedIds);
+            if (represented.isEmpty() || count <= 0) {
                 synchronized (COVER_STATE_LOCK) {
                     SharedPreferences.Editor clearEditor = p.edit();
                     clearDialogInteractionState(account, dialogId, p, clearEditor);
@@ -778,30 +754,37 @@ public final class NotificationCoverController {
             int personaId = resolvePersonaId(account, dialogId);
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
-            int internalId = internalId(dialogId);
-            boolean alertEnabled = isAlertEnabled(account, dialogId);
+            boolean hadPrevious;
+            boolean forceSilentForMigration;
+            boolean forceSilentForOverCapacity;
+            boolean hasRepresentedGrowth;
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
-            snapshots.put(dialogId, new ArrayList<>(representedIds));
+            snapshots.put(dialogId, new ArrayList<>(represented));
             String tapToken;
             String dismissToken;
             synchronized (COVER_STATE_LOCK) {
+                hadPrevious = hasActiveChildTokenLocked(p, dialogId);
+                SuppressionState suppressionState = loadSuppressionState(account, dialogId);
+                ActiveChildMembersState previousMembers = readActiveChildMembersLocked(p, dialogId, suppressionState);
+                forceSilentForMigration = !previousMembers.present && hadPrevious;
+                forceSilentForOverCapacity = representedOverCapacity;
+                hasRepresentedGrowth = hasRepresentedGrowthLocked(previousMembers, represented);
                 SharedPreferences.Editor ed = p.edit();
                 tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, 0, dialogId, snapshots));
                 dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, 0, dialogId, snapshots));
                 ed.apply();
             }
+            boolean effectiveSilent = silent || forceSilentForMigration || forceSilentForOverCapacity || !hasRepresentedGrowth;
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertEnabled ? alertChannelId(account, personaId) : childChannelId(account, personaId))
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, effectiveSilent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    // Opted-in dialogs must re-alert on every rebuild, not just the first time this
-                    // stable-tagged notification is shown - see docs/codemap/upstream-traps.md.
-                    .setOnlyAlertOnce(!alertEnabled)
+                    .setOnlyAlertOnce(effectiveSilent)
                     .setShowWhen(false)
                     .setContentIntent(contentIntent)
                     .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, internalId + 0x31))
@@ -809,9 +792,7 @@ public final class NotificationCoverController {
                     .setPriority(NotificationCompat.PRIORITY_LOW);
             if (grouped) {
                 b.setGroup(group);
-                // GROUP_ALERT_SUMMARY mutes the child regardless of its own channel's importance; an
-                // opted-in dialog must keep its own alert, so it's the one case that skips this line.
-                if (!alertEnabled) {
+                if (effectiveSilent) {
                     b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
                 }
             }
@@ -821,6 +802,14 @@ public final class NotificationCoverController {
                 b.setLocalOnly(true);
             }
             NotificationManagerCompat.from(ctx).notify(coverTag(account, dialogId), internalId, b.build());
+            synchronized (COVER_STATE_LOCK) {
+                String activeTap = p.getString(activeChildTapKey(dialogId), null);
+                if (TextUtils.equals(activeTap, tapToken)) {
+                    SharedPreferences.Editor membershipEditor = p.edit();
+                    putActiveChildMembersLocked(membershipEditor, dialogId, represented, representedOverCapacity);
+                    membershipEditor.apply();
+                }
+            }
             return true;
         } catch (Exception t) {
             synchronized (COVER_STATE_LOCK) {
@@ -828,6 +817,7 @@ public final class NotificationCoverController {
                 clearDialogInteractionState(account, dialogId, p, clearEditor);
                 clearEditor.apply();
             }
+            NotificationManagerCompat.from(ctx).cancel(coverTag(account, dialogId), internalId);
             FileLog.e("nax cover child post failed", t);
             return false;
         }
@@ -898,7 +888,6 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int count = 1 + (int) Math.floorMod(dialogId, 4);
-            boolean alertEnabled = isAlertEnabled(account, dialogId);
 
             String token;
             SharedPreferences p = prefs(account);
@@ -909,15 +898,13 @@ public final class NotificationCoverController {
                 ed.apply();
             }
 
-            // Same channel/onlyAlertOnce choice as postChild - otherwise Preview would confirm alerting
-            // works when the real path (which grouping can mute) hasn't been exercised at all.
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertEnabled ? alertChannelId(account, personaId) : childChannelId(account, personaId))
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, alertChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    .setOnlyAlertOnce(!alertEnabled)
+                    .setOnlyAlertOnce(false)
                     .setShowWhen(false)
                     .setContentIntent(interactionIntent(account, token, INTERACTION_EVENT_TAP, PREVIEW_ID_BASE + account))
                     .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -949,6 +936,10 @@ public final class NotificationCoverController {
 
     private static String activeChildDismissKey(long dialogId) {
         return KEY_ACTIVE_CHILD_DISMISS + dialogId;
+    }
+
+    private static String activeChildMembersKey(long dialogId) {
+        return KEY_ACTIVE_CHILD_MEMBERS + dialogId;
     }
 
     private static PendingIntent interactionIntent(int account, String token, int event, int requestCode) {
@@ -1076,6 +1067,111 @@ public final class NotificationCoverController {
         }
     }
 
+    private static ArrayList<String> sanitizeRepresentedIds(ArrayList<String> representedIds) {
+        ArrayList<String> safe = new ArrayList<>();
+        if (representedIds == null) {
+            return safe;
+        }
+        LinkedHashSet<String> seen = new LinkedHashSet<>();
+        for (int i = 0; i < representedIds.size(); i++) {
+            String id = representedIds.get(i);
+            if (validIdentity(id) && seen.add(id)) {
+                safe.add(id);
+            }
+        }
+        return safe;
+    }
+
+    private static ActiveChildMembersState readActiveChildMembersLocked(SharedPreferences p, long dialogId, SuppressionState suppressionState) {
+        String raw = p.getString(activeChildMembersKey(dialogId), null);
+        if (TextUtils.isEmpty(raw)) {
+            return new ActiveChildMembersState(false, false, new ArrayList<>());
+        }
+        try {
+            JSONObject root = new JSONObject(raw);
+            if (root.optInt(ACTIVE_MEMBERS_VERSION_KEY, -1) != ACTIVE_MEMBERS_VERSION) {
+                return new ActiveChildMembersState(true, true, new ArrayList<>());
+            }
+            if (root.optBoolean(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, false)) {
+                return new ActiveChildMembersState(true, true, new ArrayList<>());
+            }
+            JSONArray idsArray = root.optJSONArray(ACTIVE_MEMBERS_IDS_KEY);
+            if (idsArray == null) {
+                return new ActiveChildMembersState(false, false, new ArrayList<>());
+            }
+            ArrayList<String> ids = new ArrayList<>();
+            LinkedHashSet<String> seen = new LinkedHashSet<>();
+            for (int i = 0; i < idsArray.length(); i++) {
+                String rawId = idsArray.optString(i, null);
+                if (!validIdentity(rawId)) {
+                    continue;
+                }
+                String resolved = resolveCanonical(suppressionState, rawId);
+                if (!validIdentity(resolved)) {
+                    continue;
+                }
+                if (seen.add(resolved)) {
+                    ids.add(resolved);
+                }
+            }
+            return new ActiveChildMembersState(true, false, ids);
+        } catch (Exception e) {
+            return new ActiveChildMembersState(true, true, new ArrayList<>());
+        }
+    }
+
+    private static void putActiveChildMembersLocked(SharedPreferences.Editor ed, long dialogId, ArrayList<String> representedIds, boolean representedOverCapacity) {
+        String key = activeChildMembersKey(dialogId);
+        if (representedOverCapacity) {
+            JSONObject root = new JSONObject();
+            try {
+                root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
+                root.put(ACTIVE_MEMBERS_OVER_CAPACITY_KEY, true);
+                ed.putString(key, root.toString());
+            } catch (JSONException e) {
+                FileLog.e(e);
+            }
+            return;
+        }
+        JSONObject root = new JSONObject();
+        JSONArray ids = new JSONArray();
+        for (int i = 0; i < representedIds.size(); i++) {
+            ids.put(representedIds.get(i));
+        }
+        try {
+            root.put(ACTIVE_MEMBERS_VERSION_KEY, ACTIVE_MEMBERS_VERSION);
+            root.put(ACTIVE_MEMBERS_IDS_KEY, ids);
+            ed.putString(key, root.toString());
+        } catch (JSONException e) {
+            FileLog.e(e);
+        }
+    }
+
+    private static boolean hasRepresentedGrowthLocked(ActiveChildMembersState previousMembers, ArrayList<String> representedIds) {
+        if (representedIds == null || representedIds.isEmpty()) {
+            return false;
+        }
+        if (previousMembers == null || !previousMembers.present) {
+            return true;
+        }
+        if (previousMembers.overCapacity) {
+            return false;
+        }
+        LinkedHashSet<String> oldIds = new LinkedHashSet<>(previousMembers.ids);
+        for (int i = 0; i < representedIds.size(); i++) {
+            if (!oldIds.contains(representedIds.get(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasActiveChildTokenLocked(SharedPreferences p, long dialogId) {
+        String tapToken = p.getString(activeChildTapKey(dialogId), null);
+        String dismissToken = p.getString(activeChildDismissKey(dialogId), null);
+        return !TextUtils.isEmpty(tapToken) || !TextUtils.isEmpty(dismissToken);
+    }
+
     private static String activeKeyForKind(InteractionRecord record) {
         if (record == null) return null;
         if (record.kind == TOKEN_KIND_CHILD_TAP) return activeChildTapKey(record.dialogId);
@@ -1180,6 +1276,7 @@ public final class NotificationCoverController {
     private static SharedPreferences.Editor clearDialogInteractionState(int account, long dialogId, SharedPreferences p, SharedPreferences.Editor ed) {
         removeTokenByActiveKey(p, ed, activeChildTapKey(dialogId));
         removeTokenByActiveKey(p, ed, activeChildDismissKey(dialogId));
+        ed.remove(activeChildMembersKey(dialogId));
         return ed;
     }
 
@@ -1238,6 +1335,9 @@ public final class NotificationCoverController {
             String k = e.getKey();
             if (k.startsWith(KEY_ENABLED)) {
                 long did = parseDialogId(k, KEY_ENABLED);
+                if (did != 0) candidates.add(did);
+            } else if (k.startsWith(KEY_ACTIVE_CHILD_MEMBERS)) {
+                long did = parseDialogId(k, KEY_ACTIVE_CHILD_MEMBERS);
                 if (did != 0) candidates.add(did);
             }
         }
