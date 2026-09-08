@@ -23,7 +23,7 @@ belong outside the card run (tagged out, or moved outside the grouped container)
 to keep card edges aligned.
 
 There is also a known cosmetic corner trap with hidden rows: child gathering
-skips `GONE` children (`SectionsScrollView.java:93`), but clip-neighbor checks
+skips `GONE` children (`SectionsScrollView.java:94`), but clip-neighbor checks
 in `clipChild(...)` read previous/next children by index on the full parent
 list without a visibility gate (`SectionsScrollView.java:178-181`). Repeated
 collapse/expand can therefore leave transient corner clipping artifacts around
@@ -34,7 +34,7 @@ a row whose hidden neighbor still influences `prev/next` detection.
 ## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
 `NotificationCoverController.ensureChannel(...)` still no-ops when the channel
-id already exists (`NotificationCoverController.java:640-652`), because
+id already exists (`NotificationCoverController.java:639-651`), because
 Android treats re-creating an existing `NotificationChannel` id as a silent
 no-op. There is no app-side API to raise or lower that existing channel's
 importance in place - only the user can do that in Android notification
@@ -43,12 +43,12 @@ settings.
 That is why the cover path still keeps two channel tiers per persona instead
 of one mutable tier: `childChannelId(...)` (silent/low) and
 `alertChannelId(...)` (alert/default+vibration)
-(`NotificationCoverController.java:659-715`). The behavior change moved the
+(`NotificationCoverController.java:655-715`). The behavior change moved the
 choice source, not the channel model: `postChild(...)` now routes between those
 two existing tiers from upstream's silent signal (`silent` parameter) rather
-than from a per-chat fork toggle (`NotificationCoverController.java:724-811`).
+than from a per-chat fork toggle (`NotificationCoverController.java:719-784`).
 `postPreview(...)` is user-initiated and always uses the alert tier
-(`NotificationCoverController.java:870-919`), while `NaxCoverAlertChannelName`
+(`NotificationCoverController.java:836-885`), while `NaxCoverAlertChannelName`
 remains the alert-tier label in settings (`strings_nax.xml`).
 
 *(Established 2026-09-07, `#disguise-alerting`.)*
@@ -57,14 +57,35 @@ remains the alert-tier label in settings (`strings_nax.xml`).
 
 `useSummaryNotification` is still the same gate in
 `NotificationsController.showExtraNotifications(...)`
-(`NotificationsController.java:4958`): grouped notifications are common once
+(`NotificationsController.java:4993`): grouped notifications are common once
 multiple dialogs are pending. In that state, `GROUP_ALERT_SUMMARY` still mutes
 the child regardless of the child's own channel importance. The new cover path
 therefore applies `setGroupAlertBehavior(GROUP_ALERT_SUMMARY)` only when the
 upstream signal is silent, and skips it when upstream says the event is
-non-silent (`NotificationCoverController.java:769-785`). If that line is
+non-silent (`NotificationCoverController.java:761-765`). If that line is
 applied unconditionally in the non-silent branch, alert-tier covered children
 become inert as soon as grouping turns on.
+
+*(Established 2026-09-07, `#disguise-alerting`.)*
+
+## `isSilent` at `showExtraNotifications(...)` is rebuild-scoped, not a per-dialog covered flag
+
+The `isSilent` argument passed into `showExtraNotifications(...)` is the
+upstream rebuild-level suppression result (`notifyDisabled`) from
+`showOrUpdateNotification(...)`, not a per-dialog covered-message property
+(`NotificationsController.java:4505`, `:4912`, `:4987`). Reusing it unchanged
+for every covered child can spread the newest dialog's suppression state across
+unrelated covered dialogs; ignoring it entirely can re-enable suppressed rebuild
+paths.
+
+Current fix splits scopes explicitly: preflight captures a rebuild-wide flag
+(`naxRebuildSuppressed`) and a read-only per-covered-dialog suppression map
+(`naxCoverSuppressed`), then fanout composes
+`coverSilent = naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`
+(`NotificationsController.java:4193-4227`, `:5141-5142`). This keeps fail-closed
+behavior for missing map entries and reuses upstream's method-level suppression
+for the one `lastDialogId` it actually describes, without mutating
+`smartNotificationsDialogs`.
 
 *(Established 2026-09-07, `#disguise-alerting`.)*
 
@@ -72,15 +93,15 @@ become inert as soon as grouping turns on.
 
 This branch still has a pre-existing mixed-batch trap that this change does not
 fix. When any covered dialog is present, `showExtraNotifications(...)` posts
-the fork cover summary instead of the real summary (`NotificationsController.java:5883-5904`),
+the fork cover summary instead of the real summary (`NotificationsController.java:5016-5030`),
 and that cover summary is always built on the low/silent cover-summary channel
 (`NotificationCoverController.buildCoverSummary(...)` ->
 `summaryChannelId(...)` -> `ensureChannel(...)`,
-`NotificationCoverController.java:643-656, 671-689, 819-868`).
+`NotificationCoverController.java:639-651, 667-675, 785-835`).
 
 At the same time, non-covered child notifications in a grouped batch still set
 `GROUP_ALERT_SUMMARY` in the regular child path
-(`NotificationsController.java:5791-5794`). So in a mixed covered/uncovered
+(`NotificationsController.java:5830`). So in a mixed covered/uncovered
 grouped batch, an uncovered child that would otherwise alert can be muted by
 the grouped-summary policy it shares with the silent cover summary. This is
 recorded as pre-existing and out of scope for this tuning slice.

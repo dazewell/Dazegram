@@ -12,16 +12,15 @@ same (`LinearLayout` root under a plain `ScrollView`); in sections mode only,
 the builder swaps to `SectionsLinearLayout` + `SectionsScrollView`
 (`BottomBuilder.kt:45-67`).
 
-Section-mode-only card chrome is also gated there: title `HeaderCell`s and the
-button strip are tagged `RecyclerListView.TAG_NOT_SECTION`, the button strip
-background is gray, and `create()` applies gray sheet/nav-bar background
-(`BottomBuilder.kt:74-82`, `:299-305`). In sections mode, `addTitle(...)` now
-wraps the builder-owned `HeaderCell` in a full-width `FrameLayout` so
-`SectionsScrollView` groups the title as one atomic card member instead of
-recursing into HeaderCell's inset children (`BottomBuilder.kt:107-127`).
+Section-mode-only chrome is also gated there: the button strip is tagged
+`RecyclerListView.TAG_NOT_SECTION`, the strip background is gray, and
+`create()` applies gray sheet/nav-bar background (`BottomBuilder.kt:70-82`,
+`:299-305`). In sections mode, `addTitle(...)` wraps the builder-owned
+`HeaderCell` in a full-width `FrameLayout`; the inner `HeaderCell` is tagged
+out while the wrapper remains the section member (`BottomBuilder.kt:107-121`).
 `EventScheduleHelper` is the only caller opting in:
 `new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true)`
-(`EventScheduleHelper.java:641`).
+(`EventScheduleHelper.java:656`).
 
 *(Updated 2026-09-07.)*
 
@@ -38,25 +37,54 @@ These disclosure rows are section
 members (not tagged out), so each group header sits inside its card with its
 controls directly beneath it.
 
-A tagged gray spacer splits the two group runs into two cards
-(`EventScheduleHelper.java:688-691`). Card membership is:
-type header + five type rows for the first card, then text header +
-`patternArea` + regex row for the second card (`EventScheduleHelper.java:653-727`).
-`patternInfo` is now a `TextInfoPrivacyCell` placed *after* regex, outside the
-card run by class-based exclusion, and hidden/shown with the text group
-(`EventScheduleHelper.java:726-728`, `:871-880`).
+Card ownership now has permanent boundaries that do not depend on descendant
+visibility: an intro/type boundary spacer immediately after `addTitle(...)`,
+the existing permanent type/text spacer, and a permanent text/delay spacer
+after `patternInfo` (`EventScheduleHelper.java:658-661`, `:707-710`, `:748-751`).
+With those boundaries, composition stays stable as four cards: intro title
+card, type card (header + five type rows), text card (header + `patternArea` +
+regex row), and delay card (`EventScheduleHelper.java:657`, `:668-702`,
+`:712-740`, `:1031-1033`).
+
+`patternInfo` remains a `TextInfoPrivacyCell` after regex, outside card
+grouping by `SectionsScrollView.isSectionView(...)` class exclusion
+(`EventScheduleHelper.java:745-747`; `SectionsScrollView.java:36-41`). Text
+collapse still toggles `patternArea`, regex, and `patternInfo` visibility, but
+the permanent boundaries keep text and delay as separate card runs even when
+the text descendants are `GONE` (`EventScheduleHelper.java:893-901`;
+`SectionsScrollView.java:91-98`).
 
 Divider behavior is now explicit: header dividers draw only while expanded,
 type rows clear the last divider in the group, and regex is always the text
-card's last row with no bottom divider (`EventScheduleHelper.java:867-877`).
+card's last row with no bottom divider (`EventScheduleHelper.java:885-890`).
 Delay UI remains wrapped in a full-width `FrameLayout` so sections treat it as
 one card, and the remove separator now uses literal `12` dp units (no double-dp)
-(`EventScheduleHelper.java:1015-1035`).
+(`EventScheduleHelper.java:1031-1039`).
 
 Hidden-group validation behavior remains in the same code path: Done expands a
 collapsed text group before showing row-level invalid-regex feedback, and
 no-condition failure expands actionable groups before the existing toast
-(`EventScheduleHelper.java:1059-1089`).
+(`EventScheduleHelper.java:1067-1097`).
+
+*(Updated 2026-09-07.)*
+
+## Covered notification silent-tier decision in mixed rebuilds
+
+Covered-child silent/alert selection is now explicitly split by scope.
+Preflight captures a rebuild-wide suppression bit
+`naxRebuildSuppressed = !notifyAboutLast || isRecordingAudio()` and builds an
+immutable per-covered-dialog map `naxCoverSuppressed`, keyed from the covered
+snapshot (`naxMessagesByDialogs`) using read-only per-dialog inputs:
+notify override/global-enabled, message silence, and per-chat
+`sound_enabled_` (`NotificationsController.java:4193-4227`).
+
+`showExtraNotifications(...)` now receives both values and derives child
+`coverSilent` as:
+`naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`,
+then passes that into `NotificationCoverController.postChild(...)`
+(`NotificationsController.java:4912`, `:4987`, `:5141-5144`). This preserves
+upstream rebuild-wide suppression without spreading one dialog's message-silent
+state across other covered dialogs in the same fanout.
 
 *(Updated 2026-09-07.)*
 
