@@ -4199,32 +4199,7 @@ public class NotificationsController extends BaseController implements Notificat
                         continue;
                     }
                     MessageObject firstCovered = coveredMessages.get(0);
-                    long coveredTopicId = MessageObject.getTopicId(currentAccount, firstCovered.messageOwner, getMessagesController().isForum(firstCovered));
-                    long coveredOverrideId = naxCovDid;
-                    if (firstCovered.messageOwner.mentioned) {
-                        coveredOverrideId = firstCovered.getFromChatId();
-                    }
-                    long coveredChatId = firstCovered.messageOwner.peer_id.chat_id != 0
-                            ? firstCovered.messageOwner.peer_id.chat_id
-                            : firstCovered.messageOwner.peer_id.channel_id;
-                    boolean coveredIsChannel = false;
-                    if (coveredChatId != 0) {
-                        TLRPC.Chat coveredChat = getMessagesController().getChat(coveredChatId);
-                        if (coveredChat == null && firstCovered.isFcmMessage()) {
-                            coveredIsChannel = firstCovered.localChannel;
-                        } else {
-                            coveredIsChannel = ChatObject.isChannel(coveredChat) && !coveredChat.megagroup;
-                        }
-                    }
-                    int coveredNotifyOverride = getNotifyOverride(naxPrefs, coveredOverrideId, coveredTopicId);
-                    boolean coveredEnabled;
-                    if (coveredNotifyOverride == -1) {
-                        coveredEnabled = isGlobalNotificationsEnabled(naxCovDid, coveredIsChannel, firstCovered.isReactionPush, firstCovered.isReactionPush);
-                    } else {
-                        coveredEnabled = coveredNotifyOverride != 2;
-                    }
-                    boolean coveredSoundEnabled = naxPrefs.getBoolean("sound_enabled_" + getSharedPrefKey(naxCovDid, coveredTopicId), true);
-                    naxCoverSuppressed.put(naxCovDid, !coveredEnabled || isSilentMessage(firstCovered) || !coveredSoundEnabled);
+                    naxCoverSuppressed.put(naxCovDid, naxCoveredDialogSuppressed(naxPrefs, naxCovDid, firstCovered));
                 }
                 AndroidUtilities.runOnUIThread(() -> {
                     boolean popupChanged = false;
@@ -6021,6 +5996,35 @@ public class NotificationsController extends BaseController implements Notificat
         String subText = LocaleController.formatPluralString("NewMessages", total_unread_count);
         return com.radolyn.ayugram.chatprivacy.NotificationCoverController.buildCoverSummary(
                 currentAccount, notificationGroup, LocaleController.getString(R.string.NagramX), lines, subText, representedByDialog, summaryDismissDate);
+    }
+
+    private boolean naxCoveredDialogSuppressed(SharedPreferences preferences, long dialogId, MessageObject firstCovered) {
+        long coveredTopicId = MessageObject.getTopicId(currentAccount, firstCovered.messageOwner, getMessagesController().isForum(firstCovered));
+        long coveredOverrideId = dialogId;
+        if (firstCovered.messageOwner.mentioned) {
+            coveredOverrideId = firstCovered.getFromChatId();
+        }
+        long coveredChatId = firstCovered.messageOwner.peer_id.chat_id != 0
+                ? firstCovered.messageOwner.peer_id.chat_id
+                : firstCovered.messageOwner.peer_id.channel_id;
+        boolean coveredIsChannel = false;
+        if (coveredChatId != 0) {
+            TLRPC.Chat coveredChat = getMessagesController().getChat(coveredChatId);
+            if (coveredChat == null && firstCovered.isFcmMessage()) {
+                coveredIsChannel = firstCovered.localChannel;
+            } else {
+                coveredIsChannel = ChatObject.isChannel(coveredChat) && !coveredChat.megagroup;
+            }
+        }
+        int coveredNotifyOverride = getNotifyOverride(preferences, coveredOverrideId, coveredTopicId);
+        boolean coveredEnabled;
+        if (coveredNotifyOverride == -1) {
+            coveredEnabled = isGlobalNotificationsEnabled(dialogId, coveredIsChannel, firstCovered.isReactionPush, firstCovered.isReactionPush);
+        } else {
+            coveredEnabled = coveredNotifyOverride != 2;
+        }
+        boolean coveredSoundEnabled = preferences.getBoolean("sound_enabled_" + getSharedPrefKey(dialogId, coveredTopicId), true);
+        return !coveredEnabled || isSilentMessage(firstCovered) || !coveredSoundEnabled;
     }
 
     private String cutLastName(String name) {

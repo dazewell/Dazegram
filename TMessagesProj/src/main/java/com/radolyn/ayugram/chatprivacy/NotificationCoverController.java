@@ -733,26 +733,29 @@ public final class NotificationCoverController {
             Persona persona = personaById(personaId);
             if (persona == null) persona = personaById(SAFE_PERSONA_ID);
             int internalId = internalId(dialogId);
+            boolean hasRepresentedGrowth;
 
             LongSparseArray<ArrayList<String>> snapshots = new LongSparseArray<>();
             snapshots.put(dialogId, new ArrayList<>(representedIds));
             String tapToken;
             String dismissToken;
             synchronized (COVER_STATE_LOCK) {
+                hasRepresentedGrowth = hasRepresentedGrowthLocked(p, dialogId, representedIds);
                 SharedPreferences.Editor ed = p.edit();
                 tapToken = replaceActiveToken(ed, p, activeChildTapKey(dialogId), buildRecord(TOKEN_KIND_CHILD_TAP, 0, dialogId, snapshots));
                 dismissToken = replaceActiveToken(ed, p, activeChildDismissKey(dialogId), buildRecord(TOKEN_KIND_CHILD_DISMISS, 0, dialogId, snapshots));
                 ed.apply();
             }
+            boolean effectiveSilent = silent || !hasRepresentedGrowth;
             PendingIntent contentIntent = interactionIntent(account, tapToken, INTERACTION_EVENT_TAP, internalId);
 
-            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, silent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
+            NotificationCompat.Builder b = new NotificationCompat.Builder(ctx, effectiveSilent ? childChannelId(account, personaId) : alertChannelId(account, personaId))
                     .setContentTitle(LocaleController.getString(persona.labelRes))
                     .setContentText(LocaleController.formatString(persona.bodyRes, count))
                     .setSmallIcon(R.drawable.nax_cover_notification)
                     .setNumber(count)
                     .setAutoCancel(true)
-                    .setOnlyAlertOnce(silent)
+                    .setOnlyAlertOnce(effectiveSilent)
                     .setShowWhen(false)
                     .setContentIntent(contentIntent)
                     .setDeleteIntent(interactionIntent(account, dismissToken, INTERACTION_EVENT_DISMISS, internalId + 0x31))
@@ -760,7 +763,7 @@ public final class NotificationCoverController {
                     .setPriority(NotificationCompat.PRIORITY_LOW);
             if (grouped) {
                 b.setGroup(group);
-                if (silent) {
+                if (effectiveSilent) {
                     b.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY);
                 }
             }
@@ -1020,6 +1023,54 @@ public final class NotificationCoverController {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static ArrayList<String> representedSnapshotForToken(SharedPreferences p, String token, long dialogId) {
+        if (TextUtils.isEmpty(token)) {
+            return null;
+        }
+        InteractionRecord record = parseRecord(p.getString(KEY_TOKEN_RECORD + token, null));
+        if (record == null) {
+            return null;
+        }
+        ArrayList<String> ids = record.snapshots.get(dialogId);
+        if (ids == null || ids.isEmpty()) {
+            return null;
+        }
+        ArrayList<String> safe = new ArrayList<>();
+        for (int i = 0; i < ids.size(); i++) {
+            String id = ids.get(i);
+            if (validIdentity(id) && !safe.contains(id)) {
+                safe.add(id);
+            }
+        }
+        return safe.isEmpty() ? null : safe;
+    }
+
+    private static boolean hasRepresentedGrowthLocked(SharedPreferences p, long dialogId, ArrayList<String> representedIds) {
+        if (representedIds == null || representedIds.isEmpty()) {
+            return false;
+        }
+        String tapToken = p.getString(activeChildTapKey(dialogId), null);
+        String dismissToken = p.getString(activeChildDismissKey(dialogId), null);
+        boolean hadPrevious = !TextUtils.isEmpty(tapToken) || !TextUtils.isEmpty(dismissToken);
+
+        ArrayList<String> previous = representedSnapshotForToken(p, tapToken, dialogId);
+        if (previous == null) {
+            previous = representedSnapshotForToken(p, dismissToken, dialogId);
+        }
+        if (previous == null) {
+            return !hadPrevious;
+        }
+
+        LinkedHashSet<String> oldIds = new LinkedHashSet<>(previous);
+        for (int i = 0; i < representedIds.size(); i++) {
+            String id = representedIds.get(i);
+            if (validIdentity(id) && !oldIds.contains(id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String activeKeyForKind(InteractionRecord record) {
