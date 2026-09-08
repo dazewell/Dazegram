@@ -88,13 +88,40 @@ for the one `lastDialogId` it actually describes, without mutating
 `smartNotificationsDialogs`.
 
 One more trap exists after that composition: a rebuild can repost the same
-represented covered members again. If the child branch only keys off settings
-suppression, a grouped repost can re-alert unchanged covered dialogs. Current
-fix composes a second gate in `postChild(...)`: alert tier is allowed only when
-the new represented canonical-id set contains at least one id absent from the
-previous active-token snapshot, read under `COVER_STATE_LOCK` before
-`replaceActiveToken(...)`; unchanged reposts force silent
-(`NotificationCoverController.java:743-749`, `:953-959`, `:1028-1069`).
+represented covered members again. Using token snapshots as membership state is
+wrong here: they are capped at `SUPPRESSION_LIMIT` by `buildRecord(...)`
+(`NotificationCoverController.java:972-995`) and therefore cannot represent an
+exact membership baseline for growth decisions.
+
+Current fix splits those roles. Exact per-dialog active membership is stored on
+its own key namespace (`KEY_ACTIVE_CHILD_MEMBERS`) with an explicit
+`over_capacity` sentinel for `displayCount > SUPPRESSION_LIMIT`, while token
+snapshots stay interaction payload only (`NotificationCoverController.java:65`,
+`:561-562`, `:1085-1134`). Child alert tier is then gated by
+`effectiveSilent = upstreamSilent || migration || overCapacity || !hasGrowth` in
+`postChild(...)` (`NotificationCoverController.java:758-778`): unchanged reposts
+force silent, growth can alert only when upstream also allows it.
+
+Migration trap: branches without a stored membership key but with an already
+live cover token must not infer growth. That case is forced silent once and
+seeds baseline only after successful post + CAS (`NotificationCoverController.java:767-770`,
+`:803-811`).
+
+Ordering trap: token records are written before `notify(...)`, but membership
+baseline is written after `notify(...)` and only when active tap pointer still
+matches this post token (CAS), so a concurrent interaction or newer post cannot
+be overwritten by stale baseline state (`NotificationCoverController.java:767-776`,
+`:803-811`).
+
+Cleanup trap: membership key lifecycle is owned by
+`clearDialogInteractionState(...)`; reconcile must scan membership-prefix keys
+or orphan baselines can survive after a dialog no longer posts a cover
+(`NotificationCoverController.java:1278-1282`, `:1341-1343`, `:1356`).
+
+Android can drop notifications at global count limits without throwing from
+`notify(...)`. This path therefore only treats Java exceptions as hard post
+failures; absence of an exception is not a proof that Android displayed the new
+card.
 
 *(Established 2026-09-07, `#disguise-alerting`.)*
 

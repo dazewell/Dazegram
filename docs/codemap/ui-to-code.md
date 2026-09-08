@@ -85,14 +85,33 @@ silence, per-chat `sound_enabled_`) (`NotificationsController.java:4193-4202`,
 `coverSilent` as:
 `naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`,
 then passes that into `NotificationCoverController.postChild(...)`
-(`NotificationsController.java:4887`, `:4962`, `:5116-5118`). Inside
-`postChild(...)`, fanout now also gates alert-tier delivery by represented-id
-membership growth against the prior active token snapshot under the existing
-`COVER_STATE_LOCK`, so unchanged covered-dialog reposts force silent while
-genuinely new represented members can alert (`NotificationCoverController.java:743-749`,
-`:1028-1069`). This preserves upstream rebuild-wide suppression without
-spreading one dialog's message-silent state across other covered dialogs in the
-same fanout, and it removes phantom re-alerts on unchanged rebuild reposts.
+(`NotificationsController.java:4887`, `:4962`, `:5117-5119`). Inside
+`postChild(...)`, growth is no longer derived from capped token snapshots.
+Authoritative baseline now lives in per-dialog exact-membership prefs
+(`KEY_ACTIVE_CHILD_MEMBERS`), while token snapshots stay capped interaction
+payloads only (`NotificationCoverController.java:65`, `:739-776`, `:972-1038`).
+
+Ordering is now split deliberately: under `COVER_STATE_LOCK`, child posting
+reads prior exact membership (resolving stored ids through current alias map),
+computes growth/migration/over-capacity, and rotates only tap/dismiss token
+records first (`NotificationCoverController.java:767-776`, `:1085-1169`); after
+`notify(...)` succeeds, it re-locks and writes the new membership baseline only
+when the active tap pointer still equals this post's token (CAS guard),
+preventing stale rewrites after concurrent interaction or rebuild
+(`NotificationCoverController.java:803-811`).
+
+Over-capacity represented sets (`displayCount > SUPPRESSION_LIMIT`) are marked
+explicitly in `buildPostPlan` and always forced silent; the stored baseline is
+an explicit sentinel (`over_capacity`) rather than a truncated id list
+(`NotificationCoverController.java:561-562`, `:771`, `:1095`, `:1125-1134`).
+Migration is also explicit: missing membership + existing active child token
+forces silent for that post and seeds baseline only after successful notify/CAS
+(`NotificationCoverController.java:767-770`, `:778`, `:803-811`).
+
+Cleanup ownership is centralized: membership state is cleared only by
+`clearDialogInteractionState(...)`, and stale/orphan membership keys are pulled
+into reconcile candidate scanning through the membership prefix
+(`NotificationCoverController.java:1278-1282`, `:1341-1343`).
 
 *(Updated 2026-09-07.)*
 

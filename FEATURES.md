@@ -15,7 +15,7 @@ Set a time zone for any personal chat or group through the profile edit view. Th
 
 Each chat has one `Chat privacy` item in its ⋯ menu, opening one sheet with `Hide last message` (custom placeholder text) and `Require password`. Turning `Require password` on still auto-enables hiding only when hiding was off; turning it off does not turn hiding off.
 
-The same sheet has `Disguise notifications` with cover persona selection and `Preview notification`. The old per-chat `Alert normally` row is gone: covered notifications now follow Telegram's own silent-vs-alert signal per event, while mute/per-chat sound/channel/watch tuning stays in Telegram/Android settings. The sheet uses compact section cards (privacy card, notifications card, collapsed `How covers work` footer disclosure), and its bulletins use Telegram's stock bottom placement.
+The same sheet has `Disguise notifications` with cover persona selection and `Preview notification`. The old per-chat `Alert normally` row is gone: covered notifications now follow Telegram's own silent-vs-alert signal per event, and can alert only when that covered dialog has newly represented members since its last posted cover. Mute/per-chat sound/channel/watch tuning stays in Telegram/Android settings. The sheet uses compact section cards (privacy card, notifications card, collapsed `How covers work` footer disclosure), and its bulletins use Telegram's stock bottom placement.
 
 ### Privacy profiles <!-- #privacy-profiles -->
 
