@@ -26,9 +26,9 @@ The wrapper's own bottom padding is what controls the card's bottom inset, never
 margin: `SectionsScrollView.drawSectionBackground` only reads a **margin** on the
 non-content-view side of a section run (`SectionsScrollView.java:146-148`,
 `:150-155`), so a margin on the wrapper's own trailing edge (`bottomMargin`,
-`BottomBuilder.kt:123`) never reaches the rounded rect — only the wrapper's
+`BottomBuilder.kt:120-122`) never reaches the rounded rect — only the wrapper's
 *measured height*, padding included, does. That's why the 15dp bottom inset added
-under `EventScheduleArmed`'s subtitle (`BottomBuilder.kt:117`) is `headerContainer`
+under `EventScheduleArmed`'s subtitle (`BottomBuilder.kt:118`) is `headerContainer`
 padding, not a `HeaderCell` margin: `HeaderCell.setBottomMargin(...)` writes
 `bottomMargin` onto **both** the title and subtitle `LayoutParams`
 (`HeaderCell.java:137-142`), stacking on top of the subtitle's existing 4dp
