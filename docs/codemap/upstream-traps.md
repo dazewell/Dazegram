@@ -80,12 +80,21 @@ paths.
 
 Current fix splits scopes explicitly: preflight captures a rebuild-wide flag
 (`naxRebuildSuppressed`) and a read-only per-covered-dialog suppression map
-(`naxCoverSuppressed`), then fanout composes
+(`naxCoverSuppressed` via `naxCoveredDialogSuppressed(...)`), then fanout composes
 `coverSilent = naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`
-(`NotificationsController.java:4193-4227`, `:5141-5142`). This keeps fail-closed
+(`NotificationsController.java:4193-4202`, `:5116-5117`, `:6001-6029`). This keeps fail-closed
 behavior for missing map entries and reuses upstream's method-level suppression
 for the one `lastDialogId` it actually describes, without mutating
 `smartNotificationsDialogs`.
+
+One more trap exists after that composition: a rebuild can repost the same
+represented covered members again. If the child branch only keys off settings
+suppression, a grouped repost can re-alert unchanged covered dialogs. Current
+fix composes a second gate in `postChild(...)`: alert tier is allowed only when
+the new represented canonical-id set contains at least one id absent from the
+previous active-token snapshot, read under `COVER_STATE_LOCK` before
+`replaceActiveToken(...)`; unchanged reposts force silent
+(`NotificationCoverController.java:743-749`, `:953-959`, `:1028-1069`).
 
 *(Established 2026-09-07, `#disguise-alerting`.)*
 

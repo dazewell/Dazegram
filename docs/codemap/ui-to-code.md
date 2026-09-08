@@ -41,10 +41,12 @@ Card ownership now has permanent boundaries that do not depend on descendant
 visibility: an intro/type boundary spacer immediately after `addTitle(...)`,
 the existing permanent type/text spacer, and a permanent text/delay spacer
 after `patternInfo` (`EventScheduleHelper.java:658-661`, `:707-710`, `:748-751`).
-With those boundaries, composition stays stable as four cards: intro title
+With those boundaries, composition stays stable as four primary cards: intro title
 card, type card (header + five type rows), text card (header + `patternArea` +
 regex row), and delay card (`EventScheduleHelper.java:657`, `:668-702`,
-`:712-740`, `:1031-1033`).
+`:712-740`, `:1031-1033`). If trigger state is already enabled, the optional
+remove action still appears after those four cards with its own tagged gray
+spacer (`EventScheduleHelper.java:1035-1044`).
 
 `patternInfo` remains a `TextInfoPrivacyCell` after regex, outside card
 grouping by `SectionsScrollView.isSectionView(...)` class exclusion
@@ -64,7 +66,7 @@ one card, and the remove separator now uses literal `12` dp units (no double-dp)
 Hidden-group validation behavior remains in the same code path: Done expands a
 collapsed text group before showing row-level invalid-regex feedback, and
 no-condition failure expands actionable groups before the existing toast
-(`EventScheduleHelper.java:1067-1097`).
+(`EventScheduleHelper.java:1067-1108`).
 
 *(Updated 2026-09-07.)*
 
@@ -74,17 +76,23 @@ Covered-child silent/alert selection is now explicitly split by scope.
 Preflight captures a rebuild-wide suppression bit
 `naxRebuildSuppressed = !notifyAboutLast || isRecordingAudio()` and builds an
 immutable per-covered-dialog map `naxCoverSuppressed`, keyed from the covered
-snapshot (`naxMessagesByDialogs`) using read-only per-dialog inputs:
-notify override/global-enabled, message silence, and per-chat
-`sound_enabled_` (`NotificationsController.java:4193-4227`).
+snapshot (`naxMessagesByDialogs`) using the extracted read-only helper
+`naxCoveredDialogSuppressed(...)` (notify override/global-enabled, message
+silence, per-chat `sound_enabled_`) (`NotificationsController.java:4193-4202`,
+`:6001-6029`).
 
 `showExtraNotifications(...)` now receives both values and derives child
 `coverSilent` as:
 `naxRebuildSuppressed || naxDialogSuppressed == null || naxDialogSuppressed || (dialogId == lastDialogId && isSilent)`,
 then passes that into `NotificationCoverController.postChild(...)`
-(`NotificationsController.java:4912`, `:4987`, `:5141-5144`). This preserves
-upstream rebuild-wide suppression without spreading one dialog's message-silent
-state across other covered dialogs in the same fanout.
+(`NotificationsController.java:4887`, `:4962`, `:5116-5118`). Inside
+`postChild(...)`, fanout now also gates alert-tier delivery by represented-id
+membership growth against the prior active token snapshot under the existing
+`COVER_STATE_LOCK`, so unchanged covered-dialog reposts force silent while
+genuinely new represented members can alert (`NotificationCoverController.java:743-749`,
+`:1028-1069`). This preserves upstream rebuild-wide suppression without
+spreading one dialog's message-silent state across other covered dialogs in the
+same fanout, and it removes phantom re-alerts on unchanged rebuild reposts.
 
 *(Updated 2026-09-07.)*
 
