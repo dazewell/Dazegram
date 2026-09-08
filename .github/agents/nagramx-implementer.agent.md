@@ -266,6 +266,15 @@ format of its neighbours — read three neighbouring entries before you write it
 and match their voice. If a `humanizer` skill is available in your session, run
 the prose through it. A user-visible change without its entry will fail CI.
 
+**One short paragraph, rarely two.** Say what the feature does and how to use,
+configure, or turn it off — nothing else. No edge-case enumeration, no
+implementation rationale — that belongs in a code comment or a codemap entry,
+not here. The one exception is a caveat a user genuinely needs to use the
+feature correctly (e.g. a real limitation, not a "why it works this way");
+keep even that to one sentence. If the feature you're adding extends one that already
+has an entry, add your `<!-- #slug -->` to that heading and fold the new
+behaviour into its existing prose instead of writing a new heading.
+
 **Separately, if your work on this branch established a durable fact** — a
 UI→code mapping, an upstream trap, or a hypothesis you investigated and
 disproved — write it into `docs/codemap/` in the same pull request, per
