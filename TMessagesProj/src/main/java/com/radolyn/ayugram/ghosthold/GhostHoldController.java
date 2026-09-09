@@ -196,7 +196,16 @@ public final class GhostHoldController {
         //  a manually-resolved link preview (the auto preview is regenerated on
         //    flush via searchLinks; a user-edited webPage is not, so refuse it),
         //  a per-message self-destruct timer,
-        //  an ephemeral bot receiver.
+        //  an ephemeral bot receiver,
+        //  games disabled for this send (canSendGames == false): SendMessageParams.of
+        //    restores the default `true`, so a held plain-text dice emoji would flip
+        //    into a dice *media* message on flush (SendMessagesHelper ~:4664) -- media
+        //    is out of scope for v1, and it arrives by a path nobody chose,
+        //  an explicit pangu override (canUsePangu != null): of() restores null (the
+        //    config default), so a held text with pangu forced on/off would be spaced
+        //    differently on flush. A normal send leaves both at their defaults
+        //    (canSendGames == true from SendMessageInternalParams, canUsePangu == null),
+        //    so neither test is vacuous.
         if (p.replyMarkup != null
                 || p.replyToStoryItem != null
                 || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
@@ -205,7 +214,9 @@ public final class GhostHoldController {
                 || p.dice_stake != 0
                 || p.webPage != null
                 || p.ttl != 0
-                || p.ephemeralReceiverBotId != 0) {
+                || p.ephemeralReceiverBotId != 0
+                || !p.canSendGames
+                || p.canUsePangu != null) {
             return false;
         }
         // Send-as identity: a channel/megagroup post can resolve a non-self sender
@@ -213,6 +224,23 @@ public final class GhostHoldController {
         // hardcodes from_id = self, so holding such a send would flush it under the
         // wrong identity. Mirror the funnel's resolution and refuse a non-self one.
         if (resolvesNonSelfSendAs(account, peer)) {
+            return false;
+        }
+        // Paid direct messages: holding one defers a payment to a later moment the
+        // user did not choose (a flush triggered by toggling Ghost off), possibly at
+        // a price that changed while it sat, and pops the Stars paywall then. The
+        // paywall (AlertsCreator.ensurePaidMessageConfirmation / showPayForMessageAlert)
+        // exposes no cancel signal, so a deferred flush item could not be released on
+        // a dismissed dialog either. Refuse to hold: send now, at the price the user
+        // saw, and let the send-exposure warning tell them their status was exposed.
+        // Mirror the funnel's own paid check (SendMessagesHelper ~:4458-4462) so the
+        // predicate and the funnel cannot disagree about what "paid" means.
+        MessagesController payController = MessagesController.getInstance(account);
+        long payStars = payController.getSendPaidMessagesStars(peer);
+        if (payStars <= 0) {
+            payStars = DialogObject.getMessagesStarsPrice(payController.isUserContactBlocked(peer));
+        }
+        if (payStars > 0) {
             return false;
         }
         return true;
