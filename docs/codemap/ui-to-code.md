@@ -15,14 +15,27 @@ the builder swaps to `SectionsLinearLayout` + `SectionsScrollView`
 Section-mode-only chrome is also gated there: the button strip is tagged
 `RecyclerListView.TAG_NOT_SECTION`, the strip background is gray, and
 `create()` applies gray sheet/nav-bar background (`BottomBuilder.kt:70-82`,
-`:299-305`). In sections mode, `addTitle(...)` wraps the builder-owned
+`:300-306`). In sections mode, `addTitle(...)` wraps the builder-owned
 `HeaderCell` in a full-width `FrameLayout`; the inner `HeaderCell` is tagged
-out while the wrapper remains the section member (`BottomBuilder.kt:107-121`).
+out while the wrapper remains the section member (`BottomBuilder.kt:107-122`).
 `EventScheduleHelper` is the only caller opting in:
 `new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true)`
 (`EventScheduleHelper.java:656`).
 
-*(Updated 2026-09-07.)*
+The wrapper's own bottom padding is what controls the card's bottom inset, never a
+margin: `SectionsScrollView.drawSectionBackground` only reads a **margin** on the
+non-content-view side of a section run (`SectionsScrollView.java:146-148`,
+`:150-155`), so a margin on the wrapper's own trailing edge (`bottomMargin`,
+`BottomBuilder.kt:120-122`) never reaches the rounded rect — only the wrapper's
+*measured height*, padding included, does. That's why the 15dp bottom inset added
+under `EventScheduleArmed`'s subtitle (`BottomBuilder.kt:118`) is `headerContainer`
+padding, not a `HeaderCell` margin: `HeaderCell.setBottomMargin(...)` writes
+`bottomMargin` onto **both** the title and subtitle `LayoutParams`
+(`HeaderCell.java:137-142`), stacking on top of the subtitle's existing 4dp
+`topMargin` (`HeaderCell.java:101`) and moving the title→subtitle gap that was
+never meant to change.
+
+*(Updated 2026-09-08.)*
 
 ## Send on event card membership and collapse behavior
 
