@@ -2,7 +2,7 @@
 
 Telegram, tuned for the everyday details stock Telegram skips: time zones that show up right in the chat, and privacy that isn't all-or-nothing.
 
-Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), which is no longer maintained. It now tracks [Nagram](https://github.com/NextAlone/Nagram) for updates, with NagramX's extras carried forward and built on top. It's maintained by [@dazewell](https://github.com/dazewell).
+Dazegram started as a fork of [NagramX](https://github.com/risin42/NagramX), which is no longer maintained. It now tracks [Nagram](https://github.com/NextAlone/Nagram) for updates, with NagramX's extras carried forward and built on top. It's maintained by [@dazewell](https://github.com/dazewell). I'm a software developer engineer with 10+ years of experience and this is my personal project which I use daily on my phone - and this is going to be my only commit in this repository made by me and written by me e2e - the rest is written by the Agents team I'm experimenting with here. I'm using them to build the features I need and at the same time to learn how to efficiently use AI in my development life. Feel free to post issues/bugs and my team will triage them and see if we can/would do it. Enjoy!
 
 This README covers the highlights. The full list, with what each one does, is in [FEATURES.md](FEATURES.md).
 
