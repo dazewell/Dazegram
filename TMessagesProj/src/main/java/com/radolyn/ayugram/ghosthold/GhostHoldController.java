@@ -330,8 +330,16 @@ public final class GhostHoldController {
         if (flushInProgress) {
             return;
         }
+        // Claim the flush before the async collect, not after: collectHeld hops to
+        // the storage queue and back, and two ghost-off edges in that window would
+        // otherwise both pass this guard, collect the same rows and open two
+        // confirmations -> duplicate sends. All flushInProgress access is on the UI
+        // thread, so a plain boolean serialises correctly. Cleared on empty, cancel,
+        // or completion (performFlush).
+        flushInProgress = true;
         collectHeld(items -> {
             if (items.isEmpty()) {
+                flushInProgress = false;
                 return;
             }
             int pending = countPending(items);
@@ -360,8 +368,14 @@ public final class GhostHoldController {
             builder.setTitle(LocaleController.getString(R.string.GhostHoldFlushConfirmTitle));
             builder.setMessage(body);
             builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialog, which) -> performFlush(items, fragment));
-            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (dialog, which) -> restoreGhost());
-            builder.setOnCancelListener(dialog -> restoreGhost());
+            builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (dialog, which) -> {
+                flushInProgress = false;
+                restoreGhost();
+            });
+            builder.setOnCancelListener(dialog -> {
+                flushInProgress = false;
+                restoreGhost();
+            });
             builder.show();
         });
     }

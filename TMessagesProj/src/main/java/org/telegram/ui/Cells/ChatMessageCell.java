@@ -18689,15 +18689,20 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             timeString = ""; // Long.toString(currentMessageObject.getId());
         } else if (currentMessageObject.notime || currentMessageObject.isSponsored() || currentMessageObject.isQuickReply() || currentMessageObject.isWelcomeMessage()) {
             timeString = "";
-        } else if (currentMessageObject.scheduled && currentMessageObject.messageOwner.date == 0x7FFFFFFE) {
-            timeString = "";
         } else if (currentMessageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
             // NagramX: a Ghost Hold row shows its held state in place of a send time.
-            if (currentMessageObject.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL) {
+            // Checked before the 0x7FFFFFFE "send when online" branch below, because a
+            // held row scheduled that way carries that date too and would otherwise
+            // render a blank time instead of the held caption. Both that sentinel and
+            // our own undated sentinel display as undated; the value is kept for flush.
+            int heldDate = currentMessageObject.messageOwner.date;
+            if (heldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL || heldDate == 0x7FFFFFFE) {
                 timeString = getString(R.string.GhostHoldCaption);
             } else {
-                timeString = formatString(R.string.GhostHoldCaptionDated, LocaleController.getInstance().getFormatterDay().format((long) currentMessageObject.messageOwner.date * 1000));
+                timeString = formatString(R.string.GhostHoldCaptionDated, LocaleController.getInstance().getFormatterDay().format((long) heldDate * 1000));
             }
+        } else if (currentMessageObject.scheduled && currentMessageObject.messageOwner.date == 0x7FFFFFFE) {
+            timeString = "";
         } else if (currentMessageObject.realDate != 0) {
             timeString = LocaleController.formatSmallDateChat(currentMessageObject.realDate) + ", " + LocaleController.getInstance().getFormatterDay().format((long) (currentMessageObject.realDate) * 1000);
         } else if (currentMessageObject.isRepostPreview) {
