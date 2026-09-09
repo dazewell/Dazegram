@@ -327,8 +327,6 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
-        // NagramX: keep the ghost-send warning's session tracking in sync with the master toggle
-        tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onGhostStateChanged();
     }
 
     public static void toggleGhostMode() {

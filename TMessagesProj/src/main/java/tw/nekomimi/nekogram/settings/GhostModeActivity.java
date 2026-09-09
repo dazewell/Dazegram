@@ -91,8 +91,6 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
 
     private void updateGhostViews() {
         var isActive = NekoConfig.isGhostModeActive();
-        // NagramX: this is the only place the five essentials toggles funnel through after a write -- keep the ghost-send warning's session tracking in sync with them
-        tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onGhostStateChanged();
 
         listAdapter.notifyItemChanged(ghostModeToggleRow, PARTIAL);
         listAdapter.notifyItemChanged(sendReadMessagePacketsRow, !isActive);

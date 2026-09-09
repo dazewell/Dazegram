@@ -3,27 +3,32 @@ package tw.nekomimi.nekogram.helpers;
 import static org.telegram.messenger.LocaleController.getString;
 
 import android.util.Log;
-import android.util.SparseArray;
+
+import com.radolyn.ayugram.utils.AyuGhostUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.R;
+import org.telegram.tgnet.TLObject;
+import org.telegram.tgnet.TLRPC;
+import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
-import java.util.HashSet;
-
 import tw.nekomimi.nekogram.NekoConfig;
 
 /**
- * Warns the user, at most once per chat per Ghost session, that a message they
- * just sent while Ghost Mode was on still went out over the network and exposed
- * their online status. Ghost Mode never held sends back -- this only informs.
+ * Warns the user, every time it happens, that a message they just sent while
+ * Ghost Mode was on still went out over the network and exposed their online
+ * status. Ghost Mode never held sends back -- this only informs.
  * <p>
- * Call {@link #onMessageReachingWire(int, long)} at the last point before a
- * message request is actually handed to the network, so a message that a later
- * hold/queue feature diverts before that point never trips this warning.
+ * Call {@link #onMessageRequestReady(int, TLObject)} at the last point before a
+ * request is actually handed to tgnet (ConnectionsManager#sendRequestInternal,
+ * immediately before native_sendRequest), so a message a later hold/queue
+ * feature diverts stays diverted -- that feature early-returns at
+ * SendMessagesHelper#sendMessage(SendMessageParams), well upstream of request
+ * construction, so a held message never reaches here at all.
  */
 public class GhostSendWarningHelper {
 
@@ -31,138 +36,120 @@ public class GhostSendWarningHelper {
     // once the smoke build confirms this decision point is reached in practice.
     private static final String SMOKE_TAG = "NAX_SMOKE_ghost-send-warning";
 
-    // NagramX: keyed by account first because Ghost Mode is a single app-wide
-    // predicate (NekoConfig#isGhostModeActive) shared by every account, but a
-    // dialogId is only unique within one account -- without the account key two
-    // different accounts' chat 12345 would wrongly share one warned flag.
-    private static final SparseArray<HashSet<Long>> warnedDialogsByAccount = new SparseArray<>();
-
-    // NagramX: Ghost Mode has no single "turned off" call -- GhostModeActivity
-    // also flips the five underlying toggles individually (see e.g.
-    // NekoConfig.sendReadMessagePackets.toggleConfigBool()), so both that write
-    // path and NekoConfig#setGhostMode call onGhostStateChanged() eagerly, the
-    // instant either can flip the predicate. onMessageReachingWire also calls it
-    // as a fallback, so a boundary is still caught even if some future write
-    // path forgets to.
-    private static boolean wasGhostActive = false;
-
-    // NagramX: onGhostStateChanged() runs on the UI thread (settings writes),
-    // while onMessageReachingWire() runs on whatever thread is sending a message
-    // (not guaranteed to be the UI thread) -- guard the two fields they share so
-    // a toggle and a send can never race on the same HashSet/SparseArray.
-    private static final Object LOCK = new Object();
-
     private GhostSendWarningHelper() {
     }
 
+    // NagramX: deliberately an explicit allowlist of message-producing request
+    // classes, not a "TL_messages_send*" name-prefix test -- TL_messages_editMessage
+    // and TL_messages_addPollAnswer also carry that prefix, but neither one sends a
+    // new message, so a name-based test would wrongly fire this warning on a poll
+    // vote or an edit (the defect the previous hook point had). Also excludes
+    // reactions, typing/read requests, screenshot notifications, uploads, and
+    // encrypted service actions.
+    // Known gap, accepted for a warning-only feature: a future send RPC upstream
+    // adds is missed here until this list is updated -- the actual protection
+    // (holding sends back) is the local-hold feature's job, not this one's.
+    private static boolean isMessageSendRequest(TLObject request) {
+        return request instanceof TLRPC.TL_messages_sendMessage
+                || request instanceof TLRPC.TL_messages_sendMedia
+                || request instanceof TLRPC.TL_messages_sendMultiMedia
+                || request instanceof TLRPC.TL_messages_forwardMessages
+                || request instanceof TLRPC.TL_messages_sendInlineBotResult
+                || request instanceof TLRPC.TL_messages_sendScheduledMessages
+                || request instanceof TLRPC.TL_messages_sendQuickReplyMessages
+                || request instanceof TL_ephemeral.TL_sendMessage
+                || request instanceof TLRPC.TL_messages_sendEncrypted
+                || request instanceof TLRPC.TL_messages_sendEncryptedFile
+                || request instanceof TLRPC.TL_messages_sendEncryptedMultiMedia;
+    }
+
+    // NagramX: reuses AyuGhostUtils' existing InputPeer/InputEncryptedChat -> dialogId
+    // conversion instead of duplicating it -- diagnostics-only, this dialogId is never
+    // used to key any stored state.
+    private static Long extractDialogId(TLObject request) {
+        if (request instanceof TLRPC.TL_messages_sendMessage r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendMedia r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendMultiMedia r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_forwardMessages r) {
+            return AyuGhostUtils.getDialogId(r.to_peer);
+        } else if (request instanceof TLRPC.TL_messages_sendInlineBotResult r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendScheduledMessages r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TL_ephemeral.TL_sendMessage r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendEncrypted r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        } else if (request instanceof TLRPC.TL_messages_sendEncryptedFile r) {
+            return AyuGhostUtils.getDialogId(r.peer);
+        }
+        // TL_messages_sendEncryptedMultiMedia carries no peer of its own.
+        return null;
+    }
+
     /**
-     * Re-checks {@link NekoConfig#isGhostModeActive()} and clears the per-chat
-     * warned set on any false-to-true transition, treating that as the start of
-     * a new Ghost session. Returns the freshly observed state.
+     * account is the ConnectionsManager instance actually dispatching this
+     * request, not UserConfig.selectedAccount -- correct for whichever of the
+     * app's accounts is sending, regardless of which one is foregrounded.
      */
-    public static boolean onGhostStateChanged() {
-        synchronized (LOCK) {
-            return onGhostStateChangedLocked();
-        }
-    }
-
-    // NagramX: split out so onMessageReachingWire can call this while already
-    // holding LOCK -- java.util.concurrent locks aren't needed here since a
-    // plain synchronized block is already re-entrant, but keeping one method as
-    // the single "must hold LOCK" entry point avoids acquiring it twice per send.
-    private static boolean onGhostStateChangedLocked() {
-        boolean ghostActive = NekoConfig.isGhostModeActive();
-        if (ghostActive && !wasGhostActive) {
-            // A new Ghost session started -- forget the previous session's warnings.
-            warnedDialogsByAccount.clear();
-        }
-        wasGhostActive = ghostActive;
-        return ghostActive;
-    }
-
-    public static void onMessageReachingWire(int account, long dialogId) {
-        // BEGIN: unconditionally-reached liveness marker -- fires for every message
-        // that gets this far, regardless of Ghost state, so reachability of this
-        // hook can be confirmed even when Ghost happens to be off during a trace.
-        Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
-                + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " dialogId=" + dialogId);
-
-        boolean ghostActive;
-        boolean warnedAtDecide = false;
-        boolean maybeWarn;
-
-        synchronized (LOCK) {
-            ghostActive = onGhostStateChangedLocked();
-            if (ghostActive) {
-                HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
-                warnedAtDecide = warnedDialogs != null && warnedDialogs.contains(dialogId);
-                maybeWarn = !warnedAtDecide;
-            } else {
-                maybeWarn = false;
-            }
-        }
-
-        if (!maybeWarn) {
-            // Forbidden/competing path: send proceeded with Ghost off, or this
-            // chat was already known warned this session -- decided entirely on
-            // the sender thread, no need to touch the UI at all.
-            Log.w(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=" + ghostActive
-                    + " alreadyWarned=" + warnedAtDecide + " account=" + account + " dialogId=" + dialogId);
-            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=" + ghostActive + " shown=false"
-                    + " account=" + account + " dialogId=" + dialogId);
+    public static void onMessageRequestReady(int account, TLObject request) {
+        if (!isMessageSendRequest(request)) {
+            // Filtered before any logging: typing, read, upload, edit, poll-vote and
+            // other non-send RPCs pass through here constantly, and logging every one
+            // of them would swamp the trace with noise unrelated to this feature.
             return;
         }
 
-        // NagramX: BulletinFactory.global() falls back to a crash-prone Dialog on
-        // the application Context whenever LaunchActivity.getSafeLastFragment()
-        // is null, but even a non-null fragment isn't always safe to show on --
-        // BulletinFactory.canShowBulletin(fragment) (BulletinFactory.java:75) is
-        // the actual predicate that matters (parent activity and layout container
-        // both present). Resolve the fragment once here and test that exact
-        // instance, then show on that same instance via BulletinFactory.of(...)
-        // -- never re-resolve via .global()/.getSafeLastFragment(), or the
-        // instance tested and the instance shown on could silently differ. The
-        // slot is only consumed together with actually showing, under the same
-        // LOCK used by the sender-thread decision above, so "shown" and
-        // "consumed" are one atomic act instead of two separate guesses that
-        // could disagree if the fragment appears or disappears in between.
+        // BEGIN: unconditionally-reached liveness marker -- fires for every real send
+        // request reaching this hook, regardless of Ghost state, so reachability of
+        // this decision point can be confirmed even when Ghost happens to be off
+        // during a trace.
+        Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
+                + " app=" + BuildConfig.APPLICATION_ID + " account=" + account
+                + " request=" + request.getClass().getSimpleName());
+
+        boolean ghostActive = NekoConfig.isGhostModeActive();
+        Long dialogId = extractDialogId(request);
+
+        if (!ghostActive) {
+            // Forbidden/competing path: a real send request, but Ghost is off.
+            Log.i(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=false account=" + account
+                    + " dialogId=" + dialogId);
+            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=false shown=false account=" + account
+                    + " dialogId=" + dialogId);
+            return;
+        }
+
+        // NagramX: BulletinFactory.canShowBulletin(fragment) (BulletinFactory.java:75)
+        // is the actual predicate for whether a fragment can safely host a bulletin
+        // (parent activity and layout container both present) -- resolve the fragment
+        // on the UI thread, where sendRequestInternal does not run (it's on
+        // Utilities.stageQueue), test that exact instance, and show on it directly via
+        // BulletinFactory.of(...) instead of re-resolving through .global() -- never
+        // test one fragment instance and show on a different one.
         AndroidUtilities.runOnUIThread(() -> {
             BaseFragment fragment = LaunchActivity.getSafeLastFragment();
             boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
-            boolean alreadyWarned = false;
-            boolean shown = false;
 
-            synchronized (LOCK) {
-                if (hostAvailable) {
-                    HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
-                    if (warnedDialogs == null) {
-                        warnedDialogs = new HashSet<>();
-                        warnedDialogsByAccount.put(account, warnedDialogs);
-                    }
-                    alreadyWarned = !warnedDialogs.add(dialogId);
-                    shown = !alreadyWarned;
-                }
-            }
-
-            if (shown) {
+            if (hostAvailable) {
                 BulletinFactory.of(fragment).createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
-                // Expected path: bulletin actually shown for this chat this session.
+                // Expected path: bulletin actually shown for this send.
                 Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-            } else if (!hostAvailable) {
-                // Suppressed/competing path: no renderable bulletin host by the
-                // time this reached the UI thread -- the slot is left unconsumed,
-                // so the next send in this chat with a host available still warns.
-                Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
             } else {
-                // Forbidden/competing path: a concurrent send for the same chat
-                // won the warning slot first, between the sender-thread decision
-                // and this UI-thread act.
-                Log.w(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=" + ghostActive
-                        + " alreadyWarned=true account=" + account + " dialogId=" + dialogId);
+                // Suppressed/competing path: no renderable bulletin host at show time.
+                // There is no once-per-chat slot to preserve here -- this feature warns
+                // every time, so an unshown warning here is simply a missed one, not a
+                // deferred one.
+                Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
             }
 
-            // END: decision handling for this send completed.
-            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=" + ghostActive + " shown=" + shown
+            // END: decision handling for this request completed.
+            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + hostAvailable
                     + " account=" + account + " dialogId=" + dialogId);
         });
     }

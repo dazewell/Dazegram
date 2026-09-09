@@ -7673,12 +7673,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             return;
         }
 
-        // NagramX: last point before the request actually leaves for the network -- warns once per chat per Ghost session.
-        // An album/multi-media send is always within a single dialog, so the first message's dialog id speaks for all of them.
-        if (!msgObjs.isEmpty()) {
-            tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageReachingWire(currentAccount, msgObjs.get(0).getDialogId());
-        }
-
         getConnectionsManager().sendRequest(request, (response, error) -> {
             if (error != null && FileRefController.isFileRefError(error.text)) {
                 final int fileRefIndex = FileRefController.getFileRefErrorIndex(error.text);
@@ -8070,9 +8064,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         if (!EphemeralMessagesHelper.getInstance(currentAccount).beforeSendingFinalRequest(req, msgObj, (newReq) -> performSendMessageRequest(newReq, msgObj, originalPath, parentMessage, check, delayedMessage, parentObject, params, scheduled))) {
             return;
         }
-
-        // NagramX: last point before the request actually leaves for the network -- warns once per chat per Ghost session
-        tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageReachingWire(currentAccount, msgObj.getDialogId());
 
         newMsgObj.reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
             if (error != null && (req instanceof TLRPC.TL_messages_sendMedia || req instanceof TL_ephemeral.TL_sendMessage || req instanceof TLRPC.TL_messages_editMessage || req instanceof TLRPC.TL_messages_addPollAnswer) && FileRefController.isFileRefError(error.text)) {

@@ -499,6 +499,10 @@ public class ConnectionsManager extends BaseController {
                     FileLog.e(e);
                 }
             }, onQuickAck, onWriteToSocket);
+            // NagramX: last point before a request actually leaves for tgnet -- warns every time a message-producing
+            // request goes out while Ghost Mode is active, downstream of the AyuGhostUtils intercept above so a
+            // request Ghost already blocked (e.g. typing/read) never reaches here.
+            tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageRequestReady(currentAccount, object);
             native_sendRequest(currentAccount, buffer.address, flags, datacenterId, connectionType, immediate, requestToken);
         } catch (Exception e) {
             FileLog.e(e);

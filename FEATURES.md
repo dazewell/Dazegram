@@ -45,7 +45,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin the first time that happens in a chat, once per Ghost session, so you know sending isn't covered by Ghost.
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
