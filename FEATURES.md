@@ -255,7 +255,7 @@ If multiple providers are configured, the Retry option on a transcription become
 
 ### Extera themes <!-- #extera-themes -->
 
-Extera Light and Extera Dark bring exteraGram's look to Dazegram. The design is [exteraGram](https://github.com/exteraSquad/exteraGram)'s. The palettes here were reverse-engineered rather than copied, and ship as Monet-token theme assets, but the look is exteraSquad's and the credit belongs to its authors.
+Extera Light and Extera Dark bring [exteraGram](https://github.com/exteraSquad/exteraGram)'s look to Dazegram. The design is exteraSquad's. What was rebuilt here is the palettes — reverse-engineered rather than copied, and shipped as Monet-token theme assets — so the look, and the credit for it, stay theirs.
 
 <img height="260" alt="chat rendered in the Extera Light theme" src="docs/images/features/extera-light.png" />
 <img height="260" alt="the same chat rendered in the Extera Dark theme" src="docs/images/features/extera-dark.png" />
