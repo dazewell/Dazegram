@@ -8,8 +8,8 @@ Extra bits I've added on top of [NagramX](https://github.com/risin42/NagramX). M
 
 Set a time zone for any personal chat or group through the profile edit view. The chat header and contacts list show the peer's current local time as a clock pill. Tap the pill to get a side-by-side time converter in a bottom sheet. Slide the strip to line up a moment in both zones, or hit "Now". You can drop the lined-up time into the message box. The template renders from a collapsible *Message format* section, where you can tap tokens like `{peer_time}`, `{offset}`, `{my_range}`, or `{duration}` into the template, and you can pick the language the message renders in. Next to "Now", there's a *Range* pill for when you need a window instead of a single moment. When you schedule a message to a chat with a zone set, the schedule sheet gains a *My time* / *Peer's time* tab above the picker wheels to schedule in their time.
 
-<img height="200" alt="time zone feature showcase configuration" src="https://github.com/user-attachments/assets/606a0f24-1c3b-48d3-b013-d9782bb12854" />
-<img height="200" alt="time zone feature showcase view etc" src="https://github.com/user-attachments/assets/00b9724e-e31d-4067-a095-ab26827b5710" />
+<img height="200" alt="time zone picker sheet listing selectable IANA time zones under a search field" src="docs/images/features/timezones-1.png" />
+<img height="200" alt="chat list row showing a peer's name with a clock pill giving their local time" src="docs/images/features/timezones-2.png" />
 
 ### Customized privacy <!-- #customized-privacy --> <!-- #hide-last-message --> <!-- #require-password --> <!-- #disguise-alerting -->
 
@@ -28,6 +28,8 @@ Setting a Panic Code that matches an unlock code is a security risk. Setup now e
 ### Reply threads in private chats <!-- #personal-replies -->
 
 Private chats now show a reply glyph and count next to a message's timestamp, bringing group-style reply threads to 1-to-1 chats. Tap the reply count to swap the history for the message and its replies without leaving the chat.
+
+<img height="150" alt="private chat message bubble showing a reply glyph and count next to its timestamp" src="docs/images/features/reply-threads.png" />
 
 ### Message bookmarks <!-- #bookmarks-300 -->
 
@@ -129,6 +131,8 @@ Matches Telegram Desktop bindings for BT/USB keyboards. Does nothing on software
 
 Select text in a message and tap *Cite* to drop it into your input box as a quote block. Unlike a regular Reply, it just becomes part of what you're typing, letting you cite multiple messages and answer them in one draft.
 
+<img height="180" alt="composer preview of quoted text pulled in from a message via Cite" src="docs/images/features/cite.png" />
+
 ### Scheduled message triggers <!-- #reschedule --> <!-- #eventschedule -->
 
 Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval (give messages three minutes or more of spacing — Telegram's own scheduler can run a minute or two late).
@@ -137,6 +141,10 @@ Pick several scheduled messages and use *Reschedule* to move them all at once wi
 
 Armed triggers are managed from Chats nav ⋯ → *Message Triggers*. A disguised chat still suppresses trigger fire/stop heads-up alerts so trigger activity is not exposed through notifications.
 
+<img height="260" alt="bulk Reschedule sheet with a base time, per-message interval, and a delay slider" src="docs/images/features/reschedule.png" />
+<img height="260" alt="Send on event trigger editor with By message type and Or by text collapsible sections" src="docs/images/features/trigger-editor.png" />
+<img height="260" alt="Message Triggers list showing armed triggers with their message-type and text conditions" src="docs/images/features/message-triggers-list.png" />
+
 ### Remember the schedule offset <!-- #schedule-remember -->
 
 Tap the bookmark icon in the schedule picker to remember your schedule offset — new messages then default to that offset instead of 10 minutes ahead. Reschedule and Edit schedule pickers get the same delay slider, but keep opening on the message's existing time unless you drag it. Turn the bookmark off to revert to normal behavior.
@@ -144,6 +152,8 @@ Tap the bookmark icon in the schedule picker to remember your schedule offset �
 ### Tidier scheduled selection bar <!-- #scheduled-selection-toolbar -->
 
 When you select messages in the scheduled view, the top bar keeps just Send Now, Reschedule, and Delete, tucking Copy and Forward into the overflow menu.
+
+<img height="90" alt="scheduled-view selection toolbar showing Send Now, Reschedule, Delete and an overflow menu" src="docs/images/features/scheduled-selection-toolbar.png" />
 
 ### Forward scheduled messages <!-- #scheduled-forward -->
 
@@ -155,9 +165,13 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 Reposting several messages this way — the selection bar's *NoQuote* button — sends them as copies to a chat you pick, without offering to delete the originals, spacing each one three minutes apart by default instead of stacking them on one shared timestamp, so you can reschedule or edit them individually afterwards. If something in the batch can't be reposted as a copy (polls, locations, contacts), that button falls back to an ordinary one-time forward instead. Forwarding through the chat picker's own *Send* button instead lets you set your own interval, but refuses the spread with an error rather than falling back if anything can't be reposted.
 
+<img height="150" alt="Reposted as a copy confirmation bar with a Delete action for the original messages" src="docs/images/features/repost-copy.png" />
+
 ### Pin or number several messages at once <!-- #bulk-actions -->
 
 Select messages to *Pin all* (applies your pin choice to the whole selection) or *Reply with numbers* to create an indexed table of contents via numbered replies.
+
+<img height="260" alt="chat with several messages replied-to in sequence, each carrying a small index number" src="docs/images/features/bulk-actions.png" />
 
 ### Fullscreen message input <!-- #fullscreen-input -->
 
@@ -235,15 +249,22 @@ A fast, free voice-to-text option that runs Whisper on Groq. Audio uploads have 
 
 If multiple providers are configured, the Retry option on a transcription becomes "Retry with…". You can also long-press the transcription button on a voice or round video message to stop a running attempt and open the provider list.
 
+<img height="220" alt="Retry with... menu listing the configured transcription providers" src="docs/images/features/transcribe-retry.png" />
+
 ## Appearance
 
 ### Extera themes <!-- #extera-themes -->
 
 Extera Light and Extera Dark bring exteraGram's look to Dazegram. They were recreated from [exteraGram](https://github.com/exteraSquad/exteraGram), with credit to its authors.
 
+<img height="260" alt="chat rendered in the Extera Light theme" src="docs/images/features/extera-light.png" />
+<img height="260" alt="the same chat rendered in the Extera Dark theme" src="docs/images/features/extera-dark.png" />
+
 ### Monet wallpaper pattern <!-- #monet-pattern-tile -->
 
 You can apply a chat pattern over your live Material You color. Turn it off by opening the tile and clearing the pattern.
+
+<img height="260" alt="chat background pattern tinted with the current Material You accent color" src="docs/images/features/monet-pattern.png" />
 
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
