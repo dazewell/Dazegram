@@ -2,9 +2,11 @@ package tw.nekomimi.nekogram.helpers;
 
 import static org.telegram.messenger.LocaleController.getString;
 
+import android.util.Log;
 import android.util.SparseArray;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.BulletinFactory;
 
@@ -23,6 +25,10 @@ import tw.nekomimi.nekogram.NekoConfig;
  */
 public class GhostSendWarningHelper {
 
+    // NAX_SMOKE_ghost-send-warning: temporary reachability diagnostics, removed
+    // once the smoke build confirms this decision point is reached in practice.
+    private static final String SMOKE_TAG = "NAX_SMOKE_ghost-send-warning";
+
     // NagramX: keyed by account first because Ghost Mode is a single app-wide
     // predicate (NekoConfig#isGhostModeActive) shared by every account, but a
     // dialogId is only unique within one account -- without the account key two
@@ -39,18 +45,41 @@ public class GhostSendWarningHelper {
     }
 
     public static void onMessageReachingWire(int account, long dialogId) {
-        if (!NekoConfig.isGhostModeActive()) {
-            return;
+        // BEGIN: unconditionally-reached liveness marker -- fires for every message
+        // that gets this far, regardless of Ghost state, so reachability of this
+        // hook can be confirmed even when Ghost happens to be off during a trace.
+        Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
+                + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " dialogId=" + dialogId);
+
+        boolean ghostActive = NekoConfig.isGhostModeActive();
+        boolean alreadyWarned = false;
+        boolean shown = false;
+
+        if (ghostActive) {
+            HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
+            if (warnedDialogs == null) {
+                warnedDialogs = new HashSet<>();
+                warnedDialogsByAccount.put(account, warnedDialogs);
+            }
+            alreadyWarned = !warnedDialogs.add(dialogId);
+            if (!alreadyWarned) {
+                shown = true;
+                AndroidUtilities.runOnUIThread(() ->
+                        BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show());
+                // Expected path: bulletin actually shown for this chat this session.
+                Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
+            }
         }
-        HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
-        if (warnedDialogs == null) {
-            warnedDialogs = new HashSet<>();
-            warnedDialogsByAccount.put(account, warnedDialogs);
+
+        if (!shown) {
+            // Forbidden/competing path: send proceeded with Ghost on (or Ghost off
+            // entirely) but no bulletin fired this time, with the reason why.
+            Log.w(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=" + ghostActive
+                    + " alreadyWarned=" + alreadyWarned + " account=" + account + " dialogId=" + dialogId);
         }
-        if (!warnedDialogs.add(dialogId)) {
-            return;
-        }
-        AndroidUtilities.runOnUIThread(() ->
-                BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show());
+
+        // END: decision handling for this send completed.
+        Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=" + ghostActive + " shown=" + shown
+                + " account=" + account + " dialogId=" + dialogId);
     }
 }
