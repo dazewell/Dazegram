@@ -37,13 +37,29 @@ public class GhostSendWarningHelper {
 
     // NagramX: Ghost Mode has no single "turned off" call -- GhostModeActivity
     // also flips the five underlying toggles individually (see e.g.
-    // NekoConfig.sendReadMessagePackets.toggleConfigBool()), any of which can
-    // break or restore isGhostModeActive() without going through setGhostMode().
-    // Watching the live predicate itself at send time, instead of one write path,
-    // catches a session boundary no matter which toggle caused it.
+    // NekoConfig.sendReadMessagePackets.toggleConfigBool()), so both that write
+    // path and NekoConfig#setGhostMode call onGhostStateChanged() eagerly, the
+    // instant either can flip the predicate. onMessageReachingWire also calls it
+    // as a fallback, so a boundary is still caught even if some future write
+    // path forgets to.
     private static boolean wasGhostActive = false;
 
     private GhostSendWarningHelper() {
+    }
+
+    /**
+     * Re-checks {@link NekoConfig#isGhostModeActive()} and clears the per-chat
+     * warned set on any false-to-true transition, treating that as the start of
+     * a new Ghost session. Returns the freshly observed state.
+     */
+    public static boolean onGhostStateChanged() {
+        boolean ghostActive = NekoConfig.isGhostModeActive();
+        if (ghostActive && !wasGhostActive) {
+            // A new Ghost session started -- forget the previous session's warnings.
+            warnedDialogsByAccount.clear();
+        }
+        wasGhostActive = ghostActive;
+        return ghostActive;
     }
 
     public static void onMessageReachingWire(int account, long dialogId) {
@@ -53,12 +69,7 @@ public class GhostSendWarningHelper {
         Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
                 + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " dialogId=" + dialogId);
 
-        boolean ghostActive = NekoConfig.isGhostModeActive();
-        if (ghostActive && !wasGhostActive) {
-            // A new Ghost session started since the last send we saw -- forget last session's warnings.
-            warnedDialogsByAccount.clear();
-        }
-        wasGhostActive = ghostActive;
+        boolean ghostActive = onGhostStateChanged();
 
         boolean alreadyWarned = false;
         boolean shown = false;
