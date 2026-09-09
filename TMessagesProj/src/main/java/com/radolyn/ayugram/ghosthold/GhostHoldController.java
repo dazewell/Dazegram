@@ -20,6 +20,7 @@ import org.telegram.messenger.MessagesController;
 import org.telegram.messenger.MessagesStorage;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
+import org.telegram.messenger.SendMessageChatArguments;
 import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
@@ -169,11 +170,26 @@ public final class GhostHoldController {
                 || p.richMessage != null || p.sendingStory != null) {
             return false;
         }
+        // The chat-arguments bundle is ALWAYS attached on a composer send:
+        // ChatActivity.getMessageChatSendParams() builds a fresh non-null object
+        // even for an ordinary chat, so `sendMessageChatArguments != null` carries
+        // no information and would refuse every normal message. Test its fields
+        // instead. A welcome-message send redirects the peer, and a quick-reply
+        // (business) send carries its shortcut here -- the funnel reads
+        // quickReplyShortcut from this bundle when p.quick_reply_shortcut is unset
+        // and never writes it back, so the direct p.quick_reply_shortcut test below
+        // does not see it. Neither is persisted, so exclude both; an empty bundle
+        // (the normal case) is holdable.
+        SendMessageChatArguments chatArgs = p.sendMessageChatArguments;
+        if (chatArgs != null && (chatArgs.welcomeMessageChatId != 0
+                || chatArgs.quickReplyShortcut != null
+                || chatArgs.quickReplyShortcutId != 0)) {
+            return false;
+        }
         // Metadata we do not persist and restore -> refuse rather than degrade:
         //  reply markup (an inline keyboard attached to the send),
         //  a story-reply target,
-        //  a quick-reply shortcut (business), old and new fields both,
-        //  the newer chat-arguments bundle (send-as / quick-reply / monoforum),
+        //  a quick-reply shortcut (business) set directly on the params,
         //  a monoforum destination peer,
         //  suggestion params (suggested posts),
         //  a non-zero dice stake,
@@ -184,7 +200,6 @@ public final class GhostHoldController {
         if (p.replyMarkup != null
                 || p.replyToStoryItem != null
                 || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
-                || p.sendMessageChatArguments != null
                 || p.monoForumPeer != 0
                 || p.suggestionParams != null
                 || p.dice_stake != 0

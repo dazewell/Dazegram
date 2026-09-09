@@ -1753,14 +1753,18 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         // NagramX: block only the *automatic* re-send of a still-held row, never a
         // deliberate user retry. unsent == true is the automatic path
         // (processUnsentMessages / secret retries); unsent == false is a user tap
-        // from ChatActivity. The automatic scheduled path is already skipped in
-        // processUnsentMessages, so this is defence-in-depth for it; gating on
-        // `unsent` here means a user who taps retry on a failed handed-off row (a
-        // send-now flush that errored, or a future-dated one) is never silently
-        // refused -- that is their decision, and PR #324's warning covers the
-        // exposure if Ghost happens to be on. A row that reached messages_v2
-        // (scheduled == false) is handed off and always retryable.
-        if (unsent && messageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+        // from ChatActivity, which stays allowed -- retrying a failed handed-off row
+        // is the user's decision, and PR #324's warning covers the exposure if Ghost
+        // is on. Do NOT also gate on messageObject.scheduled: getUnsentMessages feeds
+        // negative messages_v2 rows through processUnsentMessages' first loop with
+        // scheduled == false and no held-skip, so a send-now flush killed
+        // mid-dispatch leaves a still-held row that only this guard catches. Held
+        // rows are always id < 0 (the early return above excludes id >= 0), and
+        // getUnsentMessages loads negative ids only at send_state == 1, so a failed
+        // (send_state == 2) handed-off row is never auto-retried here regardless; the
+        // in-flight-when-killed rows this blocks keep their marker and re-drive on the
+        // next ghost-off flush, so nothing is stranded and nothing leaks.
+        if (unsent && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
             return false;
         }
         if (messageObject.messageOwner.action instanceof TLRPC.TL_messageEncryptedAction) {
