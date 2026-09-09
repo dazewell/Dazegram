@@ -121,14 +121,25 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
     }
 
     private void updateGhostRows() {
+        // NagramX: reachable from the mainUserInfoChanged observer, which can fire before the
+        // adapter exists and while the ghost submenu is collapsed (sub-rows == -1); guard both.
+        if (listAdapter == null) {
+            return;
+        }
         var isActive = NekoConfig.isGhostModeActive();
 
-        listAdapter.notifyItemChanged(ghostModeToggleRow, PARTIAL);
-        listAdapter.notifyItemChanged(sendReadMessagePacketsRow, !isActive);
-        listAdapter.notifyItemChanged(sendOnlinePacketsRow, !isActive);
-        listAdapter.notifyItemChanged(sendUploadProgressRow, !isActive);
-        listAdapter.notifyItemChanged(sendReadStoriesPacketsRow, !isActive);
-        listAdapter.notifyItemChanged(sendOfflinePacketAfterOnlineRow, isActive);
+        notifyRowChanged(ghostModeToggleRow, PARTIAL);
+        notifyRowChanged(sendReadMessagePacketsRow, !isActive);
+        notifyRowChanged(sendOnlinePacketsRow, !isActive);
+        notifyRowChanged(sendUploadProgressRow, !isActive);
+        notifyRowChanged(sendReadStoriesPacketsRow, !isActive);
+        notifyRowChanged(sendOfflinePacketAfterOnlineRow, isActive);
+    }
+
+    private void notifyRowChanged(int row, Object payload) {
+        if (listAdapter != null && row >= 0) {
+            listAdapter.notifyItemChanged(row, payload);
+        }
     }
 
     private void updateGhostViews() {

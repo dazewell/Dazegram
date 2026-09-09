@@ -66,6 +66,9 @@ public final class GhostHoldController {
 
     private static final String PARAM_MARKER = "ghost_hold";
     private static final String PARAM_VALUE = "1";
+    // Records that the user disabled link preview for this send, so the flush
+    // does not re-enable it (searchLinks defaults to true on the send funnel).
+    private static final String PARAM_NO_WEBPAGE = "ghost_hold_no_webpage";
 
     private static final String PREFS_NAME = "ghosthold_state";
     private static final String KEY_LAST_GHOST_ACTIVE = "last_ghost_active";
@@ -202,6 +205,9 @@ public final class GhostHoldController {
 
         HashMap<String, String> stored = params.params != null ? new HashMap<>(params.params) : new HashMap<>();
         stored.put(PARAM_MARKER, PARAM_VALUE);
+        if (!params.searchLinks) {
+            stored.put(PARAM_NO_WEBPAGE, PARAM_VALUE);
+        }
         msg.params = stored;
 
         ArrayList<TLRPC.Message> arr = new ArrayList<>();
@@ -352,8 +358,9 @@ public final class GhostHoldController {
         }
 
         ArrayList<TLRPC.MessageEntity> entities = (m.entities != null && !m.entities.isEmpty()) ? m.entities : null;
+        boolean searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
         SendMessagesHelper.SendMessageParams p = SendMessagesHelper.SendMessageParams.of(
-                m.message, dialogId, replyStub, null, null, true, entities, null, null,
+                m.message, dialogId, replyStub, null, null, searchLinks, entities, null, null,
                 !m.silent, scheduleDate, 0, null, false);
         // Hand to the normal send path first (durable in the correct table), then
         // remove the held row. If we crash in between, the held row survives and is
@@ -444,12 +451,9 @@ public final class GhostHoldController {
     }
 
     private static int countDistinctChats(ArrayList<HeldItem> items) {
-        ArrayList<Long> seen = new ArrayList<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (HeldItem item : items) {
-            long key = ((long) item.account << 1) ^ item.dialogId;
-            if (!seen.contains(key)) {
-                seen.add(key);
-            }
+            seen.add(item.account + ":" + item.dialogId);
         }
         return seen.size();
     }
