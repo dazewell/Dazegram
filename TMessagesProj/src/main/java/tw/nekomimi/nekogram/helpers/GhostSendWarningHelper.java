@@ -2,12 +2,7 @@ package tw.nekomimi.nekogram.helpers;
 
 import static org.telegram.messenger.LocaleController.getString;
 
-import android.util.Log;
-
-import com.radolyn.ayugram.utils.AyuGhostUtils;
-
 import org.telegram.messenger.AndroidUtilities;
-import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLObject;
@@ -34,10 +29,6 @@ import tw.nekomimi.nekogram.NekoConfig;
  * construction, so a held message never reaches here at all.
  */
 public class GhostSendWarningHelper {
-
-    // NAX_SMOKE_ghost-send-warning: temporary reachability diagnostics, removed
-    // once the smoke build confirms this decision point is reached in practice.
-    private static final String SMOKE_TAG = "NAX_SMOKE_ghost-send-warning";
 
     private GhostSendWarningHelper() {
     }
@@ -73,43 +64,6 @@ public class GhostSendWarningHelper {
                 || request instanceof TLRPC.TL_messages_sendEncryptedMultiMedia;
     }
 
-    // NagramX: reuses AyuGhostUtils' existing InputPeer/InputEncryptedChat -> dialogId
-    // conversion instead of duplicating it -- diagnostics-only, this dialogId is never
-    // used to key any stored state. Null-checked here rather than in AyuGhostUtils
-    // itself (that helper is shared fork code with other callers; widening its
-    // contract is out of scope) -- e.g. TL_ephemeral.TL_sendMessage.peer is only
-    // serialized when set (TL_ephemeral.java flag 8), so it can legitimately be null.
-    // This is belt-and-braces: onMessageRequestReady never lets an exception from
-    // here reach its caller either way, but the common case shouldn't rely on that.
-    private static Long extractDialogId(TLObject request) {
-        if (request instanceof TLRPC.TL_messages_sendMessage r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendMedia r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendMultiMedia r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_forwardMessages r) {
-            return r.to_peer != null ? AyuGhostUtils.getDialogId(r.to_peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendInlineBotResult r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendScheduledMessages r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendBotRequestedPeer r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TL_ephemeral.TL_sendMessage r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendEncrypted r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        } else if (request instanceof TLRPC.TL_messages_sendEncryptedFile r) {
-            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
-        }
-        // TL_messages_sendEncryptedMultiMedia and TL_messages_sendWebViewData carry
-        // no peer of their own.
-        return null;
-    }
-
     /**
      * account is the ConnectionsManager instance actually dispatching this
      * request, not UserConfig.selectedAccount -- correct for whichever of the
@@ -135,29 +89,10 @@ public class GhostSendWarningHelper {
 
     private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
         if (!isMessageSendRequest(request)) {
-            // Filtered before any logging: typing, read, upload, edit, poll-vote and
-            // other non-send RPCs pass through here constantly, and logging every one
-            // of them would swamp the trace with noise unrelated to this feature.
             return;
         }
 
-        // BEGIN: unconditionally-reached liveness marker -- fires for every real send
-        // request reaching this hook, regardless of Ghost state, so reachability of
-        // this decision point can be confirmed even when Ghost happens to be off
-        // during a trace.
-        Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
-                + " app=" + BuildConfig.APPLICATION_ID + " account=" + account
-                + " request=" + request.getClass().getSimpleName());
-
-        boolean ghostActive = NekoConfig.isGhostModeActive();
-        Long dialogId = extractDialogId(request);
-
-        if (!ghostActive) {
-            // Forbidden/competing path: a real send request, but Ghost is off.
-            Log.i(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=false account=" + account
-                    + " dialogId=" + dialogId);
-            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=false shown=false account=" + account
-                    + " dialogId=" + dialogId);
+        if (!NekoConfig.isGhostModeActive()) {
             return;
         }
 
@@ -172,37 +107,7 @@ public class GhostSendWarningHelper {
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
-                BulletinOutcome outcome = showBulletinIfVisible(fragment, account);
-                boolean shown = outcome == BulletinOutcome.SHOWN;
-
-                if (shown) {
-                    // Expected path: bulletin actually shown for this send, in the
-                    // sending account's own UI.
-                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-                } else if (outcome == BulletinOutcome.WRONG_ACCOUNT) {
-                    // Suppressed/competing path: the foreground UI belongs to a different
-                    // account than the one that actually sent. The sending account is
-                    // already correct throughout (ConnectionsManager's own currentAccount,
-                    // never UserConfig.selectedAccount) -- but this copy carries no account
-                    // identifier, so showing it in a different account's foreground UI
-                    // would tell that account's user their own status was exposed, which is
-                    // simply false. Never show in the wrong account's UI; don't paper over
-                    // this by adding a label to the copy instead.
-                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_WRONG_ACCOUNT account=" + account + " dialogId=" + dialogId);
-                } else {
-                    // Suppressed/competing path: no bulletin actually rendered, for
-                    // whichever reason showBulletinIfVisible found (no host, host
-                    // paused, or a resolved container that turned out empty). There is
-                    // no once-per-chat slot to preserve here -- this feature warns
-                    // every time, so an unshown warning here is simply a missed one,
-                    // not a deferred one.
-                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI reason=" + outcome + " account=" + account
-                            + " dialogId=" + dialogId);
-                }
-
-                // END: decision handling for this request completed.
-                Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + shown
-                        + " account=" + account + " dialogId=" + dialogId);
+                showBulletinIfVisible(fragment, account);
             } catch (Throwable t) {
                 FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
             }
@@ -211,7 +116,7 @@ public class GhostSendWarningHelper {
 
     // NagramX: the result of showBulletinIfVisible -- SHOWN is the only outcome
     // where .show() actually ran against a non-empty bulletin; every other value
-    // names the specific reason nothing rendered, for diagnostics.
+    // names the specific reason nothing rendered.
     private enum BulletinOutcome {
         SHOWN, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
     }
@@ -227,8 +132,7 @@ public class GhostSendWarningHelper {
     // point Bulletin.make(FrameLayout, ...) quietly returns a no-op
     // Bulletin.EmptyBulletin (Bulletin.java:108) instead of showing anything.
     // Rather than trying to predict that from the outside, this checks the
-    // constructed Bulletin itself before calling show() -- callers must only log
-    // BULLETIN_SHOWN when this returns SHOWN.
+    // constructed Bulletin itself before calling show().
     private static BulletinOutcome showBulletinIfVisible(BaseFragment fragment, int account) {
         if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
             return BulletinOutcome.NO_HOST;
