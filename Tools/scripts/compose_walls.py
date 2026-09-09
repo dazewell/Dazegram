@@ -755,7 +755,12 @@ def render_figure(figure: dict, settings: Settings) -> Image.Image:
     longest = max(im.width, im.height)
     if longest > FIGURE_MAX_DIMENSION:
         scale = FIGURE_MAX_DIMENSION / longest
-        new_size = (round(im.width * scale), round(im.height * scale))
+        # Clamp to 1px: an extreme aspect ratio (e.g. a 1px-wide crop) can
+        # round the scaled short side down to 0, which Image.resize() rejects.
+        new_size = (
+            max(1, round(im.width * scale)),
+            max(1, round(im.height * scale)),
+        )
         im = im.resize(new_size, Image.LANCZOS)
     return im
 

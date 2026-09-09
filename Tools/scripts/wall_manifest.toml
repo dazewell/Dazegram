@@ -219,8 +219,8 @@ crop = [0, 0, 1080, 130]
 output = "trigger-editor.png"
 source = "new/screenshot_2026-09-08_17-32-33.png"
 crop = [0, 1170, 1080, 2192]
-# The redesigned trigger editor's collapsed collapsible sections ("By
-# message type", "Or by text") plus the delay slider and Cancel/Done. This
+# The redesigned trigger editor's collapsible sections ("By message type",
+# "Or by text"), collapsed, plus the delay slider and Cancel/Done. This
 # is the only trigger-editor capture used -- see FEATURES.md PR notes on
 # why the original (pre-redesign) capture was dropped.
 
