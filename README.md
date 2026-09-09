@@ -29,13 +29,13 @@ This README covers the highlights. The full list, with what each one does, is in
 **Chat privacy:** Locking the whole app is a blunt instrument when only one chat is sensitive. Hide a chat's last message from the list, or put the chat itself behind your passcode — your call, per chat, from its ⋯ menu. Turn on disguise notifications and alerts show a cover instead of the real sender and message.
 
 <p align="center">
-<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
+<img src="docs/images/chat-privacy.png" alt="Three views of Dazegram's chat privacy: a hidden chat's placeholder text sitting beside a normal chat in the list, the chat privacy sheet with hide-last-message and require-password both switched on above a Notifications section holding the disguise-notifications toggle, and a disguised system notification showing a generic build-status alert instead of the real sender and message.">
 </p>
 
 **Recording video messages:** A round message is a video like any other — so it finally behaves like one. Set the mic and camera before you start, keep recording past Telegram's limit with a buzz to warn you before it cuts, and scrub the preview before you send.
 
 <p align="center">
-<img src="docs/images/video-recording.png" alt="Three views of Dazegram's video message recording: the pre-record options popup with External Microphone and Infinite Recording toggles, the recording screen's zoom and flash controls, and the preview with its scrub timeline.">
+<img src="docs/images/video-recording.png" alt="Three views of Dazegram's video message recording: the pre-record options popup with External Microphone, Infinite Recording, and front and rear camera options, the recording screen's zoom and flash controls, and the preview with its scrub timeline.">
 </p>
 
 **Watching video messages:** Sometimes you just can't play the sound. The player panel under the chat title lets you mute a round message outright, or set how they play — once, all of them in a row, or the same one on repeat. With transcription set up, you can read it as captions instead.

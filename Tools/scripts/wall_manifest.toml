@@ -20,6 +20,13 @@
 # Panels are laid out left to right in a single row. Every panel keeps its
 # crop's native aspect ratio; the tool derives each panel's on-canvas size
 # from the layout rules in [settings] rather than from anything specified here.
+#
+# A [[figure]] is a different, simpler shape for FEATURES.md: a single plain
+# cropped screenshot with no canvas, caption, or shadow, written to
+# `figures_dir` as `output`. It reuses the same `source`/`crop`/`redact`/
+# `blur` fields and coordinate space as a wall panel, then is downscaled
+# (never upscaled) so its longest side is at most FIGURE_MAX_DIMENSION
+# pixels in compose_walls.py.
 
 [settings]
 canvas_width = 1680
@@ -37,7 +44,8 @@ caption_font_size = 34
 caption_gap = 18            # gap between card bottom and top of caption text
 stagger_amplitude = 35      # +/- vertical offset alternated across panels
 screenshots_dir = "docs/screenshots"   # gitignored, local-only raw captures
-output_dir = "docs/images"             # committed composited output
+output_dir = "docs/images"             # committed composited wall output
+figures_dir = "docs/images/features"   # committed plain-crop figure output
 
 [[wall]]
 output = "hero.png"
@@ -78,8 +86,18 @@ caption = "Hidden from the list"
 
 [[wall.panel]]
 source = "chat-privacy-sheet-both-switches-on.png"
-crop = [0, 790, 1080, 1858]
+crop = [0, 580, 1080, 1545]
 caption = "Your call, per chat"
+# Re-shot 2026-09-08 after the sheet was redesigned with collapsible
+# sections; the old crop coordinates no longer line up with the new
+# layout. A short crop here previously starved the whole wall's shared
+# card height (every panel in a wall shares one height, driven by the
+# summed aspect ratio of all panels -- a short/wide panel here shrinks
+# every card). This crop starts just below the sheet's rounded top edge
+# (well clear of the real name/face in the chat behind it) and runs
+# through both switches ("Hide last message" and "Require password"),
+# the "Notifications" section, the "Disguise notifications" row, and
+# the "How covers work" row, ending cleanly before its expander body.
 
 [[wall.panel]]
 source = "chat-privacy-disguise-notification.png"
@@ -165,3 +183,130 @@ redact = [[50, 1565, 690, 1622]]
 source = "privacy-profiles-easy-switch.jpg"
 crop = [100, 935, 655, 2130]
 caption = "Switch in one tap"
+
+# --- FEATURES.md figures ------------------------------------------------
+#
+# Plain cropped screenshots (no canvas/caption/shadow), replacing the two
+# GitHub user-attachments CDN images previously on the #timezones entry so
+# every FEATURES.md figure is versioned in the repo instead. Raw sources
+# are the gitignored captures staged under docs/screenshots/new/ for this
+# change; see that directory's shot list for what each one depicts.
+
+[[figure]]
+output = "timezones-1.png"
+source = "new/screenshot_2026-09-06_16-58-55.png"
+crop = [0, 1130, 1080, 2010]
+# Profile edit entry point: the Time Zone row plus the "Select Time Zone"
+# sheet (title, search, list) that opens from it. No sensitive content.
+
+[[figure]]
+output = "timezones-2.png"
+source = "new/screenshot_2026-09-06_17-01-16.png"
+crop = [0, 555, 1080, 758]
+# The chat list row showing the per-chat clock pill next to the contact
+# name. "DazeTest" is a fake demo persona, not a real name.
+
+[[figure]]
+output = "reschedule.png"
+source = "new/screenshot_2026-09-06_17-04-25.png"
+crop = [0, 215, 1080, 2180]
+# The Reschedule sheet: date/time grid, interval slider, delay, and the
+# Reschedule button. All generic UI text, no sensitive content.
+
+[[figure]]
+output = "scheduled-selection-toolbar.png"
+source = "new/screenshot_2026-09-06_17-04-37.png"
+crop = [0, 0, 1080, 130]
+# Just the top selection toolbar in the scheduled view: Send Now,
+# Reschedule, Delete, and the overflow menu (Copy/Forward tucked inside).
+
+[[figure]]
+output = "trigger-editor.png"
+source = "new/screenshot_2026-09-08_17-32-33.png"
+crop = [0, 1170, 1080, 2192]
+# The redesigned trigger editor's collapsible sections ("By message type",
+# "Or by text"), collapsed, plus the delay slider and Cancel/Done. This
+# is the only trigger-editor capture used -- see FEATURES.md PR notes on
+# why the original (pre-redesign) capture was dropped.
+
+[[figure]]
+output = "message-triggers-list.png"
+source = "new/screenshot_2026-09-06_17-13-47.png"
+crop = [0, 0, 1080, 1080]
+# The Message Triggers list: header, two fake trigger cards (BotFather and
+# DazeTest test personas, not real contacts), and the footer disclaimer.
+
+[[figure]]
+output = "bulk-actions.png"
+source = "new/screenshot_2026-09-08_15-58-55.png"
+crop = [0, 690, 1080, 1900]
+# Five consecutive replies in a staged demo conversation, numbered 1-5, to
+# show bulk pin/number-several-at-once. Blurred: three reply-quote author
+# names (a real name reused across this staged conversation) that would
+# otherwise be legible in the crop; everything else is throwaway test text.
+blur = [
+    [700, 860, 950, 920],
+    [190, 1285, 460, 1345],
+    [190, 1710, 460, 1770],
+]
+
+[[figure]]
+output = "monet-pattern.png"
+source = "new/screenshot_2026-09-08_16-14-27.png"
+crop = [0, 0, 1080, 1930]
+# The Monet-tinted wallpaper pattern visible in the chat's negative space.
+# Blurred: one reply-quote author name near the top of the same staged
+# demo conversation as bulk-actions.png above.
+blur = [[60, 165, 290, 215]]
+
+[[figure]]
+output = "extera-light.png"
+source = "new/screenshot_2026-09-08_16-14-48.png"
+crop = [0, 0, 1080, 1930]
+# Extera theme, light variant, same staged demo conversation. Blurred: a
+# partial reply-quote author name near the top-left, cut by the back
+# button but still legible enough to redact.
+blur = [[100, 40, 260, 95]]
+
+[[figure]]
+output = "extera-dark.png"
+source = "new/screenshot_2026-09-08_16-15-40.png"
+crop = [0, 0, 1080, 1930]
+# Extera theme, dark variant, same scroll position as extera-light.png.
+# Blurred: the reply-quote author name, fully legible here (unlike the
+# partial/cropped occurrence in extera-light.png).
+blur = [[40, 158, 270, 210]]
+
+[[figure]]
+output = "transcribe-retry.png"
+source = "new/screenshot_2026-09-08_17-26-27.png"
+crop = [60, 795, 920, 1372]
+# Cropped tightly to just the "Retry with..." provider dialog, excluding
+# the chat background entirely -- which is how a real face (a round-video
+# thumbnail) and a real account name in the header are avoided without
+# needing blur or redaction.
+
+[[figure]]
+output = "repost-copy.png"
+source = "new/screenshot_2026-09-08_17-29-00.png"
+crop = [0, 1730, 1080, 2000]
+# The "Reposted as a copy" notice bar. Blurred: a sliver of a reply-quote
+# author name peeking above the notice bar's rounded top edge.
+blur = [[140, 1695, 360, 1750]]
+
+[[figure]]
+output = "cite.png"
+source = "new/screenshot_2026-09-08_17-30-38.png"
+crop = [0, 1598, 1080, 2060]
+# Cropped to just the composer: the typed text plus two stacked cited
+# quote blocks. This excludes the message history above (which contains a
+# real name in this conversation) entirely, so no blur is needed.
+
+[[figure]]
+output = "reply-threads.png"
+source = "new/screenshot_2026-09-08_17-31-17.png"
+crop = [0, 240, 1080, 570]
+# Two consecutive bubbles showing the small reply-glyph-plus-count marker
+# (distinct from the large bulk-numbering digits used in bulk-actions.png)
+# going from 1 to 2. Blurred: the one reply-quote author name in this crop.
+blur = [[40, 370, 340, 430]]
