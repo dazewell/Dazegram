@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """compose_walls.py -- deterministic README image-wall compositor.
 
-Regenerates the marketing "wall" PNGs under docs/images/ from raw device
-screenshots plus a declarative manifest (wall_manifest.toml, next to this
-script). It exists so a wall can be tweaked by editing data, not by redoing
-pixels by hand in an external editor.
+Regenerates the marketing "wall" PNGs under docs/images/, and the plain
+cropped figures under docs/images/features/ used by FEATURES.md, from raw
+device screenshots plus a declarative manifest (wall_manifest.toml, next to
+this script). It exists so a wall or figure can be tweaked by editing data,
+not by redoing pixels by hand in an external editor.
 
 Usage (run from anywhere in the repo; paths in the manifest resolve against
 the repo root):
 
-    python Tools/scripts/compose_walls.py                  # build every wall
-    python Tools/scripts/compose_walls.py --wall hero.png   # build just one
+    python Tools/scripts/compose_walls.py                  # build everything
+    python Tools/scripts/compose_walls.py --wall hero.png   # build just one wall
+    python Tools/scripts/compose_walls.py --figure timezones-1.png  # just one figure
     python Tools/scripts/compose_walls.py --check           # build to a temp
                                                              # dir and diff
                                                              # against the
@@ -28,9 +30,12 @@ no use for an imaging library.)
 
 Source screenshots live in docs/screenshots/ (gitignored, populated by hand)
 and are never modified or committed by this script. Raw device captures are
-full-screen 1080x2354 JPGs; each panel's `crop` rectangle in the manifest
-selects the sub-region to composite, in that screenshot's own native pixel
-coordinates.
+full-screen 1080x2354 JPGs; each panel's (or figure's) `crop` rectangle in
+the manifest selects the sub-region to composite, in that screenshot's own
+native pixel coordinates. A `[[figure]]` table is a single crop with no
+caption, canvas, or shadow -- just the redact/blur/crop pipeline a wall
+panel also uses, downscaled (never upscaled) so its longest side is at most
+FIGURE_MAX_DIMENSION pixels before being written to docs/images/features/.
 
 Determinism: given the same manifest, the same screenshots, and the same
 Pillow version, re-running this script byte-for-byte reproduces its output
@@ -60,6 +65,12 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 MANIFEST_PATH = SCRIPT_DIR / "wall_manifest.toml"
+
+# A plain cropped screenshot for FEATURES.md -- no navy canvas, no caption,
+# no drop shadow, unlike a wall panel. Downscaled (never upscaled) so its
+# longest side is at most this many pixels, keeping the committed PNG small
+# while FEATURES.md still renders it at a fixed, legible `height`.
+FIGURE_MAX_DIMENSION = 1000
 
 # A repository-owned font, not a system one: determinism is the entire
 # reason this tool exists ("same inputs, same output" is what makes
@@ -233,6 +244,7 @@ _REQUIRED_SETTINGS: dict[str, type | tuple[type, ...]] = {
     "stagger_amplitude": int,
     "screenshots_dir": str,
     "output_dir": str,
+    "figures_dir": str,
 }
 
 
@@ -324,6 +336,41 @@ def validate_manifest_shape(manifest: dict, manifest_path: Path) -> None:
                 for k, rect in enumerate(rects, start=1):
                     _check_rect_shape(rect, context=f"{panel_context} {kind} #{k}")
 
+    figures = manifest.get("figure", [])
+    if not isinstance(figures, list):
+        raise SystemExit(f"{manifest_path}: [[figure]] must be a list of tables")
+    seen_figure_outputs: set[str] = set()
+    for i, figure in enumerate(figures, start=1):
+        figure_context = f"figure #{i}"
+        if not isinstance(figure, dict):
+            raise SystemExit(f"{figure_context}: must be a table, got {figure!r}")
+        output = _require_plain_png_filename(
+            figure.get("output"), context=figure_context
+        )
+        output_key = output.casefold()
+        if output_key in seen_figure_outputs:
+            raise SystemExit(
+                f"duplicate figure output {output!r} -- every [[figure]] "
+                "needs a unique output filename (case-insensitively)"
+            )
+        seen_figure_outputs.add(output_key)
+        figure_context = f"figure {output!r}"
+        source = figure.get("source")
+        if not isinstance(source, str) or not source:
+            raise SystemExit(
+                f"{figure_context}: source must be a non-empty string, "
+                f"got {source!r}"
+            )
+        _check_rect_shape(figure.get("crop"), context=f"{figure_context} crop")
+        for kind in ("redact", "blur"):
+            rects = figure.get(kind, [])
+            if not isinstance(rects, list):
+                raise SystemExit(
+                    f"{figure_context}: {kind} must be a list of rects, "
+                    f"got {rects!r}"
+                )
+            for k, rect in enumerate(rects, start=1):
+                _check_rect_shape(rect, context=f"{figure_context} {kind} #{k}")
 
 
 @dataclass
@@ -344,6 +391,7 @@ class Settings:
     stagger_amplitude: int
     screenshots_dir: Path
     output_dir: Path
+    figures_dir: Path
 
     @classmethod
     def from_toml(cls, data: dict, repo_root: Path) -> "Settings":
@@ -374,6 +422,9 @@ class Settings:
             ),
             output_dir=_confined_settings_dir(
                 repo_root, s["output_dir"], "docs/images", field="output_dir"
+            ),
+            figures_dir=_confined_settings_dir(
+                repo_root, s["figures_dir"], "docs/images/features", field="figures_dir"
             ),
         )
 
@@ -409,6 +460,12 @@ def validate_manifest_sources(manifest: dict, settings: Settings) -> None:
                 settings.screenshots_dir,
                 panel_context=f"wall {wall['output']!r} panel #{j}",
             )
+    for i, figure in enumerate(manifest.get("figure", []), start=1):
+        _confine_source(
+            figure["source"],
+            settings.screenshots_dir,
+            panel_context=f"figure {figure.get('output', i)!r}",
+        )
 
 
 def make_vertical_gradient(
@@ -688,12 +745,52 @@ def build_walls(settings: Settings, manifest: dict, only: str | None, out_dir: P
     return written
 
 
+def render_figure(figure: dict, settings: Settings) -> Image.Image:
+    """A figure is a plain cropped screenshot -- no canvas, no caption, no
+    shadow -- reusing the same redact/blur/crop pipeline as a wall panel.
+    `load_panel_image` only reads source/redact/blur/crop keys from the
+    dict it's given, all of which a [[figure]] table also has, so the
+    figure table is passed straight through rather than reshaped."""
+    im = load_panel_image(figure, settings.screenshots_dir)
+    longest = max(im.width, im.height)
+    if longest > FIGURE_MAX_DIMENSION:
+        scale = FIGURE_MAX_DIMENSION / longest
+        new_size = (round(im.width * scale), round(im.height * scale))
+        im = im.resize(new_size, Image.LANCZOS)
+    return im
+
+
+def build_figures(settings: Settings, manifest: dict, only: str | None, out_dir: Path) -> list[Path]:
+    written = []
+    for i, figure in enumerate(manifest.get("figure", [])):
+        output_name = _require_plain_png_filename(
+            figure.get("output"), context=f"figure #{i + 1}"
+        )
+        if only is not None and output_name != only:
+            continue
+        image = render_figure(figure, settings)
+        out_path = out_dir / output_name
+        # Same fixed encoder options as build_walls(), for the same reason:
+        # byte-identical output regardless of Pillow's current PNG defaults.
+        image.save(out_path, format="PNG", compress_level=6, optimize=False)
+        written.append(out_path)
+        print(f"wrote {out_path}  {image.width}x{image.height}  {out_path.stat().st_size} bytes")
+    if only is not None and not written:
+        raise SystemExit(f"no figure with output == {only!r} in {MANIFEST_PATH}")
+    return written
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--wall",
         metavar="FILENAME",
         help="only rebuild the wall whose manifest `output` matches this (e.g. hero.png)",
+    )
+    parser.add_argument(
+        "--figure",
+        metavar="FILENAME",
+        help="only rebuild the figure whose manifest `output` matches this (e.g. timezones-1.png)",
     )
     parser.add_argument(
         "--manifest",
@@ -707,6 +804,8 @@ def main() -> int:
         help="render to a temp directory and diff against docs/images/ instead of writing there",
     )
     args = parser.parse_args()
+    if args.wall and args.figure:
+        raise SystemExit("--wall and --figure are mutually exclusive")
 
     repo_root = find_repo_root(SCRIPT_DIR)
     try:
@@ -731,20 +830,33 @@ def main() -> int:
     if args.check:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            written = build_walls(settings, manifest, args.wall, tmp_path)
             mismatches = []
-            for path in written:
-                committed = settings.output_dir / path.name
-                if not committed.exists() or not filecmp.cmp(path, committed, shallow=False):
-                    mismatches.append(path.name)
+            if not args.figure:
+                written = build_walls(settings, manifest, args.wall, tmp_path)
+                for path in written:
+                    committed = settings.output_dir / path.name
+                    if not committed.exists() or not filecmp.cmp(path, committed, shallow=False):
+                        mismatches.append(path.name)
+            if not args.wall:
+                fig_tmp = tmp_path / "features"
+                fig_tmp.mkdir()
+                written = build_figures(settings, manifest, args.figure, fig_tmp)
+                for path in written:
+                    committed = settings.figures_dir / path.name
+                    if not committed.exists() or not filecmp.cmp(path, committed, shallow=False):
+                        mismatches.append(path.name)
             if mismatches:
                 print(f"OUT OF DATE: {', '.join(mismatches)}", file=sys.stderr)
                 return 1
             print("up to date")
             return 0
 
-    settings.output_dir.mkdir(parents=True, exist_ok=True)
-    build_walls(settings, manifest, args.wall, settings.output_dir)
+    if not args.figure:
+        settings.output_dir.mkdir(parents=True, exist_ok=True)
+        build_walls(settings, manifest, args.wall, settings.output_dir)
+    if not args.wall:
+        settings.figures_dir.mkdir(parents=True, exist_ok=True)
+        build_figures(settings, manifest, args.figure, settings.figures_dir)
     return 0
 
 
