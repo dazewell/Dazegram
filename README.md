@@ -20,6 +20,12 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the glass action row live in a chat with text selected, the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, and the message field expanded to full screen.">
 </p>
 
+**Scheduled messages:** A schedule is usually just a clock: pick a time, wait for it. Arm a trigger instead and a message sends early the moment a reply matches a message type or a bit of text, keeping its original time as a fallback if it never does. Bulk-reschedule a whole batch at once, spread by an interval, instead of dragging each one by hand.
+
+<p align="center">
+<img src="docs/images/scheduling.png" alt="Three views of Dazegram's scheduled message triggers: the Schedule Message sheet with a collapsed Send early on event card offering By message type and Or by text conditions above a delay slider, the bulk Reschedule sheet with a date/time grid, an interval and delay slider, and a Send on event toggle, and the Message Triggers list showing armed triggers for two test contacts with their message-type and text conditions.">
+</p>
+
 **Privacy profiles:** Your auto-lock shouldn't be the same at home as it is on a train. Save named timeouts and switch to one temporarily — for now, for a set stretch of time, or until a given moment. Long-press the Settings tab in the chat list to swap between them.
 
 <p align="center">
@@ -42,6 +48,12 @@ This README covers the highlights. The full list, with what each one does, is in
 
 <p align="center">
 <img src="docs/images/video-watching.png" alt="Two views of Dazegram's video message playback: the player panel under the chat title with its mute, loop, and speed controls, and captions burned into video playback matching the transcription bubble below it.">
+</p>
+
+**Appearance:** Stock Telegram gives you light, dark, and not much else. Extera Light and Extera Dark bring a different theme over wholesale, and in both, the chat wallpaper's pattern shows straight through the composer's glass instead of stopping at the colour behind it. A separate pattern option tints that same wallpaper with your phone's live Material You accent colour instead of a fixed image.
+
+<p align="center">
+<img src="docs/images/appearance.png" alt="Two views of Dazegram's Extera themes: the same staged chat rendered in Extera Light and in Extera Dark, each showing the composer's message field and button row with the chat wallpaper's pattern reading through their translucent glass.">
 </p>
 
 **Everyday reliability:** Normal composing already saved your draft. Editing a message, scheduling one, and recording a round video didn't — now they do. Back out by accident, lock the app, or switch away mid-recording, and what you had is still waiting when you come back.
