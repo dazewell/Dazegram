@@ -8065,6 +8065,9 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             return;
         }
 
+        // NagramX: last point before the request actually leaves for the network -- warns once per chat per Ghost session
+        tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageReachingWire(currentAccount, msgObj.getDialogId());
+
         newMsgObj.reqId = getConnectionsManager().sendRequest(req, (response, error) -> {
             if (error != null && (req instanceof TLRPC.TL_messages_sendMedia || req instanceof TL_ephemeral.TL_sendMessage || req instanceof TLRPC.TL_messages_editMessage || req instanceof TLRPC.TL_messages_addPollAnswer) && FileRefController.isFileRefError(error.text)) {
                 if (FileRefController.isFileRefErrorCover(error.text)) {

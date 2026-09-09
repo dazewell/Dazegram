@@ -327,6 +327,10 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
+        if (!enabled) {
+            // NagramX: Ghost session just ended -- let the per-chat send-warning flag reset for the next one
+            tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.resetWarnings();
+        }
     }
 
     public static void toggleGhostMode() {
