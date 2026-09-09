@@ -89,23 +89,30 @@ public class GhostSendWarningHelper {
         boolean ghostActive;
         boolean alreadyWarned = false;
         boolean shown = false;
+        boolean suppressedNoUi = false;
         // NagramX: BulletinFactory.global() falls back to a Dialog built on the
         // application Context when no fragment is on screen, which can throw
         // WindowManager.BadTokenException -- only attempt the bulletin (and only
         // spend the chat's one-time warning) while a UI is actually active, so a
-        // background/scheduled send doesn't crash or silently burn the slot.
+        // background/scheduled send doesn't crash or silently burn the slot. The
+        // slot staying unconsumed means the very next foreground send in this
+        // chat still warns -- the warning is deferred, not lost.
         boolean uiActive = LaunchActivity.isActive;
 
         synchronized (LOCK) {
             ghostActive = onGhostStateChangedLocked();
-            if (ghostActive && uiActive) {
-                HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
-                if (warnedDialogs == null) {
-                    warnedDialogs = new HashSet<>();
-                    warnedDialogsByAccount.put(account, warnedDialogs);
+            if (ghostActive) {
+                if (uiActive) {
+                    HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
+                    if (warnedDialogs == null) {
+                        warnedDialogs = new HashSet<>();
+                        warnedDialogsByAccount.put(account, warnedDialogs);
+                    }
+                    alreadyWarned = !warnedDialogs.add(dialogId);
+                    shown = !alreadyWarned;
+                } else {
+                    suppressedNoUi = true;
                 }
-                alreadyWarned = !warnedDialogs.add(dialogId);
-                shown = !alreadyWarned;
             }
         }
 
@@ -114,19 +121,20 @@ public class GhostSendWarningHelper {
                     BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show());
             // Expected path: bulletin actually shown for this chat this session.
             Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-        }
-
-        if (!shown) {
-            // Forbidden/competing path: send proceeded with Ghost on (or Ghost off
-            // entirely, or no UI to show on) but no bulletin fired this time, with
-            // the reason why.
+        } else if (suppressedNoUi) {
+            // Suppressed/competing path: this chat would have been warned, but
+            // there is no active UI to host the bulletin safely -- the slot is
+            // left unconsumed, so the next foreground send in this chat still warns.
+            Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
+        } else {
+            // Forbidden/competing path: send proceeded with Ghost off, or this
+            // chat was already warned this session, with the reason why.
             Log.w(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=" + ghostActive
-                    + " alreadyWarned=" + alreadyWarned + " uiActive=" + uiActive
-                    + " account=" + account + " dialogId=" + dialogId);
+                    + " alreadyWarned=" + alreadyWarned + " account=" + account + " dialogId=" + dialogId);
         }
 
         // END: decision handling for this send completed.
         Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=" + ghostActive + " shown=" + shown
-                + " account=" + account + " dialogId=" + dialogId);
+                + " suppressedNoUi=" + suppressedNoUi + " account=" + account + " dialogId=" + dialogId);
     }
 }
