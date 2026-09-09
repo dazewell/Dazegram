@@ -42,15 +42,20 @@ public class GhostSendWarningHelper {
     }
 
     // NagramX: deliberately an explicit allowlist of message-producing request
-    // classes, not a "TL_messages_send*" name-prefix test -- TL_messages_editMessage
-    // and TL_messages_addPollAnswer also carry that prefix, but neither one sends a
-    // new message, so a name-based test would wrongly fire this warning on a poll
-    // vote or an edit (the defect the previous hook point had). Also excludes
+    // classes, rather than a naming-based test -- the previous hook point was a
+    // shared dispatcher method that TL_messages_editMessage and
+    // TL_messages_addPollAnswer also passed through despite neither one sending a
+    // new message (the defect that hook point had); classifying by request type
+    // here is what actually excludes them, not their names. Also excludes
     // reactions, typing/read requests, screenshot notifications, uploads, and
     // encrypted service actions.
     // Known gap, accepted for a warning-only feature: a future send RPC upstream
     // adds is missed here until this list is updated -- the actual protection
     // (holding sends back) is the local-hold feature's job, not this one's.
+    // TL_messages_sendBotRequestedPeer (in-chat request-peer submission) and
+    // TL_messages_sendWebViewData (bot WebView data submission) are both known,
+    // named, real user-initiated sends today, not a future-RPC gap, so they're
+    // included deliberately rather than left to that gap.
     private static boolean isMessageSendRequest(TLObject request) {
         return request instanceof TLRPC.TL_messages_sendMessage
                 || request instanceof TLRPC.TL_messages_sendMedia
@@ -59,6 +64,8 @@ public class GhostSendWarningHelper {
                 || request instanceof TLRPC.TL_messages_sendInlineBotResult
                 || request instanceof TLRPC.TL_messages_sendScheduledMessages
                 || request instanceof TLRPC.TL_messages_sendQuickReplyMessages
+                || request instanceof TLRPC.TL_messages_sendBotRequestedPeer
+                || request instanceof TLRPC.TL_messages_sendWebViewData
                 || request instanceof TL_ephemeral.TL_sendMessage
                 || request instanceof TLRPC.TL_messages_sendEncrypted
                 || request instanceof TLRPC.TL_messages_sendEncryptedFile
@@ -88,6 +95,8 @@ public class GhostSendWarningHelper {
             return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages r) {
             return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
+        } else if (request instanceof TLRPC.TL_messages_sendBotRequestedPeer r) {
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TL_ephemeral.TL_sendMessage r) {
             return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendEncrypted r) {
@@ -95,7 +104,8 @@ public class GhostSendWarningHelper {
         } else if (request instanceof TLRPC.TL_messages_sendEncryptedFile r) {
             return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         }
-        // TL_messages_sendEncryptedMultiMedia carries no peer of its own.
+        // TL_messages_sendEncryptedMultiMedia and TL_messages_sendWebViewData carry
+        // no peer of their own.
         return null;
     }
 
@@ -165,22 +175,36 @@ public class GhostSendWarningHelper {
             try {
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
                 boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
+                boolean shown = false;
 
-                if (hostAvailable) {
-                    resolveBulletinFactory(fragment)
-                            .createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
-                    // Expected path: bulletin actually shown for this send.
-                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-                } else {
+                if (!hostAvailable) {
                     // Suppressed/competing path: no renderable bulletin host at show time.
                     // There is no once-per-chat slot to preserve here -- this feature warns
                     // every time, so an unshown warning here is simply a missed one, not a
                     // deferred one.
                     Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
+                } else if (fragment.getCurrentAccount() != account) {
+                    // Suppressed/competing path: the foreground UI belongs to a different
+                    // account than the one that actually sent. The sending account is
+                    // already correct throughout (ConnectionsManager's own currentAccount,
+                    // never UserConfig.selectedAccount) -- but this copy carries no account
+                    // identifier, so showing it in a different account's foreground UI
+                    // would tell that account's user their own status was exposed, which is
+                    // simply false. Never show in the wrong account's UI; don't paper over
+                    // this by adding a label to the copy instead.
+                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_WRONG_ACCOUNT account=" + account
+                            + " fragmentAccount=" + fragment.getCurrentAccount() + " dialogId=" + dialogId);
+                } else {
+                    resolveBulletinFactory(fragment)
+                            .createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
+                    shown = true;
+                    // Expected path: bulletin actually shown for this send, in the
+                    // sending account's own UI.
+                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
                 }
 
                 // END: decision handling for this request completed.
-                Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + hostAvailable
+                Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + shown
                         + " account=" + account + " dialogId=" + dialogId);
             } catch (Throwable t) {
                 FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
