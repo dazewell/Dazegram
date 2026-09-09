@@ -9,6 +9,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.R;
 import org.telegram.ui.Components.BulletinFactory;
+import org.telegram.ui.LaunchActivity;
 
 import java.util.HashSet;
 
@@ -88,10 +89,16 @@ public class GhostSendWarningHelper {
         boolean ghostActive;
         boolean alreadyWarned = false;
         boolean shown = false;
+        // NagramX: BulletinFactory.global() falls back to a Dialog built on the
+        // application Context when no fragment is on screen, which can throw
+        // WindowManager.BadTokenException -- only attempt the bulletin (and only
+        // spend the chat's one-time warning) while a UI is actually active, so a
+        // background/scheduled send doesn't crash or silently burn the slot.
+        boolean uiActive = LaunchActivity.isActive;
 
         synchronized (LOCK) {
             ghostActive = onGhostStateChangedLocked();
-            if (ghostActive) {
+            if (ghostActive && uiActive) {
                 HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
                 if (warnedDialogs == null) {
                     warnedDialogs = new HashSet<>();
@@ -111,9 +118,11 @@ public class GhostSendWarningHelper {
 
         if (!shown) {
             // Forbidden/competing path: send proceeded with Ghost on (or Ghost off
-            // entirely) but no bulletin fired this time, with the reason why.
+            // entirely, or no UI to show on) but no bulletin fired this time, with
+            // the reason why.
             Log.w(SMOKE_TAG, SMOKE_TAG + " NO_BULLETIN ghostActive=" + ghostActive
-                    + " alreadyWarned=" + alreadyWarned + " account=" + account + " dialogId=" + dialogId);
+                    + " alreadyWarned=" + alreadyWarned + " uiActive=" + uiActive
+                    + " account=" + account + " dialogId=" + dialogId);
         }
 
         // END: decision handling for this send completed.
