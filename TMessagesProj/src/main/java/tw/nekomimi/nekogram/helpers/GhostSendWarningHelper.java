@@ -14,6 +14,7 @@ import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
@@ -153,28 +154,53 @@ public class GhostSendWarningHelper {
         // is the actual predicate for whether a fragment can safely host a bulletin
         // (parent activity and layout container both present) -- resolve the fragment
         // on the UI thread, where sendRequestInternal does not run (it's on
-        // Utilities.stageQueue), test that exact instance, and show on it directly via
-        // BulletinFactory.of(...) instead of re-resolving through .global() -- never
-        // test one fragment instance and show on a different one.
+        // Utilities.stageQueue), test that exact instance, and show on it directly
+        // instead of re-resolving through .global() -- never test one fragment
+        // instance and show on a different one. The whole runnable body is guarded:
+        // it runs on the UI thread's own dispatch, outside onMessageRequestReady's
+        // synchronous try/catch, so an unguarded failure here would crash the app on
+        // the main looper -- worse than a dropped send, from a feature that's nothing
+        // but an informational bulletin.
         AndroidUtilities.runOnUIThread(() -> {
-            BaseFragment fragment = LaunchActivity.getSafeLastFragment();
-            boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
+            try {
+                BaseFragment fragment = LaunchActivity.getSafeLastFragment();
+                boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
 
-            if (hostAvailable) {
-                BulletinFactory.of(fragment).createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
-                // Expected path: bulletin actually shown for this send.
-                Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-            } else {
-                // Suppressed/competing path: no renderable bulletin host at show time.
-                // There is no once-per-chat slot to preserve here -- this feature warns
-                // every time, so an unshown warning here is simply a missed one, not a
-                // deferred one.
-                Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
+                if (hostAvailable) {
+                    resolveBulletinFactory(fragment)
+                            .createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
+                    // Expected path: bulletin actually shown for this send.
+                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
+                } else {
+                    // Suppressed/competing path: no renderable bulletin host at show time.
+                    // There is no once-per-chat slot to preserve here -- this feature warns
+                    // every time, so an unshown warning here is simply a missed one, not a
+                    // deferred one.
+                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
+                }
+
+                // END: decision handling for this request completed.
+                Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + hostAvailable
+                        + " account=" + account + " dialogId=" + dialogId);
+            } catch (Throwable t) {
+                FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
             }
-
-            // END: decision handling for this request completed.
-            Log.i(SMOKE_TAG, SMOKE_TAG + " END ghostActive=true shown=" + hostAvailable
-                    + " account=" + account + " dialogId=" + dialogId);
         });
     }
+
+    // NagramX: mirrors BulletinFactory.global()'s bottom-sheet handling (BulletinFactory.java:87-88)
+    // for a fragment we already resolved and canShowBulletin-checked -- if the fragment has an open
+    // BottomSheet, global()'s own of(fragment) call would attach the bulletin to the fragment's
+    // layout behind the sheet, where the user never sees it. Deliberately not calling global()
+    // itself: it re-resolves the fragment from scratch and falls back to
+    // BulletinFactory.of(Bulletin.BulletinWindow.make(ApplicationLoader.applicationContext), null)
+    // when that re-resolution returns null, which is the unguarded crash path this class exists to
+    // avoid. fragment here is already known non-null.
+    private static BulletinFactory resolveBulletinFactory(BaseFragment fragment) {
+        if (fragment.visibleDialog instanceof BottomSheet) {
+            return BulletinFactory.of(((BottomSheet) fragment.visibleDialog).container, fragment.getResourceProvider());
+        }
+        return BulletinFactory.of(fragment);
+    }
 }
+
