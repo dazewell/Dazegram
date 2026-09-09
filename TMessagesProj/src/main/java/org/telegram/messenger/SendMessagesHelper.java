@@ -1750,10 +1750,17 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             }
             return false;
         }
-        // NagramX: refuse to re-send a still-held Ghost Hold row (e.g. a manual retry
-        // tap while Ghost is on). Held rows carry the marker until they are flushed
-        // and removed, so this never blocks a normal failed-message retry.
-        if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+        // NagramX: block only the *automatic* re-send of a still-held row, never a
+        // deliberate user retry. unsent == true is the automatic path
+        // (processUnsentMessages / secret retries); unsent == false is a user tap
+        // from ChatActivity. The automatic scheduled path is already skipped in
+        // processUnsentMessages, so this is defence-in-depth for it; gating on
+        // `unsent` here means a user who taps retry on a failed handed-off row (a
+        // send-now flush that errored, or a future-dated one) is never silently
+        // refused -- that is their decision, and PR #324's warning covers the
+        // exposure if Ghost happens to be on. A row that reached messages_v2
+        // (scheduled == false) is handed off and always retryable.
+        if (unsent && messageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
             return false;
         }
         if (messageObject.messageOwner.action instanceof TLRPC.TL_messageEncryptedAction) {
@@ -4443,7 +4450,7 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         if (com.radolyn.ayugram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
             return;
         }
-        com.radolyn.ayugram.ghosthold.GhostHoldController.smokeProceedTripwire(peer, sendMessageParams); // NAX_SMOKE_ghost-hold
+        com.radolyn.ayugram.ghosthold.GhostHoldController.smokeProceedTripwire(currentAccount, peer, sendMessageParams); // NAX_SMOKE_ghost-hold
 
         long _payStars = getMessagesController().getSendPaidMessagesStars(peer);
         if (_payStars <= 0) {

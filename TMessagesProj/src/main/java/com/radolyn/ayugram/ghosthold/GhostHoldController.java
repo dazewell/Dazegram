@@ -11,6 +11,7 @@ import org.telegram.SQLite.SQLiteException;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
+import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -120,56 +121,118 @@ public final class GhostHoldController {
      * before any in-flight send state is created.
      */
     public static boolean maybeHold(int account, long peer, SendMessagesHelper.SendMessageParams params) {
-        if (params == null || !isHoldActive()) {
+        if (!isHoldableTextSend(account, peer, params)) {
             return false;
         }
-        // A retry re-sends a message that already has a row; those are governed by
-        // the defensive skip in retrySendMessage, not held here.
-        if (params.retryMessageObject != null) {
+        persistHeld(account, peer, params);
+        return true;
+    }
+
+    /**
+     * The hold allowlist: true only for a plain text send whose every property we
+     * can persist on the stored {@link TLRPC.Message} (or carry in its params) and
+     * restore faithfully on flush.
+     *
+     * <p>This is deliberately an allowlist, not a denylist of known media fields.
+     * A denylist fails unsafe -- a future SendMessageParams field nobody here has
+     * heard of would be held and silently degraded on flush. An allowlist fails
+     * safe: an unrecognised send simply is not held, falls through to the normal
+     * send path (where the send-exposure warning tells the user their status was
+     * exposed), and is never corrupted. When teaching hold a new field, persist AND
+     * restore it first, then relax the matching guard here -- never the reverse.
+     *
+     * <p>Held faithfully: message text, entities, the full reply header
+     * (reply_to_msg_id, top/forum, quote + quote entities), invert_media, the
+     * silent flag, a user-picked schedule date, scheduleRepeatPeriod, effect_id,
+     * and link-preview suppression (searchLinks). Everything else excludes the send.
+     */
+    private static boolean isHoldableTextSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p) {
+        if (p == null || !isHoldActive()) {
+            return false;
+        }
+        // A flush re-drive carries retryMessageObject; it must never be re-held.
+        if (p.retryMessageObject != null) {
             return false;
         }
         // Secret chats have their own send machinery and lifetime; leave them alone.
         if (DialogObject.isEncryptedDialog(peer)) {
             return false;
         }
-        // Text only for v1. Anything carrying media sends as it does today rather
-        // than risk silently swallowing a file we cannot re-derive on flush.
-        if (params.message == null) {
+        // Must be a text send: text present, no media of any kind.
+        if (p.message == null) {
             return false;
         }
-        if (params.location != null || params.photo != null || params.videoEditedInfo != null
-                || params.document != null || params.game != null || params.poll != null
-                || params.pollSendParams != null || params.todo != null || params.invoice != null
-                || params.mediaWebPage != null || params.user != null || params.richMessage != null
-                || params.sendingStory != null) {
+        if (p.location != null || p.photo != null || p.videoEditedInfo != null
+                || p.document != null || p.game != null || p.poll != null
+                || p.pollSendParams != null || p.todo != null || p.invoice != null
+                || p.mediaWebPage != null || p.cover != null || p.user != null
+                || p.richMessage != null || p.sendingStory != null) {
             return false;
         }
-
-        persistHeld(account, peer, params);
+        // Metadata we do not persist and restore -> refuse rather than degrade:
+        //  reply markup (an inline keyboard attached to the send),
+        //  a story-reply target,
+        //  a quick-reply shortcut (business), old and new fields both,
+        //  the newer chat-arguments bundle (send-as / quick-reply / monoforum),
+        //  a monoforum destination peer,
+        //  suggestion params (suggested posts),
+        //  a non-zero dice stake,
+        //  a manually-resolved link preview (the auto preview is regenerated on
+        //    flush via searchLinks; a user-edited webPage is not, so refuse it),
+        //  a per-message self-destruct timer,
+        //  an ephemeral bot receiver.
+        if (p.replyMarkup != null
+                || p.replyToStoryItem != null
+                || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
+                || p.sendMessageChatArguments != null
+                || p.monoForumPeer != 0
+                || p.suggestionParams != null
+                || p.dice_stake != 0
+                || p.webPage != null
+                || p.ttl != 0
+                || p.ephemeralReceiverBotId != 0) {
+            return false;
+        }
+        // Send-as identity: a channel/megagroup post can resolve a non-self sender
+        // (a linked channel, an anonymous admin, a broadcast identity). persistHeld
+        // hardcodes from_id = self, so holding such a send would flush it under the
+        // wrong identity. Mirror the funnel's resolution and refuse a non-self one.
+        if (resolvesNonSelfSendAs(account, peer)) {
+            return false;
+        }
         return true;
     }
 
     /**
-     * Smoke tripwire: called from the send funnel only after {@link #maybeHold}
-     * returned false. If a plain text message is proceeding to the network while
-     * hold is active, that is the leak the feature exists to prevent -- log it
-     * loudly. It must never fire for text; media/encrypted/retry proceed by design.
+     * True if a send to {@code peer} would resolve a send-as sender other than this
+     * account's own user. Mirrors the funnel, which only applies send-as for a
+     * channel input peer ({@link SendMessagesHelper} ~:4518); a user DM or a basic
+     * group never does.
      */
-    public static void smokeProceedTripwire(long peer, SendMessagesHelper.SendMessageParams params) {
-        if (params == null || !isHoldActive() || params.retryMessageObject != null) {
-            return;
+    private static boolean resolvesNonSelfSendAs(int account, long peer) {
+        if (peer >= 0) {
+            return false;
         }
-        if (DialogObject.isEncryptedDialog(peer) || params.message == null) {
-            return;
+        MessagesController controller = MessagesController.getInstance(account);
+        TLRPC.Chat chat = controller.getChat(-peer);
+        if (chat == null || !ChatObject.isChannel(chat)) {
+            return false;
         }
-        if (params.location != null || params.photo != null || params.videoEditedInfo != null
-                || params.document != null || params.game != null || params.poll != null
-                || params.pollSendParams != null || params.todo != null || params.invoice != null
-                || params.mediaWebPage != null || params.user != null || params.richMessage != null
-                || params.sendingStory != null) {
-            return;
+        long selfId = UserConfig.getInstance(account).getClientUserId();
+        return ChatObject.getSendAsPeerId(chat, controller.getChatFull(-peer), true) != selfId;
+    }
+
+    /**
+     * Smoke tripwire: called from the send funnel only after {@link #maybeHold}
+     * returned false. If a send the allowlist would have held is proceeding to the
+     * network while hold is active, that is the leak the feature exists to prevent
+     * -- log it loudly. Excluded variants (media, reply markup, send-as, ...)
+     * proceed by design and must not trip this.
+     */
+    public static void smokeProceedTripwire(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+        if (isHoldableTextSend(account, peer, params)) {
+            Log.e(SMOKE, "forbidden: holdable plain text send proceeded to the network while ghost+hold active dialog=" + peer);
         }
-        Log.e(SMOKE, "forbidden: plain text send proceeded to the network while ghost+hold active dialog=" + peer);
     }
 
     private static void persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
@@ -347,13 +410,13 @@ public final class GhostHoldController {
             if (pending == 0) {
                 // Only stale confirmed-sent orphans remain; clear them silently,
                 // never re-send, and show nothing.
-                performFlush(items, null);
+                performFlush(items);
                 return;
             }
             if (!offerConfirmation || fragment == null || fragment.getParentActivity() == null) {
                 // No screen to ask on (process-start convergence, or a non-UI
                 // transition): drain rather than skip -- nothing may be left held.
-                performFlush(items, null);
+                performFlush(items);
                 return;
             }
 
@@ -367,7 +430,7 @@ public final class GhostHoldController {
             AlertDialog.Builder builder = new AlertDialog.Builder(fragment.getParentActivity());
             builder.setTitle(LocaleController.getString(R.string.GhostHoldFlushConfirmTitle));
             builder.setMessage(body);
-            builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialog, which) -> performFlush(items, fragment));
+            builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialog, which) -> performFlush(items));
             builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (dialog, which) -> {
                 flushInProgress = false;
                 restoreGhost();
@@ -397,8 +460,9 @@ public final class GhostHoldController {
         NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
 
-    private static void performFlush(ArrayList<HeldItem> items, @Nullable BaseFragment fragment) {
+    private static void performFlush(ArrayList<HeldItem> items) {
         if (items.isEmpty()) {
+            flushInProgress = false;
             return;
         }
         flushInProgress = true;
@@ -406,59 +470,94 @@ public final class GhostHoldController {
         // pending sends are reported to the user, so the counts stay honest.
         final int all = items.size();
         final int pending = countPending(items);
+        // Completion is observed, not timed: each item, whatever its fate (sent and
+        // cleaned, re-held because Ghost came back on, discarded because the user
+        // deleted it mid-stagger, or a stale orphan cleared) decrements this counter,
+        // and only the item that brings it to zero releases the flush guard and
+        // reports. An elapsed-time completion could fire while a paid-message dialog
+        // still waits on the user, and clearing the guard early would let a second
+        // ghost-off start a concurrent flush over this one.
+        final AtomicInteger remaining = new AtomicInteger(all);
         for (int i = 0; i < all; i++) {
             HeldItem item = items.get(i);
-            AndroidUtilities.runOnUIThread(() -> flushItem(item), i * FLUSH_STAGGER_MS);
+            AndroidUtilities.runOnUIThread(() -> flushItem(item, remaining, pending), i * FLUSH_STAGGER_MS);
         }
-        AndroidUtilities.runOnUIThread(() -> {
-            flushInProgress = false;
-            if (pending <= 0) {
-                return;
-            }
-            // Re-count after every delete/re-hold has drained the storage queue
-            // (same serial queue, so this runs after them). Anything still held
-            // was re-held because Ghost came back on mid-flush -- report honestly.
-            countHeld(remaining -> {
-                BaseFragment f = LaunchActivity.getLastFragment();
-                if (f == null || f.getParentActivity() == null) {
-                    return;
-                }
-                CharSequence text;
-                if (remaining <= 0) {
-                    text = LocaleController.formatPluralString("GhostHoldFlushed", pending);
-                } else {
-                    int sent = Math.max(0, pending - remaining);
-                    text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, pending);
-                }
-                Log.i(SMOKE, "end: flush complete pending=" + pending + " stillHeld=" + remaining);
-                BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
-            });
-        }, all * FLUSH_STAGGER_MS);
     }
 
-    private static void flushItem(HeldItem item) {
-        final int account = item.account;
-        final TLRPC.Message m = item.message;
-        final long dialogId = item.dialogId;
-        final int mid = item.mid;
-
-        // Re-check Ghost atomically per item: the funnel does not re-hold a flush
-        // re-drive (retryMessageObject != null short-circuits maybeHold), so if
-        // Ghost came back on mid-flush this message must stay held, not leak.
-        if (isHoldActive()) {
+    private static void onItemTerminal(AtomicInteger remaining, int pending) {
+        if (remaining.decrementAndGet() > 0) {
             return;
         }
+        // Runs on the UI thread (every caller path posts here), so this write to
+        // flushInProgress is serialised with promptFlush's claim.
+        flushInProgress = false;
+        if (pending <= 0) {
+            return;
+        }
+        countHeld(stillHeld -> {
+            BaseFragment f = LaunchActivity.getLastFragment();
+            if (f == null || f.getParentActivity() == null) {
+                return;
+            }
+            CharSequence text;
+            if (stillHeld <= 0) {
+                text = LocaleController.formatPluralString("GhostHoldFlushed", pending);
+            } else {
+                int sent = Math.max(0, pending - stillHeld);
+                text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, pending);
+            }
+            Log.i(SMOKE, "end: flush complete pending=" + pending + " stillHeld=" + stillHeld);
+            BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
+        });
+    }
 
+    private static void flushItem(HeldItem item, AtomicInteger remaining, int pending) {
+        // Re-check Ghost per item on the privacy invariant, which is about Ghost
+        // alone, not the hold preference: if Ghost came back on mid-flush this
+        // message must stay held even when Hold Messages was turned off in the same
+        // window (isHoldActive() would be false then and wrongly let it leak).
+        if (NekoConfig.isGhostModeActive()) {
+            onItemTerminal(remaining, pending);
+            return;
+        }
+        final MessagesStorage storage = MessagesStorage.getInstance(item.account);
+        // Never act on the snapshot captured at collect time. During the stagger the
+        // user can delete or edit a held row; re-read the current row immediately
+        // before dispatch off the same serial storage queue, then decide on the UI
+        // thread. A delete makes the re-read return null (discard, touch nothing); an
+        // edit is honoured because the re-driven copy is the fresh one, not the stale.
+        storage.getStorageQueue().postRunnable(() -> {
+            final HeldItem fresh = reReadHeldRow(item, storage);
+            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, fresh, remaining, pending));
+        });
+    }
+
+    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending) {
+        final int account = item.account;
+        final long dialogId = item.dialogId;
+        final int mid = item.mid;
+        // The row vanished during the stagger (user deleted it, or it was already
+        // cleaned): nothing to send, nothing to remove.
+        if (fresh == null) {
+            onItemTerminal(remaining, pending);
+            return;
+        }
+        // Ghost flipped back on during the re-read hop -> keep it held.
+        if (NekoConfig.isGhostModeActive()) {
+            onItemTerminal(remaining, pending);
+            return;
+        }
         // Correlation gate: a held row whose message has already been dispatched and
         // confirmed by the server (its random_id now maps to a positive server id)
         // must never be re-driven -- otherwise a paid-DM send would re-open the
         // paywall and risk a second charge, and a normal send would duplicate. Such
         // a stale orphan is only removed here, never re-sent.
-        if (item.alreadySent) {
-            cleanupAfterHandoff(account, mid, dialogId, true);
+        if (fresh.alreadySent) {
+            cleanupAfterHandoff(account, mid, dialogId, true, () -> onItemTerminal(remaining, pending));
             return;
         }
 
+        final TLRPC.Message m = fresh.message;
         int now = ConnectionsManager.getInstance(account).getCurrentTime();
         boolean future = m.date != GHOST_HELD_DATE_SENTINEL && m.date > now;
         int scheduleDate = future ? m.date : 0;
@@ -497,8 +596,37 @@ public final class GhostHoldController {
         SendMessagesHelper.getInstance(account).sendMessage(p);
         // Remove the held row only once the send has demonstrably been handed off --
         // never as a consequence of sendMessage() merely returning. cleanupAfterHandoff
-        // proves handoff by the destination row's existence on the same serial queue.
-        cleanupAfterHandoff(account, mid, dialogId, item.inMainTable);
+        // proves handoff by the destination row's existence on the same serial queue,
+        // and signals this item terminal only after it has run.
+        cleanupAfterHandoff(account, mid, dialogId, fresh.inMainTable, () -> onItemTerminal(remaining, pending));
+    }
+
+    /**
+     * Re-reads the current held row for {@code (mid, dialogId)} from the table it
+     * was collected in, immediately before dispatch. Returns a fresh {@link HeldItem}
+     * (with a re-evaluated {@code alreadySent}) or null if the row is gone or no
+     * longer held. The {@code send_state = 1} filter keeps this to rows still in the
+     * held/unsent state, so a row already moved on is treated as vanished.
+     */
+    @Nullable
+    private static HeldItem reReadHeldRow(HeldItem item, MessagesStorage storage) {
+        SQLiteDatabase db = storage.getDatabase();
+        long selfId = UserConfig.getInstance(item.account).clientUserId;
+        String table = item.inMainTable ? "messages_v2" : "scheduled_messages_v2";
+        SQLiteCursor cursor = null;
+        try {
+            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM " + table + " WHERE mid = " + item.mid + " AND uid = " + item.dialogId + " AND send_state = 1");
+            if (cursor.next()) {
+                return readHeldRow(item.account, cursor, selfId, item.inMainTable, db);
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return null;
     }
 
     /**
@@ -519,7 +647,7 @@ public final class GhostHoldController {
      * the row in both tables; the both-tables convergence dedups on the next flush,
      * failing toward "sent twice", never "lost".
      */
-    private static void cleanupAfterHandoff(int account, int mid, long dialogId, boolean handoffProven) {
+    private static void cleanupAfterHandoff(int account, int mid, long dialogId, boolean handoffProven, @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             try {
@@ -530,23 +658,29 @@ public final class GhostHoldController {
                     handedOff = probe.next();
                     probe.dispose();
                 }
-                if (!handedOff) {
-                    return;
+                if (handedOff) {
+                    db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
+                    // Recompute the dialog's remaining scheduled count (held + server-scheduled)
+                    // so scheduledMessagesCount isn't zeroed while other rows still exist.
+                    int count = 0;
+                    SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
+                    if (cursor.next()) {
+                        count = cursor.intValue(0);
+                    }
+                    cursor.dispose();
+                    final int finalCount = count;
+                    AndroidUtilities.runOnUIThread(() ->
+                            NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
                 }
-                db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
-                // Recompute the dialog's remaining scheduled count (held + server-scheduled)
-                // so scheduledMessagesCount isn't zeroed while other rows still exist.
-                int count = 0;
-                SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
-                if (cursor.next()) {
-                    count = cursor.intValue(0);
-                }
-                cursor.dispose();
-                final int finalCount = count;
-                AndroidUtilities.runOnUIThread(() ->
-                        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
             } catch (Exception e) {
                 FileLog.e(e);
+            } finally {
+                // Signal the item terminal only after this cleanup has run, whatever
+                // its outcome, and always on the UI thread (flushInProgress lives
+                // there). This is what makes flush completion observed, not timed.
+                if (onDone != null) {
+                    AndroidUtilities.runOnUIThread(onDone);
+                }
             }
         });
     }
