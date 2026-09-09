@@ -86,13 +86,18 @@ caption = "Hidden from the list"
 
 [[wall.panel]]
 source = "chat-privacy-sheet-both-switches-on.png"
-crop = [0, 590, 1080, 1170]
+crop = [0, 580, 1080, 1545]
 caption = "Your call, per chat"
 # Re-shot 2026-09-08 after the sheet was redesigned with collapsible
 # sections; the old crop coordinates no longer line up with the new
-# layout. This crop shows the sheet title plus both switches ("Hide last
-# message" and "Require password"), ending cleanly ~45px below the card's
-# rounded bottom corner and well above the "Notifications" section.
+# layout. A short crop here previously starved the whole wall's shared
+# card height (every panel in a wall shares one height, driven by the
+# summed aspect ratio of all panels -- a short/wide panel here shrinks
+# every card). This crop starts just below the sheet's rounded top edge
+# (well clear of the real name/face in the chat behind it) and runs
+# through both switches ("Hide last message" and "Require password"),
+# the "Notifications" section, the "Disguise notifications" row, and
+# the "How covers work" row, ending cleanly before its expander body.
 
 [[wall.panel]]
 source = "chat-privacy-disguise-notification.png"
