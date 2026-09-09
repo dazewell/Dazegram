@@ -15,6 +15,7 @@ import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_ephemeral;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
+import org.telegram.ui.Components.Bulletin;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
@@ -160,30 +161,25 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: BulletinFactory.canShowBulletin(fragment) (BulletinFactory.java:75)
-        // is the actual predicate for whether a fragment can safely host a bulletin
-        // (parent activity and layout container both present) -- resolve the fragment
-        // on the UI thread, where sendRequestInternal does not run (it's on
-        // Utilities.stageQueue), test that exact instance, and show on it directly
-        // instead of re-resolving through .global() -- never test one fragment
-        // instance and show on a different one. The whole runnable body is guarded:
-        // it runs on the UI thread's own dispatch, outside onMessageRequestReady's
-        // synchronous try/catch, so an unguarded failure here would crash the app on
-        // the main looper -- worse than a dropped send, from a feature that's nothing
-        // but an informational bulletin.
+        // NagramX: resolve the fragment on the UI thread, where sendRequestInternal
+        // does not run (it's on Utilities.stageQueue), and decide + show against
+        // that exact instance -- never test one fragment instance and show on a
+        // different one. The whole runnable body is guarded: it runs on the UI
+        // thread's own dispatch, outside onMessageRequestReady's synchronous
+        // try/catch, so an unguarded failure here would crash the app on the main
+        // looper -- worse than a dropped send, from a feature that's nothing but an
+        // informational bulletin.
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
-                boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
-                boolean shown = false;
+                BulletinOutcome outcome = showBulletinIfVisible(fragment, account);
+                boolean shown = outcome == BulletinOutcome.SHOWN;
 
-                if (!hostAvailable) {
-                    // Suppressed/competing path: no renderable bulletin host at show time.
-                    // There is no once-per-chat slot to preserve here -- this feature warns
-                    // every time, so an unshown warning here is simply a missed one, not a
-                    // deferred one.
-                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
-                } else if (fragment.getCurrentAccount() != account) {
+                if (shown) {
+                    // Expected path: bulletin actually shown for this send, in the
+                    // sending account's own UI.
+                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
+                } else if (outcome == BulletinOutcome.WRONG_ACCOUNT) {
                     // Suppressed/competing path: the foreground UI belongs to a different
                     // account than the one that actually sent. The sending account is
                     // already correct throughout (ConnectionsManager's own currentAccount,
@@ -192,15 +188,16 @@ public class GhostSendWarningHelper {
                     // would tell that account's user their own status was exposed, which is
                     // simply false. Never show in the wrong account's UI; don't paper over
                     // this by adding a label to the copy instead.
-                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_WRONG_ACCOUNT account=" + account
-                            + " fragmentAccount=" + fragment.getCurrentAccount() + " dialogId=" + dialogId);
+                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_WRONG_ACCOUNT account=" + account + " dialogId=" + dialogId);
                 } else {
-                    resolveBulletinFactory(fragment)
-                            .createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
-                    shown = true;
-                    // Expected path: bulletin actually shown for this send, in the
-                    // sending account's own UI.
-                    Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
+                    // Suppressed/competing path: no bulletin actually rendered, for
+                    // whichever reason showBulletinIfVisible found (no host, host
+                    // paused, or a resolved container that turned out empty). There is
+                    // no once-per-chat slot to preserve here -- this feature warns
+                    // every time, so an unshown warning here is simply a missed one,
+                    // not a deferred one.
+                    Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI reason=" + outcome + " account=" + account
+                            + " dialogId=" + dialogId);
                 }
 
                 // END: decision handling for this request completed.
@@ -210,6 +207,46 @@ public class GhostSendWarningHelper {
                 FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
             }
         });
+    }
+
+    // NagramX: the result of showBulletinIfVisible -- SHOWN is the only outcome
+    // where .show() actually ran against a non-empty bulletin; every other value
+    // names the specific reason nothing rendered, for diagnostics.
+    private enum BulletinOutcome {
+        SHOWN, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
+    }
+
+    // NagramX: single place answering "is there a host the user is genuinely
+    // looking at right now, for this account -- and does a bulletin actually
+    // render there", collapsing what three separate review rounds each added as
+    // one more clause directly in the runnable body (wrong account, bottom sheet,
+    // paused fragment). A fourth case makes clear the real question was never
+    // "which conditions did we think to check" but "did anything actually
+    // render": BulletinFactory.of(fragment) can resolve a fragment's attached
+    // story-viewer container, and that container can itself be null, at which
+    // point Bulletin.make(FrameLayout, ...) quietly returns a no-op
+    // Bulletin.EmptyBulletin (Bulletin.java:108) instead of showing anything.
+    // Rather than trying to predict that from the outside, this checks the
+    // constructed Bulletin itself before calling show() -- callers must only log
+    // BULLETIN_SHOWN when this returns SHOWN.
+    private static BulletinOutcome showBulletinIfVisible(BaseFragment fragment, int account) {
+        if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
+            return BulletinOutcome.NO_HOST;
+        }
+        if (fragment.isPaused()) {
+            return BulletinOutcome.PAUSED;
+        }
+        if (fragment.getCurrentAccount() != account) {
+            return BulletinOutcome.WRONG_ACCOUNT;
+        }
+
+        Bulletin bulletin = resolveBulletinFactory(fragment)
+                .createErrorBulletin(getString(R.string.GhostSendExposedWarning));
+        if (bulletin instanceof Bulletin.EmptyBulletin) {
+            return BulletinOutcome.EMPTY_CONTAINER;
+        }
+        bulletin.show();
+        return BulletinOutcome.SHOWN;
     }
 
     // NagramX: mirrors BulletinFactory.global()'s bottom-sheet handling (BulletinFactory.java:87-88)
