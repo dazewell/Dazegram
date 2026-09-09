@@ -87,6 +87,19 @@ public class SectionsScrollView extends ScrollView {
         contentView.invalidate();
     }
 
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+
+        // NagramX: contentView's clip paths (clipChild) are recorded into its own
+        // display list using this view's getScrollY()/getHeight() as operands, just
+        // like drawSectionsBackgrounds. onScrollChanged above already invalidates
+        // contentView when scroll changes; a size change (e.g. IME hide resizing the
+        // sheet) must do the same, or the child replays a stale clip against the old band.
+        invalidate();
+        contentView.invalidate();
+    }
+
     private ArrayList<View> children = new ArrayList<>();
     private void gatherChildren(ViewGroup layout, float x, float y) {
         for (int i = 0; i < layout.getChildCount(); ++i) {

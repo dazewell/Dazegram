@@ -16,20 +16,81 @@ gray must be explicitly tagged `TAG_NOT_SECTION`; otherwise they get pulled
 into white rounded cards.
 
 Card width also comes from the first child in a section run: background bounds
-use `from` child X/width (`SectionsScrollView.java:151-154`). If the first
+use `from` child X/width (`SectionsScrollView.java:163-168`). If the first
 section member has horizontal margins (for example a caption row with 21dp
 insets), that narrower width becomes the whole card width. Margined captions
 belong outside the card run (tagged out, or moved outside the grouped container)
 to keep card edges aligned.
 
-There is also a known cosmetic corner trap with hidden rows: child gathering
-skips `GONE` children (`SectionsScrollView.java:94`), but clip-neighbor checks
-in `clipChild(...)` read previous/next children by index on the full parent
-list without a visibility gate (`SectionsScrollView.java:178-181`). Repeated
-collapse/expand can therefore leave transient corner clipping artifacts around
-a row whose hidden neighbor still influences `prev/next` detection.
+There is a known neighbour-visibility gap in `clipChild(...)`, but it is
+**bounded and cosmetic-only** — it cannot produce a full-card clip. Child
+gathering used for backgrounds skips `GONE` children
+(`SectionsScrollView.java:107`), but `clipChild`'s own prev/next lookup reads
+`contentView`'s full child list by raw index with no visibility gate
+(`SectionsScrollView.java:190-194`). That gap does not touch the clip
+rectangle itself: `AndroidUtilities.rectTmp` is computed once
+(`SectionsScrollView.java:196-201`) and is byte-identical across all three
+branches `clipChild` can take with it (`SectionsScrollView.java:202-217`).
+`prev`/`next` decide only whether to skip clipping entirely
+(the early return at `:205`) or which corners get rounded — bounded by the
+16dp `sectionRadius`. The direction is also backwards from what "more
+clipping" would need: `isSectionView` (`:36-41`) returns `true` for a `GONE`
+view, so a hidden neighbour pushes `prev`/`next` MORE often true, which fires
+the no-clip early return MORE often, i.e. LESS clipping, not more. Repeated
+collapse/expand can at most leave a stray rounded (instead of square) corner
+on a row whose hidden neighbor still influences `prev/next` detection.
 
-*(Established 2026-09-07.)*
+*(Established 2026-09-07; corrected 2026-09-09, `#eventschedule`, after a
+near-total vertical clip bug — a different mechanism entirely, below — was
+first suspected to be this same gap and proven not to be.)*
+
+## SectionsLinearLayout replays a stale clip after its parent SectionsScrollView resizes
+
+`SectionsLinearLayout.drawChild` clips each child via the parent
+`SectionsScrollView.clipChild(...)` and records that `canvas.clipPath(...)`
+into the LinearLayout's OWN display list (`SectionsScrollView.java:222-235`
+calling into `:185-217`) — but the clip rectangle's operands are the PARENT
+`SectionsScrollView`'s `getScrollY()`/`getHeight()`
+(`SectionsScrollView.java:198,200`). `onScrollChanged` already invalidates
+both the scroll view and `contentView` when scroll changes
+(`SectionsScrollView.java:86-87`) — that idiom covered the scroll operand but,
+until this fix, nothing invalidated `contentView` when the PARENT's SIZE
+changed instead, so the LinearLayout's cached display list kept replaying the
+clip recorded at the old size. Fixed by adding the missing half of the same
+idiom in an `onSizeChanged` override (`SectionsScrollView.java:91-100`).
+
+Observable signature, so a future investigation recognises it fast: the
+card's white background is painted full-height (fresh, from the ScrollView's
+own re-recorded `dispatchDraw`/`drawSectionsBackgrounds`) while the card's
+CONTENTS are cut mid-row (stale, from the child's cached clip) — any touch
+anywhere on screen repairs it instantly, because a touch is what next
+invalidates the child, and NO layout pass is involved (measured geometry was
+already correct; only the recorded drawing was stale). Confirmed trigger: the
+Early-send bottom sheet's Delay card (`EventScheduleHelper.java:966-1033`,
+reached via the only `sections=true` `BottomBuilder` consumer in the tree,
+`EventScheduleHelper.java:656`) clipped almost fully invisible after the IME
+hid and resized the sheet (`BottomSheet.java:591-672`,
+`SOFT_INPUT_ADJUST_RESIZE`), while two pattern rows had pushed the card below
+the keyboard-open viewport bottom.
+
+*(Established 2026-09-09, `#eventschedule`.)*
+
+## clipChild has no inverted-rect guard, unlike its background-drawing sibling
+
+`drawSectionBackground` guards against an inverted `rectTmp` before using it
+(`SectionsScrollView.java:169`: `if (rectTmp.bottom < rectTmp.top) return;`),
+but `clipChild` builds the same kind of rect
+(`SectionsScrollView.java:196-201`) and hands it straight to
+`Path.addRoundRect`/`canvas.clipPath` with no equivalent check. An inverted
+rect there yields an empty `Path`, and clipping to an empty path erases the
+child entirely rather than just mis-rounding a corner. Not the mechanism
+behind the near-total-clip bug above (that one traced to a stale cached
+clip, not an inverted rect computed at draw time) and not fixed here — scoped
+out of that change by the reviewing architect as a separate, pre-existing
+hazard.
+
+*(Established 2026-09-09, `#eventschedule`; pre-existing and not fixed in
+this branch.)*
 
 ## An app can never change an existing notification channel's importance in code; only the user can, via system settings
 
