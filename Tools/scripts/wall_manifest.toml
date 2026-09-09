@@ -184,6 +184,37 @@ source = "privacy-profiles-easy-switch.jpg"
 crop = [100, 935, 655, 2130]
 caption = "Switch in one tap"
 
+[[wall]]
+output = "scheduling.png"
+
+[[wall.panel]]
+source = "new/screenshot_2026-09-08_17-32-33.png"
+crop = [0, 623, 1080, 2192]
+caption = "Not just a clock"
+
+[[wall.panel]]
+source = "new/screenshot_2026-09-06_17-04-25.png"
+crop = [0, 228, 1080, 2160]
+caption = "Move the whole batch"
+
+[[wall.panel]]
+source = "new/screenshot_2026-09-06_17-13-47.png"
+crop = [0, 0, 1080, 1075]
+caption = "See what's armed"
+
+[[wall]]
+output = "appearance.png"
+
+[[wall.panel]]
+source = "new/screenshot_2026-09-08_16-14-48.png"
+crop = [0, 1500, 1080, 2192]
+caption = "Extera Light"
+
+[[wall.panel]]
+source = "new/screenshot_2026-09-08_16-15-40.png"
+crop = [0, 1500, 1080, 2192]
+caption = "Extera Dark"
+
 # --- FEATURES.md figures ------------------------------------------------
 #
 # Plain cropped screenshots (no canvas/caption/shadow), replacing the two
