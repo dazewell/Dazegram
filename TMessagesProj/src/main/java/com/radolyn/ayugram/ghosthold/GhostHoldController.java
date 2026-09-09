@@ -374,13 +374,23 @@ public final class GhostHoldController {
     private static void deleteHeldRow(int account, int mid, long dialogId) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
+            int count = 0;
             try {
-                storage.getDatabase().executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
+                SQLiteDatabase db = storage.getDatabase();
+                db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
+                // Recompute the dialog's remaining scheduled count (held + server-scheduled)
+                // so scheduledMessagesCount isn't zeroed while other rows still exist.
+                SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
+                if (cursor.next()) {
+                    count = cursor.intValue(0);
+                }
+                cursor.dispose();
             } catch (Exception e) {
                 FileLog.e(e);
             }
+            final int finalCount = count;
             AndroidUtilities.runOnUIThread(() ->
-                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, 0, false));
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
         });
     }
 
