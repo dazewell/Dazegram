@@ -44,10 +44,11 @@ public class GhostSendWarningHelper {
     // Known gap, accepted for a warning-only feature: a future send RPC upstream
     // adds is missed here until this list is updated -- the actual protection
     // (holding sends back) is the local-hold feature's job, not this one's.
-    // TL_messages_sendBotRequestedPeer (in-chat request-peer submission) and
-    // TL_messages_sendWebViewData (bot WebView data submission) are both known,
-    // named, real user-initiated sends today, not a future-RPC gap, so they're
-    // included deliberately rather than left to that gap.
+    // TL_messages_sendBotRequestedPeer (in-chat request-peer submission),
+    // TL_messages_sendWebViewData (bot WebView data submission), and
+    // TL_messages_startBot (ChatActivity -> MessagesController#sendBotStart) are
+    // all known, named, real user-initiated sends today, not a future-RPC gap,
+    // so they're included deliberately rather than left to that gap.
     private static boolean isMessageSendRequest(TLObject request) {
         return request instanceof TLRPC.TL_messages_sendMessage
                 || request instanceof TLRPC.TL_messages_sendMedia
@@ -58,6 +59,7 @@ public class GhostSendWarningHelper {
                 || request instanceof TLRPC.TL_messages_sendQuickReplyMessages
                 || request instanceof TLRPC.TL_messages_sendBotRequestedPeer
                 || request instanceof TLRPC.TL_messages_sendWebViewData
+                || request instanceof TLRPC.TL_messages_startBot
                 || request instanceof TL_ephemeral.TL_sendMessage
                 || request instanceof TLRPC.TL_messages_sendEncrypted
                 || request instanceof TLRPC.TL_messages_sendEncryptedFile
@@ -69,15 +71,17 @@ public class GhostSendWarningHelper {
      * request, not UserConfig.selectedAccount -- correct for whichever of the
      * app's accounts is sending, regardless of which one is foregrounded.
      * <p>
-     * NagramX: this is called inline from ConnectionsManager#sendRequestInternal,
-     * immediately before the request is actually dispatched to tgnet, inside that
-     * method's own try block -- so anything this throws propagates into its catch
-     * and the message never reaches native_sendRequest, i.e. a bug in a purely
-     * informational helper would silently drop a real send. Never let that happen:
-     * this entry point must be structurally incapable of affecting send behaviour,
-     * so every path through it is wrapped and nothing above ever escapes. The worst
-     * outcome from a defect in this class is a missing bulletin, never a dropped
-     * message.
+     * NagramX: called inline from ConnectionsManager#sendRequestInternal,
+     * immediately before the request is actually dispatched to tgnet. The actual
+     * structural guarantee that a bug here can never affect a send is established
+     * at that call site (a try/catch(Throwable) around the call itself, with
+     * native_sendRequest left outside it so it always runs), not by this method's
+     * own guard below -- class loading and linkage of this class happen before
+     * control ever reaches a method-level catch inside it, so a callee-side guard
+     * alone cannot make that promise by construction. This guard stays anyway as
+     * a second, redundant layer: it lets the rest of this class assume nothing
+     * synchronous escapes past this point, without weakening the caller-side
+     * guarantee that actually protects the send.
      */
     public static void onMessageRequestReady(int account, TLObject request) {
         try {
@@ -100,40 +104,56 @@ public class GhostSendWarningHelper {
         // does not run (it's on Utilities.stageQueue), and decide + show against
         // that exact instance -- never test one fragment instance and show on a
         // different one. The whole runnable body is guarded: it runs on the UI
-        // thread's own dispatch, outside onMessageRequestReady's synchronous
-        // try/catch, so an unguarded failure here would crash the app on the main
-        // looper -- worse than a dropped send, from a feature that's nothing but an
-        // informational bulletin.
+        // thread's own dispatch, on a call stack the caller-side guard around
+        // onMessageRequestReady never sees (that guard only covers the synchronous
+        // call that posts this runnable), so an unguarded failure here would crash
+        // the app on the main looper.
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
-                showBulletinIfVisible(fragment, account);
+                tryShowBulletin(fragment, account);
             } catch (Throwable t) {
-                FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
+                // Best-effort: FileLog.e itself is not guaranteed not to throw
+                // (allocation, stack-tag construction, Android logging), and this
+                // runs on the main looper with nothing above it to catch a second
+                // failure, so a failure logging the first one must not escape either.
+                try {
+                    FileLog.e("GhostSendWarningHelper: swallowed unexpected failure showing bulletin", t);
+                } catch (Throwable ignored) {
+                }
             }
         });
     }
 
-    // NagramX: the result of showBulletinIfVisible -- SHOWN is the only outcome
-    // where .show() actually ran against a non-empty bulletin; every other value
-    // names the specific reason nothing rendered.
+    // NagramX: the result of tryShowBulletin. ATTEMPTED means a bulletin was
+    // constructed and .show() was called against a non-empty instance -- it does
+    // NOT mean the user necessarily saw it (see tryShowBulletin below for why that
+    // can't be guaranteed here). Every other value names a specific reason the
+    // attempt itself didn't happen.
     private enum BulletinOutcome {
-        SHOWN, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
+        ATTEMPTED, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
     }
 
-    // NagramX: single place answering "is there a host the user is genuinely
-    // looking at right now, for this account -- and does a bulletin actually
-    // render there", collapsing what three separate review rounds each added as
+    // NagramX: single place answering "is there a plausible host to attempt this
+    // on, for this account", collapsing what several review rounds each added as
     // one more clause directly in the runnable body (wrong account, bottom sheet,
-    // paused fragment). A fourth case makes clear the real question was never
-    // "which conditions did we think to check" but "did anything actually
-    // render": BulletinFactory.of(fragment) can resolve a fragment's attached
-    // story-viewer container, and that container can itself be null, at which
-    // point Bulletin.make(FrameLayout, ...) quietly returns a no-op
-    // Bulletin.EmptyBulletin (Bulletin.java:108) instead of showing anything.
-    // Rather than trying to predict that from the outside, this checks the
-    // constructed Bulletin itself before calling show().
-    private static BulletinOutcome showBulletinIfVisible(BaseFragment fragment, int account) {
+    // paused fragment, a resolved-but-empty container). This is deliberately named
+    // and documented as a best-effort eligibility check, not a visibility
+    // guarantee: BulletinFactory.canShowBulletin(fragment) only checks that a
+    // parent activity and layout container exist, and neither that nor
+    // fragment.isPaused() rules out something else actually covering the fragment
+    // on screen. Two known cases where a bulletin attempted here is never actually
+    // seen: LaunchActivity#showPasscodeActivity (reached from DialogsActivity's
+    // manual "Lock" action) sets the navigation layout's view to INVISIBLE without
+    // pausing the fragment underneath it, and PhotoViewer installs its own
+    // WindowManager window above the fragment without pausing it either. Both are
+    // reachable during a real send (e.g. a completing upload dispatching its
+    // result later). Building a delivery contract that could rule these out would
+    // mean this hook owning presentation, which is out of proportion for a warning
+    // -- so this stays a best-effort check, and a bulletin missed this way simply
+    // isn't shown; with no per-chat state to consume, the next real send in that
+    // chat warns again.
+    private static BulletinOutcome tryShowBulletin(BaseFragment fragment, int account) {
         if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
             return BulletinOutcome.NO_HOST;
         }
@@ -150,7 +170,7 @@ public class GhostSendWarningHelper {
             return BulletinOutcome.EMPTY_CONTAINER;
         }
         bulletin.show();
-        return BulletinOutcome.SHOWN;
+        return BulletinOutcome.ATTEMPTED;
     }
 
     // NagramX: mirrors BulletinFactory.global()'s bottom-sheet handling (BulletinFactory.java:87-88)
