@@ -8,6 +8,7 @@ import com.radolyn.ayugram.utils.AyuGhostUtils;
 
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
+import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
@@ -65,28 +66,33 @@ public class GhostSendWarningHelper {
 
     // NagramX: reuses AyuGhostUtils' existing InputPeer/InputEncryptedChat -> dialogId
     // conversion instead of duplicating it -- diagnostics-only, this dialogId is never
-    // used to key any stored state.
+    // used to key any stored state. Null-checked here rather than in AyuGhostUtils
+    // itself (that helper is shared fork code with other callers; widening its
+    // contract is out of scope) -- e.g. TL_ephemeral.TL_sendMessage.peer is only
+    // serialized when set (TL_ephemeral.java flag 8), so it can legitimately be null.
+    // This is belt-and-braces: onMessageRequestReady never lets an exception from
+    // here reach its caller either way, but the common case shouldn't rely on that.
     private static Long extractDialogId(TLObject request) {
         if (request instanceof TLRPC.TL_messages_sendMessage r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendMedia r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendMultiMedia r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_forwardMessages r) {
-            return AyuGhostUtils.getDialogId(r.to_peer);
+            return r.to_peer != null ? AyuGhostUtils.getDialogId(r.to_peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendInlineBotResult r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendScheduledMessages r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TL_ephemeral.TL_sendMessage r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendEncrypted r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         } else if (request instanceof TLRPC.TL_messages_sendEncryptedFile r) {
-            return AyuGhostUtils.getDialogId(r.peer);
+            return r.peer != null ? AyuGhostUtils.getDialogId(r.peer) : null;
         }
         // TL_messages_sendEncryptedMultiMedia carries no peer of its own.
         return null;
@@ -96,8 +102,26 @@ public class GhostSendWarningHelper {
      * account is the ConnectionsManager instance actually dispatching this
      * request, not UserConfig.selectedAccount -- correct for whichever of the
      * app's accounts is sending, regardless of which one is foregrounded.
+     * <p>
+     * NagramX: this is called inline from ConnectionsManager#sendRequestInternal,
+     * immediately before the request is actually dispatched to tgnet, inside that
+     * method's own try block -- so anything this throws propagates into its catch
+     * and the message never reaches native_sendRequest, i.e. a bug in a purely
+     * informational helper would silently drop a real send. Never let that happen:
+     * this entry point must be structurally incapable of affecting send behaviour,
+     * so every path through it is wrapped and nothing above ever escapes. The worst
+     * outcome from a defect in this class is a missing bulletin, never a dropped
+     * message.
      */
     public static void onMessageRequestReady(int account, TLObject request) {
+        try {
+            onMessageRequestReadyUnsafe(account, request);
+        } catch (Throwable t) {
+            FileLog.e("GhostSendWarningHelper: swallowed unexpected failure, bulletin skipped for this send", t);
+        }
+    }
+
+    private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
         if (!isMessageSendRequest(request)) {
             // Filtered before any logging: typing, read, upload, edit, poll-vote and
             // other non-send RPCs pass through here constantly, and logging every one
