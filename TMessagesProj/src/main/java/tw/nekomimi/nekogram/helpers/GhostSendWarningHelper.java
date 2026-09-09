@@ -8,6 +8,7 @@ import android.util.SparseArray;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
@@ -112,19 +113,22 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: BulletinFactory.global() (BulletinFactory.java:83-84) picks
-        // between a live fragment and a crash-prone Dialog on the application
-        // Context on exactly one predicate: LaunchActivity.getSafeLastFragment()
-        // == null. Checking that same predicate here -- at the moment of actually
-        // showing, on the UI thread, where its answer is stable -- excludes the
-        // crash path exactly rather than approximately, and covers Bubble UI by
-        // construction (getSafeLastFragment() already checks BubbleActivity
-        // first). The slot is only consumed together with actually showing, under
-        // the same LOCK used by the sender-thread decision above, so "shown" and
-        // "consumed" are one atomic act instead of two separate guesses that could
-        // disagree if the fragment appears or disappears in between.
+        // NagramX: BulletinFactory.global() falls back to a crash-prone Dialog on
+        // the application Context whenever LaunchActivity.getSafeLastFragment()
+        // is null, but even a non-null fragment isn't always safe to show on --
+        // BulletinFactory.canShowBulletin(fragment) (BulletinFactory.java:75) is
+        // the actual predicate that matters (parent activity and layout container
+        // both present). Resolve the fragment once here and test that exact
+        // instance, then show on that same instance via BulletinFactory.of(...)
+        // -- never re-resolve via .global()/.getSafeLastFragment(), or the
+        // instance tested and the instance shown on could silently differ. The
+        // slot is only consumed together with actually showing, under the same
+        // LOCK used by the sender-thread decision above, so "shown" and
+        // "consumed" are one atomic act instead of two separate guesses that
+        // could disagree if the fragment appears or disappears in between.
         AndroidUtilities.runOnUIThread(() -> {
-            boolean hostAvailable = LaunchActivity.getSafeLastFragment() != null;
+            BaseFragment fragment = LaunchActivity.getSafeLastFragment();
+            boolean hostAvailable = BulletinFactory.canShowBulletin(fragment);
             boolean alreadyWarned = false;
             boolean shown = false;
 
@@ -141,13 +145,13 @@ public class GhostSendWarningHelper {
             }
 
             if (shown) {
-                BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
+                BulletinFactory.of(fragment).createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show();
                 // Expected path: bulletin actually shown for this chat this session.
                 Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
             } else if (!hostAvailable) {
-                // Suppressed/competing path: no bulletin host by the time this
-                // reached the UI thread -- the slot is left unconsumed, so the
-                // next send in this chat with a host available still warns.
+                // Suppressed/competing path: no renderable bulletin host by the
+                // time this reached the UI thread -- the slot is left unconsumed,
+                // so the next send in this chat with a host available still warns.
                 Log.w(SMOKE_TAG, SMOKE_TAG + " SUPPRESSED_NO_UI account=" + account + " dialogId=" + dialogId);
             } else {
                 // Forbidden/competing path: a concurrent send for the same chat

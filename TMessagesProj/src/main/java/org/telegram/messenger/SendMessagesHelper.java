@@ -7673,6 +7673,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             return;
         }
 
+        // NagramX: last point before the request actually leaves for the network -- warns once per chat per Ghost session.
+        // An album/multi-media send is always within a single dialog, so the first message's dialog id speaks for all of them.
+        if (!msgObjs.isEmpty()) {
+            tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageReachingWire(currentAccount, msgObjs.get(0).getDialogId());
+        }
+
         getConnectionsManager().sendRequest(request, (response, error) -> {
             if (error != null && FileRefController.isFileRefError(error.text)) {
                 final int fileRefIndex = FileRefController.getFileRefErrorIndex(error.text);
