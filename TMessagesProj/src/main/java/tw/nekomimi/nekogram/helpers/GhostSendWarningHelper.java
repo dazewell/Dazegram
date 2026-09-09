@@ -35,13 +35,15 @@ public class GhostSendWarningHelper {
     // different accounts' chat 12345 would wrongly share one warned flag.
     private static final SparseArray<HashSet<Long>> warnedDialogsByAccount = new SparseArray<>();
 
-    private GhostSendWarningHelper() {
-    }
+    // NagramX: Ghost Mode has no single "turned off" call -- GhostModeActivity
+    // also flips the five underlying toggles individually (see e.g.
+    // NekoConfig.sendReadMessagePackets.toggleConfigBool()), any of which can
+    // break or restore isGhostModeActive() without going through setGhostMode().
+    // Watching the live predicate itself at send time, instead of one write path,
+    // catches a session boundary no matter which toggle caused it.
+    private static boolean wasGhostActive = false;
 
-    // Called from NekoConfig#setGhostMode when Ghost turns off, ending the
-    // session the "already warned" set belongs to.
-    public static void resetWarnings() {
-        warnedDialogsByAccount.clear();
+    private GhostSendWarningHelper() {
     }
 
     public static void onMessageReachingWire(int account, long dialogId) {
@@ -52,6 +54,12 @@ public class GhostSendWarningHelper {
                 + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " dialogId=" + dialogId);
 
         boolean ghostActive = NekoConfig.isGhostModeActive();
+        if (ghostActive && !wasGhostActive) {
+            // A new Ghost session started since the last send we saw -- forget last session's warnings.
+            warnedDialogsByAccount.clear();
+        }
+        wasGhostActive = ghostActive;
+
         boolean alreadyWarned = false;
         boolean shown = false;
 
