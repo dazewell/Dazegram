@@ -449,10 +449,11 @@ class Settings:
 
 
 def validate_manifest_sources(manifest: dict, settings: Settings) -> None:
-    """Confine every panel's `source` inside settings.screenshots_dir. Runs
-    once, up front, so a stray absolute path or '..' fails with a clear
-    wall/panel-named message instead of surfacing later as a confusing
-    "file not found" for a path nobody wrote by hand."""
+    """Confine every panel's and figure's `source` inside
+    settings.screenshots_dir. Runs once, up front, so a stray absolute path
+    or '..' fails with a clear wall/panel- or figure-named message instead
+    of surfacing later as a confusing "file not found" for a path nobody
+    wrote by hand."""
     for wall in manifest["wall"]:
         for j, panel in enumerate(wall["panel"], start=1):
             _confine_source(
@@ -806,7 +807,8 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="render to a temp directory and diff against docs/images/ instead of writing there",
+        help="render to a temp directory and diff walls against docs/images/ and figures "
+        "against docs/images/features/ instead of writing there",
     )
     args = parser.parse_args()
     if args.wall and args.figure:
