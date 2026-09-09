@@ -44,6 +44,12 @@ public class GhostSendWarningHelper {
     // path forgets to.
     private static boolean wasGhostActive = false;
 
+    // NagramX: onGhostStateChanged() runs on the UI thread (settings writes),
+    // while onMessageReachingWire() runs on whatever thread is sending a message
+    // (not guaranteed to be the UI thread) -- guard the two fields they share so
+    // a toggle and a send can never race on the same HashSet/SparseArray.
+    private static final Object LOCK = new Object();
+
     private GhostSendWarningHelper() {
     }
 
@@ -53,6 +59,16 @@ public class GhostSendWarningHelper {
      * a new Ghost session. Returns the freshly observed state.
      */
     public static boolean onGhostStateChanged() {
+        synchronized (LOCK) {
+            return onGhostStateChangedLocked();
+        }
+    }
+
+    // NagramX: split out so onMessageReachingWire can call this while already
+    // holding LOCK -- java.util.concurrent locks aren't needed here since a
+    // plain synchronized block is already re-entrant, but keeping one method as
+    // the single "must hold LOCK" entry point avoids acquiring it twice per send.
+    private static boolean onGhostStateChangedLocked() {
         boolean ghostActive = NekoConfig.isGhostModeActive();
         if (ghostActive && !wasGhostActive) {
             // A new Ghost session started -- forget the previous session's warnings.
@@ -69,25 +85,28 @@ public class GhostSendWarningHelper {
         Log.i(SMOKE_TAG, SMOKE_TAG + " BEGIN build=" + BuildConfig.BUILD_VERSION_STRING
                 + " app=" + BuildConfig.APPLICATION_ID + " account=" + account + " dialogId=" + dialogId);
 
-        boolean ghostActive = onGhostStateChanged();
-
+        boolean ghostActive;
         boolean alreadyWarned = false;
         boolean shown = false;
 
-        if (ghostActive) {
-            HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
-            if (warnedDialogs == null) {
-                warnedDialogs = new HashSet<>();
-                warnedDialogsByAccount.put(account, warnedDialogs);
+        synchronized (LOCK) {
+            ghostActive = onGhostStateChangedLocked();
+            if (ghostActive) {
+                HashSet<Long> warnedDialogs = warnedDialogsByAccount.get(account);
+                if (warnedDialogs == null) {
+                    warnedDialogs = new HashSet<>();
+                    warnedDialogsByAccount.put(account, warnedDialogs);
+                }
+                alreadyWarned = !warnedDialogs.add(dialogId);
+                shown = !alreadyWarned;
             }
-            alreadyWarned = !warnedDialogs.add(dialogId);
-            if (!alreadyWarned) {
-                shown = true;
-                AndroidUtilities.runOnUIThread(() ->
-                        BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show());
-                // Expected path: bulletin actually shown for this chat this session.
-                Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
-            }
+        }
+
+        if (shown) {
+            AndroidUtilities.runOnUIThread(() ->
+                    BulletinFactory.global().createErrorBulletin(getString(R.string.GhostSendExposedWarning)).show());
+            // Expected path: bulletin actually shown for this chat this session.
+            Log.i(SMOKE_TAG, SMOKE_TAG + " BULLETIN_SHOWN account=" + account + " dialogId=" + dialogId);
         }
 
         if (!shown) {
