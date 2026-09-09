@@ -31,7 +31,7 @@ Private chats now show a reply glyph and count next to a message's timestamp, br
 
 ### Message bookmarks <!-- #bookmarks-300 -->
 
-Save up to 300 messages per chat from the message menu. Bookmarks keep their existing per-account storage and are included in settings backup and restore.
+Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. Saving from the message menu, per-account storage, and inclusion in settings backup and restore all work as they did.
 
 ### Ayu Mode shortcut <!-- #ayu-mode -->
 
@@ -151,7 +151,7 @@ Telegram's forward API cannot forward a message that hasn't been sent yet. The s
 
 ### Repost as Copy <!-- #repost-reply --> <!-- #repost-spread -->
 
-*Repost as Copy* (off by default, turn it on in settings) re-sends a message without a "Forwarded from" header, keeping its original reply target and quote — media is re-uploaded, so it costs the upload again. Reposting a single message this way into the same chat offers to delete the original once it succeeds; to keep both the reply and the "Forwarded from" header without re-uploading, select the message and its reply target and use plain Repost instead.
+*Repost as Copy* comes from NagramX. Turn it on in settings (it's off by default) and it re-sends a message without a "Forwarded from" header, re-uploading the media. This fork adds three things — it keeps the original reply and quote, offers to delete the original once the repost lands, and spreads a scheduled repost across its own send times.
 
 Reposting several messages this way — the selection bar's *NoQuote* button — sends them as copies to a chat you pick, without offering to delete the originals, spacing each one three minutes apart by default instead of stacking them on one shared timestamp, so you can reschedule or edit them individually afterwards. If something in the batch can't be reposted as a copy (polls, locations, contacts), that button falls back to an ordinary one-time forward instead. Forwarding through the chat picker's own *Send* button instead lets you set your own interval, but refuses the spread with an error rather than falling back if anything can't be reposted.
 
@@ -213,10 +213,6 @@ The pause button and the view-once "(1)" toggle are larger and lifted slightly h
 
 A round video message you've recorded but haven't sent is no longer lost by accident — backing out of the chat, switching apps mid-recording, or the chat locking behind a passcode all leave the finished clip waiting in the preview (trimmed the way you left it, for up to a day) instead of discarding it. What comes back after the app or chat was torn down is the trim strip and send button, not the round preview itself, so you can send the clip but not watch it back first. One gap remains: a round video recorded in the scheduled composer isn't kept this way.
 
-### Floating camera button in the attach sheet <!-- #camera-fab -->
-
-With *Disable Instant Camera* on (the default), the photo attach sheet drops the live-preview camera cell and instead floats a round camera button in the corner — tap it to open the camera, same as the old cell did. Turn the setting off (N-Settings → Chat → Camera) to bring the in-grid live camera tile back with no floating button.
-
 ### Custom file names for saved media <!-- #custom-file-names -->
 
 Turn on *Custom File Names* (N-Settings → General → Storage) to save videos, voice, and round messages using the message's send date and time — `20260101_173812.mp4` by default — instead of Telegram's generic `video.mp4`, `video (1).mp4`, and so on. The setting's dialog lets you customize the pattern with `{date}`, `{time}`, and `{name}` (the sender's original filename, usually blank for voice and round messages), with a live preview as you type. Two messages saved in the same second still get separate files. Saved photos are unaffected.
@@ -248,10 +244,6 @@ Extera Light and Extera Dark bring exteraGram's look to Dazegram. They were recr
 ### Monet wallpaper pattern <!-- #monet-pattern-tile -->
 
 You can apply a chat pattern over your live Material You color. Turn it off by opening the tile and clearing the pattern.
-
-### Tab indicator outline <!-- #tab-style -->
-
-The active tab indicator can be drawn with a thin outline in the tab's text colour over a translucent fill, instead of the solid filled pill. Turn on *Tab indicator outline* in Nagram Settings > General, under the folder tab options. It's off by default, so tabs keep the solid fill unless you switch it on.
 
 ### Fixed app icon uses Default art on DazegramX <!-- #app-icon-fallback -->
 
