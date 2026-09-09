@@ -878,3 +878,20 @@ once per 24h (`AutoDeleteMediaTask.java:21`, `:118-125`). This is why holding a
 *media* message across an arbitrary Ghost duration can't lean on the existing
 pin — a kill during the hold would leave the file eligible for the next sweep.
 It's the recorded reason Ghost Hold v1 is text-only.
+
+## Sync guard check validates protected pins against the branch tree, not the PR merge ref
+
+Established 2026-09-09 (#ghost-hold). The `protected pins vs HEAD` step of the
+sync guard reads each pinned blob from the branch's own tree
+(`.github/sync/sync-guard.ps1`, `protected-paths.tsv`), so a branch cut before a
+repin lands on `dev` stays red on that check until `dev` is merged forward into
+it — merging the branch's own PR does **not** retroactively clear it. Confirmed
+from PR #325 (repinned `README.md` `d48354cf…` → `d9373e96…` on `dev`) and PR
+#324 (cut beforehand, still failing on head `330451f9de` after #325 merged). The
+natural assumption — "the merge ref has both the new pin and the new file, so
+it'll sort itself out" — is wrong, and re-deriving it costs a full CI round each
+time. This is a recurring shape here, not a one-off: `git log` already carries
+`repin signing gradle blob…` commits and a `document the build.gradle
+signing-blob pin trap` entry for the same class of problem. The fix is a
+`#tag`-exempt merge of `origin/dev` into the feature branch once its tree is
+clean.
