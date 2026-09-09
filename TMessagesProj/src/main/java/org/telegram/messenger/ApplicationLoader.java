@@ -309,6 +309,10 @@ public class ApplicationLoader extends Application {
             }
         }
 
+        // NagramX: if Ghost ended while a Ghost Hold backlog remained (e.g. app killed
+        // mid-flush), drain it on this launch so the queue can never be stranded.
+        com.radolyn.ayugram.ghosthold.GhostHoldController.checkOnProcessStart();
+
         PushListenerController.reconcilePushRegistration();
 
         // init fcm

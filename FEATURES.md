@@ -39,6 +39,10 @@ Bookmarks come from NagramX; this fork raises the per-chat cap from 30 to 300. S
 
 A launcher shortcut (long-press the app icon, or pin it to your home screen) that opens the app with Ghost Mode already on. Tapping it flips every Ghost toggle you haven't locked and pushes you offline, then opens as normal.
 
+### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
+
+Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, anything you send or schedule stays on your device instead of going to the server, so it can't reveal that you're online. Held messages land in that chat's Scheduled list marked "Held — not sent", and a bulletin reminds you each time. When you turn Ghost Mode off you're asked to confirm, then everything held sends, spaced out over a few seconds; a message you scheduled for a future time is handed to the server as a normal scheduled message instead. Held messages live only in the database — uninstalling the app discards them — and this covers text only, so attachments send normally even in Ghost Mode.
+
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.

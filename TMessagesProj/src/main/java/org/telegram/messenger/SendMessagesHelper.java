@@ -1750,6 +1750,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             }
             return false;
         }
+        // NagramX: refuse to re-send a still-held Ghost Hold row (e.g. a manual retry
+        // tap while Ghost is on). Held rows carry the marker until they are flushed
+        // and removed, so this never blocks a normal failed-message retry.
+        if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+            return false;
+        }
         if (messageObject.messageOwner.action instanceof TLRPC.TL_messageEncryptedAction) {
             int enc_id = DialogObject.getEncryptedChatId(messageObject.getDialogId());
             TLRPC.EncryptedChat encryptedChat = getMessagesController().getEncryptedChat(enc_id);
@@ -4427,6 +4433,15 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         }
         if (message == null && caption == null && richMessage == null) {
             caption = "";
+        }
+
+        // NagramX: single Ghost Hold chokepoint. When Ghost Mode is on and Hold
+        // Messages is enabled, a plain text send is persisted to the Scheduled list
+        // and held locally instead of going to the server. Placed before newMsg is
+        // built, before the DB write and before putToSendingMessages, so nothing is
+        // left half-started when it diverts.
+        if (com.radolyn.ayugram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
+            return;
         }
 
         long _payStars = getMessagesController().getSendPaidMessagesStars(peer);
@@ -9111,6 +9126,12 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 for (int a = 0; a < scheduledMessages.size(); a++) {
                     MessageObject messageObject = new MessageObject(currentAccount, scheduledMessages.get(a), false, true);
                     messageObject.scheduled = true;
+                    // NagramX: a held Ghost Hold row lives here (scheduled, send_state 1,
+                    // negative id) and getUnsentMessages loads it. It must never auto-resend;
+                    // it drains only on the ghost-off flush.
+                    if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                        continue;
+                    }
                     retrySendMessage(messageObject, true, 0);
                 }
             }

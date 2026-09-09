@@ -12,6 +12,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.radolyn.ayugram.utils.AyuState;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
 import org.telegram.messenger.UserConfig;
@@ -29,7 +30,7 @@ import tw.nekomimi.nekogram.config.ConfigItem;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
 import xyz.nextalone.nagram.NaConfig;
 
-public class GhostModeActivity extends BaseNekoSettingsActivity {
+public class GhostModeActivity extends BaseNekoSettingsActivity implements NotificationCenter.NotificationCenterDelegate {
 
     private int ghostEssentialsHeaderRow;
     private int ghostModeToggleRow;
@@ -42,6 +43,9 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
     private int ghostModeNoticeRow;
     private int markReadAfterSendRow;
     private int markReadAfterSendNoticeRow;
+    private int holdMessagesRow;
+    private int holdMessagesNoticeRow;
+    private int heldCount;
 
     private int sendWithoutSoundRow;
     private int sendWithoutSoundNoticeRow;
@@ -72,6 +76,8 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
         }
         markReadAfterSendRow = addRow();
         markReadAfterSendNoticeRow = addRow();
+        holdMessagesRow = addRow();
+        holdMessagesNoticeRow = addRow();
         sendWithoutSoundRow = addRow();
         sendWithoutSoundNoticeRow = addRow();
         showGhostInDrawerRow = addRow();
@@ -81,15 +87,40 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
     @Override
     public boolean onFragmentCreate() {
         super.onFragmentCreate();
+        getNotificationCenter().addObserver(this, NotificationCenter.mainUserInfoChanged);
         return true;
     }
 
     @Override
     public void onFragmentDestroy() {
         super.onFragmentDestroy();
+        getNotificationCenter().removeObserver(this, NotificationCenter.mainUserInfoChanged);
     }
 
-    private void updateGhostViews() {
+    @Override
+    public void didReceivedNotification(int id, int account, Object... args) {
+        if (id == NotificationCenter.mainUserInfoChanged) {
+            updateGhostRows();
+            refreshHeldCount();
+        }
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        refreshHeldCount();
+    }
+
+    private void refreshHeldCount() {
+        com.radolyn.ayugram.ghosthold.GhostHoldController.countHeld(count -> {
+            heldCount = count;
+            if (listAdapter != null && holdMessagesNoticeRow >= 0) {
+                listAdapter.notifyItemChanged(holdMessagesNoticeRow);
+            }
+        });
+    }
+
+    private void updateGhostRows() {
         var isActive = NekoConfig.isGhostModeActive();
 
         listAdapter.notifyItemChanged(ghostModeToggleRow, PARTIAL);
@@ -98,6 +129,13 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
         listAdapter.notifyItemChanged(sendUploadProgressRow, !isActive);
         listAdapter.notifyItemChanged(sendReadStoriesPacketsRow, !isActive);
         listAdapter.notifyItemChanged(sendOfflinePacketAfterOnlineRow, isActive);
+    }
+
+    private void updateGhostViews() {
+        updateGhostRows();
+
+        // NagramX: a ghost toggle here may have flipped isGhostModeActive() false; drain the hold queue on that edge
+        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
 
         NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
@@ -144,6 +182,9 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
             NekoConfig.markReadAfterSend.toggleConfigBool();
             ((TextCheckCell) view).setChecked(NekoConfig.markReadAfterSend.Bool());
             AyuState.setAllowReadPacket(false, -1);
+        } else if (position == holdMessagesRow) {
+            NekoConfig.holdMessagesWhileGhost.toggleConfigBool();
+            ((TextCheckCell) view).setChecked(NekoConfig.holdMessagesWhileGhost.Bool());
         } else if (position == sendWithoutSoundRow) {
             NaConfig.INSTANCE.getSilentMessageByDefault().toggleConfigBool();
             ((TextCheckCell) view).setChecked(NaConfig.INSTANCE.getSilentMessageByDefault().Bool());
@@ -250,6 +291,8 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
                     textCheckCell.setEnabled(true, null);
                     if (position == markReadAfterSendRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.MarkReadAfterSend), NekoConfig.markReadAfterSend.Bool(), true);
+                    } else if (position == holdMessagesRow) {
+                        textCheckCell.setTextAndCheck(getString(R.string.GhostHoldSwitch), NekoConfig.holdMessagesWhileGhost.Bool(), true);
                     } else if (position == sendWithoutSoundRow) {
                         textCheckCell.setTextAndCheck(getString(R.string.SilentMessageByDefault), NaConfig.INSTANCE.getSilentMessageByDefault().Bool(), true);
                     } else if (position == showGhostInDrawerRow) {
@@ -271,6 +314,12 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
                         cell.setText(getString(R.string.GhostModeNotice));
                     } else if (position == markReadAfterSendNoticeRow) {
                         cell.setText(getString(R.string.MarkReadAfterSendNotice));
+                    } else if (position == holdMessagesNoticeRow) {
+                        if (heldCount > 0) {
+                            cell.setText(getString(R.string.GhostHoldSwitchNotice) + "\n" + LocaleController.formatPluralString("GhostHoldPending", heldCount));
+                        } else {
+                            cell.setText(getString(R.string.GhostHoldSwitchNotice));
+                        }
                     } else if (position == sendWithoutSoundNoticeRow) {
                         cell.setText(getString(R.string.SendWithoutSoundRowNotice));
                     }
@@ -341,7 +390,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity {
         public int getItemViewType(int position) {
             if (position == ghostEssentialsHeaderRow) {
                 return TYPE_HEADER;
-            } else if (position == ghostModeNoticeRow || position == markReadAfterSendNoticeRow || position == sendWithoutSoundNoticeRow) {
+            } else if (position == ghostModeNoticeRow || position == markReadAfterSendNoticeRow || position == holdMessagesNoticeRow || position == sendWithoutSoundNoticeRow) {
                 return TYPE_INFO_PRIVACY;
             } else if (position == ghostModeToggleRow) {
                 return TYPE_CHECK2;

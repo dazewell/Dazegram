@@ -37662,6 +37662,10 @@ public class ChatActivity extends BaseFragment implements
             int id = m.getId();
             if (selectedMessagesIds[0].indexOfKey(id) < 0 && selectedMessagesIds[1].indexOfKey(id) < 0)
                 continue;
+            // NagramX: a held Ghost Hold row has a negative local id the server has no
+            // record of, so never put it in a sendScheduledMessages request -- it stays
+            // held and drains only when Ghost Mode turns off.
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0 && gid == lastGroupId) continue;
             lastGroupId = gid;
@@ -50760,7 +50764,7 @@ public class ChatActivity extends BaseFragment implements
             }
         } else {
             if (currentEncryptedChat == null) {
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
                     items.add(LocaleController.getString(R.string.MessageScheduleSend));
                     options.add(OPTION_SEND_NOW);
                     icons.add(R.drawable.msg_send);

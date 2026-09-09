@@ -190,6 +190,7 @@ public class NekoConfig {
     public static ConfigItem markReadAfterSend = addConfig("markReadAfterSend", configTypeBool, true);
     public static ConfigItem showGhostInDrawer = addConfig("showGhostInDrawer", configTypeBool, false);
     public static ConfigItem showGhostModeStatus = addConfig("showGhostModeStatus", configTypeBool, false);
+    public static ConfigItem holdMessagesWhileGhost = addConfig("holdMessagesWhileGhost", configTypeBool, false);
 
     // --- Locked Status ---
     public static ConfigItem sendReadMessagePacketsLocked = addConfig("sendReadMessagePacketsLocked", configTypeBool, false);
@@ -327,6 +328,8 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
+        // NagramX: a ghost-off edge here drains the Ghost Hold queue (see GhostHoldController).
+        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
     }
 
     public static void toggleGhostMode() {

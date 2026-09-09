@@ -840,3 +840,41 @@ Any guard written as "reject absolute paths, then join" therefore lets drive-rel
 Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
+## isGhostModeActive() returns true vacuously when all five ghost toggles are locked
+
+Established 2026-09-09 (#ghost-hold). `isGhostModeActive()` `continue`s past any
+toggle whose `Locked` companion is set, so if all five are locked the loop body
+never runs and it returns its initial `true` (`NekoConfig.java:305-319`).
+`setGhostMode` also skips locked items (`NekoConfig.java:321-330`), so in that
+state Ghost is permanently on and `toggleGhostMode()` is a no-op. It is not
+reachable through the UI today: `GhostModeActivity.onItemLongClick` refuses a
+fifth lock (`getGhostModeLockedCount() >= 4`), so at least one toggle is always
+unlocked and Ghost stays turn-off-able. Any feature that makes "Ghost never
+turns off" harmful (Ghost Hold, whose queue would become unflushable) must rely
+on that 4-lock cap, or handle the vacuous-true case itself.
+
+## getUnsentMessages queries scheduled_messages_v2 too, and checkUnsentMessages has two callers
+
+Established 2026-09-09 (#ghost-hold). `MessagesStorage.getUnsentMessages` runs a
+second cursor over `scheduled_messages_v2` selecting `mid < 0 AND send_state = 1`
+(`MessagesStorage.java:8726`), so local unsent scheduled rows are pulled into the
+resend path alongside `messages_v2` rows, and `processUnsentMessages` feeds them
+to its scheduled retry loop (`SendMessagesHelper.java:9126`+). This runs not just
+at startup: `checkUnsentMessages()` is called from `ApplicationLoader.java:308`
+**and** from inside `processSentMessage` (`SendMessagesHelper.java:1811`), i.e.
+every time the unsent queue drains during normal use. Any scheme that parks a row
+in `scheduled_messages_v2` with `send_state = 1` (Ghost Hold does) must therefore
+defend the drain — Ghost Hold skips held rows in `processUnsentMessages` and
+refuses them in `retrySendMessage` (`SendMessagesHelper.java:1746`) — or the
+"held" row auto-sends on the next drain.
+
+## AutoDeleteMediaTask's file pin is in-memory only and dies on restart
+
+Established 2026-09-09 (#ghost-hold). `AutoDeleteMediaTask` keeps its "don't
+delete this file yet" set in an in-memory structure with `lockFile`/`unlockFile`
+(`AutoDeleteMediaTask.java:17`, `:243-267`); nothing persists it, so a process
+restart drops every pin, and the sweep itself is time-based and runs at most
+once per 24h (`AutoDeleteMediaTask.java:21`, `:118-125`). This is why holding a
+*media* message across an arbitrary Ghost duration can't lean on the existing
+pin — a kill during the hold would leave the file eligible for the next sweep.
+It's the recorded reason Ghost Hold v1 is text-only.

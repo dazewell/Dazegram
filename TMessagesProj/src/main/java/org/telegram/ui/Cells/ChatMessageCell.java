@@ -18691,6 +18691,13 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
             timeString = "";
         } else if (currentMessageObject.scheduled && currentMessageObject.messageOwner.date == 0x7FFFFFFE) {
             timeString = "";
+        } else if (currentMessageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
+            // NagramX: a Ghost Hold row shows its held state in place of a send time.
+            if (currentMessageObject.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL) {
+                timeString = getString(R.string.GhostHoldCaption);
+            } else {
+                timeString = formatString(R.string.GhostHoldCaptionDated, LocaleController.getInstance().getFormatterDay().format((long) currentMessageObject.messageOwner.date * 1000));
+            }
         } else if (currentMessageObject.realDate != 0) {
             timeString = LocaleController.formatSmallDateChat(currentMessageObject.realDate) + ", " + LocaleController.getInstance().getFormatterDay().format((long) (currentMessageObject.realDate) * 1000);
         } else if (currentMessageObject.isRepostPreview) {
