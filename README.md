@@ -50,7 +50,7 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/video-watching.png" alt="Two views of Dazegram's video message playback: the player panel under the chat title with its mute, loop, and speed controls, and captions burned into video playback matching the transcription bubble below it.">
 </p>
 
-**Appearance:** Stock Telegram gives you light, dark, and not much else. Extera Light and Extera Dark bring a different theme over wholesale, and in both, the chat wallpaper's pattern shows straight through the composer's glass instead of stopping at the colour behind it. A separate pattern option tints that same wallpaper with your phone's live Material You accent colour instead of a fixed image. The Extera look is [exteraGram](https://github.com/exteraSquad/exteraGram)'s — reverse-engineered here, with credit to its authors.
+**Appearance:** Stock Telegram gives you light, dark, and not much else. Extera Light and Extera Dark restyle the whole app rather than just an accent colour, and in both, the chat wallpaper's pattern shows straight through the composer's glass instead of stopping at the colour behind it. A separate pattern option tints that same wallpaper with your phone's live Material You accent colour instead of a fixed image. The Extera look is [exteraGram](https://github.com/exteraSquad/exteraGram)'s — reverse-engineered here, with credit to its authors.
 
 <p align="center">
 <img src="docs/images/appearance.png" alt="Two views of Dazegram's Extera themes: the same staged chat rendered in Extera Light and in Extera Dark, each showing the composer's message field and button row with the chat wallpaper's pattern reading through their translucent glass.">
@@ -157,7 +157,7 @@ GPLv3 — see [LICENSE](LICENSE). Telegram for Android is GPL-2.0-or-later; this
 - [AyuGram](https://github.com/AyuGram/AyuGram4A)
 - [Cherrygram](https://github.com/arsLan4k1390/Cherrygram)
 - [Dr4iv3rNope](https://github.com/Dr4iv3rNope/NotSoAndroidAyuGram)
-- [exteraGram](https://github.com/exteraSquad/exteraGram) — the Extera Light and Dark look, reverse-engineered with credit to its authors
+- [exteraGram](https://github.com/exteraSquad/exteraGram) — the source of the Extera Light and Dark look, reverse-engineered here with credit to its authors
 - [Nagram](https://github.com/NextAlone/Nagram)
 - [NagramX](https://github.com/risin42/NagramX)
 - [Nekogram](https://github.com/Nekogram/Nekogram)
