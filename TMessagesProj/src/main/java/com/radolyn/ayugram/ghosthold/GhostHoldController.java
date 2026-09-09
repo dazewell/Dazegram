@@ -1,6 +1,7 @@
 package com.radolyn.ayugram.ghosthold;
 
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 
@@ -8,6 +9,7 @@ import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
+import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.LocaleController;
@@ -72,6 +74,11 @@ public final class GhostHoldController {
     // in the same instant -- a simultaneous burst is itself a signal Ghost ended.
     private static final long FLUSH_STAGGER_MS = 1500;
 
+    // NAX_SMOKE_ghost-hold: temporary smoke diagnostics tag. Removed in a later
+    // commit once the smoke build confirms reachability. Log.e/.i/.w only, since
+    // proguard strips Log.v/.d from the release build the smoke APK installs.
+    private static final String SMOKE = "NAX_SMOKE_ghost-hold";
+
     private static volatile boolean flushInProgress;
 
     private GhostHoldController() {}
@@ -129,8 +136,32 @@ public final class GhostHoldController {
         }
 
         persistHeld(account, peer, params);
+        Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
         AndroidUtilities.runOnUIThread(GhostHoldController::showDivertBulletin);
         return true;
+    }
+
+    /**
+     * Smoke tripwire: called from the send funnel only after {@link #maybeHold}
+     * returned false. If a plain text message is proceeding to the network while
+     * hold is active, that is the leak the feature exists to prevent -- log it
+     * loudly. It must never fire for text; media/encrypted/retry proceed by design.
+     */
+    public static void smokeProceedTripwire(long peer, SendMessagesHelper.SendMessageParams params) {
+        if (params == null || !isHoldActive() || params.retryMessageObject != null) {
+            return;
+        }
+        if (DialogObject.isEncryptedDialog(peer) || params.message == null) {
+            return;
+        }
+        if (params.location != null || params.photo != null || params.videoEditedInfo != null
+                || params.document != null || params.game != null || params.poll != null
+                || params.pollSendParams != null || params.todo != null || params.invoice != null
+                || params.mediaWebPage != null || params.user != null || params.richMessage != null
+                || params.sendingStory != null) {
+            return;
+        }
+        Log.e(SMOKE, "forbidden: plain text send proceeded to the network while ghost+hold active dialog=" + peer);
     }
 
     private static void persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
@@ -206,6 +237,7 @@ public final class GhostHoldController {
         boolean wasActive = prefs().getBoolean(KEY_LAST_GHOST_ACTIVE, false);
         prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
         if (wasActive && !nowActive) {
+            Log.i(SMOKE, "flush trigger: ghost-off edge detected, requesting flush");
             AndroidUtilities.runOnUIThread(() -> promptFlush(true));
         }
     }
@@ -217,8 +249,10 @@ public final class GhostHoldController {
      */
     public static void checkOnProcessStart() {
         boolean nowActive = NekoConfig.isGhostModeActive();
+        Log.i(SMOKE, "begin: process start build=" + BuildConfig.BUILD_VERSION_STRING + " app=" + BuildConfig.APPLICATION_ID + " ghostActive=" + nowActive + " holdEnabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
         prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
         if (!nowActive) {
+            Log.i(SMOKE, "flush trigger: process-start convergence, ghost inactive");
             AndroidUtilities.runOnUIThread(() -> promptFlush(false));
         }
     }
@@ -293,6 +327,7 @@ public final class GhostHoldController {
                     int sent = Math.max(0, total - remaining);
                     text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, total);
                 }
+                Log.i(SMOKE, "end: flush complete total=" + total + " stillHeld=" + remaining);
                 BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
             });
         }, total * FLUSH_STAGGER_MS);
