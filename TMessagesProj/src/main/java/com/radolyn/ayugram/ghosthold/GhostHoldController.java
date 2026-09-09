@@ -7,6 +7,7 @@ import androidx.annotation.Nullable;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
+import org.telegram.SQLite.SQLiteException;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
@@ -26,6 +27,7 @@ import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
+import org.telegram.ui.ChatActivity;
 import org.telegram.ui.Components.BulletinFactory;
 import org.telegram.ui.LaunchActivity;
 
@@ -69,6 +71,11 @@ public final class GhostHoldController {
     // Records that the user disabled link preview for this send, so the flush
     // does not re-enable it (searchLinks defaults to true on the send funnel).
     private static final String PARAM_NO_WEBPAGE = "ghost_hold_no_webpage";
+    // The send's repeat period and message effect are not carried on the stored
+    // TLRPC.Message, so they ride in params (the marker vehicle) and are restored
+    // onto the SendMessageParams on flush. Absent means the send had none.
+    private static final String PARAM_REPEAT = "ghost_hold_repeat";
+    private static final String PARAM_EFFECT = "ghost_hold_effect";
 
     private static final String PREFS_NAME = "ghosthold_state";
     private static final String KEY_LAST_GHOST_ACTIVE = "last_ghost_active";
@@ -139,8 +146,6 @@ public final class GhostHoldController {
         }
 
         persistHeld(account, peer, params);
-        Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
-        AndroidUtilities.runOnUIThread(GhostHoldController::showDivertBulletin);
         return true;
     }
 
@@ -189,6 +194,7 @@ public final class GhostHoldController {
         msg.dialog_id = peer;
         msg.random_id = SendMessagesHelper.getInstance(account).getNextRandomId();
         msg.silent = !params.notify || MessagesController.getNotificationsSettings(account).getBoolean("silent_" + peer, false);
+        msg.invert_media = params.invert_media;
         // A user-picked schedule date is recorded and shown but has no enforcement
         // power while held; an undated hold sorts under its own sentinel header.
         msg.date = params.scheduleDate != 0 ? params.scheduleDate : GHOST_HELD_DATE_SENTINEL;
@@ -196,11 +202,47 @@ public final class GhostHoldController {
         msg.unread = true;
         msg.attachPath = "";
 
-        if (params.replyToMsg != null) {
+        // Reconstruct the full reply header, not just reply_to_msg_id: the flush
+        // re-drive reuses this stored message verbatim (of(MessageObject) passes a
+        // null replyToMsg, so the funnel keeps whatever reply_to is on the row), so
+        // a topic/quote reply that isn't captured here is silently dropped on send.
+        // Mirrors the funnel's own header construction (SendMessagesHelper ~:5031).
+        MessageObject replyToMsg = params.replyToMsg;
+        MessageObject replyToTopMsg = params.replyToTopMsg;
+        ChatActivity.ReplyQuote replyQuote = params.replyQuote;
+        if (replyQuote != null && replyQuote.message != null && replyToMsg != null) {
+            replyToMsg = replyQuote.message;
+        }
+        if (replyToMsg != null && (replyToTopMsg == null || replyToMsg != replyToTopMsg || replyToTopMsg.getId() != 1)) {
             msg.reply_to = new TLRPC.TL_messageReplyHeader();
-            msg.reply_to.flags |= 16;
-            msg.reply_to.reply_to_msg_id = params.replyToMsg.getId();
             msg.flags |= TLRPC.MESSAGE_FLAG_REPLY;
+            msg.reply_to.flags |= 16;
+            msg.reply_to.reply_to_msg_id = replyToMsg.getId();
+            if (replyToTopMsg != null && replyToTopMsg != replyToMsg && replyToTopMsg.getId() != 1) {
+                msg.reply_to.reply_to_top_id = replyToTopMsg.getId();
+                msg.reply_to.flags |= 2;
+                if (replyToTopMsg.isTopicMainMessage) {
+                    msg.reply_to.forum_topic = true;
+                    msg.reply_to.flags |= 8;
+                }
+            } else if (replyToMsg.isTopicMainMessage) {
+                msg.reply_to.forum_topic = true;
+                msg.reply_to.flags |= 8;
+            }
+            if (replyQuote != null && !replyQuote.todo && !replyQuote.poll) {
+                msg.reply_to.quote_text = replyQuote.getText();
+                if (!android.text.TextUtils.isEmpty(msg.reply_to.quote_text)) {
+                    msg.reply_to.quote = true;
+                    msg.reply_to.flags |= 64;
+                    msg.reply_to.flags |= 1024;
+                    msg.reply_to.quote_offset = replyQuote.start;
+                    ArrayList<TLRPC.MessageEntity> quoteEntities = replyQuote.getEntities();
+                    if (quoteEntities != null && !quoteEntities.isEmpty()) {
+                        msg.reply_to.quote_entities = new ArrayList<>(quoteEntities);
+                        msg.reply_to.flags |= 128;
+                    }
+                }
+            }
         }
 
         HashMap<String, String> stored = params.params != null ? new HashMap<>(params.params) : new HashMap<>();
@@ -208,18 +250,37 @@ public final class GhostHoldController {
         if (!params.searchLinks) {
             stored.put(PARAM_NO_WEBPAGE, PARAM_VALUE);
         }
+        // scheduleRepeatPeriod and effect_id live only on SendMessageParams, not on
+        // the stored TLRPC.Message, so carry them here and restore them on flush.
+        if (params.scheduleRepeatPeriod != 0) {
+            stored.put(PARAM_REPEAT, Integer.toString(params.scheduleRepeatPeriod));
+        }
+        if (params.effect_id != 0) {
+            stored.put(PARAM_EFFECT, Long.toString(params.effect_id));
+        }
         msg.params = stored;
 
+        final TLRPC.Message stableMsg = msg;
         ArrayList<TLRPC.Message> arr = new ArrayList<>();
-        arr.add(msg);
-        MessagesStorage.getInstance(account).putMessages(arr, false, true, false, 0, 1, 0);
-
-        MessageObject mo = new MessageObject(account, msg, true, true);
-        mo.scheduled = true;
-        ArrayList<MessageObject> objArr = new ArrayList<>();
-        objArr.add(mo);
-        controller.updateInterfaceWithMessages(peer, objArr, 1);
-        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
+        arr.add(stableMsg);
+        MessagesStorage storage = MessagesStorage.getInstance(account);
+        // Critical: the durable row must exist before the user is told "Held".
+        // putMessages(useQueue=true) enqueues the write on the storage queue; the
+        // interface update, the Scheduled-list insert and the bulletin are chained
+        // on that same serial queue so they run only after the write has landed.
+        // This orders the signal after durability without blocking the UI thread
+        // on a synchronous DB write (which would risk an ANR).
+        storage.putMessages(arr, false, true, false, 0, 1, 0);
+        storage.getStorageQueue().postRunnable(() -> AndroidUtilities.runOnUIThread(() -> {
+            MessageObject mo = new MessageObject(account, stableMsg, true, true);
+            mo.scheduled = true;
+            ArrayList<MessageObject> objArr = new ArrayList<>();
+            objArr.add(mo);
+            controller.updateInterfaceWithMessages(peer, objArr, 1);
+            NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
+            Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
+            showDivertBulletin();
+        }));
     }
 
     private static void showDivertBulletin() {
@@ -273,7 +334,14 @@ public final class GhostHoldController {
             if (items.isEmpty()) {
                 return;
             }
+            int pending = countPending(items);
             BaseFragment fragment = LaunchActivity.getLastFragment();
+            if (pending == 0) {
+                // Only stale confirmed-sent orphans remain; clear them silently,
+                // never re-send, and show nothing.
+                performFlush(items, null);
+                return;
+            }
             if (!offerConfirmation || fragment == null || fragment.getParentActivity() == null) {
                 // No screen to ask on (process-start convergence, or a non-UI
                 // transition): drain rather than skip -- nothing may be left held.
@@ -281,13 +349,12 @@ public final class GhostHoldController {
                 return;
             }
 
-            int total = items.size();
             int chats = countDistinctChats(items);
             String body;
-            if (total == 1) {
+            if (pending == 1) {
                 body = LocaleController.getString(R.string.GhostHoldFlushConfirmOne);
             } else {
-                body = LocaleController.formatString(R.string.GhostHoldFlushConfirmMany, total, chats);
+                body = LocaleController.formatString(R.string.GhostHoldFlushConfirmMany, pending, chats);
             }
             AlertDialog.Builder builder = new AlertDialog.Builder(fragment.getParentActivity());
             builder.setTitle(LocaleController.getString(R.string.GhostHoldFlushConfirmTitle));
@@ -297,6 +364,16 @@ public final class GhostHoldController {
             builder.setOnCancelListener(dialog -> restoreGhost());
             builder.show();
         });
+    }
+
+    private static int countPending(ArrayList<HeldItem> items) {
+        int pending = 0;
+        for (HeldItem item : items) {
+            if (!item.alreadySent) {
+                pending++;
+            }
+        }
+        return pending;
     }
 
     private static void restoreGhost() {
@@ -311,13 +388,19 @@ public final class GhostHoldController {
             return;
         }
         flushInProgress = true;
-        final int total = items.size();
-        for (int i = 0; i < total; i++) {
+        // Every item is processed (stale orphans get cleaned), but only genuinely
+        // pending sends are reported to the user, so the counts stay honest.
+        final int all = items.size();
+        final int pending = countPending(items);
+        for (int i = 0; i < all; i++) {
             HeldItem item = items.get(i);
             AndroidUtilities.runOnUIThread(() -> flushItem(item), i * FLUSH_STAGGER_MS);
         }
         AndroidUtilities.runOnUIThread(() -> {
             flushInProgress = false;
+            if (pending <= 0) {
+                return;
+            }
             // Re-count after every delete/re-hold has drained the storage queue
             // (same serial queue, so this runs after them). Anything still held
             // was re-held because Ghost came back on mid-flush -- report honestly.
@@ -328,77 +411,148 @@ public final class GhostHoldController {
                 }
                 CharSequence text;
                 if (remaining <= 0) {
-                    text = LocaleController.formatPluralString("GhostHoldFlushed", total);
+                    text = LocaleController.formatPluralString("GhostHoldFlushed", pending);
                 } else {
-                    int sent = Math.max(0, total - remaining);
-                    text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, total);
+                    int sent = Math.max(0, pending - remaining);
+                    text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, pending);
                 }
-                Log.i(SMOKE, "end: flush complete total=" + total + " stillHeld=" + remaining);
+                Log.i(SMOKE, "end: flush complete pending=" + pending + " stillHeld=" + remaining);
                 BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
             });
-        }, total * FLUSH_STAGGER_MS);
+        }, all * FLUSH_STAGGER_MS);
     }
 
     private static void flushItem(HeldItem item) {
         final int account = item.account;
         final TLRPC.Message m = item.message;
         final long dialogId = item.dialogId;
+        final int mid = item.mid;
+
+        // Re-check Ghost atomically per item: the funnel does not re-hold a flush
+        // re-drive (retryMessageObject != null short-circuits maybeHold), so if
+        // Ghost came back on mid-flush this message must stay held, not leak.
+        if (isHoldActive()) {
+            return;
+        }
+
+        // Correlation gate: a held row whose message has already been dispatched and
+        // confirmed by the server (its random_id now maps to a positive server id)
+        // must never be re-driven -- otherwise a paid-DM send would re-open the
+        // paywall and risk a second charge, and a normal send would duplicate. Such
+        // a stale orphan is only removed here, never re-sent.
+        if (item.alreadySent) {
+            cleanupAfterHandoff(account, mid, dialogId, true);
+            return;
+        }
 
         int now = ConnectionsManager.getInstance(account).getCurrentTime();
         boolean future = m.date != GHOST_HELD_DATE_SENTINEL && m.date > now;
         int scheduleDate = future ? m.date : 0;
 
-        MessageObject replyStub = null;
-        if (m.reply_to != null && m.reply_to.reply_to_msg_id != 0) {
-            TLRPC.Message rm = new TLRPC.TL_message();
-            rm.id = m.reply_to.reply_to_msg_id;
-            rm.peer_id = m.peer_id;
-            rm.dialog_id = dialogId;
-            replyStub = new MessageObject(account, rm, false, false);
+        MessageObject mo = new MessageObject(account, m, false, true);
+        mo.scheduled = future;
+        // of(MessageObject) rebuilds the send from the stored message verbatim --
+        // text, entities, the full reply header, silent, invert_media and params
+        // (including our marker) all ride along, so nothing is hand-reconstructed
+        // and lost. It forces searchLinks/scheduleDate on, so override both below.
+        SendMessagesHelper.SendMessageParams p = SendMessagesHelper.SendMessageParams.of(mo);
+        p.scheduleDate = scheduleDate;
+        p.searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
+        if (m.params != null) {
+            String repeat = m.params.get(PARAM_REPEAT);
+            if (repeat != null) {
+                try {
+                    p.scheduleRepeatPeriod = Integer.parseInt(repeat);
+                } catch (NumberFormatException ignore) {
+                }
+            }
+            String effect = m.params.get(PARAM_EFFECT);
+            if (effect != null) {
+                try {
+                    p.effect_id = Long.parseLong(effect);
+                } catch (NumberFormatException ignore) {
+                }
+            }
         }
 
-        ArrayList<TLRPC.MessageEntity> entities = (m.entities != null && !m.entities.isEmpty()) ? m.entities : null;
-        boolean searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
-        SendMessagesHelper.SendMessageParams p = SendMessagesHelper.SendMessageParams.of(
-                m.message, dialogId, replyStub, null, null, searchLinks, entities, null, null,
-                !m.silent, scheduleDate, 0, null, false);
-        // Hand to the normal send path first (durable in the correct table), then
-        // remove the held row. If we crash in between, the held row survives and is
-        // re-flushed -- we fail toward "sent twice", never "lost". sendMessage
-        // re-checks isHoldActive() atomically, so if Ghost came back on mid-flush
-        // this message is re-held under a fresh row instead of leaking.
+        // Re-drive in place. The funnel keys its destination table off scheduleDate
+        // alone (SendMessagesHelper:5306-5320), not the row's current table, so a
+        // send-now re-drive (scheduleDate == 0) makes the funnel write the row into
+        // messages_v2 as part of sending, while a future-dated one rewrites the same
+        // scheduled_messages_v2 row in place.
         SendMessagesHelper.getInstance(account).sendMessage(p);
-        deleteHeldRow(account, item.mid, dialogId);
+        // Remove the held row only once the send has demonstrably been handed off --
+        // never as a consequence of sendMessage() merely returning. cleanupAfterHandoff
+        // proves handoff by the destination row's existence on the same serial queue.
+        cleanupAfterHandoff(account, mid, dialogId, item.inMainTable);
     }
 
-    private static void deleteHeldRow(int account, int mid, long dialogId) {
+    /**
+     * Removes the held {@code scheduled_messages_v2} row iff the send provably
+     * reached its destination table. Runs on the storage queue, enqueued after the
+     * funnel's own {@code putMessages(useQueue=true)} write, so by the time it runs
+     * a completed send has already written {@code messages_v2} (send-now) and an
+     * early-return (paid confirmation, {@code sendToUser == null}) has written
+     * nothing. If the destination row exists we delete the held row; otherwise we
+     * leave it in the Scheduled list, still held, to be re-driven on the next flush.
+     *
+     * <p>{@code handoffProven} skips the existence probe: it is set when the row was
+     * collected from {@code messages_v2} (already in the destination table) or when
+     * the row is a confirmed-sent stale orphan being cleared. Future-dated re-drives
+     * rewrite the scheduled row in place (no messages_v2 row), so the probe finds
+     * nothing and does nothing -- the funnel's own scheduled confirmation deletes
+     * that negative-id row. A kill between the funnel write and this delete leaves
+     * the row in both tables; the both-tables convergence dedups on the next flush,
+     * failing toward "sent twice", never "lost".
+     */
+    private static void cleanupAfterHandoff(int account, int mid, long dialogId, boolean handoffProven) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
-            int count = 0;
             try {
                 SQLiteDatabase db = storage.getDatabase();
+                boolean handedOff = handoffProven;
+                if (!handedOff) {
+                    SQLiteCursor probe = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId + " LIMIT 1");
+                    handedOff = probe.next();
+                    probe.dispose();
+                }
+                if (!handedOff) {
+                    return;
+                }
                 db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
                 // Recompute the dialog's remaining scheduled count (held + server-scheduled)
                 // so scheduledMessagesCount isn't zeroed while other rows still exist.
+                int count = 0;
                 SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
                 if (cursor.next()) {
                     count = cursor.intValue(0);
                 }
                 cursor.dispose();
+                final int finalCount = count;
+                AndroidUtilities.runOnUIThread(() ->
+                        NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            final int finalCount = count;
-            AndroidUtilities.runOnUIThread(() ->
-                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
         });
     }
 
     // ---- held-queue reads ----
 
-    /** Async count for the settings screen; result delivered on the UI thread. */
+    /**
+     * Async count for the settings screen; result delivered on the UI thread.
+     * Stale confirmed-sent orphans awaiting cleanup are not counted as held.
+     */
     public static void countHeld(Utilities.Callback<Integer> onDone) {
-        collectHeld(items -> onDone.run(items.size()));
+        collectHeld(items -> {
+            int held = 0;
+            for (HeldItem item : items) {
+                if (!item.alreadySent) {
+                    held++;
+                }
+            }
+            onDone.run(held);
+        });
     }
 
     private static void collectHeld(Utilities.Callback<ArrayList<HeldItem>> onDone) {
@@ -426,29 +580,27 @@ public final class GhostHoldController {
     }
 
     private static ArrayList<HeldItem> queryHeld(int account, MessagesStorage storage) {
-        ArrayList<HeldItem> out = new ArrayList<>();
+        // Keyed by local mid: a message killed mid-flush can sit in both tables at
+        // once (the funnel wrote messages_v2, the scheduled orphan was never
+        // deleted). Prefer the messages_v2 copy -- it is already in the destination
+        // table, so its re-drive is a plain retry and cleanupAfterHandoff removes the
+        // scheduled leftover by mid. Local mids are unique per account across both
+        // tables, so the mid is a safe dedup key.
+        java.util.LinkedHashMap<Integer, HeldItem> byMid = new java.util.LinkedHashMap<>();
+        SQLiteDatabase db = storage.getDatabase();
+        long selfId = UserConfig.getInstance(account).clientUserId;
+
+        // Loop A: main-table held rows -- a send-now re-drive killed before its
+        // server confirmation. Stock retry refuses these (the marker guard in
+        // retrySendMessage), so the flush owns their rescue.
         SQLiteCursor cursor = null;
         try {
-            SQLiteDatabase db = storage.getDatabase();
-            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM scheduled_messages_v2 WHERE mid < 0 AND send_state = 1");
-            long selfId = UserConfig.getInstance(account).clientUserId;
+            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM messages_v2 WHERE mid < 0 AND send_state = 1");
             while (cursor.next()) {
-                NativeByteBuffer data = cursor.byteBufferValue(0);
-                if (data == null) {
-                    continue;
+                HeldItem item = readHeldRow(account, cursor, selfId, true, db);
+                if (item != null) {
+                    byMid.put(item.mid, item);
                 }
-                TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
-                if (message != null) {
-                    message.readAttachPath(data, selfId);
-                }
-                data.reuse();
-                if (!isHeldMessage(message)) {
-                    continue;
-                }
-                message.id = cursor.intValue(1);
-                message.dialog_id = cursor.longValue(2);
-                message.date = cursor.intValue(3);
-                out.add(new HeldItem(account, message.id, message.dialog_id, message));
             }
         } catch (Exception e) {
             FileLog.e(e);
@@ -457,12 +609,90 @@ public final class GhostHoldController {
                 cursor.dispose();
             }
         }
-        return out;
+
+        // Loop B: scheduled-table held rows -- the normal held queue, plus any
+        // scheduled orphan left behind by a completed send-now re-drive.
+        cursor = null;
+        try {
+            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM scheduled_messages_v2 WHERE mid < 0 AND send_state = 1");
+            while (cursor.next()) {
+                int mid = cursor.intValue(1);
+                if (byMid.containsKey(mid)) {
+                    continue;
+                }
+                HeldItem item = readHeldRow(account, cursor, selfId, false, db);
+                if (item != null) {
+                    byMid.put(mid, item);
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return new ArrayList<>(byMid.values());
+    }
+
+    @Nullable
+    private static HeldItem readHeldRow(int account, SQLiteCursor cursor, long selfId, boolean inMainTable, SQLiteDatabase db) throws SQLiteException {
+        NativeByteBuffer data = cursor.byteBufferValue(0);
+        if (data == null) {
+            return null;
+        }
+        TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
+        if (message != null) {
+            message.readAttachPath(data, selfId);
+        }
+        data.reuse();
+        if (!isHeldMessage(message)) {
+            return null;
+        }
+        message.id = cursor.intValue(1);
+        message.dialog_id = cursor.longValue(2);
+        message.date = cursor.intValue(3);
+        // A scheduled orphan whose random_id now maps to a positive server id has
+        // already been sent (its main-table twin was id-remapped away, so it no
+        // longer matches the both-tables dedup). It must be cleared, never re-driven.
+        boolean alreadySent = !inMainTable && randomsMapToSentId(db, message.random_id);
+        return new HeldItem(account, message.id, message.dialog_id, message, inMainTable, alreadySent);
+    }
+
+    /**
+     * True if {@code randoms_v2} maps this random_id to a positive (server) message
+     * id, i.e. the send was confirmed. A negative mapping (or none) means the row is
+     * still local and unsent. random_id survives the id remap that confirmation
+     * performs, so it is the one correlation key that outlives a send.
+     */
+    private static boolean randomsMapToSentId(SQLiteDatabase db, long randomId) {
+        if (randomId == 0) {
+            return false;
+        }
+        SQLiteCursor cursor = null;
+        try {
+            cursor = db.queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = " + randomId);
+            while (cursor.next()) {
+                if (cursor.intValue(0) > 0) {
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        } finally {
+            if (cursor != null) {
+                cursor.dispose();
+            }
+        }
+        return false;
     }
 
     private static int countDistinctChats(ArrayList<HeldItem> items) {
         java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (HeldItem item : items) {
+            if (item.alreadySent) {
+                continue;
+            }
             seen.add(item.account + ":" + item.dialogId);
         }
         return seen.size();
@@ -473,12 +703,19 @@ public final class GhostHoldController {
         final int mid;
         final long dialogId;
         final TLRPC.Message message;
+        // Collected from messages_v2 (a killed send-now re-drive) rather than the
+        // scheduled table; its handoff is already proven by its presence there.
+        final boolean inMainTable;
+        // A scheduled orphan whose send was already confirmed; clear, never re-send.
+        final boolean alreadySent;
 
-        HeldItem(int account, int mid, long dialogId, TLRPC.Message message) {
+        HeldItem(int account, int mid, long dialogId, TLRPC.Message message, boolean inMainTable, boolean alreadySent) {
             this.account = account;
             this.mid = mid;
             this.dialogId = dialogId;
             this.message = message;
+            this.inMainTable = inMainTable;
+            this.alreadySent = alreadySent;
         }
     }
 }
