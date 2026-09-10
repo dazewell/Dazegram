@@ -559,8 +559,8 @@
     <string name="EventScheduleTriggerUnconfirmed">Couldn\'t confirm the trigger. Its settings weren\'t changed; try again.</string>
     <string name="EventScheduleSectionPresets">Presets</string>
     <string name="EventSchedulePresetsNone">No presets saved</string>
-    <string name="EventSchedulePresetsSaved_one">%1$d saved</string>
-    <string name="EventSchedulePresetsSaved_other">%1$d saved</string>
+    <string name="EventSchedulePresetsSaved_one">%1$d preset saved</string>
+    <string name="EventSchedulePresetsSaved_other">%1$d presets saved</string>
     <string name="EventSchedulePresetSaveAction">Save current as preset…</string>
     <string name="EventSchedulePresetNameHint">Preset name</string>
     <string name="EventSchedulePresetSaveTitle">Save preset</string>

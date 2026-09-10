@@ -136,10 +136,16 @@ public final class EventSchedulePresetStore {
      * login into the same slot would inherit the previous account's cached and persisted presets.
      * Drops the in-memory cache/loaded-flag for the slot and clears its SharedPreferences file so
      * the next {@link #getAll} for that slot starts empty, not just unloaded.
+     *
+     * <p>Deliberately does NOT remove the slot's entry from {@code MONITORS}: a thread that grabbed
+     * the old lock object right before this ran could still be about to synchronize on it, and if a
+     * concurrent caller then created a fresh lock for the same slot the two would no longer exclude
+     * each other against the same {@code CACHE}/{@code LOADED} entries. Account slots are bounded by
+     * {@code UserConfig.MAX_ACCOUNT_COUNT}, so keeping one monitor per slot for the process lifetime
+     * costs nothing worth reclaiming.
      */
     public static void clearAccountState(int account) {
-        Object lock = monitor(account);
-        synchronized (lock) {
+        synchronized (monitor(account)) {
             CACHE.remove(account);
             LOADED.remove(account);
             try {
@@ -148,7 +154,6 @@ public final class EventSchedulePresetStore {
             } catch (Throwable ignore) {
             }
         }
-        MONITORS.remove(account, lock);
     }
 
     private static void loadLocked(int account) {
