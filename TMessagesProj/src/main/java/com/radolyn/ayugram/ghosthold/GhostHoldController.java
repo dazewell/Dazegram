@@ -1,7 +1,6 @@
 package com.radolyn.ayugram.ghosthold;
 
 import android.content.SharedPreferences;
-import android.util.Log;
 
 import androidx.annotation.Nullable;
 
@@ -9,7 +8,6 @@ import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
-import org.telegram.messenger.BuildConfig;
 import org.telegram.messenger.ChatObject;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
@@ -108,11 +106,6 @@ public final class GhostHoldController {
     // Gap between successive sends on flush, so an entire backlog does not leave
     // in the same instant -- a simultaneous burst is itself a signal Ghost ended.
     private static final long FLUSH_STAGGER_MS = 1500;
-
-    // NAX_SMOKE_ghost-hold: temporary smoke diagnostics tag. Removed in a later
-    // commit once the smoke build confirms reachability. Log.e/.i/.w only, since
-    // proguard strips Log.v/.d from the release build the smoke APK installs.
-    private static final String SMOKE = "NAX_SMOKE_ghost-hold";
 
     private static volatile boolean flushInProgress;
 
@@ -441,19 +434,6 @@ public final class GhostHoldController {
         return ChatObject.getSendAsPeerId(chat, controller.getChatFull(-peer), true) != selfId;
     }
 
-    /**
-     * Smoke tripwire: called from the send funnel only after {@link #maybeHold}
-     * returned false. If a send the allowlist would have held is proceeding to the
-     * network while hold is active, that is the leak the feature exists to prevent
-     * -- log it loudly. Excluded variants (media, reply markup, send-as, ...)
-     * proceed by design and must not trip this.
-     */
-    public static void smokeProceedTripwire(int account, long peer, SendMessagesHelper.SendMessageParams params) {
-        if (isHoldableTextSend(account, peer, params)) {
-            Log.e(SMOKE, "forbidden: holdable plain text send proceeded to the network while ghost+hold active dialog=" + peer);
-        }
-    }
-
     private static boolean persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
         final MessagesController controller = MessagesController.getInstance(account);
         final UserConfig userConfig = UserConfig.getInstance(account);
@@ -585,7 +565,6 @@ public final class GhostHoldController {
                 objArr.add(mo);
                 controller.updateInterfaceWithMessages(peer, objArr, 1);
                 NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
-                Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
                 showDivertBulletin();
             });
         });
@@ -603,7 +582,6 @@ public final class GhostHoldController {
             params.params = new HashMap<>();
         }
         params.params.put(PARAM_BYPASS, PARAM_VALUE);
-        Log.e(SMOKE, "durable hold write failed; re-driving send to avoid loss account=" + account);
         SendMessagesHelper.getInstance(account).sendMessage(params);
     }
 
@@ -635,7 +613,6 @@ public final class GhostHoldController {
         }
         editor.apply();
         if (wasActive && !nowActive) {
-            Log.i(SMOKE, "flush trigger: ghost-off edge detected, requesting flush");
             AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
         }
     }
@@ -654,7 +631,6 @@ public final class GhostHoldController {
      */
     public static void checkOnProcessStart() {
         boolean nowActive = NekoConfig.isGhostModeActive();
-        Log.i(SMOKE, "begin: process start build=" + BuildConfig.BUILD_VERSION_STRING + " app=" + BuildConfig.APPLICATION_ID + " ghostActive=" + nowActive + " holdEnabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
         // Per-account bring-up, before any flush prompt below can collect: register
         // the fork observers, migrate any legacy held rows out of the stock tables
         // into ghost_held, and reconcile a flush interrupted by a kill. All three
@@ -672,7 +648,6 @@ public final class GhostHoldController {
         }
         editor.apply();
         if (!nowActive) {
-            Log.i(SMOKE, "flush trigger: process-start convergence, ghost inactive");
             AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
         }
     }
@@ -770,7 +745,6 @@ public final class GhostHoldController {
                 public void onBecameBackground() {
                 }
             });
-            Log.i(SMOKE, "foreground retry armed for deferred flush");
         } catch (Exception e) {
             foregroundRetryArmed = false;
             FileLog.e(e);
@@ -881,7 +855,6 @@ public final class GhostHoldController {
                 int sent = Math.max(0, pending - stillHeld);
                 text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, pending);
             }
-            Log.i(SMOKE, "end: flush complete pending=" + pending + " stillHeld=" + stillHeld);
             BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
         });
     }
@@ -1452,7 +1425,6 @@ public final class GhostHoldController {
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
-                    Log.i(SMOKE, "migrate: moved " + insertedOk.size() + " legacy held rows to ghost_held account=" + account);
                     for (long d : dialogs) {
                         postScheduledCount(account, d);
                     }
@@ -1475,8 +1447,7 @@ public final class GhostHoldController {
                 TLRPC.Message m = GhostHoldStore.decode(blob, selfId);
                 if (m == null) {
                     // Undecodable: leave the stock row intact (the retained guards keep it
-                    // from auto-sending) and log rather than drop the user's message.
-                    Log.e(SMOKE, "migrate: skipped undecodable legacy row in " + table + " account=" + account);
+                    // from auto-sending) rather than drop the user's message.
                     continue;
                 }
                 if (!isHeldMessage(m)) {
@@ -1537,7 +1508,6 @@ public final class GhostHoldController {
                     for (int mid : absent) {
                         store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
                     }
-                    Log.i(SMOKE, "reconcile: flushing resolved handedOff=" + present.size() + " reheld=" + absent.size() + " account=" + account);
                 });
             });
         });
@@ -1632,7 +1602,6 @@ public final class GhostHoldController {
                     for (long d : dialogs) {
                         postScheduledCount(account, d);
                     }
-                    Log.i(SMOKE, "held delete: removed " + toDelete.size() + " held rows via messagesDeleted account=" + account);
                 });
             }
         }

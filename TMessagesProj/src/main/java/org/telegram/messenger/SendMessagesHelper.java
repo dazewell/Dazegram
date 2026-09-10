@@ -4453,7 +4453,6 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
         if (com.radolyn.ayugram.ghosthold.GhostHoldController.maybeHold(currentAccount, peer, sendMessageParams)) {
             return;
         }
-        com.radolyn.ayugram.ghosthold.GhostHoldController.smokeProceedTripwire(currentAccount, peer, sendMessageParams); // NAX_SMOKE_ghost-hold
 
         long _payStars = getMessagesController().getSendPaidMessagesStars(peer);
         if (_payStars <= 0) {
