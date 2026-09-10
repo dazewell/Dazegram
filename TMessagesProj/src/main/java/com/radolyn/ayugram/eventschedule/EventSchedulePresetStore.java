@@ -211,7 +211,7 @@ public final class EventSchedulePresetStore {
             }
             JSONArray array = envelope.optJSONArray(KEY_PRESETS);
             if (array == null) return out;
-            for (int i = 0; i < array.length(); i++) {
+            for (int i = 0; i < array.length() && out.size() < EventScheduleEntry.MAX_PRESET_COUNT; i++) {
                 Preset preset = fromElementJson(array.optJSONObject(i));
                 if (preset != null) {
                     out.add(preset);
