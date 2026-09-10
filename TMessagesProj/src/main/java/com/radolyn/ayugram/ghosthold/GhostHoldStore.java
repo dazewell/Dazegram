@@ -284,18 +284,23 @@ public final class GhostHoldStore {
         }
         try {
             ensureLoaded();
-            boolean changed = false;
             StringBuilder in = new StringBuilder();
             for (int mid : mids) {
                 if (in.length() > 0) {
                     in.append(',');
                 }
                 in.append(mid);
+            }
+            // Durable delete first, then drop from the in-memory snapshot. If the SQL
+            // throws we keep master intact so the rows stay visible and consistent
+            // with what is still on disk, rather than vanishing until the next launch.
+            db().executeFast("DELETE FROM ghost_held WHERE mid IN(" + in + ")").stepThis().dispose();
+            boolean changed = false;
+            for (int mid : mids) {
                 if (master.remove(mid) != null) {
                     changed = true;
                 }
             }
-            db().executeFast("DELETE FROM ghost_held WHERE mid IN(" + in + ")").stepThis().dispose();
             if (changed) {
                 publish();
             }
