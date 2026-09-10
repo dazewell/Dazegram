@@ -569,7 +569,7 @@ public final class GhostHoldController {
         // update, the Scheduled-list insert and the bulletin are chained after it so
         // they run only once the row has landed. This orders the signal after
         // durability without blocking the UI thread on a synchronous DB write.
-        store.getQueue().postRunnable(() -> {
+        store.runOwned(() -> {
             boolean ok = store.insertOnQueue(record);
             if (!ok) {
                 // The durable write failed (e.g. disk full). We already told the
@@ -841,9 +841,23 @@ public final class GhostHoldController {
         // still waits on the user, and clearing the guard early would let a second
         // ghost-off start a concurrent flush over this one.
         final AtomicInteger remaining = new AtomicInteger(all);
+        // Pin each account's store generation at flush start. Every queue hop for an
+        // item validates against it (via runOwned), so a logout mid-flush -- which
+        // bumps the generation when it tears the store down -- abandons the remaining
+        // sends rather than transmitting from, or resurrecting into, a store the user
+        // has since logged out of. This is the flush "carrying the identity it began
+        // with"; the completion counter is untouched, an abandoned item still
+        // decrements it through runOwned's onInvalidated.
+        final java.util.HashMap<Integer, Integer> epochByAccount = new java.util.HashMap<>();
+        for (HeldItem it : items) {
+            if (!epochByAccount.containsKey(it.account)) {
+                epochByAccount.put(it.account, GhostHoldStore.getInstance(it.account).currentGeneration());
+            }
+        }
         for (int i = 0; i < all; i++) {
             HeldItem item = items.get(i);
-            AndroidUtilities.runOnUIThread(() -> flushItem(item, remaining, pending), i * FLUSH_STAGGER_MS);
+            final int epoch = epochByAccount.get(item.account);
+            AndroidUtilities.runOnUIThread(() -> flushItem(item, remaining, pending, epoch), i * FLUSH_STAGGER_MS);
         }
     }
 
@@ -874,7 +888,7 @@ public final class GhostHoldController {
         });
     }
 
-    private static void flushItem(HeldItem item, AtomicInteger remaining, int pending) {
+    private static void flushItem(HeldItem item, AtomicInteger remaining, int pending, int epoch) {
         // Re-check Ghost per item on the privacy invariant, which is about Ghost
         // alone, not the hold preference: if Ghost came back on mid-flush this
         // message must stay held even when Hold Messages was turned off in the same
@@ -890,7 +904,7 @@ public final class GhostHoldController {
         // before dispatch. A gone record means discard. Mark the record FLUSHING here,
         // durably, so a kill after handoff begins is reconciled at next start rather
         // than silently re-driven or lost.
-        store.getQueue().postRunnable(() -> {
+        store.runOwned(epoch, () -> {
             final GhostHoldStore.HeldRecord rec = store.selectOnQueue(item.mid);
             HeldItem fresh = null;
             // Only proceed to dispatch once the FLUSHING claim has durably persisted.
@@ -902,11 +916,11 @@ public final class GhostHoldController {
                 fresh = toHeldItem(item.account, rec);
             }
             final HeldItem f = fresh;
-            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending));
-        });
+            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending, epoch));
+        }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
 
-    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending) {
+    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending, int epoch) {
         final int account = item.account;
         final long dialogId = item.dialogId;
         final int mid = item.mid;
@@ -919,7 +933,7 @@ public final class GhostHoldController {
         // Ghost flipped back on during the re-read hop -> keep it held. Revert the
         // FLUSHING mark so it renders and re-drives cleanly on the next flush.
         if (NekoConfig.isGhostModeActive()) {
-            revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
+            revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
             return;
         }
 
@@ -982,7 +996,7 @@ public final class GhostHoldController {
         // re-drive it. It stays visible in Scheduled, the flush bulletin reports it as
         // not sent, and the user can send it by hand at the price they are shown.
         if (isPaidDialog(account, dialogId)) {
-            revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
+            revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
             return;
         }
         final boolean fut = future;
@@ -996,7 +1010,7 @@ public final class GhostHoldController {
         // record is gone or no longer FLUSHING. This does not close the window to zero
         // -- the send itself must run on the UI thread one hop later -- but it shrinks
         // it to that single hop, which is the tightest a UI-thread send allows.
-        store.getQueue().postRunnable(() -> {
+        store.runOwned(epoch, () -> {
             GhostHoldStore.HeldRecord still = store.selectOnQueue(mid);
             final boolean valid = still != null && still.state == GhostHoldStore.STATE_FLUSHING;
             AndroidUtilities.runOnUIThread(() -> {
@@ -1011,7 +1025,7 @@ public final class GhostHoldController {
                 // callback we do not own could transmit under Ghost later. Re-check both
                 // on this last UI turn and keep the message held if either is true.
                 if (NekoConfig.isGhostModeActive() || isPaidDialog(account, dialogId)) {
-                    revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
+                    revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
                     return;
                 }
                 SendMessagesHelper.getInstance(account).sendMessage(sendParams);
@@ -1022,9 +1036,9 @@ public final class GhostHoldController {
                 // terminal only after it has run. If the funnel wrote nothing (early
                 // return / became paid), the record is reverted to HELD for the next
                 // flush; nothing is ever lost.
-                completeHandoff(account, mid, dialogId, fut, () -> onItemTerminal(remaining, pending));
+                completeHandoff(account, mid, dialogId, fut, epoch, () -> onItemTerminal(remaining, pending));
             });
-        });
+        }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
     /**
      * Delete-on-write completion. After the flush hands a held message back to the
@@ -1044,7 +1058,7 @@ public final class GhostHoldController {
      * absent-by-{@code -N} and is re-driven, producing a duplicate. Per the design that
      * is the correct direction to fail -- duplicate, never loss.
      */
-    private static void completeHandoff(int account, int mid, long dialogId, boolean future, @Nullable Runnable onDone) {
+    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             boolean handedOff = false;
@@ -1059,7 +1073,7 @@ public final class GhostHoldController {
             }
             final boolean ho = handedOff;
             GhostHoldStore store = GhostHoldStore.getInstance(account);
-            store.getQueue().postRunnable(() -> {
+            store.runOwned(epoch, () -> {
                 if (ho) {
                     store.deleteOnQueue(mid);
                     if (!future) {
@@ -1080,6 +1094,15 @@ public final class GhostHoldController {
                 // Signal the item terminal only after this resolution has run, whatever
                 // its outcome, and always on the UI thread (flushInProgress lives there).
                 // This is what makes flush completion observed, not timed.
+                if (onDone != null) {
+                    AndroidUtilities.runOnUIThread(onDone);
+                }
+            }, () -> {
+                // The store was torn down (logout) during the storage-queue round trip.
+                // A handed-off row is already gone with the deleted db and stock still
+                // owns any sent message; a not-handed-off row was a re-hold the logout
+                // has intentionally discarded. Either way there is nothing left to
+                // resolve -- just release the flush so it can complete.
                 if (onDone != null) {
                     AndroidUtilities.runOnUIThread(onDone);
                 }
@@ -1119,14 +1142,17 @@ public final class GhostHoldController {
      * the UI thread. The record stays visible in Scheduled and re-drives cleanly on
      * the next flush.
      */
-    private static void revertToHeld(int account, int mid, @Nullable Runnable onDone) {
+    private static void revertToHeld(int account, int mid, int epoch, @Nullable Runnable onDone) {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
-        store.getQueue().postRunnable(() -> {
-            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+        Runnable finish = () -> {
             if (onDone != null) {
                 AndroidUtilities.runOnUIThread(onDone);
             }
-        });
+        };
+        store.runOwned(epoch, () -> {
+            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+            finish.run();
+        }, finish);
     }
 
     // ---- held-queue reads ----
@@ -1153,7 +1179,12 @@ public final class GhostHoldController {
         final AtomicInteger remaining = new AtomicInteger(accounts.size());
         for (int account : accounts) {
             final GhostHoldStore store = GhostHoldStore.getInstance(account);
-            store.getQueue().postRunnable(() -> {
+            Runnable done = () -> {
+                if (remaining.decrementAndGet() == 0) {
+                    AndroidUtilities.runOnUIThread(() -> onDone.run(new ArrayList<>(result)));
+                }
+            };
+            store.runOwned(store.currentGeneration(), () -> {
                 // NagramX: HELD only, never FLUSHING. This collection feeds the flush,
                 // so a FLUSHING row here would be dispatched again -- and a row stuck
                 // FLUSHING (its handoff already wrote the stock twin but the follow-up
@@ -1168,10 +1199,8 @@ public final class GhostHoldController {
                         result.add(it);
                     }
                 }
-                if (remaining.decrementAndGet() == 0) {
-                    AndroidUtilities.runOnUIThread(() -> onDone.run(new ArrayList<>(result)));
-                }
-            });
+                done.run();
+            }, done);
         }
     }
 
@@ -1343,7 +1372,7 @@ public final class GhostHoldController {
             nc.addObserver(obs, NotificationCenter.messagesDeleted);
             nc.addObserver(obs, NotificationCenter.appDidLogout);
             GhostHoldStore store = GhostHoldStore.getInstance(account);
-            store.getQueue().postRunnable(() -> store.selectAllOnQueue());
+            store.runOwned(() -> store.selectAllOnQueue());
             migrateAccount(account);
             reconcileFlushing(account);
         });
@@ -1377,19 +1406,15 @@ public final class GhostHoldController {
             if (toInsert.isEmpty()) {
                 return;
             }
-            store.getQueue().postRunnable(() -> {
-                // Drop the batch if the store was torn down (logout) after it was
-                // collected. Safe: the stock rows are deleted only after a confirmed
-                // insert, so nothing was removed and the next init re-migrates them.
-                // Applying it would stamp a reopened store -- a different user's (a
-                // cross-account leak), or the same user's post-logout store the deletion
-                // was meant to leave empty (resurrecting destroyed messages). The check
-                // and the teardown's increment both run on this fork queue, so the
-                // compare is atomic with the teardown.
-                if (store.currentGeneration() != genAtStart) {
-                    Log.i(SMOKE, "migrate: dropped stale batch account=" + account + " store reopened");
-                    return;
-                }
+            store.runOwned(genAtStart, () -> {
+                // runOwned's generation gate drops this batch if the store was torn
+                // down (logout) after it was collected -- a reopen for a different user
+                // (a cross-account leak), or the same user's post-logout store the
+                // deletion was meant to leave empty (resurrecting destroyed messages).
+                // The gate and the teardown's increment both run on this fork queue, so
+                // the compare is atomic with the teardown. Dropping is loss-free: the
+                // stock rows are deleted only after a confirmed insert, so nothing was
+                // removed and the next init re-migrates them.
                 java.util.HashSet<Integer> insertedOk = new java.util.HashSet<>();
                 for (GhostHoldStore.HeldRecord rec : toInsert) {
                     if (store.insertOnQueue(rec)) {
@@ -1473,7 +1498,8 @@ public final class GhostHoldController {
      */
     private static void reconcileFlushing(int account) {
         GhostHoldStore store = GhostHoldStore.getInstance(account);
-        store.getQueue().postRunnable(() -> {
+        final int epoch = store.currentGeneration();
+        store.runOwned(epoch, () -> {
             ArrayList<GhostHoldStore.HeldRecord> flushing = store.selectByStateOnQueue(GhostHoldStore.STATE_FLUSHING);
             if (flushing.isEmpty()) {
                 return;
@@ -1494,7 +1520,7 @@ public final class GhostHoldController {
                     }
                     (found ? present : absent).add(rec.mid);
                 }
-                store.getQueue().postRunnable(() -> {
+                store.runOwned(epoch, () -> {
                     if (!present.isEmpty()) {
                         store.deleteManyOnQueue(present);
                     }
@@ -1547,7 +1573,7 @@ public final class GhostHoldController {
         public void didReceivedNotification(int id, int acc, Object... args) {
             if (id == NotificationCenter.appDidLogout) {
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
-                store.getQueue().postRunnable(store::deleteDatabaseFileOnQueue);
+                store.postTeardown();
                 accountInited[account] = false;
                 NotificationCenter nc = NotificationCenter.getInstance(account);
                 nc.removeObserver(this, NotificationCenter.messagesDeleted);
@@ -1579,7 +1605,7 @@ public final class GhostHoldController {
                     return;
                 }
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
-                store.getQueue().postRunnable(() -> {
+                store.runOwned(() -> {
                     java.util.HashSet<Long> dialogs = new java.util.HashSet<>();
                     ArrayList<Integer> toDelete = new ArrayList<>();
                     for (int mid : negs) {

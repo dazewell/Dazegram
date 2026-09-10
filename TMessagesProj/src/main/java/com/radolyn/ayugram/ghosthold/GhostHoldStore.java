@@ -96,19 +96,69 @@ public final class GhostHoldStore {
         this.queue = new DispatchQueue("ghostHold_" + account);
     }
 
-    public DispatchQueue getQueue() {
-        return queue;
+    /**
+     * The single entry point for fork-queue work (the render snapshot aside, which is
+     * read off-queue). Posts {@code op} and runs it only if the store still matches the
+     * {@code epoch} the caller pinned when it decided to act -- i.e. the store has not
+     * been torn down by a logout since. If it has, {@code op} is abandoned and
+     * {@code onInvalidated} runs in its place, so a caller threading a completion
+     * counter still terminates instead of hanging. This carries the caller-intent half
+     * of the ownership precondition; the current-user half is enforced unavoidably
+     * inside every db method by {@link #ensureLoaded()}. Together they are the whole
+     * precondition, and because the queue is private no work can bypass them.
+     */
+    public void runOwned(int epoch, Owned op, @Nullable Runnable onInvalidated) {
+        queue.postRunnable(() -> {
+            if (generation != epoch) {
+                if (onInvalidated != null) {
+                    onInvalidated.run();
+                }
+                return;
+            }
+            try {
+                op.run();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+        });
+    }
+
+    public void runOwned(int epoch, Owned op) {
+        runOwned(epoch, op, null);
     }
 
     /**
-     * The store's teardown generation, incremented on each logout DB deletion. A
-     * migration batch captures this at collection time and drops itself on the fork
-     * queue if the value has since changed -- i.e. the store was reopened, for the same
-     * or a different user -- so a stale batch can never be applied to a reopened store.
-     * Read off-queue for the capture; compared and incremented on the fork queue.
+     * Pins the current generation at post time. For single-shot ops with no earlier
+     * decision point of their own, where "the caller intended" is simply "now".
+     */
+    public void runOwned(Owned op) {
+        runOwned(generation, op, null);
+    }
+
+    /**
+     * Posts the logout teardown. The one queue op that must bypass the ownership gate,
+     * because it is the teardown that invalidates it.
+     */
+    public void postTeardown() {
+        queue.postRunnable(this::deleteDatabaseFileOnQueue);
+    }
+
+    /**
+     * The store's teardown generation, incremented on each logout DB deletion. A caller
+     * -- a migration batch, or a flush -- pins this when it begins and revalidates
+     * against it (via {@link #runOwned}) at each queue step, so work decided against one
+     * open store is dropped once the store is torn down and reopened, for the same user
+     * (which would resurrect messages the logout destroyed) or a different one (a
+     * cross-account leak). Read off-queue for the pin; compared and incremented on the
+     * fork queue, so the two are atomic with respect to each other.
      */
     public int currentGeneration() {
         return generation;
+    }
+
+    /** A unit of fork-queue work run under the ownership gate; see {@link #runOwned}. */
+    public interface Owned {
+        void run() throws Exception;
     }
 
     // ---- immutable render snapshot (read off-queue) ----
@@ -154,7 +204,6 @@ public final class GhostHoldStore {
                 if (create) {
                     db.executeFast("PRAGMA user_version = 1").stepThis().dispose();
                 }
-                enforceOwner(db);
                 database = db;
             }
             return database;
@@ -201,6 +250,14 @@ public final class GhostHoldStore {
     }
 
     private void ensureLoaded() throws SQLiteException {
+        // Single, unavoidable ownership gate: every queue read and write funnels
+        // through here, so re-binding the file to the current logged-in user on every
+        // access -- not just the first open -- is what keeps a slot reused by a
+        // different user (a re-login, even one the async logout observer somehow
+        // missed) from ever serving or writing the previous owner's rows. enforceOwner
+        // purges and sets loaded=false on a user change, so the reload below rebuilds
+        // master under the new owner.
+        enforceOwner(db());
         if (loaded) {
             return;
         }
@@ -386,9 +443,10 @@ public final class GhostHoldStore {
     /**
      * Closes and deletes this account's database file (WAL/SHM sidecars included)
      * and clears the in-memory view. Called on logout so a re-login on the same
-     * account never inherits a previous session's held messages. Call on the queue.
+     * account never inherits a previous session's held messages. Posted via
+     * {@link #postTeardown()}; it is the one queue op that bypasses the ownership gate.
      */
-    public void deleteDatabaseFileOnQueue() {
+    private void deleteDatabaseFileOnQueue() {
         synchronized (dbLock) {
             if (database != null) {
                 try {
