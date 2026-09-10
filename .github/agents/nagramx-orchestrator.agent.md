@@ -1388,6 +1388,38 @@ lighter touch.
 - **Do not report a gate as passed when it was skipped.** Say which gate ran,
   which was substituted, and which did not apply.
 
+## Talking to the sessions you dispatch
+
+The normative protocol is `.claude/skills/nagramx-agent-comms/SKILL.md` — read it;
+it exists because on a full day of multi-session work more time was lost to
+coordination failure than to any bug. The idle-decision table and the
+child-orchestrator control vocabulary above are the richer instance of it for the
+orchestrator↔orchestrator channel; these are the coordinator obligations it puts
+on you for **every** session you watch, leaf implementers included, and they do
+not repeat what that file states — they point at it:
+
+- **Observable state is authoritative; a session's narrative is not.** Every claim
+  a child makes about heads, checks or threads is unverified until you re-run the
+  `git`/`gh` check yourself (Phase 4 already does this — the protocol is why).
+- **State-stamp what you send, and honour the stamp you get back.** Put the head
+  SHA you last observed for a session on the instruction you send it; when a report
+  comes back stamped behind the tree you can already see, re-read before acting on
+  it. That is how a crossed instruction/report pair is caught instead of acted on.
+- **One live instruction per session; a new one supersedes, it does not stack.**
+  Send the next only after the last is acked or observably acted on; if things
+  change first, send `supersedes my @X: …`. This serializes one pair, never the
+  fleet.
+- **A start-ack or git progress by the next idle notification, or it is a suspected
+  stall.** Then send exactly one probe; if the next wake still shows no ack and no
+  git progress, the session is **dead** — no message rescues it. Verify externally
+  and restart the work in a fresh session. Do not nurse it, and do not wait hours.
+- **Hand off to a fresh session before the stall** on a git-contradicted self-report,
+  a second suspected stall, or a session re-deriving ground it covered — degradation
+  is the root cause and a self-contained brief restores function.
+- **Write every instruction self-contained** so it survives the child's context
+  compaction: imperative action, the SHA/PR it applies to, the authority to do it.
+  The Phase-3 brief template is the worked example of this.
+
 ## Reporting while you work
 
 **Two audiences, two registers.** *To dazewell* — full, concrete narrative, as
