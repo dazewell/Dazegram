@@ -1279,7 +1279,12 @@ imply you have seen the app running.
 
 Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
-`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes.
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. Before you archive,
+also close every outstanding authorization that session held (comms protocol
+Rule 11): diff what you authorized against what the branch actually contains,
+and for anything not landed, either cite the commit that covers it, carry it
+into a fresh brief, or record why it is being explicitly declined — archiving is
+exactly the moment an un-tracked authorization becomes unrecoverable.
 
 **Sequencing note, orchestrator-facing:** `HANDBACK_POSTED` is not `CLOSED`. A
 child that has posted its handback is done *reporting* but not yet safe to
@@ -1437,6 +1442,12 @@ not repeat what that file states — they point at it:
   erodes. Name a mechanism only as an *example* of the property, never as the
   requirement; the day's most expensive misses were prescriptions the call site
   already knew were wrong (Rule 10).
+- **Carry the dead session's outstanding authorized work into the replacement
+  brief — an urgent new task does not retire an old authorization nobody did.**
+  Keep that list somewhere that survives the session dying, not only in its own
+  memory, and before you call a scope complete diff what was authorized against
+  what the branch actually contains rather than trusting the last report
+  (Rule 11).
 
 ## Reporting while you work
 

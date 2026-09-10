@@ -1,6 +1,6 @@
 ---
 name: nagramx-agent-comms
-description: "Dazewell's protocol for how the NagramX agent sessions talk to each other — orchestrator to implementer, parent orchestrator to child orchestrator, and any coordinator watching any session it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator has to decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Binds nagramx-orchestrator (coordinator side) and nagramx-implementer (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of these same rules. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, standing authority so routine decisions don't cost a round trip, one-outstanding-instruction flow control with supersession, start-acks so a silent stall is caught in minutes not hours, terminal-review rules, mechanical liveness with restart-not-nudge, fresh-session handoff before degradation stalls a session, and self-contained instructions that survive context compaction. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug."
+description: "Dazewell's protocol for how the NagramX agent sessions talk to each other — orchestrator to implementer, parent orchestrator to child orchestrator, and any coordinator watching any session it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator has to decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Binds nagramx-orchestrator (coordinator side) and nagramx-implementer (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of these same rules. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, standing authority so routine decisions don't cost a round trip, one-outstanding-instruction flow control with supersession, start-acks so a silent stall is caught in minutes not hours, terminal-review rules, mechanical liveness with restart-not-nudge, fresh-session handoff before degradation stalls a session, self-contained instructions that survive context compaction, and carrying a stalled session's outstanding authorized work into its replacement rather than losing it. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug."
 ---
 
 # NagramX cross-session communication protocol
@@ -141,7 +141,7 @@ one idea in one direction or the other.
 
 ## The rules
 
-Ten rules. Each says which side it binds, how it is checked, and what it costs —
+Eleven rules. Each says which side it binds, how it is checked, and what it costs —
 because a rule that makes each exchange safe but triples the number of exchanges
 is a net loss, and one that can't be checked can't be enforced.
 
@@ -481,6 +481,48 @@ wrong prescription *first*.
   not built — the reference day's tally was at least five.
 - *Kills:* the coordinator's costliest recurring failure — prescribing a mechanism
   the call site already knew was wrong.
+
+### 11. Authorized work outlives the session that was authorized to do it
+
+Rules 1–10 protect **messages** — a stamp, an ack, a supersession, a restart.
+None of them protect the **set of open commitments** a session was carrying when
+it stalled. A session and the work it was told to do do not share a lifetime:
+the session can die mid-instruction while the obligation survives, and nothing
+above says who is responsible for remembering it.
+
+**Coordinator.** A stall, an archive, or a replacement session must never
+silently drop something you already authorized but the dead session had not yet
+started. Keep the outstanding-authorization list somewhere that survives the
+session dying, not only in that session's own conversational memory — the same
+distrust Rule 8 already applies to a degraded session's self-reports. When you
+write a replacement brief (Rule 9's self-contained template), the fixed block
+carries **every authorization the dead session had not yet landed**, not only
+the branch state and whatever new task prompted the replacement — an urgent new
+task does not retire an old one nobody did. Before you call a scope complete, or
+before you archive the session that held it, **verify against the branch, not
+against the last report**: diff what was authorized against what the commits
+actually contain, the same own-tree re-read Rule 2 already requires, run here by
+the coordinator against a tree that is not its own.
+
+This is not hypothetical: a five-item safety bundle was authorized, the session
+that held it stalled without starting the work and was archived, the
+replacement's brief carried the new urgent task but not the bundle, and the
+coordinator then treated the frozen surface as complete. Two of the five items
+were later re-reported as Critical — recovered only because an unrelated
+automated review happened to re-find them hours later. Luck is not a
+verification step, and the next stall may not be caught by one.
+
+- *Checked:* every authorization reaches exactly one terminal disposition —
+  landed (cite the commit), explicitly carried into a fresh brief, or explicitly
+  declined with a stated reason — before the session holding it is archived or
+  the scope it belongs to is reported complete.
+- *Cost:* one running list per coordinator, kept alongside the brief template it
+  already maintains, plus one diff-against-branch check at each handoff and each
+  archive. Cheap next to a Critical that shipped because an item was never
+  written down anywhere the replacement session could see.
+- *Kills:* authorized work lost silently across a stall/archive/replacement — the
+  seam none of Rules 1–10 cover, because they protect messages, not the
+  commitments a dead session was carrying.
 
 ## The honest limit, restated
 
