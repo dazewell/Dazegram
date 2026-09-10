@@ -7,7 +7,6 @@ import androidx.annotation.Nullable;
 
 import org.telegram.SQLite.SQLiteCursor;
 import org.telegram.SQLite.SQLiteDatabase;
-import org.telegram.SQLite.SQLiteException;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.ApplicationLoader;
 import org.telegram.messenger.BuildConfig;
@@ -25,7 +24,6 @@ import org.telegram.messenger.SendMessagesHelper;
 import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.Utilities;
 import org.telegram.tgnet.ConnectionsManager;
-import org.telegram.tgnet.NativeByteBuffer;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
@@ -45,21 +43,31 @@ import tw.nekomimi.nekogram.NekoConfig;
  * "Hold Messages" for Ghost Mode.
  *
  * <p>When Ghost Mode is active and the Hold Messages preference is on, a plain
- * text send is not transmitted. Instead it is persisted as a held row in
- * {@code scheduled_messages_v2} (send_state = 1, negative id, marked in
- * {@link TLRPC.Message#params}), so it renders in that chat's Scheduled list and
- * survives an app kill. Nothing about a held message lives only in memory -- the
- * database row is the sole source of truth for queue membership.
+ * text send is not transmitted. Instead it is persisted in a fork-owned,
+ * per-account database ({@code ghosthold_<account>.db}, see {@link GhostHoldStore})
+ * that no stock query ever names, so it renders in that chat's Scheduled list and
+ * survives an app kill while being structurally invisible to the send path. That
+ * invisibility is the no-leak invariant (P1): stock cannot transmit a row it
+ * cannot see. Nothing about a held message lives only in memory -- the fork row is
+ * the sole source of truth for queue membership.
+ *
+ * <p>A held message renders through a single read-time injection at the scheduled
+ * load chokepoint ({@link #injectHeldScheduled}); the injected objects are
+ * display-only and never written back to any stock table.
  *
  * <p>The queue drains ("flush") only when Ghost Mode turns off. Ghost is a
  * derived predicate over five independently-flippable toggles
  * ({@link NekoConfig#isGhostModeActive()}), so the flush is triggered from an
  * edge detector that watches the derived active/inactive transition rather than
- * any single toggle, plus a convergence check at process start.
+ * any single toggle, plus a convergence check at process start. On flush a record
+ * is handed back to the normal send funnel by reusing its negative id; the fork
+ * record is deleted only once the funnel has provably written its stock row
+ * (delete-on-write), after which stock owns delivery and cross-restart retry.
  *
  * <p>Everything here is global (Ghost is a single unsuffixed preference), but the
- * sending side is per-account: local message ids collide across accounts, so
- * every held row is addressed by {@code (account, mid, dialogId)}, never id alone.
+ * storage and sending sides are per-account: local message ids collide across
+ * accounts, so every held record is addressed by {@code (account, mid, dialogId)},
+ * never id alone.
  */
 public final class GhostHoldController {
 
@@ -78,13 +86,11 @@ public final class GhostHoldController {
     // onto the SendMessageParams on flush. Absent means the send had none.
     private static final String PARAM_REPEAT = "ghost_hold_repeat";
     private static final String PARAM_EFFECT = "ghost_hold_effect";
-    // random_id is a client-only field that is not part of the serialized TL blob
-    // and is normally restored from a randoms_v2 join the stock loaders do (see
-    // MessagesStorage.getMessagesInternal). Our held query reads the blob only, so
-    // carry random_id in params and restore it in readHeldRow. Without it the sent
-    // correlation (randomsMapToSentId) always tests 0 and the double-send guard is
-    // inert; a mid-keyed join could not stand in, because confirmation remaps the
-    // randoms_v2 row's mid off the orphan's negative id (MessagesStorage ~:13925).
+    // random_id is a client-only field that is not part of the serialized TL blob.
+    // The flush re-drive needs it so it reuses this id instead of the funnel minting
+    // a fresh one (random_id == 0 guard at SendMessagesHelper ~:4965), which keeps a
+    // re-driven send correlated with any prior attempt. Carry it in params and restore
+    // it in toHeldItem.
     private static final String PARAM_RANDOM = "ghost_hold_random";
 
     private static final String PREFS_NAME = "ghosthold_state";
@@ -522,32 +528,44 @@ public final class GhostHoldController {
         if (params.effect_id != 0) {
             stored.put(PARAM_EFFECT, Long.toString(params.effect_id));
         }
-        // Carry random_id so readHeldRow can restore it (the blob does not hold it).
+        // Carry random_id so toHeldItem can restore it (the blob does not hold it).
         // msg.random_id was just minted above and is always non-zero.
         stored.put(PARAM_RANDOM, Long.toString(msg.random_id));
         msg.params = stored;
 
         final TLRPC.Message stableMsg = msg;
-        ArrayList<TLRPC.Message> arr = new ArrayList<>();
-        arr.add(stableMsg);
-        MessagesStorage storage = MessagesStorage.getInstance(account);
-        // Critical: the durable row must exist before the user is told "Held".
-        // putMessages(useQueue=true) enqueues the write on the storage queue; the
-        // interface update, the Scheduled-list insert and the bulletin are chained
-        // on that same serial queue so they run only after the write has landed.
-        // This orders the signal after durability without blocking the UI thread
-        // on a synchronous DB write (which would risk an ANR).
-        storage.putMessages(arr, false, true, false, 0, 1, 0);
-        storage.getStorageQueue().postRunnable(() -> AndroidUtilities.runOnUIThread(() -> {
-            MessageObject mo = new MessageObject(account, stableMsg, true, true);
-            mo.scheduled = true;
-            ArrayList<MessageObject> objArr = new ArrayList<>();
-            objArr.add(mo);
-            controller.updateInterfaceWithMessages(peer, objArr, 1);
-            NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
-            Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
-            showDivertBulletin();
-        }));
+        final byte[] blob;
+        try {
+            blob = GhostHoldStore.encode(stableMsg);
+        } catch (Exception e) {
+            // Serializing a plain-text message does not fail in practice; if it
+            // somehow does we must not tell the user "Held" for a message we could
+            // not persist, so bail without a durable row and without the bulletin.
+            FileLog.e(e);
+            return;
+        }
+        final GhostHoldStore store = GhostHoldStore.getInstance(account);
+        final GhostHoldStore.HeldRecord record =
+                new GhostHoldStore.HeldRecord(stableMsg.id, peer, stableMsg.date, GhostHoldStore.STATE_HELD, blob);
+        // Critical: the durable fork row must exist before the user is told "Held".
+        // insertOnQueue writes ghost_held on the store's serial queue; the interface
+        // update, the Scheduled-list insert and the bulletin are chained after it so
+        // they run only once the row has landed. This orders the signal after
+        // durability without blocking the UI thread on a synchronous DB write.
+        store.getQueue().postRunnable(() -> {
+            store.insertOnQueue(record);
+            postScheduledCount(account, peer);
+            AndroidUtilities.runOnUIThread(() -> {
+                MessageObject mo = new MessageObject(account, stableMsg, true, true);
+                mo.scheduled = true;
+                ArrayList<MessageObject> objArr = new ArrayList<>();
+                objArr.add(mo);
+                controller.updateInterfaceWithMessages(peer, objArr, 1);
+                NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
+                Log.i(SMOKE, "expected: diverted send to hold and added to scheduled list account=" + account + " dialog=" + peer);
+                showDivertBulletin();
+            });
+        });
     }
 
     private static void showDivertBulletin() {
@@ -598,6 +616,16 @@ public final class GhostHoldController {
     public static void checkOnProcessStart() {
         boolean nowActive = NekoConfig.isGhostModeActive();
         Log.i(SMOKE, "begin: process start build=" + BuildConfig.BUILD_VERSION_STRING + " app=" + BuildConfig.APPLICATION_ID + " ghostActive=" + nowActive + " holdEnabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
+        // Per-account bring-up, before any flush prompt below can collect: register
+        // the fork observers, migrate any legacy held rows out of the stock tables
+        // into ghost_held, and reconcile a flush interrupted by a kill. All three
+        // are enqueued here so they are ordered ahead of the collect that promptFlush
+        // triggers; each is idempotent and safe to re-run on a later launch.
+        for (int a = 0; a < UserConfig.MAX_ACCOUNT_COUNT; a++) {
+            if (UserConfig.getInstance(a).isClientActivated()) {
+                initAccount(a);
+            }
+        }
         SharedPreferences.Editor editor = prefs().edit();
         editor.putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive);
         if (nowActive) {
@@ -628,14 +656,8 @@ public final class GhostHoldController {
                 flushInProgress = false;
                 return;
             }
-            int pending = countPending(items);
+            int pending = items.size();
             BaseFragment fragment = LaunchActivity.getLastFragment();
-            if (pending == 0) {
-                // Only stale confirmed-sent orphans remain; clear them silently,
-                // never re-send, and show nothing.
-                performFlush(items);
-                return;
-            }
             if (fragment == null || fragment.getParentActivity() == null) {
                 // No foreground screen to confirm on (e.g. process-start convergence
                 // before any UI is up, including a headless push-service process whose
@@ -716,16 +738,6 @@ public final class GhostHoldController {
         }
     }
 
-    private static int countPending(ArrayList<HeldItem> items) {
-        int pending = 0;
-        for (HeldItem item : items) {
-            if (!item.alreadySent) {
-                pending++;
-            }
-        }
-        return pending;
-    }
-
     private static tw.nekomimi.nekogram.config.ConfigItem[] ghostToggleItems() {
         return new tw.nekomimi.nekogram.config.ConfigItem[]{
                 NekoConfig.sendReadMessagePackets,
@@ -779,7 +791,7 @@ public final class GhostHoldController {
         // Every item is processed (stale orphans get cleaned), but only genuinely
         // pending sends are reported to the user, so the counts stay honest.
         final int all = items.size();
-        final int pending = countPending(items);
+        final int pending = all;
         // Completion is observed, not timed: each item, whatever its fate (sent and
         // cleaned, re-held because Ghost came back on, discarded because the user
         // deleted it mid-stagger, or a stale orphan cleared) decrements this counter,
@@ -830,15 +842,22 @@ public final class GhostHoldController {
             onItemTerminal(remaining, pending);
             return;
         }
-        final MessagesStorage storage = MessagesStorage.getInstance(item.account);
+        final GhostHoldStore store = GhostHoldStore.getInstance(item.account);
         // Never act on the snapshot captured at collect time. During the stagger the
-        // user can delete or edit a held row; re-read the current row immediately
-        // before dispatch off the same serial storage queue, then decide on the UI
-        // thread. A delete makes the re-read return null (discard, touch nothing); an
-        // edit is honoured because the re-driven copy is the fresh one, not the stale.
-        storage.getStorageQueue().postRunnable(() -> {
-            final HeldItem fresh = reReadHeldRow(item, storage);
-            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, fresh, remaining, pending));
+        // user can delete a held row (the messagesDeleted observer removes the fork
+        // record); re-read the current record on the store's serial queue immediately
+        // before dispatch. A gone record means discard. Mark the record FLUSHING here,
+        // durably, so a kill after handoff begins is reconciled at next start rather
+        // than silently re-driven or lost.
+        store.getQueue().postRunnable(() -> {
+            final GhostHoldStore.HeldRecord rec = store.selectOnQueue(item.mid);
+            HeldItem fresh = null;
+            if (rec != null) {
+                store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING);
+                fresh = toHeldItem(item.account, rec);
+            }
+            final HeldItem f = fresh;
+            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending));
         });
     }
 
@@ -846,24 +865,16 @@ public final class GhostHoldController {
         final int account = item.account;
         final long dialogId = item.dialogId;
         final int mid = item.mid;
-        // The row vanished during the stagger (user deleted it, or it was already
-        // cleaned): nothing to send, nothing to remove.
+        // The record vanished during the stagger (user deleted it): nothing to send,
+        // nothing to remove.
         if (fresh == null) {
             onItemTerminal(remaining, pending);
             return;
         }
-        // Ghost flipped back on during the re-read hop -> keep it held.
+        // Ghost flipped back on during the re-read hop -> keep it held. Revert the
+        // FLUSHING mark so it renders and re-drives cleanly on the next flush.
         if (NekoConfig.isGhostModeActive()) {
-            onItemTerminal(remaining, pending);
-            return;
-        }
-        // Correlation gate: a held row whose message has already been dispatched and
-        // confirmed by the server (its random_id now maps to a positive server id)
-        // must never be re-driven -- otherwise a paid-DM send would re-open the
-        // paywall and risk a second charge, and a normal send would duplicate. Such
-        // a stale orphan is only removed here, never re-sent.
-        if (fresh.alreadySent) {
-            cleanupAfterHandoff(account, mid, dialogId, true, () -> onItemTerminal(remaining, pending));
+            revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
             return;
         }
 
@@ -898,13 +909,11 @@ public final class GhostHoldController {
             }
         }
         // Once handed to the funnel this is a normal outgoing message, so it must not
-        // still carry our hold markers. A marked twin would be re-collected by queryHeld;
-        // an unmarked one (after this strip) is a plain message stock retry can resend --
-        // both are handled elsewhere, but the sent row itself must not claim to be held.
-        // The three fields we care about were lifted into first-class fields just above.
-        // Strip in place: of(mo) passed messageOwner.params by reference as p.params and
-        // the retry path re-serializes that same map, so removing the keys here is what
-        // actually unmarks the row the funnel writes.
+        // still carry our hold markers -- the funnel writes the stock row from this
+        // same message, and a marked stock row is exactly the leak this rebuild
+        // removes. The three fields we care about were lifted into first-class fields
+        // just above. of(mo) passed messageOwner.params by reference as p.params, so
+        // stripping the keys here unmarks the row the funnel writes.
         if (m.params != null) {
             m.params.remove(PARAM_MARKER);
             m.params.remove(PARAM_NO_WEBPAGE);
@@ -914,112 +923,94 @@ public final class GhostHoldController {
         }
 
         // Re-drive in place. The funnel keys its destination table off scheduleDate
-        // alone (SendMessagesHelper:5306-5320), not the row's current table, so a
-        // send-now re-drive (scheduleDate == 0) makes the funnel write the row into
-        // messages_v2 as part of sending, while a future-dated one rewrites the same
-        // scheduled_messages_v2 row in place.
+        // alone (SendMessagesHelper:5306-5320), not any current table, so a send-now
+        // re-drive (scheduleDate == 0) makes the funnel write messages_v2, while a
+        // future-dated one writes scheduled_messages_v2 -- both under the reused
+        // negative id, which is what completeHandoff probes for.
         // An automated flush never opens a paywall. The dialog was not paid when this
         // row was held (isHoldableTextSend excludes paid dialogs), but it can become
         // paid before the flush. Re-driving it now would make the funnel open the Stars
         // paywall; if Ghost is re-enabled while that paywall is open and the user then
         // accepts, the funnel's deferred callback -- which we do not own -- would
         // transmit under Ghost, breaking the core no-leak invariant. So re-run the same
-        // paid check here: if the dialog is now paid, leave the row held rather than
+        // paid check here: if the dialog is now paid, leave the record held rather than
         // re-drive it. It stays visible in Scheduled, the flush bulletin reports it as
-        // not sent, and the user can send it by hand at the price they are shown. This
-        // is the hold-time paid exclusion applied again at flush time.
+        // not sent, and the user can send it by hand at the price they are shown.
         if (isPaidDialog(account, dialogId)) {
-            onItemTerminal(remaining, pending);
+            revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
             return;
         }
         SendMessagesHelper.getInstance(account).sendMessage(p);
-        // Remove the held row only once the send has demonstrably been handed off --
-        // never as a consequence of sendMessage() merely returning. cleanupAfterHandoff
-        // proves handoff by the destination row's existence on the same serial queue,
-        // and signals this item terminal only after it has run.
-        cleanupAfterHandoff(account, mid, dialogId, fresh.inMainTable, () -> onItemTerminal(remaining, pending));
+        // Delete-on-write completion: the fork record is removed only once the funnel
+        // has provably written its stock row for this negative id. completeHandoff
+        // proves that on the storage queue (enqueued after the funnel's own
+        // putMessages(useQueue=true)) and signals this item terminal only after it has
+        // run. If the funnel wrote nothing (early return / became paid), the record is
+        // reverted to HELD for the next flush; nothing is ever lost.
+        completeHandoff(account, mid, dialogId, future, () -> onItemTerminal(remaining, pending));
     }
-
     /**
-     * Re-reads the current held row for {@code (mid, dialogId)} from the table it
-     * was collected in, immediately before dispatch. Returns a fresh {@link HeldItem}
-     * (with a re-evaluated {@code alreadySent}) or null if the row is gone or no
-     * longer held. The {@code send_state = 1} filter keeps this to rows still in the
-     * held/unsent state, so a row already moved on is treated as vanished.
-     */
-    @Nullable
-    private static HeldItem reReadHeldRow(HeldItem item, MessagesStorage storage) {
-        SQLiteDatabase db = storage.getDatabase();
-        long selfId = UserConfig.getInstance(item.account).clientUserId;
-        String table = item.inMainTable ? "messages_v2" : "scheduled_messages_v2";
-        SQLiteCursor cursor = null;
-        try {
-            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM " + table + " WHERE mid = " + item.mid + " AND uid = " + item.dialogId + " AND send_state = 1");
-            if (cursor.next()) {
-                return readHeldRow(item.account, cursor, selfId, item.inMainTable, db);
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        } finally {
-            if (cursor != null) {
-                cursor.dispose();
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Removes the held {@code scheduled_messages_v2} row iff the send provably
-     * reached its destination table. Runs on the storage queue, enqueued after the
-     * funnel's own {@code putMessages(useQueue=true)} write, so by the time it runs
-     * a completed send has already written {@code messages_v2} (send-now) and an
-     * early-return (paid confirmation, {@code sendToUser == null}) has written
-     * nothing. If the destination row exists we delete the held row; otherwise we
-     * leave it in the Scheduled list, still held, to be re-driven on the next flush.
+     * Delete-on-write completion. After the flush hands a held message back to the
+     * send funnel, the fork record is removed only once the funnel has provably
+     * written its stock row under the reused negative id. Runs on the storage queue,
+     * enqueued after the funnel's own {@code putMessages(useQueue=true)}, so by the
+     * time it runs a completed send-now has written {@code messages_v2}, a completed
+     * future-dated send has written {@code scheduled_messages_v2}, and an early
+     * return (became paid, {@code sendToUser == null}) has written nothing.
      *
-     * <p>{@code handoffProven} skips the existence probe: it is set when the row was
-     * collected from {@code messages_v2} (already in the destination table) or when
-     * the row is a confirmed-sent stale orphan being cleared. Future-dated re-drives
-     * rewrite the scheduled row in place (no messages_v2 row), so the probe finds
-     * nothing and does nothing -- the funnel's own scheduled confirmation deletes
-     * that negative-id row. A kill between the funnel write and this delete leaves
-     * the row in both tables; the both-tables convergence dedups on the next flush,
-     * failing toward "sent twice", never "lost".
+     * <p>Present ⇒ stock now owns delivery and cross-restart retry for this row
+     * exactly as {@code getUnsentMessages} does for any unsent message, so the fork
+     * record is deleted and P2 is preserved by the stock row, not by us. Absent ⇒ the
+     * funnel wrote nothing, so the record is reverted to HELD and re-driven on the
+     * next flush. The only ambiguity is a kill after the server confirmed and remapped
+     * {@code -N → +P} but before this delete: at the next start's reconcile the row is
+     * absent-by-{@code -N} and is re-driven, producing a duplicate. Per the design that
+     * is the correct direction to fail -- duplicate, never loss.
      */
-    private static void cleanupAfterHandoff(int account, int mid, long dialogId, boolean handoffProven, @Nullable Runnable onDone) {
+    private static void completeHandoff(int account, int mid, long dialogId, boolean future, @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
+            boolean handedOff = false;
             try {
                 SQLiteDatabase db = storage.getDatabase();
-                boolean handedOff = handoffProven;
-                if (!handedOff) {
-                    SQLiteCursor probe = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId + " LIMIT 1");
-                    handedOff = probe.next();
-                    probe.dispose();
-                }
-                if (handedOff) {
-                    db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid = " + mid + " AND uid = " + dialogId).stepThis().dispose();
-                    // Recompute the dialog's remaining scheduled count (held + server-scheduled)
-                    // so scheduledMessagesCount isn't zeroed while other rows still exist.
-                    int count = 0;
-                    SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
-                    if (cursor.next()) {
-                        count = cursor.intValue(0);
-                    }
-                    cursor.dispose();
-                    final int finalCount = count;
-                    AndroidUtilities.runOnUIThread(() ->
-                            NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, finalCount, true));
-                }
+                String table = future ? "scheduled_messages_v2" : "messages_v2";
+                SQLiteCursor probe = db.queryFinalized("SELECT 1 FROM " + table + " WHERE mid = " + mid + " AND uid = " + dialogId + " LIMIT 1");
+                handedOff = probe.next();
+                probe.dispose();
             } catch (Exception e) {
                 FileLog.e(e);
-            } finally {
-                // Signal the item terminal only after this cleanup has run, whatever
-                // its outcome, and always on the UI thread (flushInProgress lives
-                // there). This is what makes flush completion observed, not timed.
+            }
+            final boolean ho = handedOff;
+            GhostHoldStore store = GhostHoldStore.getInstance(account);
+            store.getQueue().postRunnable(() -> {
+                if (ho) {
+                    store.deleteOnQueue(mid);
+                } else {
+                    store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                }
+                postScheduledCount(account, dialogId);
+                // Signal the item terminal only after this resolution has run, whatever
+                // its outcome, and always on the UI thread (flushInProgress lives there).
+                // This is what makes flush completion observed, not timed.
                 if (onDone != null) {
                     AndroidUtilities.runOnUIThread(onDone);
                 }
+            });
+        });
+    }
+
+    /**
+     * Reverts a record's FLUSHING mark back to HELD when the flush declined to send
+     * it (Ghost came back on, or the dialog became paid), then runs {@code onDone} on
+     * the UI thread. The record stays visible in Scheduled and re-drives cleanly on
+     * the next flush.
+     */
+    private static void revertToHeld(int account, int mid, @Nullable Runnable onDone) {
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        store.getQueue().postRunnable(() -> {
+            store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+            if (onDone != null) {
+                AndroidUtilities.runOnUIThread(onDone);
             }
         });
     }
@@ -1027,19 +1018,10 @@ public final class GhostHoldController {
     // ---- held-queue reads ----
 
     /**
-     * Async count for the settings screen; result delivered on the UI thread.
-     * Stale confirmed-sent orphans awaiting cleanup are not counted as held.
+     * Async count of held messages for the settings screen; delivered on the UI thread.
      */
     public static void countHeld(Utilities.Callback<Integer> onDone) {
-        collectHeld(items -> {
-            int held = 0;
-            for (HeldItem item : items) {
-                if (!item.alreadySent) {
-                    held++;
-                }
-            }
-            onDone.run(held);
-        });
+        collectHeld(items -> onDone.run(items.size()));
     }
 
     private static void collectHeld(Utilities.Callback<ArrayList<HeldItem>> onDone) {
@@ -1056,9 +1038,14 @@ public final class GhostHoldController {
         final List<HeldItem> result = Collections.synchronizedList(new ArrayList<>());
         final AtomicInteger remaining = new AtomicInteger(accounts.size());
         for (int account : accounts) {
-            MessagesStorage storage = MessagesStorage.getInstance(account);
-            storage.getStorageQueue().postRunnable(() -> {
-                result.addAll(queryHeld(account, storage));
+            final GhostHoldStore store = GhostHoldStore.getInstance(account);
+            store.getQueue().postRunnable(() -> {
+                for (GhostHoldStore.HeldRecord rec : store.selectAllOnQueue()) {
+                    HeldItem it = toHeldItem(account, rec);
+                    if (it != null) {
+                        result.add(it);
+                    }
+                }
                 if (remaining.decrementAndGet() == 0) {
                     AndroidUtilities.runOnUIThread(() -> onDone.run(new ArrayList<>(result)));
                 }
@@ -1066,127 +1053,69 @@ public final class GhostHoldController {
         }
     }
 
-    private static ArrayList<HeldItem> queryHeld(int account, MessagesStorage storage) {
-        // Keyed by local mid: a message killed mid-flush can sit in both tables at
-        // once (the funnel wrote messages_v2, the scheduled orphan was never
-        // deleted). Prefer the messages_v2 copy -- it is already in the destination
-        // table, so its re-drive is a plain retry and cleanupAfterHandoff removes the
-        // scheduled leftover by mid. Local mids are unique per account across both
-        // tables, so the mid is a safe dedup key.
-        java.util.LinkedHashMap<Integer, HeldItem> byMid = new java.util.LinkedHashMap<>();
-        SQLiteDatabase db = storage.getDatabase();
+    // ---- render injection (read-time, display-only) ----
+
+    /**
+     * Injects this account's held messages for {@code dialogId} into a freshly loaded
+     * scheduled-message list as display-only objects. Called at the single read-time
+     * chokepoint in {@code MessagesController.processLoadedMessages}, after every cache
+     * write has already happened and only into the UI-bound {@code objects} list, so a
+     * held message is rendered but never written back to any stock table -- the property
+     * that keeps the no-leak invariant structural rather than guarded. Each object is
+     * built from a fresh decode of the stored blob, so nothing the UI does to a shown
+     * message can reach the cache. Runs on the message-load thread and reads only the
+     * store's lock-free published snapshot.
+     */
+    public static void injectHeldScheduled(int account, long dialogId, ArrayList<MessageObject> objects) {
+        if (objects == null) {
+            return;
+        }
+        List<GhostHoldStore.HeldRecord> records = GhostHoldStore.getInstance(account).cachedForDialog(dialogId);
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        java.util.HashSet<Integer> present = new java.util.HashSet<>();
+        for (int i = 0; i < objects.size(); i++) {
+            present.add(objects.get(i).getId());
+        }
         long selfId = UserConfig.getInstance(account).clientUserId;
-
-        // Loop A: main-table held rows -- a send-now re-drive killed before its
-        // server confirmation. Stock retry refuses these (the marker guard in
-        // retrySendMessage), so the flush owns their rescue.
-        SQLiteCursor cursor = null;
-        try {
-            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM messages_v2 WHERE mid < 0 AND send_state = 1");
-            while (cursor.next()) {
-                HeldItem item = readHeldRow(account, cursor, selfId, true, db);
-                if (item != null) {
-                    byMid.put(item.mid, item);
-                }
+        for (GhostHoldStore.HeldRecord rec : records) {
+            if (present.contains(rec.mid)) {
+                // A stock scheduled row for this mid is still present (a migration delete
+                // not yet applied): show it once, from the stock copy, not twice.
+                continue;
             }
-        } catch (Exception e) {
-            FileLog.e(e);
-        } finally {
-            if (cursor != null) {
-                cursor.dispose();
+            TLRPC.Message m = GhostHoldStore.decode(rec.data, selfId);
+            if (m == null) {
+                continue;
             }
+            m.id = rec.mid;
+            m.dialog_id = rec.dialogId;
+            m.date = rec.date;
+            MessageObject mo = new MessageObject(account, m, true, true);
+            mo.scheduled = true;
+            objects.add(mo);
+            present.add(rec.mid);
         }
-
-        // Loop B: scheduled-table held rows -- the normal held queue, plus any
-        // scheduled orphan left behind by a completed send-now re-drive.
-        cursor = null;
-        try {
-            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM scheduled_messages_v2 WHERE mid < 0 AND send_state = 1");
-            while (cursor.next()) {
-                int mid = cursor.intValue(1);
-                if (byMid.containsKey(mid)) {
-                    continue;
-                }
-                HeldItem item = readHeldRow(account, cursor, selfId, false, db);
-                if (item != null) {
-                    byMid.put(mid, item);
-                }
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        } finally {
-            if (cursor != null) {
-                cursor.dispose();
-            }
-        }
-        return new ArrayList<>(byMid.values());
     }
 
     /**
-     * Called from the scheduled-message deletion path (MessagesStorage, on its storage
-     * queue) when the user deletes rows from a Scheduled list. A send-now flush re-drives
-     * a held row by reusing its negative mid, so the funnel writes a messages_v2 twin with
-     * that same mid while the scheduled row still exists. Scheduled deletion only removes
-     * scheduled_messages_v2, so without this the twin outlives the deletion and would be
-     * re-collected by queryHeld (while marked) or resent by stock retry (once unmarked) --
-     * a message the user deleted still reaching the server. Local mids are unique per
-     * account across both tables, so a messages_v2 row sharing a deleted scheduled mid is
-     * necessarily that twin; matching by mid alone is exact.
-     *
-     * Runs synchronously on the caller's storage queue, so it uses the live database
-     * directly and must not hop threads. The residual in-flight window (a twin whose send
-     * request is already on the wire when the delete lands) is inherent and the same class
-     * as a stock message deleted mid-send; this closes the durable re-collection/retry
-     * vector, not that network race.
+     * Decodes a stored record into a flush-ready {@link HeldItem}, restoring random_id
+     * from params (it is not part of the serialized blob) so the re-drive reuses the
+     * same id instead of the funnel minting a fresh one (random_id == 0 guard at
+     * SendMessagesHelper ~:4965). Returns null on a decode failure, leaving the record
+     * in place for a later attempt rather than dropping it.
      */
-    public static void onScheduledMessagesDeleted(int account, long dialogId, ArrayList<Integer> mids) {
-        if (mids == null || mids.isEmpty()) {
-            return;
-        }
-        StringBuilder negatives = new StringBuilder();
-        for (int mid : mids) {
-            if (mid < 0) {
-                if (negatives.length() > 0) {
-                    negatives.append(',');
-                }
-                negatives.append(mid);
-            }
-        }
-        if (negatives.length() == 0) {
-            return;
-        }
-        try {
-            SQLiteDatabase db = MessagesStorage.getInstance(account).getDatabase();
-            db.executeFast("DELETE FROM messages_v2 WHERE uid = " + dialogId + " AND mid IN(" + negatives + ")").stepThis().dispose();
-            Log.i(SMOKE, "twin purge: cleared messages_v2 held twins for deleted scheduled rows dialog=" + dialogId);
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
-
     @Nullable
-    private static HeldItem readHeldRow(int account, SQLiteCursor cursor, long selfId, boolean inMainTable, SQLiteDatabase db) throws SQLiteException {
-        NativeByteBuffer data = cursor.byteBufferValue(0);
-        if (data == null) {
+    private static HeldItem toHeldItem(int account, GhostHoldStore.HeldRecord rec) {
+        long selfId = UserConfig.getInstance(account).clientUserId;
+        TLRPC.Message message = GhostHoldStore.decode(rec.data, selfId);
+        if (message == null) {
             return null;
         }
-        TLRPC.Message message = TLRPC.Message.TLdeserialize(data, data.readInt32(false), false);
-        if (message != null) {
-            message.readAttachPath(data, selfId);
-        }
-        data.reuse();
-        if (!isHeldMessage(message)) {
-            return null;
-        }
-        message.id = cursor.intValue(1);
-        message.dialog_id = cursor.longValue(2);
-        message.date = cursor.intValue(3);
-        // random_id is not in the blob; restore it from params (persistHeld wrote it).
-        // Needed both for the sent correlation just below and so the flush re-drive
-        // reuses this id instead of the funnel minting a fresh one (random_id == 0
-        // guard at SendMessagesHelper ~:4965). If the param is somehow absent or
-        // unparseable, leave it 0: the correlation then fails safe (treats the row as
-        // unsent) rather than crashing.
+        message.id = rec.mid;
+        message.dialog_id = rec.dialogId;
+        message.date = rec.date;
         if (message.random_id == 0 && message.params != null) {
             String raw = message.params.get(PARAM_RANDOM);
             if (raw != null) {
@@ -1196,30 +1125,143 @@ public final class GhostHoldController {
                 }
             }
         }
-        // A scheduled orphan whose random_id now maps to a positive server id has
-        // already been sent (its main-table twin was id-remapped away, so it no
-        // longer matches the both-tables dedup). It must be cleared, never re-driven.
-        boolean alreadySent = !inMainTable && randomsMapToSentId(db, message.random_id);
-        return new HeldItem(account, message.id, message.dialog_id, message, inMainTable, alreadySent);
+        return new HeldItem(account, rec.mid, rec.dialogId, message);
     }
 
     /**
-     * True if {@code randoms_v2} maps this random_id to a positive (server) message
-     * id, i.e. the send was confirmed. A negative mapping (or none) means the row is
-     * still local and unsent. random_id survives the id remap that confirmation
-     * performs, so it is the one correlation key that outlives a send.
+     * Recomputes and posts the absolute scheduled count for a dialog (stock
+     * server-scheduled rows + fork-held rows) so the Scheduled button updates when a
+     * held message appears or is removed, not just on a fresh chat open.
+     * scheduledMessagesUpdated sets the count absolutely, so posting the combined total
+     * cannot double-count. The stock count is read on the storage queue; the fork count
+     * comes from the store's published snapshot.
      */
-    private static boolean randomsMapToSentId(SQLiteDatabase db, long randomId) {
-        if (randomId == 0) {
-            return false;
+    private static void postScheduledCount(int account, long dialogId) {
+        MessagesStorage storage = MessagesStorage.getInstance(account);
+        storage.getStorageQueue().postRunnable(() -> {
+            int stock = 0;
+            try {
+                SQLiteDatabase db = storage.getDatabase();
+                SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
+                if (cursor.next()) {
+                    stock = cursor.intValue(0);
+                }
+                cursor.dispose();
+            } catch (Exception e) {
+                FileLog.e(e);
+            }
+            int fork = GhostHoldStore.getInstance(account).cachedCountForDialog(dialogId);
+            final int total = stock + fork;
+            AndroidUtilities.runOnUIThread(() ->
+                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, total, true));
+        });
+    }
+
+    // ---- per-account bring-up ----
+
+    private static final GhostHoldObserver[] observers = new GhostHoldObserver[UserConfig.MAX_ACCOUNT_COUNT];
+    private static final boolean[] accountInited = new boolean[UserConfig.MAX_ACCOUNT_COUNT];
+
+    /**
+     * One-time per-account initialisation: register the fork observers (held-row
+     * deletion and logout), warm the store's snapshot for the render injection, migrate
+     * any legacy held rows out of the stock tables, and reconcile a flush interrupted by
+     * a kill. Idempotent per process; the logout observer clears the flag so a re-login
+     * re-runs it.
+     */
+    private static void initAccount(int account) {
+        if (accountInited[account]) {
+            return;
         }
+        accountInited[account] = true;
+        AndroidUtilities.runOnUIThread(() -> {
+            NotificationCenter nc = NotificationCenter.getInstance(account);
+            GhostHoldObserver obs = new GhostHoldObserver(account);
+            observers[account] = obs;
+            nc.addObserver(obs, NotificationCenter.messagesDeleted);
+            nc.addObserver(obs, NotificationCenter.appDidLogout);
+        });
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        store.getQueue().postRunnable(() -> store.selectAllOnQueue());
+        migrateAccount(account);
+        reconcileFlushing(account);
+    }
+
+    /**
+     * Moves any legacy held rows -- written by the previous storage design as marked,
+     * negative-id, {@code send_state = 1} rows in the stock scheduled_messages_v2 /
+     * messages_v2 tables -- into ghost_held. The fork insert happens before the stock
+     * delete so there is never a window where the message exists in neither place (P2);
+     * a kill in between re-runs idempotently on the next start (mid is the PK, insert
+     * REPLACEs). A row whose blob will not decode is left in the stock table (still
+     * guarded) and logged rather than dropped.
+     */
+    private static void migrateAccount(int account) {
+        MessagesStorage storage = MessagesStorage.getInstance(account);
+        long selfId = UserConfig.getInstance(account).clientUserId;
+        storage.getStorageQueue().postRunnable(() -> {
+            ArrayList<GhostHoldStore.HeldRecord> toInsert = new ArrayList<>();
+            ArrayList<Integer> schedDelete = new ArrayList<>();
+            ArrayList<Integer> mainDelete = new ArrayList<>();
+            java.util.HashSet<Long> dialogs = new java.util.HashSet<>();
+            SQLiteDatabase db = storage.getDatabase();
+            collectLegacy(db, "scheduled_messages_v2", account, selfId, toInsert, schedDelete, dialogs);
+            collectLegacy(db, "messages_v2", account, selfId, toInsert, mainDelete, dialogs);
+            if (toInsert.isEmpty()) {
+                return;
+            }
+            GhostHoldStore store = GhostHoldStore.getInstance(account);
+            store.getQueue().postRunnable(() -> {
+                for (GhostHoldStore.HeldRecord rec : toInsert) {
+                    store.insertOnQueue(rec);
+                }
+                storage.getStorageQueue().postRunnable(() -> {
+                    try {
+                        if (!schedDelete.isEmpty()) {
+                            db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid IN(" + join(schedDelete) + ")").stepThis().dispose();
+                        }
+                        if (!mainDelete.isEmpty()) {
+                            db.executeFast("DELETE FROM messages_v2 WHERE mid IN(" + join(mainDelete) + ")").stepThis().dispose();
+                        }
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                    Log.i(SMOKE, "migrate: moved " + toInsert.size() + " legacy held rows to ghost_held account=" + account);
+                    for (long d : dialogs) {
+                        postScheduledCount(account, d);
+                    }
+                });
+            });
+        });
+    }
+
+    private static void collectLegacy(SQLiteDatabase db, String table, int account, long selfId,
+                                      ArrayList<GhostHoldStore.HeldRecord> toInsert,
+                                      ArrayList<Integer> toDelete, java.util.HashSet<Long> dialogs) {
         SQLiteCursor cursor = null;
         try {
-            cursor = db.queryFinalized("SELECT mid FROM randoms_v2 WHERE random_id = " + randomId);
+            cursor = db.queryFinalized("SELECT data, mid, uid, date FROM " + table + " WHERE mid < 0 AND send_state = 1");
             while (cursor.next()) {
-                if (cursor.intValue(0) > 0) {
-                    return true;
+                byte[] blob = cursor.byteArrayValue(0);
+                if (blob == null) {
+                    continue;
                 }
+                TLRPC.Message m = GhostHoldStore.decode(blob, selfId);
+                if (m == null) {
+                    // Undecodable: leave the stock row intact (the retained guards keep it
+                    // from auto-sending) and log rather than drop the user's message.
+                    Log.e(SMOKE, "migrate: skipped undecodable legacy row in " + table + " account=" + account);
+                    continue;
+                }
+                if (!isHeldMessage(m)) {
+                    continue;
+                }
+                int mid = cursor.intValue(1);
+                long uid = cursor.longValue(2);
+                int date = cursor.intValue(3);
+                toInsert.add(new GhostHoldStore.HeldRecord(mid, uid, date, GhostHoldStore.STATE_HELD, blob));
+                toDelete.add(mid);
+                dialogs.add(uid);
             }
         } catch (Exception e) {
             FileLog.e(e);
@@ -1228,15 +1270,134 @@ public final class GhostHoldController {
                 cursor.dispose();
             }
         }
-        return false;
+    }
+
+    /**
+     * Reconciles records left in FLUSHING by a kill mid-handoff. For each, probe the
+     * stock tables for the reused negative id: present ⇒ the funnel wrote the row and
+     * stock now owns delivery, so delete the fork record; absent ⇒ the write never
+     * landed, or the send already completed and remapped the id (indistinguishable
+     * here), so revert to HELD and let the next flush re-drive it. Failing an absent
+     * probe toward re-drive is the deliberate "duplicate, never loss" direction.
+     */
+    private static void reconcileFlushing(int account) {
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        store.getQueue().postRunnable(() -> {
+            ArrayList<GhostHoldStore.HeldRecord> flushing = store.selectByStateOnQueue(GhostHoldStore.STATE_FLUSHING);
+            if (flushing.isEmpty()) {
+                return;
+            }
+            MessagesStorage storage = MessagesStorage.getInstance(account);
+            storage.getStorageQueue().postRunnable(() -> {
+                ArrayList<Integer> present = new ArrayList<>();
+                ArrayList<Integer> absent = new ArrayList<>();
+                SQLiteDatabase db = storage.getDatabase();
+                for (GhostHoldStore.HeldRecord rec : flushing) {
+                    boolean found = false;
+                    try {
+                        SQLiteCursor c = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " UNION ALL SELECT 1 FROM scheduled_messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " LIMIT 1");
+                        found = c.next();
+                        c.dispose();
+                    } catch (Exception e) {
+                        FileLog.e(e);
+                    }
+                    (found ? present : absent).add(rec.mid);
+                }
+                store.getQueue().postRunnable(() -> {
+                    if (!present.isEmpty()) {
+                        store.deleteManyOnQueue(present);
+                    }
+                    for (int mid : absent) {
+                        store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
+                    }
+                    Log.i(SMOKE, "reconcile: flushing resolved handedOff=" + present.size() + " reheld=" + absent.size() + " account=" + account);
+                });
+            });
+        });
+    }
+
+    private static String join(ArrayList<Integer> ids) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < ids.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append(ids.get(i));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Per-account observer for held-row deletion and logout. Deletion: when the user
+     * deletes rows from a Scheduled list, the notification carries the (negative) held
+     * ids, and the matching fork records are removed. Logout: the account's ghost_held
+     * database file is deleted so a re-login never inherits held messages.
+     */
+    private static final class GhostHoldObserver implements NotificationCenter.NotificationCenterDelegate {
+        private final int account;
+
+        GhostHoldObserver(int account) {
+            this.account = account;
+        }
+
+        @Override
+        public void didReceivedNotification(int id, int acc, Object... args) {
+            if (id == NotificationCenter.appDidLogout) {
+                GhostHoldStore store = GhostHoldStore.getInstance(account);
+                store.getQueue().postRunnable(store::deleteDatabaseFileOnQueue);
+                accountInited[account] = false;
+                NotificationCenter nc = NotificationCenter.getInstance(account);
+                nc.removeObserver(this, NotificationCenter.messagesDeleted);
+                nc.removeObserver(this, NotificationCenter.appDidLogout);
+                observers[account] = null;
+                return;
+            }
+            if (id == NotificationCenter.messagesDeleted) {
+                boolean scheduled = args.length > 2 && Boolean.TRUE.equals(args[2]);
+                if (!scheduled) {
+                    return;
+                }
+                @SuppressWarnings("unchecked")
+                ArrayList<Integer> mids = (ArrayList<Integer>) args[0];
+                if (mids == null || mids.isEmpty()) {
+                    return;
+                }
+                ArrayList<Integer> negs = new ArrayList<>();
+                for (int mid : mids) {
+                    if (mid < 0) {
+                        negs.add(mid);
+                    }
+                }
+                if (negs.isEmpty()) {
+                    return;
+                }
+                GhostHoldStore store = GhostHoldStore.getInstance(account);
+                store.getQueue().postRunnable(() -> {
+                    java.util.HashSet<Long> dialogs = new java.util.HashSet<>();
+                    ArrayList<Integer> toDelete = new ArrayList<>();
+                    for (int mid : negs) {
+                        GhostHoldStore.HeldRecord rec = store.selectOnQueue(mid);
+                        if (rec != null) {
+                            dialogs.add(rec.dialogId);
+                            toDelete.add(mid);
+                        }
+                    }
+                    if (toDelete.isEmpty()) {
+                        return;
+                    }
+                    store.deleteManyOnQueue(toDelete);
+                    for (long d : dialogs) {
+                        postScheduledCount(account, d);
+                    }
+                    Log.i(SMOKE, "held delete: removed " + toDelete.size() + " held rows via messagesDeleted account=" + account);
+                });
+            }
+        }
     }
 
     private static int countDistinctChats(ArrayList<HeldItem> items) {
         java.util.HashSet<String> seen = new java.util.HashSet<>();
         for (HeldItem item : items) {
-            if (item.alreadySent) {
-                continue;
-            }
             seen.add(item.account + ":" + item.dialogId);
         }
         return seen.size();
@@ -1247,19 +1408,12 @@ public final class GhostHoldController {
         final int mid;
         final long dialogId;
         final TLRPC.Message message;
-        // Collected from messages_v2 (a killed send-now re-drive) rather than the
-        // scheduled table; its handoff is already proven by its presence there.
-        final boolean inMainTable;
-        // A scheduled orphan whose send was already confirmed; clear, never re-send.
-        final boolean alreadySent;
 
-        HeldItem(int account, int mid, long dialogId, TLRPC.Message message, boolean inMainTable, boolean alreadySent) {
+        HeldItem(int account, int mid, long dialogId, TLRPC.Message message) {
             this.account = account;
             this.mid = mid;
             this.dialogId = dialogId;
             this.message = message;
-            this.inMainTable = inMainTable;
-            this.alreadySent = alreadySent;
         }
     }
 }

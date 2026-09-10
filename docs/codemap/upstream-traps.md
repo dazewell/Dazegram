@@ -1015,3 +1015,30 @@ its two neighbours three lines down and would be a drive-by edit on pre-existing
 code. If the pattern is wrong it is wrong in three places and is a separate
 change with its own justification. Recorded so the next reviewer who spots the
 `:153` post does not re-raise it as a Ghost Hold defect.
+## randoms_v2 never receives a positive mid for a send-now message
+
+Established 2026-09-10 (#ghost-hold). The `random_id -> mid` correlation that
+`SendMessagesHelper`'s `alreadySent` path relies on is only usable for messages
+that stay scheduled server-side; for a send-now message it can never fire. Three
+facts together:
+
+- The mid rewrite in `updateMessageStateAndIdInternal` that writes the confirmed
+  server id back into `randoms_v2` is gated `_oldId < 0 && scheduled == 1`
+  (`MessagesStorage.java:13923`). A send-now message is `scheduled == 0`, so it
+  never enters this branch.
+- The `scheduled == 0` id-remap branch (`MessagesStorage.java:14061`+) rewrites
+  `messages_v2`, `messages_topics`, `media_v4`, `media_topics` and
+  `dialogs.last_mid`, but **not** `randoms_v2`.
+- Post-confirmation `putMessages` cannot backfill it either: an incoming server
+  message carries `random_id == 0` (`MessagesStorage.java:12248`), and the
+  `randoms_v2` insert is gated on a non-zero random id (`:12825`), so the insert
+  is skipped.
+
+Cost if missed: any design that keys a held/pending message off `randoms_v2`
+expecting to later read back its positive mid on the primary send-now path is
+building on a row that is never written. This is the verified fact that ruled
+out the original Ghost Hold storage design (a stock `scheduled_messages_v2` row
+with a negative id and `send_state = 1`) and drove the rebuild onto fork-owned
+state — making it work would have required editing stock
+`updateMessageStateAndIdInternal`, changing message-receipt behaviour for every
+chat in the app.

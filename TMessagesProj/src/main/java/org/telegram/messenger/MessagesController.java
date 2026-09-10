@@ -12375,6 +12375,14 @@ public class MessagesController extends BaseController implements NotificationCe
                 welcomeMessages.put(dialogId, objects);
             }
         } else if (mode == ChatActivity.MODE_SCHEDULED) {
+            // NagramX: inject Ghost Hold's held messages here, at read time, into the
+            // UI-bound objects list only -- never persisted back. Held rows live in a
+            // fork-owned DB that no stock query names, so this read-time merge is the one
+            // place they become visible in the Scheduled list; running it after the cache
+            // write above keeps them structurally out of every stock write path, and
+            // feeding objects before the sort and the count post below renders and counts
+            // them like any other scheduled message.
+            com.radolyn.ayugram.ghosthold.GhostHoldController.injectHeldScheduled(currentAccount, dialogId, objects);
             Collections.sort(objects, (o1, o2) -> {
                 if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId() >= 0) {
                     return o2.getId() - o1.getId();

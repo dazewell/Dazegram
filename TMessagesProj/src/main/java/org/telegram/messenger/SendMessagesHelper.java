@@ -1750,20 +1750,19 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
             }
             return false;
         }
-        // NagramX: block only the *automatic* re-send of a still-held row, never a
-        // deliberate user retry. unsent == true is the automatic path
-        // (processUnsentMessages / secret retries); unsent == false is a user tap
-        // from ChatActivity, which stays allowed -- retrying a failed handed-off row
-        // is the user's decision, and PR #324's warning covers the exposure if Ghost
-        // is on. Do NOT also gate on messageObject.scheduled: getUnsentMessages feeds
-        // negative messages_v2 rows through processUnsentMessages' first loop with
-        // scheduled == false and no held-skip, so a send-now flush killed
-        // mid-dispatch leaves a still-held row that only this guard catches. Held
-        // rows are always id < 0 (the early return above excludes id >= 0), and
-        // getUnsentMessages loads negative ids only at send_state == 1, so a failed
-        // (send_state == 2) handed-off row is never auto-retried here regardless; the
-        // in-flight-when-killed rows this blocks keep their marker and re-drive on the
-        // next ghost-off flush, so nothing is stranded and nothing leaks.
+        // NagramX: backstop, not the primary mechanism. Since the storage rebuild,
+        // held messages live only in the fork-owned ghost_held DB, never in the stock
+        // tables getUnsentMessages reads, so in steady state no held row ever reaches
+        // this path. This guard survives for exactly one window: a legacy-upgrade
+        // launch, where checkUnsentMessages() (ApplicationLoader ~:308) runs the auto
+        // re-send loop *before* checkOnProcessStart() (~:314) has migrated the old
+        // marked rows out of the stock tables. In that window a still-marked legacy
+        // row could otherwise auto-send while Ghost is on -- a P1 leak -- so we keep
+        // refusing the automatic re-send of any marked row. It blocks only the
+        // *automatic* path (unsent == true: processUnsentMessages / secret retries);
+        // a user tap (unsent == false) stays allowed, and PR #324's warning covers
+        // the exposure if Ghost is on. Cheap and always-correct, so it stays even
+        // though migration makes it unreachable after the first post-upgrade launch.
         if (unsent && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
             return false;
         }
@@ -9138,9 +9137,14 @@ public class SendMessagesHelper extends BaseController implements NotificationCe
                 for (int a = 0; a < scheduledMessages.size(); a++) {
                     MessageObject messageObject = new MessageObject(currentAccount, scheduledMessages.get(a), false, true);
                     messageObject.scheduled = true;
-                    // NagramX: a held Ghost Hold row lives here (scheduled, send_state 1,
-                    // negative id) and getUnsentMessages loads it. It must never auto-resend;
-                    // it drains only on the ghost-off flush.
+                    // NagramX: backstop for the legacy-upgrade window only. Since the
+                    // storage rebuild, held rows live in the fork-owned ghost_held DB and
+                    // never in scheduled_messages_v2, so getUnsentMessages no longer loads
+                    // one here in steady state. The single exception is the first launch
+                    // after upgrading from the old design, where checkUnsentMessages() runs
+                    // before checkOnProcessStart() has migrated the old marked scheduled
+                    // rows out; skipping any still-marked row keeps it from auto-resending
+                    // while Ghost is on (a P1 leak) until migration moves it to the fork DB.
                     if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
                         continue;
                     }
