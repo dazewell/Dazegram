@@ -77,6 +77,11 @@ public final class GhostHoldStore {
     // read without locking by the injection on the message-load thread.
     private volatile Map<Long, List<HeldRecord>> byDialog = new HashMap<>();
     private volatile boolean loaded;
+    // The user id this file's rows belong to, mirrored out of the DB so the
+    // off-queue readers (render injection, count post) can refuse a snapshot that
+    // still belongs to a previous user of this reusable account slot. 0 until the
+    // first activated open stamps it.
+    private volatile long snapshotOwner;
 
     private GhostHoldStore(int account) {
         this.account = account;
@@ -99,6 +104,18 @@ public final class GhostHoldStore {
         return byDialog.get(dialogId);
     }
 
+    /**
+     * True when this store's rows are known to belong to {@code userId}. The
+     * off-queue readers gate on this so that, in the window between a re-login and
+     * the queue re-opening the file, a stale snapshot from the previous slot owner
+     * is never rendered or counted. Fails toward showing nothing (returns false
+     * until an activated open stamps the owner), never toward showing another
+     * user's held messages.
+     */
+    public boolean ownsUser(long userId) {
+        return userId != 0 && snapshotOwner == userId;
+    }
+
     // ---- queue-confined database access ----
     // Every method below must be called on getQueue(); each ensures the database is
     // open and the in-memory view is loaded first.
@@ -114,13 +131,54 @@ public final class GhostHoldStore {
                 db.executeFast("PRAGMA journal_mode = WAL").stepThis().dispose();
                 db.executeFast("PRAGMA journal_size_limit = 10485760").stepThis().dispose();
                 db.executeFast("CREATE TABLE IF NOT EXISTS ghost_held(mid INTEGER PRIMARY KEY, dialog_id INTEGER, date INTEGER, state INTEGER, data BLOB)").stepThis().dispose();
+                db.executeFast("CREATE TABLE IF NOT EXISTS ghost_meta(k INTEGER PRIMARY KEY, v INTEGER)").stepThis().dispose();
                 if (create) {
                     db.executeFast("PRAGMA user_version = 1").stepThis().dispose();
                 }
+                enforceOwner(db);
                 database = db;
             }
             return database;
         }
+    }
+
+    /**
+     * Binds this file to the currently logged-in user and purges it if it turns out
+     * to belong to someone else. The account slot is reused across different users;
+     * if logout deletion did not complete (crash, force-stop, a delete that failed)
+     * the next user in the same slot must never inherit the previous user's held
+     * rows -- rendering them would leak, flushing them would send one user's message
+     * from another user's account. A zero id means the account is not activated yet,
+     * so nothing is stamped or purged on that transient state. Runs inside {@link #db()}
+     * on the store queue, before any read or flush can observe a row.
+     */
+    private void enforceOwner(SQLiteDatabase db) throws SQLiteException {
+        long current = UserConfig.getInstance(account).getClientUserId();
+        if (current == 0) {
+            return;
+        }
+        long stored = 0;
+        SQLiteCursor c = null;
+        try {
+            c = db.queryFinalized("SELECT v FROM ghost_meta WHERE k = 1");
+            if (c.next()) {
+                stored = c.longValue(0);
+            }
+        } finally {
+            if (c != null) {
+                c.dispose();
+            }
+        }
+        if (stored != 0 && stored != current) {
+            db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
+            master.clear();
+            loaded = false;
+            publish();
+        }
+        if (stored != current) {
+            db.executeFast("REPLACE INTO ghost_meta(k, v) VALUES(1, " + current + ")").stepThis().dispose();
+        }
+        snapshotOwner = current;
     }
 
     private void ensureLoaded() throws SQLiteException {
@@ -162,7 +220,7 @@ public final class GhostHoldStore {
         byDialog = grouped;
     }
 
-    public void insertOnQueue(HeldRecord rec) {
+    public boolean insertOnQueue(HeldRecord rec) {
         try {
             ensureLoaded();
             SQLiteDatabase db = db();
@@ -184,23 +242,27 @@ public final class GhostHoldStore {
             master.remove(rec.mid);
             master.put(rec.mid, rec);
             publish();
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
-    public void updateStateOnQueue(int mid, int newState) {
+    public boolean updateStateOnQueue(int mid, int newState) {
         try {
             ensureLoaded();
             HeldRecord old = master.get(mid);
             if (old == null) {
-                return;
+                return false;
             }
             db().executeFast("UPDATE ghost_held SET state = " + newState + " WHERE mid = " + mid).stepThis().dispose();
             master.put(mid, old.withState(newState));
             publish();
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
@@ -302,22 +364,31 @@ public final class GhostHoldStore {
             }
         }
         File dir = ApplicationLoader.getFilesDirFixed();
-        deleteQuietly(new File(dir, "ghosthold_" + account + ".db"));
+        boolean gone = deleteQuietly(new File(dir, "ghosthold_" + account + ".db"));
         deleteQuietly(new File(dir, "ghosthold_" + account + ".db-wal"));
         deleteQuietly(new File(dir, "ghosthold_" + account + ".db-shm"));
         master.clear();
         loaded = false;
+        // Drop ownership so no off-queue reader trusts the snapshot until the next
+        // activated open re-stamps it. If the main file could not be removed, the
+        // stale rows still cannot leak: the owner stamp inside it will not match the
+        // next user, and enforceOwner() purges them on the next open.
+        snapshotOwner = 0;
+        if (!gone && new File(dir, "ghosthold_" + account + ".db").exists()) {
+            FileLog.e("ghostHold: could not delete db file for account " + account + " on logout; rows will be purged by owner check on next open");
+        }
         publish();
     }
 
-    private static void deleteQuietly(File f) {
+    private static boolean deleteQuietly(File f) {
         try {
             if (f.exists()) {
-                //noinspection ResultOfMethodCallIgnored
-                f.delete();
+                return f.delete();
             }
+            return true;
         } catch (Exception e) {
             FileLog.e(e);
+            return false;
         }
     }
 
