@@ -233,17 +233,28 @@ public final class GhostHoldController {
         // exposes no cancel signal, so a deferred flush item could not be released on
         // a dismissed dialog either. Refuse to hold: send now, at the price the user
         // saw, and let the send-exposure warning tell them their status was exposed.
-        // Mirror the funnel's own paid check (SendMessagesHelper ~:4458-4462) so the
-        // predicate and the funnel cannot disagree about what "paid" means.
-        MessagesController payController = MessagesController.getInstance(account);
-        long payStars = payController.getSendPaidMessagesStars(peer);
-        if (payStars <= 0) {
-            payStars = DialogObject.getMessagesStarsPrice(payController.isUserContactBlocked(peer));
-        }
-        if (payStars > 0) {
+        // The same check runs again at flush time (dispatchFreshItem) so that a dialog
+        // which becomes paid *after* it was held is not auto-re-driven into a paywall:
+        // an automated flush never opens a paywall.
+        if (isPaidDialog(account, peer)) {
             return false;
         }
         return true;
+    }
+
+    /**
+     * True if sending to {@code peer} would require a Stars payment. Mirrors the
+     * funnel's own paid check ({@link SendMessagesHelper} ~:4458-4462) so the hold
+     * predicate, the flush-time re-check, and the funnel cannot disagree about what
+     * "paid" means.
+     */
+    private static boolean isPaidDialog(int account, long peer) {
+        MessagesController controller = MessagesController.getInstance(account);
+        long payStars = controller.getSendPaidMessagesStars(peer);
+        if (payStars <= 0) {
+            payStars = DialogObject.getMessagesStarsPrice(controller.isUserContactBlocked(peer));
+        }
+        return payStars > 0;
     }
 
     /**
@@ -636,6 +647,20 @@ public final class GhostHoldController {
         // send-now re-drive (scheduleDate == 0) makes the funnel write the row into
         // messages_v2 as part of sending, while a future-dated one rewrites the same
         // scheduled_messages_v2 row in place.
+        // An automated flush never opens a paywall. The dialog was not paid when this
+        // row was held (isHoldableTextSend excludes paid dialogs), but it can become
+        // paid before the flush. Re-driving it now would make the funnel open the Stars
+        // paywall; if Ghost is re-enabled while that paywall is open and the user then
+        // accepts, the funnel's deferred callback -- which we do not own -- would
+        // transmit under Ghost, breaking the core no-leak invariant. So re-run the same
+        // paid check here: if the dialog is now paid, leave the row held rather than
+        // re-drive it. It stays visible in Scheduled, the flush bulletin reports it as
+        // not sent, and the user can send it by hand at the price they are shown. This
+        // is the hold-time paid exclusion applied again at flush time.
+        if (isPaidDialog(account, dialogId)) {
+            onItemTerminal(remaining, pending);
+            return;
+        }
         SendMessagesHelper.getInstance(account).sendMessage(p);
         // Remove the held row only once the send has demonstrably been handed off --
         // never as a consequence of sendMessage() merely returning. cleanupAfterHandoff
