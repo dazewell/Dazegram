@@ -1004,6 +1004,16 @@ public final class GhostHoldController {
                     onItemTerminal(remaining, pending);
                     return;
                 }
+                // NagramX: Ghost and paid were checked before this final store-queue
+                // hop, but the user can re-enable Ghost -- or the dialog can become
+                // paid -- during it. The retry object bypasses maybeHold, so dispatching
+                // now would transmit under Ghost, or open a Stars paywall whose deferred
+                // callback we do not own could transmit under Ghost later. Re-check both
+                // on this last UI turn and keep the message held if either is true.
+                if (NekoConfig.isGhostModeActive() || isPaidDialog(account, dialogId)) {
+                    revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
+                    return;
+                }
                 SendMessagesHelper.getInstance(account).sendMessage(sendParams);
                 // Delete-on-write completion: the fork record is removed only once the
                 // funnel has provably written its stock row for this negative id.
