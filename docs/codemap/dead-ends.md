@@ -495,3 +495,43 @@ everywhere else in Settings, with no MDC involved. See upstream-traps.md.
 Tempting fix for issue #299: let the Icon spacing thumb sit at the real saved value (say 85%) even when the scale-dependent floor is higher, drawing the unreachable band below the floor dimmed, so the user sees their value is still there. It cannot be done without editing `SlideIntChooseView`/`SeekBarView`, because the dimmed band and the thumb clamp are the *same* call: `setMinValueAllowed` clamps `this.value` up to the minimum (`SlideIntChooseView.java:222-226`) and then calls `seekBarView.setMinProgress(...)`, which both draws the 50%-alpha unavailable band (`SeekBarView.java:529-536`) *and* re-clamps progress (`:229-234`), with `minThumbX()` (`:353`) pinning the thumb at the floor. There is no upstream path that draws the dimmed band while leaving the thumb below it. Skipping `setMinValueAllowed` entirely gives an honest thumb but re-opens the inert-step bug the floor was built to close — a thumb resting on a step the row cannot actually draw (`ComposerToolbarLayout.spacingIsUsable`, `ComposerToolbarLayout.java:442-446`). So the fork's answer is the footer disclosure (`spacingFooterText()`), not a custom thumb: the value is honestly saved and reported in words, and the slider keeps upstream's clamp untouched.
 
 *(Established 2026-09-06, #composer-spacing.)*
+
+## Per-chat "already warned" state is not categorically forbidden for Ghost Mode features
+
+The send-time Ghost warning (`#ghost-send-warning`) used to track "warned this
+chat already this session" with a stateful per-account set, built up and then
+deleted across five commits on that branch: introduced in `5f8e27ed0c` ("warn
+once per chat when a send while Ghost is on exposes online status"), its reset
+edge corrected twice in `80a5c0c57f` ("detect ghost session boundary from the
+live predicate, not one toggle path") and `b696068599` ("observe ghost state at
+both toggle write paths, not only at send time"), given cross-thread
+synchronization in `67042a6884` ("synchronize shared warned-dialogs state
+between send path and settings writes"), and finally removed entirely in
+`797a510074` ("gate the warning on an active UI, not just Ghost being on"),
+which replaced it with the current stateless, warn-every-time design still in
+`GhostSendWarningHelper.java` today. The state was deleted because its writer
+lived on two different threads that could race each other: the send path calls
+`onMessageRequestReady` from `ConnectionsManager#sendRequestInternal`, which
+runs on `Utilities.stageQueue` (a background thread), while a Ghost Mode
+on/off toggle in `GhostModeActivity`/`NekoConfig` runs on the UI thread — the
+same mutable set was reachable from both without a consistent memory model,
+and a toggle mid-send could observe or clear state out of order with the send
+itself. On top of the race, the reset edge itself was wrong more than once: a
+toggle observed at only one of the two write paths could leave the "already
+warned" flag stranded across a Ghost-mode session boundary, so a later Ghost
+session with clean state was incorrectly getting no reminder at all.
+
+This is **not** a blanket rule against any per-chat Ghost state — the typing-time
+reminder added under `#ghost-type-warning`
+(`tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper.java`) keeps materially
+the same shape of state (an account-keyed set of already-reminded dialogIds,
+reset lazily on a Ghost off→on edge) and is fine, because the thing that made
+the old design unsafe — a background-thread writer racing a UI-thread writer —
+doesn't apply to it. Its only reader/writer is
+`ChatActivityEnterView`'s own `TextWatcher`, invoked exclusively on the UI
+thread from the composer the user is actively looking at; nothing in the send
+path or the settings screen ever touches this state. If a future change makes
+this state reachable from anywhere but that one UI-thread callback, revisit
+this exemption rather than assuming it still holds.
+
+*(Established 2026-09-10, #ghost-type-warning.)*

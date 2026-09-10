@@ -7055,6 +7055,17 @@ public class ChatActivityEnterView extends FrameLayout implements
                         delegate.needSendTyping();
                     }
                 }
+                // NagramX: remind (not warn after the fact) that Ghost Mode doesn't cover sending,
+                // on the true empty-to-non-empty transition of the composer -- parentFragment is
+                // only non-null for the real chat composer (ChatActivity), not the other surfaces
+                // that share this widget, and edit modes send TL_messages_editMessage, which this
+                // reminder deliberately excludes just like the send-time warning's own allowlist does.
+                if (!ignoreTextChange && parentFragment != null && editingMessageObject == null && !isEditingBusinessLink()) {
+                    int previousLength = charSequence.length() - count + before;
+                    if (previousLength == 0 && count > 0) {
+                        tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper.onComposerTypingObserved(currentAccount, dialog_id, parentFragment);
+                    }
+                }
                 updateSendButtonPaid();
             }
 

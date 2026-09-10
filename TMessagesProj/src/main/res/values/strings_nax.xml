@@ -716,4 +716,5 @@
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>
     <string name="GhostSendExposedWarning">Ghost Mode doesn\'t cover sending — your online status was just shown</string>
+    <string name="GhostTypingReminder">Ghost Mode doesn\'t cover sending — this will go out and show you\'re online.</string>
 </resources>

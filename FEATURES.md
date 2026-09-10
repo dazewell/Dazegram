@@ -43,9 +43,9 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.
 
-### Ghost send warning <!-- #ghost-send-warning -->
+### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost.
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost. You'll also get an earlier heads-up the moment you start typing into an empty message box while Ghost Mode is on — once per chat per time Ghost Mode is turned on, so it doesn't repeat itself while you keep chatting. It resets if you turn Ghost Mode off and back on, and stays silent whenever Ghost Mode is off.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
