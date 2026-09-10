@@ -202,7 +202,8 @@ public final class GhostHoldController {
         //  a manually-resolved link preview (the auto preview is regenerated on
         //    flush via searchLinks; a user-edited webPage is not, so refuse it),
         //  a per-message self-destruct timer,
-        //  an ephemeral bot receiver,
+        //  (an ephemeral receiver is refused in its own block below, since the
+        //    funnel derives it from more than the explicit field),
         //  a bare dice-emoji message (text is in MessagesController.diceEmojies): the
         //    funnel converts such a send into a dice *media* message when
         //    canSendGames is true (SendMessagesHelper ~:4664). Our hook runs before
@@ -228,9 +229,22 @@ public final class GhostHoldController {
                 || p.dice_stake != 0
                 || p.webPage != null
                 || p.ttl != 0
-                || p.ephemeralReceiverBotId != 0
                 || isDiceEmojiText(account, p.message)
                 || p.canUsePangu != null) {
+            return false;
+        }
+        // Ephemeral receiver: the funnel picks the ephemeral target from three
+        // sources (SendMessagesHelper ~:4470-4476) and our hook runs before that
+        // pick. We persist none of them and of() cannot rebuild an ephemeral send, so
+        // a held ephemeral message would flush as an ordinary, non-vanishing one -- a
+        // privacy degradation, not a cosmetic one. The explicit ephemeralReceiverBotId
+        // field is only one source: also refuse a reply to an ephemeral message and
+        // an ephemeral slash command. The command case is keyed on the funnel's own
+        // getEphemeralCommandBotId -- a side-effect-free lookup that returns 0 for any
+        // text not starting with '/' or a non-chat peer -- so the two cannot disagree.
+        if (p.ephemeralReceiverBotId != 0
+                || (p.replyToMsg != null && p.replyToMsg.isEphemeral())
+                || org.telegram.messenger.utils.EphemeralMessagesHelper.getInstance(account).getEphemeralCommandBotId(p.message, peer) != 0) {
             return false;
         }
         // Send-as identity: a channel/megagroup post can resolve a non-self sender
@@ -452,14 +466,21 @@ public final class GhostHoldController {
         prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
         if (wasActive && !nowActive) {
             Log.i(SMOKE, "flush trigger: ghost-off edge detected, requesting flush");
-            AndroidUtilities.runOnUIThread(() -> promptFlush(true));
+            AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
         }
     }
 
     /**
      * Convergence check at process start. If Ghost ended (or was never on) while a
-     * backlog remained -- e.g. the app was killed mid-flush -- drain it silently so
-     * the queue cannot be stranded across launches. Also seeds the edge baseline.
+     * backlog remained -- e.g. the app was killed after Ghost went off but before the
+     * flush confirmation was accepted -- re-offer the same "Send held messages?"
+     * confirmation so the queue is not stranded across launches. It prompts, never
+     * drains silently: the confirmation is a UX guarantee dazewell approved, so a
+     * flush with no foreground screen is deferred to a later launch that has one, not
+     * skipped. This can re-prompt a flush that was confirmed then interrupted, because
+     * we deliberately do not persist a "confirmed" marker to tell that apart from
+     * "never confirmed" -- asking twice is cheap, sending unasked is not. Also seeds
+     * the edge baseline.
      */
     public static void checkOnProcessStart() {
         boolean nowActive = NekoConfig.isGhostModeActive();
@@ -467,13 +488,13 @@ public final class GhostHoldController {
         prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
         if (!nowActive) {
             Log.i(SMOKE, "flush trigger: process-start convergence, ghost inactive");
-            AndroidUtilities.runOnUIThread(() -> promptFlush(false));
+            AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
         }
     }
 
     // ---- flush ----
 
-    private static void promptFlush(boolean offerConfirmation) {
+    private static void promptFlush() {
         if (flushInProgress) {
             return;
         }
@@ -497,10 +518,15 @@ public final class GhostHoldController {
                 performFlush(items);
                 return;
             }
-            if (!offerConfirmation || fragment == null || fragment.getParentActivity() == null) {
-                // No screen to ask on (process-start convergence, or a non-UI
-                // transition): drain rather than skip -- nothing may be left held.
-                performFlush(items);
+            if (fragment == null || fragment.getParentActivity() == null) {
+                // No foreground screen to confirm on (e.g. process-start convergence
+                // before any UI is up). Defer, never drain: a backlog must not leave
+                // without the user seeing the "Send held messages?" dialog. Release
+                // the claim and leave every row held; the next ghost-off edge or
+                // process start re-offers the same confirmation. Deferred, not skipped
+                // -- a user who keeps dismissing keeps deferring, which is their choice
+                // (nothing is lost, the rows stay visible in Scheduled).
+                flushInProgress = false;
                 return;
             }
 
