@@ -78,6 +78,14 @@ public final class GhostHoldController {
     // onto the SendMessageParams on flush. Absent means the send had none.
     private static final String PARAM_REPEAT = "ghost_hold_repeat";
     private static final String PARAM_EFFECT = "ghost_hold_effect";
+    // random_id is a client-only field that is not part of the serialized TL blob
+    // and is normally restored from a randoms_v2 join the stock loaders do (see
+    // MessagesStorage.getMessagesInternal). Our held query reads the blob only, so
+    // carry random_id in params and restore it in readHeldRow. Without it the sent
+    // correlation (randomsMapToSentId) always tests 0 and the double-send guard is
+    // inert; a mid-keyed join could not stand in, because confirmation remaps the
+    // randoms_v2 row's mid off the orphan's negative id (MessagesStorage ~:13925).
+    private static final String PARAM_RANDOM = "ghost_hold_random";
 
     private static final String PREFS_NAME = "ghosthold_state";
     private static final String KEY_LAST_GHOST_ACTIVE = "last_ghost_active";
@@ -275,6 +283,93 @@ public final class GhostHoldController {
         if (isPaidDialog(account, peer)) {
             return false;
         }
+        // Fail-closed backstop. Every semantic exclusion above is a denylist entry,
+        // so a SendMessageParams field we have never heard of -- a future upstream
+        // addition, or an existing one nobody wired in -- would sail through and be
+        // silently dropped when of() rebuilds the message from the stored row. Invert
+        // it: refuse unless every field outside the set we actually persist is at its
+        // default. A new field then defaults to "refuse to hold" (send now, correctly,
+        // and let the exposure warning speak) rather than "hold and mangle".
+        if (!onlyPersistedFieldsSet(p)) {
+            return false;
+        }
+        return true;
+    }
+
+    // Field names on SendMessageParams whose value we faithfully persist and restore
+    // (or that carry no reconstructable state), so a non-default value on one of them
+    // does not force a refuse. Everything not in this set must be at its default for a
+    // send to be holdable -- see onlyPersistedFieldsSet. Keep in sync when the set of
+    // fields persistHeld carries changes.
+    private static final java.util.Set<String> PERSISTED_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "message",            // the text itself
+            "entities",           // carried onto msg.entities
+            "params",             // copied into the stored params map
+            "notify",             // carried as msg.silent
+            "scheduleDate",       // carried as msg.date
+            "scheduleRepeatPeriod", // carried in params (PARAM_REPEAT)
+            "effect_id",          // carried in params (PARAM_EFFECT)
+            "searchLinks",        // carried in params (PARAM_NO_WEBPAGE)
+            "invert_media",       // carried onto msg.invert_media
+            "replyToMsg",         // reply header reconstructed in persistHeld
+            "replyToTopMsg",      // reply header reconstructed in persistHeld
+            "replyQuote",         // text quote reconstructed; poll/todo refused above
+            "sendMessageChatArguments", // always non-null on a composer send; its
+                                        // meaningful fields are checked explicitly above
+            "peer",               // the destination, not reconstructable state
+            "retryMessageObject", // null here (a re-drive returned false already)
+            "canSendGames"        // defaults true on every send; dice handled by text
+    ));
+
+    private static volatile java.lang.reflect.Field[] paramFieldsCache;
+
+    /**
+     * True iff every declared field of {@code p} outside {@link #PERSISTED_FIELDS} is
+     * at its type default (null / 0 / false). This is the fail-closed half of
+     * {@link #isHoldableTextSend}: it catches any field -- current-but-unwired or added
+     * upstream later -- that we would otherwise persist a row for and then silently
+     * drop on flush. Fields are public, so no setAccessible; the field array is cached
+     * once. On any reflection error, fail closed (return false -> refuse to hold).
+     */
+    private static boolean onlyPersistedFieldsSet(SendMessagesHelper.SendMessageParams p) {
+        java.lang.reflect.Field[] fields = paramFieldsCache;
+        if (fields == null) {
+            fields = p.getClass().getDeclaredFields();
+            paramFieldsCache = fields;
+        }
+        try {
+            for (java.lang.reflect.Field f : fields) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                    continue;
+                }
+                if (PERSISTED_FIELDS.contains(f.getName())) {
+                    continue;
+                }
+                Class<?> type = f.getType();
+                if (type.isPrimitive()) {
+                    // f.get autoboxes; compare against the type's zero/false default.
+                    // Covers all eight primitives, so a future field of any primitive
+                    // type is checked rather than falling through as a silent pass.
+                    Object v = f.get(p);
+                    if (type == boolean.class) {
+                        if ((Boolean) v) {
+                            return false;
+                        }
+                    } else if (type == char.class) {
+                        if ((Character) v != 0) {
+                            return false;
+                        }
+                    } else if (((Number) v).doubleValue() != 0.0) {
+                        return false;
+                    }
+                } else if (f.get(p) != null) {
+                    return false;
+                }
+            }
+        } catch (ReflectiveOperationException e) {
+            FileLog.e(e);
+            return false;
+        }
         return true;
     }
 
@@ -427,6 +522,9 @@ public final class GhostHoldController {
         if (params.effect_id != 0) {
             stored.put(PARAM_EFFECT, Long.toString(params.effect_id));
         }
+        // Carry random_id so readHeldRow can restore it (the blob does not hold it).
+        // msg.random_id was just minted above and is always non-zero.
+        stored.put(PARAM_RANDOM, Long.toString(msg.random_id));
         msg.params = stored;
 
         final TLRPC.Message stableMsg = msg;
@@ -812,6 +910,7 @@ public final class GhostHoldController {
             m.params.remove(PARAM_NO_WEBPAGE);
             m.params.remove(PARAM_REPEAT);
             m.params.remove(PARAM_EFFECT);
+            m.params.remove(PARAM_RANDOM);
         }
 
         // Re-drive in place. The funnel keys its destination table off scheduleDate
@@ -1082,6 +1181,21 @@ public final class GhostHoldController {
         message.id = cursor.intValue(1);
         message.dialog_id = cursor.longValue(2);
         message.date = cursor.intValue(3);
+        // random_id is not in the blob; restore it from params (persistHeld wrote it).
+        // Needed both for the sent correlation just below and so the flush re-drive
+        // reuses this id instead of the funnel minting a fresh one (random_id == 0
+        // guard at SendMessagesHelper ~:4965). If the param is somehow absent or
+        // unparseable, leave it 0: the correlation then fails safe (treats the row as
+        // unsent) rather than crashing.
+        if (message.random_id == 0 && message.params != null) {
+            String raw = message.params.get(PARAM_RANDOM);
+            if (raw != null) {
+                try {
+                    message.random_id = Long.parseLong(raw);
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        }
         // A scheduled orphan whose random_id now maps to a positive server id has
         // already been sent (its main-table twin was id-remapped away, so it no
         // longer matches the both-tables dedup). It must be cleared, never re-driven.
