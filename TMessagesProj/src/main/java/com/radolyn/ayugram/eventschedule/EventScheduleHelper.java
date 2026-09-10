@@ -873,6 +873,12 @@ public final class EventScheduleHelper {
 
             // ---- Presets section (I-8: starts its own section run right after textDelaySpacer) ----
             final ArrayList<EventSchedulePresetStore.Preset> presetList = EventSchedulePresetStore.getAll(account);
+            // Captured once per sheet open; add()/remove() reject a write whose caller captured a
+            // generation that clearAccountState has since bumped. This sheet is a directly-shown
+            // BottomSheet with no fragment to tear it down when LaunchActivity swaps fragments out
+            // from under it on logout, so a still-open dialog's stale Save/Delete callback needs the
+            // store itself to refuse the write, not just an earlier dismiss.
+            final int presetGeneration = EventSchedulePresetStore.currentGeneration(account);
             final java.text.Collator presetCollator = java.text.Collator.getInstance();
             presetCollator.setStrength(java.text.Collator.SECONDARY);
             final java.util.Comparator<EventSchedulePresetStore.Preset> presetComparator = (a, b) -> {
@@ -906,6 +912,25 @@ public final class EventScheduleHelper {
                     activePresetDialogHolder[0] = null;
                 }
             };
+            // Critical-1 fix (round-2 follow-up): this sheet is a directly-shown BottomSheet, not owned
+            // by a BaseFragment, so LaunchActivity.switchToAvailableAccountOrLogout()'s fragment swap on
+            // logout doesn't reach it -- neither the pre-dismiss listener nor the detach listener below
+            // fires just because the account changed. Listening for this account's own logout directly
+            // and dismissing the sheet closes any still-open naming/remove dialog before its callback can
+            // run; the generation check inside add()/remove() is the backstop if it somehow doesn't.
+            final org.telegram.messenger.NotificationCenter.NotificationCenterDelegate presetLogoutObserver =
+                    (id, notificationAccount, args) -> {
+                        if (sheetHolder[0] != null) {
+                            sheetHolder[0].dismiss();
+                        }
+                    };
+            org.telegram.messenger.NotificationCenter.getInstance(account)
+                    .addObserver(presetLogoutObserver, org.telegram.messenger.NotificationCenter.appDidLogout);
+            // Safe to invoke more than once (removeObserver on an already-removed observer is a no-op) --
+            // wired into both the pre-dismiss listener and the detach listener below, same as
+            // dismissActivePresetDialog.
+            final Runnable removePresetLogoutObserver = () -> org.telegram.messenger.NotificationCenter.getInstance(account)
+                    .removeObserver(presetLogoutObserver, org.telegram.messenger.NotificationCenter.appDidLogout);
             final boolean[] presetsExpanded = {false};
             final boolean[] presetsBuilt = {false};
             final Runnable[] updatePresetsHeader = new Runnable[]{() -> {}};
@@ -939,7 +964,7 @@ public final class EventScheduleHelper {
                         R.string.EventSchedulePresetRemoveConfirm, preset.name));
                 confirmBuilder.setNegativeButton(getString(R.string.Cancel), null);
                 confirmBuilder.setPositiveButton(getString(R.string.Remove), (dialog, which) -> {
-                    EventSchedulePresetStore.remove(account, preset.id);
+                    EventSchedulePresetStore.remove(account, presetGeneration, preset.id);
                     for (int i = presetList.size() - 1; i >= 0; i--) {
                         if (preset.id.equals(presetList.get(i).id)) {
                             presetList.remove(i);
@@ -1467,12 +1492,15 @@ public final class EventScheduleHelper {
                         shakeAndVibrate(nameField);
                         return;
                     }
-                    boolean added = EventSchedulePresetStore.add(account, candidate, extracted.types,
+                    boolean added = EventSchedulePresetStore.add(account, presetGeneration, candidate, extracted.types,
                             extracted.patterns, savedRegex, savedDelay);
                     org.telegram.messenger.AndroidUtilities.hideKeyboard(nameField);
                     nameDialog.dismiss();
                     if (!added) {
-                        // Cap was reached by a concurrent save between the check above and here.
+                        // Cap was reached by a concurrent save between the check above and here, or
+                        // (unreachable in practice: the logout-driven dismiss below runs synchronously
+                        // with the generation bump, before this click can be dispatched) the account
+                        // was logged out from under this dialog.
                         AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
                         return;
                     }
@@ -1541,14 +1569,18 @@ public final class EventScheduleHelper {
             });
 
             builder.addCancelButton();
-            builder.setOnPreDismissListener(dialog -> dismissActivePresetDialog.run());
+            builder.setOnPreDismissListener(dialog -> {
+                dismissActivePresetDialog.run();
+                removePresetLogoutObserver.run();
+            });
             BottomSheet sheet = builder.create();
             sheetHolder[0] = sheet;
             // Critical-2: a pre-dismiss listener alone misses the case where the hosting Activity is
             // destroyed while a preset dialog is up (destroy != BottomSheet.dismiss()) -- the container
             // detaching from its window is the one signal common to both a normal dismiss and an
             // Activity-driven teardown, so hook cleanup there too. Idempotent: whichever cleanup path
-            // runs first nulls activePresetDialogHolder[0], so the other is a safe no-op.
+            // runs first nulls activePresetDialogHolder[0]/removes the observer, so the other is a safe
+            // no-op.
             sheet.getContainer().addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
                 @Override
                 public void onViewAttachedToWindow(View v) {
@@ -1557,6 +1589,7 @@ public final class EventScheduleHelper {
                 @Override
                 public void onViewDetachedFromWindow(View v) {
                     dismissActivePresetDialog.run();
+                    removePresetLogoutObserver.run();
                 }
             });
             sheet.show();

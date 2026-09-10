@@ -33,6 +33,11 @@ public final class EventSchedulePresetStore {
     private static final Map<Integer, ArrayList<Preset>> CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Boolean> LOADED = new ConcurrentHashMap<>();
     private static final Map<Integer, Object> MONITORS = new ConcurrentHashMap<>();
+    // Bumped by clearAccountState under the same account monitor. A UI surface captures the
+    // generation for its slot when it opens and passes it back into add()/remove(); a write from a
+    // callback that outlived a logout (its account cleared and its slot possibly reused) gets
+    // rejected instead of silently repopulating the slot for whoever logs into it next.
+    private static final Map<Integer, Integer> GENERATION = new ConcurrentHashMap<>();
 
     private EventSchedulePresetStore() {}
 
@@ -90,6 +95,17 @@ public final class EventSchedulePresetStore {
         }
     }
 
+    /**
+     * A UI surface for this account captures this once, when it opens, and passes it back into
+     * {@link #add} / {@link #remove}. Reads and writes both go through {@code monitor(account)} so a
+     * capture can never straddle a concurrent {@link #clearAccountState} bump.
+     */
+    public static int currentGeneration(int account) {
+        synchronized (monitor(account)) {
+            return GENERATION.getOrDefault(account, 0);
+        }
+    }
+
     public static boolean nameExists(int account, String name) {
         String normalizedName = normalizeName(name);
         synchronized (monitor(account)) {
@@ -105,19 +121,22 @@ public final class EventSchedulePresetStore {
 
     /**
      * Returns false (and adds nothing) once the account is already at {@link EventScheduleEntry#MAX_PRESET_COUNT},
-     * the name is empty after normalization, no condition is set (no type and no pattern), or a preset
-     * with the same name (case-insensitive) already exists. The naming dialog already checks the first
+     * the name is empty after normalization, no condition is set (no type and no pattern), a preset
+     * with the same name (case-insensitive) already exists, or {@code generation} no longer matches
+     * this slot's current generation (the account was logged out -- and the store cleared -- since the
+     * caller captured it via {@link #currentGeneration}). The naming dialog already checks the first
      * three before showing this call, and {@link #nameExists} before that, but enforcing all of it again
      * here -- inside the same synchronized block as the mutation -- keeps the invariant atomic and true
      * for any future caller that skips the dialog, not just today's one call site.
      */
-    public static boolean add(int account, String name, int types, List<String> patterns, boolean regex, int delaySeconds) {
+    public static boolean add(int account, int generation, String name, int types, List<String> patterns, boolean regex, int delaySeconds) {
         String normalizedName = normalizeName(name);
         int normalizedTypes = types & EventScheduleEntry.TYPE_MASK;
         ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(patterns);
         int normalizedDelay = Math.max(0, Math.min(delaySeconds, EventScheduleEntry.MAX_DELAY_SECONDS));
         if (TextUtils.isEmpty(normalizedName) || (normalizedTypes == 0 && normalizedPatterns.isEmpty())) return false;
         synchronized (monitor(account)) {
+            if (GENERATION.getOrDefault(account, 0) != generation) return false;
             loadLocked(account);
             ArrayList<Preset> list = CACHE.computeIfAbsent(account, k -> new ArrayList<>());
             if (list.size() >= EventScheduleEntry.MAX_PRESET_COUNT) return false;
@@ -132,9 +151,11 @@ public final class EventSchedulePresetStore {
         }
     }
 
-    public static void remove(int account, String id) {
+    /** No-ops (nothing removed) if {@code generation} no longer matches this slot's current generation. */
+    public static void remove(int account, int generation, String id) {
         if (TextUtils.isEmpty(id)) return;
         synchronized (monitor(account)) {
+            if (GENERATION.getOrDefault(account, 0) != generation) return;
             loadLocked(account);
             ArrayList<Preset> list = CACHE.get(account);
             if (list == null) return;
@@ -168,11 +189,16 @@ public final class EventSchedulePresetStore {
      * each other against the same {@code CACHE}/{@code LOADED} entries. Account slots are bounded by
      * {@code UserConfig.MAX_ACCOUNT_COUNT}, so keeping one monitor per slot for the process lifetime
      * costs nothing worth reclaiming.
+     * <p>Also bumps the slot's generation ({@link #GENERATION}): any in-flight {@link #add}/{@link
+     * #remove} call from a dialog that captured an older generation before this ran (e.g. a naming
+     * dialog left open across a remote session revocation) is rejected instead of resurrecting data
+     * into a slot this method just emptied.
      */
     public static void clearAccountState(int account) {
         synchronized (monitor(account)) {
             CACHE.remove(account);
             LOADED.remove(account);
+            GENERATION.merge(account, 1, Integer::sum);
             try {
                 ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
                         .edit().clear().apply();
