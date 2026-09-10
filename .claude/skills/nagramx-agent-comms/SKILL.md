@@ -141,7 +141,7 @@ one idea in one direction or the other.
 
 ## The rules
 
-Nine rules. Each says which side it binds, how it is checked, and what it costs —
+Ten rules. Each says which side it binds, how it is checked, and what it costs —
 because a rule that makes each exchange safe but triples the number of exchanges
 is a net loss, and one that can't be checked can't be enforced.
 
@@ -307,7 +307,10 @@ progress by the next idle notification** is a suspected stall — go to Rule 7. 
 not wait hours to find out; the whole point is to catch #1 in minutes.
 
 - *Checked:* is there an ack, or is there a commit/push, by the next wake?
-- *Cost:* one line from the worker. This is the missing working-vs-dead signal.
+- *Cost:* one line from the worker — and the highest-value line in the set,
+  because it converts a multi-hour silent stall (#1) into a few-minute one. If you
+  are ever trimming this protocol for length, cut something else: this is the
+  missing working-vs-dead signal, not ceremony.
 - *Kills:* silent stalls with authorized work outstanding (#1).
 
 ### 6. A review is not "clean" until it is terminal
@@ -328,13 +331,22 @@ exists to stop. Do **not** test `state == "SUBMITTED"` — the API never returns
 that; a submitted review's `state` is `COMMENTED`, `APPROVED`, or
 `CHANGES_REQUESTED`, so key off `submitted_at`.
 
+Before you read findings at all, **enumerate every check-run pinned to the head
+SHA and wait for all of them to reach a terminal state, then read the comments
+endpoint once.** The reviewer can have more than one run in flight for the same
+head, and a review posts its inline comments over a short window; concluding from
+a single completed run while another is still `in_progress` is exactly how a
+"clean" call gets made two minutes before the remaining findings land (#4). All
+runs terminal *first*, comments *after* — never the other way round.
+
 If the bounded wait deadline from `nagramx-workflow` step 9 elapses first,
 conclude **pending / no-run — never clean**: an absent or still-running review is
 reported as exactly that, so nothing downstream mistakes it for a pass.
 
 - *Checked:* a bot review with `submitted_at` set and a `commit_id` matching the
-  full head SHA (prefix-expanded from the stamp) exists before "clean" is said;
-  otherwise the report says pending / no-run.
+  full head SHA (prefix-expanded from the stamp) exists before "clean" is said,
+  and every check-run pinned to that head SHA has reached a terminal state before
+  the comments endpoint is read; otherwise the report says pending / no-run.
 - *Cost:* the bounded wait that step 9 already mandates. No new cost.
 - *Kills:* premature "clean" conclusions (#4).
 
@@ -415,9 +427,64 @@ so no `file:line` survives only in a memory that compaction will drop.
   round trip it prevents.
 - *Kills:* long-instruction stalls (#7); hardens the fresh-session handoff (#5).
 
+### 10. Specify the required property, not the mechanism; contest a prescription before building it
+
+Every rule above binds a *worker* failure mode. This one binds the coordinator's,
+and it was the most expensive pattern of the reference day — a cost not in the
+original eight because the original eight were the worker's.
+
+**Coordinator.** State *what must be true* — the property the change has to hold
+and the constraints it must respect — not the specific code that achieves it. The
+session at the call site can see the real API, the real row lifecycle, the real
+predicate; you are working from a memory of them, and memory is what compaction
+degrades. When you do name a mechanism, name it as *an example of* the property,
+never as the requirement itself.
+
+**Worker.** A prescribed mechanism is not binding when the call site contradicts
+it. Before you build it, check it against the code in front of you; if it is
+wrong, **contest it with `file:line` evidence and the property it fails to
+satisfy, then propose the mechanism that does** — do not build the wrong one and
+report the failure afterwards. This is Rule 3's escalation obligation pointed at
+*instructions*, exactly as Rule 2's re-read obligation is pointed at *reports*.
+
+The pattern this kills, drawn from real prescriptions the call site caught before
+a line was written — the property each one should have stated is in italics:
+
+- A **join key** prescribed on a column that the confirmed-row path rewrites, so
+  the correlation goes blind precisely in the case it exists for. *Correlate the
+  flushed row with its confirmation* — by whatever key survives the rewrite.
+- A state prescribed to stay **non-terminal until a confirmation resolved**, where
+  the confirmation API exposes no cancel signal, so the hold would strand
+  permanently. *Never send twice* — not "hold open," which was unbuildable here.
+- A **durability ordering** prescribed in terms that contradicted a constraint the
+  same coordinator had already imposed (no synchronous UI-thread write): a
+  mechanism at war with a standing property.
+- A **host precondition** prescribed as a loose predicate (`x != null`) where a
+  precise one existed (`canShow…`), shipping a regression the tighter predicate
+  would have caught. *Act only where the action is valid.*
+- A storage fact ruled to **mean handoff** ("the row is in table T") when a crash
+  mid-write leaves that same row present but still held, so the rule would auto-act
+  on an abandoned row. *Act only after ownership actually transferred* — which that
+  storage fact does not establish (the notification-before-DB-write trap the review
+  skill cites is the same shape).
+
+In every one the fix was identical: the coordinator names the property and the
+constraints; the worker, reading the call site, picks the mechanism and contests a
+wrong prescription *first*.
+
+- *Checked:* a contested prescription cites `file:line` and the property it
+  violates *before* an alternative is built — not a post-hoc "that didn't work";
+  and an instruction that prescribes a mechanism with no stated property is
+  under-specified and can be sent back for the property.
+- *Cost:* occasionally one clarifying exchange when a property is under-specified.
+  Against it: an implementation round plus a build saved for every wrong mechanism
+  not built — the reference day's tally was at least five.
+- *Kills:* the coordinator's costliest recurring failure — prescribing a mechanism
+  the call site already knew was wrong.
+
 ## The honest limit, restated
 
-Rules 1–6 and 9 make each exchange *safe and cheap*. They do not, and cannot,
+Rules 1–6, 9 and 10 make each exchange *safe and cheap*. They do not, and cannot,
 make an idle session resume on its own — nothing the two parties say to each other
 can, per the Two Generals' Problem. The only real answer to a session that has
 stopped responding is external: the coordinator sees the absence of git progress,

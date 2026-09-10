@@ -1431,6 +1431,12 @@ not repeat what that file states — they point at it:
 - **Write every instruction self-contained** so it survives the child's context
   compaction: imperative action, the SHA/PR it applies to, the authority to do it.
   The Phase-3 brief template is the worked example of this.
+- **Say what must be true, not how to do it.** State the required property and the
+  constraints; let the session at the call site choose the mechanism — it sees the
+  real API, row lifecycle and predicate you are recalling from a memory compaction
+  erodes. Name a mechanism only as an *example* of the property, never as the
+  requirement; the day's most expensive misses were prescriptions the call site
+  already knew were wrong (Rule 10).
 
 ## Reporting while you work
 

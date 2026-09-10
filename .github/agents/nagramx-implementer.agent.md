@@ -489,6 +489,11 @@ them:
 - **Decide inside your lane; escalate only the enumerated crossings** above
   (*Receiving review findings*). A decision already implied by an earlier ruling
   is not a new question — do not spend a round trip on it.
+- **Contest a prescribed mechanism before you build it.** If an instruction names a
+  specific mechanism and the call site contradicts it, reply with the `file:line`
+  and the property it fails, then propose the one that works — do not build the
+  wrong mechanism and report the failure after (Rule 10). Same escalation duty as
+  the bullet above, aimed at an instruction instead of a review finding.
 - **Never call a review clean while it is non-terminal** — the terminal-review
   rule in *The pull request* is this protocol's Rule 6.
 
