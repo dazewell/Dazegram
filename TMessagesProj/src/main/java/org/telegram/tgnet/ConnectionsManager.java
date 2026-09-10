@@ -499,6 +499,19 @@ public class ConnectionsManager extends BaseController {
                     FileLog.e(e);
                 }
             }, onQuickAck, onWriteToSocket);
+            // NagramX: last point before a request actually leaves for tgnet -- warns every time a message-producing
+            // request goes out while Ghost Mode is active, downstream of the AyuGhostUtils intercept above so a
+            // request Ghost already blocked (e.g. typing/read) never reaches here. Guarded here at the call site,
+            // not only inside the helper: class loading/linkage of the helper class itself happens before any of
+            // its own try/catch can run, so only a guard here makes "this cannot affect a send" a structural
+            // guarantee rather than a promise about the callee's internals. The enclosing catch below is
+            // catch (Exception e), which an Error would sail past, so this catches Throwable explicitly, and the
+            // recovery path is empty so it cannot itself throw and undo the guarantee. native_sendRequest always
+            // runs next regardless of what happens above it.
+            try {
+                tw.nekomimi.nekogram.helpers.GhostSendWarningHelper.onMessageRequestReady(currentAccount, object);
+            } catch (Throwable ignored) {
+            }
             native_sendRequest(currentAccount, buffer.address, flags, datacenterId, connectionType, immediate, requestToken);
         } catch (Exception e) {
             FileLog.e(e);

@@ -47,6 +47,10 @@ Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, wh
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.
 
+### Ghost send warning <!-- #ghost-send-warning -->
+
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost.
+
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
 Clear Message Database now removes only the media this install has database rows for, preventing a second install sharing the Downloads folder from having its media wiped.

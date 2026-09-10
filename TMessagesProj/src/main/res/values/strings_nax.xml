@@ -715,4 +715,5 @@
     <string name="EditorMuteHintSilentVideo">Sound is now muted, so the video will loop like a GIF. Tap the quality button to send it as a silent video instead.</string>
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>
+    <string name="GhostSendExposedWarning">Ghost Mode doesn\'t cover sending — your online status was just shown</string>
 </resources>
