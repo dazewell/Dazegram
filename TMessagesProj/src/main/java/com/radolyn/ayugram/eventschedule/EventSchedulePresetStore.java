@@ -21,7 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>Unlike LastSetup's all-or-nothing parse (fine for a slot the app silently regenerates), this
  * parses the array element-by-element: a malformed or unknown-version element is skipped and
- * logged, the rest of a hand-curated list survives. See {@link #fromJsonArray}.
+ * logged, the rest of a hand-curated list survives. See {@link #fromEnvelopeJson}.
  */
 public final class EventSchedulePresetStore {
 
