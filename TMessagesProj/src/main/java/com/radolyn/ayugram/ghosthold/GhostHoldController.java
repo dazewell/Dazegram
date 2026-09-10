@@ -92,6 +92,10 @@ public final class GhostHoldController {
     // re-driven send correlated with any prior attempt. Carry it in params and restore
     // it in toHeldItem.
     private static final String PARAM_RANDOM = "ghost_hold_random";
+    // Set on a re-driven send after a durable-write failure, so the divert hook
+    // lets it through to the network instead of trying to hold it again (which
+    // would loop while the write keeps failing). See persistHeld's failure path.
+    private static final String PARAM_BYPASS = "ghost_hold_bypass";
 
     private static final String PREFS_NAME = "ghosthold_state";
     private static final String KEY_LAST_GHOST_ACTIVE = "last_ghost_active";
@@ -144,11 +148,17 @@ public final class GhostHoldController {
      * before any in-flight send state is created.
      */
     public static boolean maybeHold(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+        // Re-arm this account lazily. initAccount is guarded by accountInited and is
+        // a cheap boolean check after the first run, but on an in-process re-login
+        // (LoginActivity reuses the slot without going back through
+        // ApplicationLoader) checkOnProcessStart never runs again, so the fork
+        // observers would stay unregistered. Re-arming at the send chokepoint puts
+        // them back before the first held send of the new session.
+        initAccount(account);
         if (!isHoldableTextSend(account, peer, params)) {
             return false;
         }
-        persistHeld(account, peer, params);
-        return true;
+        return persistHeld(account, peer, params);
     }
 
     /**
@@ -171,6 +181,10 @@ public final class GhostHoldController {
      */
     private static boolean isHoldableTextSend(int account, long peer, @Nullable SendMessagesHelper.SendMessageParams p) {
         if (p == null || !isHoldActive()) {
+            return false;
+        }
+        // A re-drive after a failed durable write is explicitly not to be held.
+        if (p.params != null && PARAM_VALUE.equals(p.params.get(PARAM_BYPASS))) {
             return false;
         }
         // A flush re-drive carries retryMessageObject; it must never be re-held.
@@ -442,7 +456,7 @@ public final class GhostHoldController {
         }
     }
 
-    private static void persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
+    private static boolean persistHeld(int account, long peer, SendMessagesHelper.SendMessageParams params) {
         final MessagesController controller = MessagesController.getInstance(account);
         final UserConfig userConfig = UserConfig.getInstance(account);
 
@@ -539,11 +553,14 @@ public final class GhostHoldController {
             blob = GhostHoldStore.encode(stableMsg);
         } catch (Exception e) {
             // Serializing a plain-text message does not fail in practice; if it
-            // somehow does we must not tell the user "Held" for a message we could
-            // not persist, so bail without a durable row and without the bulletin.
+            // somehow does we must not hold a message we could not persist. Return
+            // false so maybeHold falls through to the normal send path, where the
+            // message is actually sent (and the send-exposure warning fires) rather
+            // than being silently swallowed.
             FileLog.e(e);
-            return;
+            return false;
         }
+        final SendMessagesHelper.SendMessageParams originalParams = params;
         final GhostHoldStore store = GhostHoldStore.getInstance(account);
         final GhostHoldStore.HeldRecord record =
                 new GhostHoldStore.HeldRecord(stableMsg.id, peer, stableMsg.date, GhostHoldStore.STATE_HELD, blob);
@@ -553,7 +570,15 @@ public final class GhostHoldController {
         // they run only once the row has landed. This orders the signal after
         // durability without blocking the UI thread on a synchronous DB write.
         store.getQueue().postRunnable(() -> {
-            store.insertOnQueue(record);
+            boolean ok = store.insertOnQueue(record);
+            if (!ok) {
+                // The durable write failed (e.g. disk full). We already told the
+                // funnel we would hold this send, so it did nothing; if we also drop
+                // it here the user's message is lost (P2). Re-drive it through the
+                // normal send path with the hold bypassed so it is actually sent.
+                AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams));
+                return;
+            }
             postScheduledCount(account, peer);
             AndroidUtilities.runOnUIThread(() -> {
                 MessageObject mo = new MessageObject(account, stableMsg, true, true);
@@ -566,6 +591,22 @@ public final class GhostHoldController {
                 showDivertBulletin();
             });
         });
+        return true;
+    }
+
+    /**
+     * Last-resort recovery when the durable hold write failed: send the original
+     * message the normal way, with {@link #PARAM_BYPASS} set so the divert hook does
+     * not try to hold it again. Losing the message would violate P2, so a message we
+     * could not hold is sent rather than dropped.
+     */
+    private static void redriveAfterPersistFailure(int account, SendMessagesHelper.SendMessageParams params) {
+        if (params.params == null) {
+            params.params = new HashMap<>();
+        }
+        params.params.put(PARAM_BYPASS, PARAM_VALUE);
+        Log.e(SMOKE, "durable hold write failed; re-driving send to avoid loss account=" + account);
+        SendMessagesHelper.getInstance(account).sendMessage(params);
     }
 
     private static void showDivertBulletin() {
@@ -852,8 +893,12 @@ public final class GhostHoldController {
         store.getQueue().postRunnable(() -> {
             final GhostHoldStore.HeldRecord rec = store.selectOnQueue(item.mid);
             HeldItem fresh = null;
-            if (rec != null) {
-                store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING);
+            // Only proceed to dispatch once the FLUSHING claim has durably persisted.
+            // If the UPDATE fails, leave the row HELD and skip it this cycle: it
+            // re-drives on the next flush. Dispatching on a failed claim would let a
+            // kill after the stock write but before fork deletion strand the row as
+            // HELD, which reconcile (FLUSHING-only) would then re-send -- a duplicate.
+            if (rec != null && store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING)) {
                 fresh = toHeldItem(item.account, rec);
             }
             final HeldItem f = fresh;
@@ -940,14 +985,36 @@ public final class GhostHoldController {
             revertToHeld(account, mid, () -> onItemTerminal(remaining, pending));
             return;
         }
-        SendMessagesHelper.getInstance(account).sendMessage(p);
-        // Delete-on-write completion: the fork record is removed only once the funnel
-        // has provably written its stock row for this negative id. completeHandoff
-        // proves that on the storage queue (enqueued after the funnel's own
-        // putMessages(useQueue=true)) and signals this item terminal only after it has
-        // run. If the funnel wrote nothing (early return / became paid), the record is
-        // reverted to HELD for the next flush; nothing is ever lost.
-        completeHandoff(account, mid, dialogId, future, () -> onItemTerminal(remaining, pending));
+        final boolean fut = future;
+        final SendMessagesHelper.SendMessageParams sendParams = p;
+        final GhostHoldStore store = GhostHoldStore.getInstance(account);
+        // Final revalidation immediately before dispatch. flushItem marked the record
+        // FLUSHING and then hopped to the UI thread; during that hop the user can
+        // delete the held row (the messagesDeleted observer removes the fork record).
+        // Acting on the snapshot alone would send a message the user just deleted, so
+        // re-read on the store's serial queue right before the send and discard if the
+        // record is gone or no longer FLUSHING. This does not close the window to zero
+        // -- the send itself must run on the UI thread one hop later -- but it shrinks
+        // it to that single hop, which is the tightest a UI-thread send allows.
+        store.getQueue().postRunnable(() -> {
+            GhostHoldStore.HeldRecord still = store.selectOnQueue(mid);
+            final boolean valid = still != null && still.state == GhostHoldStore.STATE_FLUSHING;
+            AndroidUtilities.runOnUIThread(() -> {
+                if (!valid) {
+                    onItemTerminal(remaining, pending);
+                    return;
+                }
+                SendMessagesHelper.getInstance(account).sendMessage(sendParams);
+                // Delete-on-write completion: the fork record is removed only once the
+                // funnel has provably written its stock row for this negative id.
+                // completeHandoff proves that on the storage queue (enqueued after the
+                // funnel's own putMessages(useQueue=true)) and signals this item
+                // terminal only after it has run. If the funnel wrote nothing (early
+                // return / became paid), the record is reverted to HELD for the next
+                // flush; nothing is ever lost.
+                completeHandoff(account, mid, dialogId, fut, () -> onItemTerminal(remaining, pending));
+            });
+        });
     }
     /**
      * Delete-on-write completion. After the flush hands a held message back to the
@@ -1070,7 +1137,22 @@ public final class GhostHoldController {
         if (objects == null) {
             return;
         }
-        List<GhostHoldStore.HeldRecord> records = GhostHoldStore.getInstance(account).cachedForDialog(dialogId);
+        // Re-arm after an in-process re-login (see maybeHold): the render path is
+        // reached post-login when the user opens a scheduled list, so it re-registers
+        // the observers if checkOnProcessStart did not run again.
+        initAccount(account);
+        long selfId = UserConfig.getInstance(account).clientUserId;
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        // The published snapshot is read off-queue for speed, so it can momentarily
+        // still hold a previous slot owner's rows in the window between a re-login and
+        // the queue re-opening the file under the new owner. ownsUser refuses that
+        // window: it returns true only once an activated open has stamped this user,
+        // so a stale snapshot is never rendered. Fails toward showing nothing until
+        // the store is confirmed, never toward showing another user's held messages.
+        if (!store.ownsUser(selfId)) {
+            return;
+        }
+        List<GhostHoldStore.HeldRecord> records = store.cachedForDialog(dialogId);
         if (records == null || records.isEmpty()) {
             return;
         }
@@ -1078,7 +1160,6 @@ public final class GhostHoldController {
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
         }
-        long selfId = UserConfig.getInstance(account).clientUserId;
         for (GhostHoldStore.HeldRecord rec : records) {
             if (present.contains(rec.mid)) {
                 // A stock scheduled row for this mid is still present (a migration delete
@@ -1150,7 +1231,11 @@ public final class GhostHoldController {
             } catch (Exception e) {
                 FileLog.e(e);
             }
-            int fork = GhostHoldStore.getInstance(account).cachedCountForDialog(dialogId);
+            int fork = 0;
+            GhostHoldStore store = GhostHoldStore.getInstance(account);
+            if (store.ownsUser(UserConfig.getInstance(account).clientUserId)) {
+                fork = store.cachedCountForDialog(dialogId);
+            }
             final int total = stock + fork;
             AndroidUtilities.runOnUIThread(() ->
                     NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, total, true));
@@ -1212,21 +1297,34 @@ public final class GhostHoldController {
             }
             GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.getQueue().postRunnable(() -> {
+                java.util.HashSet<Integer> insertedOk = new java.util.HashSet<>();
                 for (GhostHoldStore.HeldRecord rec : toInsert) {
-                    store.insertOnQueue(rec);
+                    if (store.insertOnQueue(rec)) {
+                        insertedOk.add(rec.mid);
+                    }
+                }
+                if (insertedOk.isEmpty()) {
+                    return;
                 }
                 storage.getStorageQueue().postRunnable(() -> {
+                    // Delete a legacy stock row only once its fork insert is confirmed
+                    // durable. A row whose insert failed stays in the stock table (still
+                    // guarded) so it is retried on the next start rather than deleted
+                    // after a lost insert -- deleting an unconfirmed row would lose the
+                    // message (P2).
+                    ArrayList<Integer> sd = retainConfirmed(schedDelete, insertedOk);
+                    ArrayList<Integer> md = retainConfirmed(mainDelete, insertedOk);
                     try {
-                        if (!schedDelete.isEmpty()) {
-                            db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid IN(" + join(schedDelete) + ")").stepThis().dispose();
+                        if (!sd.isEmpty()) {
+                            db.executeFast("DELETE FROM scheduled_messages_v2 WHERE mid IN(" + join(sd) + ")").stepThis().dispose();
                         }
-                        if (!mainDelete.isEmpty()) {
-                            db.executeFast("DELETE FROM messages_v2 WHERE mid IN(" + join(mainDelete) + ")").stepThis().dispose();
+                        if (!md.isEmpty()) {
+                            db.executeFast("DELETE FROM messages_v2 WHERE mid IN(" + join(md) + ")").stepThis().dispose();
                         }
                     } catch (Exception e) {
                         FileLog.e(e);
                     }
-                    Log.i(SMOKE, "migrate: moved " + toInsert.size() + " legacy held rows to ghost_held account=" + account);
+                    Log.i(SMOKE, "migrate: moved " + insertedOk.size() + " legacy held rows to ghost_held account=" + account);
                     for (long d : dialogs) {
                         postScheduledCount(account, d);
                     }
@@ -1325,6 +1423,17 @@ public final class GhostHoldController {
             sb.append(ids.get(i));
         }
         return sb.toString();
+    }
+
+    /** Subset of {@code ids} whose fork insert was confirmed durable. */
+    private static ArrayList<Integer> retainConfirmed(ArrayList<Integer> ids, java.util.HashSet<Integer> confirmed) {
+        ArrayList<Integer> out = new ArrayList<>();
+        for (int mid : ids) {
+            if (confirmed.contains(mid)) {
+                out.add(mid);
+            }
+        }
+        return out;
     }
 
     /**
