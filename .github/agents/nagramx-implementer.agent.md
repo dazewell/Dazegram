@@ -494,6 +494,10 @@ them:
 
 ## Reporting back
 
+When you finish, and whenever you hit something that changes the plan, report
+concisely to whoever dispatched you — re-reading your own tree first (Rule 2), so
+every value below is what you *just* observed, not what you remember:
+
 ```
 State:         @<head-sha> PR#<n>   (re-read now, per the protocol — not remembered)
 Branch:        <YYYY-MM-DD>_<slug>

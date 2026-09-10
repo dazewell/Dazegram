@@ -157,11 +157,16 @@ as GitHub's review `commit_id` in Rule 6 — expand it (`git rev-parse HEAD`) or
 prefix-match, since a git short SHA is an unambiguous prefix of the full one and a
 literal short-vs-full equality never holds.
 
-On receipt, compare the stamp to observable state. **If a message stamped `@X`
-reaches you while your own tree or the PR is already at `@Y ≠ X`, treat its
-factual claims as possibly superseded** — re-read git/PR before acting, and read
-an instruction that references work you have already done as *already satisfied*,
-not as a request to repeat it.
+On receipt, compare the stamp against **the state that message is about — which
+is not always your own tree.** A worker receiving an instruction compares `@X` to
+its own worktree `HEAD`, since the instruction is about its branch. A coordinator
+receiving a report compares `@X` to the **PR head, or the head it last observed
+for that session** — never to its own `coord-<slug>` worktree, which is a
+different branch and would make every worker report look stale. **If the stamp is
+behind the state it should match (`@X` while that state is already at `@Y ≠ X`),
+treat the message's factual claims as possibly superseded** — re-read git/PR
+before acting, and read an instruction that references work you have already done
+as *already satisfied*, not as a request to repeat it.
 
 Be honest about what this stamp does and does not do. The head SHA is **not** a
 per-message sequence number: it detects staleness only *across a state change*.
@@ -247,10 +252,15 @@ crossings), the crossings differ.
 ### 4. One outstanding instruction per channel; a new one supersedes, it does not queue
 
 **Coordinator.** Send the next instruction to a given session only after the
-previous one is **observably acted on** — a new commit, push, or PR state change.
-A start-ack (Rule 5) proves the worker is alive and holds the instruction; it is
-**not** a licence to send the next one, because the acked work has only just begun
-and a second instruction would race it. If circumstances change before the
+previous one is **observably complete**. For a session that produces git output,
+that is a new commit, push, or PR state change. For a **read-only session (scout,
+UX, architect) that never commits, its completion report or control transition**
+(e.g. `HANDBACK_POSTED`) *is* its observable output — treat that as the release,
+or you deadlock a session that has nothing to commit. A start-ack (Rule 5) is
+different from a completion report: the ack is sent *before* the work and proves
+only that the worker is alive and holds the instruction, so it is **not** a
+licence to send the next one, because the acked work has only just begun and a
+second instruction would race it. If circumstances change before the
 previous instruction lands, do **not** stack a second live instruction — send one
 that explicitly supersedes: `supersedes my @X: <new imperative>`. The recipient
 drops the older one (Rule 1 makes the older one detectably behind anyway).
@@ -261,8 +271,9 @@ hard block, because a hard "block until reply" idles a session that could have
 proceeded. This serializes **one pair**, never the fleet: other sessions keep
 running in parallel.
 
-- *Checked:* at most one not-yet-acted-on instruction outstanding per pair at any
-  time — a start-ack does not clear it; observable action or a supersede does.
+- *Checked:* at most one not-yet-completed instruction outstanding per pair at any
+  time — a start-ack does not clear it; observable completion (a commit/push/PR
+  change, or a read-only session's completion report) or a supersede does.
 - *Cost:* a channel can sit briefly idle between the previous instruction landing
   and the next send. Accepted, because the alternative — a crossed pair — costs
   far more than the idle does.

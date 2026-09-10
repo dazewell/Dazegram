@@ -1403,12 +1403,16 @@ not repeat what that file states — they point at it:
   `git`/`gh` check yourself (Phase 4 already does this — the protocol is why).
 - **State-stamp what you send, and honour the stamp you get back.** Put the head
   SHA you last observed for a session on the instruction you send it; when a report
-  comes back stamped behind the tree you can already see, re-read before acting on
+  comes back stamped behind **the PR head or the head you last observed for that
+  session** — not behind your own `coord-<slug>` worktree, which is a different
+  branch and would make every worker report look stale — re-read before acting on
   it. That is how a crossed instruction/report pair is caught instead of acted on.
 - **One live instruction per session; a new one supersedes, it does not stack.**
-  Send the next only after the last is **observably acted on** (commit/push/PR
-  change) — a start-ack proves liveness, not completion, so it does not license the
-  next instruction; if things change first, send `supersedes my @X: …`. This
+  Send the next only after the last is **observably complete** — a commit/push/PR
+  change, or, for a read-only session (scout/UX/architect) that never commits, its
+  completion report or control transition, which is its observable output. A
+  start-ack proves liveness, not completion, so it does not license the next
+  instruction; if things change first, send `supersedes my @X: …`. This
   serializes one pair, never the fleet.
 - **A start-ack or git progress by the next idle notification, or it is a suspected
   stall.** From there follow the idle-decision table's own probe → diagnostic →
