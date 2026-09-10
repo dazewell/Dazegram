@@ -1141,7 +1141,7 @@ public final class GhostHoldController {
         // reached post-login when the user opens a scheduled list, so it re-registers
         // the observers if checkOnProcessStart did not run again.
         initAccount(account);
-        long selfId = UserConfig.getInstance(account).clientUserId;
+        long selfId = UserConfig.getInstance(account).getClientUserId();
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         // The published snapshot is read off-queue for speed, so it can momentarily
         // still hold a previous slot owner's rows in the window between a re-login and
@@ -1202,7 +1202,7 @@ public final class GhostHoldController {
      */
     @Nullable
     private static HeldItem toHeldItem(int account, GhostHoldStore.HeldRecord rec) {
-        long selfId = UserConfig.getInstance(account).clientUserId;
+        long selfId = UserConfig.getInstance(account).getClientUserId();
         TLRPC.Message message = GhostHoldStore.decode(rec.data, selfId);
         if (message == null) {
             return null;
@@ -1246,7 +1246,7 @@ public final class GhostHoldController {
             }
             int fork = 0;
             GhostHoldStore store = GhostHoldStore.getInstance(account);
-            if (store.ownsUser(UserConfig.getInstance(account).clientUserId)) {
+            if (store.ownsUser(UserConfig.getInstance(account).getClientUserId())) {
                 fork = store.cachedCountForDialog(dialogId);
             }
             final int total = stock + fork;
@@ -1296,7 +1296,7 @@ public final class GhostHoldController {
      */
     private static void migrateAccount(int account) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
-        long selfId = UserConfig.getInstance(account).clientUserId;
+        long selfId = UserConfig.getInstance(account).getClientUserId();
         storage.getStorageQueue().postRunnable(() -> {
             ArrayList<GhostHoldStore.HeldRecord> toInsert = new ArrayList<>();
             ArrayList<Integer> schedDelete = new ArrayList<>();
