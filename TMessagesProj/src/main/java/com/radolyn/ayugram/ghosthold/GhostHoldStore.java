@@ -82,6 +82,14 @@ public final class GhostHoldStore {
     // still belongs to a previous user of this reusable account slot. 0 until the
     // first activated open stamps it.
     private volatile long snapshotOwner;
+    // Bumped once each time the database is torn down (logout deletes the file and
+    // drops the in-memory view). A queued batch collected against one generation must
+    // never be applied after a teardown -- even a reopen for the same user, which would
+    // resurrect messages the logout was meant to destroy, or a reopen for a different
+    // user, which would be a cross-account leak. The batch carries the generation it was
+    // collected at; the compare and this increment both run on the fork queue, so they
+    // are atomic with respect to each other, and the off-queue capture reads it volatile.
+    private volatile int generation;
 
     private GhostHoldStore(int account) {
         this.account = account;
@@ -90,6 +98,17 @@ public final class GhostHoldStore {
 
     public DispatchQueue getQueue() {
         return queue;
+    }
+
+    /**
+     * The store's teardown generation, incremented on each logout DB deletion. A
+     * migration batch captures this at collection time and drops itself on the fork
+     * queue if the value has since changed -- i.e. the store was reopened, for the same
+     * or a different user -- so a stale batch can never be applied to a reopened store.
+     * Read off-queue for the capture; compared and incremented on the fork queue.
+     */
+    public int currentGeneration() {
+        return generation;
     }
 
     // ---- immutable render snapshot (read off-queue) ----
@@ -391,6 +410,9 @@ public final class GhostHoldStore {
         // stale rows still cannot leak: the owner stamp inside it will not match the
         // next user, and enforceOwner() purges them on the next open.
         snapshotOwner = 0;
+        // Invalidate any batch collected before this teardown. Runs on the fork queue,
+        // so it is serialised with the migration insert that reads currentGeneration().
+        generation++;
         if (!gone && new File(dir, "ghosthold_" + account + ".db").exists()) {
             FileLog.e("ghostHold: could not delete db file for account " + account + " on logout; rows will be purged by owner check on next open");
         }

@@ -1352,6 +1352,11 @@ public final class GhostHoldController {
     private static void migrateAccount(int account) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         long selfId = UserConfig.getInstance(account).getClientUserId();
+        final GhostHoldStore store = GhostHoldStore.getInstance(account);
+        // Capture the store's generation now; the fork-queue insert below drops the
+        // batch if it has changed, i.e. a logout tore the store down after this
+        // collection began.
+        final int genAtStart = store.currentGeneration();
         storage.getStorageQueue().postRunnable(() -> {
             ArrayList<GhostHoldStore.HeldRecord> toInsert = new ArrayList<>();
             ArrayList<Integer> schedDelete = new ArrayList<>();
@@ -1363,8 +1368,19 @@ public final class GhostHoldController {
             if (toInsert.isEmpty()) {
                 return;
             }
-            GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.getQueue().postRunnable(() -> {
+                // Drop the batch if the store was torn down (logout) after it was
+                // collected. Safe: the stock rows are deleted only after a confirmed
+                // insert, so nothing was removed and the next init re-migrates them.
+                // Applying it would stamp a reopened store -- a different user's (a
+                // cross-account leak), or the same user's post-logout store the deletion
+                // was meant to leave empty (resurrecting destroyed messages). The check
+                // and the teardown's increment both run on this fork queue, so the
+                // compare is atomic with the teardown.
+                if (store.currentGeneration() != genAtStart) {
+                    Log.i(SMOKE, "migrate: dropped stale batch account=" + account + " store reopened");
+                    return;
+                }
                 java.util.HashSet<Integer> insertedOk = new java.util.HashSet<>();
                 for (GhostHoldStore.HeldRecord rec : toInsert) {
                     if (store.insertOnQueue(rec)) {
