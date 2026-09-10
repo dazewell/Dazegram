@@ -7060,6 +7060,12 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // only non-null for the real chat composer (ChatActivity), not the other surfaces
                 // that share this widget, and edit modes send TL_messages_editMessage, which this
                 // reminder deliberately excludes just like the send-time warning's own allowlist does.
+                // Known gap, not fixed here: leaving edit mode restores a saved composer draft via
+                // messageEditText.setText(draftMessage) (further below in this file) without setting
+                // ignoreTextChange first, unlike every other direct setText call site -- if that
+                // restore happens to land on an empty-to-non-empty transition (e.g. editing an empty
+                // caption while a non-empty draft is pending) this can fire once on a false positive.
+                // Fixing that means touching a second place in this file, which is out of scope here.
                 if (!ignoreTextChange && parentFragment != null && editingMessageObject == null && !isEditingBusinessLink()) {
                     int previousLength = charSequence.length() - count + before;
                     if (previousLength == 0 && count > 0) {

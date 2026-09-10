@@ -523,13 +523,16 @@ session with clean state was incorrectly getting no reminder at all.
 
 This is **not** a blanket rule against any per-chat Ghost state — the typing-time
 reminder added under `#ghost-type-warning`
-(`tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper.java`) keeps materially
-the same shape of state (an account-keyed set of already-reminded dialogIds,
-reset lazily on a Ghost off→on edge) and is fine, because the thing that made
-the old design unsafe — a background-thread writer racing a UI-thread writer —
-doesn't apply to it. Its only reader/writer is
+(`GhostTypingReminderHelper.java:49-50` — a `SparseArray<HashSet<Long>>` plus a
+`wasGhostActive` boolean, reset lazily at `:69-72` on the next observed Ghost
+off→on edge) keeps materially the same shape of state (an account-keyed set of
+already-reminded dialogIds, reset lazily on a Ghost off→on edge) and is fine,
+because the thing that made the old design unsafe — a background-thread writer
+racing a UI-thread writer — doesn't apply to it. Its only reader/writer is
 `ChatActivityEnterView`'s own `TextWatcher`, invoked exclusively on the UI
-thread from the composer the user is actively looking at; nothing in the send
+thread from the composer the user is actively looking at
+(`ChatActivityEnterView.java:7058-7067` is the only call site of
+`GhostTypingReminderHelper.onComposerTypingObserved`); nothing in the send
 path or the settings screen ever touches this state. If a future change makes
 this state reachable from anywhere but that one UI-thread callback, revisit
 this exemption rather than assuming it still holds.

@@ -19,11 +19,11 @@ import tw.nekomimi.nekogram.NekoConfig;
 /**
  * Reminds the user, once per chat per Ghost Mode session, the first time they
  * start typing into an empty composer while Ghost Mode is on -- ahead of the
- * send, unlike {@link GhostSendWarningHelper} which fires after a message
- * actually reaches the network. Both stay independently correct: this one is
- * an early nudge and can be silently missed (a covered fragment, a paused
- * screen); the send-time warning is the one accurate signal for every message
- * type in every configuration.
+ * send, unlike {@link GhostSendWarningHelper} which fires at the last moment
+ * before a message-producing request is actually dispatched to tgnet. Both
+ * stay independently correct: this one is an early nudge and can be silently
+ * missed (a covered fragment, a paused screen); the send-time warning is the
+ * one accurate signal for every message type in every configuration.
  * <p>
  * NagramX: a future change should add a Hold-Messages-inactive condition here
  * (once the currently-unmerged Hold Messages setting lands) and update
@@ -46,6 +46,13 @@ public class GhostTypingReminderHelper {
     // invoked on the main looper) -- there is no background-thread writer, so
     // no synchronization is needed, unlike the deleted state that raced against
     // the send path on Utilities.stageQueue.
+    // Known, accepted gap: this can only observe a Ghost state change when the
+    // composer callback actually runs. An off->on->off->on cycle with no
+    // composer keystroke anywhere in between is invisible to it, so the reset
+    // can be skipped and a chat already reminded in an earlier session stays
+    // suppressed in a later one. Cost is exactly one missed reminder in one
+    // chat -- accepted rather than adding a NekoConfig/GhostModeActivity hook
+    // just to observe toggles with no composer activity around them.
     private static final SparseArray<HashSet<Long>> remindedDialogs = new SparseArray<>();
     private static boolean wasGhostActive;
 
