@@ -1154,7 +1154,15 @@ public final class GhostHoldController {
         for (int account : accounts) {
             final GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.getQueue().postRunnable(() -> {
-                for (GhostHoldStore.HeldRecord rec : store.selectAllOnQueue()) {
+                // NagramX: HELD only, never FLUSHING. This collection feeds the flush,
+                // so a FLUSHING row here would be dispatched again -- and a row stuck
+                // FLUSHING (its handoff already wrote the stock twin but the follow-up
+                // delete failed) would send a duplicate. FLUSHING rows are resolved
+                // solely by startup reconciliation (present twin -> delete, absent ->
+                // re-hold), not by the flush. The settings count reads the same set,
+                // where HELD-only is also correct: a handed-off row is being sent, not
+                // held.
+                for (GhostHoldStore.HeldRecord rec : store.selectByStateOnQueue(GhostHoldStore.STATE_HELD)) {
                     HeldItem it = toHeldItem(account, rec);
                     if (it != null) {
                         result.add(it);
