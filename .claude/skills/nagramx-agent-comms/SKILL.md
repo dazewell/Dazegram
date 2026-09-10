@@ -513,10 +513,16 @@ were later re-reported as Critical — recovered only because an unrelated
 automated review happened to re-find them hours later. Luck is not a
 verification step, and the next stall may not be caught by one.
 
-- *Checked:* every authorization reaches exactly one terminal disposition —
-  landed (cite the commit), explicitly carried into a fresh brief, or explicitly
-  declined with a stated reason — before the session holding it is archived or
-  the scope it belongs to is reported complete.
+- *Checked:* every authorization reaches exactly one **closed** disposition
+  before the session holding it is archived or the scope it belongs to is
+  reported complete: **landed** (cite the commit), **declined** (a stated
+  reason), or **superseded** (an explicit `supersedes my @X` per Rule 4 — the
+  older instruction's own completion, not a form of carrying it forward).
+  **Carried** into a fresh brief's `Outstanding authorizations` field is
+  deliberately *not* one of these — it is an open handoff, not a disposition:
+  the item still owes a landed/declined/superseded outcome, tracked against the
+  *new* brief, and closing the old session on "carried" alone would let the same
+  item silently re-open the gap this rule exists to close.
 - *Cost:* one running list per coordinator, kept alongside the brief template it
   already maintains, plus one diff-against-branch check at each handoff and each
   archive. Cheap next to a Critical that shipped because an item was never
