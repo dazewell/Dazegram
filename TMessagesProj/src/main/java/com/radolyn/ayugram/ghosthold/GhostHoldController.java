@@ -189,6 +189,12 @@ public final class GhostHoldController {
         // Metadata we do not persist and restore -> refuse rather than degrade:
         //  reply markup (an inline keyboard attached to the send),
         //  a story-reply target,
+        //  a poll-vote or todo-task reply quote (replyQuote.poll / replyQuote.todo):
+        //    the funnel writes reply_to.poll_option / todo_item_id from these
+        //    (SendMessagesHelper ~:5065-5068), but persistHeld only carries a plain
+        //    text quote, so a held poll-vote/todo reply would flush as an ordinary
+        //    reply -- changing what the message *does*, not just how it looks. A
+        //    plain text-quote reply IS persisted, so it stays holdable,
         //  a quick-reply shortcut (business) set directly on the params,
         //  a monoforum destination peer,
         //  suggestion params (suggested posts),
@@ -215,6 +221,7 @@ public final class GhostHoldController {
         //    behaving as specified, so it is documented rather than excluded.
         if (p.replyMarkup != null
                 || p.replyToStoryItem != null
+                || (p.replyQuote != null && (p.replyQuote.poll || p.replyQuote.todo))
                 || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
                 || p.monoForumPeer != 0
                 || p.suggestionParams != null

@@ -51319,7 +51319,11 @@ public class ChatActivity extends BaseFragment implements
                     options.add(OPTION_SUGGESTION_ADD_OFFER);
                     icons.add(R.drawable.menu_edit_price);
                 }
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat)) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat) && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
+                    // NagramX: a held Ghost Hold row has a negative local id the server has never seen.
+                    // canEditMessageScheduleTime (unlike canEditMessage) does not reject id < 0, so without
+                    // this guard the row would offer "Edit schedule time" and fire TL_messages_editMessage
+                    // against that id -- a server request while Ghost is on, the exact exposure we prevent.
                     items.add(LocaleController.getString(R.string.MessageScheduleEditTime));
                     options.add(OPTION_EDIT_SCHEDULE_TIME);
                     icons.add(R.drawable.msg_calendar2);

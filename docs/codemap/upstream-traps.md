@@ -968,3 +968,27 @@ time. This is a recurring shape here, not a one-off: `git log` already carries
 signing-blob pin trap` entry for the same class of problem. The fix is a
 `#tag`-exempt merge of `origin/dev` into the feature branch once its tree is
 clean.
+
+## canEditMessageScheduleTime lacks the negative-id guard its sibling canEditMessage has
+
+Established 2026-09-10 (#ghost-hold). `MessageObject.canEditMessage(...)` bails
+out for a local, unsent row: it returns `false` when `message.id < 0`
+(`MessageObject.java:11792`), so the general "Edit" action correctly hides
+itself for any negative-id scheduled row. Its sibling
+`canEditMessageScheduleTime(...)` (`MessageObject.java:11768-11782`) has **no**
+such check — it returns `true` for a DM / megagroup / creator row regardless of
+id sign. So the scheduled-list "Edit schedule time" action offers itself for a
+purely-local negative-id row and, on tap, issues `TL_messages_editMessage`
+against an id the server has never seen. For an ordinary failed-schedule row
+that is a harmless failed request; for a Ghost Hold row it is a server round
+trip while Ghost is on — the exact exposure the feature exists to prevent.
+
+This is a pre-existing upstream asymmetry, not something Ghost Hold introduced —
+any negative-id scheduled row hits it. Ghost Hold guards **only its own held
+rows** at the call site (`ChatActivity.java`, the `OPTION_EDIT_SCHEDULE_TIME`
+block, mirroring the existing `!isHeld` Send Now guard) and deliberately does
+**not** touch `canEditMessageScheduleTime` itself: fixing the upstream method
+would widen the diff into shared base-fork code for a bug that costs a failed
+request, not data loss. Recorded so the next person who wonders why the held-row
+guard exists — or who trusts `canEditMessageScheduleTime` to mirror
+`canEditMessage`'s id check — does not burn an investigation on it.
