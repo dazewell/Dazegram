@@ -1326,18 +1326,27 @@ public final class GhostHoldController {
         if (accountInited[account]) {
             return;
         }
-        accountInited[account] = true;
         AndroidUtilities.runOnUIThread(() -> {
+            // Claim the account and install the observer in the same UI turn. If the
+            // flag were set before the observer were actually registered, a logout in
+            // that gap would be missed (appDidLogout also posts on the UI thread): the
+            // DB file would not be deleted and the next login would skip re-init. The
+            // outer check is only a cheap off-thread fast path; this one, on the UI
+            // thread, is authoritative and also prevents a double install.
+            if (accountInited[account]) {
+                return;
+            }
+            accountInited[account] = true;
             NotificationCenter nc = NotificationCenter.getInstance(account);
             GhostHoldObserver obs = new GhostHoldObserver(account);
             observers[account] = obs;
             nc.addObserver(obs, NotificationCenter.messagesDeleted);
             nc.addObserver(obs, NotificationCenter.appDidLogout);
+            GhostHoldStore store = GhostHoldStore.getInstance(account);
+            store.getQueue().postRunnable(() -> store.selectAllOnQueue());
+            migrateAccount(account);
+            reconcileFlushing(account);
         });
-        GhostHoldStore store = GhostHoldStore.getInstance(account);
-        store.getQueue().postRunnable(() -> store.selectAllOnQueue());
-        migrateAccount(account);
-        reconcileFlushing(account);
     }
 
     /**
