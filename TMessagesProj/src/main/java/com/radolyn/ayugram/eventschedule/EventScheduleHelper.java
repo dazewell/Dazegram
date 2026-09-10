@@ -407,8 +407,8 @@ public final class EventScheduleHelper {
                 }
             }
             types &= EventScheduleEntry.TYPE_MASK;
-            // NagramX: unconditional presentation clamp -- an existing trigger predating this cap (or a
-            // stale EventScheduleLastDelay recorded before it shipped) can carry a delay above the max.
+            // NagramX: unconditional presentation clamp -- an existing trigger predating this cap, or a
+            // remembered last setup whose stored delay predates it, can carry a delay above the max.
             // This isn't the actual enforcement (that's EventScheduleStore.persist, which clamps every
             // runtime write regardless of what this field holds), but delay is read directly by snapshot()
             // and commit() below even when the sheet is never opened, so it must already be in range the
