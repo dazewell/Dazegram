@@ -34,6 +34,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 import tw.nekomimi.nekogram.NekoConfig;
 
@@ -119,9 +120,11 @@ public final class GhostHoldController {
     // UI thread the moment appDidLogout is observed, before postTeardown() is even
     // queued; the flush captures it at start and rechecks it on the same UI thread
     // immediately before the send, so the two are strictly ordered with no window.
-    // Plain int, not volatile/atomic: every read and write is on the UI thread, so
-    // program order alone gives visibility.
-    private static final int[] sessionEpoch = new int[UserConfig.MAX_ACCOUNT_COUNT];
+    // AtomicIntegerArray, not a plain int[]: the flush's own reads and the logout bump
+    // are all on the UI thread, but the legacy migration (migrateAccount) also has to
+    // read it from the storage queue to drop a batch a concurrent logout invalidated,
+    // and a plain array element carries no cross-thread visibility guarantee.
+    private static final AtomicIntegerArray sessionEpoch = new AtomicIntegerArray(UserConfig.MAX_ACCOUNT_COUNT);
 
     // NagramX (item 8): messages the in-flight flush actually handed back to the send
     // funnel, so the completion bulletin reports what happened rather than what was
@@ -592,19 +595,28 @@ public final class GhostHoldController {
         // ahead of this op, the teardown bumps the generation before we run and the
         // insert is dropped by the ownership gate. A null callback there would lose the
         // message silently -- the funnel already stood down on our promise to hold it,
-        // yet no row is written and nothing re-drives it (P2, the highest-severity
-        // loss). Treat invalidation exactly like the disk-full failure below: re-drive
-        // the original send through the normal path so the message is actually sent
-        // instead of vanishing. Fail toward NOT LOST.
+        // yet no row is written (P2, the highest-severity loss). But the generation only
+        // ever moves on logout teardown, so an invalidation here means the account slot
+        // is being torn down: re-driving originalParams through sendMessage(account) now
+        // would transmit through whoever next owns the slot -- the very cross-account
+        // leak item 2 guards. So we cannot honour NOT LOST by redriving, because the
+        // redrive would not send THIS user's message, it would send from the wrong
+        // account. Route both failure paths through redriveAfterPersistFailure, which
+        // redrives only when the session epoch is unchanged (a same-session disk-full:
+        // NOT LOST) and abandons with a log when it moved (logout raced in: NOT LEAKED).
+        // Fail toward NOT LOST, then NOT LEAKED.
         final int epoch = store.currentGeneration();
+        final int holdSession = sessionEpoch.get(account);
         store.runOwned(epoch, () -> {
             boolean ok = store.insertOnQueue(record);
             if (!ok) {
                 // The durable write failed (e.g. disk full). We already told the
                 // funnel we would hold this send, so it did nothing; if we also drop
                 // it here the user's message is lost (P2). Re-drive it through the
-                // normal send path with the hold bypassed so it is actually sent.
-                AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams));
+                // normal send path with the hold bypassed so it is actually sent --
+                // unless a logout has begun since we captured holdSession, which the
+                // guarded helper checks.
+                AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                 return;
             }
             postScheduledCount(account, peer);
@@ -617,7 +629,7 @@ public final class GhostHoldController {
                 NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
                 showDivertBulletin();
             });
-        }, () -> AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams)));
+        }, () -> AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession)));
         return true;
     }
 
@@ -625,9 +637,22 @@ public final class GhostHoldController {
      * Last-resort recovery when the durable hold write failed: send the original
      * message the normal way, with {@link #PARAM_BYPASS} set so the divert hook does
      * not try to hold it again. Losing the message would violate P2, so a message we
-     * could not hold is sent rather than dropped.
+     * could not hold is sent rather than dropped -- but only while the account slot
+     * still belongs to the user who sent it.
+     *
+     * <p>{@code holdSession} is the {@link #sessionEpoch} captured when the hold was
+     * accepted. Runs on the UI thread, where appDidLogout bumps that epoch, so the two
+     * are strictly ordered. If the epoch has moved a logout is under way and the slot
+     * is being reused: redriving would push this user's message through the next
+     * owner's account (a P1 cross-account leak), which does not preserve the message
+     * anyway. So we abandon and log instead -- NOT LEAKED wins here because the redrive
+     * cannot satisfy NOT LOST for the original sender.
      */
-    private static void redriveAfterPersistFailure(int account, SendMessagesHelper.SendMessageParams params) {
+    private static void redriveAfterPersistFailure(int account, SendMessagesHelper.SendMessageParams params, int holdSession) {
+        if (sessionEpoch.get(account) != holdSession) {
+            FileLog.e("ghostHold: hold persist failed but logout raced in; abandoning redrive for account " + account + " to avoid cross-account send");
+            return;
+        }
         if (params.params == null) {
             params.params = new HashMap<>();
         }
@@ -887,7 +912,7 @@ public final class GhostHoldController {
         final java.util.HashMap<Integer, Integer> sessionByAccount = new java.util.HashMap<>();
         for (HeldItem it : items) {
             if (!sessionByAccount.containsKey(it.account)) {
-                sessionByAccount.put(it.account, sessionEpoch[it.account]);
+                sessionByAccount.put(it.account, sessionEpoch.get(it.account));
             }
         }
         for (int i = 0; i < all; i++) {
@@ -908,6 +933,15 @@ public final class GhostHoldController {
         if (pending <= 0) {
             return;
         }
+        // Snapshot the sent count now, on the UI thread, before the async countHeld hop
+        // below. flushInProgress was just cleared, so a second flush may start, reset
+        // flushSent and repopulate it while our count is in flight; reading flushSent
+        // inside the callback would then report the later flush's number on this
+        // flush's bulletin (item 8). Capturing it here pins it to this flush.
+        final int sent = flushSent.get();
+        if (sent <= 0) {
+            return;
+        }
         countHeld(stillHeld -> {
             BaseFragment f = LaunchActivity.getLastFragment();
             if (f == null || f.getParentActivity() == null) {
@@ -919,10 +953,6 @@ public final class GhostHoldController {
             // only row was deleted reports nothing instead of the old "1 held message
             // sent". The denominator is sent + stillHeld -- the rows that still existed
             // and were candidates -- so deleted rows never inflate it.
-            int sent = flushSent.get();
-            if (sent <= 0) {
-                return;
-            }
             CharSequence text;
             if (stillHeld <= 0) {
                 text = LocaleController.formatPluralString("GhostHoldFlushed", sent);
@@ -1093,7 +1123,7 @@ public final class GhostHoldController {
                 // logout bump run on the UI thread, so they are strictly ordered with no
                 // race -- do not move either off it. Keep the message held (or abandon it
                 // on logout) if any is true.
-                if (sessionEpoch[account] != session) {
+                if (sessionEpoch.get(account) != session) {
                     // Logout has begun. Treat exactly like store invalidation: abandon
                     // the send. The teardown will purge the row; nothing is transmitted.
                     onItemTerminal(remaining, pending);
@@ -1156,18 +1186,21 @@ public final class GhostHoldController {
                     // user deleted the held object during the handoff window and the
                     // messagesDeleted observer already removed the fork row -- both it
                     // and this check run on the store's serial queue, so a deletion that
-                    // reached the queue first is seen here. For a send-now that leaves an
-                    // orphaned messages_v2 twin the unsent scan would transmit AFTER the
-                    // user deleted it, so cancel the twin instead of completing. This
-                    // closes the main window; a deletion that reaches the queue only
-                    // after this op ran is bounded by removeStaleScheduledItem, which
-                    // clears the display object one UI hop later -- the same one-hop
-                    // limit a UI-thread send already documents. Cancellation is
-                    // best-effort by nature (the network send may already be gone), which
-                    // is the correct direction under NOT LOST > NOT LEAKED > NOT
-                    // DUPLICATED: a stray duplicate is the least-bad outcome.
+                    // reached the queue first is seen here. The funnel's twin would then
+                    // transmit something the user destroyed: a send-now twin (messages_v2)
+                    // via the unsent scan, a future-dated twin (scheduled_messages_v2) at
+                    // its scheduled date. Cancel it either way. sentObj.scheduled is set
+                    // from `future`, so cancelSendingMessage routes the deletion to the
+                    // matching table (mode SCHEDULED vs main). This closes the main
+                    // window; a deletion that reaches the queue only after this op ran is
+                    // bounded by removeStaleScheduledItem, which clears the display object
+                    // one UI hop later -- the same one-hop limit a UI-thread send already
+                    // documents. Cancellation is best-effort by nature (the network send
+                    // may already be gone), which is the correct direction under NOT LOST
+                    // > NOT LEAKED > NOT DUPLICATED: a stray duplicate is the least-bad
+                    // outcome.
                     boolean rowGone = store.selectOnQueue(mid) == null;
-                    if (rowGone && !future && sentObj != null) {
+                    if (rowGone && sentObj != null) {
                         AndroidUtilities.runOnUIThread(() ->
                                 SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj));
                     } else {
@@ -1492,8 +1525,14 @@ public final class GhostHoldController {
         final GhostHoldStore store = GhostHoldStore.getInstance(account);
         // Capture the store's generation now; the fork-queue insert below drops the
         // batch if it has changed, i.e. a logout tore the store down after this
-        // collection began.
+        // collection began. Also capture the synchronous session epoch on this (UI)
+        // thread: the generation only moves once the async teardown runs on the fork
+        // queue, so a logout that has begun but whose teardown has not yet run would
+        // still pass the generation gate and insert the old user's stock rows into the
+        // reused slot. The epoch moved the instant appDidLogout was seen, so rechecking
+        // it before the insert closes that lag (finding: legacy migration ignored it).
         final int genAtStart = store.currentGeneration();
+        final int sessionAtStart = sessionEpoch.get(account);
         storage.getStorageQueue().postRunnable(() -> {
             ArrayList<GhostHoldStore.HeldRecord> toInsert = new ArrayList<>();
             ArrayList<Integer> schedDelete = new ArrayList<>();
@@ -1514,6 +1553,15 @@ public final class GhostHoldController {
                 // the compare is atomic with the teardown. Dropping is loss-free: the
                 // stock rows are deleted only after a confirmed insert, so nothing was
                 // removed and the next init re-migrates them.
+                //
+                // Also drop the batch if the session epoch moved since collection began.
+                // The generation gate above only fires once the async teardown has run;
+                // this catches the earlier instant logout was seen, before the reused
+                // slot's new owner could have its rows inserted here. Both layers are
+                // loss-free for the reason above.
+                if (sessionEpoch.get(account) != sessionAtStart) {
+                    return;
+                }
                 java.util.HashSet<Integer> insertedOk = new java.util.HashSet<>();
                 for (GhostHoldStore.HeldRecord rec : toInsert) {
                     if (store.insertOnQueue(rec)) {
@@ -1676,7 +1724,7 @@ public final class GhostHoldController {
                 // own generation has not yet moved (its teardown runs later on the fork
                 // queue) and the logged-out user's message could otherwise transmit
                 // through the reused account slot.
-                sessionEpoch[account]++;
+                sessionEpoch.incrementAndGet(account);
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
                 store.postTeardown();
                 accountInited[account] = false;

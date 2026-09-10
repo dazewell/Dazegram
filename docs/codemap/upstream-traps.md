@@ -1060,7 +1060,7 @@ Cost if missed: Ghost Hold's fail-closed backstop `onlyPersistedFieldsSet`
 refused to hold anything with a non-default unknown field, so `sendAnimationData`
 made it refuse **every** composer send — the message went straight to the network
 with Ghost on. Cost a full device cycle to surface because the leak is silent and
-the send otherwise looks normal (`GhostHoldController.java:355`, 2026-09-10).
+the send otherwise looks normal (`GhostHoldController.java:389-396`, 2026-09-10).
 
 ## `-keep class org.telegram.messenger.* { *; }` DOES keep nested-class members
 
@@ -1075,7 +1075,7 @@ survive R8 today. It is still not safe to rely on: a keep rule narrowed to
 `**`-vs-`*` or dropping `{ *; }` would silently rename these fields and break
 name-based reflection with no compile error, which is why Ghost Hold moved its
 field check onto compile-checked `p.<field>` references plus a name-independent
-declared-field **count** guard (`GhostHoldController.java:326,355`, 2026-09-10).
+declared-field **count** guard (`GhostHoldController.java:353-420`, 2026-09-10).
 
 Cost if missed: this fact killed hypothesis H1 (that R8 renamed the fields and
 disabled Ghost Hold's backstop in the minified build only). It did not; the real

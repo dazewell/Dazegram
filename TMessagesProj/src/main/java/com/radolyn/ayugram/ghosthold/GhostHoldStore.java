@@ -239,13 +239,21 @@ public final class GhostHoldStore {
                 c.dispose();
             }
         }
-        if (stored != 0 && stored != current) {
+        if (stored != current) {
+            // The file does not belong to the current user. Two cases, both untrusted:
+            // a different user owned it (stored != 0 -- a slot reused after a logout
+            // whose file delete never ran), or the owner stamp is missing entirely
+            // (stored == 0) while ghost_held rows survive -- a teardown that cleared the
+            // stamp but could not delete the rows (deleteDatabaseFileOnQueue clears the
+            // stamp first for exactly this reason). Either way, binding without purging
+            // would render or flush another session's rows -- the leak this gate exists
+            // to stop -- so purge before stamping. current != 0 here (early return
+            // above), so stored == 0 lands in this branch. A fresh first open hits it
+            // too, but ghost_held is empty then, so the delete is a no-op.
             db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
             master.clear();
             loaded = false;
             publish();
-        }
-        if (stored != current) {
             db.executeFast("REPLACE INTO ghost_meta(k, v) VALUES(1, " + current + ")").stepThis().dispose();
         }
         snapshotOwner = current;
@@ -449,17 +457,37 @@ public final class GhostHoldStore {
      * {@link #postTeardown()}; it is the one queue op that bypasses the ownership gate.
      */
     private void deleteDatabaseFileOnQueue() {
+        File dir = ApplicationLoader.getFilesDirFixed();
+        File dbFile = new File(dir, "ghosthold_" + account + ".db");
         synchronized (dbLock) {
+            if (database == null && dbFile.exists()) {
+                // The file survives from a session this store instance never opened (a
+                // teardown that never ran before this one, a crash between sessions). We
+                // still have to purge it in place: if the unlink below then fails, a
+                // same-user relogin would otherwise load its rows (enforceOwner only
+                // purges on a mismatch, and re-login as the same user is not one). Open
+                // it on demand so the purge has a connection to work with.
+                try {
+                    db();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+            }
             if (database != null) {
-                // Purge the rows and the owner stamp in-place before we close and unlink.
+                // Purge the owner stamp and the rows in-place before we close and unlink.
                 // If the unlink below fails (WAL/SHM lock, permission), a later login as
-                // the SAME user must still find nothing held: enforceOwner() only purges
-                // on an owner MISMATCH, so a same-user in-place reopen would otherwise
-                // load this session's messages straight back. Clearing the tables here
-                // makes the invalidation hold regardless of whether the file goes away.
+                // the SAME user must still find nothing held. Clear ghost_meta FIRST, in
+                // its own try: if the ghost_held delete then throws, a reopen still sees
+                // an empty owner (stored == 0) and enforceOwner treats the surviving rows
+                // as untrusted and purges them. Sharing one try let a failed first delete
+                // skip the second, leaving a valid stamp on top of live rows -- the leak.
+                try {
+                    database.executeFast("DELETE FROM ghost_meta").stepThis().dispose();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
                 try {
                     database.executeFast("DELETE FROM ghost_held").stepThis().dispose();
-                    database.executeFast("DELETE FROM ghost_meta").stepThis().dispose();
                 } catch (Exception e) {
                     FileLog.e(e);
                 }
@@ -471,8 +499,7 @@ public final class GhostHoldStore {
                 database = null;
             }
         }
-        File dir = ApplicationLoader.getFilesDirFixed();
-        boolean gone = deleteQuietly(new File(dir, "ghosthold_" + account + ".db"));
+        boolean gone = deleteQuietly(dbFile);
         deleteQuietly(new File(dir, "ghosthold_" + account + ".db-wal"));
         deleteQuietly(new File(dir, "ghosthold_" + account + ".db-shm"));
         master.clear();
@@ -486,7 +513,7 @@ public final class GhostHoldStore {
         // Invalidate any batch collected before this teardown. Runs on the fork queue,
         // so it is serialised with the migration insert that reads currentGeneration().
         generation++;
-        if (!gone && new File(dir, "ghosthold_" + account + ".db").exists()) {
+        if (!gone && dbFile.exists()) {
             FileLog.e("ghostHold: could not delete db file for account " + account + " on logout; rows already purged in-place");
         }
         publish();
