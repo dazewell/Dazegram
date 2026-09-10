@@ -905,6 +905,14 @@ public final class EventScheduleHelper {
             presetsContainer.setVisibility(View.GONE);
             builder.addCustomView(presetsContainer);
 
+            // Terminate this section run here -- without a TAG_NOT_SECTION spacer, delayCardContainer
+            // (added further below) stays part of the same SectionsScrollView run as the Presets header
+            // and rows, so the delay slider would get painted inside the Presets card.
+            View presetsDelaySpacer = builder.addCustomView(new View(context));
+            presetsDelaySpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
+            presetsDelaySpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
+            presetsDelaySpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
+
             final java.util.function.Consumer<EventSchedulePresetStore.Preset> confirmRemovePreset = (preset) -> {
                 AlertDialog.Builder confirmBuilder = new AlertDialog.Builder(context);
                 confirmBuilder.setTitle(getString(R.string.EventSchedulePresetRemove));
@@ -1288,7 +1296,14 @@ public final class EventScheduleHelper {
             // need delaySeekBar/stagedDelay/delayIndex/delayValue, which only exist from this point on.
             applyPresetHolder[0] = (preset) -> {
                 // I-7(i): unfocus + dismiss keyboard first, mirroring collapseTextGroup's own sequencing.
+                // Clear the rows/container BEFORE calling clearFocus(): clearFocus() synchronously invokes
+                // the row's focus-change listener, which auto-removes a blank row when it loses focus with
+                // 2+ rows present -- if that ran here it would remove+refocus a row we're about to discard
+                // anyway. Clearing `rows` first makes that listener's rows.indexOf(row) come back -1, so
+                // removeRow's own guard no-ops it instead of doing that redundant (and focus-stealing) work.
                 EditTextBoldCursor focused = focusedField(rows);
+                patternRowsContainer.removeAllViews();
+                rows.clear();
                 if (focused != null) {
                     org.telegram.messenger.AndroidUtilities.hideKeyboard(focused);
                     focused.clearFocus();
@@ -1296,8 +1311,6 @@ public final class EventScheduleHelper {
 
                 // I-7(ii)-(iii): full rebuild from scratch via the existing row-creation + watcher-attach
                 // helpers (never a parallel "faster" path) -- this is a full replace, not a merge.
-                patternRowsContainer.removeAllViews();
-                rows.clear();
                 ArrayList<String> seedPatterns = new ArrayList<>(preset.patterns);
                 if (seedPatterns.isEmpty()) {
                     seedPatterns.add("");
