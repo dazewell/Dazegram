@@ -534,7 +534,7 @@ them gives it a real hosting fragment and a real chat to key state on:
   argument (stored in the `parentFragment` field, declared
   `ChatActivityEnterView.java:811` as `ChatActivity parentFragment`) and later
   (`ChatActivity.java:8853`) calls `setDialogId(long, int)`
-  (`ChatActivityEnterView.java:8234`) with the real chat's dialogId. This is
+  (`ChatActivityEnterView.java:8236`) with the real chat's dialogId. This is
   the only call site where `parentFragment` is ever non-null and `dialog_id`
   (`ChatActivityEnterView.java:812`) is ever the actual open chat.
 - `DialogsActivity.java:5075` (forward/share comment field),

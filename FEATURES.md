@@ -45,7 +45,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost. You'll also get an earlier heads-up the moment you start typing into an empty message box while Ghost Mode is on — once per chat per time Ghost Mode is turned on, so it doesn't repeat itself while you keep chatting. It resets if you turn Ghost Mode off and back on, and stays silent whenever Ghost Mode is off.
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost. You'll also get an earlier heads-up the moment you start typing into an empty message box while Ghost Mode is on — once per chat per time Ghost Mode is turned on, so it doesn't repeat itself while you keep chatting. The next time you start typing after turning Ghost Mode off and back on, it forgets which chats it already reminded you about; it stays silent whenever Ghost Mode is off.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
@@ -291,6 +291,6 @@ On DazegramX (Unofficial), the app's fixed system-level icon — the one Android
      unmerged, sibling-owned setting. Once pushed, the mention can't be
      reworded without an amend + force-push, which this fork's history rules
      forbid, so it's parked here per the commit-tag policy rather than given a
-     real entry that would misrepresent what shipped. See PR #331 for the
-     actual feature, once it lands. -->
+     real entry that would misrepresent what shipped. It will get a real entry
+     once that separate feature actually lands. -->
 <!-- #ghost-hold -->
