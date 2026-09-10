@@ -163,6 +163,17 @@ factual claims as possibly superseded** — re-read git/PR before acting, and re
 an instruction that references work you have already done as *already satisfied*,
 not as a request to repeat it.
 
+Be honest about what this stamp does and does not do. The head SHA is **not** a
+per-message sequence number: it detects staleness only *across a state change*.
+Two instructions or two reports sent while the tree sits at the same `@X` carry
+the same stamp, so it cannot order them. That residual is closed not by a nonce
+but by the rules that already exist: Rule 4 forbids two live instructions
+coexisting on one channel, so a same-head pair only arises as an explicit
+`supersedes my @X:` (which carries its own order); and two reports at the same
+head are idempotent — they describe the same tree the coordinator re-reads anyway.
+A per-channel sequence would buy ordering for a case those rules already cover, at
+the cost of a counter on every message — deliberately not worth it here.
+
 **The structured parent/child control vocabulary is exempt from the raw SHA
 stamp** — `RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
 `CLOSED` / `ABORTED` and the rest in the orchestrator file. Those are not
@@ -191,8 +202,8 @@ reports; let each control message be checked against these rules instead.
   against its lifecycle order (terminal states) or the mandatory `get_session` +
   git re-verification before acting (recurring states).
 - *Cost:* one `git rev-parse` per message. Negligible.
-- *Kills:* crossed messages (#2), and gives a stale self-report (#3) a detectable
-  signature.
+- *Kills:* crossed messages that span a state change (#2) — the same-head case is
+  Rule 4's — and gives a stale self-report (#3) a detectable signature.
 
 ### 2. Re-read your own tree before every report; report only what you just observed
 
