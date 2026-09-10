@@ -495,10 +495,11 @@ silently drop something you already authorized but the dead session had not yet
 started. Keep the outstanding-authorization list somewhere that survives the
 session dying, not only in that session's own conversational memory — the same
 distrust Rule 8 already applies to a degraded session's self-reports. When you
-write a replacement brief (Rule 9's self-contained template), the fixed block
-carries **every authorization the dead session had not yet landed**, not only
-the branch state and whatever new task prompted the replacement — an urgent new
-task does not retire an old one nobody did. Before you call a scope complete, or
+write a replacement brief (Rule 9's self-contained template), the fixed block's
+**`Outstanding authorizations` field** carries every authorization the dead
+session had not yet landed, or an explicit `<none>` — not only the branch state
+and whatever new task prompted the replacement — an urgent new task does not
+retire an old one nobody did. Before you call a scope complete, or
 before you archive the session that held it, **verify against the branch, not
 against the last report**: diff what was authorized against what the commits
 actually contain, the same own-tree re-read Rule 2 already requires, run here by

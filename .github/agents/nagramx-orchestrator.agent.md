@@ -770,6 +770,15 @@ Trade-off budget: <what may be spent for correctness — an extra query, an extr
                   you're deliberately overriding that with a costed migration
                   decision from the gate above.>
 Out of scope:   <explicit list>
+Outstanding authorizations: <every authorization owed by a prior session on this
+                  unit that has not yet landed in a commit — write `<none>`
+                  explicitly when there is nothing outstanding; a blank field is
+                  not the same as a checked `<none>` and must not be left implicit.
+                  Populated only on a replacement brief (comms protocol Rule 11):
+                  diff what was authorized against what the dead session's branch
+                  actually contains, and carry forward exactly what is missing —
+                  never assume the new task this brief was written for supersedes
+                  an old authorization nobody did.>
 
 ## What dazewell asked for, and why
 ## His answers at the gate
