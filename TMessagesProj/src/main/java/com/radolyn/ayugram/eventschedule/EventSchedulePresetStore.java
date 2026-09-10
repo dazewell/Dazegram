@@ -16,8 +16,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Named, user-curated "Send on event" presets: a per-account list, separate from
- * {@link EventScheduleLastSetup}'s single auto-remembered slot. Stored as one JSON array under one
- * key in {@code eventschedule_presets_<account>}.
+ * {@link EventScheduleLastSetup}'s single auto-remembered slot. Stored as a versioned JSON
+ * envelope (an object with a "v" field and one JSON array under one key) in
+ * {@code eventschedule_presets_<account>}.
  *
  * <p>Unlike LastSetup's all-or-nothing parse (fine for a slot the app silently regenerates), this
  * parses the array element-by-element: a malformed or unknown-version element is skipped and
@@ -90,27 +91,39 @@ public final class EventSchedulePresetStore {
     }
 
     public static boolean nameExists(int account, String name) {
+        String normalizedName = normalizeName(name);
         synchronized (monitor(account)) {
             loadLocked(account);
             ArrayList<Preset> list = CACHE.get(account);
             if (list == null) return false;
             for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).name.equalsIgnoreCase(name)) return true;
+                if (list.get(i).name.equalsIgnoreCase(normalizedName)) return true;
             }
             return false;
         }
     }
 
-    /** Returns false (and adds nothing) once the account is already at {@link EventScheduleEntry#MAX_PRESET_COUNT}. */
+    /**
+     * Returns false (and adds nothing) once the account is already at {@link EventScheduleEntry#MAX_PRESET_COUNT},
+     * the name is empty after normalization, no condition is set (no type and no pattern), or a preset
+     * with the same name (case-insensitive) already exists. The naming dialog already checks the first
+     * three before showing this call, and {@link #nameExists} before that, but enforcing all of it again
+     * here -- inside the same synchronized block as the mutation -- keeps the invariant atomic and true
+     * for any future caller that skips the dialog, not just today's one call site.
+     */
     public static boolean add(int account, String name, int types, List<String> patterns, boolean regex, int delaySeconds) {
         String normalizedName = normalizeName(name);
         int normalizedTypes = types & EventScheduleEntry.TYPE_MASK;
         ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(patterns);
         int normalizedDelay = Math.max(0, Math.min(delaySeconds, EventScheduleEntry.MAX_DELAY_SECONDS));
+        if (TextUtils.isEmpty(normalizedName) || (normalizedTypes == 0 && normalizedPatterns.isEmpty())) return false;
         synchronized (monitor(account)) {
             loadLocked(account);
             ArrayList<Preset> list = CACHE.computeIfAbsent(account, k -> new ArrayList<>());
             if (list.size() >= EventScheduleEntry.MAX_PRESET_COUNT) return false;
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).name.equalsIgnoreCase(normalizedName)) return false;
+            }
             Preset preset = new Preset(UUID.randomUUID().toString(), normalizedName, normalizedTypes, normalizedPatterns,
                     regex, normalizedDelay, System.currentTimeMillis());
             list.add(preset);
