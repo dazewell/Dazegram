@@ -100,6 +100,17 @@ public class GhostTypingReminderHelper {
         HashSet<Long> remindedForAccount = reminded;
         AndroidUtilities.runOnUIThread(() -> {
             try {
+                // NagramX: re-check here, not just above -- Ghost Mode can be toggled
+                // off in the moment between posting this and it actually running, and
+                // this closure captured the reminded-set reference from before that
+                // toggle. Re-reading avoids showing a stale reminder for a session that
+                // already ended; the set itself needs no re-fetch, since a reset in the
+                // meantime already orphaned this captured reference (it clears the
+                // whole SparseArray entry rather than emptying it in place), so a write
+                // here can never land in the new session's set.
+                if (!NekoConfig.isGhostModeActive()) {
+                    return;
+                }
                 if (tryShowBulletin(fragment, account)) {
                     remindedForAccount.add(dialogId);
                 }

@@ -7060,12 +7060,9 @@ public class ChatActivityEnterView extends FrameLayout implements
                 // only non-null for the real chat composer (ChatActivity), not the other surfaces
                 // that share this widget, and edit modes send TL_messages_editMessage, which this
                 // reminder deliberately excludes just like the send-time warning's own allowlist does.
-                // Known gap, not fixed here: leaving edit mode restores a saved composer draft via
-                // messageEditText.setText(draftMessage) (further below in this file) without setting
-                // ignoreTextChange first, unlike every other direct setText call site -- if that
-                // restore happens to land on an empty-to-non-empty transition (e.g. editing an empty
-                // caption while a non-empty draft is pending) this can fire once on a false positive.
-                // Fixing that means touching a second place in this file, which is out of scope here.
+                // The stashed-draft restore on leaving edit mode is also guarded against (it now sets
+                // ignoreTextChange around its own setText call, same as this file's other direct
+                // restores), so this can't misfire from that transition.
                 if (!ignoreTextChange && parentFragment != null && editingMessageObject == null && !isEditingBusinessLink()) {
                     int previousLength = charSequence.length() - count + before;
                     if (previousLength == 0 && count > 0) {
@@ -12525,8 +12522,16 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             createMessageEditText();
             if (messageEditText != null) {
+                // NagramX: guard this draft restore the same way every other direct
+                // setText call in this file already does, so it can't misfire the
+                // typing-time Ghost Mode reminder (or the existing needSendTyping
+                // logic) when leaving edit mode happens to land on an
+                // empty-to-non-empty transition (e.g. an empty caption was being
+                // edited while a non-empty pre-edit draft was stashed).
+                ignoreTextChange = true;
                 messageEditText.setText(draftMessage);
                 messageEditText.setSelection(messageEditText.length());
+                ignoreTextChange = false;
             }
             draftMessage = null;
             messageWebPageSearch = draftSearchWebpage;
