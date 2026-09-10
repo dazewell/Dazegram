@@ -208,6 +208,7 @@
     <string name="SendWithoutSoundRowNotice">Automatically sends outgoing messages without sound.</string>
     <string name="GhostHoldSwitch">Hold Messages</string>
     <string name="GhostHoldSwitchNotice">Text messages you send or schedule while Ghost Mode is on stay on this device and go out once you turn it off. Attachments still send right away.</string>
+    <string name="GhostHoldSwitchNoticeWithCount">%1$s\n%2$s</string>
     <string name="GhostHoldPending_one">%1$d message held</string>
     <string name="GhostHoldPending_other">%1$d messages held</string>
     <string name="GhostHoldDiverted">Held — won\'t send until Ghost Mode is off</string>

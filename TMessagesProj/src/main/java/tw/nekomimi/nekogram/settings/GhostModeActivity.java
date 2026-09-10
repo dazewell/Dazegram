@@ -143,11 +143,13 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
     }
 
     private void updateGhostViews() {
-        updateGhostRows();
-
         // NagramX: a ghost toggle here may have flipped isGhostModeActive() false; drain the hold queue on that edge
         com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
 
+        // Single update path: the mainUserInfoChanged observer (added by this fragment) runs
+        // updateGhostRows() + refreshHeldCount() once, and the post also refreshes other
+        // ghost-aware surfaces. Calling updateGhostRows() directly here too would double the
+        // per-click DB work.
         NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
 
@@ -327,7 +329,7 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
                         cell.setText(getString(R.string.MarkReadAfterSendNotice));
                     } else if (position == holdMessagesNoticeRow) {
                         if (heldCount > 0) {
-                            cell.setText(getString(R.string.GhostHoldSwitchNotice) + "\n" + LocaleController.formatPluralString("GhostHoldPending", heldCount));
+                            cell.setText(LocaleController.formatString(R.string.GhostHoldSwitchNoticeWithCount, getString(R.string.GhostHoldSwitchNotice), LocaleController.formatPluralString("GhostHoldPending", heldCount)));
                         } else {
                             cell.setText(getString(R.string.GhostHoldSwitchNotice));
                         }

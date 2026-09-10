@@ -81,6 +81,11 @@ public final class GhostHoldController {
 
     private static final String PREFS_NAME = "ghosthold_state";
     private static final String KEY_LAST_GHOST_ACTIVE = "last_ghost_active";
+    // Snapshot of the five ghost toggles captured while Ghost is active, so a
+    // cancelled flush restores exactly that per-toggle state instead of force-
+    // enabling all of them (setGhostMode(true) would).
+    private static final String KEY_GHOST_SNAPSHOT_VALID = "ghost_snapshot_valid";
+    private static final String KEY_GHOST_SNAPSHOT_PREFIX = "ghost_snapshot_";
 
     // Gap between successive sends on flush, so an entire backlog does not leave
     // in the same instant -- a simultaneous burst is itself a signal Ghost ended.
@@ -463,7 +468,14 @@ public final class GhostHoldController {
     public static synchronized void onGhostStateMaybeChanged() {
         boolean nowActive = NekoConfig.isGhostModeActive();
         boolean wasActive = prefs().getBoolean(KEY_LAST_GHOST_ACTIVE, false);
-        prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
+        SharedPreferences.Editor editor = prefs().edit();
+        editor.putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive);
+        if (nowActive) {
+            // Remember the exact toggle configuration while Ghost is active; a
+            // cancelled flush restores precisely this, not an all-toggles-on state.
+            writeGhostSnapshot(editor);
+        }
+        editor.apply();
         if (wasActive && !nowActive) {
             Log.i(SMOKE, "flush trigger: ghost-off edge detected, requesting flush");
             AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
@@ -485,7 +497,12 @@ public final class GhostHoldController {
     public static void checkOnProcessStart() {
         boolean nowActive = NekoConfig.isGhostModeActive();
         Log.i(SMOKE, "begin: process start build=" + BuildConfig.BUILD_VERSION_STRING + " app=" + BuildConfig.APPLICATION_ID + " ghostActive=" + nowActive + " holdEnabled=" + NekoConfig.holdMessagesWhileGhost.Bool());
-        prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive).apply();
+        SharedPreferences.Editor editor = prefs().edit();
+        editor.putBoolean(KEY_LAST_GHOST_ACTIVE, nowActive);
+        if (nowActive) {
+            writeGhostSnapshot(editor);
+        }
+        editor.apply();
         if (!nowActive) {
             Log.i(SMOKE, "flush trigger: process-start convergence, ghost inactive");
             AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
@@ -563,8 +580,42 @@ public final class GhostHoldController {
         return pending;
     }
 
+    private static tw.nekomimi.nekogram.config.ConfigItem[] ghostToggleItems() {
+        return new tw.nekomimi.nekogram.config.ConfigItem[]{
+                NekoConfig.sendReadMessagePackets,
+                NekoConfig.sendReadStoriesPackets,
+                NekoConfig.sendOnlinePackets,
+                NekoConfig.sendUploadProgress,
+                NekoConfig.sendOfflinePacketAfterOnline,
+        };
+    }
+
+    private static void writeGhostSnapshot(SharedPreferences.Editor editor) {
+        tw.nekomimi.nekogram.config.ConfigItem[] items = ghostToggleItems();
+        for (int i = 0; i < items.length; i++) {
+            editor.putBoolean(KEY_GHOST_SNAPSHOT_PREFIX + i, items[i].Bool());
+        }
+        editor.putBoolean(KEY_GHOST_SNAPSHOT_VALID, true);
+    }
+
     private static void restoreGhost() {
-        NekoConfig.setGhostMode(true);
+        if (prefs().getBoolean(KEY_GHOST_SNAPSHOT_VALID, false)) {
+            // Cancel means "keep holding". Re-activate Ghost by restoring the exact
+            // per-toggle state captured while it was last active, writing back only the
+            // toggles that actually changed -- so we never switch on a toggle the user
+            // left off. setGhostMode(true) would force all five into ghost state.
+            tw.nekomimi.nekogram.config.ConfigItem[] items = ghostToggleItems();
+            for (int i = 0; i < items.length; i++) {
+                boolean prior = prefs().getBoolean(KEY_GHOST_SNAPSHOT_PREFIX + i, items[i].Bool());
+                if (items[i].Bool() != prior) {
+                    items[i].setConfigBool(prior);
+                }
+            }
+        } else {
+            // No captured active state (Ghost was never active in a tracked session);
+            // fall back to enabling Ghost so a cancelled flush still keeps messages held.
+            NekoConfig.setGhostMode(true);
+        }
         // Re-seed the baseline so the next genuine ghost-off edge still fires.
         prefs().edit().putBoolean(KEY_LAST_GHOST_ACTIVE, NekoConfig.isGhostModeActive()).apply();
         NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
