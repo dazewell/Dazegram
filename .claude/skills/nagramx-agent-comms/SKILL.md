@@ -98,6 +98,22 @@ The problem is old; the literature is worth reading before inventing.
   already-monotonic stamp both sides can compare against ground truth. Where we
   differ: we have no delivery runtime doing dedup for us, so the *recipient* does
   the staleness check by hand.
+- **Published multi-agent orchestration practice** (Anthropic's
+  [*How we built our multi-agent research system*](https://www.anthropic.com/engineering/multi-agent-research-system))
+  reports the same failure modes from the other end of the same problem, which is
+  the strongest evidence these rules aren't local superstition. Its early agents
+  were "distracting each other with excessive updates" and "duplicate[d] work"
+  when the lead agent's delegation was vague — which is why it concludes each
+  subagent "needs an objective, an output format, guidance on the tools and
+  sources to use, and clear task boundaries," and that the best prompts are
+  "frameworks for collaboration that define the division of labor … and effort
+  budgets." That is Rule 9 and the fixed-block brief, reached independently. It
+  also names our root cause outright — "agents are stateful and errors compound …
+  minor system failures can be catastrophic" over a long-running process —
+  matching #5. Where we differ: their mitigation is *durable resume from
+  checkpoints* so a long agent "can't just restart from the beginning"; we have no
+  such runtime, so our answer to a degraded session is a **fresh** context with a
+  self-contained brief (Rules 7–8), not a resumed one.
 
 The one place the literature does **not** save us: none of it makes an idle,
 non-responding agent wake itself up or time itself out. Every automated-recovery
