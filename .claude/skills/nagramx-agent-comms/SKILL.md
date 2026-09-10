@@ -261,15 +261,25 @@ not wait hours to find out; the whole point is to catch #1 in minutes.
 ### 6. A review is not "clean" until it is terminal
 
 **Both sides**, worker first. Never conclude an automated review produced no
-findings while any review run for the current head SHA is non-terminal, or before
-the reviewer has actually fired for that SHA. **"No findings yet" is not "no
-findings."** The terminal check is mechanical: the reviews endpoint shows a
-*submitted* review whose commit is the head SHA, or the bounded wait deadline from
-`nagramx-workflow` step 9 has elapsed with the reviewer confirmed to have run
-(and, per that step, a review that has *never fired* is reported as "no run," not
-as a pass). This is the existing wait-loop, stated as a gate you must not jump.
+findings while it is non-terminal for the current head SHA. **"No findings yet"
+is not "no findings."** The terminal check is mechanical and specific: on the
+reviews endpoint there is a review **from the Copilot reviewer bot** — match its
+login case-insensitively on a wildcard, since it appears as
+`copilot-pull-request-reviewer[bot]` on the reviews endpoint and `Copilot` on the
+comments endpoint — carrying a `submitted_at`, **and whose `commit_id` equals the
+head SHA you stamped**. A review with an older `commit_id`, or from a human or
+architect rather than the bot, does **not** satisfy it: an older-commit review
+pre-dates your latest push and reintroduces the very staleness this rule exists to
+stop. Do **not** test `state == "SUBMITTED"` — the API never returns that; a
+submitted review's `state` is `COMMENTED`, `APPROVED`, or `CHANGES_REQUESTED`, so
+key off `submitted_at`.
 
-- *Checked:* review state == submitted for the head SHA before "clean" is said.
+If the bounded wait deadline from `nagramx-workflow` step 9 elapses first,
+conclude **pending / no-run — never clean**: an absent or still-running review is
+reported as exactly that, so nothing downstream mistakes it for a pass.
+
+- *Checked:* a bot review with `submitted_at` set and `commit_id == headSha`
+  exists before "clean" is said; otherwise the report says pending / no-run.
 - *Cost:* the bounded wait that step 9 already mandates. No new cost.
 - *Kills:* premature "clean" conclusions (#4).
 
