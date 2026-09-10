@@ -1506,9 +1506,10 @@ public final class GhostHoldController {
 
     /**
      * Per-account observer for held-row deletion and logout. Deletion: when the user
-     * deletes rows from a Scheduled list, the notification carries the (negative) held
-     * ids, and the matching fork records are removed. Logout: the account's ghost_held
-     * database file is deleted so a re-login never inherits held messages.
+     * deletes a held row from Scheduled, or deletes a handed-off message's stock twin
+     * from the timeline, the notification carries the (negative) id and the matching
+     * fork record is removed. Logout: the account's ghost_held database file is deleted
+     * so a re-login never inherits held messages.
      */
     private static final class GhostHoldObserver implements NotificationCenter.NotificationCenterDelegate {
         private final int account;
@@ -1530,10 +1531,14 @@ public final class GhostHoldController {
                 return;
             }
             if (id == NotificationCenter.messagesDeleted) {
-                boolean scheduled = args.length > 2 && Boolean.TRUE.equals(args[2]);
-                if (!scheduled) {
-                    return;
-                }
+                // NagramX: react to both scheduled-list deletions (a held row the user
+                // removed from Scheduled) and ordinary timeline deletions. After a
+                // send-now handoff the stock twin lives in the timeline under the reused
+                // negative id and is deleted with scheduled == false; ignoring that would
+                // leave the fork record FLUSHING while its twin is gone, and reconcile
+                // would read the absent row as an interrupted handoff and re-drive it,
+                // resurrecting a message the user deleted. selectOnQueue below matches
+                // only our own negative ids, so any unrelated deletion is a no-op.
                 @SuppressWarnings("unchecked")
                 ArrayList<Integer> mids = (ArrayList<Integer>) args[0];
                 if (mids == null || mids.isEmpty()) {
