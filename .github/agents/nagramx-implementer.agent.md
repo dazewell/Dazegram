@@ -477,9 +477,11 @@ them:
   count, and report those. If a claim would not survive a reader running the same
   command, drop it.
 - **Stamp every report with the head SHA it describes** — `@<short-sha> PR#<n>`.
-  When an instruction reaches you stamped behind the tree you can already see,
-  treat it as possibly superseded: re-read first, and read an instruction that
-  asks for work you have already done as *already satisfied*, not as a repeat.
+  The short SHA is for humans; expand it to the full SHA when a check compares it
+  to GitHub's `commit_id` (Rule 6). When an instruction reaches you stamped behind
+  the tree you can already see, treat it as possibly superseded: re-read first, and
+  read an instruction that asks for work you have already done as *already
+  satisfied*, not as a repeat.
 - **Acknowledge authorized work on receipt, then treat it as a commitment.** When
   you are told to proceed, reply with one line — `starting <thing> @<sha>` — then
   start. Silence after an authorization is indistinguishable from a dead session,

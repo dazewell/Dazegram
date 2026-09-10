@@ -151,7 +151,11 @@ is a net loss, and one that can't be checked can't be enforced.
 head SHA it was written against — `@<short-sha>`, plus the PR number where one
 exists (`@a1b2c3d PR#207`). For a report it is the tree you are describing
 (`git rev-parse --short HEAD` in your worktree at send time); for an instruction
-it is the tree the coordinator last observed for that session.
+it is the tree the coordinator last observed for that session. The short SHA is
+the human-facing form; whenever a rule compares it to a full 40-char SHA — such
+as GitHub's review `commit_id` in Rule 6 — expand it (`git rev-parse HEAD`) or
+prefix-match, since a git short SHA is an unambiguous prefix of the full one and a
+literal short-vs-full equality never holds.
 
 On receipt, compare the stamp to observable state. **If a message stamped `@X`
 reaches you while your own tree or the PR is already at `@Y ≠ X`, treat its
@@ -171,9 +175,16 @@ what protects them is the rule that the coordinator **resolves every ambiguous
 control state mechanically via `get_session` + git before acting on it**, never
 from the message alone (the idle-decision table already mandates exactly this).
 So a stale recurring control message cannot be acted on as current — the
-mechanical re-check catches it — which is why the stamp buys nothing here. Stamp
-freeform instructions and reports; let each control message be checked against
-the state machine and that mandatory re-verification instead.
+mechanical re-check catches it — which is why the stamp buys nothing here. Two
+explicit acceptance rules make that concrete, so no per-channel sequence number is
+needed: the terminal states are **absorbing** — once a channel has sent `CLOSED`,
+`ABORTED`, or `HANDBACK_POSTED`, a later control message on it is rejected outright
+as stale, not acted on — and a recurring `WAITING_HUMAN` / `BLOCKED_PARENT` is
+treated as current **only after** the coordinator confirms via `get_session` that
+the child is still in that state. The coordinator never acts on such a message's
+content directly; it re-derives the state and acts on that (the one principle),
+which is exactly why a late duplicate is harmless. Stamp freeform instructions and
+reports; let each control message be checked against these rules instead.
 
 - *Checked:* a freeform message either carries a `@<sha>` or it does not; the
   recipient's check is one `git rev-parse HEAD`. A control message is checked
@@ -225,11 +236,13 @@ crossings), the crossings differ.
 ### 4. One outstanding instruction per channel; a new one supersedes, it does not queue
 
 **Coordinator.** Send the next instruction to a given session only after the
-previous one is acknowledged (Rule 5) or observably acted on (a new commit, push,
-or PR state change). If circumstances change before then, do **not** stack a
-second live instruction — send one that explicitly supersedes: `supersedes my
-@X: <new imperative>`. The recipient drops the older one (Rule 1 makes the older
-one detectably behind anyway).
+previous one is **observably acted on** — a new commit, push, or PR state change.
+A start-ack (Rule 5) proves the worker is alive and holds the instruction; it is
+**not** a licence to send the next one, because the acked work has only just begun
+and a second instruction would race it. If circumstances change before the
+previous instruction lands, do **not** stack a second live instruction — send one
+that explicitly supersedes: `supersedes my @X: <new imperative>`. The recipient
+drops the older one (Rule 1 makes the older one detectably behind anyway).
 
 dazewell's instinct was "one outstanding request at a time." Adopt its *intent*
 — never two live instructions racing on one channel — but via supersession, not a
@@ -237,10 +250,11 @@ hard block, because a hard "block until reply" idles a session that could have
 proceeded. This serializes **one pair**, never the fleet: other sessions keep
 running in parallel.
 
-- *Checked:* at most one un-acted instruction outstanding per pair at any time.
-- *Cost:* a channel can sit briefly idle between an ack and the next send.
-  Accepted, because the alternative — a crossed pair — costs far more than the
-  idle does.
+- *Checked:* at most one not-yet-acted-on instruction outstanding per pair at any
+  time — a start-ack does not clear it; observable action or a supersede does.
+- *Cost:* a channel can sit briefly idle between the previous instruction landing
+  and the next send. Accepted, because the alternative — a crossed pair — costs
+  far more than the idle does.
 - *Kills:* crossed messages (#2).
 
 ### 5. Acknowledge authorized work on receipt; then it is a commitment
@@ -274,20 +288,23 @@ is not "no findings."** The terminal check is mechanical and specific: on the
 reviews endpoint there is a review **from the Copilot reviewer bot** — match its
 login case-insensitively on a wildcard, since it appears as
 `copilot-pull-request-reviewer[bot]` on the reviews endpoint and `Copilot` on the
-comments endpoint — carrying a `submitted_at`, **and whose `commit_id` equals the
-head SHA you stamped**. A review with an older `commit_id`, or from a human or
-architect rather than the bot, does **not** satisfy it: an older-commit review
-pre-dates your latest push and reintroduces the very staleness this rule exists to
-stop. Do **not** test `state == "SUBMITTED"` — the API never returns that; a
-submitted review's `state` is `COMMENTED`, `APPROVED`, or `CHANGES_REQUESTED`, so
-key off `submitted_at`.
+comments endpoint — carrying a `submitted_at`, **and whose `commit_id` is the head
+SHA you stamped** (compare *full* SHAs — GitHub returns the 40-char `commit_id`,
+so expand your short stamp with `git rev-parse HEAD` or prefix-match; a literal
+short-vs-full `==` never holds). A review with an older `commit_id`, or from a
+human or architect rather than the bot, does **not** satisfy it: an older-commit
+review pre-dates your latest push and reintroduces the very staleness this rule
+exists to stop. Do **not** test `state == "SUBMITTED"` — the API never returns
+that; a submitted review's `state` is `COMMENTED`, `APPROVED`, or
+`CHANGES_REQUESTED`, so key off `submitted_at`.
 
 If the bounded wait deadline from `nagramx-workflow` step 9 elapses first,
 conclude **pending / no-run — never clean**: an absent or still-running review is
 reported as exactly that, so nothing downstream mistakes it for a pass.
 
-- *Checked:* a bot review with `submitted_at` set and `commit_id == headSha`
-  exists before "clean" is said; otherwise the report says pending / no-run.
+- *Checked:* a bot review with `submitted_at` set and a `commit_id` matching the
+  full head SHA (prefix-expanded from the stamp) exists before "clean" is said;
+  otherwise the report says pending / no-run.
 - *Cost:* the bounded wait that step 9 already mandates. No new cost.
 - *Kills:* premature "clean" conclusions (#4).
 

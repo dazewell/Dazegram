@@ -1406,9 +1406,10 @@ not repeat what that file states — they point at it:
   comes back stamped behind the tree you can already see, re-read before acting on
   it. That is how a crossed instruction/report pair is caught instead of acted on.
 - **One live instruction per session; a new one supersedes, it does not stack.**
-  Send the next only after the last is acked or observably acted on; if things
-  change first, send `supersedes my @X: …`. This serializes one pair, never the
-  fleet.
+  Send the next only after the last is **observably acted on** (commit/push/PR
+  change) — a start-ack proves liveness, not completion, so it does not license the
+  next instruction; if things change first, send `supersedes my @X: …`. This
+  serializes one pair, never the fleet.
 - **A start-ack or git progress by the next idle notification, or it is a suspected
   stall.** From there follow the idle-decision table's own probe → diagnostic →
   second-wake → escalate sequence above — do not invent a shorter one. When it
