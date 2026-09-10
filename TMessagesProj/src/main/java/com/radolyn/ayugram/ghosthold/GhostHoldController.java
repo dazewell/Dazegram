@@ -325,6 +325,14 @@ public final class GhostHoldController {
     // and refuses to hold until the new field is triaged here.
     private static final int KNOWN_PARAM_FIELD_COUNT = 54;
 
+    // The actual declared instance-field count in this build, computed once at class
+    // load from the class literal -- not per send, and not off p.getClass(), since
+    // SendMessageParams is never subclassed and the count must be the one for exactly
+    // that class. Compared against KNOWN_PARAM_FIELD_COUNT so an upstream field add or
+    // drop trips the backstop, with no per-send reflection or allocation.
+    private static final int ACTUAL_PARAM_FIELD_COUNT =
+            countInstanceFields(SendMessagesHelper.SendMessageParams.class);
+
     /**
      * The fail-closed half of {@link #isHoldableTextSend}: true iff no SendMessageParams
      * field the explicit guards above do not already cover is carrying non-default state
@@ -370,7 +378,7 @@ public final class GhostHoldController {
         }
         // Name-independent add-detector: a field appearing (or disappearing) upstream
         // changes the declared instance-field count, so refuse until it is triaged.
-        return countInstanceFields(p.getClass()) == KNOWN_PARAM_FIELD_COUNT;
+        return ACTUAL_PARAM_FIELD_COUNT == KNOWN_PARAM_FIELD_COUNT;
     }
 
     private static int countInstanceFields(Class<?> cls) {
