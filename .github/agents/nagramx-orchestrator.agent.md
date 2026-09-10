@@ -85,7 +85,8 @@ re-run any of your gates; it is a pure supervisor. So:
   checklist, then archive (see the mis-dispatch / pre-`RUNNING` archive path and
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
-    your resolved agent identity and your `coord-<slug>` branch.
+    your resolved agent identity and your `coord-<slug>` branch, plus your
+    current `Outstanding authorizations` snapshot (`<none>` at startup).
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
     `ask_user`, so a lost or never-observed `ask_user` cannot stall you
     invisibly. Your own stall clock is considered paused while you wait.
@@ -99,8 +100,13 @@ re-run any of your gates; it is a pure supervisor. So:
     archive. **Carry your own process ledger in this message** (in the
     process-lifecycle ledger format, `Processes: <none>` when empty) plus your
     per-direct-child archive results, so the parent can re-verify — a bare
-    `CLOSED` with no ledger is rejected. Leaf-to-root only (see the
-    process-lifecycle skill).
+    `CLOSED` with no ledger is rejected. **You may not send `CLOSED` while you
+    still hold an open authorization toward one of your own dispatched
+    sessions** (comms protocol Rule 11, applied recursively to you as a
+    coordinator) — close each one (landed, declined, or superseded) first; your
+    `coord-<slug>` branch is never committed, so this precondition, not a git
+    diff, is what closes the gap for your own subtree. Leaf-to-root only (see
+    the process-lifecycle skill).
   - `BLOCKED_ARCHIVE <unit-slug>: <evidence>` — you cannot cleanly close because
     a descendant is blocked or a process would not verify as stopped. Report
     this **instead of** `CLOSED`, never alongside it.
@@ -109,8 +115,19 @@ re-run any of your gates; it is a pure supervisor. So:
     pre-`RUNNING` failure** — a failed `coord-<slug>` rename or a failed
     preflight). Send it before you stop, with the exact reason, so the parent
     surfaces it upward without re-investigating and never mistakes a dead
-    session for a working one. The one case you cannot send it is a missing
-    parent address, above.
+    session for a working one. Include your current `Outstanding
+    authorizations` snapshot when you have started work — it is the only
+    durable record your parent will ever have of what you had committed to but
+    not yet dispatched, since your branch carries none of it. The one case you
+    cannot send it is a missing parent address, above.
+
+  **Every control message above carries your current `Outstanding
+  authorizations` snapshot, not only `RUNNING`, `CLOSED`, and `ABORTED`** — it
+  is cheap to restate and it is the only place this state exists outside your
+  own context. A child that goes dark between two control messages having
+  authorized new descendant work in that gap loses it exactly as a leaf
+  session's uncommitted edits are lost on a stall — restating it every message
+  narrows that window, it does not close it (comms protocol Rule 11).
 - **You forfeit the trivial-work commit exception entirely** (see *You do not
   implement*). A root orchestrator may make a one-line doc/CI commit itself; a
   child orchestrator never commits — its branch is `coord-<slug>`, which is not
@@ -1289,11 +1306,16 @@ imply you have seen the app running.
 Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
 `.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. Before you archive,
-also close every outstanding authorization that session held (comms protocol
-Rule 11): diff what you authorized against what the branch actually contains,
-and for anything not landed, either cite the commit that covers it, carry it
-into a fresh brief, or record why it is being explicitly declined — archiving is
-exactly the moment an un-tracked authorization becomes unrecoverable.
+also give every outstanding authorization that session held a **closed**
+disposition (comms protocol Rule 11 — landed, declined, or superseded; not
+carried, which is an open handoff, not a closing one): diff what you authorized
+against what the branch actually contains, and for anything not landed, either
+cite the commit that covers it, record why it is being explicitly declined, or
+supersede it explicitly per Rule 4 — and if it is instead carried forward into a
+fresh brief's `Outstanding authorizations` field, it stays open until *that*
+brief lands it, so track it against the new brief rather than treating the
+carry itself as closure. Archiving is exactly the moment an un-tracked
+authorization becomes unrecoverable.
 
 **Sequencing note, orchestrator-facing:** `HANDBACK_POSTED` is not `CLOSED`. A
 child that has posted its handback is done *reporting* but not yet safe to

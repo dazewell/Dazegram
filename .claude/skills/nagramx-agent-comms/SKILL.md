@@ -505,6 +505,32 @@ against the last report**: diff what was authorized against what the commits
 actually contain, the same own-tree re-read Rule 2 already requires, run here by
 the coordinator against a tree that is not its own.
 
+**This rule recurses onto a child orchestrator, which is a coordinator for its
+own dispatched sessions and binds the same way — with one honest limit.** A
+child orchestrator's `coord-<slug>` branch is deliberately never committed or
+pushed (see *Dispatching a child orchestrator* in the orchestrator file), so
+unlike a leaf implementer's branch there is no git state a parent can diff
+against to reconstruct a dead child's outstanding authorizations toward *its
+own* descendants. Two consequences, not one workaround:
+
+- **The clean-exit path is closed by a precondition, not a diff.** A child
+  orchestrator may not send `CLOSED` while it still holds an open
+  authorization toward one of its own descendants — closing every one of them
+  (landed, declined, or superseded) is a precondition of `CLOSED`, exactly as
+  archiving a leaf session requires it above. This covers every orderly
+  shutdown; it does nothing for a child that never gets to send `CLOSED`.
+- **A child that dies before reporting is an honest gap, not a solved one** —
+  the same limit Rules 7–8 already state for liveness in general, applied here
+  to authorizations specifically. The mitigation is cheap and partial, not a
+  fix: a child orchestrator states its current outstanding-authorizations
+  snapshot in **every** control message it sends, not only `CLOSED`, so the
+  parent's last-observed message is the freshest available record if the child
+  goes dark before its next one. A child that dies between two control
+  messages having authorized new descendant work in that gap loses it exactly
+  as a leaf session's uncommitted edits are lost on a stall (Rule 7) — state
+  that loss plainly rather than implying a durable ledger exists where none
+  does.
+
 This is not hypothetical: a five-item safety bundle was authorized, the session
 that held it stalled without starting the work and was archived, the
 replacement's brief carried the new urgent task but not the bundle, and the
