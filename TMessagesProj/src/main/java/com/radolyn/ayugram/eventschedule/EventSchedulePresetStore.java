@@ -63,6 +63,17 @@ public final class EventSchedulePresetStore {
         return MONITORS.computeIfAbsent(account, k -> new Object());
     }
 
+    // Trims and caps to MAX_PRESET_NAME_LENGTH so the invariant holds even if a future caller
+    // bypasses the naming dialog's own InputFilter, or a hand-edited JSON file has an oversized name.
+    private static String normalizeName(String name) {
+        if (name == null) return "";
+        String trimmed = name.trim();
+        if (trimmed.length() > EventScheduleEntry.MAX_PRESET_NAME_LENGTH) {
+            trimmed = trimmed.substring(0, EventScheduleEntry.MAX_PRESET_NAME_LENGTH);
+        }
+        return trimmed;
+    }
+
     /** Fresh defensive copy every call -- never the cached list itself. */
     public static ArrayList<Preset> getAll(int account) {
         synchronized (monitor(account)) {
@@ -92,6 +103,7 @@ public final class EventSchedulePresetStore {
 
     /** Returns false (and adds nothing) once the account is already at {@link EventScheduleEntry#MAX_PRESET_COUNT}. */
     public static boolean add(int account, String name, int types, List<String> patterns, boolean regex, int delaySeconds) {
+        String normalizedName = normalizeName(name);
         int normalizedTypes = types & EventScheduleEntry.TYPE_MASK;
         ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(patterns);
         int normalizedDelay = Math.max(0, Math.min(delaySeconds, EventScheduleEntry.MAX_DELAY_SECONDS));
@@ -99,7 +111,7 @@ public final class EventSchedulePresetStore {
             loadLocked(account);
             ArrayList<Preset> list = CACHE.computeIfAbsent(account, k -> new ArrayList<>());
             if (list.size() >= EventScheduleEntry.MAX_PRESET_COUNT) return false;
-            Preset preset = new Preset(UUID.randomUUID().toString(), name, normalizedTypes, normalizedPatterns,
+            Preset preset = new Preset(UUID.randomUUID().toString(), normalizedName, normalizedTypes, normalizedPatterns,
                     regex, normalizedDelay, System.currentTimeMillis());
             list.add(preset);
             persistLocked(account, list);
@@ -257,7 +269,7 @@ public final class EventSchedulePresetStore {
         try {
             if (o.optInt("ev", -1) != ELEMENT_VERSION) return null;
             String id = o.optString("id", "");
-            String name = o.optString("name", "");
+            String name = normalizeName(o.optString("name", ""));
             if (TextUtils.isEmpty(id) || TextUtils.isEmpty(name)) return null;
             int types = o.optInt("types", 0) & EventScheduleEntry.TYPE_MASK;
             ArrayList<String> patterns = new ArrayList<>();
