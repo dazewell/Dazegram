@@ -344,7 +344,19 @@ public final class GhostHoldStore {
     /** Count of held rows for a dialog; safe to read off-queue (published snapshot). */
     public int cachedCountForDialog(long dialogId) {
         List<HeldRecord> list = byDialog.get(dialogId);
-        return list == null ? 0 : list.size();
+        if (list == null) {
+            return 0;
+        }
+        // Count only HELD rows, matching the render injection: a FLUSHING row is
+        // mid-handoff and is not shown as held, so counting it would leave the
+        // Scheduled badge one ahead of the visible held items.
+        int n = 0;
+        for (HeldRecord r : list) {
+            if (r.state == STATE_HELD) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /**

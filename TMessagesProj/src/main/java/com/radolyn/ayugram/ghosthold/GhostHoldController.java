@@ -1161,6 +1161,19 @@ public final class GhostHoldController {
             present.add(objects.get(i).getId());
         }
         for (GhostHoldStore.HeldRecord rec : records) {
+            // Inject only HELD rows. A FLUSHING row has been handed to the send
+            // funnel: once the funnel writes its stock row the message is an ordinary
+            // sending message and already renders in the timeline, so continuing to
+            // show it here would be a stale second copy -- and, worse, would let the
+            // user delete a handed-off message through the scheduled path, which only
+            // clears scheduled_messages_v2 and would strand the messages_v2 twin for
+            // the unsent scan to auto-send. Not rendering it means it cannot be
+            // deleted through the held path, so that race cannot arise. A FLUSHING row
+            // that the funnel did not actually write is reverted to HELD promptly
+            // (revertToHeld / completeHandoff / startup reconcile), so it reappears.
+            if (rec.state != GhostHoldStore.STATE_HELD) {
+                continue;
+            }
             if (present.contains(rec.mid)) {
                 // A stock scheduled row for this mid is still present (a migration delete
                 // not yet applied): show it once, from the stock copy, not twice.
