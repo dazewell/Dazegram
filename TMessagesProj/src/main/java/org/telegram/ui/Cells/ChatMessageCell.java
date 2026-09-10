@@ -27704,7 +27704,15 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
                         }
                     }
                     if (currentMessageObject.isOut()) {
-                        if (currentMessageObject.isSent()) {
+                        if (currentMessageObject.scheduled && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(currentMessageObject)) {
+                            // NagramX: a Ghost Hold row carries send_state = SENDING so it
+                            // slots into the send pipeline, but it is not sending -- it is
+                            // held on-device until Ghost Mode ends. Announce that held state
+                            // instead of the misleading "Sending" the isSending() branch
+                            // below would otherwise read out.
+                            sb.append("\n");
+                            sb.append(getString(R.string.GhostHoldContentDescription));
+                        } else if (currentMessageObject.isSent()) {
                             sb.append("\n");
                             if (currentMessageObject.scheduled) {
                                 sb.append(formatString("AccDescrScheduledDate", R.string.AccDescrScheduledDate, currentTimeString));

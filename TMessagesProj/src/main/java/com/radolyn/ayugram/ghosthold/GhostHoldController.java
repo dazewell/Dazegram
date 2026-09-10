@@ -109,6 +109,28 @@ public final class GhostHoldController {
 
     private static volatile boolean flushInProgress;
 
+    // NagramX (item 2): a synchronous per-account logout barrier for an in-flight
+    // flush. The store's own ownership gate (runOwned/generation) only advances when
+    // the async teardown actually runs on the fork queue, which can lag the instant
+    // logout begins by an arbitrary amount. A flush that pinned its generation before
+    // that lag would still pass every store-queue revalidation and transmit the
+    // logged-out user's message -- through the reused account slot after a fast
+    // re-login (a P1 cross-account leak). This counter is bumped synchronously on the
+    // UI thread the moment appDidLogout is observed, before postTeardown() is even
+    // queued; the flush captures it at start and rechecks it on the same UI thread
+    // immediately before the send, so the two are strictly ordered with no window.
+    // Plain int, not volatile/atomic: every read and write is on the UI thread, so
+    // program order alone gives visibility.
+    private static final int[] sessionEpoch = new int[UserConfig.MAX_ACCOUNT_COUNT];
+
+    // NagramX (item 8): messages the in-flight flush actually handed back to the send
+    // funnel, so the completion bulletin reports what happened rather than what was
+    // queued. Only completeHandoff's handed-off branch increments it; a row the user
+    // deleted mid-flush, or one re-held because Ghost returned, never does -- so a
+    // flush whose only row was deleted reports nothing instead of "1 sent". Reset at
+    // performFlush start; one flush runs at a time (flushInProgress).
+    private static final AtomicInteger flushSent = new AtomicInteger();
+
     // Set once we register the foreground retry below, so it is never added twice.
     private static volatile boolean foregroundRetryArmed;
 
@@ -294,6 +316,24 @@ public final class GhostHoldController {
         // which becomes paid *after* it was held is not auto-re-driven into a paywall:
         // an automated flush never opens a paywall.
         if (isPaidDialog(account, peer)) {
+            return false;
+        }
+        // Cross-chat reply: replying to a message in a DIFFERENT dialog than the send
+        // target (SendMessagesHelper:5152-5183). The funnel sets reply_to_peer_id and
+        // converts the whole thing into a quote-reply -- pulling in quote text,
+        // entities, reply_media and offset. persistHeld only captures a same-chat reply
+        // header (reply_to_msg_id and, for forums, the topic), so on flush the funnel's
+        // retry path would ship the stored header verbatim with no reply_to_peer_id:
+        // the reply would resolve against the wrong chat or break. Faithfully persisting
+        // the funnel's quote-conversion means replicating a large, subtle slice of that
+        // logic on a correctness-critical path -- high risk for a small, uncommon set
+        // (only replies targeting another chat; ordinary same-chat replies stay
+        // holdable). So refuse rather than degrade, the same disposition we take for
+        // media, ephemeral and poll/todo replies: the message is sent now, exactly as
+        // composed, and the send-exposure warning speaks. A same-dialog cross-topic
+        // reply is NOT refused here -- its reply_to_peer_id would equal the send peer,
+        // so dropping it changes nothing, and the topic id is persisted.
+        if (p.replyToMsg != null && p.replyToMsg.getDialogId() != peer) {
             return false;
         }
         // Fail-closed backstop for the remaining fields no explicit guard above
@@ -547,7 +587,17 @@ public final class GhostHoldController {
         // update, the Scheduled-list insert and the bulletin are chained after it so
         // they run only once the row has landed. This orders the signal after
         // durability without blocking the UI thread on a synchronous DB write.
-        store.runOwned(() -> {
+        //
+        // Pin the generation and pass onInvalidated: if a logout queued postTeardown()
+        // ahead of this op, the teardown bumps the generation before we run and the
+        // insert is dropped by the ownership gate. A null callback there would lose the
+        // message silently -- the funnel already stood down on our promise to hold it,
+        // yet no row is written and nothing re-drives it (P2, the highest-severity
+        // loss). Treat invalidation exactly like the disk-full failure below: re-drive
+        // the original send through the normal path so the message is actually sent
+        // instead of vanishing. Fail toward NOT LOST.
+        final int epoch = store.currentGeneration();
+        store.runOwned(epoch, () -> {
             boolean ok = store.insertOnQueue(record);
             if (!ok) {
                 // The durable write failed (e.g. disk full). We already told the
@@ -567,7 +617,7 @@ public final class GhostHoldController {
                 NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.dialogsNeedReload);
                 showDivertBulletin();
             });
-        });
+        }, () -> AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams)));
         return true;
     }
 
@@ -801,6 +851,10 @@ public final class GhostHoldController {
             return;
         }
         flushInProgress = true;
+        // Reset the honest sent-counter for this flush (item 8). Only a proven handoff
+        // increments it, so the completion bulletin reports transmitted messages, not
+        // merely queued ones.
+        flushSent.set(0);
         // Every item is processed (stale orphans get cleaned), but only genuinely
         // pending sends are reported to the user, so the counts stay honest.
         final int all = items.size();
@@ -826,10 +880,21 @@ public final class GhostHoldController {
                 epochByAccount.put(it.account, GhostHoldStore.getInstance(it.account).currentGeneration());
             }
         }
+        // Pin each account's synchronous session epoch too (item 2). This one advances
+        // the instant appDidLogout is seen -- ahead of the async store teardown that
+        // moves the generation above -- so a logout that has begun but not yet torn the
+        // store down is still caught before the send hop.
+        final java.util.HashMap<Integer, Integer> sessionByAccount = new java.util.HashMap<>();
+        for (HeldItem it : items) {
+            if (!sessionByAccount.containsKey(it.account)) {
+                sessionByAccount.put(it.account, sessionEpoch[it.account]);
+            }
+        }
         for (int i = 0; i < all; i++) {
             HeldItem item = items.get(i);
             final int epoch = epochByAccount.get(item.account);
-            AndroidUtilities.runOnUIThread(() -> flushItem(item, remaining, pending, epoch), i * FLUSH_STAGGER_MS);
+            final int session = sessionByAccount.get(item.account);
+            AndroidUtilities.runOnUIThread(() -> flushItem(item, remaining, pending, epoch, session), i * FLUSH_STAGGER_MS);
         }
     }
 
@@ -848,18 +913,27 @@ public final class GhostHoldController {
             if (f == null || f.getParentActivity() == null) {
                 return;
             }
+            // Report what actually happened, not what was queued (item 8). flushSent
+            // counts only proven, uncancelled handoffs; a row the user deleted mid-flush
+            // or one re-held because Ghost returned never increments it. So a flush whose
+            // only row was deleted reports nothing instead of the old "1 held message
+            // sent". The denominator is sent + stillHeld -- the rows that still existed
+            // and were candidates -- so deleted rows never inflate it.
+            int sent = flushSent.get();
+            if (sent <= 0) {
+                return;
+            }
             CharSequence text;
             if (stillHeld <= 0) {
-                text = LocaleController.formatPluralString("GhostHoldFlushed", pending);
+                text = LocaleController.formatPluralString("GhostHoldFlushed", sent);
             } else {
-                int sent = Math.max(0, pending - stillHeld);
-                text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, pending);
+                text = LocaleController.formatString(R.string.GhostHoldFlushedPartial, sent, sent + stillHeld);
             }
             BulletinFactory.of(f).createSimpleBulletin(R.raw.chats_infotip, text).show();
         });
     }
 
-    private static void flushItem(HeldItem item, AtomicInteger remaining, int pending, int epoch) {
+    private static void flushItem(HeldItem item, AtomicInteger remaining, int pending, int epoch, int session) {
         // Re-check Ghost per item on the privacy invariant, which is about Ghost
         // alone, not the hold preference: if Ghost came back on mid-flush this
         // message must stay held even when Hold Messages was turned off in the same
@@ -899,11 +973,11 @@ public final class GhostHoldController {
                 }
             }
             final HeldItem f = fresh;
-            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending, epoch));
+            AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending, epoch, session));
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
 
-    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending, int epoch) {
+    private static void dispatchFreshItem(HeldItem item, @Nullable HeldItem fresh, AtomicInteger remaining, int pending, int epoch, int session) {
         final int account = item.account;
         final long dialogId = item.dialogId;
         final int mid = item.mid;
@@ -927,11 +1001,18 @@ public final class GhostHoldController {
 
         MessageObject mo = new MessageObject(account, m, false, true);
         mo.scheduled = future;
-        // of(MessageObject) rebuilds the send from the stored message verbatim --
-        // text, entities, the full reply header, silent, invert_media and params
-        // (including our marker) all ride along, so nothing is hand-reconstructed
-        // and lost. It forces searchLinks/scheduleDate on, so override both below.
+        // of(MessageObject) rebuilds the send from the stored message: text, the full
+        // reply header, silent, invert_media and params (including our marker) all ride
+        // along. It forces searchLinks/scheduleDate on, so override both below.
         SendMessagesHelper.SendMessageParams p = SendMessagesHelper.SendMessageParams.of(mo);
+        // Entities are the exception: of(mo) leaves p.entities null, and the funnel's
+        // outgoing request reads its entities from the params, not from the stored
+        // message (SendMessagesHelper:4399,5462). So bold/links/mentions -- which we do
+        // persist onto the blob, and which isHoldableTextSend's "Held faithfully" list
+        // promises -- would silently vanish on flush, degrading the held message into
+        // something other than what was held. Restore them from the stored message so
+        // the outgoing request carries them.
+        p.entities = m.entities;
         p.scheduleDate = scheduleDate;
         p.searchLinks = m.params == null || !PARAM_VALUE.equals(m.params.get(PARAM_NO_WEBPAGE));
         if (m.params != null) {
@@ -1001,12 +1082,23 @@ public final class GhostHoldController {
                     onItemTerminal(remaining, pending);
                     return;
                 }
-                // NagramX: Ghost and paid were checked before this final store-queue
-                // hop, but the user can re-enable Ghost -- or the dialog can become
-                // paid -- during it. The retry object bypasses maybeHold, so dispatching
-                // now would transmit under Ghost, or open a Stars paywall whose deferred
-                // callback we do not own could transmit under Ghost later. Re-check both
-                // on this last UI turn and keep the message held if either is true.
+                // NagramX (item 2): Ghost and paid were checked before this final
+                // store-queue hop, but the user can re-enable Ghost -- or the dialog can
+                // become paid, or LOG OUT -- during it. The retry object bypasses
+                // maybeHold, so dispatching now would transmit under Ghost, open a Stars
+                // paywall whose deferred callback we do not own, or send the logged-out
+                // user's message through a reused slot. The store generation only moves
+                // when the async teardown runs, which can lag; the session epoch moved
+                // synchronously the instant logout began. Both this recheck and the
+                // logout bump run on the UI thread, so they are strictly ordered with no
+                // race -- do not move either off it. Keep the message held (or abandon it
+                // on logout) if any is true.
+                if (sessionEpoch[account] != session) {
+                    // Logout has begun. Treat exactly like store invalidation: abandon
+                    // the send. The teardown will purge the row; nothing is transmitted.
+                    onItemTerminal(remaining, pending);
+                    return;
+                }
                 if (NekoConfig.isGhostModeActive() || isPaidDialog(account, dialogId)) {
                     revertToHeld(account, mid, epoch, () -> onItemTerminal(remaining, pending));
                     return;
@@ -1018,8 +1110,9 @@ public final class GhostHoldController {
                 // funnel's own putMessages(useQueue=true)) and signals this item
                 // terminal only after it has run. If the funnel wrote nothing (early
                 // return / became paid), the record is reverted to HELD for the next
-                // flush; nothing is ever lost.
-                completeHandoff(account, mid, dialogId, fut, epoch, () -> onItemTerminal(remaining, pending));
+                // flush; nothing is ever lost. mo is passed so a send-now twin can be
+                // cancelled if the user deleted the held object during the handoff.
+                completeHandoff(account, mid, dialogId, fut, epoch, mo, () -> onItemTerminal(remaining, pending));
             });
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
@@ -1041,7 +1134,7 @@ public final class GhostHoldController {
      * absent-by-{@code -N} and is re-driven, producing a duplicate. Per the design that
      * is the correct direction to fail -- duplicate, never loss.
      */
-    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, @Nullable Runnable onDone) {
+    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, @Nullable MessageObject sentObj, @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             boolean handedOff = false;
@@ -1058,17 +1151,40 @@ public final class GhostHoldController {
             GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.runOwned(epoch, () -> {
                 if (ho) {
-                    store.deleteOnQueue(mid);
-                    if (!future) {
-                        // NagramX: a send-now handoff wrote the messages_v2 twin and
-                        // removed the fork row, but an already-open Scheduled list still
-                        // holds the display-only held object -- the HELD-only render
-                        // filter only governs future loads. Drop it from that open list
-                        // by mid so it can't be deleted there as held, which would clear
-                        // an empty scheduled_messages_v2 while stranding the messages_v2
-                        // twin for the unsent scan. Pure UI dispatch, no stock write;
-                        // scheduled-scoped so the main-view twin's fragment ignores it.
-                        AndroidUtilities.runOnUIThread(() -> removeStaleScheduledItem(account, dialogId, mid));
+                    // NagramX (item 3): the funnel wrote the stock twin, but check the
+                    // fork row is still present before completing. If it is GONE, the
+                    // user deleted the held object during the handoff window and the
+                    // messagesDeleted observer already removed the fork row -- both it
+                    // and this check run on the store's serial queue, so a deletion that
+                    // reached the queue first is seen here. For a send-now that leaves an
+                    // orphaned messages_v2 twin the unsent scan would transmit AFTER the
+                    // user deleted it, so cancel the twin instead of completing. This
+                    // closes the main window; a deletion that reaches the queue only
+                    // after this op ran is bounded by removeStaleScheduledItem, which
+                    // clears the display object one UI hop later -- the same one-hop
+                    // limit a UI-thread send already documents. Cancellation is
+                    // best-effort by nature (the network send may already be gone), which
+                    // is the correct direction under NOT LOST > NOT LEAKED > NOT
+                    // DUPLICATED: a stray duplicate is the least-bad outcome.
+                    boolean rowGone = store.selectOnQueue(mid) == null;
+                    if (rowGone && !future && sentObj != null) {
+                        AndroidUtilities.runOnUIThread(() ->
+                                SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj));
+                    } else {
+                        store.deleteOnQueue(mid);
+                        // item 8: only a genuine, uncancelled handoff counts as sent.
+                        flushSent.incrementAndGet();
+                        if (!future) {
+                            // NagramX: a send-now handoff wrote the messages_v2 twin and
+                            // removed the fork row, but an already-open Scheduled list still
+                            // holds the display-only held object -- the HELD-only render
+                            // filter only governs future loads. Drop it from that open list
+                            // by mid so it can't be deleted there as held, which would clear
+                            // an empty scheduled_messages_v2 while stranding the messages_v2
+                            // twin for the unsent scan. Pure UI dispatch, no stock write;
+                            // scheduled-scoped so the main-view twin's fragment ignores it.
+                            AndroidUtilities.runOnUIThread(() -> removeStaleScheduledItem(account, dialogId, mid));
+                        }
                     }
                 } else {
                     store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
@@ -1552,6 +1668,15 @@ public final class GhostHoldController {
         @Override
         public void didReceivedNotification(int id, int acc, Object... args) {
             if (id == NotificationCenter.appDidLogout) {
+                // NagramX (item 2): bump the synchronous session epoch FIRST, before the
+                // async store teardown is even queued. appDidLogout is delivered on the
+                // UI thread and the flush's pre-send recheck reads this on the UI thread,
+                // so an in-flight flush that pinned the old value is guaranteed to see
+                // the change and abandon its send -- closing the window where the store's
+                // own generation has not yet moved (its teardown runs later on the fork
+                // queue) and the logged-out user's message could otherwise transmit
+                // through the reused account slot.
+                sessionEpoch[account]++;
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
                 store.postTeardown();
                 accountInited[account] = false;

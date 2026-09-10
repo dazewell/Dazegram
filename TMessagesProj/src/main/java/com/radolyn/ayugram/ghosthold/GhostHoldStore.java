@@ -51,16 +51,18 @@ public final class GhostHoldStore {
 
     private static final GhostHoldStore[] instances = new GhostHoldStore[UserConfig.MAX_ACCOUNT_COUNT];
 
-    public static GhostHoldStore getInstance(int account) {
+    public static synchronized GhostHoldStore getInstance(int account) {
+        // Fully synchronized rather than double-checked: getInstance is called from
+        // the UI/init path and the message-load thread, and the per-account slot lives
+        // in a plain (non-volatile) array whose element reads carry no happens-before.
+        // A lock-free fast path could publish or read a half-constructed store, giving
+        // two callers two stores over one account file -- two queues, two SQLite
+        // connections, racing writes and snapshots. Publish and look up under the one
+        // class monitor. Not a hot path (init, send, load), so the lock is free.
         GhostHoldStore local = instances[account];
         if (local == null) {
-            synchronized (GhostHoldStore.class) {
-                local = instances[account];
-                if (local == null) {
-                    local = new GhostHoldStore(account);
-                    instances[account] = local;
-                }
-            }
+            local = new GhostHoldStore(account);
+            instances[account] = local;
         }
         return local;
     }
@@ -449,6 +451,18 @@ public final class GhostHoldStore {
     private void deleteDatabaseFileOnQueue() {
         synchronized (dbLock) {
             if (database != null) {
+                // Purge the rows and the owner stamp in-place before we close and unlink.
+                // If the unlink below fails (WAL/SHM lock, permission), a later login as
+                // the SAME user must still find nothing held: enforceOwner() only purges
+                // on an owner MISMATCH, so a same-user in-place reopen would otherwise
+                // load this session's messages straight back. Clearing the tables here
+                // makes the invalidation hold regardless of whether the file goes away.
+                try {
+                    database.executeFast("DELETE FROM ghost_held").stepThis().dispose();
+                    database.executeFast("DELETE FROM ghost_meta").stepThis().dispose();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
                 try {
                     database.close();
                 } catch (Exception e) {
@@ -465,14 +479,15 @@ public final class GhostHoldStore {
         loaded = false;
         // Drop ownership so no off-queue reader trusts the snapshot until the next
         // activated open re-stamps it. If the main file could not be removed, the
-        // stale rows still cannot leak: the owner stamp inside it will not match the
-        // next user, and enforceOwner() purges them on the next open.
+        // stale rows still cannot leak: they were already purged in-place above, and
+        // the owner stamp is gone too, so neither a same-user nor a different-user
+        // reopen can load them.
         snapshotOwner = 0;
         // Invalidate any batch collected before this teardown. Runs on the fork queue,
         // so it is serialised with the migration insert that reads currentGeneration().
         generation++;
         if (!gone && new File(dir, "ghosthold_" + account + ".db").exists()) {
-            FileLog.e("ghostHold: could not delete db file for account " + account + " on logout; rows will be purged by owner check on next open");
+            FileLog.e("ghostHold: could not delete db file for account " + account + " on logout; rows already purged in-place");
         }
         publish();
     }

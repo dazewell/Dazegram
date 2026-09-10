@@ -1081,3 +1081,39 @@ Cost if missed: this fact killed hypothesis H1 (that R8 renamed the fields and
 disabled Ghost Hold's backstop in the minified build only). It did not; the real
 cause was the `sendAnimationData` trap above. Re-deriving this costs a minified
 build + DEX inspection.
+
+## `SendMessageParams.of(MessageObject)` restores the reply header but NOT entities
+
+On the retry/re-drive path (`retryMessageObject != null`) the outgoing text
+request pulls its two formatting-bearing fields from two different places, and
+only one of them is the stored message:
+
+- **Reply header rides on the stored message.** `sendMessage` sets
+  `newMsg = retryMessageObject.messageOwner` (`SendMessagesHelper.java:4547`) and
+  builds `reqSend.reply_to` from `newMsg.reply_to`
+  (`SendMessagesHelper.java:5443-5444` via
+  `createReplyInput(TL_messageReplyHeader)` at `:227-240`, which also reads
+  `reply_to_peer_id` when `flags & 1` is set). So whatever reply header is on the
+  stored row is what gets sent -- `of(MessageObject)` passing `replyToMsg = null`
+  (`SendMessagesHelper.java:12453`) does not lose it.
+- **Entities ride on the params, which `of()` nulls.** The local `entities` used
+  to build `reqSend.entities` comes from `sendMessageParams.entities`
+  (`SendMessagesHelper.java:4399`, then `reqSend.entities = entities` at `:5462`),
+  and `of(MessageObject)` passes `entities = null`
+  (`SendMessagesHelper.java:12453`). `newMsg.entities` is never read back into the
+  request on this path (the Pangu block at `:5243-5256` only ever re-derives from
+  the already-null local, and its `newMsg.entities = entities` write is guarded on
+  the local being non-empty, so it does not restore anything either). So a
+  re-drive built purely from `of(mo)` ships with **no entities** -- bold, links,
+  mentions and custom-emoji all silently gone -- even though the reply header
+  survives.
+
+Cost if missed: any redrive/retry that reconstructs a send via
+`SendMessageParams.of(MessageObject)` and assumes "it copies everything off the
+stored message" is half right. Ghost Hold's flush hit exactly this: the held
+message stored its entities on the blob but flushed as plain text until the
+re-drive explicitly restored `p.entities = m.entities`
+(`GhostHoldController.java`, the `dispatchFreshItem` `of(mo)` block, 2026-09-10,
+#ghost-hold). The reply header needed no such restore, which is what makes the
+asymmetry a trap -- testing a reply-with-formatting would show the reply intact
+and the formatting gone, pointing at the wrong half.
