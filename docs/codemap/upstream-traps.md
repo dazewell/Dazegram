@@ -1042,3 +1042,42 @@ with a negative id and `send_state = 1`) and drove the rebuild onto fork-owned
 state — making it work would have required editing stock
 `updateMessageStateAndIdInternal`, changing message-receipt behaviour for every
 chat in the app.
+
+## `SendMessageParams.sendAnimationData` is non-null on every ordinary composer send
+
+`ChatActivityEnterView` builds a fresh `MessageObject.SendAnimationData` for a
+normal (non-forwarding) text send before constructing the params
+(`ChatActivityEnterView.java:9624-9626`), and `of(...)` stores it verbatim
+(`SendMessagesHelper.java:12537`). It is a transient UI fly-in hint — the
+composer's on-screen x/y/width/height — carrying no part of the sent message,
+but it is set on ~100% of composer sends. Any allowlist/denylist that treats an
+unrecognised non-default `SendMessageParams` field as "not an ordinary text
+send" must exclude `sendAnimationData` (and `updateStickersOrder`, a local
+recent-emoji reorder flag, `ChatActivityEnterView.java:9646`) or it rejects
+every real message.
+
+Cost if missed: Ghost Hold's fail-closed backstop `onlyPersistedFieldsSet`
+refused to hold anything with a non-default unknown field, so `sendAnimationData`
+made it refuse **every** composer send — the message went straight to the network
+with Ghost on. Cost a full device cycle to surface because the leak is silent and
+the send otherwise looks normal (`GhostHoldController.java:355`, 2026-09-10).
+
+## `-keep class org.telegram.messenger.* { *; }` DOES keep nested-class members
+
+The single-`*` keep rule (`proguard-rules.pro:9`) is often assumed not to match
+a nested class such as `org.telegram.messenger.SendMessagesHelper$SendMessageParams`
+(`$` mistaken for a package boundary). It does: in the shipped minified APK
+`377d89c` (`org.telegram.messenger.beta`, staging = release R8 config), all 54
+instance fields of that class keep their **original** names (`message`, `caption`,
+`sendAnimationData`, …) in the DEX — verified with `dexdump` on the exact
+installed artifact. So reflection over `Field.getName()` on this class happens to
+survive R8 today. It is still not safe to rely on: a keep rule narrowed to
+`**`-vs-`*` or dropping `{ *; }` would silently rename these fields and break
+name-based reflection with no compile error, which is why Ghost Hold moved its
+field check onto compile-checked `p.<field>` references plus a name-independent
+declared-field **count** guard (`GhostHoldController.java:326,355`, 2026-09-10).
+
+Cost if missed: this fact killed hypothesis H1 (that R8 renamed the fields and
+disabled Ghost Hold's backstop in the minified build only). It did not; the real
+cause was the `sendAnimationData` trap above. Re-deriving this costs a minified
+build + DEX inspection.

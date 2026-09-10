@@ -303,94 +303,84 @@ public final class GhostHoldController {
         if (isPaidDialog(account, peer)) {
             return false;
         }
-        // Fail-closed backstop. Every semantic exclusion above is a denylist entry,
-        // so a SendMessageParams field we have never heard of -- a future upstream
-        // addition, or an existing one nobody wired in -- would sail through and be
-        // silently dropped when of() rebuilds the message from the stored row. Invert
-        // it: refuse unless every field outside the set we actually persist is at its
-        // default. A new field then defaults to "refuse to hold" (send now, correctly,
-        // and let the exposure warning speak) rather than "hold and mangle".
+        // Fail-closed backstop for the remaining fields no explicit guard above
+        // covers: refuse unless each of them is at its default, and refuse if the
+        // param class grew a field upstream that this method has not been taught. A
+        // new field then defaults to "refuse to hold" (send now, correctly, and let
+        // the exposure warning speak) rather than "hold and mangle".
         if (!onlyPersistedFieldsSet(p)) {
             return false;
         }
         return true;
     }
 
-    // Field names on SendMessageParams whose value we faithfully persist and restore
-    // (or that carry no reconstructable state), so a non-default value on one of them
-    // does not force a refuse. Everything not in this set must be at its default for a
-    // send to be holdable -- see onlyPersistedFieldsSet. Keep in sync when the set of
-    // fields persistHeld carries changes.
-    private static final java.util.Set<String> PERSISTED_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList(
-            "message",            // the text itself
-            "entities",           // carried onto msg.entities
-            "params",             // copied into the stored params map
-            "notify",             // carried as msg.silent
-            "scheduleDate",       // carried as msg.date
-            "scheduleRepeatPeriod", // carried in params (PARAM_REPEAT)
-            "effect_id",          // carried in params (PARAM_EFFECT)
-            "searchLinks",        // carried in params (PARAM_NO_WEBPAGE)
-            "invert_media",       // carried onto msg.invert_media
-            "replyToMsg",         // reply header reconstructed in persistHeld
-            "replyToTopMsg",      // reply header reconstructed in persistHeld
-            "replyQuote",         // text quote reconstructed; poll/todo refused above
-            "sendMessageChatArguments", // always non-null on a composer send; its
-                                        // meaningful fields are checked explicitly above
-            "peer",               // the destination, not reconstructable state
-            "retryMessageObject", // null here (a re-drive returned false already)
-            "canSendGames"        // defaults true on every send; dice handled by text
-    ));
-
-    private static volatile java.lang.reflect.Field[] paramFieldsCache;
+    // Count of declared instance fields on SendMessageParams this method was written
+    // against (SendMessagesHelper.java, the `public static class SendMessageParams`
+    // block). It is the name-independent half of the backstop below: R8 keeps every
+    // field of this class -- `-keep class org.telegram.messenger.* { *; }`
+    // (proguard-rules.pro:9) covers the nested SendMessagesHelper$SendMessageParams,
+    // verified against the 377d89c minified APK (docs/codemap/upstream-traps.md, 2026-
+    // 09-10), so the count is identical in a debug and a minified build. An upstream
+    // merge that adds or drops a field changes this count, which trips the backstop
+    // and refuses to hold until the new field is triaged here.
+    private static final int KNOWN_PARAM_FIELD_COUNT = 54;
 
     /**
-     * True iff every declared field of {@code p} outside {@link #PERSISTED_FIELDS} is
-     * at its type default (null / 0 / false). This is the fail-closed half of
-     * {@link #isHoldableTextSend}: it catches any field -- current-but-unwired or added
-     * upstream later -- that we would otherwise persist a row for and then silently
-     * drop on flush. Fields are public, so no setAccessible; the field array is cached
-     * once. On any reflection error, fail closed (return false -> refuse to hold).
+     * The fail-closed half of {@link #isHoldableTextSend}: true iff no SendMessageParams
+     * field the explicit guards above do not already cover is carrying non-default state
+     * we would silently drop when {@code of()} rebuilds the message on flush.
+     *
+     * <p>The field reads here are compile-checked references, not name lookups: an
+     * upstream rename or removal of any field named below breaks the build rather than
+     * silently disabling holding, and R8 rewrites each reference in lockstep with the
+     * field, so this behaves identically in a debug and a minified build. (The prior
+     * version matched {@code Field.getName()} against a hardcoded name set; that is
+     * invisible to the compiler and would silently disable the feature under any keep
+     * rule that let R8 rename these fields.) The trailing count guard is the only piece
+     * that must run at runtime, because no compile-time reference can detect a field
+     * ADDED upstream that this method has never seen -- a count mismatch means exactly
+     * that, and refuses to hold, preserving the original fail-closed intent while
+     * confining it to a genuine unknown field rather than a reflection failure.
+     *
+     * <p>{@code sendAnimationData} and {@code updateStickersOrder} are deliberately not
+     * grounds to refuse. Neither is part of the sent message: sendAnimationData is a
+     * transient composer fly-in hint (on-screen position and size, rebuilt fresh at send
+     * time) and is non-null on every ordinary composer send; updateStickersOrder only
+     * bumps recently-used custom emoji in the local picker. A held send plays no composer
+     * animation and reorders nothing at hold time, so dropping both changes nothing about
+     * what flushes. Treating sendAnimationData as a blocker was the bug this fixes: it is
+     * non-null on 100% of composer sends, so the backstop refused every ordinary message
+     * and it fell through to the network with Ghost on.
      */
     private static boolean onlyPersistedFieldsSet(SendMessagesHelper.SendMessageParams p) {
-        java.lang.reflect.Field[] fields = paramFieldsCache;
-        if (fields == null) {
-            fields = p.getClass().getDeclaredFields();
-            paramFieldsCache = fields;
-        }
-        try {
-            for (java.lang.reflect.Field f : fields) {
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
-                    continue;
-                }
-                if (PERSISTED_FIELDS.contains(f.getName())) {
-                    continue;
-                }
-                Class<?> type = f.getType();
-                if (type.isPrimitive()) {
-                    // f.get autoboxes; compare against the type's zero/false default.
-                    // Covers all eight primitives, so a future field of any primitive
-                    // type is checked rather than falling through as a silent pass.
-                    Object v = f.get(p);
-                    if (type == boolean.class) {
-                        if ((Boolean) v) {
-                            return false;
-                        }
-                    } else if (type == char.class) {
-                        if ((Character) v != 0) {
-                            return false;
-                        }
-                    } else if (((Number) v).doubleValue() != 0.0) {
-                        return false;
-                    }
-                } else if (f.get(p) != null) {
-                    return false;
-                }
-            }
-        } catch (ReflectiveOperationException e) {
-            FileLog.e(e);
+        // Fields we neither persist nor can faithfully rebuild on flush, and which no
+        // guard above already tests. Any one non-default marks a send we must not hold.
+        if (p.caption != null
+                || p.path != null
+                || p.parentObject != null
+                || p.pollIndex != 0
+                || p.hasMediaSpoilers
+                || p.sendingHighQuality
+                || p.isLivePhoto
+                || p.livePhotoTimestamp != 0
+                || p.stars != 0
+                || p.payStars != 0
+                || p.richMessageInputUsers != null) {
             return false;
         }
-        return true;
+        // Name-independent add-detector: a field appearing (or disappearing) upstream
+        // changes the declared instance-field count, so refuse until it is triaged.
+        return countInstanceFields(p.getClass()) == KNOWN_PARAM_FIELD_COUNT;
+    }
+
+    private static int countInstanceFields(Class<?> cls) {
+        int n = 0;
+        for (java.lang.reflect.Field f : cls.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                n++;
+            }
+        }
+        return n;
     }
 
     /**
