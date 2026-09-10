@@ -1410,11 +1410,16 @@ not repeat what that file states — they point at it:
   change first, send `supersedes my @X: …`. This serializes one pair, never the
   fleet.
 - **A start-ack or git progress by the next idle notification, or it is a suspected
-  stall.** Then send exactly one probe; if the next wake still shows no ack and no
-  git progress, the session is **dead** — no message rescues it. Verify externally
-  and restart the work in a fresh session. Do not nurse it, and do not wait hours.
-- **Hand off to a fresh session before the stall** on a git-contradicted self-report,
-  a second suspected stall, or a session re-deriving ground it covered — degradation
+  stall.** From there follow the idle-decision table's own probe → diagnostic →
+  second-wake → escalate sequence above — do not invent a shorter one. When it
+  ends in a dead verdict, no message rescues the session: verify externally, then
+  **stop the old session and confirm its worktree is released before you dispatch a
+  replacement** (never two sessions on one branch), and restart the work fresh. Do
+  not nurse it, and do not wait hours.
+- **Hand off to a fresh session before the stall** on either mechanical trigger — a
+  git-contradicted self-report or a second suspected stall (a session re-deriving
+  covered ground is a softer hint, not a trigger). Stop the old session and confirm
+  its worktree is released first, so the fresh session never races it — degradation
   is the root cause and a self-contained brief restores function.
 - **Write every instruction self-contained** so it survives the child's context
   compaction: imperative action, the SHA/PR it applies to, the authority to do it.

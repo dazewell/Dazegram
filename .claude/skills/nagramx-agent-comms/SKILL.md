@@ -86,8 +86,8 @@ The problem is old; the literature is worth reading before inventing.
   [CircuitBreaker](https://martinfowler.com/bliki/CircuitBreaker.html), after
   Nygard's *Release It!*) stops calling a failing dependency after a threshold
   instead of hammering it forever. That is exactly the round cap on the review
-  loop (Rule 6) and the one-probe-then-restart cap on a stall (Rule 7): past a
-  bounded number of failed attempts you stop retrying and change tactic, rather
+  loop (Rule 6) and the bounded probe-then-restart path on a stall (Rule 7): past
+  a bounded number of failed attempts you stop retrying and change tactic, rather
   than looping.
 - **Idempotency, at-least-once delivery, and monotonic sequence stamps** (the
   standard messaging toolkit; Lamport's
@@ -113,7 +113,15 @@ The problem is old; the literature is worth reading before inventing.
   matching #5. Where we differ: their mitigation is *durable resume from
   checkpoints* so a long agent "can't just restart from the beginning"; we have no
   such runtime, so our answer to a degraded session is a **fresh** context with a
-  self-contained brief (Rules 7–8), not a resumed one.
+  self-contained brief (Rules 7–8), not a resumed one. Two of its other
+  mitigations map cleanly onto our choices: its advice to **save results to
+  durable external memory rather than pass everything through context** *is* our
+  one principle — git is that external memory here, so a result is not real until
+  it is committed; and its **cap on concurrent subagents** targets coordinator
+  overload we did *not* observe (our failures were liveness and staleness, not too
+  many sessions at once), so we note the lever without spending a rule on it —
+  adding a rule against an unobserved problem is the over-design the trade-off
+  budget forbids.
 
 The one place the literature does **not** save us: none of it makes an idle,
 non-responding agent wake itself up or time itself out. Every automated-recovery
@@ -151,8 +159,18 @@ factual claims as possibly superseded** — re-read git/PR before acting, and re
 an instruction that references work you have already done as *already satisfied*,
 not as a request to repeat it.
 
-- *Checked:* a message either carries a `@<sha>` or it does not; the recipient's
-  check is one `git rev-parse HEAD`.
+**The structured parent/child control vocabulary is exempt from the raw SHA
+stamp** — `RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
+`CLOSED` / `ABORTED` and the rest in the orchestrator file. Those are not
+freeform claims about a tree; their freshness comes from their own *monotonic
+lifecycle* — you cannot reach `CLOSED` before `HANDBACK_POSTED`, or `RUNNING`
+twice — plus the ledger and `get_session` re-verification that file already
+mandates. Stamp freeform instructions and reports; let each control message be
+checked against its state machine instead.
+
+- *Checked:* a freeform message either carries a `@<sha>` or it does not; the
+  recipient's check is one `git rev-parse HEAD`. A control message is checked
+  against its lifecycle order.
 - *Cost:* one `git rev-parse` per message. Negligible.
 - *Kills:* crossed messages (#2), and gives a stale self-report (#3) a detectable
   signature.
@@ -161,13 +179,16 @@ not as a request to repeat it.
 
 **Worker.** Immediately before you report — and *after* any context compaction —
 run the read, don't trust memory: `git log --oneline -5`, `git rev-parse HEAD`,
-the CI run pinned to *that* SHA, and the unresolved-thread count. Report those
-values. **If a claim in your report would not survive a reader running the same
+the CI run pinned to *that* SHA (or its `path-ignored / not applicable` status,
+when the diff is doc/agent/skill-only and no run fires — that is a valid report
+value, not a missing one), and the unresolved-thread count. Report those values.
+**If a claim in your report would not survive a reader running the same
 command, it does not go in the report.** "I fixed that finding" is memory; the
 commit that fixed it, present at the head you just stamped, is evidence.
 
 - *Checked:* the report's SHA / CI / thread claims must equal what the commands
-  return — the coordinator re-runs them anyway (#8), so a divergence is visible.
+  return — the coordinator re-runs them anyway (#8), so a divergence is visible;
+  a CI value of `path-ignored` is checkable against `ci.yml`'s path filters.
 - *Cost:* about four read-only commands per report. Cheap.
 - *Kills:* stale self-reports (#3), and premature "clean" on the reporter's side
   (#4).
@@ -180,6 +201,12 @@ asking. Escalate **only** the crossings the implementer file enumerates: a chang
 of hook point agreed in round 1, a change to the config or storage surface, a
 change to user-visible behaviour that was specified for you, or a split into a
 second branch. "Already implied by a prior ruling" is never a new question.
+
+This enumerated list is the **leaf implementer's** authority. A **child
+orchestrator** acting as a worker uses its own model instead — the orchestrator
+delegation rules plus `BLOCKED_PARENT` for what only its parent can unblock — not
+this list; the principle is identical (decide in lane, escalate only the defined
+crossings), the crossings differ.
 
 - *Checked:* an escalation should map to one of the enumerated crossings; a round
   trip for anything else is a protocol miss the coordinator can name.
@@ -216,6 +243,13 @@ from: `starting <thing> @<sha>`. Then start. This is the readiness signal the
 leaf channel otherwise lacks: it currently reports only on completion, so an
 authorization that is silently dropped looks identical to one being worked.
 
+A **child orchestrator's** `RUNNING <unit-slug>`, sent once after its preflight,
+is this same readiness signal on the parent channel. Like the other control
+messages it carries no SHA (Rule 1's carve-out): its freshness comes from the
+lifecycle state, not a stamp. So "start-ack" is `starting … @<sha>` from a leaf
+implementer and `RUNNING <unit-slug>` from a child orchestrator — one rule, two
+channel-appropriate forms.
+
 **Coordinator.** An authorization with **neither a start-ack nor observable git
 progress by the next idle notification** is a suspected stall — go to Rule 7. Do
 not wait hours to find out; the whole point is to catch #1 in minutes.
@@ -243,21 +277,30 @@ as a pass). This is the existing wait-loop, stated as a gate you must not jump.
 
 **Coordinator.** Distinguish working / finished / blocked / dead only from idle
 notifications + `get_session` + git state — never from narrative, and never by
-inferring from silence. This is the idle-decision table in the orchestrator file;
-the child-orchestrator control vocabulary (`RUNNING` / `WAITING_HUMAN` /
-`BLOCKED_PARENT` / `HANDBACK_POSTED` / `CLOSED` / `ABORTED` …) is its richer
-instance for that channel. On a suspected stall (Rule 5): send **exactly one**
-probe; if the next wake still shows no ack and no git progress, treat the session
-as **dead**.
+inferring from silence. The authority for the exact sequence is the
+**idle-decision table** in the orchestrator file; the child-orchestrator control
+vocabulary (`RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
+`CLOSED` / `ABORTED` …) is its richer instance for that channel. On a suspected
+stall (Rule 5), follow that table's own path — **one** status probe, then a
+`get_session` + session-tail diagnostic on the next unchanged wake, then escalate
+on a second unchanged wake — do **not** invent a shorter "one probe then dead"
+sequence, and **never archive a live-but-unresponsive child**. The table already
+forbids both; this rule points at it rather than contradicting it.
 
-**No message either party sends can rescue a session that has stopped
-processing.** That is the Two Generals' consequence, not a gap to patch with a
+When that path ends in a genuinely dead session, **no message either party sends
+can rescue it.** That is the Two Generals' consequence, not a gap to patch with a
 better handshake. So the coordinator verifies externally via git and hands the
-remaining work to a *fresh* session with a self-contained brief (Rule 8) rather
-than nudging a corpse. Do not keep probing; do not wait hours.
+remaining work to a *fresh* session (Rule 8). But not before a **safe ownership
+handoff**: stop the old session by exact identity and confirm its worktree is
+released, per the process-lifecycle skill's stop-and-verify contract, so a fresh
+session and a still-live degraded one can never write the same branch or PR —
+that collision duplicates commits and races processes. A stalled session's
+*uncommitted* edits that were never pushed are unrecoverable; account for that
+loss honestly rather than assuming a new worktree inherits them.
 
-- *Checked:* probe count ≤ 1 before the dead verdict; the verdict keys off
-  observable git progress, not chatter.
+- *Checked:* the probe/diagnostic/escalate counts match the idle-decision table,
+  not a private shorter rule; no restart is dispatched until the old session is
+  confirmed stopped and its worktree released.
 - *Cost:* a discarded session plus one fresh dispatch — trivial against a 90-minute
   or 4.5-hour stall.
 - *Kills:* silent stalls (#1) and the mechanical-verification burden (#8), and it
@@ -268,12 +311,25 @@ than nudging a corpse. Do not keep probing; do not wait hours.
 **Coordinator.** Context degradation is the root cause (#5), and a self-contained
 brief to a fresh session restored function every time it was tried. Hand the
 remaining work to a fresh session — brief rebuilt from the template, everything
-restated per Rule 9 — on **any** of: a self-report that git contradicted (a
-stale report caught by Rule 2), a *second* suspected stall on the same session,
-or a session visibly re-deriving ground it already covered. Don't wait for the
-full stall; the brief is a template you already hold, so re-dispatch is cheap.
+restated per Rule 9 — on **either mechanical trigger**: a self-report that git
+contradicted (a stale report caught by Rule 2), or a *second* suspected stall on
+the same session. (A session visibly re-deriving ground it already covered is a
+*softer, judgement-based* hint pointing the same way — act on it if you notice
+it, but it is deliberately **not** one of the mechanical triggers, because
+spotting it means reading the narrative this protocol otherwise distrusts.) Don't
+wait for the full stall; the brief is a template you already hold, so re-dispatch
+is cheap.
 
-- *Checked:* the three triggers are observable events, not judgement calls.
+Before the replacement is dispatched, perform the same **safe ownership handoff**
+as Rule 7: stop the old session by exact identity, confirm its worktree is
+released (process-lifecycle), and account for any uncommitted diff — pushed if the
+old session can still reach it, or recorded as lost if it cannot. A merely
+degraded but still-live session can otherwise write the same branch concurrently;
+never let the fresh session and the old one both hold it.
+
+- *Checked:* the two mechanical triggers are observable events; the third hint is
+  explicitly not one. No restart dispatches until the old session is confirmed
+  stopped and its worktree released.
 - *Cost:* one re-dispatch, bounded because the brief already exists as a template.
 - *Kills:* context degradation as root cause (#5), pre-emptively.
 
@@ -300,12 +356,26 @@ Rules 1–6 and 9 make each exchange *safe and cheap*. They do not, and cannot,
 make an idle session resume on its own — nothing the two parties say to each other
 can, per the Two Generals' Problem. The only real answer to a session that has
 stopped responding is external: the coordinator sees the absence of git progress,
-declares it dead after one probe, and restarts the work fresh (Rules 7–8). Build
+declares it dead through the bounded probe/diagnostic/escalate path, stops it and
+releases its worktree, and restarts the work fresh (Rules 7–8). Build
 the protocol so that outcome is *cheap and early* — a start-ack turns a 4.5-hour
 silent stall into a few-minute one, and a self-contained brief makes the restart
 a re-dispatch rather than a re-investigation. That is the win available. Pretending
 a message could have woken the stalled session is the one thing this protocol
 refuses to do.
+
+**On session forking specifically** — the app offers a *Fork* on every message,
+and it is worth being clear that it does not change this. A fork is *self-service*:
+a session forks *itself*; there is no lever to fork a *child* from the coordinator,
+least of all a non-responding one, which is exactly the session that would need
+it. And a fork *copies* history, so it carries the same degraded, compacted
+context forward rather than shedding it — the opposite of the fresh brief that
+actually restores function. Fork's honest use is proactive, by a session still
+alive: branch off before risky, experimental work, or fork at an *earlier* event
+to drop accumulated context before it stalls you — a manual approximation of the
+checkpoint-resume the literature assumes, but available only while the session can
+still act. It does not close the dead-session gap. Nothing the two parties hold
+does.
 
 ## Applying it while you build
 
