@@ -26,6 +26,12 @@ public final class EventScheduleLastSetup {
     private static final Map<Integer, Setup> CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Boolean> LOADED = new ConcurrentHashMap<>();
     private static final Map<Integer, Object> MONITORS = new ConcurrentHashMap<>();
+    // Bumped by clearAccountState under the same account monitor. The sheet captures the generation
+    // for its slot when it opens and passes it back into put(); a Done submission from a sheet that
+    // outlived a logout (its account cleared and its slot possibly reused) gets rejected instead of
+    // re-seeding this slot for whoever logs into it next. Mirrors EventSchedulePresetStore's own
+    // generation guard, kept independent per store.
+    private static final Map<Integer, Integer> GENERATION = new ConcurrentHashMap<>();
 
     private EventScheduleLastSetup() {}
 
@@ -59,11 +65,59 @@ public final class EventScheduleLastSetup {
         }
     }
 
-    public static void put(int account, int types, List<String> patterns, boolean regex, int delaySeconds) {
+    /**
+     * The sheet captures this once, when it opens, and passes it back into {@link #put}. Both the
+     * capture and the write go through {@code monitor(account)} so a capture can never straddle a
+     * concurrent {@link #clearAccountState} bump.
+     */
+    public static int currentGeneration(int account) {
+        synchronized (monitor(account)) {
+            return GENERATION.getOrDefault(account, 0);
+        }
+    }
+
+    /**
+     * Called from {@code MessagesController#performLogout} for the departing account slot -- this
+     * store keys off the reusable numeric slot, not a stable identity, so without this a fresh login
+     * into the same slot would inherit the previous account's remembered trigger setup as the seed
+     * for its own trigger sheet. Drops the in-memory cache and loaded flag for the slot and clears
+     * its SharedPreferences file.
+     *
+     * <p>Removing LOADED matters as much as removing CACHE here: {@link #loadLocked} treats a
+     * loaded-with-no-cache-entry slot as "no setup", so leaving LOADED=true would hide the leak
+     * in-process while the file survived on disk for the next cold start.
+     *
+     * <p>Deliberately keeps the slot's MONITORS entry (same reasoning as EventSchedulePresetStore):
+     * a thread that grabbed the old lock right before this ran could still be about to synchronize on
+     * it, and a fresh lock for the same slot would no longer exclude it. Also bumps GENERATION so an
+     * in-flight Done submission from a sheet that captured an older generation is rejected by
+     * {@link #put} instead of resurrecting data into a slot this method just emptied.
+     */
+    public static void clearAccountState(int account) {
+        synchronized (monitor(account)) {
+            CACHE.remove(account);
+            LOADED.remove(account);
+            GENERATION.merge(account, 1, Integer::sum);
+            try {
+                ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
+                        .edit().clear().apply();
+            } catch (Throwable ignore) {
+            }
+        }
+    }
+
+    /**
+     * No-ops (writes nothing) if {@code generation} no longer matches this slot's current generation
+     * -- the account was logged out, and the store cleared, since the sheet captured it via
+     * {@link #currentGeneration}. The check runs inside the same synchronized block as the write, so
+     * there is no check-then-act gap against a concurrent {@link #clearAccountState}.
+     */
+    public static void put(int account, int generation, int types, List<String> patterns, boolean regex, int delaySeconds) {
         int normalizedTypes = types & EventScheduleEntry.TYPE_MASK;
         ArrayList<String> normalizedPatterns = EventScheduleEntry.normalizeCommittedPatterns(patterns);
         int normalizedDelay = clampDelay(delaySeconds);
         synchronized (monitor(account)) {
+            if (GENERATION.getOrDefault(account, 0) != generation) return;
             LOADED.put(account, Boolean.TRUE);
             if (normalizedTypes == 0 && normalizedPatterns.isEmpty()) {
                 CACHE.remove(account);

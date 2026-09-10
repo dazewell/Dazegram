@@ -150,6 +150,30 @@ public final class EventScheduleStore {
         return cache(account).containsKey(key);
     }
 
+    /**
+     * Called from {@code MessagesController#performLogout} for the departing account slot. This
+     * store keys off the reusable numeric slot, so without this the departed account's armed
+     * triggers stay cached AND its {@link #nonEmptyAccounts} bit stays set -- the hot new-message
+     * path would keep matching whoever logs into the slot next against the previous account's armed
+     * entries. Drops the in-memory cache and loaded flag, clears the slot's {@code nonEmptyAccounts}
+     * bit, and clears its SharedPreferences file.
+     *
+     * <p>No generation guard is needed here (unlike the two UI-seed stores): this store is not driven
+     * by a modal dialog's Save button that can outlive a logout, and the delayed-fire path already
+     * self-gates on {@link #contains}, so a pending fire against a cleared slot drains the queue
+     * without sending.
+     */
+    public static synchronized void clearAccountState(int account) {
+        CACHE.remove(account);
+        LOADED.remove(account);
+        markAccount(account, false);
+        try {
+            ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
+                    .edit().clear().apply();
+        } catch (Throwable ignore) {
+        }
+    }
+
     public static synchronized EventScheduleEntry findByMessage(int account, long dialogId, int msgId) {
         for (EventScheduleEntry e : cache(account).values()) {
             if (e.dialogId == dialogId && e.serverIds.contains(msgId)) return e;

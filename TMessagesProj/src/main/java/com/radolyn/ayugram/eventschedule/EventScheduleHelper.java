@@ -48,7 +48,6 @@ import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
-import xyz.nextalone.nagram.NaConfig;
 
 /**
  * UI glue for event-triggered scheduled messages: the "Send on event" chip injected into
@@ -402,25 +401,9 @@ public final class EventScheduleHelper {
                     regex = remembered.regex;
                     delay = remembered.delaySeconds;
                 } else {
-                    // NagramX: new trigger seeds are per-account local prefs so they stay device-local and
-                    // avoid cloud-exported globals; legacy NaConfig scalars stay read-only fallback for users
-                    // upgrading with a pre-existing last setup.
-                    NaConfig cfg = NaConfig.INSTANCE;
-                    int legacyTypes = cfg.getEventScheduleLastTypes().Int() & EventScheduleEntry.TYPE_MASK;
-                    String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
-                    boolean hasLegacy = legacyTypes != 0 || !TextUtils.isEmpty(firstPattern);
-                    if (hasLegacy) {
-                        types = legacyTypes;
-                        if (!TextUtils.isEmpty(firstPattern)) {
-                            patterns.add(firstPattern);
-                        }
-                        regex = cfg.getEventScheduleLastPatternRegex().Bool();
-                        delay = cfg.getEventScheduleLastDelay().Int();
-                    } else {
-                        types = 0;
-                        regex = false;
-                        delay = 0;
-                    }
+                    types = 0;
+                    regex = false;
+                    delay = 0;
                 }
             }
             types &= EventScheduleEntry.TYPE_MASK;
@@ -879,6 +862,10 @@ public final class EventScheduleHelper {
             // from under it on logout, so a still-open dialog's stale Save/Delete callback needs the
             // store itself to refuse the write, not just an earlier dismiss.
             final int presetGeneration = EventSchedulePresetStore.currentGeneration(account);
+            // Captured once per sheet open, same reasoning as presetGeneration above: a Done submission
+            // from a sheet that outlived this account's logout (the IME "Done" action path isn't gated
+            // by the sheet's dismissed flag) is rejected by put() rather than re-seeding a reused slot.
+            final int lastSetupGeneration = EventScheduleLastSetup.currentGeneration(account);
             final java.text.Collator presetCollator = java.text.Collator.getInstance();
             presetCollator.setStrength(java.text.Collator.SECONDARY);
             final java.util.Comparator<EventSchedulePresetStore.Preset> presetComparator = (a, b) -> {
@@ -1543,7 +1530,7 @@ public final class EventScheduleHelper {
                 patterns.addAll(extracted.patterns);
                 regex = regexCell.isChecked();
                 delay = newDelay;
-                EventScheduleLastSetup.put(account, types, patterns, regex, delay);
+                EventScheduleLastSetup.put(account, lastSetupGeneration, types, patterns, regex, delay);
                 updateChip();
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
