@@ -16386,6 +16386,9 @@ public class MessagesController extends BaseController implements NotificationCe
         // NagramX: the account's passcode/hide/Panic state must die with the account, or a stale
         // record blocks Panic Code uniqueness or transfers to whoever reuses this slot next.
         tw.nekomimi.nekogram.helpers.PasscodeHelper.clearAccountState(currentAccount);
+        // NagramX: saved trigger presets are keyed by this reusable account slot; without this a
+        // fresh login into the same slot would inherit the previous account's cached/persisted presets.
+        com.radolyn.ayugram.eventschedule.EventSchedulePresetStore.clearAccountState(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);

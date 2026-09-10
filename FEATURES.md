@@ -141,7 +141,7 @@ Select text in a message and tap *Cite* to drop it into your input box as a quot
 
 Pick several scheduled messages and use *Reschedule* to move them all at once with a base time and interval (give messages three minutes or more of spacing — Telegram's own scheduler can run a minute or two late).
 
-*Send on event* can be armed in the schedule picker or directly from bulk *Reschedule*. One trigger can watch message type, text patterns, or both, then send early while each message keeps its fallback schedule. The trigger sheet labels are now explicit (`Video message`, `Any text message`) and use compact collapsible section cards (`By message type`, `Or by text`) with summaries when collapsed. Hidden invalid regex rows still auto-expand on Done and focus the exact row error.
+*Send on event* can be armed in the schedule picker or directly from bulk *Reschedule*. One trigger can watch message type, text patterns, or both, then send early while each message keeps its fallback schedule. The trigger sheet labels are now explicit (`Video message`, `Any text message`) and use compact collapsible section cards (`By message type`, `Or by text`) with summaries when collapsed. Hidden invalid regex rows still auto-expand on Done and focus the exact row error. A `Presets` section lets you save the sheet's current setup under a name and reapply it later from a name-sorted list, each row showing a quick summary of what it contains. The first pattern row also gets its own clear (×) button so you can wipe its text without needing a second row to remove.
 
 Armed triggers are managed from Chats nav ⋯ → *Message Triggers*. A disguised chat still suppresses trigger fire/stop heads-up alerts so trigger activity is not exposed through notifications.
 
