@@ -1440,7 +1440,10 @@ public final class EventScheduleHelper {
                 activePresetDialogHolder[0] = nameDialog;
                 nameDialog.setOnDismissListener(d -> {
                     if (activePresetDialogHolder[0] == nameDialog) activePresetDialogHolder[0] = null;
-                    activePresetDialogPendingFocus[0] = null;
+                    if (activePresetDialogPendingFocus[0] != null) {
+                        org.telegram.messenger.AndroidUtilities.cancelRunOnUIThread(activePresetDialogPendingFocus[0]);
+                        activePresetDialogPendingFocus[0] = null;
+                    }
                 });
                 Runnable requestFocusAndKeyboard = () -> {
                     activePresetDialogPendingFocus[0] = null;
