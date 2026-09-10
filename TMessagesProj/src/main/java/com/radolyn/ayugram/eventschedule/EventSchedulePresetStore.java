@@ -130,6 +130,27 @@ public final class EventSchedulePresetStore {
         return new Preset(p.id, p.name, p.types, p.patterns, p.regex, p.delaySeconds, p.createdAt);
     }
 
+    /**
+     * Called from {@code MessagesController#performLogout} for the departing account slot -- this
+     * store keys off the reusable numeric slot, not a stable identity, so without this a fresh
+     * login into the same slot would inherit the previous account's cached and persisted presets.
+     * Drops the in-memory cache/loaded-flag for the slot and clears its SharedPreferences file so
+     * the next {@link #getAll} for that slot starts empty, not just unloaded.
+     */
+    public static void clearAccountState(int account) {
+        Object lock = monitor(account);
+        synchronized (lock) {
+            CACHE.remove(account);
+            LOADED.remove(account);
+            try {
+                ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
+                        .edit().clear().apply();
+            } catch (Throwable ignore) {
+            }
+        }
+        MONITORS.remove(account, lock);
+    }
+
     private static void loadLocked(int account) {
         if (Boolean.TRUE.equals(LOADED.get(account))) return;
         ArrayList<Preset> list;
