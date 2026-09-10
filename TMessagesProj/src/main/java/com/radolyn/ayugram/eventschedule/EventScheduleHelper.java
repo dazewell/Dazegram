@@ -887,6 +887,25 @@ public final class EventScheduleHelper {
             // Whichever of the naming dialog or the remove-confirm dialog is currently up, so the sheet's
             // pre-dismiss listener can close it instead of leaving it to outlive the sheet underneath it.
             final AlertDialog[] activePresetDialogHolder = new AlertDialog[1];
+            // A posted keyboard/focus Runnable tied to whichever dialog is currently up (the naming
+            // dialog defers requestFocus/showKeyboard past its own onShow) -- cancelled alongside the
+            // dialog itself so it can't run against a view whose dialog has already been torn down.
+            final Runnable[] activePresetDialogPendingFocus = new Runnable[1];
+            // Critical-2 fix: the sheet's own pre-dismiss listener only fires on BottomSheet.dismiss(),
+            // not when the hosting Activity is destroyed out from under an open dialog (AlertDialog
+            // registers itself with a global observer list unregistered only in dismiss()) -- so this
+            // same idempotent cleanup also runs from the sheet container's detach-from-window callback,
+            // wired in once the sheet is created below.
+            final Runnable dismissActivePresetDialog = () -> {
+                if (activePresetDialogPendingFocus[0] != null) {
+                    org.telegram.messenger.AndroidUtilities.cancelRunOnUIThread(activePresetDialogPendingFocus[0]);
+                    activePresetDialogPendingFocus[0] = null;
+                }
+                if (activePresetDialogHolder[0] != null) {
+                    activePresetDialogHolder[0].dismiss();
+                    activePresetDialogHolder[0] = null;
+                }
+            };
             final boolean[] presetsExpanded = {false};
             final boolean[] presetsBuilt = {false};
             final Runnable[] updatePresetsHeader = new Runnable[]{() -> {}};
@@ -1296,16 +1315,20 @@ public final class EventScheduleHelper {
             // need delaySeekBar/stagedDelay/delayIndex/delayValue, which only exist from this point on.
             applyPresetHolder[0] = (preset) -> {
                 // I-7(i): unfocus + dismiss keyboard first, mirroring collapseTextGroup's own sequencing.
-                // Clear the rows/container BEFORE calling clearFocus(): clearFocus() synchronously invokes
-                // the row's focus-change listener, which auto-removes a blank row when it loses focus with
-                // 2+ rows present -- if that ran here it would remove+refocus a row we're about to discard
-                // anyway. Clearing `rows` first makes that listener's rows.indexOf(row) come back -1, so
-                // removeRow's own guard no-ops it instead of doing that redundant (and focus-stealing) work.
+                // Order matters: hide the keyboard while the field is still attached (hideKeyboard needs
+                // a live view to resolve its window token), then clear `rows`/the container BEFORE calling
+                // clearFocus() -- clearFocus() synchronously invokes the row's focus-change listener,
+                // which auto-removes a blank row when it loses focus with 2+ rows present; if that ran
+                // here it would remove+refocus a row we're about to discard anyway. Clearing `rows` first
+                // makes that listener's rows.indexOf(row) come back -1, so removeRow's own guard no-ops
+                // it instead of doing that redundant (and focus-stealing) work.
                 EditTextBoldCursor focused = focusedField(rows);
-                patternRowsContainer.removeAllViews();
-                rows.clear();
                 if (focused != null) {
                     org.telegram.messenger.AndroidUtilities.hideKeyboard(focused);
+                }
+                rows.clear();
+                patternRowsContainer.removeAllViews();
+                if (focused != null) {
                     focused.clearFocus();
                 }
 
@@ -1417,11 +1440,17 @@ public final class EventScheduleHelper {
                 activePresetDialogHolder[0] = nameDialog;
                 nameDialog.setOnDismissListener(d -> {
                     if (activePresetDialogHolder[0] == nameDialog) activePresetDialogHolder[0] = null;
+                    activePresetDialogPendingFocus[0] = null;
                 });
-                nameDialog.setOnShowListener(d -> org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> {
+                Runnable requestFocusAndKeyboard = () -> {
+                    activePresetDialogPendingFocus[0] = null;
                     nameField.requestFocus();
                     org.telegram.messenger.AndroidUtilities.showKeyboard(nameField);
-                }));
+                };
+                nameDialog.setOnShowListener(d -> {
+                    activePresetDialogPendingFocus[0] = requestFocusAndKeyboard;
+                    org.telegram.messenger.AndroidUtilities.runOnUIThread(requestFocusAndKeyboard);
+                });
                 nameDialog.show();
                 nameDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                     String candidate = nameField.getText().toString().trim();
@@ -1509,14 +1538,24 @@ public final class EventScheduleHelper {
             });
 
             builder.addCancelButton();
-            builder.setOnPreDismissListener(dialog -> {
-                if (activePresetDialogHolder[0] != null) {
-                    activePresetDialogHolder[0].dismiss();
-                    activePresetDialogHolder[0] = null;
-                }
-            });
+            builder.setOnPreDismissListener(dialog -> dismissActivePresetDialog.run());
             BottomSheet sheet = builder.create();
             sheetHolder[0] = sheet;
+            // Critical-2: a pre-dismiss listener alone misses the case where the hosting Activity is
+            // destroyed while a preset dialog is up (destroy != BottomSheet.dismiss()) -- the container
+            // detaching from its window is the one signal common to both a normal dismiss and an
+            // Activity-driven teardown, so hook cleanup there too. Idempotent: whichever cleanup path
+            // runs first nulls activePresetDialogHolder[0], so the other is a safe no-op.
+            sheet.getContainer().addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override
+                public void onViewAttachedToWindow(View v) {
+                }
+
+                @Override
+                public void onViewDetachedFromWindow(View v) {
+                    dismissActivePresetDialog.run();
+                }
+            });
             sheet.show();
         }
 
