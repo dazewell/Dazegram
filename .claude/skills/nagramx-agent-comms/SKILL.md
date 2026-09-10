@@ -162,15 +162,23 @@ not as a request to repeat it.
 **The structured parent/child control vocabulary is exempt from the raw SHA
 stamp** — `RUNNING` / `WAITING_HUMAN` / `BLOCKED_PARENT` / `HANDBACK_POSTED` /
 `CLOSED` / `ABORTED` and the rest in the orchestrator file. Those are not
-freeform claims about a tree; their freshness comes from their own *monotonic
-lifecycle* — you cannot reach `CLOSED` before `HANDBACK_POSTED`, or `RUNNING`
-twice — plus the ledger and `get_session` re-verification that file already
-mandates. Stamp freeform instructions and reports; let each control message be
-checked against its state machine instead.
+freeform claims about a tree, and their freshness does not rest on a stamp. The
+*terminal* transitions are monotonic — you cannot reach `CLOSED` before
+`HANDBACK_POSTED`, or `RUNNING` twice — so an out-of-order one is self-evidently
+stale. The *recurring informational* ones (`WAITING_HUMAN`, `BLOCKED_PARENT`) are
+**not** monotonic and could otherwise arrive late and be mistaken for current;
+what protects them is the rule that the coordinator **resolves every ambiguous
+control state mechanically via `get_session` + git before acting on it**, never
+from the message alone (the idle-decision table already mandates exactly this).
+So a stale recurring control message cannot be acted on as current — the
+mechanical re-check catches it — which is why the stamp buys nothing here. Stamp
+freeform instructions and reports; let each control message be checked against
+the state machine and that mandatory re-verification instead.
 
 - *Checked:* a freeform message either carries a `@<sha>` or it does not; the
   recipient's check is one `git rev-parse HEAD`. A control message is checked
-  against its lifecycle order.
+  against its lifecycle order (terminal states) or the mandatory `get_session` +
+  git re-verification before acting (recurring states).
 - *Cost:* one `git rev-parse` per message. Negligible.
 - *Kills:* crossed messages (#2), and gives a stale self-report (#3) a detectable
   signature.
