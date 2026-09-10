@@ -1412,7 +1412,9 @@ not repeat what that file states — they point at it:
   change, or, for a read-only session (scout/UX/architect) that never commits, its
   completion report or control transition, which is its observable output. A
   start-ack proves liveness, not completion, so it does not license the next
-  instruction; if things change first, send `supersedes my @X: …`. This
+  instruction — the one exception is the `RUNNING → GO` dispatch handshake, where
+  `GO` releases the child's initial dispatch from its deliberate pause and is not a
+  second instruction. If things change first, send `supersedes my @X: …`. This
   serializes one pair, never the fleet.
 - **A start-ack or git progress by the next idle notification, or it is a suspected
   stall.** From there follow the idle-decision table's own probe → diagnostic →

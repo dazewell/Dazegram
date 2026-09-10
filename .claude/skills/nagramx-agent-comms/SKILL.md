@@ -193,9 +193,13 @@ from the message alone (the idle-decision table already mandates exactly this).
 So a stale recurring control message cannot be acted on as current — the
 mechanical re-check catches it — which is why the stamp buys nothing here. Two
 explicit acceptance rules make that concrete, so no per-channel sequence number is
-needed: the terminal states are **absorbing** — once a channel has sent `CLOSED`,
-`ABORTED`, or `HANDBACK_POSTED`, a later control message on it is rejected outright
-as stale, not acted on — and a recurring `WAITING_HUMAN` / `BLOCKED_PARENT` is
+needed: the **absorbing** terminal states are `CLOSED` and `ABORTED` — once a
+channel has sent one, a later control message on it is rejected outright as stale,
+not acted on. `HANDBACK_POSTED` is **not** absorbing — it is intermediate, and the
+`HANDBACK_POSTED → CLOSED` transition that follows a child's archival is the
+expected next step, not a stale message; only a control message that would move
+*backward* from where the channel already is (a second `RUNNING`, a `GO` after
+`CLOSED`) is rejected. A recurring `WAITING_HUMAN` / `BLOCKED_PARENT` is
 treated as current **only after** the coordinator confirms via `get_session` that
 the child is still in that state. The coordinator never acts on such a message's
 content directly; it re-derives the state and acts on that (the one principle),
@@ -260,7 +264,11 @@ or you deadlock a session that has nothing to commit. A start-ack (Rule 5) is
 different from a completion report: the ack is sent *before* the work and proves
 only that the worker is alive and holds the instruction, so it is **not** a
 licence to send the next one, because the acked work has only just begun and a
-second instruction would race it. If circumstances change before the
+second instruction would race it. The one exception is the **dispatch
+handshake**: a child orchestrator sends `RUNNING` and then *deliberately pauses*
+for the parent's `GO`, so here the parent **must** answer the ack — `GO` releases
+that initial dispatch from its verification pause, it is not a second live
+instruction racing the first. If circumstances change before the
 previous instruction lands, do **not** stack a second live instruction — send one
 that explicitly supersedes: `supersedes my @X: <new imperative>`. The recipient
 drops the older one (Rule 1 makes the older one detectably behind anyway).
