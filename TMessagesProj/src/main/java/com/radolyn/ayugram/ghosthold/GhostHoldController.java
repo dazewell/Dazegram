@@ -1062,6 +1062,17 @@ public final class GhostHoldController {
             store.getQueue().postRunnable(() -> {
                 if (ho) {
                     store.deleteOnQueue(mid);
+                    if (!future) {
+                        // NagramX: a send-now handoff wrote the messages_v2 twin and
+                        // removed the fork row, but an already-open Scheduled list still
+                        // holds the display-only held object -- the HELD-only render
+                        // filter only governs future loads. Drop it from that open list
+                        // by mid so it can't be deleted there as held, which would clear
+                        // an empty scheduled_messages_v2 while stranding the messages_v2
+                        // twin for the unsent scan. Pure UI dispatch, no stock write;
+                        // scheduled-scoped so the main-view twin's fragment ignores it.
+                        AndroidUtilities.runOnUIThread(() -> removeStaleScheduledItem(account, dialogId, mid));
+                    }
                 } else {
                     store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
                 }
@@ -1074,6 +1085,32 @@ public final class GhostHoldController {
                 }
             });
         });
+    }
+
+    /**
+     * Removes a handed-off send-now message from any already-open Scheduled list by
+     * posting a scheduled-scoped {@code messagesDeleted} for its negative id. The
+     * render-time HELD-only filter only affects future loads, so without this an open
+     * list keeps the stale display-only held object after the fork row is deleted; a
+     * user deleting it there would clear scheduled_messages_v2 (empty for a send-now)
+     * while leaving the messages_v2 twin for the unsent scan to transmit. This is a
+     * pure NotificationCenter dispatch -- no stock read or write -- and the scheduled
+     * flag scopes the UI reaction to Scheduled fragments, so the main-view twin is
+     * untouched. channelId is -dialogId for a channel/supergroup and 0 otherwise,
+     * matching ChatActivity.processDeletedMessages' channel gate.
+     */
+    private static void removeStaleScheduledItem(int account, long dialogId, int mid) {
+        long channelId = 0;
+        if (DialogObject.isChatDialog(dialogId)) {
+            TLRPC.Chat chat = MessagesController.getInstance(account).getChat(-dialogId);
+            if (ChatObject.isChannel(chat)) {
+                channelId = -dialogId;
+            }
+        }
+        ArrayList<Integer> ids = new ArrayList<>(1);
+        ids.add(mid);
+        NotificationCenter.getInstance(account).postNotificationName(
+                NotificationCenter.messagesDeleted, ids, channelId, true, false, false, 0);
     }
 
     /**
