@@ -914,6 +914,18 @@ public final class GhostHoldController {
             // HELD, which reconcile (FLUSHING-only) would then re-send -- a duplicate.
             if (rec != null && store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_FLUSHING)) {
                 fresh = toHeldItem(item.account, rec);
+                if (fresh == null) {
+                    // Row was durably marked FLUSHING but its stored blob will not
+                    // decode. Left as-is it is hidden (HELD-only render/collect) and
+                    // never retried until a restart reconcile, while the flush counts
+                    // it terminal -- an unsent message that silently vanishes. Put it
+                    // back to HELD so it renders and re-drives, and refresh the count.
+                    // dispatchFreshItem's fresh==null branch must stay the pure "record
+                    // deleted" case, so this revert belongs here where rec proves the
+                    // row still exists.
+                    store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_HELD);
+                    postScheduledCount(item.account, item.dialogId);
+                }
             }
             final HeldItem f = fresh;
             AndroidUtilities.runOnUIThread(() -> dispatchFreshItem(item, f, remaining, pending, epoch));
