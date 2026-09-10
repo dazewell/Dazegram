@@ -992,3 +992,26 @@ would widen the diff into shared base-fork code for a bug that costs a failed
 request, not data loss. Recorded so the next person who wonders why the held-row
 guard exists — or who trusts `canEditMessageScheduleTime` to mirror
 `canEditMessage`'s id check — does not burn an investigation on it.
+
+## GhostModeActivity posts mainUserInfoChanged on the selected account, not the fragment's
+
+Established 2026-09-10 (#ghost-hold). `GhostModeActivity` posts
+`NotificationCenter.mainUserInfoChanged` on
+`NotificationCenter.getInstance(UserConfig.selectedAccount)` — at
+`GhostModeActivity.java:153` (the Ghost Hold toggle notice path) and,
+pre-existing since before `#ghost-hold`, at `:207` and `:211` (the
+`showGhostInDrawer` / `showGhostModeStatus` toggles). The fragment itself
+observes via `getNotificationCenter()`, i.e. its own `currentAccount`
+(`:90`). So if this screen is ever reached on a non-selected account, the post
+lands on a different center than the observer and the rows/held-count refresh is
+missed. In practice the screen is opened on the selected account, so the two
+coincide and the observer fires.
+
+This is a **pre-existing, fork-wide pattern**, not something Ghost Hold
+introduced — the two sibling posts predate it and use the same
+`selectedAccount` center. A code review flagged the `:153` post in isolation;
+"fixing" only that one line would leave the file internally inconsistent with
+its two neighbours three lines down and would be a drive-by edit on pre-existing
+code. If the pattern is wrong it is wrong in three places and is a separate
+change with its own justification. Recorded so the next reviewer who spots the
+`:153` post does not re-raise it as a Ghost Hold defect.

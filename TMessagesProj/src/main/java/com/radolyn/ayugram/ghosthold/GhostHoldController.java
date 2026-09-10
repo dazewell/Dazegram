@@ -98,6 +98,9 @@ public final class GhostHoldController {
 
     private static volatile boolean flushInProgress;
 
+    // Set once we register the foreground retry below, so it is never added twice.
+    private static volatile boolean foregroundRetryArmed;
+
     private GhostHoldController() {}
 
     private static SharedPreferences prefs() {
@@ -537,13 +540,18 @@ public final class GhostHoldController {
             }
             if (fragment == null || fragment.getParentActivity() == null) {
                 // No foreground screen to confirm on (e.g. process-start convergence
-                // before any UI is up). Defer, never drain: a backlog must not leave
-                // without the user seeing the "Send held messages?" dialog. Release
-                // the claim and leave every row held; the next ghost-off edge or
-                // process start re-offers the same confirmation. Deferred, not skipped
-                // -- a user who keeps dismissing keeps deferring, which is their choice
+                // before any UI is up, including a headless push-service process whose
+                // only checkOnProcessStart() runs with no Activity). Defer, never drain:
+                // a backlog must not leave without the user seeing the "Send held
+                // messages?" dialog. Release the claim and leave every row held, then
+                // arm a one-time foreground retry so the same confirmation is re-offered
+                // the moment a screen next exists in this process -- otherwise, since
+                // checkOnProcessStart() is the only startup call site, foregrounding
+                // later in the same process would never retry. Deferred, not skipped --
+                // a user who keeps dismissing keeps deferring, which is their choice
                 // (nothing is lost, the rows stay visible in Scheduled).
                 flushInProgress = false;
+                armForegroundRetry();
                 return;
             }
 
@@ -570,6 +578,46 @@ public final class GhostHoldController {
         });
     }
 
+    /**
+     * Register a once-per-process foreground listener that re-offers a deferred flush
+     * the next time the app has a foreground screen. Called only when a flush was
+     * deferred for want of a UI (see promptFlush's no-fragment branch); reuses the
+     * app-wide ForegroundDetector so no lifecycle hook is added to a base file. The
+     * listener stays for the process lifetime: if the user dismisses the re-offered
+     * dialog it defers again, and the next foreground re-offers once more. The retry
+     * is gated on Ghost being off -- while Ghost is on the backlog must stay held, so
+     * there is nothing to flush and we skip the collect entirely.
+     */
+    private static void armForegroundRetry() {
+        if (foregroundRetryArmed) {
+            return;
+        }
+        foregroundRetryArmed = true;
+        try {
+            org.telegram.ui.Components.ForegroundDetector detector = org.telegram.ui.Components.ForegroundDetector.getInstance();
+            if (detector == null) {
+                foregroundRetryArmed = false;
+                return;
+            }
+            detector.addListener(new org.telegram.ui.Components.ForegroundDetector.Listener() {
+                @Override
+                public void onBecameForeground() {
+                    if (!NekoConfig.isGhostModeActive()) {
+                        AndroidUtilities.runOnUIThread(GhostHoldController::promptFlush);
+                    }
+                }
+
+                @Override
+                public void onBecameBackground() {
+                }
+            });
+            Log.i(SMOKE, "foreground retry armed for deferred flush");
+        } catch (Exception e) {
+            foregroundRetryArmed = false;
+            FileLog.e(e);
+        }
+    }
+
     private static int countPending(ArrayList<HeldItem> items) {
         int pending = 0;
         for (HeldItem item : items) {
@@ -592,8 +640,11 @@ public final class GhostHoldController {
 
     private static void writeGhostSnapshot(SharedPreferences.Editor editor) {
         tw.nekomimi.nekogram.config.ConfigItem[] items = ghostToggleItems();
-        for (int i = 0; i < items.length; i++) {
-            editor.putBoolean(KEY_GHOST_SNAPSHOT_PREFIX + i, items[i].Bool());
+        for (tw.nekomimi.nekogram.config.ConfigItem item : items) {
+            // Key the snapshot by the toggle's own stable config key, never by array
+            // index: a future reorder or insertion in ghostToggleItems() would otherwise
+            // silently restore the wrong privacy toggle on cancel.
+            editor.putBoolean(KEY_GHOST_SNAPSHOT_PREFIX + item.getKey(), item.Bool());
         }
         editor.putBoolean(KEY_GHOST_SNAPSHOT_VALID, true);
     }
@@ -605,10 +656,10 @@ public final class GhostHoldController {
             // toggles that actually changed -- so we never switch on a toggle the user
             // left off. setGhostMode(true) would force all five into ghost state.
             tw.nekomimi.nekogram.config.ConfigItem[] items = ghostToggleItems();
-            for (int i = 0; i < items.length; i++) {
-                boolean prior = prefs().getBoolean(KEY_GHOST_SNAPSHOT_PREFIX + i, items[i].Bool());
-                if (items[i].Bool() != prior) {
-                    items[i].setConfigBool(prior);
+            for (tw.nekomimi.nekogram.config.ConfigItem item : items) {
+                boolean prior = prefs().getBoolean(KEY_GHOST_SNAPSHOT_PREFIX + item.getKey(), item.Bool());
+                if (item.Bool() != prior) {
+                    item.setConfigBool(prior);
                 }
             }
         } else {
@@ -747,6 +798,20 @@ public final class GhostHoldController {
                 } catch (NumberFormatException ignore) {
                 }
             }
+        }
+        // Once handed to the funnel this is a normal outgoing message, so it must not
+        // still carry our hold markers. A marked twin would be re-collected by queryHeld;
+        // an unmarked one (after this strip) is a plain message stock retry can resend --
+        // both are handled elsewhere, but the sent row itself must not claim to be held.
+        // The three fields we care about were lifted into first-class fields just above.
+        // Strip in place: of(mo) passed messageOwner.params by reference as p.params and
+        // the retry path re-serializes that same map, so removing the keys here is what
+        // actually unmarks the row the funnel writes.
+        if (m.params != null) {
+            m.params.remove(PARAM_MARKER);
+            m.params.remove(PARAM_NO_WEBPAGE);
+            m.params.remove(PARAM_REPEAT);
+            m.params.remove(PARAM_EFFECT);
         }
 
         // Re-drive in place. The funnel keys its destination table off scheduleDate
@@ -956,6 +1021,48 @@ public final class GhostHoldController {
             }
         }
         return new ArrayList<>(byMid.values());
+    }
+
+    /**
+     * Called from the scheduled-message deletion path (MessagesStorage, on its storage
+     * queue) when the user deletes rows from a Scheduled list. A send-now flush re-drives
+     * a held row by reusing its negative mid, so the funnel writes a messages_v2 twin with
+     * that same mid while the scheduled row still exists. Scheduled deletion only removes
+     * scheduled_messages_v2, so without this the twin outlives the deletion and would be
+     * re-collected by queryHeld (while marked) or resent by stock retry (once unmarked) --
+     * a message the user deleted still reaching the server. Local mids are unique per
+     * account across both tables, so a messages_v2 row sharing a deleted scheduled mid is
+     * necessarily that twin; matching by mid alone is exact.
+     *
+     * Runs synchronously on the caller's storage queue, so it uses the live database
+     * directly and must not hop threads. The residual in-flight window (a twin whose send
+     * request is already on the wire when the delete lands) is inherent and the same class
+     * as a stock message deleted mid-send; this closes the durable re-collection/retry
+     * vector, not that network race.
+     */
+    public static void onScheduledMessagesDeleted(int account, long dialogId, ArrayList<Integer> mids) {
+        if (mids == null || mids.isEmpty()) {
+            return;
+        }
+        StringBuilder negatives = new StringBuilder();
+        for (int mid : mids) {
+            if (mid < 0) {
+                if (negatives.length() > 0) {
+                    negatives.append(',');
+                }
+                negatives.append(mid);
+            }
+        }
+        if (negatives.length() == 0) {
+            return;
+        }
+        try {
+            SQLiteDatabase db = MessagesStorage.getInstance(account).getDatabase();
+            db.executeFast("DELETE FROM messages_v2 WHERE uid = " + dialogId + " AND mid IN(" + negatives + ")").stepThis().dispose();
+            Log.i(SMOKE, "twin purge: cleared messages_v2 held twins for deleted scheduled rows dialog=" + dialogId);
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     @Nullable

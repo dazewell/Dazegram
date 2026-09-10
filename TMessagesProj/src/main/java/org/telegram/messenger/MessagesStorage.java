@@ -14678,6 +14678,8 @@ public class MessagesStorage extends BaseController {
                 cursor = null;
 
                 database.executeFast(String.format(Locale.US, "DELETE FROM scheduled_messages_v2 WHERE mid IN(%s) AND uid = %d", ids, dialogId)).stepThis().dispose();
+                // NagramX: a held Ghost Hold row can have a messages_v2 twin left by a send-now flush re-drive; remove it too so a deleted message can never still be sent (see GhostHoldController).
+                com.radolyn.ayugram.ghosthold.GhostHoldController.onScheduledMessagesDeleted(currentAccount, dialogId, messages);
                 for (int a = 0, N = dialogsToUpdate.size(); a < N; a++) {
                     broadcastScheduledMessagesChange(dialogsToUpdate.get(a));
                 }
