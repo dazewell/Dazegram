@@ -51,6 +51,14 @@ public final class EventScheduleEntry {
     public static final int MAX_PATTERN_COUNT = 5;
     public static final int MAX_PATTERN_LENGTH = 512;
 
+    // Bounded by the presets list being a plain, un-recycled LinearLayout (EventScheduleHelper) --
+    // not an arbitrary round number. 50 rows is fine to inflate on first expand; a view-recycling
+    // list would be needed well before this cap became a real limitation.
+    public static final int MAX_PRESET_COUNT = 50;
+    // Matches the existing pattern-field length-cap convention (MAX_PATTERN_LENGTH's role for a
+    // single row), sized for a one-line settings-cell title rather than a free-text field.
+    public static final int MAX_PRESET_NAME_LENGTH = 40;
+
     // A user-typed regex has no timeout; cap the input it runs against so a pathological
     // pattern on a huge caption can't stall the queue it's evaluated on.
     private static final int MAX_MATCH_LEN = 2048;

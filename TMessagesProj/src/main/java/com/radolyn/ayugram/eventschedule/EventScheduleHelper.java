@@ -27,19 +27,24 @@ import android.widget.TextView;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.MessageObject;
 import org.telegram.messenger.R;
+import org.telegram.ui.ActionBar.AlertDialog;
+import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.TextCheckCell;
+import org.telegram.ui.Cells.TextDetailSettingsCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
 import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.ColoredImageSpan;
 import org.telegram.ui.Components.CubicBezierInterpolator;
 import org.telegram.ui.Components.EditTextBoldCursor;
+import org.telegram.ui.Components.ItemOptions;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 import org.telegram.ui.Components.SeekBarView;
 
 import java.util.ArrayList;
 
+import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
@@ -262,6 +267,10 @@ public final class EventScheduleHelper {
             final ImageView removeButton;
             final TextView messageView;
 
+            // Which action the trailing icon performs right now -- decided fresh at accessibility-sync
+            // time from the shared row-count/blank rules, never toggled directly by a click handler.
+            boolean clearMode;
+
             PatternFieldRow(LinearLayout container, FrameLayout fieldBox, EditTextBoldCursor field,
                             ImageView removeButton, TextView messageView) {
                 this.container = container;
@@ -269,6 +278,22 @@ public final class EventScheduleHelper {
                 this.field = field;
                 this.removeButton = removeButton;
                 this.messageView = messageView;
+            }
+        }
+
+        /** Applies one saved preset onto the sheet's live draft state; assigned after the delay slider exists (I-5). */
+        private interface PresetApplier {
+            void apply(EventSchedulePresetStore.Preset preset);
+        }
+
+        /** Result of {@link #extractAndValidate}: the type bitmask plus the trimmed, deduped pattern list. */
+        private static final class ExtractedConfig {
+            final int types;
+            final ArrayList<String> patterns;
+
+            ExtractedConfig(int types, ArrayList<String> patterns) {
+                this.types = types;
+                this.patterns = patterns;
             }
         }
 
@@ -505,11 +530,29 @@ public final class EventScheduleHelper {
         }
 
         private static void updateRowAccessibility(ArrayList<PatternFieldRow> rows) {
+            // The trailing icon slot is remove-mode with 2+ rows, clear-mode with exactly one -- decided
+            // fresh from rows.size() every call, never toggled by the click handler itself. afterTextChanged
+            // calls this on every keystroke of every row, so both the icon swap (setImageResource) and the
+            // content description are guarded against redundant calls (mirror syncRegexEnabled's own
+            // early-out): the icon only changes on a genuine mode change, and the description -- positional,
+            // depends on i in remove-mode -- is only re-set when the text it would produce actually differs
+            // from what's already there, so a position shift after an add/remove still refreshes it.
+            boolean wantClearMode = rows.size() == 1;
             for (int i = 0; i < rows.size(); i++) {
                 PatternFieldRow row = rows.get(i);
-                row.removeButton.setContentDescription(
-                        org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleRemovePattern, i + 1));
-                row.removeButton.setVisibility(rows.size() > 1 && !isBlankRow(row) ? View.VISIBLE : View.INVISIBLE);
+                if (row.clearMode != wantClearMode) {
+                    row.clearMode = wantClearMode;
+                    row.removeButton.setImageResource(wantClearMode ? R.drawable.ic_close_white : R.drawable.poll_remove);
+                }
+                CharSequence wantDescription = wantClearMode
+                        ? getString(R.string.EventScheduleClearPattern)
+                        : org.telegram.messenger.LocaleController.formatString(R.string.EventScheduleRemovePattern, i + 1);
+                if (!TextUtils.equals(row.removeButton.getContentDescription(), wantDescription)) {
+                    row.removeButton.setContentDescription(wantDescription);
+                }
+                // Same shared predicate governs visibility for both modes -- rows.size() only picks WHICH
+                // icon/action above, it never gates visibility on its own.
+                row.removeButton.setVisibility(!isBlankRow(row) ? View.VISIBLE : View.INVISIBLE);
             }
         }
 
@@ -652,6 +695,84 @@ public final class EventScheduleHelper {
             }
         }
 
+        /**
+         * Shared by Done and "Save current as preset...": computes the type bitmask from the check-row
+         * group (index order matches the TYPE_* bit order the cells were added in), trims and dedupes the
+         * pattern rows (tracking each unique value's originating row for error-targeting), and validates
+         * every non-blank pattern when regex mode is on. On success returns the extracted config; on
+         * failure runs the exact same deferred UI failure path Done's own handler used to run inline
+         * (auto-expand the text section first via doOnLayout when it isn't already open, because the bad
+         * row isn't laid out yet at that point) and returns null.
+         */
+        private static ExtractedConfig extractAndValidate(Context context, ArrayList<PatternFieldRow> rows,
+                LinearLayout patternArea, ArrayList<TextCheckCell> typeGroup, TextCheckCell regexCell,
+                boolean[] typeExpanded, boolean[] textExpanded, Runnable[] syncGroupVisibility,
+                Runnable[] updateTypeHeader, Runnable[] updateTextHeader) {
+            int[] typeBits = {EventScheduleEntry.TYPE_VOICE, EventScheduleEntry.TYPE_ROUND,
+                    EventScheduleEntry.TYPE_VIDEO, EventScheduleEntry.TYPE_PHOTO, EventScheduleEntry.TYPE_TEXT};
+            int newTypes = 0;
+            for (int i = 0; i < typeGroup.size() && i < typeBits.length; i++) {
+                if (typeGroup.get(i).isChecked()) newTypes |= typeBits[i];
+            }
+
+            ArrayList<String> trimmed = new ArrayList<>();
+            ArrayList<PatternFieldRow> trimmedRows = new ArrayList<>();
+            for (int i = 0; i < rows.size(); i++) {
+                String value = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
+                if (!TextUtils.isEmpty(value)) {
+                    trimmed.add(value);
+                    trimmedRows.add(rows.get(i));
+                }
+            }
+            ArrayList<String> unique = new ArrayList<>();
+            ArrayList<PatternFieldRow> uniqueRows = new ArrayList<>();
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+            for (int i = 0; i < trimmed.size(); i++) {
+                String value = trimmed.get(i);
+                if (seen.add(value)) {
+                    unique.add(value);
+                    uniqueRows.add(trimmedRows.get(i));
+                }
+            }
+
+            boolean useRegex = regexCell.isChecked();
+            clearAllRowMessages(rows);
+            if (useRegex) {
+                for (int i = 0; i < unique.size(); i++) {
+                    if (!EventScheduleEntry.isPatternValid(unique.get(i), true)) {
+                        PatternFieldRow badRow = uniqueRows.get(i);
+                        if (!textExpanded[0]) {
+                            textExpanded[0] = true;
+                            syncGroupVisibility[0].run();
+                            updateTextHeader[0].run();
+                            org.telegram.messenger.AndroidUtilities.doOnLayout(patternArea, () -> {
+                                showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
+                                focusRow(badRow.field);
+                                AndroidUtil.showInputError(badRow.field);
+                            });
+                        } else {
+                            showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
+                            focusRow(badRow.field);
+                            AndroidUtil.showInputError(badRow.field);
+                        }
+                        return null;
+                    }
+                }
+            }
+            if (newTypes == 0 && unique.isEmpty()) {
+                if (!typeExpanded[0] || !textExpanded[0]) {
+                    typeExpanded[0] = true;
+                    textExpanded[0] = true;
+                    syncGroupVisibility[0].run();
+                    updateTypeHeader[0].run();
+                    updateTextHeader[0].run();
+                }
+                AlertUtil.showToast(getString(R.string.EventScheduleNeedCondition));
+                return null;
+            }
+            return new ExtractedConfig(newTypes, unique);
+        }
+
         void openSheet(Context context) {
             BottomBuilder builder = new BottomBuilder(context, true, Theme.getColor(Theme.key_windowBackgroundGray), true);
             builder.addTitle(getString(R.string.EventScheduleTitle), getString(R.string.EventScheduleArmed));
@@ -750,6 +871,119 @@ public final class EventScheduleHelper {
             textDelaySpacer.setBackgroundColor(Theme.getColor(Theme.key_windowBackgroundGray));
             textDelaySpacer.setLayoutParams(LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 8));
 
+            // ---- Presets section (I-8: starts its own section run right after textDelaySpacer) ----
+            final ArrayList<EventSchedulePresetStore.Preset> presetList = EventSchedulePresetStore.getAll(account);
+            final java.text.Collator presetCollator = java.text.Collator.getInstance();
+            presetCollator.setStrength(java.text.Collator.SECONDARY);
+            final java.util.Comparator<EventSchedulePresetStore.Preset> presetComparator = (a, b) -> {
+                int byName = presetCollator.compare(a.name, b.name);
+                if (byName != 0) return byName;
+                return Long.compare(a.createdAt, b.createdAt);
+            };
+
+            // Captured once the sheet is actually shown (I-3: the ItemOptions ViewGroup overload needs a
+            // container, and this sheet has no BaseFragment to hang the BaseFragment overload off of).
+            final BottomSheet[] sheetHolder = new BottomSheet[1];
+            // Whichever of the naming dialog or the remove-confirm dialog is currently up, so the sheet's
+            // pre-dismiss listener can close it instead of leaving it to outlive the sheet underneath it.
+            final AlertDialog[] activePresetDialogHolder = new AlertDialog[1];
+            final boolean[] presetsExpanded = {false};
+            final boolean[] presetsBuilt = {false};
+            final Runnable[] updatePresetsHeader = new Runnable[]{() -> {}};
+            final Runnable[] syncPresetsVisibility = new Runnable[]{() -> {}};
+            final Runnable[] rebuildPresetsList = new Runnable[]{() -> {}};
+            // Real bodies assigned after the delay slider is built (I-5): both need stagedDelay/delayIndex/
+            // delaySeekBar/delayValue, which are declared later in this method.
+            final PresetApplier[] applyPresetHolder = new PresetApplier[]{preset -> {}};
+            final Runnable[] savePresetActionHolder = new Runnable[]{() -> {}};
+
+            final DisclosureHeaderCell presetsHeader = new DisclosureHeaderCell(context);
+            builder.addCustomView(presetsHeader);
+
+            final LinearLayout presetsContainer = new LinearLayout(context);
+            presetsContainer.setOrientation(LinearLayout.VERTICAL);
+            presetsContainer.setVisibility(View.GONE);
+            builder.addCustomView(presetsContainer);
+
+            final java.util.function.Consumer<EventSchedulePresetStore.Preset> confirmRemovePreset = (preset) -> {
+                AlertDialog.Builder confirmBuilder = new AlertDialog.Builder(context);
+                confirmBuilder.setTitle(getString(R.string.EventSchedulePresetRemove));
+                confirmBuilder.setMessage(org.telegram.messenger.LocaleController.formatString(
+                        R.string.EventSchedulePresetRemoveConfirm, preset.name));
+                confirmBuilder.setNegativeButton(getString(R.string.Cancel), null);
+                confirmBuilder.setPositiveButton(getString(R.string.Remove), (dialog, which) -> {
+                    EventSchedulePresetStore.remove(account, preset.id);
+                    for (int i = presetList.size() - 1; i >= 0; i--) {
+                        if (preset.id.equals(presetList.get(i).id)) {
+                            presetList.remove(i);
+                        }
+                    }
+                    updatePresetsHeader[0].run();
+                    if (presetsBuilt[0]) {
+                        rebuildPresetsList[0].run();
+                    }
+                    AlertUtil.showToast(getString(R.string.EventSchedulePresetRemoved));
+                });
+                confirmBuilder.makeRed(android.app.Dialog.BUTTON_POSITIVE);
+                AlertDialog confirmDialog = confirmBuilder.show();
+                activePresetDialogHolder[0] = confirmDialog;
+                confirmDialog.setOnDismissListener(d -> {
+                    if (activePresetDialogHolder[0] == confirmDialog) activePresetDialogHolder[0] = null;
+                });
+            };
+
+            rebuildPresetsList[0] = () -> {
+                presetsContainer.removeAllViews();
+                java.util.Collections.sort(presetList, presetComparator);
+                for (int i = 0; i < presetList.size(); i++) {
+                    EventSchedulePresetStore.Preset preset = presetList.get(i);
+                    // I-1: TextSettingsCell.valueTextView is single-line and shrinks the title's width --
+                    // TextDetailSettingsCell supports the title-over-multiline-detail layout this row needs.
+                    TextDetailSettingsCell presetCell = new TextDetailSettingsCell(context);
+                    presetCell.setBackground(Theme.getSelectorDrawable(false));
+                    presetCell.setMultilineDetail(true);
+                    presetCell.setTextAndValue(preset.name, presetSummary(preset), i < presetList.size() - 1);
+                    presetCell.setOnClickListener(v -> applyPresetHolder[0].apply(preset));
+                    presetCell.setOnLongClickListener(v -> {
+                        BottomSheet sheet = sheetHolder[0];
+                        if (sheet == null) return true;
+                        ItemOptions.makeOptions(sheet.getContainer(), presetCell)
+                                .add(R.drawable.msg_delete, getString(R.string.EventSchedulePresetRemove), true,
+                                        () -> confirmRemovePreset.accept(preset))
+                                .show();
+                        return true;
+                    });
+                    presetsContainer.addView(presetCell, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                }
+                org.telegram.ui.Cells.TextCell saveAsPresetRow = new org.telegram.ui.Cells.TextCell(context);
+                saveAsPresetRow.setBackground(Theme.getSelectorDrawable(false));
+                saveAsPresetRow.setColors(Theme.key_dialogTextBlue2, Theme.key_dialogTextBlue2);
+                saveAsPresetRow.setTextAndIcon(getString(R.string.EventSchedulePresetSaveAction), R.drawable.msg_add, false);
+                saveAsPresetRow.setOnClickListener(v -> savePresetActionHolder[0].run());
+                presetsContainer.addView(saveAsPresetRow, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 48));
+            };
+
+            updatePresetsHeader[0] = () -> {
+                CharSequence summary = presetList.isEmpty()
+                        ? getString(R.string.EventSchedulePresetsNone)
+                        : org.telegram.messenger.LocaleController.formatPluralString("EventSchedulePresetsSaved", presetList.size());
+                presetsHeader.bind(getString(R.string.EventScheduleSectionPresets), summary, presetsExpanded[0]);
+            };
+            syncPresetsVisibility[0] = () -> presetsContainer.setVisibility(presetsExpanded[0] ? View.VISIBLE : View.GONE);
+
+            presetsHeader.setOnClickListener(v -> {
+                // Minor-4: build the (up to 50) preset rows lazily, on first expand -- not at sheet
+                // construction, which would inflate them on every sheet open even when never viewed.
+                if (!presetsBuilt[0]) {
+                    rebuildPresetsList[0].run();
+                    presetsBuilt[0] = true;
+                }
+                presetsExpanded[0] = !presetsExpanded[0];
+                syncPresetsVisibility[0].run();
+                updatePresetsHeader[0].run();
+            });
+            updatePresetsHeader[0].run();
+
             // NagramX: build initial rows, THEN regexCell, THEN attach watchers and sync once -- appended
             // rows are allowed to attach after regexCell exists.
             final Runnable[] doneActionHolder = new Runnable[]{() -> {}};
@@ -818,7 +1052,25 @@ public final class EventScheduleHelper {
                     }
                     return false;
                 });
-                row.removeButton.setOnClickListener(v -> removeRow.accept(row));
+                // Branches on rows.size() at click time, not a listener swapped in when the row count
+                // changes elsewhere -- a swapped listener risks wiping text after a row was just added, or
+                // vice versa. With exactly one row the slot is the clear button: wipe the text and rely
+                // entirely on the TextWatcher above for housekeeping (never removeRow, which hard no-ops
+                // at rows.size() <= 1 anyway); with 2+ rows it's the ordinary remove button.
+                row.removeButton.setOnClickListener(v -> {
+                    if (rows.size() == 1) {
+                        row.field.setText(null);
+                        // focusRow both requests focus and shows the keyboard, which covers "keep focus
+                        // open" (already focused: harmless re-request) and "focus it and open the
+                        // keyboard" (not focused) in one call, per spec.
+                        focusRow(row.field);
+                        // Clearing crosses the blank/non-blank boundary without a focus change, so the IME
+                        // action label (which depends on isBlankRow) needs an explicit refresh here.
+                        restartFocusedInput(context, rows);
+                    } else {
+                        removeRow.accept(row);
+                    }
+                });
             };
             for (int i = 0; i < rows.size(); i++) {
                 attachWatchers.accept(rows.get(i));
@@ -1032,6 +1284,166 @@ public final class EventScheduleHelper {
             delayCardContainer.addView(delayLayout, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
             builder.addCustomView(delayCardContainer);
 
+            // I-5: real bodies for the Presets section's apply/save actions, deferred to here because both
+            // need delaySeekBar/stagedDelay/delayIndex/delayValue, which only exist from this point on.
+            applyPresetHolder[0] = (preset) -> {
+                // I-7(i): unfocus + dismiss keyboard first, mirroring collapseTextGroup's own sequencing.
+                EditTextBoldCursor focused = focusedField(rows);
+                if (focused != null) {
+                    org.telegram.messenger.AndroidUtilities.hideKeyboard(focused);
+                    focused.clearFocus();
+                }
+
+                // I-7(ii)-(iii): full rebuild from scratch via the existing row-creation + watcher-attach
+                // helpers (never a parallel "faster" path) -- this is a full replace, not a merge.
+                patternRowsContainer.removeAllViews();
+                rows.clear();
+                ArrayList<String> seedPatterns = new ArrayList<>(preset.patterns);
+                if (seedPatterns.isEmpty()) {
+                    seedPatterns.add("");
+                }
+                for (int i = 0; i < seedPatterns.size() && rows.size() < EventScheduleEntry.MAX_PATTERN_COUNT; i++) {
+                    PatternFieldRow row = createPatternFieldRow(context, seedPatterns.get(i));
+                    rows.add(row);
+                    patternRowsContainer.addView(row.container, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT));
+                    attachWatchers.accept(row);
+                }
+
+                // I-7(iv): the same six-call housekeeping tail every other row mutation runs.
+                clearAllRowMessages(rows);
+                updateRowAccessibility(rows);
+                syncRegexEnabled(rows, regexCell);
+                updateAddRow(rows, addPatternRow);
+                updateImeActions(context, rows, addRowActionHolder[0], doneActionHolder[0], true);
+                updateTextHeader[0].run();
+
+                voiceCell.setChecked((preset.types & EventScheduleEntry.TYPE_VOICE) != 0);
+                roundCell.setChecked((preset.types & EventScheduleEntry.TYPE_ROUND) != 0);
+                videoCell.setChecked((preset.types & EventScheduleEntry.TYPE_VIDEO) != 0);
+                photoCell.setChecked((preset.types & EventScheduleEntry.TYPE_PHOTO) != 0);
+                textCell.setChecked((preset.types & EventScheduleEntry.TYPE_TEXT) != 0);
+
+                regexCell.setChecked(preset.regex);
+                if (preset.regex) {
+                    for (int i = 0; i < rows.size(); i++) {
+                        validateRegexRow(rows, rows.get(i));
+                    }
+                } else {
+                    clearAllRowMessages(rows);
+                }
+
+                // I-6: floor-snap only the slider's visual position; stagedDelay (what Done will commit)
+                // is set to the exact preset value, never the floored stop -- collapsing this distinction
+                // would silently corrupt the delay the user saved.
+                int floorIndex = 0;
+                for (int i = 0; i < delayValues.length; i++) {
+                    if (delayValues[i] <= preset.delaySeconds) floorIndex = i;
+                }
+                delayIndex[0] = floorIndex;
+                stagedDelay[0] = preset.delaySeconds;
+                delayValue.setText(formatDelayLabel(stagedDelay[0]));
+                delaySeekBar.setProgress(floorIndex / (float) (delayValues.length - 1), true);
+
+                // Full replace of the expand state too, mirroring the sheet's own initial-expand decision
+                // logic, applied independently per section.
+                typeExpanded[0] = preset.types != 0;
+                textExpanded[0] = !preset.patterns.isEmpty();
+                syncGroupVisibility[0].run();
+                updateTypeHeader[0].run();
+                updateTextHeader[0].run();
+
+                presetsExpanded[0] = false;
+                syncPresetsVisibility[0].run();
+                updatePresetsHeader[0].run();
+            };
+
+            savePresetActionHolder[0] = () -> {
+                if (presetList.size() >= EventScheduleEntry.MAX_PRESET_COUNT) {
+                    AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
+                    return;
+                }
+                ExtractedConfig extracted = extractAndValidate(context, rows, patternArea, typeGroup, regexCell,
+                        typeExpanded, textExpanded, syncGroupVisibility, updateTypeHeader, updateTextHeader);
+                if (extracted == null) return;
+                boolean savedRegex = regexCell.isChecked();
+                int savedDelay = stagedDelay[0];
+
+                EditTextBoldCursor nameField = new EditTextBoldCursor(context);
+                nameField.setBackground(null);
+                nameField.setLineColors(Theme.getColor(Theme.key_dialogInputField), Theme.getColor(Theme.key_dialogInputFieldActivated), Theme.getColor(Theme.key_text_RedBold));
+                nameField.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 16);
+                nameField.setTextColor(Theme.getColor(Theme.key_dialogTextBlack));
+                nameField.setHintTextColor(Theme.getColor(Theme.key_dialogSearchHint));
+                nameField.setHint(getString(R.string.EventSchedulePresetNameHint));
+                nameField.setMaxLines(1);
+                nameField.setLines(1);
+                nameField.setSingleLine(true);
+                nameField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+                nameField.setCursorColor(Theme.getColor(Theme.key_chat_TextSelectionCursor));
+                nameField.setCursorSize(dp(18));
+                nameField.setFilters(new android.text.InputFilter[]{new android.text.InputFilter.LengthFilter(EventScheduleEntry.MAX_PRESET_NAME_LENGTH)});
+                nameField.setPadding(0, dp(4), 0, 0);
+
+                final TextView errorView = new TextView(context);
+                errorView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 13);
+                errorView.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+                errorView.setVisibility(View.GONE);
+                errorView.setPadding(dp(24), dp(4), dp(24), 0);
+
+                LinearLayout dialogLayout = new LinearLayout(context);
+                dialogLayout.setOrientation(LinearLayout.VERTICAL);
+                dialogLayout.addView(nameField, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, 36, 24, 6, 24, 0));
+                dialogLayout.addView(errorView, LayoutHelper.createLinear(LayoutHelper.MATCH_PARENT, LayoutHelper.WRAP_CONTENT, 0, 4, 0, 6));
+
+                AlertDialog.Builder nameBuilder = new AlertDialog.Builder(context);
+                nameBuilder.setTitle(getString(R.string.EventSchedulePresetSaveTitle));
+                nameBuilder.setView(dialogLayout);
+                nameBuilder.setNegativeButton(getString(R.string.Cancel), null);
+                nameBuilder.setPositiveButton(getString(R.string.Save), (dialog, which) -> {});
+                final AlertDialog nameDialog = nameBuilder.create();
+                activePresetDialogHolder[0] = nameDialog;
+                nameDialog.setOnDismissListener(d -> {
+                    if (activePresetDialogHolder[0] == nameDialog) activePresetDialogHolder[0] = null;
+                });
+                nameDialog.setOnShowListener(d -> org.telegram.messenger.AndroidUtilities.runOnUIThread(() -> {
+                    nameField.requestFocus();
+                    org.telegram.messenger.AndroidUtilities.showKeyboard(nameField);
+                }));
+                nameDialog.show();
+                nameDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                    String candidate = nameField.getText().toString().trim();
+                    if (TextUtils.isEmpty(candidate)) {
+                        shakeAndVibrate(nameField);
+                        return;
+                    }
+                    if (EventSchedulePresetStore.nameExists(account, candidate)) {
+                        errorView.setText(getString(R.string.EventSchedulePresetNameDuplicate));
+                        errorView.setVisibility(View.VISIBLE);
+                        shakeAndVibrate(nameField);
+                        return;
+                    }
+                    boolean added = EventSchedulePresetStore.add(account, candidate, extracted.types,
+                            extracted.patterns, savedRegex, savedDelay);
+                    org.telegram.messenger.AndroidUtilities.hideKeyboard(nameField);
+                    nameDialog.dismiss();
+                    if (!added) {
+                        // Cap was reached by a concurrent save between the check above and here.
+                        AlertUtil.showToast(getString(R.string.EventSchedulePresetLimitReached));
+                        return;
+                    }
+                    presetList.clear();
+                    presetList.addAll(EventSchedulePresetStore.getAll(account));
+                    presetsBuilt[0] = true;
+                    if (!presetsExpanded[0]) {
+                        presetsExpanded[0] = true;
+                        syncPresetsVisibility[0].run();
+                    }
+                    rebuildPresetsList[0].run();
+                    updatePresetsHeader[0].run();
+                    AlertUtil.showToast(getString(R.string.EventSchedulePresetSaved));
+                });
+            };
+
             if (enabled) {
                 View removeSpacer = builder.addCustomView(new View(context));
                 removeSpacer.setTag(RecyclerListView.TAG_NOT_SECTION);
@@ -1046,76 +1458,17 @@ public final class EventScheduleHelper {
             }
 
             TextView doneButton = builder.addButton(getString(R.string.Done), true, false, it -> {
-                int newTypes = 0;
-                if (voiceCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VOICE;
-                if (roundCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_ROUND;
-                if (videoCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_VIDEO;
-                if (photoCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_PHOTO;
-                if (textCell.isChecked()) newTypes |= EventScheduleEntry.TYPE_TEXT;
-
-                ArrayList<String> trimmed = new ArrayList<>();
-                ArrayList<PatternFieldRow> trimmedRows = new ArrayList<>();
-                for (int i = 0; i < rows.size(); i++) {
-                    String value = EventScheduleEntry.normalizePattern(rows.get(i).field.getText().toString());
-                    if (!TextUtils.isEmpty(value)) {
-                        trimmed.add(value);
-                        trimmedRows.add(rows.get(i));
-                    }
-                }
-                ArrayList<String> unique = new ArrayList<>();
-                ArrayList<PatternFieldRow> uniqueRows = new ArrayList<>();
-                java.util.HashSet<String> seen = new java.util.HashSet<>();
-                for (int i = 0; i < trimmed.size(); i++) {
-                    String value = trimmed.get(i);
-                    if (seen.add(value)) {
-                        unique.add(value);
-                        uniqueRows.add(trimmedRows.get(i));
-                    }
-                }
-
-                boolean newRegex = regexCell.isChecked();
-                clearAllRowMessages(rows);
-                if (newRegex) {
-                    for (int i = 0; i < unique.size(); i++) {
-                        if (!EventScheduleEntry.isPatternValid(unique.get(i), true)) {
-                            PatternFieldRow badRow = uniqueRows.get(i);
-                            if (!textExpanded[0]) {
-                                textExpanded[0] = true;
-                                syncGroupVisibility[0].run();
-                                updateTextHeader[0].run();
-                                org.telegram.messenger.AndroidUtilities.doOnLayout(patternArea, () -> {
-                                    showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
-                                    focusRow(badRow.field);
-                                    AndroidUtil.showInputError(badRow.field);
-                                });
-                            } else {
-                                showRowMessage(badRow, getString(R.string.EventScheduleInvalidRegexRow), true);
-                                focusRow(badRow.field);
-                                AndroidUtil.showInputError(badRow.field);
-                            }
-                            return kotlin.Unit.INSTANCE;
-                        }
-                    }
-                }
-                if (newTypes == 0 && unique.isEmpty()) {
-                    if (!typeExpanded[0] || !textExpanded[0]) {
-                        typeExpanded[0] = true;
-                        textExpanded[0] = true;
-                        syncGroupVisibility[0].run();
-                        updateTypeHeader[0].run();
-                        updateTextHeader[0].run();
-                    }
-                    AlertUtil.showToast(getString(R.string.EventScheduleNeedCondition));
-                    return kotlin.Unit.INSTANCE;
-                }
+                ExtractedConfig extracted = extractAndValidate(context, rows, patternArea, typeGroup, regexCell,
+                        typeExpanded, textExpanded, syncGroupVisibility, updateTypeHeader, updateTextHeader);
+                if (extracted == null) return kotlin.Unit.INSTANCE;
 
                 int newDelay = stagedDelay[0];
                 enabled = true;
                 userTouchedTrigger = true;
-                types = newTypes;
+                types = extracted.types;
                 patterns.clear();
-                patterns.addAll(unique);
-                regex = newRegex;
+                patterns.addAll(extracted.patterns);
+                regex = regexCell.isChecked();
                 delay = newDelay;
                 EventScheduleLastSetup.put(account, types, patterns, regex, delay);
                 updateChip();
@@ -1143,7 +1496,15 @@ public final class EventScheduleHelper {
             });
 
             builder.addCancelButton();
-            builder.show();
+            builder.setOnPreDismissListener(dialog -> {
+                if (activePresetDialogHolder[0] != null) {
+                    activePresetDialogHolder[0].dismiss();
+                    activePresetDialogHolder[0] = null;
+                }
+            });
+            BottomSheet sheet = builder.create();
+            sheetHolder[0] = sheet;
+            sheet.show();
         }
 
         @Override
@@ -1240,5 +1601,31 @@ public final class EventScheduleHelper {
             return org.telegram.messenger.LocaleController.formatPluralString("Seconds", seconds);
         }
         return org.telegram.messenger.LocaleController.formatPluralString("Minutes", seconds / 60);
+    }
+
+    // I-2: EventScheduleEntry.summary(boolean) never references regex -- append the same suffix the
+    // sheet's own textSummary builds, so two presets differing only by regex don't render identically.
+    private static CharSequence presetSummary(EventSchedulePresetStore.Preset preset) {
+        EventScheduleEntry e = new EventScheduleEntry();
+        e.types = preset.types;
+        e.setPatterns(EventScheduleEntry.normalizeCommittedPatterns(preset.patterns));
+        e.delaySeconds = preset.delaySeconds;
+        CharSequence summary = e.summary(true);
+        if (preset.regex) {
+            String suffix = getString(R.string.EventScheduleUseRegex);
+            summary = TextUtils.isEmpty(summary) ? suffix : summary + " \u00b7 " + suffix;
+        }
+        return summary;
+    }
+
+    private static void shakeAndVibrate(View view) {
+        org.telegram.messenger.AndroidUtilities.shakeView(view);
+        try {
+            if (!NekoConfig.disableVibration.Bool()) {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP,
+                        android.view.HapticFeedbackConstants.FLAG_IGNORE_GLOBAL_SETTING);
+            }
+        } catch (Exception ignore) {
+        }
     }
 }
