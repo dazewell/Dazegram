@@ -197,15 +197,22 @@ public final class GhostHoldController {
         //    flush via searchLinks; a user-edited webPage is not, so refuse it),
         //  a per-message self-destruct timer,
         //  an ephemeral bot receiver,
-        //  games disabled for this send (canSendGames == false): SendMessageParams.of
-        //    restores the default `true`, so a held plain-text dice emoji would flip
-        //    into a dice *media* message on flush (SendMessagesHelper ~:4664) -- media
-        //    is out of scope for v1, and it arrives by a path nobody chose,
+        //  a bare dice-emoji message (text is in MessagesController.diceEmojies): the
+        //    funnel converts such a send into a dice *media* message when
+        //    canSendGames is true (SendMessagesHelper ~:4664). Our hook runs before
+        //    that conversion, so it still looks like plain text here, and of()
+        //    restores canSendGames = true on flush -- so a held dice emoji becomes
+        //    media then, out of v1 scope and arriving by a path nobody chose. Keyed
+        //    on the funnel's own trigger (the emoji text), not on canSendGames:
+        //    canSendGames gates the conversion but is also true for every ordinary
+        //    send, so testing !canSendGames would refuse the non-converting case and
+        //    admit the converting one,
         //  an explicit pangu override (canUsePangu != null): of() restores null (the
         //    config default), so a held text with pangu forced on/off would be spaced
-        //    differently on flush. A normal send leaves both at their defaults
-        //    (canSendGames == true from SendMessageInternalParams, canUsePangu == null),
-        //    so neither test is vacuous.
+        //    differently on flush. A normal send leaves canUsePangu == null, so the
+        //    test is not vacuous; null means "apply the pangu setting in force when
+        //    this sends", which for a deferred hold is flush time -- the field
+        //    behaving as specified, so it is documented rather than excluded.
         if (p.replyMarkup != null
                 || p.replyToStoryItem != null
                 || p.quick_reply_shortcut != null || p.quick_reply_shortcut_id != 0
@@ -215,7 +222,7 @@ public final class GhostHoldController {
                 || p.webPage != null
                 || p.ttl != 0
                 || p.ephemeralReceiverBotId != 0
-                || !p.canSendGames
+                || isDiceEmojiText(account, p.message)
                 || p.canUsePangu != null) {
             return false;
         }
@@ -255,6 +262,22 @@ public final class GhostHoldController {
             payStars = DialogObject.getMessagesStarsPrice(controller.isUserContactBlocked(peer));
         }
         return payStars > 0;
+    }
+
+    /**
+     * True if {@code message} is a bare dice emoji that the funnel would turn into
+     * a dice media message ({@link SendMessagesHelper} ~:4664). Keyed on the same
+     * {@link MessagesController#diceEmojies} set the funnel branches on, so the
+     * hold predicate and the funnel cannot disagree about what a dice send is.
+     * Null-guards the set (the funnel reaches ~:4664 only under conditions that
+     * imply it is loaded; our hook runs on every send, so guard it here).
+     */
+    private static boolean isDiceEmojiText(int account, @Nullable String message) {
+        if (message == null) {
+            return false;
+        }
+        java.util.Set<String> dice = MessagesController.getInstance(account).diceEmojies;
+        return dice != null && dice.contains(message.replace("\ufe0f", ""));
     }
 
     /**
