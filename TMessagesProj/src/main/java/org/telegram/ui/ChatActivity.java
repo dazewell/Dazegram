@@ -3978,8 +3978,30 @@ public class ChatActivity extends BaseFragment implements
             return null;
         }
 
+        // NagramX: #ghost-hold. Quote and cite are the two text-selection affordances
+        // that carry the selected row's content into a later send -- quote arms a reply
+        // quote, cite drops the text into the composer -- and that later media/captioned
+        // send is never routed through maybeHold (non-text sends are deliberately never
+        // held), so it would transmit a held message's content while Ghost is on. Text
+        // selection has its own path that never reaches canSelect (the range-select gate
+        // that already refuses held rows), so refuse held rows here too. Refused at the
+        // affordance gate, where the action is offered, not at each send assembler: the
+        // action never appears, so onQuoteClick/onCiteClick can't fire for a held row,
+        // and any future text-selection affordance that carries content into a send
+        // inherits the rule by consulting this one predicate. Copy is deliberately not
+        // refused -- it reaches only the clipboard, and a user who can read a held
+        // message can already retype it; the threat is the app sending held content the
+        // user did not realise it carried, which the clipboard is not.
+        private boolean naxSelectedHeld() {
+            return selectedView != null
+                && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedView.getMessageObject());
+        }
+
         @Override
         protected boolean canShowQuote() {
+            if (naxSelectedHeld()) {
+                return false;
+            }
             if (chatActivity != null && chatActivity.getDialogId() == UserObject.VERIFY) {
                 return false;
             }
@@ -4063,6 +4085,9 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         protected boolean canShowCite() {
+            if (naxSelectedHeld()) {
+                return false;
+            }
             return chatActivity != null
                 && chatActivity.chatActivityEnterView != null
                 && chatActivity.chatActivityEnterView.getVisibility() == View.VISIBLE
