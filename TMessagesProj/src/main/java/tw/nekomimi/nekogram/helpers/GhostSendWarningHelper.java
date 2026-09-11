@@ -343,10 +343,12 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: same longer duration as the typing reminder -- createErrorBulletin
-        // builds at Bulletin.DURATION_SHORT (1.5s), and this warning now fires only
-        // where no earlier heads-up was possible, which makes it the sole signal for
-        // that send and the last one that should flash past unread.
+        // NagramX: DURATION_PROLONG (5s) -- createErrorBulletin builds at
+        // Bulletin.DURATION_SHORT (1.5s), and this warning now fires only where no
+        // earlier heads-up was possible, which makes it the sole signal for that
+        // send and the last one that should flash past unread. This stays at 5s for
+        // its single line; the typing reminder's 6s is deliberately separate, sized
+        // for its two-line layout, not an inconsistency to reconcile.
         // NagramX: read live, right before display -- not cached anywhere earlier
         // in this hook -- so the string matches Hold Messages' actual state at the
         // moment this send is reported, not whatever it was when the request was
