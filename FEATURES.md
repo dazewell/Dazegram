@@ -45,7 +45,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but it never held sends back — anything you send while Ghost is on still shows you're online. You get a heads-up the moment you start typing into an empty message box, once per chat each time you turn Ghost Mode on, and most sends into that chat won't warn you again until you next turn Ghost Mode on. In a chat you haven't been reminded about, anything that goes out — a forward, a photo from the gallery, something shared in from another app, a sticker or a voice message — gets a warning at the moment it's sent instead.
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — anything you send while Ghost is on still shows you're online. The first time you start typing into an empty message box in a chat, you get a heads-up. That chat then stays quiet for the rest of this Ghost session: it won't warn you again for almost anything you send there, typed or not, until you turn Ghost Mode off and on again. A chat that hasn't warned you yet still does, at the moment something goes out — a forward, a photo from the gallery, something shared in from another app, a sticker or a voice message.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
