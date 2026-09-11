@@ -1105,11 +1105,14 @@ gh run list --repo $repo --branch $branch --limit 10 --json databaseId,headSha,s
 # Test per commit over its *full* message (%B), not per line — the tag is legal
 # in the subject or the body, and a naive '%s%n%b' format plus a line-by-line
 # filter would flood on every untagged body line instead of checking the commit
-# as a whole
+# as a whole. The regex is copied verbatim from .github/workflows/commit-tag.yml
+# and must stay in sync with it — a purely numeric hashtag (e.g. #334) is NOT a
+# tag, so the alternation requires at least one letter (leading, or after leading
+# digits). Do not simplify it back to #[a-z0-9]..., which would wrongly accept #334.
 git fetch origin $branch dev
 git log origin/dev..origin/$branch --no-merges --format='%H' | ForEach-Object {
   $full = (git log -1 --format='%B' $_) -join "`n"
-  if ($full -notmatch '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*') {
+  if ($full -notmatch '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)') {
     git log -1 --format='%h %s' $_
   }
 }
