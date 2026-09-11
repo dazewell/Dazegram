@@ -43,9 +43,9 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.
 
-### Ghost send warning <!-- #ghost-send-warning -->
+### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost.
+Ghost Mode hides read receipts, typing and online status, but it never held sends back — hitting Send while Ghost is on still exposes your online status like normal. You'll now get a one-line bulletin every time that happens, so you know sending isn't covered by Ghost. You'll also get an earlier heads-up the moment you start typing into an empty message box while Ghost Mode is on — once per chat per time Ghost Mode is turned on, so it doesn't repeat itself while you keep chatting. The next time you start typing after turning Ghost Mode off and back on, it forgets which chats it already reminded you about; it stays silent whenever Ghost Mode is off.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
@@ -285,3 +285,12 @@ On DazegramX (Unofficial), the app's fixed system-level icon — the one Android
 <!-- #solid-themes -->
 <!-- The Transcription entries above were split from one commit tagged #transcribe-retry;
      #whisper-transcription and #groq-transcription-provider are new slugs for that split. -->
+<!-- #ghost-hold is not implemented on this branch. It was mentioned (without
+     the intent to tag it) in a #ghost-type-warning commit body describing why
+     this feature ships with Hold-agnostic copy instead of depending on that
+     unmerged, sibling-owned setting. Once pushed, the mention can't be
+     reworded without an amend + force-push, which this fork's history rules
+     forbid, so it's parked here per the commit-tag policy rather than given a
+     real entry that would misrepresent what shipped. It will get a real entry
+     once that separate feature actually lands. -->
+<!-- #ghost-hold -->

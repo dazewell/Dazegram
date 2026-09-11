@@ -31,6 +31,7 @@ import java.util.Set;
 
 import tw.nekomimi.nekogram.config.ConfigItem;
 import tw.nekomimi.nekogram.helpers.CloudSettingsHelper;
+import tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper;
 
 @SuppressLint("ApplySharedPref")
 @SuppressWarnings("unused")
@@ -302,6 +303,7 @@ public class NekoConfig {
     }
 
     // --- Ghost Mode ---
+
     public static boolean isGhostModeActive() {
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
@@ -319,6 +321,14 @@ public class NekoConfig {
     }
 
     public static void setGhostMode(boolean enabled) {
+        // NagramX: captured before the loop below changes anything, purely so
+        // GhostTypingReminderHelper can be told about a real false->true
+        // transition of the master switch -- see that class and
+        // docs/codemap/dead-ends.md for why this observation lives there
+        // rather than as a field on isGhostModeActive() itself: that method
+        // must stay a pure, side-effect-free predicate, since Ghost Hold's own
+        // PR #336 also calls it from multiple threads and relies on that.
+        boolean wasActive = isGhostModeActive();
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -326,6 +336,9 @@ public class NekoConfig {
                 boolean targetValue = (item == sendOfflinePacketAfterOnline) == enabled;
                 item.setConfigBool(targetValue);
             }
+        }
+        if (enabled && !wasActive) {
+            GhostTypingReminderHelper.onGhostModeMasterSwitchActivated();
         }
     }
 

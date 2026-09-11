@@ -524,3 +524,36 @@ selection-resolution or merge semantics. Don't assume a future formatting change
 can't, for the reasons above.
 
 *(Established 2026-09-06, `#toggle-formatting`.)*
+
+## ChatActivityEnterView is shared by five surfaces; only ChatActivity wires a real fragment and dialogId
+
+`ChatActivityEnterView` is instantiated from five call sites, but only one of
+them gives it a real hosting fragment and a real chat to key state on:
+
+- `ChatActivity.java:8604` — passes `this` as the `fragment` constructor
+  argument (stored in the `parentFragment` field, declared
+  `ChatActivityEnterView.java:811` as `ChatActivity parentFragment`) and later
+  (`ChatActivity.java:8853`) calls `setDialogId(long, int)`
+  (`ChatActivityEnterView.java:8237`) with the real chat's dialogId. This is
+  the only call site where `parentFragment` is ever non-null and `dialog_id`
+  (`ChatActivityEnterView.java:812`) is ever the actual open chat.
+- `DialogsActivity.java:5075` (forward/share comment field),
+  `Gifts/GiftMessageBottomSheet.java:179`, `PopupNotificationActivity.java:317`,
+  and `Stories/PeerStoriesView.java:3202` (story reply box) all pass `null` for
+  the fragment argument, so `parentFragment` stays null in every one of them —
+  `dialog_id` in these instances is either left at 0 or set to something other
+  than a real open chat, depending on the surface.
+
+`ChatActivityEnterView` itself already relies on this split throughout — see
+the many `parentFragment == null ? ... : parentFragment....` guards scattered
+through the class (e.g. `:3993`, `:5262`, `:5504`, `:6549`), each treating a
+null `parentFragment` as "this instance isn't the real chat composer." Any new
+feature hooking a shared callback on this widget — the typing-time Ghost Mode
+reminder added under `#ghost-type-warning` is one example
+(`ChatActivityEnterView.java`'s `TextWatcher.onTextChanged`, guarded on
+`parentFragment != null` before doing anything chat-specific) — must gate on
+`parentFragment != null` the same way, or it will silently also fire from the
+share-comment field, the gift-message sheet, the popup-notification reply box,
+or the story reply box, none of which represent an actual open chat.
+
+*(Established 2026-09-10, #ghost-type-warning.)*
