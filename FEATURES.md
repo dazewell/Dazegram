@@ -289,12 +289,3 @@ On DazegramX (Unofficial), the app's fixed system-level icon — the one Android
 <!-- #solid-themes -->
 <!-- The Transcription entries above were split from one commit tagged #transcribe-retry;
      #whisper-transcription and #groq-transcription-provider are new slugs for that split. -->
-<!-- #ghost-hold is not implemented on this branch. It was mentioned (without
-     the intent to tag it) in a #ghost-type-warning commit body describing why
-     this feature ships with Hold-agnostic copy instead of depending on that
-     unmerged, sibling-owned setting. Once pushed, the mention can't be
-     reworded without an amend + force-push, which this fork's history rules
-     forbid, so it's parked here per the commit-tag policy rather than given a
-     real entry that would misrepresent what shipped. It will get a real entry
-     once that separate feature actually lands. -->
-<!-- #ghost-hold -->

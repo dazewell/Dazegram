@@ -1220,7 +1220,7 @@ until it was excluded at the `resolveRescheduleItems` chokepoint
 (`ChatActivity.java:37785`).
 
 Getting the *reachable* set right matters, because two of the send-capable
-overflow items are already hidden in scheduled mode and two others are not.
+overflow items are already hidden in scheduled mode and three others are not.
 `nkbtn_savemessage` and plain `nkbtn_repeat` are added to the overflow at
 `ChatActivity.java:11489-11490` but their visibility is set to `canForward`
 (`ChatActivity.java:20997`, `:20999`), and `canForward` is
@@ -1241,7 +1241,7 @@ of every action; the durable fix is to keep held rows out of the send-capable
 selection at one boundary, not to chase each new action.
 
 **Fixed with one shared boundary.** `naxExcludeHeldFromSend`
-(`ChatActivity.java:37163`) is the single place the exclusion rule lives: given
+(`ChatActivity.java:37167`) is the single place the exclusion rule lives: given
 the message list an action is about to send, it drops every `isHeld` row. Held
 rows stay selectable, so a held row can still be **deleted** -- the filter is
 applied where a selection *turns into a send*, not at selection time, and delete
@@ -1253,14 +1253,15 @@ its own pre-existing `isHeld` guard. So the boundary's job is specifically the
 three send-capable actions that did *not* already have one. Each routes its
 assembly through it: `combine_message` per side (`ChatActivity.java:4353`),
 `repeatMessage`'s multi-select list and its single-object context-menu path
-(`ChatActivity.java:49040` and the `isHeld(selectedObject)` guard just below),
+(`ChatActivity.java:49051` and the `isHeld(selectedObject)` guard at `:49053`),
 and the scheduled `forward` at the one assembly chokepoint every forward
-sub-path shares, `naxBuildForwardSpreadSelection` (`ChatActivity.java:37208` --
-so `didSelectDialogs`, the spread gate, and the slot-count gate all see the
-filtered set). A selection that filters to empty (all held) clears selection
-rather than dispatching nothing or stranding the user: `openForward`
-(`ChatActivity.java:13674`) declines to open the picker, `didSelectDialogs`
-(`ChatActivity.java:37216`) aborts, and `repeatMessage` returns. The two
+sub-path shares, `naxBuildForwardSpreadSelection` (`ChatActivity.java:37188`,
+which applies the filter at its `:37212` return -- so `didSelectDialogs`, the
+spread gate, and the slot-count gate all see the filtered set). A selection that
+filters to empty (all held) clears selection rather than dispatching nothing or
+stranding the user: `openForward` (`ChatActivity.java:13686`) declines to open
+the picker, `didSelectDialogs` (`ChatActivity.java:37238`) aborts, and
+`repeatMessage` returns. The two
 pre-existing guards (Send-Now, reschedule spread) already enforce the same
 property at their own assembly loops and were left as-is. A send action added to
 the Scheduled action mode later inherits the exclusion by routing its send list
