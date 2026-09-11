@@ -86,8 +86,14 @@ re-run any of your gates; it is a pure supervisor. So:
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch, plus your
-    current `Outstanding authorizations (v0): <none>` snapshot at startup —
-    version 0, since nothing has been authorized yet.
+    current `Outstanding authorizations (vN): …` snapshot at startup —
+    **initialized from your brief's own `Outstanding authorizations (vN)`
+    field, carrying its version and its list verbatim**, not reset to empty. A
+    replacement child inherits real outstanding work through that field, so
+    reporting `(v0): <none>` because *this session* has authorized nothing
+    would drop the carried obligation at the first message your parent ever
+    sees. `(v0): <none>` is correct only when the brief's field is itself
+    explicitly `<none>` on a genuinely new unit.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
     `ask_user`, so a lost or never-observed `ask_user` cannot stall you
     invisibly. Your own stall clock is considered paused while you wait.
@@ -104,10 +110,12 @@ re-run any of your gates; it is a pure supervisor. So:
     `CLOSED` with no ledger is rejected. **You may not send `CLOSED` while you
     still hold an open authorization toward one of your own dispatched
     sessions** (comms protocol Rule 11, applied recursively to you as a
-    coordinator) — close each one (landed, declined, or superseded) first; your
-    `coord-<slug>` branch is never committed, so this precondition, not a git
-    diff, is what closes the gap for your own subtree. Leaf-to-root only (see
-    the process-lifecycle skill).
+    coordinator) — discharge each one first, either by closing it on the item's
+    ledger (landed, declined, or superseded) or by transferring it into a named
+    successor brief's `Outstanding authorizations (vN)` field and verifying it
+    is present there; your `coord-<slug>` branch is never committed, so this
+    precondition, not a git diff, is what closes the gap for your own subtree.
+    Leaf-to-root only (see the process-lifecycle skill).
   - `BLOCKED_ARCHIVE <unit-slug>: <evidence>` — you cannot cleanly close because
     a descendant is blocked or a process would not verify as stopped. Report
     this **instead of** `CLOSED`, never alongside it.
@@ -119,8 +127,12 @@ re-run any of your gates; it is a pure supervisor. So:
     session for a working one. Include your current versioned `Outstanding
     authorizations (vN): …` snapshot when you have started work — it is the
     only durable record your parent will ever have of what you had committed
-    to but not yet dispatched, since your branch carries none of it. The one
-    case you cannot send it is a missing parent address, above.
+    to, since your branch carries none of it. **List every open
+    authorization, whether or not you have dispatched it** — an item already
+    sent to a descendant but not yet landed is still open and still yours to
+    report; narrowing the snapshot to undispatched work would drop exactly the
+    obligations a dead child had already set in motion. The one case you cannot
+    send it is a missing parent address, above.
 
   **Every control message above carries your current `Outstanding
   authorizations (vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
@@ -795,15 +807,22 @@ Trade-off budget: <what may be spent for correctness — an extra query, an extr
                   you're deliberately overriding that with a costed migration
                   decision from the gate above.>
 Out of scope:   <explicit list>
-Outstanding authorizations: <every authorization owed by a prior session on this
-                  unit that has not yet landed in a commit — write `<none>`
-                  explicitly when there is nothing outstanding; a blank field is
-                  not the same as a checked `<none>` and must not be left implicit.
-                  Populated only on a replacement brief (comms protocol Rule 11):
-                  diff what was authorized against what the dead session's branch
-                  actually contains, and carry forward exactly what is missing —
-                  never assume the new task this brief was written for supersedes
-                  an old authorization nobody did.>
+Outstanding authorizations (vN): <every authorization owed on this unit that has
+                  not yet landed in a commit, or an explicit `<none>` — a blank
+                  field is not the same as a checked `<none>` and must not be left
+                  implicit. **Rendered on every brief, ordinary or replacement**,
+                  because the version is what makes the snapshot orderable later
+                  (comms protocol Rule 11). A genuinely new unit renders
+                  `Outstanding authorizations (v0): <none>`. A replacement brief
+                  renders the **inherited** version and list — not `v0` — so the
+                  successor's counter continues from the dead session's last
+                  value instead of restarting and comparing as stale: diff what
+                  was authorized against what the dead session's branch actually
+                  contains, and carry forward exactly what is missing. Never
+                  assume the new task this brief was written for supersedes an
+                  old authorization nobody did. Writing an item here is what
+                  makes it *transferred* — it discharges the old session for the
+                  archive gate, and leaves the item open against this brief.>
 
 ## What dazewell asked for, and why
 ## His answers at the gate
@@ -1314,15 +1333,16 @@ imply you have seen the app running.
 Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
 `.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. Before you archive,
-also give every outstanding authorization that session held a **closed**
-disposition (comms protocol Rule 11 — landed, declined, or superseded; not
-carried, which is an open handoff, not a closing one): diff what you authorized
-against what the branch actually contains, and for anything not landed, either
-cite the commit that covers it, record why it is being explicitly declined, or
-supersede it explicitly per Rule 4 — and if it is instead carried forward into a
-fresh brief's `Outstanding authorizations` field, it stays open until *that*
-brief lands it, so track it against the new brief rather than treating the
-carry itself as closure. Archiving is exactly the moment an un-tracked
+also discharge every outstanding authorization that session held (comms protocol
+Rule 11): diff what you authorized against what the branch actually contains, and
+for anything not landed, either cite the commit that covers it, record why it is
+being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
+— write it into a named successor brief's `Outstanding authorizations (vN)` field
+and verify it is actually there. Transfer discharges *this session* for the
+archive gate while leaving the *item* open against the new brief, which is the
+normal pass for work that was authorized and never started — the very case this
+rule exists for. Closing the item and transferring it are different acts; do not
+report a transfer as completion. Archiving is exactly the moment an un-discharged
 authorization becomes unrecoverable.
 
 **Sequencing note, orchestrator-facing:** `HANDBACK_POSTED` is not `CLOSED`. A
@@ -1489,9 +1509,13 @@ not repeat what that file states — they point at it:
   (Rule 11). **As a root orchestrator your durable channel is your own session
   transcript with dazewell** — the app preserves it independent of your process
   being responsive, unlike conversational memory — so restate a versioned
-  `Outstanding authorizations (vN): …` line in your next reply whenever the list
-  changes, incrementing `N` on every change, so a replacement (yours or
-  dazewell's) can find the latest one without re-reading the whole history.
+  `Outstanding authorizations (vN): …` line **in the same turn that changes the
+  list**, not in a later reply, incrementing `N` on every change, so a
+  replacement (yours or dazewell's) can find the latest one without re-reading
+  the whole history. Deferring the line to your next reply reopens the exact
+  window the rule closes: authorize, stall, and nothing durable records it. The
+  counter belongs to the **unit**, so a replacement continues from the version
+  its brief carried rather than resetting to `v0` and being discarded as stale.
 
 ## Reporting while you work
 

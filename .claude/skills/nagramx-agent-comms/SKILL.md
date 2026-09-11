@@ -496,7 +496,7 @@ started. Keep the outstanding-authorization list somewhere that survives the
 session dying, not only in that session's own conversational memory — the same
 distrust Rule 8 already applies to a degraded session's self-reports. When you
 write a replacement brief (Rule 9's self-contained template), the fixed block's
-**`Outstanding authorizations` field** carries every authorization the dead
+**`Outstanding authorizations (vN)` field** carries every authorization the dead
 session had not yet landed, or an explicit `<none>` — not only the branch state
 and whatever new task prompted the replacement — an urgent new task does not
 retire an old one nobody did. Before you call a scope complete, or
@@ -515,8 +515,16 @@ different recipients:**
   so the user can restore it later"), so a transcript line is not lost the way a
   conversational *memory* is — dazewell, or whoever picks up the replacement,
   can read back through it even after the session stalls. Restate a versioned
-  `Outstanding authorizations (vN): …` line (below) in your next reply whenever
-  the list changes, so it stays findable without scrolling the whole history.
+  `Outstanding authorizations (vN): …` line (below) whenever the list changes,
+  so it stays findable without scrolling the whole history — **in the same turn
+  that changes it, not in a later reply.** Deferring it to the next reply leaves
+  open precisely the window this rule exists to close: authorize, stall, and no
+  snapshot of that authorization ever reaches the durable channel. Write the
+  line before you end the turn in which you issued or accepted the
+  authorization. (An authorization you *dispatched* has a second durable copy in
+  the child session's own kickoff prompt, which the app preserves; the snapshot
+  is the only record of one you accepted but have not dispatched yet, which is
+  why it cannot wait for a later turn.)
 - **A child orchestrator's durable channel is its structured control messages
   to its parent** (below) — the parent does not read the child's transcript, it
   reads control messages and git, so the transcript argument above does not
@@ -538,6 +546,16 @@ counter costs nothing to maintain and closes the reordering gap without
 reopening Rule 1's deliberate decision not to sequence-stamp the rest of the
 control vocabulary.
 
+**The counter belongs to the unit, not to the session.** A replacement
+coordinator does not restart at `v0` — it inherits the version its brief's
+`Outstanding authorizations (vN)` field carries and continues from there, so its
+first change to the list is `v(N+1)`. Restarting at zero would make every
+snapshot the replacement sends compare as stale against the dead session's last
+one and be discarded by exactly the recipient that needs it — including the
+`<none>` that says the work is finally done. A genuinely new unit, with no prior
+session, starts at `Outstanding authorizations (v0): <none>`; that is the only
+place `v0` is correct.
+
 **This rule recurses onto a child orchestrator, which is a coordinator for its
 own dispatched sessions and binds the same way — with one honest limit.** A
 child orchestrator's `coord-<slug>` branch is deliberately never committed or
@@ -547,9 +565,10 @@ against to reconstruct a dead child's outstanding authorizations toward *its
 own* descendants. Two consequences, not one workaround:
 
 - **The clean-exit path is closed by a precondition, not a diff.** A child
-  orchestrator may not send `CLOSED` while it still holds an open
-  authorization toward one of its own descendants — closing every one of them
-  (landed, declined, or superseded) is a precondition of `CLOSED`, exactly as
+  orchestrator may not send `CLOSED` while it still holds an authorization
+  toward one of its own descendants that is neither closed on the item's ledger
+  (landed, declined, or superseded) nor transferred into a named successor
+  brief — discharging every one of them is a precondition of `CLOSED`, exactly as
   archiving a leaf session requires it above. This covers every orderly
   shutdown; it does nothing for a child that never gets to send `CLOSED`.
 - **A child that dies before reporting is an honest gap, not a solved one** —
@@ -572,22 +591,31 @@ were later re-reported as Critical — recovered only because an unrelated
 automated review happened to re-find them hours later. Luck is not a
 verification step, and the next stall may not be caught by one.
 
-- *Checked:* every authorization reaches exactly one **closed** disposition
-  before the session holding it is archived or the scope it belongs to is
-  reported complete: **landed** (cite the commit), **declined** (a stated
-  reason), or **superseded** (an explicit `supersedes my @X` per Rule 4 — the
-  older instruction's own completion, not a form of carrying it forward).
-  **Carried** into a fresh brief's `Outstanding authorizations` field is
-  deliberately *not* one of these — it is an open handoff, not a disposition:
-  the item still owes a landed/declined/superseded outcome, tracked against the
-  *new* brief, and closing the old session on "carried" alone would let the same
-  item silently re-open the gap this rule exists to close. A snapshot version
-  number is present on every restatement and strictly increases each time the
-  list changes; a recipient that adopts a lower- or equal-versioned snapshot
-  over a higher one it already saw has not satisfied this check.
-- *Cost:* one running list per coordinator, kept alongside the brief template it
-  already maintains, one integer counter incremented on change, plus one
-  diff-against-branch check at each handoff and each archive. Cheap next to a
+- *Checked:* two ledgers, not one — conflating them is what makes a naive
+  version of this rule unsatisfiable. **The item's ledger** closes when the
+  authorization reaches exactly one of **landed** (cite the commit),
+  **declined** (a stated reason), or **superseded** (an explicit
+  `supersedes my @X` per Rule 4 — the older instruction's own completion, not a
+  form of carrying it forward). **The session's ledger** closes when every
+  authorization it held is either closed on the item's ledger *or* **transferred**:
+  written into a named successor brief's `Outstanding authorizations (vN)` field,
+  at a stated version, verified present there before the archive. Transfer
+  discharges the *session*; it does not close the *item*, which stays open and is
+  tracked against the successor brief until it lands, is declined, or is
+  superseded there. Both ledgers are required, and neither substitutes for the
+  other: archiving a session with an untransferred, unclosed authorization is the
+  failure this rule exists to stop, and calling a scope complete because the
+  session that held it was archived is the same failure wearing a different hat.
+  An unstarted item is exactly the item that must be transferred, so "transferred"
+  is the archive gate's normal pass for it — not an exception to the gate. A
+  snapshot version number is present on every restatement, strictly increases
+  each time the list changes, and is inherited by a replacement rather than reset;
+  a recipient that adopts a lower- or equal-versioned snapshot over a higher one
+  it already saw has not satisfied this check.
+- *Cost:* one running list per unit, kept alongside the brief template the
+  coordinator already maintains, one integer counter incremented on change and
+  inherited across a replacement, plus one diff-against-branch check at each
+  handoff and each archive. Cheap next to a
   Critical that shipped because an item was never written down anywhere the
   replacement session could see.
 - *Kills:* authorized work lost silently across a stall/archive/replacement — the
