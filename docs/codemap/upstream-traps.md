@@ -1252,16 +1252,29 @@ it kept losing: it missed the reply/quote payload channel (the message-preview
 repopulation that puts straight into `selectedMessagesIds`) and off-screen range
 selection, which calls `addToSelectedMessages` directly and bypasses the
 `getMessageType`/`processRowSelect` gate. The durable fix is to seal the
-*entrance*: a held row never enters `selectedMessagesIds` at all. The selection
-model has exactly two insertion points -- `addToSelectedMessages`
+*entrance*: a held row never enters the selection model at all. But "the
+selection model" is not one field -- it is every container that holds selected
+message ids, and there is more than one door into that room. The main
+multi-select model (`selectedMessagesIds`, plus the canCopy/canStar subsets that
+ride with it) has two insertion points -- `addToSelectedMessages`
 (`ChatActivity.java`) and the message-preview reply/quote repopulation -- and both
 now return/skip on `isHeld`; `canSelect` refuses held rows too so the drag/range
-route is clean before it ever reaches `addToSelectedMessages`. With the entrance
-sealed, no selection-consuming route (forward, quote, reply, copy, combine,
-repeat-as-copy, draft publication, range select) can carry a held row, by
-construction rather than enumeration. The pre-existing per-action `!isHeld` guards
-(Send Now, reschedule, edit-schedule-time) and `naxExcludeHeldFromSend` are left
-as harmless defense-in-depth; they are now redundant with the entrance guard.
+route is clean before it ever reaches `addToSelectedMessages`. Separately, the
+message **preview** keeps its own selected-id set
+(`MessagePreviewParams.forwardMessages.selectedIds`) that `beforeMessageSend`
+reads directly through `getSelectedMessages` -- independent of
+`selectedMessagesIds` -- so that container is sealed at the single `showFieldPanel`
+forward funnel every `showFieldPanelForForward` caller passes through, filtering
+`messageObjectsToForward` through `naxExcludeHeldFromSend` before `updateForward`
+builds it. The reply/link preview sets (`replyMessage.selectedIds`,
+`linkMessage.selectedIds`) are single-target/webpage-derived and structurally
+cannot hold a held row, so they need no seal -- listed only so the container set
+is complete. With every entrance sealed, no selection-consuming route (forward,
+quote, reply, copy, combine, repeat-as-copy, draft publication, range select) can
+carry a held row, by construction rather than enumeration. The pre-existing
+per-action `!isHeld` guards (Send Now, reschedule, edit-schedule-time) and
+`naxExcludeHeldFromSend` at the assemblers are left as harmless defense-in-depth;
+they are now redundant with the entrance guard.
 
 Because a held row is no longer selectable, its only action -- **delete** -- comes
 from the single-row context menu's cancel path (`getMessageType` returns
@@ -1287,7 +1300,40 @@ the `MessageObject`. Durable membership stays governed by `STATE_HELD`, never by
 superseding PR #336. The shared send boundary landed 2026-09-10 on the
 ghost-hold-selection branch; superseded 2026-09-11 by the selection-model entrance
 guard and the reload `send_state` restore on the ghost-hold-selectability branch,
-`#ghost-hold`.)*
+`#ghost-hold`. Round-2 completion 2026-09-11, PR #347: the entrance guard was
+extended to the preview's separate `forwardMessages.selectedIds` container after a
+review found `beforeMessageSend` reads it directly, and the scheduled-count
+publication was corrected to thread the initiating session token through its
+callbacks rather than recapture `sessionEpoch` at publish time -- a callback that
+began under an older session could otherwise sample the new epoch and pass the
+recheck, posting a stale count into whoever now owns the reused account slot.)*
+
+## Ghost Hold: legacy migration can resurrect a message deleted mid-migration (accepted, #346)
+
+The one-time legacy migration (`GhostHoldController.migrateAccount`) collects
+pre-fork-store held rows on the **storage** queue, then inserts them into the fork
+store on the **fork** queue. The deletion path is the other half of the trap:
+`MessagesController.deleteMessages` posts `messagesDeleted`
+(`MessagesController.java:9545-9569`) immediately after enqueueing the stock
+delete, and the fork `messagesDeleted` observer removes the matching fork record
+on the fork queue. If a user deletes a legacy held row *during* migration, the
+observer can run before the migration insert -- it finds no fork row yet, so its
+removal no-ops and the delete signal is lost; the migration insert then re-adds
+the collected blob and the row comes back. "I deleted it and it came back" is a
+durable user-intent violation, but closing it race-free is storage-lifecycle work
+the safety bundle scopes out: a bare existence check at insert time cannot
+distinguish "not yet inserted" from "deleted" (both absent), the stock table is
+storage-queue-owned and unreadable from the fork queue, and REPLACE-on-insert
+resurrects even if the observer is ordered first. A correct fix needs a
+migration-scoped deletion **tombstone** that survives to be rechecked at insert
+time. Bounded and left documented rather than built: migration is one-time per
+account on first upgrade (idempotent, `accountInited`-guarded), the window is
+milliseconds on that first start, and the resurrected row stays a normal deletable
+held row -- no leak, loss, or crash. Belongs to issue #346.
+
+*(Established 2026-09-11, `#ghost-hold`, PR #347 round-2 review. Contested the
+prescribed fork-queue recheck as not race-free without a tombstone; documented as
+an accepted #346 limitation instead.)*
 
 ## Ghost Hold: logout purge cannot run on a doubly-broken teardown
 
