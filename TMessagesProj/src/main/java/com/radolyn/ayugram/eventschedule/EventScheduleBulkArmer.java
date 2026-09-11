@@ -161,6 +161,12 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private final HashSet<Integer> deletedDuringRun = new HashSet<>();
     private boolean collecting;
 
+    // Store logout generation for this run's slot, captured at admission (before any RPC) so a survivor
+    // claim that only completes after a logout has cleared and possibly reused the slot is rejected by the
+    // store rather than persisted into it. Read and written on the UI thread (admission and finalization),
+    // so it needs no synchronization of its own.
+    private int storeGeneration;
+
     // Built in the constructor, not as a field initializer, so its capture of account/dialogId reads
     // fields that are already assigned (a field initializer would run before the constructor body).
     private final NotificationCenter.NotificationCenterDelegate deletionCollector;
@@ -189,6 +195,9 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
     @Override
     public void onAdmission() {
+        // Before any RPC: snapshot the slot's logout generation so a survivor armed at finalization is
+        // rejected if a logout clears/reuses the slot during this run's tens-of-seconds network window.
+        storeGeneration = EventScheduleStore.currentGeneration(account);
         EventScheduleStore.ensureLoaded(account);
         NotificationCenter.getInstance(account).addObserver(deletionCollector, NotificationCenter.messagesDeleted);
         collecting = true;
@@ -403,7 +412,7 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
      * now durably armed on the target.
      */
     private boolean armSurvivor(@NonNull EventScheduleEntry entry, @Nullable int[] negativeLocalIds) {
-        String resolvedKey = EventScheduleController.bulkArmSurvivor(account, dialogId, entry, negativeLocalIds);
+        String resolvedKey = EventScheduleController.bulkArmSurvivor(account, storeGeneration, dialogId, entry, negativeLocalIds);
         if (resolvedKey == null) {
             return false;
         }

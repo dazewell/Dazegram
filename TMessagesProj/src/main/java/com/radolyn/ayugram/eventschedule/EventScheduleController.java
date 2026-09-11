@@ -454,13 +454,14 @@ public final class EventScheduleController {
      * already owned by more than one entry (a pre-existing corruption) or the id set is empty/non-positive
      * -- in which case nothing is changed and the caller must not report success.
      */
-    public static boolean commitEditArm(int account, long dialogId, int[] serverIds, int[] localIds,
+    public static boolean commitEditArm(int account, int generation, long dialogId, int[] serverIds, int[] localIds,
                                         @NonNull EventScheduleConfig config, int fallbackDate) {
         EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
-                account, dialogId, serverIds, localIds,
+                account, generation, dialogId, serverIds, localIds,
                 config, fallbackDate, System.currentTimeMillis());
         if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
-                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_STALE) {
             return false;
         }
         if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
@@ -488,17 +489,18 @@ public final class EventScheduleController {
      * {@link #commitEditArm}) -- a still-pending owner reachable only by local id must not be missed, or
      * a second trigger gets armed beside it.
      */
-    public static String bulkArmSurvivor(int account, long dialogId, @NonNull EventScheduleEntry built, @Nullable int[] negativeLocalIds) {
+    public static String bulkArmSurvivor(int account, int generation, long dialogId, @NonNull EventScheduleEntry built, @Nullable int[] negativeLocalIds) {
         int[] serverIds = new int[built.serverIds.size()];
         for (int i = 0; i < serverIds.length; i++) {
             serverIds[i] = built.serverIds.get(i);
         }
         EventScheduleStore.EditClaim claim = EventScheduleStore.resolveAndClaimForEdit(
-                account, dialogId, serverIds, negativeLocalIds,
+                account, generation, dialogId, serverIds, negativeLocalIds,
                 new EventScheduleConfig(built.types, built.normalizedPatterns(), built.regex, built.delaySeconds),
                 built.fallbackDate, built.createdAt);
         if (claim.status == EventScheduleStore.EditClaim.Status.REJECTED_MULTI
-                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS) {
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_INVALID_IDS
+                || claim.status == EventScheduleStore.EditClaim.Status.REJECTED_STALE) {
             return null;
         }
         if (claim.status == EventScheduleStore.EditClaim.Status.UPDATED_EXISTING) {
@@ -722,16 +724,16 @@ public final class EventScheduleController {
      * both arm and off with a toast shown from {@link #finishCommitEdit} itself, so nothing outside the
      * controller is captured across the hop.
      */
-    public static void reconcileThenCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
+    public static void reconcileThenCommitEdit(int account, int generation, long dialogId, int[] editIds, int[] editLocalIds,
                                                boolean userTouchedTrigger, boolean armed,
                                                @NonNull EventScheduleConfig config, int scheduleDate) {
         ArrayList<EventScheduleStore.EntrySnapshot> snaps = EventScheduleStore.collectUnboundRandomSnapshots(account, dialogId);
         if (snaps.isEmpty()) {
-            finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate);
+            finishCommitEdit(account, generation, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate);
             return;
         }
         postDurableLookup(account, snaps, () ->
-                finishCommitEdit(account, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate));
+                finishCommitEdit(account, generation, dialogId, editIds, editLocalIds, userTouchedTrigger, armed, config, scheduleDate));
     }
 
     /**
@@ -752,7 +754,7 @@ public final class EventScheduleController {
         postDurableLookup(account, snaps, onDone);
     }
 
-    private static void finishCommitEdit(int account, long dialogId, int[] editIds, int[] editLocalIds,
+    private static void finishCommitEdit(int account, int generation, long dialogId, int[] editIds, int[] editLocalIds,
                                          boolean userTouchedTrigger, boolean armed,
                                          @NonNull EventScheduleConfig config, int scheduleDate) {
         if (!userTouchedTrigger) {
@@ -780,7 +782,7 @@ public final class EventScheduleController {
             return;
         }
         if (armed) {
-            boolean claimed = commitEditArm(account, dialogId, editIds, editLocalIds, config, scheduleDate);
+            boolean claimed = commitEditArm(account, generation, dialogId, editIds, editLocalIds, config, scheduleDate);
             if (!claimed) {
                 AlertUtil.showToast(getString(R.string.EventScheduleTriggerConflict));
             }
@@ -1060,6 +1062,52 @@ public final class EventScheduleController {
     static void onEntryRemoved(int account, EventScheduleEntry entry) {
         removeFromQueue(account, entry);
         removePending(account, entry.key());
+        schedulePendingGc();
+    }
+
+    /**
+     * Account-slot teardown for {@code MessagesController#performLogout}, called on the UI thread beside
+     * {@link EventScheduleStore#clearAccountState}. The store clear (and its generation bump) closes the
+     * persisted/create side; this drops the controller's process-local runtime state for the slot so a
+     * fresh login into the reused slot can't inherit the departed account's pending arms, fire queues,
+     * suppression holds, in-flight-reconcile marks, or its warmed/pending "has state" bits. Runs entirely
+     * on the UI thread, like every other mutation of these maps, so it never interleaves with an async
+     * reconcile completion: that completion either already ran (and this wipes what it left) or runs after
+     * and is rejected by the store's generation guard. The GC scheduled at the end is a fresh reschedule
+     * off the surviving PENDING entries, so a cancelled fire for this slot never resurrects it.
+     *
+     * <p>Deliberately leaves the per-account observer registration (OBSERVED/{@code ensureObserver})
+     * alone: it is idempotent and self-guarding (onIdRemap needs a live PENDING hit, purgeIds only
+     * removes), and tearing it down here would risk a double-registration if the slot is reused, for no
+     * correctness gain now that the state it observes is cleared.
+     */
+    public static void onAccountLoggedOut(int account) {
+        long accountBit = 1L << account;
+        ArrayList<String> stale = new ArrayList<>();
+        // Pending arms carry their account on the Pending record; drop every one for this slot.
+        for (Map.Entry<String, Pending> e : PENDING.entrySet()) {
+            if (e.getValue().account == account) stale.add(e.getKey());
+        }
+        for (String key : stale) PENDING.remove(key);
+        // Fire queues and run-owned suppression holds are keyed "account_..."; the "_" right after the
+        // account digits makes a startsWith prefix unambiguous (account 1 never matches account 10's keys).
+        String prefix = account + "_";
+        stale.clear();
+        for (String key : QUEUES.keySet()) {
+            if (key.startsWith(prefix)) stale.add(key);
+        }
+        for (String key : stale) QUEUES.remove(key);
+        stale.clear();
+        for (String key : SUPPRESSED.keySet()) {
+            if (key.startsWith(prefix)) stale.add(key);
+        }
+        for (String key : stale) SUPPRESSED.remove(key);
+        // DURABLE_INFLIGHT is keyed by the account directly; a still-enqueued storage lookup for the slot
+        // is left to complete and drain harmlessly (its UI-side write is rejected by the generation guard).
+        DURABLE_INFLIGHT.remove(account);
+        warmedAccounts &= ~accountBit;
+        // Rebuild pendingAccounts off the surviving PENDING map (clears this slot's bit) and reschedule GC.
+        refreshPendingBits();
         schedulePendingGc();
     }
 

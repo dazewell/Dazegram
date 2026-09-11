@@ -1597,6 +1597,11 @@ public final class EventScheduleHelper {
             // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
+            // Capture the store's logout generation for this slot at the moment the user commits. The arm
+            // carries it -- synchronously below, or across the async durable-reconcile hop -- and the store
+            // rejects it if a logout clears (and possibly reuses) the slot in between. Mirrors the
+            // lastSetupGeneration capture the sheet already does for its seed store.
+            final int storeGeneration = EventScheduleStore.currentGeneration(account);
             EventScheduleConfig config = new EventScheduleConfig(types, patterns, regex, delay);
             if (editIds != null && editIds.length > 0) {
                 // Editing an existing scheduled message. The schedule picker fires this commit even when the
@@ -1609,7 +1614,7 @@ public final class EventScheduleHelper {
                     // ids first so the edit can't create a second trigger beside it. Runs async after the
                     // sheet dismisses; on failure the controller shows the toast itself. No fragment or
                     // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
-                    EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
+                    EventScheduleController.reconcileThenCommitEdit(account, storeGeneration, dialogId, editIds, editLocalIds,
                             userTouchedTrigger, armed, config, scheduleDate);
                     return;
                 }
@@ -1628,7 +1633,7 @@ public final class EventScheduleHelper {
                 // trigger armed or turned off in the meantime is handled correctly and the same message
                 // can't end up with two triggers.
                 if (armed) {
-                    boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
+                    boolean claimed = EventScheduleController.commitEditArm(account, storeGeneration, dialogId, editIds, editLocalIds,
                             config, scheduleDate);
                     if (!claimed) {
                         // Another trigger already owns this message (only reachable against data a prior
