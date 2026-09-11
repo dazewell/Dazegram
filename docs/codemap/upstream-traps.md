@@ -935,11 +935,28 @@ resend path alongside `messages_v2` rows, and `processUnsentMessages` feeds them
 to its scheduled retry loop (`SendMessagesHelper.java:9126`+). This runs not just
 at startup: `checkUnsentMessages()` is called from `ApplicationLoader.java:308`
 **and** from inside `processSentMessage` (`SendMessagesHelper.java:1811`), i.e.
-every time the unsent queue drains during normal use. Any scheme that parks a row
-in `scheduled_messages_v2` with `send_state = 1` (Ghost Hold does) must therefore
-defend the drain — Ghost Hold skips held rows in `processUnsentMessages` and
-refuses them in `retrySendMessage` (`SendMessagesHelper.java:1746`) — or the
-"held" row auto-sends on the next drain.
+every time the unsent queue drains during normal use. The current fork-store
+design does NOT park held rows here — held rows live in the fork-owned
+`ghosthold_<account>.db` and are injected as display-only objects, so a
+steady-state drain finds nothing of ours (see `ui-to-code.md`'s "A local
+negative-id row in scheduled_messages_v2 renders in the Scheduled list" entry;
+the pre-rebuild design that persisted held rows as negative-id
+`scheduled_messages_v2` rows was discarded as unsafe). The `scheduled_messages_v2`
+drain guards that remain — `processUnsentMessages` skips held rows
+(`SendMessagesHelper.java:9147`) and `retrySendMessage` refuses them
+(`SendMessagesHelper.java:1766`) — survive for exactly one window: a legacy-upgrade
+launch where `checkUnsentMessages()` runs the auto-resend loop before
+`checkOnProcessStart()` has migrated the old marked rows out of the stock tables.
+In that window a still-marked legacy row could otherwise auto-send while Ghost is
+on (a P1 leak); migration makes the guards unreachable after the first
+post-upgrade launch. So the stock-table guards are legacy-migration protection,
+not defence of a live store — do not read this entry as licence to park held rows
+in `scheduled_messages_v2`, and do not delete the fork store on the belief that
+they live there.
+
+*(Corrected 2026-09-11, #ghost-hold, PR #347: the original wording said the live
+design parks held rows in `scheduled_messages_v2` — it does not; that was the
+discarded pre-rebuild design.)*
 
 ## AutoDeleteMediaTask's file pin is in-memory only and dies on restart
 
