@@ -72,7 +72,7 @@ public class GhostTypingReminderHelper {
     // NagramX: bumped whenever an observation of NekoConfig#isGhostModeActive()
     // sees it go false->true. It lives here rather than in NekoConfig because
     // isGhostModeActive() must stay a pure, side-effect-free predicate: Ghost
-    // Hold's own PR #336 also calls it, from multiple threads, and relies on
+    // Hold (PR #347) also calls it, from multiple threads, and relies on
     // exactly that purity. See the docs/codemap/dead-ends.md entry for the two
     // earlier shapes this went through.
     private static int ghostSessionEpoch;
@@ -292,8 +292,8 @@ public class GhostTypingReminderHelper {
 
     // NagramX: mirrors GhostSendWarningHelper#tryShowBulletin's eligibility
     // checks (canShowBulletin, paused fragment, wrong account, empty-bulletin
-    // outcome) -- kept as a separate copy rather than a shared call since that
-    // class's own methods are private and it is out of scope to change here.
+    // outcome) -- kept as a separate copy rather than a shared call so each
+    // helper stays self-contained and owns its own private bulletin plumbing.
     // Returns whether a bulletin was actually attempted; the caller only spends
     // this chat's one-time reminder budget when this returns true.
     private static boolean tryShowBulletin(BaseFragment fragment, int account) {

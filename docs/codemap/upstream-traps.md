@@ -913,6 +913,227 @@ Any guard written as "reject absolute paths, then join" therefore lets drive-rel
 Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
+## isGhostModeActive() returns true vacuously when all five ghost toggles are locked
+
+Established 2026-09-09 (#ghost-hold). `isGhostModeActive()` `continue`s past any
+toggle whose `Locked` companion is set, so if all five are locked the loop body
+never runs and it returns its initial `true` (`NekoConfig.java:305-319`).
+`setGhostMode` also skips locked items (`NekoConfig.java:321-330`), so in that
+state Ghost is permanently on and `toggleGhostMode()` is a no-op. It is not
+reachable through the UI today: `GhostModeActivity.onItemLongClick` refuses a
+fifth lock (`getGhostModeLockedCount() >= 4`), so at least one toggle is always
+unlocked and Ghost stays turn-off-able. Any feature that makes "Ghost never
+turns off" harmful (Ghost Hold, whose queue would become unflushable) must rely
+on that 4-lock cap, or handle the vacuous-true case itself.
+
+## getUnsentMessages queries scheduled_messages_v2 too, and checkUnsentMessages has two callers
+
+Established 2026-09-09 (#ghost-hold). `MessagesStorage.getUnsentMessages` runs a
+second cursor over `scheduled_messages_v2` selecting `mid < 0 AND send_state = 1`
+(`MessagesStorage.java:8726`), so local unsent scheduled rows are pulled into the
+resend path alongside `messages_v2` rows, and `processUnsentMessages` feeds them
+to its scheduled retry loop (`SendMessagesHelper.java:9126`+). This runs not just
+at startup: `checkUnsentMessages()` is called from `ApplicationLoader.java:308`
+**and** from inside `processSentMessage` (`SendMessagesHelper.java:1811`), i.e.
+every time the unsent queue drains during normal use. The current fork-store
+design does NOT park held rows here — held rows live in the fork-owned
+`ghosthold_<account>.db` and are injected as display-only objects, so a
+steady-state drain finds nothing of ours (see `ui-to-code.md`'s "A local
+negative-id row in scheduled_messages_v2 renders in the Scheduled list" entry;
+the pre-rebuild design that persisted held rows as negative-id
+`scheduled_messages_v2` rows was discarded as unsafe). The `scheduled_messages_v2`
+drain guards that remain — `processUnsentMessages` skips held rows
+(`SendMessagesHelper.java:9147`) and `retrySendMessage` refuses them
+(`SendMessagesHelper.java:1766`) — survive for exactly one window: a legacy-upgrade
+launch where `checkUnsentMessages()` runs the auto-resend loop before
+`checkOnProcessStart()` has migrated the old marked rows out of the stock tables.
+In that window a still-marked legacy row could otherwise auto-send while Ghost is
+on (a P1 leak); migration makes the guards unreachable after the first
+post-upgrade launch. So the stock-table guards are legacy-migration protection,
+not defence of a live store — do not read this entry as licence to park held rows
+in `scheduled_messages_v2`, and do not delete the fork store on the belief that
+they live there.
+
+*(Corrected 2026-09-11, #ghost-hold, PR #347: the original wording said the live
+design parks held rows in `scheduled_messages_v2` — it does not; that was the
+discarded pre-rebuild design.)*
+
+## AutoDeleteMediaTask's file pin is in-memory only and dies on restart
+
+Established 2026-09-09 (#ghost-hold). `AutoDeleteMediaTask` keeps its "don't
+delete this file yet" set in an in-memory structure with `lockFile`/`unlockFile`
+(`AutoDeleteMediaTask.java:17`, `:243-267`); nothing persists it, so a process
+restart drops every pin, and the sweep itself is time-based and runs at most
+once per 24h (`AutoDeleteMediaTask.java:21`, `:118-125`). This is why holding a
+*media* message across an arbitrary Ghost duration can't lean on the existing
+pin — a kill during the hold would leave the file eligible for the next sweep.
+It's the recorded reason Ghost Hold v1 is text-only.
+
+## Sync guard check validates protected pins against the branch tree, not the PR merge ref
+
+Established 2026-09-09 (#ghost-hold). The `protected pins vs HEAD` step of the
+sync guard reads each pinned blob from the branch's own tree
+(`.github/sync/sync-guard.ps1`, `protected-paths.tsv`), so a branch cut before a
+repin lands on `dev` stays red on that check until `dev` is merged forward into
+it — merging the branch's own PR does **not** retroactively clear it. Confirmed
+from PR #325 (repinned `README.md` `d48354cf…` → `d9373e96…` on `dev`) and PR
+#324 (cut beforehand, still failing on head `330451f9de` after #325 merged). The
+natural assumption — "the merge ref has both the new pin and the new file, so
+it'll sort itself out" — is wrong, and re-deriving it costs a full CI round each
+time. This is a recurring shape here, not a one-off: `git log` already carries
+`repin signing gradle blob…` commits and a `document the build.gradle
+signing-blob pin trap` entry for the same class of problem. The fix is a
+`#tag`-exempt merge of `origin/dev` into the feature branch once its tree is
+clean.
+
+## canEditMessageScheduleTime lacks the negative-id guard its sibling canEditMessage has
+
+Established 2026-09-10 (#ghost-hold). `MessageObject.canEditMessage(...)` bails
+out for a local, unsent row: it returns `false` when `message.id < 0`
+(`MessageObject.java:11792`), so the general "Edit" action correctly hides
+itself for any negative-id scheduled row. Its sibling
+`canEditMessageScheduleTime(...)` (`MessageObject.java:11768-11782`) has **no**
+such check — it returns `true` for a DM / megagroup / creator row regardless of
+id sign. So the scheduled-list "Edit schedule time" action offers itself for a
+purely-local negative-id row and, on tap, issues `TL_messages_editMessage`
+against an id the server has never seen. For an ordinary failed-schedule row
+that is a harmless failed request; for a Ghost Hold row it is a server round
+trip while Ghost is on — the exact exposure the feature exists to prevent.
+
+This is a pre-existing upstream asymmetry, not something Ghost Hold introduced —
+any negative-id scheduled row hits it. Ghost Hold guards **only its own held
+rows** at the call site (`ChatActivity.java`, the `OPTION_EDIT_SCHEDULE_TIME`
+block, mirroring the existing `!isHeld` Send Now guard) and deliberately does
+**not** touch `canEditMessageScheduleTime` itself: fixing the upstream method
+would widen the diff into shared base-fork code for a bug that costs a failed
+request, not data loss. Recorded so the next person who wonders why the held-row
+guard exists — or who trusts `canEditMessageScheduleTime` to mirror
+`canEditMessage`'s id check — does not burn an investigation on it.
+
+## GhostModeActivity posts mainUserInfoChanged on the selected account, not the fragment's
+
+Established 2026-09-10 (#ghost-hold). `GhostModeActivity` posts
+`NotificationCenter.mainUserInfoChanged` on
+`NotificationCenter.getInstance(UserConfig.selectedAccount)` — at
+`GhostModeActivity.java:153` (the Ghost Hold toggle notice path) and,
+pre-existing since before `#ghost-hold`, at `:207` and `:211` (the
+`showGhostInDrawer` / `showGhostModeStatus` toggles). The fragment itself
+observes via `getNotificationCenter()`, i.e. its own `currentAccount`
+(`:90`). So if this screen is ever reached on a non-selected account, the post
+lands on a different center than the observer and the rows/held-count refresh is
+missed. In practice the screen is opened on the selected account, so the two
+coincide and the observer fires.
+
+This is a **pre-existing, fork-wide pattern**, not something Ghost Hold
+introduced — the two sibling posts predate it and use the same
+`selectedAccount` center. A code review flagged the `:153` post in isolation;
+"fixing" only that one line would leave the file internally inconsistent with
+its two neighbours three lines down and would be a drive-by edit on pre-existing
+code. If the pattern is wrong it is wrong in three places and is a separate
+change with its own justification. Recorded so the next reviewer who spots the
+`:153` post does not re-raise it as a Ghost Hold defect.
+## randoms_v2 never receives a positive mid for a send-now message
+
+Established 2026-09-10 (#ghost-hold). The `random_id -> mid` correlation that
+`SendMessagesHelper`'s `alreadySent` path relies on is only usable for messages
+that stay scheduled server-side; for a send-now message it can never fire. Three
+facts together:
+
+- The mid rewrite in `updateMessageStateAndIdInternal` that writes the confirmed
+  server id back into `randoms_v2` is gated `_oldId < 0 && scheduled == 1`
+  (`MessagesStorage.java:13923`). A send-now message is `scheduled == 0`, so it
+  never enters this branch.
+- The `scheduled == 0` id-remap branch (`MessagesStorage.java:14061`+) rewrites
+  `messages_v2`, `messages_topics`, `media_v4`, `media_topics` and
+  `dialogs.last_mid`, but **not** `randoms_v2`.
+- Post-confirmation `putMessages` cannot backfill it either: an incoming server
+  message carries `random_id == 0` (`MessagesStorage.java:12248`), and the
+  `randoms_v2` insert is gated on a non-zero random id (`:12825`), so the insert
+  is skipped.
+
+Cost if missed: any design that keys a held/pending message off `randoms_v2`
+expecting to later read back its positive mid on the primary send-now path is
+building on a row that is never written. This is the verified fact that ruled
+out the original Ghost Hold storage design (a stock `scheduled_messages_v2` row
+with a negative id and `send_state = 1`) and drove the rebuild onto fork-owned
+state — making it work would have required editing stock
+`updateMessageStateAndIdInternal`, changing message-receipt behaviour for every
+chat in the app.
+
+## `SendMessageParams.sendAnimationData` is non-null on every ordinary composer send
+
+`ChatActivityEnterView` builds a fresh `MessageObject.SendAnimationData` for a
+normal (non-forwarding) text send before constructing the params
+(`ChatActivityEnterView.java:9624-9626`), and `of(...)` stores it verbatim
+(`SendMessagesHelper.java:12537`). It is a transient UI fly-in hint — the
+composer's on-screen x/y/width/height — carrying no part of the sent message,
+but it is set on ~100% of composer sends. Any allowlist/denylist that treats an
+unrecognised non-default `SendMessageParams` field as "not an ordinary text
+send" must exclude `sendAnimationData` (and `updateStickersOrder`, a local
+recent-emoji reorder flag, `ChatActivityEnterView.java:9646`) or it rejects
+every real message.
+
+Cost if missed: Ghost Hold's fail-closed backstop `onlyPersistedFieldsSet`
+refused to hold anything with a non-default unknown field, so `sendAnimationData`
+made it refuse **every** composer send — the message went straight to the network
+with Ghost on. Cost a full device cycle to surface because the leak is silent and
+the send otherwise looks normal (`GhostHoldController.java:389-396`, 2026-09-10).
+
+## `-keep class org.telegram.messenger.* { *; }` DOES keep nested-class members
+
+The single-`*` keep rule (`proguard-rules.pro:9`) is often assumed not to match
+a nested class such as `org.telegram.messenger.SendMessagesHelper$SendMessageParams`
+(`$` mistaken for a package boundary). It does: in the shipped minified APK
+`377d89c` (`org.telegram.messenger.beta`, staging = release R8 config), all 54
+instance fields of that class keep their **original** names (`message`, `caption`,
+`sendAnimationData`, …) in the DEX — verified with `dexdump` on the exact
+installed artifact. So reflection over `Field.getName()` on this class happens to
+survive R8 today. It is still not safe to rely on: a keep rule narrowed to
+`**`-vs-`*` or dropping `{ *; }` would silently rename these fields and break
+name-based reflection with no compile error, which is why Ghost Hold moved its
+field check onto compile-checked `p.<field>` references plus a name-independent
+declared-field **count** guard (`GhostHoldController.java:353-420`, 2026-09-10).
+
+Cost if missed: this fact killed hypothesis H1 (that R8 renamed the fields and
+disabled Ghost Hold's backstop in the minified build only). It did not; the real
+cause was the `sendAnimationData` trap above. Re-deriving this costs a minified
+build + DEX inspection.
+
+## `SendMessageParams.of(MessageObject)` restores the reply header but NOT entities
+
+On the retry/re-drive path (`retryMessageObject != null`) the outgoing text
+request pulls its two formatting-bearing fields from two different places, and
+only one of them is the stored message:
+
+- **Reply header rides on the stored message.** `sendMessage` sets
+  `newMsg = retryMessageObject.messageOwner` (`SendMessagesHelper.java:4547`) and
+  builds `reqSend.reply_to` from `newMsg.reply_to`
+  (`SendMessagesHelper.java:5443-5444` via
+  `createReplyInput(TL_messageReplyHeader)` at `:227-240`, which also reads
+  `reply_to_peer_id` when `flags & 1` is set). So whatever reply header is on the
+  stored row is what gets sent -- `of(MessageObject)` passing `replyToMsg = null`
+  (`SendMessagesHelper.java:12453`) does not lose it.
+- **Entities ride on the params, which `of()` nulls.** The local `entities` used
+  to build `reqSend.entities` comes from `sendMessageParams.entities`
+  (`SendMessagesHelper.java:4399`, then `reqSend.entities = entities` at `:5462`),
+  and `of(MessageObject)` passes `entities = null`
+  (`SendMessagesHelper.java:12453`). `newMsg.entities` is never read back into the
+  request on this path (the Pangu block at `:5243-5256` only ever re-derives from
+  the already-null local, and its `newMsg.entities = entities` write is guarded on
+  the local being non-empty, so it does not restore anything either). So a
+  re-drive built purely from `of(mo)` ships with **no entities** -- bold, links,
+  mentions and custom-emoji all silently gone -- even though the reply header
+  survives.
+
+Cost if missed: any redrive/retry that reconstructs a send via
+`SendMessageParams.of(MessageObject)` and assumes "it copies everything off the
+stored message" is half right. Ghost Hold's flush hit exactly this: the held
+message stored its entities on the blob but flushed as plain text until the
+re-drive explicitly restored `p.entities = m.entities`
+(`GhostHoldController.java:1065-1073`, the `dispatchFreshItem` `of(mo)` block,
+2026-09-10, #ghost-hold). The reply header needed no such restore, which is what makes the
+asymmetry a trap -- testing a reply-with-formatting would show the reply intact
+and the formatting gone, pointing at the wrong half.
 
 ## `commit-tag.yml`'s job name is declared unquoted, so its real status-check context is the truncated string `Every commit carries a`, and the required-checks ruleset pins that exact truncation
 
@@ -1047,6 +1268,160 @@ was chosen in review precisely because of this trap.
 
 *(Established 2026-09-10, #ghost-type-warning -- found in design review, before
 the mis-classification reached code.)*
+
+## Ghost Hold: held rows ride the Scheduled-list bulk actions without a per-action guard
+
+**Status (2026-09-11): resolved by an entrance guard — the present-tense
+description in the next two paragraphs is the pre-fix behaviour, kept for the
+reasoning. See "First fixed with a shared send boundary … then superseded by an
+entrance guard" below for what actually ships now.**
+
+A held Ghost Hold row is a real `TYPE_TEXT` `MessageObject` with a negative
+local id, and it renders in the Scheduled list like any other row, so it is
+selectable into multi-select -- `addToSelectedMessages`
+(`ChatActivity.java:20877`) adds it to `selectedMessagesIds` and, because the
+type is text, to `selectedMessagesCanCopyIds` too. That means a bulk action the
+Scheduled action mode exposes acts on it unless either its own held guard or its
+scheduled-mode visibility gate excludes it. Send-Now
+(`confirmSendNowSelectedMessages`), the single-row context menu, and
+edit-schedule-time each guard it individually; the reschedule spread did not
+until it was excluded at the `resolveRescheduleItems` chokepoint
+(`ChatActivity.java:37877`).
+
+Getting the *reachable* set right matters, because two of the send-capable
+overflow items are already hidden in scheduled mode and three others are not.
+`nkbtn_savemessage` and plain `nkbtn_repeat` are added to the overflow at
+`ChatActivity.java:11505-11506` but their visibility is set to `canForward`
+(`ChatActivity.java:21051`, `:21054`), and `canForward` is
+`chatMode != MODE_SCHEDULED && ...` (`ChatActivity.java:21036`) -- so both are
+**hidden** on the Scheduled list and cannot act on a held row there. The three
+that *are* reachable and unguarded, and would push held text to the server now,
+are: `combine_message` (visibility gated only on copyable selection,
+`ChatActivity.java:11531`; handler `:4333`), `nkbtn_repeatascopy` (visibility
+`canSendMessage && (!noforwards || canSendMessagesAsCopy(...))` with no
+scheduled gate, `ChatActivity.java:21057`; handler `:48257` ->
+`doRepeatMessage` `:49107` -> `sendMessagesAsCopy`), and the scheduled
+`forward` overflow item (added at `ChatActivity.java:11521` under
+`getActionBarButtonForward()`, enabled via
+`canSendMessagesAsCopy(getSelectedMessages1())` at
+`ChatActivity.java:21151`). The lesson: guarding held rows action-by-action
+is the wrong shape, because the held row is admitted to the *selection* upstream
+of every action; the durable fix is to keep held rows out of the send-capable
+selection at one boundary, not to chase each new action.
+
+**First fixed with a shared send boundary (`naxExcludeHeldFromSend`,
+`ChatActivity.java:37203`), then superseded by an entrance guard.** The boundary
+filtered `isHeld` rows out of each send assembler, but that is exit-filtering and
+it kept losing: it missed the reply/quote payload channel (the message-preview
+repopulation that puts straight into `selectedMessagesIds`) and off-screen range
+selection, which calls `addToSelectedMessages` directly and bypasses the
+`getMessageType`/`processRowSelect` gate. The durable fix is to seal the
+*entrance*: a held row never enters the selection model at all. But "the
+selection model" is not one field -- it is every container that holds selected
+message ids, and there is more than one door into that room. The main
+multi-select model (`selectedMessagesIds`, plus the canCopy/canStar subsets that
+ride with it) has two insertion points -- `addToSelectedMessages`
+(`ChatActivity.java`) and the message-preview reply/quote repopulation -- and both
+now return/skip on `isHeld`; `canSelect` refuses held rows too so the drag/range
+route is clean before it ever reaches `addToSelectedMessages`. Separately, the
+message **preview** keeps its own selected-id set
+(`MessagePreviewParams.forwardMessages.selectedIds`) that `beforeMessageSend`
+reads directly through `getSelectedMessages` -- independent of
+`selectedMessagesIds` -- so that container is sealed at the single `showFieldPanel`
+forward funnel every `showFieldPanelForForward` caller passes through, filtering
+`messageObjectsToForward` through `naxExcludeHeldFromSend` before `updateForward`
+builds it. The reply/link preview sets (`replyMessage.selectedIds`,
+`linkMessage.selectedIds`) are single-target/webpage-derived and structurally
+cannot hold a held row, so they need no seal -- listed only so the container set
+is complete. With every entrance sealed, no selection-consuming route (forward,
+quote, reply, copy, combine, repeat-as-copy, draft publication, range select) can
+carry a held row, by construction rather than enumeration. The pre-existing
+per-action `!isHeld` guards (Send Now, reschedule, edit-schedule-time) and
+`naxExcludeHeldFromSend` at the assemblers are left as harmless defense-in-depth;
+they are now redundant with the entrance guard.
+
+Because a held row is no longer selectable, its only action -- **delete** -- comes
+from the single-row context menu's cancel path (`getMessageType` returns
+`MESSAGE_TYPE_INVALID` for the `id <= 0` out row, which populates the cancel item
+when `isSending()`), routed through `cancelSendingMessage` -> `deleteMessages` ->
+the fork `messagesDeleted` observer that removes the durable record. That delete
+path depends on `isSending()`, which depends on `send_state = SENDING` -- see the
+reload trap below.
+
+**Reload trap: `send_state` is client-only and not in the serialized blob.** A
+freshly held row carries `send_state = SENDING` (`GhostHoldController` sentinel
+build), but the render injection decodes the stored blob and `send_state` is not
+part of it, so a row shown on a later launch came back as `NONE`. `isSending()`
+was then false, `getMessageType` classified it invalid, and the single-row
+cancel/delete affordance was never populated -- so a held message could not be
+deleted after an app restart until flush. Stock restores `send_state` from its own
+column on the scheduled read (`MessagesStorage.java:9012-9014`); the render
+injection now does the equivalent on the decoded display object before building
+the `MessageObject`. Durable membership stays governed by `STATE_HELD`, never by
+`send_state`.
+
+*(Established 2026-09-10, `#ghost-hold`, during the ghost-hold-audit branch
+superseding PR #336. The shared send boundary landed 2026-09-10 on the
+ghost-hold-selection branch; superseded 2026-09-11 by the selection-model entrance
+guard and the reload `send_state` restore on the ghost-hold-selectability branch,
+`#ghost-hold`. Round-2 completion 2026-09-11, PR #347: the entrance guard was
+extended to the preview's separate `forwardMessages.selectedIds` container after a
+review found `beforeMessageSend` reads it directly, and the scheduled-count
+publication was corrected to thread the initiating session token through its
+callbacks rather than recapture `sessionEpoch` at publish time -- a callback that
+began under an older session could otherwise sample the new epoch and pass the
+recheck, posting a stale count into whoever now owns the reused account slot.)*
+
+## Ghost Hold: legacy migration can resurrect a message deleted mid-migration (accepted, #346)
+
+The one-time legacy migration (`GhostHoldController.migrateAccount`) collects
+pre-fork-store held rows on the **storage** queue, then inserts them into the fork
+store on the **fork** queue. The deletion path is the other half of the trap:
+`MessagesController.deleteMessages` posts `messagesDeleted`
+(`MessagesController.java:9545-9569`) immediately after enqueueing the stock
+delete, and the fork `messagesDeleted` observer removes the matching fork record
+on the fork queue. If a user deletes a legacy held row *during* migration, the
+observer can run before the migration insert -- it finds no fork row yet, so its
+removal no-ops and the delete signal is lost; the migration insert then re-adds
+the collected blob and the row comes back. "I deleted it and it came back" is a
+durable user-intent violation, but closing it race-free is storage-lifecycle work
+the safety bundle scopes out: a bare existence check at insert time cannot
+distinguish "not yet inserted" from "deleted" (both absent), the stock table is
+storage-queue-owned and unreadable from the fork queue, and REPLACE-on-insert
+resurrects even if the observer is ordered first. A correct fix needs a
+migration-scoped deletion **tombstone** that survives to be rechecked at insert
+time. Bounded and left documented rather than built: migration is one-time per
+account on first upgrade (idempotent, `accountInited`-guarded), the window is
+milliseconds on that first start, and the resurrected row stays a normal deletable
+held row -- no leak, loss, or crash. Belongs to issue #346.
+
+*(Established 2026-09-11, `#ghost-hold`, PR #347 round-2 review. Contested the
+prescribed fork-queue recheck as not race-free without a tombstone; documented as
+an accepted #346 limitation instead.)*
+
+## Ghost Hold: logout purge cannot run on a doubly-broken teardown
+
+`GhostHoldStore.deleteDatabaseFileOnQueue` (`GhostHoldStore.java:490` onward)
+invalidates a logged-out account's held rows by purging them in place, then
+unlinking the file, so a same-user relogin inherits nothing (`enforceOwner`
+only purges on an owner *mismatch*, and a same-user reopen is not one). That
+holds as long as *either* the in-place purge *or* the unlink succeeds. It does
+not on the doubly-rare case where the DB is both unopenable (the on-demand
+`db()` at `GhostHoldStore.java:502` throws, so the purge block is skipped) *and*
+undeletable (the unlink then fails on a WAL/SHM lock or permission). On that one
+path the owner stamp and rows survive on disk and a same-user relogin can reload
+them. Closing it properly needs an out-of-band tombstone that forces a purge on
+the next open regardless of owner -- storage-redesign territory the safety
+bundle scopes out, and doubly rare on top. Accepted and documented rather than
+fixed. (Separately, the held-count refresh in
+`GhostModeActivity.refreshHeldCount` (`settings/GhostModeActivity.java:120`) is
+an async `countHeld` callback fired from `onResume`; a stale count can flash for
+one frame after a rapid resume -- below the severity floor, recorded, left as
+is.)
+
+*(Established 2026-09-10, `#ghost-hold`, ghost-hold-audit branch superseding
+PR #336.)*
+
 ## `squash_merge_commit_message: COMMIT_MESSAGES` plus an un-overridden squash message is what keeps `#slug` tags alive on `dev` — and no CI check guards either
 
 The repo lands PRs by **squash merge** (`allow_merge_commit: false`, `allow_squash_merge: true`, 2026-09-10). A squash writes one new commit onto `dev` and discards the PR branch's commits — the very commits `commit-tag.yml` validated. So whether the `#<slug>` tag reaches `dev` at all rests on **two** things, not one: the `squash_merge_commit_message` setting **and** the squash message being left at its default rather than overridden at merge time. With `COMMIT_MESSAGES` (the current, correct value) GitHub builds the *default* squash body from every branch commit's message — **including each commit's subject line, rendered as a `* <subject>` bullet** — so a tag that lives only in a commit *subject* still lands in the squash body and survives (verified 2026-09-10). But that is only the default: flipping the setting to `PR_BODY` or `BLANK`, **or** overriding the body at merge time (the merge UI's editable message, or `gh pr merge --body`/`--subject` — see the merge-command note in `.claude/skills/nagramx-branch-flow/SKILL.md`), can drop the tags, so a later merge **can** land a tag-less commit on `dev`. **No CI check catches this** — `commit-tag.yml` runs against the PR branch, which was tagged; it never sees the squash GitHub writes afterward. The failure is silent and permanent in the `dev` log.
@@ -1062,3 +1437,60 @@ Two consequences worth stating. First, `commit-tag.yml` passing on a PR is **not
 The branch that produced the squash is auto-deleted (`delete_branch_on_merge: true`), but its full pre-squash range is **not** lost: `refs/pull/<N>/head` is permanent and survives the deletion. Verified — #335's branch `2026-09-10-ghost-type-warning` is gone from `origin`, yet `git fetch origin refs/pull/335/head` still returns tip `6465b2fda8` (12 commits, all tagged). That ref is the recovery path for a range you need after the branch is gone. Verified with `git show -s --format='%B' becfe09f63` / `599baff6ee`, the `refs/pull/334/head` and `refs/pull/335/head` commit counts (10 and 12), and the `refs/pull/335/head` fetch on `origin` (2026-09-10).
 
 *(Established 2026-09-10, #docs.)*
+
+## Stock deletion notifications carry no producer-session identity
+
+A fork observer that keys off `sessionEpoch` (or the store generation) at the
+moment a stock `messagesDeleted` notification is *delivered* is pinning the
+wrong session whenever that delivery is delayed across a logout. Stock's
+deletion notification carries only the deleted ids, no token identifying which
+session produced the delete, so there is nothing at delivery time that can tell
+"this delete belongs to the user who is now logged in" apart from "this delete
+belongs to the user who logged out while it was in flight."
+
+Where it bites in this fork: `GhostHoldObserver.didReceivedNotification`
+handles `messagesDeleted` (`GhostHoldController.java:1937`) and captures its
+session at delivery -- `final int deleteSession = sessionEpoch.get(account)`
+(`GhostHoldController.java:1963`) -- then hops to the fork queue via
+`store.runOwned(...)`, which pins the store generation at post time
+(`:1965`, `GhostHoldStore.java:113-137`). `appDidLogout` bumps `sessionEpoch`
+synchronously (`GhostHoldController.java:1918-1927`) and enqueues the store
+teardown that advances the generation. Both guards therefore read *delivery*-
+time state. A stock `messagesDeleted` for a negative (local) id that is posted
+before logout but delivered after a full logout + teardown + relogin (stock can
+defer a post to the UI-thread handler) is delivered post-relogin, so both
+guards sample the *new* session and pass. `UserConfig.clearConfig()` resets
+`lastSendMessageId`, so the reused slot mints the same negative ids, and
+`selectOnQueue(mid)` (`GhostHoldStore.java:441`) can match a genuine held row
+of the new user -- which `deleteManyOnQueue` (`GhostHoldController.java:1978`)
+then deletes, and `postScheduledCount(account, d, deleteSession)` (`:1980`)
+publishes against.
+
+Consequence: the new session's held row is deleted. This is the one member of
+the logout/relogin teardown-race family that fails **unsafe** -- it destroys a
+row rather than the family's usual safe direction of leaving rows held (nothing
+sent, nothing leaked). Bound: a very narrow window (a deletion post delayed
+across an entire logout/relogin), and the loss is a local held draft only --
+never a message that was sent, and nothing leaks to the server or to the wrong
+account's transport.
+
+Why no local fix exists -- three refutations, so this is not re-litigated:
+1. A **delivery-time recheck** of `sessionEpoch` reads only the new session
+   (session B); it is "too late" because delivery already happened under B, so
+   the recheck passes.
+2. **Recording the owning user on the row and comparing** does not discriminate
+   either: the row `selectOnQueue` finds genuinely belongs to session B (the new
+   user reused the same negative id), so an owner check confirms rather than
+   rejects the delete.
+3. A **fork-owned monotonic id space** to avoid the collision would risk
+   colliding with stock's own negative ids for real unsent messages.
+   The only sound fix is a producer-time session/generation stamp carried from
+   stock `MessagesController` / `MessagesStorage` into the notification -- a
+   cross-file storage-lifecycle change, i.e. the same observable "store ready /
+   producer token" primitive #346 already scopes out. Not patchable at the
+   observer.
+
+Filed as #349, scoped alongside the #346 "store ready" work; part of the
+logout/session-teardown-race family with #343 and #346.
+
+*(Established 2026-09-11, #ghost-hold.)*

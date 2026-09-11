@@ -191,6 +191,7 @@ public class NekoConfig {
     public static ConfigItem markReadAfterSend = addConfig("markReadAfterSend", configTypeBool, true);
     public static ConfigItem showGhostInDrawer = addConfig("showGhostInDrawer", configTypeBool, false);
     public static ConfigItem showGhostModeStatus = addConfig("showGhostModeStatus", configTypeBool, false);
+    public static ConfigItem holdMessagesWhileGhost = addConfig("holdMessagesWhileGhost", configTypeBool, false);
 
     // --- Locked Status ---
     public static ConfigItem sendReadMessagePacketsLocked = addConfig("sendReadMessagePacketsLocked", configTypeBool, false);
@@ -329,14 +330,21 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
-        // NagramX: this method is one of several ways the derived Ghost
-        // predicate can change, so it reports the change rather than claiming a
-        // transition -- the helper compares against what it last saw. See that
-        // class and docs/codemap/dead-ends.md for why the observation lives
-        // there rather than as a field on isGhostModeActive() itself: that
-        // method must stay a pure, side-effect-free predicate, since Ghost
-        // Hold's own PR #336 also calls it from multiple threads and relies on
-        // that.
+        // NagramX: two independent observers of the same derived Ghost-state
+        // edge, deliberately not merged -- their consumers are disjoint and
+        // issue #339 tracks folding them into one edge detector.
+        //
+        // GhostHoldController drains its held-message queue on the ghost-off
+        // edge (Ghost Hold shipped in PR #347); on the ghost-on edge it only
+        // snapshots the toggle state, so it never touches the reminder's state.
+        //
+        // GhostTypingReminderHelper detects its own transition by comparing
+        // against what it last saw, since setGhostMode is only one of several
+        // ways the predicate can change. That observation lives in the helper,
+        // not as a field on isGhostModeActive(), because that predicate must
+        // stay pure and side-effect-free -- Ghost Hold (PR #347) also calls it
+        // from multiple threads and relies on that.
+        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
         GhostTypingReminderHelper.onGhostSignalsChanged();
     }
 

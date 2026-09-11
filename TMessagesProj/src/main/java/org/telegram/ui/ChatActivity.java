@@ -1986,6 +1986,12 @@ public class ChatActivity extends BaseFragment implements
                 int i = position - chatAdapter.messagesStartRow;
                 if (i >= 0 && i < messages.size()) {
                     MessageObject messageObject = messages.get(i);
+                    // NagramX: #ghost-hold. Drag/range select decides its span from here, so
+                    // refusing held rows keeps them out of the range before addToSelectedMessages
+                    // is ever reached -- the range route stays clean visually, not just in-model.
+                    if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                        return false;
+                    }
                     if (messageObject.contentType == 0) {
                         if (!unselect && alreadySelectedMessagesIds.get(messageObject.getId(), null) == null) {
                             return true;
@@ -3972,8 +3978,30 @@ public class ChatActivity extends BaseFragment implements
             return null;
         }
 
+        // NagramX: #ghost-hold. Quote and cite are the two text-selection affordances
+        // that carry the selected row's content into a later send -- quote arms a reply
+        // quote, cite drops the text into the composer -- and that later media/captioned
+        // send is never routed through maybeHold (non-text sends are deliberately never
+        // held), so it would transmit a held message's content while Ghost is on. Text
+        // selection has its own path that never reaches canSelect (the range-select gate
+        // that already refuses held rows), so refuse held rows here too. Refused at the
+        // affordance gate, where the action is offered, not at each send assembler: the
+        // action never appears, so onQuoteClick/onCiteClick can't fire for a held row,
+        // and any future text-selection affordance that carries content into a send
+        // inherits the rule by consulting this one predicate. Copy is deliberately not
+        // refused -- it reaches only the clipboard, and a user who can read a held
+        // message can already retype it; the threat is the app sending held content the
+        // user did not realise it carried, which the clipboard is not.
+        private boolean naxSelectedHeld() {
+            return selectedView != null
+                && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedView.getMessageObject());
+        }
+
         @Override
         protected boolean canShowQuote() {
+            if (naxSelectedHeld()) {
+                return false;
+            }
             if (chatActivity != null && chatActivity.getDialogId() == UserObject.VERIFY) {
                 return false;
             }
@@ -4057,6 +4085,9 @@ public class ChatActivity extends BaseFragment implements
 
         @Override
         protected boolean canShowCite() {
+            if (naxSelectedHeld()) {
+                return false;
+            }
             return chatActivity != null
                 && chatActivity.chatActivityEnterView != null
                 && chatActivity.chatActivityEnterView.getVisibility() == View.VISIBLE
@@ -4340,9 +4371,19 @@ public class ChatActivity extends BaseFragment implements
                         } else {
                             Collections.sort(ids, Collections.reverseOrder());
                         }
+                        // NagramX: assemble this side's copyable rows in dispatch order, then run them
+                        // through the shared send boundary so a Ghost-held row is never folded into the
+                        // new combined send.
+                        ArrayList<MessageObject> sideMessages = new ArrayList<>();
                         for (int b = 0; b < ids.size(); b++) {
-                            Integer messageId = ids.get(b);
-                            MessageObject messageObject = selectedMessagesCanCopyIds[a].get(messageId);
+                            MessageObject messageObject = selectedMessagesCanCopyIds[a].get(ids.get(b));
+                            if (messageObject != null) {
+                                sideMessages.add(messageObject);
+                            }
+                        }
+                        sideMessages = naxExcludeHeldFromSend(sideMessages);
+                        for (int b = 0; b < sideMessages.size(); b++) {
+                            MessageObject messageObject = sideMessages.get(b);
                             if (b == 0 && NaConfig.INSTANCE.getCombineMessage().Int() == 0) {
                                 replyTo = messageObject.replyMessageObject;
                             }
@@ -4358,7 +4399,7 @@ public class ChatActivity extends BaseFragment implements
                             }
                             str.append(messageObject.messageText);
                             if (messageObject.getSenderId() == UserConfig.getInstance(currentAccount).getClientUserId()) {
-                                toDeleteMessagesIds.add(messageId);
+                                toDeleteMessagesIds.add(messageObject.getId());
                             }
                         }
                     }
@@ -12328,9 +12369,17 @@ public class ChatActivity extends BaseFragment implements
                     noForwardCaption = messagePreviewParams.hideCaption;
                     int hasPoll = 0;
                     boolean hasInvoice = false;
+                    int forwardCount = 0;
                     if (messagePreviewParams.forwardMessages != null) {
                         for (int a = 0, N = messagePreviewParams.forwardMessages.messages.size(); a < N; a++) {
                             MessageObject messageObject = messagePreviewParams.forwardMessages.messages.get(a);
+                            // NagramX: #ghost-hold. The second put into the selection model, this
+                            // one the reply/quote payload channel. Keep held rows out of it too so
+                            // the entrance stays sealed on every route, not just direct selection.
+                            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                                continue;
+                            }
+                            forwardCount++;
                             if (messageObject.isTodo()) {
                                 hasPoll = 3;
                             } else if (messageObject.isPoll()) {
@@ -12357,7 +12406,10 @@ public class ChatActivity extends BaseFragment implements
                     }
                     args.putInt("hasPoll", hasPoll);
                     args.putBoolean("hasInvoice", hasInvoice);
-                    args.putInt("messagesCount", messagePreviewParams.forwardMessages == null ? 0 : messagePreviewParams.forwardMessages.messages.size());
+                    // NagramX: #ghost-hold. Count only the rows that survived the held-row guard
+                    // above, so slow-mode and paid-message validation sees the set that will
+                    // actually be forwarded rather than the pre-filter size.
+                    args.putInt("messagesCount", forwardCount);
                     args.putBoolean("canSelectTopics", true);
                     final DialogsActivity fragment = new DialogsActivity(args);
                     fragment.setDelegate(ChatActivity.this);
@@ -13671,6 +13723,16 @@ public class ChatActivity extends BaseFragment implements
 
     public void openForward(boolean fromActionBar) {
         boolean hasSelectedAyuDeletedMessage = hasSelectedAyuDeletedMessage();
+        if (naxBuildForwardSpreadSelection().isEmpty()
+                && (forwardingMessage != null || (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0)) {
+            // NagramX: nothing left to forward once the send boundary excludes held rows -- either an
+            // all-held multi-selection, or a single held row armed by the context-menu forward. Clear the
+            // one-shot forward source and the selection rather than open the picker onto an empty forward.
+            forwardingMessage = null;
+            forwardingMessageGroup = null;
+            clearSelectionMode();
+            return;
+        }
         if (isPeerNoForwards() || hasSelectedNoforwardsMessage() || hasSelectedAyuDeletedMessage) {
             // We should update text if user changed locale without re-opening chat activity
             String str;
@@ -13747,7 +13809,7 @@ public class ChatActivity extends BaseFragment implements
         Bundle args = new Bundle();
         args.putBoolean("onlySelect", true);
         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-        args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? selectedMessagesIds[0].size() + selectedMessagesIds[1].size() : canForwardMessagesCount);
+        args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? naxBuildForwardSpreadSelection().size() : canForwardMessagesCount);
         args.putInt("hasPoll", hasPoll);
         args.putBoolean("hasInvoice", hasInvoice);
         args.putBoolean("canSelectTopics", true);
@@ -16792,7 +16854,16 @@ public class ChatActivity extends BaseFragment implements
                 }
                 updateBottomOverlay();
             } else if (messageObjectsToForward != null) {
-                if (messageObjectsToForward.isEmpty()) {
+                // NagramX: #ghost-hold. Seal the forward-preview container at its entrance. The preview
+                // keeps its own selected-id set (MessagePreviewParams.forwardMessages.selectedIds) that
+                // beforeMessageSend reads directly via getSelectedMessages, separate from
+                // selectedMessagesIds -- so keeping held rows out of the main selection model is not
+                // enough, the row must not reach this set either. Every showFieldPanelForForward caller
+                // funnels the forward list through here, so filtering once at this door keeps held
+                // content out of the preview payload by construction rather than at each caller. Reuses
+                // the shared send boundary so the rule stays in one place.
+                messageObjectsToForward = naxExcludeHeldFromSend(messageObjectsToForward);
+                if (messageObjectsToForward == null || messageObjectsToForward.isEmpty()) {
                     return;
                 }
                 fieldPanelShown = 3;
@@ -20833,6 +20904,16 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void addToSelectedMessages(MessageObject messageObject, boolean outside, boolean last) {
+        // NagramX: #ghost-hold. The entrance to the selection model. A held row must
+        // never enter it: selectedMessagesIds is what every multi-select action --
+        // forward, quote, reply, copy, draft publication, off-screen range select --
+        // reads from, so guarding the two put sites (here and the message-preview
+        // repopulation) keeps held content out of all of them by construction instead
+        // of filtering each consumer one at a time. A held row's only action is delete,
+        // which runs through the single-row cancel menu, not the selection model.
+        if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+            return;
+        }
         int prevCantForwardCount = cantForwardMessagesCount;
         if (messageObject != null) {
             if (threadMessageObjects != null && threadMessageObjects.contains(messageObject) && !isThreadChat()) {
@@ -37135,10 +37216,36 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX: #ghost-hold. A Ghost-held row keeps a negative local id the server has never seen and
+    // must never be dispatched while it is held. The primary guard now sits at the entrance: held rows
+    // never enter the selection model at all (addToSelectedMessages, the reply/quote preview loop and
+    // canSelect each refuse them), and their only action is delete through the single-row cancel menu,
+    // which does not go through the selection model. This helper is the second line of defence on the
+    // send-assembly paths: combine, repeat-as-copy and scheduled forward each route their send list
+    // through here, so if a held row ever slipped past an entrance the dispatch still drops it, and a
+    // similar action added later inherits the rule instead of re-deriving an isHeld check. Off the
+    // Scheduled list there are no held rows, so this is inert.
+    private ArrayList<MessageObject> naxExcludeHeldFromSend(ArrayList<MessageObject> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        ArrayList<MessageObject> out = new ArrayList<>(messages.size());
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject m = messages.get(i);
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) {
+                continue;
+            }
+            out.add(m);
+        }
+        return out;
+    }
+
     // NagramX: #repost-spread. The exact set a forward dispatch will act on, in dispatch order: the
     // field-panel forward (single message or its album) when one is armed, otherwise the multi-select
     // in id order across both selection maps. didSelectDialogs and the spread gate both build the
     // selection from here, so the gate can never see a different count than the dispatch forwards.
+    // Held rows are dropped through the shared send boundary so a scheduled forward-as-copy never
+    // pushes held content to the server.
     private ArrayList<MessageObject> naxBuildForwardSpreadSelection() {
         ArrayList<MessageObject> fmessages = new ArrayList<>();
         if (forwardingMessage != null) {
@@ -37163,7 +37270,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
-        return fmessages;
+        return naxExcludeHeldFromSend(fmessages);
     }
 
     // NagramX: #repost-spread. The forward picker asks for this at gate time to decide whether to offer
@@ -37189,6 +37296,19 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
+        if (fmessages.isEmpty()
+                && (forwardingMessage != null || selectedMessagesIds[0].size() + selectedMessagesIds[1].size() > 0)) {
+            // NagramX: the send boundary dropped every row (an all-held selection, or a single held row
+            // armed by the context-menu forward), so there is nothing to forward. Guarded on a forward
+            // selection actually having existed -- the quote-forward flow carries its payload in
+            // messagePreviewParams / replyingMessageObject with no forward rows, and must fall through to
+            // its own dispatch below rather than be aborted here. Clear the one-shot forward source and
+            // the selection rather than dispatch an empty forward and strand the user.
+            forwardingMessage = null;
+            forwardingMessageGroup = null;
+            clearSelectionMode();
+            return false;
+        }
         for (int j = 0; j < dids.size(); j++) {
             TLRPC.Chat chat = getMessagesController().getChat(-dids.get(j).dialogId);
             if (chat != null) {
@@ -37662,6 +37782,10 @@ public class ChatActivity extends BaseFragment implements
             int id = m.getId();
             if (selectedMessagesIds[0].indexOfKey(id) < 0 && selectedMessagesIds[1].indexOfKey(id) < 0)
                 continue;
+            // NagramX: a held Ghost Hold row has a negative local id the server has no
+            // record of, so never put it in a sendScheduledMessages request -- it stays
+            // held and drains only when Ghost Mode turns off.
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0 && gid == lastGroupId) continue;
             lastGroupId = gid;
@@ -37673,7 +37797,14 @@ public class ChatActivity extends BaseFragment implements
                 req.id.add(id);
             }
         }
-        if (req.id.isEmpty()) return;
+        if (req.id.isEmpty()) {
+            // NagramX: an all-held selection produces no server ids, so there is nothing
+            // to send now. Still clear the selection -- the scheduled action bar offered
+            // Send Now for any non-empty selection, and returning without clearing would
+            // strand the user in selection mode after they confirmed the dialog.
+            clearSelectionMode();
+            return;
+        }
 
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> handleSendScheduledNowResponse(req, response, error));
         clearSelectionMode();
@@ -37696,7 +37827,12 @@ public class ChatActivity extends BaseFragment implements
         }
 
         final ArrayList<MessageObject> preview = resolveRescheduleItems(selectedIds);
-        if (preview.isEmpty()) return;
+        if (preview.isEmpty()) {
+            // NagramX: a selection of only held rows resolves to nothing reschedulable.
+            // Clear selection rather than strand the user in it after they tapped Reschedule.
+            clearSelectionMode();
+            return;
+        }
         final int count = preview.size();
         final long currentDate = preview.get(0).messageOwner.date;
         // NagramX: readiness for the shared trigger chip and the overwrite heads-up count are decided once,
@@ -37769,6 +37905,12 @@ public class ChatActivity extends BaseFragment implements
         for (int i = 0; i < ids.size(); i++) {
             MessageObject m = messagesDict[0].get(ids.get(i));
             if (m == null) continue;
+            // NagramX: a held Ghost Hold row has a negative local id the server has no
+            // record of, so it can never be rescheduled server-side. Drop it here, the
+            // one chokepoint both the preview and the apply-time spread resolve through,
+            // so a co-selected held row never occupies a spread slot and every real
+            // message lands exactly where it would with the held row unselected.
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0) {
                 if (!seenGroups.add(gid)) continue;
@@ -48960,10 +49102,17 @@ public class ChatActivity extends BaseFragment implements
         }
         final ArrayList<MessageObject> messages = new ArrayList<>();
         if (hasSelectedMessages()) {
-            messages.addAll(getSelectedMessages1());
+            messages.addAll(naxExcludeHeldFromSend(getSelectedMessages1()));
             selectedObject = null;
-        } else if (selectedObject != null) {
+        } else if (selectedObject != null && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
             messages.add(selectedObject);
+        }
+        if (messages.isEmpty()) {
+            // NagramX: the shared send boundary excluded every candidate -- an all-held multi-selection,
+            // or a single held row from the context menu. Nothing to re-send; clear rather than run the
+            // copy dispatch on an empty list and strand the user in selection.
+            clearSelectionMode();
+            return;
         }
         if (!NekoConfig.repeatConfirm.Bool()) {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);
@@ -50760,7 +50909,7 @@ public class ChatActivity extends BaseFragment implements
             }
         } else {
             if (currentEncryptedChat == null) {
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
                     items.add(LocaleController.getString(R.string.MessageScheduleSend));
                     options.add(OPTION_SEND_NOW);
                     icons.add(R.drawable.msg_send);
@@ -51315,7 +51464,11 @@ public class ChatActivity extends BaseFragment implements
                     options.add(OPTION_SUGGESTION_ADD_OFFER);
                     icons.add(R.drawable.menu_edit_price);
                 }
-                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat)) {
+                if (!selectedObject.isPaidSuggestedPostProtected() && chatMode == MODE_SCHEDULED && selectedObject.canEditMessageScheduleTime(currentChat) && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
+                    // NagramX: a held Ghost Hold row has a negative local id the server has never seen.
+                    // canEditMessageScheduleTime (unlike canEditMessage) does not reject id < 0, so without
+                    // this guard the row would offer "Edit schedule time" and fire TL_messages_editMessage
+                    // against that id -- a server request while Ghost is on, the exact exposure we prevent.
                     items.add(LocaleController.getString(R.string.MessageScheduleEditTime));
                     options.add(OPTION_EDIT_SCHEDULE_TIME);
                     icons.add(R.drawable.msg_calendar2);

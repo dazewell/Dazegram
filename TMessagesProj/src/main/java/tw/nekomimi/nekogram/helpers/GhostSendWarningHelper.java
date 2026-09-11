@@ -304,16 +304,6 @@ public class GhostSendWarningHelper {
         });
     }
 
-    // NagramX: the result of tryShowBulletin. ATTEMPTED means a bulletin was
-    // constructed and .show() was called against a non-empty instance -- it does
-    // NOT mean the user necessarily saw it (see tryShowBulletin below for why that
-    // can't be guaranteed here). Every other value names a specific reason the
-    // attempt itself didn't happen. Suppression by an earlier typing reminder is
-    // decided before this runs and so has no value here.
-    private enum BulletinOutcome {
-        ATTEMPTED, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
-    }
-
     // NagramX: single place answering "is there a plausible host to attempt this
     // on, for this account", collapsing what several review rounds each added as
     // one more clause directly in the runnable body (wrong account, bottom sheet,
@@ -333,15 +323,15 @@ public class GhostSendWarningHelper {
     // -- so this stays a best-effort check, and a bulletin missed this way simply
     // isn't shown; with no per-chat state to consume, the next real send in that
     // chat warns again.
-    private static BulletinOutcome tryShowBulletin(BaseFragment fragment, int account) {
+    private static void tryShowBulletin(BaseFragment fragment, int account) {
         if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
-            return BulletinOutcome.NO_HOST;
+            return;
         }
         if (fragment.isPaused()) {
-            return BulletinOutcome.PAUSED;
+            return;
         }
         if (fragment.getCurrentAccount() != account) {
-            return BulletinOutcome.WRONG_ACCOUNT;
+            return;
         }
 
         // NagramX: same longer duration as the typing reminder -- createErrorBulletin
@@ -352,10 +342,9 @@ public class GhostSendWarningHelper {
                 .createErrorBulletin(getString(R.string.GhostSendExposedWarning))
                 .setDuration(Bulletin.DURATION_PROLONG);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
-            return BulletinOutcome.EMPTY_CONTAINER;
+            return;
         }
         bulletin.show();
-        return BulletinOutcome.ATTEMPTED;
     }
 
     // NagramX: mirrors BulletinFactory.global()'s bottom-sheet handling (BulletinFactory.java:87-88)

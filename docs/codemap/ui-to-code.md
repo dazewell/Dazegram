@@ -525,6 +525,42 @@ can't, for the reasons above.
 
 *(Established 2026-09-06, `#toggle-formatting`.)*
 
+## A local negative-id row in scheduled_messages_v2 renders in the Scheduled list for free
+
+Established 2026-09-09 (#ghost-hold). A message written to
+`scheduled_messages_v2` with a negative `mid` and `send_state = 1` loads and
+renders in a chat's Scheduled list with no extra plumbing. Ghost Hold does NOT
+use this as its store: held rows live in the fork-owned `ghosthold_<account>.db`
+and are injected as display-only objects at
+`MessagesController.processLoadedMessages`. The original pre-rebuild design did
+persist held rows as negative-id scheduled rows; that path was discarded as
+unsafe (it mixed fork state into shared upstream tables), so don't reintroduce
+it. This upstream behaviour still matters because it is why a leftover legacy row,
+or the stock twin a send-now handoff writes, renders without extra plumbing.
+The chain: `MessagesStorage.getMessagesInternal`'s scheduled branch selects
+every row for the dialog with no `send_state`/id filter and the id scrub is
+gated `message.id > 0` (`MessagesStorage.java:9008`, `:9015`), so a negative-id
+row survives load; `MessagesController.processLoadedMessages` skips `id < 0`
+when hashing `getScheduledHistory` (`MessagesController.java:12229-12231`), so a
+held row can't corrupt scheduled-cache validation; `ChatActivity`'s
+`messagesDidLoad` clears the list only for `MODE_DEFAULT`/`MODE_SUGGESTIONS`
+(`ChatActivity.java:22475`), so a server scheduled refresh merges rather than
+wipes; and server sync deletes only `mid > 0` (`MessagesStorage.java:16269`), so
+the local row is not swept. The in-bubble "held" caption is the one thing not
+free — it's a fork branch in `ChatMessageCell`'s time-string block
+(`ChatMessageCell.java:18692`+).
+
+## isGhostModeActive() is a derived predicate, and the five toggles are flipped individually
+
+Established 2026-09-09 (#ghost-hold). `NekoConfig.isGhostModeActive()` is not a
+stored flag: it returns true when any of five independent `ConfigItem` toggles
+is on and unlocked (`NekoConfig.java:305-319`). `GhostModeActivity.onItemClick`
+flips each one directly (`sendReadMessagePackets` etc.) via `toggleConfigBool()`
+without ever calling `toggleGhostMode()` (`GhostModeActivity.java` toggle
+handlers). So anything that needs to react to Ghost turning off must watch the
+derived true→false edge, not hook `toggleGhostMode()` — a user unchecking the
+last active toggle turns Ghost off without that method ever running.
+
 ## ChatActivityEnterView is shared by five surfaces; only ChatActivity wires a real fragment and dialogId
 
 `ChatActivityEnterView` is instantiated from five call sites, but only one of

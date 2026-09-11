@@ -496,6 +496,15 @@ Tempting fix for issue #299: let the Icon spacing thumb sit at the real saved va
 
 *(Established 2026-09-06, #composer-spacing.)*
 
+## "The fork has no reusable pill/segmented tab control"
+
+Disproven 2026-09-09 (#ghost-hold). A prior recon concluded no reusable
+segmented/pill control existed and that one would have to be hand-rolled.
+`org/telegram/ui/Components/FilledTabsView.java` is exactly that: a ~134-line
+pill/segmented control with `setTabs(CharSequence...)` (`FilledTabsView.java:32`)
+and an `onTabSelected` hook (`:54`), already used at `PeerColorActivity.java:1591`
+and `PinnedReactionsActivity.java:192`. Reuse it rather than building a new one.
+
 ## Per-chat "already warned" state is not categorically forbidden for Ghost Mode features
 
 The send-time Ghost warning (`#ghost-send-warning`) used to track "warned this
@@ -622,8 +631,8 @@ correcting a different mistake in the last:
    `GhostSendWarningHelper` on `Utilities.stageQueue`, not just the UI thread,
    so the new read-modify-write needed a lock to be safe), and then, more
    fundamentally, a contract break underneath that same fix -- `NekoConfig`'s
-   `isGhostModeActive()` is a shared predicate the unmerged Ghost Hold PR
-   (`#336`) also calls, from several places, on the assumption that it is
+   `isGhostModeActive()` is a shared predicate the Ghost Hold PR
+   (`#347`) also calls, from several places, on the assumption that it is
    pure and side-effect-free and therefore safe to call from anywhere,
    including background threads. Silently turning it into stateful,
    synchronized read-modify-write to serve only this feature's own reset
@@ -756,16 +765,46 @@ re-costed at the new severity, not inherited along with the state.**
 
 Two constraints recorded in earlier rounds were overridden to do it, both
 deliberately. Instrumenting `GhostModeActivity` was avoided in round 1 to stay
-textually conflict-free with the unmerged `#ghost-hold` work that touches the
-same file; correctness won, and the cost is two added lines in that file to
-resolve at merge. And [issue #339](https://github.com/dazewell/Dazegram/issues/339)
-proposed waiting for `#336` to land and then reusing its
+textually conflict-free with the then-unmerged `#ghost-hold` work that touches the
+same file; correctness won, at the cost of a small merge resolution in that file
+when Ghost Hold landed. And [issue #339](https://github.com/dazewell/Dazegram/issues/339)
+proposed waiting for Ghost Hold (which merged as `#347`) and then reusing its
 `GhostHoldController#onGhostStateMaybeChanged`. That is the same
 derived-edge-detector shape arrived at here independently, which is good
-evidence it is the right one -- but it could not be waited for, so there are
-now two detectors for one predicate. **When Ghost Hold lands, collapse them
-into one shared detector rather than leaving both.** Reviving a stateful
-`isGhostModeActive()` remains ruled out for the reason in revision 2.
+evidence it is the right one -- but it could not be waited for. Ghost Hold has
+now merged, and the two detectors deliberately coexist rather than being
+collapsed: `NekoConfig#setGhostMode` (`NekoConfig.java:347-348`) and
+`GhostModeActivity#updateGhostViews` (`GhostModeActivity.java:147-153`) each call
+both `GhostHoldController.onGhostStateMaybeChanged()` and
+`GhostTypingReminderHelper.onGhostSignalsChanged()` off the same predicate edge,
+with disjoint consumers. Collapsing them into one shared detector is deferred to
+#339: unifying them would restructure Ghost Hold's freshly-shipped,
+device-verified flush trigger for no behaviour change, which reliability-first
+does not justify. Reviving a stateful `isGhostModeActive()` remains ruled out
+for the reason in revision 2.
 
 *(Established 2026-09-10, #ghost-type-warning. Revision 4 and the
-severity-re-costing lesson added 2026-09-10, same slug.)*
+severity-re-costing lesson added 2026-09-10, same slug. Coexistence of the two
+edge detectors confirmed at merge 2026-09-11, #ghost-type-warning; collapse
+tracked by #339.)*
+
+## "GhostHoldStore.encode() truncates the attach path that decode() reads back"
+
+Disproven by reading the serialization path on 2026-09-11. The automated
+reviewer flagged `GhostHoldStore.decode()` calling `message.readAttachPath(nbb,
+selfId)` (`GhostHoldStore.java:610`) while `encode()`
+(`GhostHoldStore.java:625-640`) "does not append an attach-path payload despite
+the docstring saying it does," suspecting a decode misparse. It does append it,
+implicitly. `encode()` allocates `message.getObjectSize()` bytes and calls
+`message.serializeToStream(data)` -- byte-for-byte the stock store pattern at
+`MessagesStorage.java:11431-11432`. Every `TL_message*.serializeToStream(...)`
+ends with `writeAttachPath(stream)` (e.g. `TLRPC.java:57927`), and
+`getObjectSize()` computes its size by running that same `serializeToStream`
+into a counting buffer (`TLObject.java:86-91`), so the attach path is inside
+the blob and the allocation already accounts for it. `decode()`'s
+`readAttachPath` is additionally guarded by `if (stream.remaining() > 0)`
+(`TLRPC.java:57661`), so even a blob with no trailing bytes is a safe no-op
+rather than a misparse. The docstring is accurate; there is no asymmetry versus
+stock. No code change was made.
+
+*(Established 2026-09-11, #ghost-hold.)*
