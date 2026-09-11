@@ -637,6 +637,18 @@ public final class GhostHoldController {
             }
             postScheduledCount(account, peer);
             AndroidUtilities.runOnUIThread(() -> {
+                // NagramX (item 2, success side): this hop publishes stableMsg and the
+                // divert bulletin through the account's MessagesController. If logout
+                // began while it was queued, the slot may already belong to the next
+                // user, so rendering here would surface the previous session's held
+                // message in the new account's UI. sessionEpoch moved synchronously the
+                // instant logout began and this runnable is on the UI thread with it, so
+                // the two are strictly ordered with no race -- skip the UI publish if the
+                // epoch moved. The durable row is handled by the ownership gate/teardown
+                // regardless; this guards only what the user sees.
+                if (sessionEpoch.get(account) != holdSession) {
+                    return;
+                }
                 MessageObject mo = new MessageObject(account, stableMsg, true, true);
                 mo.scheduled = true;
                 ArrayList<MessageObject> objArr = new ArrayList<>();

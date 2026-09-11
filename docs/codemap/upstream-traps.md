@@ -1113,7 +1113,7 @@ Cost if missed: any redrive/retry that reconstructs a send via
 stored message" is half right. Ghost Hold's flush hit exactly this: the held
 message stored its entities on the blob but flushed as plain text until the
 re-drive explicitly restored `p.entities = m.entities`
-(`GhostHoldController.java`, the `dispatchFreshItem` `of(mo)` block, 2026-09-10,
-#ghost-hold). The reply header needed no such restore, which is what makes the
+(`GhostHoldController.java:1065-1073`, the `dispatchFreshItem` `of(mo)` block,
+2026-09-10, #ghost-hold). The reply header needed no such restore, which is what makes the
 asymmetry a trap -- testing a reply-with-formatting would show the reply intact
 and the formatting gone, pointing at the wrong half.
