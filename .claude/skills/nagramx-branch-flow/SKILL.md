@@ -51,8 +51,9 @@ though the original branch is long gone.
   genuinely be erased, e.g. a leaked secret or a bad blob), and then only with
   `--force-with-lease`.
 - the throwaway `-pr` copy → rebased and squashed outright at upstream-proposal
-  time. That's a separate branch made for that purpose, so it doesn't conflict
-  with the append-only rule above.
+  time, cut from `refs/pull/<N>/head` (the merged PR's permanent ref, since the
+  original branch is auto-deleted at merge). That's a separate branch made for
+  that purpose, so it doesn't conflict with the append-only rule above.
 
 **Worktree or in-place?** A change you expect to iterate on (back-and-forth:
 multiple review rounds, on-device testing, fixes trickling in over days) gets its
@@ -82,18 +83,25 @@ re-merge loop, and the "keep every topic forever for a clean `base..topic`
 range" rule — is gone. Discoverability moved from *a branch per feature* to *a
 tag per commit*, which survives branch deletion.
 
-## The one tradeoff
+## The tradeoff that used to exist
 
 The old model tried to give *every* feature a permanent, upstream-proposable
-`base..topic` range. You don't keep branches, so you can't have that for free:
+`base..topic` range, and an earlier version of this section told you to keep an
+upstream candidate's branch alive to preserve it. That instruction is now both
+impossible and unnecessary: the repo auto-deletes every branch at merge
+(`delete_branch_on_merge: true`), and it doesn't matter, because
+**`refs/pull/<N>/head` is permanent and survives the deletion.** The clean range
+of any merged PR is recoverable forever:
 
-- **A feature you'll propose upstream** → keep its `<YYYY-MM-DD>_<slug>` branch
-  alive (append-only). Its clean range stays available for the `-pr` ceremony.
-- **Everything else** → delete the branch after merge. The record of "the whole
-  change" is `git log --grep '#<slug>'` plus the merged PR. Good enough, because
-  you're not proposing it.
+```powershell
+git fetch origin refs/pull/<N>/head:<local>
+```
 
-You pay the "clean range" cost only for the features that earn it.
+Verified 2026-09-10: #335's branch is gone from `origin`, yet its tip
+`6465b2fda8` — 12 commits, all tagged — still fetches that way. So the tradeoff
+has **largely dissolved**: discoverability is `git log --grep '#<slug>'` on `dev`,
+and the full pre-squash range is one `refs/pull` fetch away whether or not you
+ever meant to propose the feature upstream. Nothing to keep alive, nothing to pay.
 
 ```mermaid
 gitGraph
@@ -631,12 +639,42 @@ huge stray binary) — and then always `--force-with-lease`, never a bare
 are never force-pushed under any circumstances.
 
 ### Land a change
-Mark the PR ready and **merge it with a merge commit (never squash)**, so the
-change's commits — and their tags — stay whole in `dev`. The merge to `dev`
-triggers `staging.yml` (the dual-package build + Telegram upload). Then **delete
-the branch** (unless it's an upstream candidate). Doc-only / `.github`-only
-pushes don't build (staging's `paths-ignore`), so a `FEATURES.md`-only follow-up
-won't trigger a redundant build.
+Mark the PR ready and **merge it as a squash merge** — the repo is configured
+squash-only (`allow_merge_commit: false`, `allow_squash_merge: true` on
+2026-09-10), so GitHub composes one commit on `dev` from the PR title and the
+concatenated branch-commit messages. The merge to `dev` triggers `staging.yml`
+(the dual-package build + Telegram upload). The head branch is **auto-deleted**
+by the repo (`delete_branch_on_merge: true`) — out of your hands, and it loses
+nothing (see the branch-deletion note below). Doc-only / `.github`-only pushes
+don't build (staging's `paths-ignore`), so a `FEATURES.md`-only follow-up won't
+trigger a redundant build.
+
+**Squashing at the merge does not license rewriting a branch.** The two rules
+look contradictory but are not: the append-only rule (*never amend or force-push
+a feature branch — a fix is a new tagged commit*) governs the commits you push;
+the squash is performed by **GitHub, at the moment of merge**, collapsing those
+already-append-only commits into one commit on `dev`. You never squash your own
+branch, and `dev` itself is still never rewritten. Read "we squash at merge" as
+"GitHub composes the `dev` commit for us," not as "history can be rewritten."
+
+**Preflight the repo merge settings, because one of them silently governs the
+whole `#slug` tag system.** Read them live before any landing run —
+`gh api repos/dazewell/Dazegram --jq '{squash:.allow_squash_merge, msg:.squash_merge_commit_message, title:.squash_merge_commit_title}'`
+— and **stop-and-report** rather than proceed if either of the first two is wrong.
+`allow_squash_merge` must be `true`, or the prescribed merge command fails outright.
+**`squash_merge_commit_message` must be `COMMIT_MESSAGES`** — this is the
+load-bearing one: it is what concatenates every branch commit's message into the
+squash body, so the `#slug` tags survive onto `dev`. Flip it to `PR_BODY` or
+`BLANK` and every merge lands a `dev` commit with no tag, **and no CI check fails**
+— `commit-tag.yml` validated the now-discarded branch commits, not the squash it
+writes (see the `COMMIT_MESSAGES` trap in `docs/codemap/upstream-traps.md`). That
+silent, uncatchable failure is the entire reason this preflight exists; it is not
+boilerplate. `squash_merge_commit_title` is `PR_TITLE`, so the **PR title becomes
+the permanent `dev` commit subject** — a PR title is history, not chrome: the
+no-AI-reference rule binds it with full force, and a vague title permanently
+degrades `dev`'s log. These are dazewell's to change; until `allow_squash_merge` /
+`squash_merge_commit_message` read enabled / `COMMIT_MESSAGES`, the landing
+authority is inert.
 
 **Who may press merge is defined in the orchestrator file, not here.** By default
 the merge is dazewell's; a root orchestrator may do it only under the conditional
@@ -644,13 +682,17 @@ authority in `.github/agents/nagramx-orchestrator.agent.md` (*Hard limits* and
 *Landing approved PRs*) — named in-session approval, all gates re-verified,
 non-transferable, no `--admin`/`--auto`, `.github/sync/**` excluded. This section
 is the **mechanics** those rules invoke; it does not grant anyone authority.
-**Branch deletion is a separate act with its own limit:** the "delete the branch"
-step above and the local-landing `git branch -d`/`--delete` below are dazewell's
-by default. A root orchestrator merging under approval does **not** thereby gain
-deletion authority — it deletes a landed branch only when the approval explicitly
-names the branch *and* the PR body or linked issue records the branch is not an
-upstream candidate, since "is this an upstream candidate" is a fact only dazewell
-holds. Absent that, merge and leave the branch.
+**Branch deletion is not an authority question anymore.** The repo deletes the
+head branch automatically on every merge (`delete_branch_on_merge: true`),
+regardless of who merged or what the approval named — no agent chooses it, so
+there is nothing to grant or withhold, and you never pass `--delete-branch` (it
+is redundant and would falsely imply the agent decided to delete). It loses
+nothing: `refs/pull/<N>/head` is permanent and survives branch deletion, so a
+merged PR's clean `base..topic` range stays recoverable forever with
+`git fetch origin refs/pull/<N>/head:<local>` — verified 2026-09-10, #335's
+branch gone from `origin` yet its 12-commit tip `6465b2fda8` still fetchable that
+way. That ref, not a kept branch, is now the source for an upstream proposal's
+throwaway `-pr` copy.
 
 **The merge-time gate (whoever lands).** Gate on `mergeStateStatus == CLEAN` —
 not `mergeable: MERGEABLE`, which only says it textually merges, and a different
@@ -671,9 +713,20 @@ moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
 until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
 `UNSTABLE` / `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or
 update a branch on someone's behalf as part of landing — that is a fresh decision.
+When landing under approval, the SHA you verify is also the one the approval was
+given for — record it, compare the live `headRefOid` to it on **every** poll
+iteration, and abort-and-re-ask the instant it differs, since an approval binds to
+a specific SHA and not merely a PR number, so a commit that lands after it re-opens
+every non-CI gate. And **re-verify those non-CI gates on that same head**, not just
+the merge/CI subset: the PR still targets `dev` and is not a draft; the two
+hard-line attribution greps and the missing-`#slug` query still return nothing on
+the head tree; and every review thread is still resolved — paginate `reviewThreads`
+until `pageInfo.hasNextPage` is false, since a `first:100` read hides thread 101+
+on a heavily-reviewed PR. A PR that became ineligible after the plan was drawn — a
+new commit, a reopened thread, a draft toggle — is stop-and-report, not merge.
 Reading `headRefOid` is not enough on its own: a concurrent push can advance the
 head between the read and the merge, so **bind the merge to the SHA you verified**
-— `gh pr merge <n> --merge --match-head-commit <headRefOid>`, which fails rather
+— `gh pr merge <n> --squash --match-head-commit <headRefOid>`, which fails rather
 than landing a head you did not check. Without it, "re-read each time" does not
 actually tie the reviewed code to what gets merged.
 
@@ -693,8 +746,15 @@ textual risk, but a behavioural change to shared init/persistence in one of them
 is an ordering constraint and goes in the behavioural list. Do not collapse
 the two into one total order; the registry overlap is near-complete and would
 drown the one constraint that matters. Before the first merge and again before
+each later one, **re-read each candidate's declared blocker** — its linked issue's
+`status:blocked` + `> Blocked until PR #<n> …` — immediately before *its* merge,
+not only when the order was drawn: a blocker open when the plan was drawn may still
+be open, and a PR can gain one afterward, so an open declared blocker at merge time
+is stop-and-report. Also before the first merge and again before
 each later one, confirm **no sync is in flight** (`sync-upstream.yml` /
-`sync-land.yml` not `in_progress`/`queued`, and no open pins PR) — landing
+`sync-land.yml` not `in_progress`/`queued` — note `gh run list` takes a single
+`--status`, so a repeated flag doesn't OR them; query each separately or filter
+client-side — and no open pins PR) — landing
 through the red-guard window between a `sync-land` fast-forward and its pins PR is
 exactly the mistake to avoid. That empty-run check is not enough on its own: a
 `sync-land` run can advance `origin/nbase` then fail before opening the pins PR,
@@ -709,6 +769,21 @@ pre-advance green is stale. Merge the batch **back-to-back**: `staging.yml`'s
 so a fast first run that reaches `Upload staging` before the next merge does
 upload; back-to-back minimises the uploads, spacing them out maximises them and
 trips the flood limit. Intermediate `cancelled` `staging-dev` runs are expected.
+**Between merges, wait for `dev`'s own `ci.yml` run** — the one each merge's push
+to `dev` triggers — to finish `success` on the just-merged commit before starting
+the next merge. `mergeStateStatus == CLEAN` proves a PR merges, not that the
+*combined* tree compiles: `ci.yml` fires only on `opened`/`reopened`/`synchronize`,
+so advancing `dev` under a later PR neither moves its `headRefOid` nor re-runs its
+checks, and its head-pinned green can describe a tree that no longer exists — two
+individually-green PRs can still produce a broken `dev`, caught only by the
+post-merge build when recovery needs the poisonous revert path. That post-merge
+`dev` run is the cumulative check on the combined tree; a red one, or an absent one
+where the path filter says it should have fired, is stop-and-report. This does
+**not** contradict back-to-back merging: that rule exists so the `staging-dev`
+group collapses the batch into one upload, and a gap of one fast `ci.yml` run is
+far shorter than a staging build, so the collapse still happens — the batch simply
+serialises on the fast gate, which is the accepted cost. Do not "fix" either rule
+by breaking the other.
 After the batch, confirm the staging outcome on `dev`'s final SHA: if the batch
 had any merge that `staging.yml` did **not** path-ignore, confirm one green run
 with `Upload staging` green on that final SHA (or, if the last merge was
@@ -721,13 +796,19 @@ an all-ignored batch can have a run **if** a publish was requested via
 `build-apk`/dispatch (its `labeled` trigger has no path filter), in which case
 confirm that run instead.
 
-Landing locally instead of via PR:
+Landing locally instead of via PR (rare — chores, when you skip the PR). Keep it
+consistent with the squash convention: collapse to one tagged commit rather than
+pushing a merge commit, so `dev`'s first-parent log stays one-commit-per-change.
 ```powershell
-git switch dev
-git merge --no-edit <YYYY-MM-DD>_<slug>     # merge commit -> staging.yml builds + uploads
-git push origin dev
-git branch -d <YYYY-MM-DD>_<slug>; git push origin --delete <YYYY-MM-DD>_<slug>   # unless upstream candidate
+git switch dev; git pull --ff-only origin dev
+git merge --squash <YYYY-MM-DD>_<slug>      # stage the change, no commit yet
+git commit -m "<summary> #<slug>"           # one commit; carry the slug so it stays greppable
+git push origin dev                          # -> staging.yml builds + uploads
+git branch -d <YYYY-MM-DD>_<slug>            # local only; a never-PR'd branch has no refs/pull recovery
 ```
+Unlike the PR path there is **no** `refs/pull/<N>/head` for a branch that never
+opened a PR, so its range isn't recoverable after a local delete — if it could be
+an upstream candidate, push and PR it rather than landing it purely locally.
 If the change lived in a worktree, remove it after the branch is gone —
 process-lifecycle checks apply here too (`nagramx-process-lifecycle` skill),
 not only when an agent session archives itself. As above, this manual
@@ -855,10 +936,13 @@ it. **Never** fast-forward the `base` branch into `dev`: that path is retired an
 bypasses the guard entirely.
 
 ### Propose a feature upstream (the only place rewriting/force happens)
-Only for a feature whose `<YYYY-MM-DD>_<slug>` branch you kept alive. Upstream is
-now `NextAlone/Nagram` (`nagram`), not the archived base fork.
+For any merged feature worth upstreaming — recover its range from
+`refs/pull/<N>/head` (branches are auto-deleted at merge, but that ref is
+permanent). Upstream is now `NextAlone/Nagram` (`nagram`), not the archived base
+fork.
 ```powershell
 git fetch nagram dev
+git fetch origin refs/pull/<N>/head:<YYYY-MM-DD>_<slug>   # branch auto-deleted at merge; recover the range
 git switch -c <YYYY-MM-DD>_<slug>-pr <YYYY-MM-DD>_<slug>   # throwaway copy
 git rebase --onto nagram/dev <branch-point> <YYYY-MM-DD>_<slug>-pr   # replay onto pristine upstream
 git checkout nagram/dev -- FEATURES.md                    # drop the fork-only doc hunk
