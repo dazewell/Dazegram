@@ -793,6 +793,20 @@ public final class GhostHoldController {
             }
 
             int chats = countDistinctChats(items);
+            // Pin each account's store generation and synchronous session epoch now, at
+            // dialog creation on the UI thread -- before the user can leave the confirm
+            // dialog up and trigger a logout. flushItem revalidates against these; a
+            // logout during the dialog's lifetime bumps both, so the recheck sees the
+            // mismatch and abandons the send rather than transmitting the previous
+            // session's rows through a reused account slot.
+            final java.util.HashMap<Integer, Integer> epochByAccount = new java.util.HashMap<>();
+            final java.util.HashMap<Integer, Integer> sessionByAccount = new java.util.HashMap<>();
+            for (HeldItem it : items) {
+                if (!epochByAccount.containsKey(it.account)) {
+                    epochByAccount.put(it.account, GhostHoldStore.getInstance(it.account).currentGeneration());
+                    sessionByAccount.put(it.account, sessionEpoch.get(it.account));
+                }
+            }
             String body;
             if (pending == 1) {
                 body = LocaleController.getString(R.string.GhostHoldFlushConfirmOne);
@@ -802,7 +816,7 @@ public final class GhostHoldController {
             AlertDialog.Builder builder = new AlertDialog.Builder(fragment.getParentActivity());
             builder.setTitle(LocaleController.getString(R.string.GhostHoldFlushConfirmTitle));
             builder.setMessage(body);
-            builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialog, which) -> performFlush(items));
+            builder.setPositiveButton(LocaleController.getString(R.string.MessageScheduleSend), (dialog, which) -> performFlush(items, epochByAccount, sessionByAccount));
             builder.setNegativeButton(LocaleController.getString(R.string.Cancel), (dialog, which) -> {
                 flushInProgress = false;
                 restoreGhost();
@@ -898,7 +912,9 @@ public final class GhostHoldController {
         NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
 
-    private static void performFlush(ArrayList<HeldItem> items) {
+    private static void performFlush(ArrayList<HeldItem> items,
+                                     java.util.HashMap<Integer, Integer> epochByAccount,
+                                     java.util.HashMap<Integer, Integer> sessionByAccount) {
         if (items.isEmpty()) {
             flushInProgress = false;
             return;
@@ -920,29 +936,14 @@ public final class GhostHoldController {
         // still waits on the user, and clearing the guard early would let a second
         // ghost-off start a concurrent flush over this one.
         final AtomicInteger remaining = new AtomicInteger(all);
-        // Pin each account's store generation at flush start. Every queue hop for an
-        // item validates against it (via runOwned), so a logout mid-flush -- which
-        // bumps the generation when it tears the store down -- abandons the remaining
-        // sends rather than transmitting from, or resurrecting into, a store the user
-        // has since logged out of. This is the flush "carrying the identity it began
-        // with"; the completion counter is untouched, an abandoned item still
-        // decrements it through runOwned's onInvalidated.
-        final java.util.HashMap<Integer, Integer> epochByAccount = new java.util.HashMap<>();
-        for (HeldItem it : items) {
-            if (!epochByAccount.containsKey(it.account)) {
-                epochByAccount.put(it.account, GhostHoldStore.getInstance(it.account).currentGeneration());
-            }
-        }
-        // Pin each account's synchronous session epoch too (item 2). This one advances
-        // the instant appDidLogout is seen -- ahead of the async store teardown that
-        // moves the generation above -- so a logout that has begun but not yet torn the
-        // store down is still caught before the send hop.
-        final java.util.HashMap<Integer, Integer> sessionByAccount = new java.util.HashMap<>();
-        for (HeldItem it : items) {
-            if (!sessionByAccount.containsKey(it.account)) {
-                sessionByAccount.put(it.account, sessionEpoch.get(it.account));
-            }
-        }
+        // The store generation and the synchronous session epoch are pinned per account
+        // at dialog-creation time (promptFlush's collect callback), not here. The
+        // confirmation is a direct dialog the user can leave up indefinitely, and a
+        // logout during that window bumps both values before the positive button fires;
+        // capturing them here -- after the tap -- would read the already-bumped values,
+        // so the pre-send recheck would compare bumped==bumped and pass, sending the
+        // rows collected under the previous session through the reused slot. Pinning at
+        // dialog creation makes such a logout a mismatch, so the flush abandons instead.
         for (int i = 0; i < all; i++) {
             HeldItem item = items.get(i);
             final int epoch = epochByAccount.get(item.account);
