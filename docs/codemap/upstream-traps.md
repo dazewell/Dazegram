@@ -1240,37 +1240,48 @@ is the wrong shape, because the held row is admitted to the *selection* upstream
 of every action; the durable fix is to keep held rows out of the send-capable
 selection at one boundary, not to chase each new action.
 
-**Fixed with one shared boundary.** `naxExcludeHeldFromSend`
-(`ChatActivity.java:37167`) is the single place the exclusion rule lives: given
-the message list an action is about to send, it drops every `isHeld` row. Held
-rows stay selectable, so a held row can still be **deleted** -- the filter is
-applied where a selection *turns into a send*, not at selection time, and delete
-is not a send. Edit-schedule-time and reschedule are not routed through the
-boundary because they already exclude held rows on their own: the single-row
-edit-time menu item is `!isHeld`-gated (hidden for a held row), and the
-reschedule spread skips held rows in its assembly loop. Send Now likewise keeps
-its own pre-existing `isHeld` guard. So the boundary's job is specifically the
-three send-capable actions that did *not* already have one. Each routes its
-assembly through it: `combine_message` per side (`ChatActivity.java:4353`),
-`repeatMessage`'s multi-select list and its single-object context-menu path
-(`ChatActivity.java:49051` and the `isHeld(selectedObject)` guard at `:49053`),
-and the scheduled `forward` at the one assembly chokepoint every forward
-sub-path shares, `naxBuildForwardSpreadSelection` (`ChatActivity.java:37188`,
-which applies the filter at its `:37212` return -- so `didSelectDialogs`, the
-spread gate, and the slot-count gate all see the filtered set). A selection that
-filters to empty (all held) clears selection rather than dispatching nothing or
-stranding the user: `openForward` (`ChatActivity.java:13686`) declines to open
-the picker, `didSelectDialogs` (`ChatActivity.java:37238`) aborts, and
-`repeatMessage` returns. The two
-pre-existing guards (Send-Now, reschedule spread) already enforce the same
-property at their own assembly loops and were left as-is. A send action added to
-the Scheduled action mode later inherits the exclusion by routing its send list
-through the same boundary.
+**First fixed with a shared send boundary (`naxExcludeHeldFromSend`,
+`ChatActivity.java:37167`), then superseded by an entrance guard.** The boundary
+filtered `isHeld` rows out of each send assembler, but that is exit-filtering and
+it kept losing: it missed the reply/quote payload channel (the message-preview
+repopulation that puts straight into `selectedMessagesIds`) and off-screen range
+selection, which calls `addToSelectedMessages` directly and bypasses the
+`getMessageType`/`processRowSelect` gate. The durable fix is to seal the
+*entrance*: a held row never enters `selectedMessagesIds` at all. The selection
+model has exactly two insertion points -- `addToSelectedMessages`
+(`ChatActivity.java`) and the message-preview reply/quote repopulation -- and both
+now return/skip on `isHeld`; `canSelect` refuses held rows too so the drag/range
+route is clean before it ever reaches `addToSelectedMessages`. With the entrance
+sealed, no selection-consuming route (forward, quote, reply, copy, combine,
+repeat-as-copy, draft publication, range select) can carry a held row, by
+construction rather than enumeration. The pre-existing per-action `!isHeld` guards
+(Send Now, reschedule, edit-schedule-time) and `naxExcludeHeldFromSend` are left
+as harmless defense-in-depth; they are now redundant with the entrance guard.
+
+Because a held row is no longer selectable, its only action -- **delete** -- comes
+from the single-row context menu's cancel path (`getMessageType` returns
+`MESSAGE_TYPE_INVALID` for the `id <= 0` out row, which populates the cancel item
+when `isSending()`), routed through `cancelSendingMessage` -> `deleteMessages` ->
+the fork `messagesDeleted` observer that removes the durable record. That delete
+path depends on `isSending()`, which depends on `send_state = SENDING` -- see the
+reload trap below.
+
+**Reload trap: `send_state` is client-only and not in the serialized blob.** A
+freshly held row carries `send_state = SENDING` (`GhostHoldController` sentinel
+build), but the render injection decodes the stored blob and `send_state` is not
+part of it, so a row shown on a later launch came back as `NONE`. `isSending()`
+was then false, `getMessageType` classified it invalid, and the single-row
+cancel/delete affordance was never populated -- so a held message could not be
+deleted after an app restart until flush. Stock restores `send_state` from its own
+column on the scheduled read (`MessagesStorage.java:9012-9014`); the render
+injection now does the equivalent on the decoded display object before building
+the `MessageObject`. Durable membership stays governed by `STATE_HELD`, never by
+`send_state`.
 
 *(Established 2026-09-10, `#ghost-hold`, during the ghost-hold-audit branch
-superseding PR #336 -- the item-3 re-audit that asked, for every Scheduled-list
-action, both "can it act on a held row?" and "can a held row change what it does
-to other rows?". Boundary landed 2026-09-10 on the ghost-hold-selection branch,
+superseding PR #336. The shared send boundary landed 2026-09-10 on the
+ghost-hold-selection branch; superseded 2026-09-11 by the selection-model entrance
+guard and the reload `send_state` restore on the ghost-hold-selectability branch,
 `#ghost-hold`.)*
 
 ## Ghost Hold: logout purge cannot run on a doubly-broken teardown
