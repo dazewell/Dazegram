@@ -667,6 +667,11 @@ moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
 until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
 `UNSTABLE` / `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or
 update a branch on someone's behalf as part of landing — that is a fresh decision.
+Reading `headRefOid` is not enough on its own: a concurrent push can advance the
+head between the read and the merge, so **bind the merge to the SHA you verified**
+— `gh pr merge <n> --merge --match-head-commit <headRefOid>`, which fails rather
+than landing a head you did not check. Without it, "re-read each time" does not
+actually tie the reviewed code to what gets merged.
 
 **Landing several PRs in one sitting — the ordering procedure.** Derive a
 *suggested* order, in this priority: (1) a **declared blocker** in a PR's linked

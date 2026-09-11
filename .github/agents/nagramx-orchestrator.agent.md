@@ -1628,7 +1628,17 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   because `sync-guard-check` only re-runs on push/PR, a green result recorded
   *before* an `nbase` advance is stale: confirm live `origin/nbase` still matches
   the baseline the PR's `.github/sync/pins.env` was computed against before you
-  trust a green guard — a mismatch is stop-and-report.
+  trust a green guard — a mismatch is stop-and-report. Be honest about what this
+  check is: a **snapshot, not a lock.** Nothing shares a mutual-exclusion lease
+  between sync execution and this landing procedure (the `sync-refs` group only
+  serialises the two sync workflows against each other), so a sync can queue
+  *after* you check and advance `nbase` before your merge lands. This procedure
+  does not close that race — building a sync/landing lease is separate infra, out
+  of scope here — so re-run the `origin/nbase`-vs-baseline check **immediately
+  before** the merge, not just at the top of the batch, and treat this whole gate
+  as necessary-but-not-sufficient: it narrows the window, it does not eliminate
+  it, and a guard that goes stale between the last check and the merge is a
+  stop-and-report you may only catch after the fact.
 - **Gate on `mergeStateStatus == CLEAN`** (not `mergeable: MERGEABLE`, which only
   says it textually merges) **plus the head check green on the PR's *current*
   `headRefOid`**, re-read every time — a `ci.yml` run whose `conclusion ==
@@ -1673,6 +1683,13 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   whole-feature pass recorded in the handback still holds for this head. A PR that
   became ineligible after the landing plan was drawn — a new commit, a reopened
   thread, a draft toggle — is **stop and report**, not merge.
+- **Bind the merge to the SHA you verified.** Re-reading `headRefOid` closes the
+  staleness window only if the merge itself is pinned to it — a concurrent push
+  can advance the head between the last check and the merge call. Merge with
+  `gh pr merge <n> --merge --match-head-commit <headRefOid>` (never `--squash`,
+  never `--admin`/`--auto`), which **fails** rather than landing a head you did
+  not check. A plain `gh pr merge` on a green tagged PR would silently land the
+  newer head, so the flag is not optional.
 - **Merge back-to-back and deliberately un-spaced, and record that reason.**
   `staging.yml`'s concurrency group resolves to `staging-dev` with
   `cancel-in-progress: true`, so N back-to-back merges **best-effort** collapse to
