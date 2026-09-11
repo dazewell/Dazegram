@@ -12344,6 +12344,7 @@ public class ChatActivity extends BaseFragment implements
                     noForwardCaption = messagePreviewParams.hideCaption;
                     int hasPoll = 0;
                     boolean hasInvoice = false;
+                    int forwardCount = 0;
                     if (messagePreviewParams.forwardMessages != null) {
                         for (int a = 0, N = messagePreviewParams.forwardMessages.messages.size(); a < N; a++) {
                             MessageObject messageObject = messagePreviewParams.forwardMessages.messages.get(a);
@@ -12353,6 +12354,7 @@ public class ChatActivity extends BaseFragment implements
                             if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
                                 continue;
                             }
+                            forwardCount++;
                             if (messageObject.isTodo()) {
                                 hasPoll = 3;
                             } else if (messageObject.isPoll()) {
@@ -12379,7 +12381,10 @@ public class ChatActivity extends BaseFragment implements
                     }
                     args.putInt("hasPoll", hasPoll);
                     args.putBoolean("hasInvoice", hasInvoice);
-                    args.putInt("messagesCount", messagePreviewParams.forwardMessages == null ? 0 : messagePreviewParams.forwardMessages.messages.size());
+                    // NagramX: #ghost-hold. Count only the rows that survived the held-row guard
+                    // above, so slow-mode and paid-message validation sees the set that will
+                    // actually be forwarded rather than the pre-filter size.
+                    args.putInt("messagesCount", forwardCount);
                     args.putBoolean("canSelectTopics", true);
                     final DialogsActivity fragment = new DialogsActivity(args);
                     fragment.setDelegate(ChatActivity.this);
@@ -37177,15 +37182,15 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    // NagramX: the one boundary that keeps a Ghost-held row out of the copy/repeat/forward sends on the
-    // Scheduled list. A held row keeps a negative local id the server has never seen and must never be
-    // dispatched while it is held, yet it stays selectable so it can still be deleted -- the exclusion
-    // belongs where a selection turns into a send, not at selection time. Combine, repeat-as-copy and
-    // scheduled forward each route their send list through here, so the rule lives in one place and a
-    // similar action added later inherits it instead of re-deriving an isHeld check. Send Now and the
-    // reschedule spread predate this and keep their own isHeld guards at their assembly loops (and the
-    // single-row edit-schedule-time menu is !isHeld-gated) -- they enforce the same property, they just
-    // don't funnel through this helper. Off the Scheduled list there are no held rows, so this is inert.
+    // NagramX: #ghost-hold. A Ghost-held row keeps a negative local id the server has never seen and
+    // must never be dispatched while it is held. The primary guard now sits at the entrance: held rows
+    // never enter the selection model at all (addToSelectedMessages, the reply/quote preview loop and
+    // canSelect each refuse them), and their only action is delete through the single-row cancel menu,
+    // which does not go through the selection model. This helper is the second line of defence on the
+    // send-assembly paths: combine, repeat-as-copy and scheduled forward each route their send list
+    // through here, so if a held row ever slipped past an entrance the dispatch still drops it, and a
+    // similar action added later inherits the rule instead of re-deriving an isHeld check. Off the
+    // Scheduled list there are no held rows, so this is inert.
     private ArrayList<MessageObject> naxExcludeHeldFromSend(ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
             return messages;
