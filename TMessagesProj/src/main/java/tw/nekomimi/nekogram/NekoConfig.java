@@ -302,6 +302,18 @@ public class NekoConfig {
     }
 
     // --- Ghost Mode ---
+
+    // NagramX: bumped on every observed false->true transition inside
+    // setGhostMode below, so a feature that needs to know "a new Ghost session
+    // started" can key a lazy reset off this value instead of an inferred
+    // boolean that can only be sampled from its own unrelated call site (see
+    // GhostTypingReminderHelper and docs/codemap/dead-ends.md for why that
+    // inference was unreliable). Only the master on/off switch
+    // (toggleGhostMode -> setGhostMode) advances this; flipping one of the
+    // individual Ghost toggle rows below the master switch does not, matching
+    // the narrow, additive scope this field was added under.
+    public static int ghostSessionEpoch;
+
     public static boolean isGhostModeActive() {
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
@@ -319,6 +331,7 @@ public class NekoConfig {
     }
 
     public static void setGhostMode(boolean enabled) {
+        boolean wasActive = isGhostModeActive();
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -326,6 +339,9 @@ public class NekoConfig {
                 boolean targetValue = (item == sendOfflinePacketAfterOnline) == enabled;
                 item.setConfigBool(targetValue);
             }
+        }
+        if (enabled && !wasActive) {
+            ghostSessionEpoch++;
         }
     }
 

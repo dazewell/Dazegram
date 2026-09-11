@@ -499,44 +499,73 @@ Tempting fix for issue #299: let the Icon spacing thumb sit at the real saved va
 ## Per-chat "already warned" state is not categorically forbidden for Ghost Mode features
 
 The send-time Ghost warning (`#ghost-send-warning`) used to track "warned this
-chat already this session" with a stateful per-account set, built up and then
-deleted across five commits on that branch: introduced in `5f8e27ed0c` ("warn
-once per chat when a send while Ghost is on exposes online status"), its reset
-edge corrected twice in `80a5c0c57f` ("detect ghost session boundary from the
-live predicate, not one toggle path") and `b696068599` ("observe ghost state at
-both toggle write paths, not only at send time"), given cross-thread
-synchronization in `67042a6884` ("synchronize shared warned-dialogs state
-between send path and settings writes"), and finally removed entirely in
-`797a510074` ("gate the warning on an active UI, not just Ghost being on"),
-which replaced it with the current stateless, warn-every-time design still in
-`GhostSendWarningHelper.java` today. The state was deleted because its writer
-lived on two different threads that could race each other: the send path calls
-`onMessageRequestReady` from `ConnectionsManager#sendRequestInternal`, which
-runs on `Utilities.stageQueue` (a background thread), while a Ghost Mode
-on/off toggle in `GhostModeActivity`/`NekoConfig` runs on the UI thread — the
-same mutable set was reachable from both without a consistent memory model,
-and a toggle mid-send could observe or clear state out of order with the send
-itself. On top of the race, the reset edge itself was wrong more than once: a
-toggle observed at only one of the two write paths could leave the "already
-warned" flag stranded across a Ghost-mode session boundary, so a later Ghost
-session with clean state was incorrectly getting no reminder at all.
+chat already this session" with a stateful per-account set. It was introduced
+in `5f8e27ed0c` ("warn once per chat when a send while Ghost is on exposes
+online status"), and its reset edge was corrected twice: `80a5c0c57f` ("detect
+ghost session boundary from the live predicate, not one toggle path") and then
+`b696068599` ("observe ghost state at both toggle write paths, not only at
+send time"), which is the commit that gave `GhostModeActivity`/`NekoConfig`'s
+settings-UI toggle write path its own call into the helper alongside the
+send path's own observation — two call paths, on two different threads,
+sharing one mutable set with no synchronization yet. That race was fixed next,
+in `67042a6884` ("synchronize shared warned-dialogs state between send path
+and settings writes"), which added a `LOCK` around both paths' access to the
+shared fields — this did not remove the state, only make its two writers safe
+to interleave. `797a510074` ("gate the warning on an active UI, not just Ghost
+being on") is often mistaken for the removal too, but it only added a
+`LaunchActivity.isActive` gate on top of the same still-present, still-locked
+`warnedDialogsByAccount`/`wasGhostActive` state.
+
+The state was actually removed later and for an unrelated reason, in
+`b4664bfe11` ("re-hook ghost send warning at the tgnet dispatch chokepoint"):
+that commit moved the hook from a generic send-request dispatcher (which also
+carried non-send requests like `TL_messages_editMessage` and silently
+consumed the once-per-chat slot on them) to
+`ConnectionsManager#sendRequestInternal`, and paired that hook-point fix with
+a separate product decision to warn on every exposing send instead of only
+the first one per chat per session — a decision that made the per-chat state
+moot outright, not a decision driven by the earlier (already-fixed) race. Its
+commit message is explicit about this: "This also removes the once-per-chat
+warning entirely, per product decision... That deletes every piece of state
+the previous design needed a lock for... because there is no longer any
+session-scoped decision to protect from a race" (note "no longer" — the race
+itself was old news by then, already closed by `67042a6884`).
 
 This is **not** a blanket rule against any per-chat Ghost state — the typing-time
 reminder added under `#ghost-type-warning`
-(`GhostTypingReminderHelper.java:56-57` — a `SparseArray<HashSet<Long>>` plus a
-`wasGhostActive` boolean, reset lazily at `:75-79` on the next observed Ghost
-off→on edge) keeps materially the same shape of state (an account-keyed set of
-already-reminded dialogIds, reset lazily on a Ghost off→on edge) and is fine,
-because the thing that made the old design unsafe — a background-thread writer
-racing a UI-thread writer — doesn't apply to it. Every read and write happens
-on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
+(`GhostTypingReminderHelper.java:64-65` — a `SparseArray<HashSet<Long>>` plus a
+`lastObservedGhostSessionEpoch` int, reset lazily at `:83-86` whenever that
+value no longer matches `NekoConfig.ghostSessionEpoch`, a counter `NekoConfig`
+itself advances on every observed false→true Ghost Mode transition) keeps
+materially the same shape of state (an account-keyed set of already-reminded
+dialogIds, reset lazily on a Ghost off→on edge) and is fine, because the thing
+that made the old design's *state* need a lock — a background-thread writer
+(the send path) racing a UI-thread writer (the settings toggle) — doesn't
+apply here at all. Every read and write happens on the UI thread:
+`ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:101-131`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:110-150`) is a second UI-thread access path,
 not a background one -- nothing in the send path or the settings screen ever
 touches this state. If a future change makes this state reachable from
 anywhere but those two UI-thread paths, revisit this exemption rather than
 assuming it still holds.
+
+Unlike the deleted send-time state, this reset is driven by `NekoConfig`
+itself rather than inferred from an observed boolean sampled only inside the
+composer callback: `NekoConfig#setGhostMode` (`NekoConfig.java:333-345`)
+increments a `ghostSessionEpoch` counter (`NekoConfig.java:315`) the
+moment it observes its own false→true transition, so this class always
+resets correctly the next time it runs, regardless of how much (or how
+little) composer activity happened while Ghost Mode was off in between —
+there is no missed-edge case left to accept here, unlike an earlier revision
+of this same class that inferred the edge from its own call site alone. This
+still only observes the toggle through the master Ghost Mode switch
+(`NekoConfig#toggleGhostMode`); flipping the individual per-signal rows in
+`GhostModeActivity` one at a time until the combined predicate happens to
+read true again does not advance the epoch, since this addition's scope was
+deliberately kept to that one counter and nothing else in
+`NekoConfig`/`GhostModeActivity`.
 
 *(Established 2026-09-10, #ghost-type-warning.)*
