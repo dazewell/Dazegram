@@ -37,7 +37,10 @@ import tw.nekomimi.nekogram.NekoConfig;
  * reach the network without ever passing through here. In a chat that *has*
  * been reminded this Ghost session, the suppression is by destination chat and
  * so covers those sends too, for the rest of that session -- the user was told
- * in that chat and the second bulletin would repeat it. Narrowing by request
+ * in that chat and the second bulletin would repeat it. That holds only where
+ * the send names a destination the helper can resolve; one that doesn't, such
+ * as an encrypted multi-media send, fails open and warns anyway. Narrowing by
+ * request
  * type instead, to keep them warning, was reviewed and rejected: it goes wrong
  * in both directions at once -- see GhostSendWarningHelper for why.
  * <p>

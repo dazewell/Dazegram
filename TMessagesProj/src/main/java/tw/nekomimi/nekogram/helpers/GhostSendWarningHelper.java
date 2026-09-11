@@ -27,9 +27,14 @@ import tw.nekomimi.nekogram.NekoConfig;
  * It covers what {@link GhostTypingReminderHelper} cannot, and defers to it
  * where it can: in a chat already reminded during the current Ghost session,
  * this stays quiet, because the user was told in that chat and repeating it
- * adds nothing. The suppression is by destination chat, so it applies to every
- * send into such a chat for the rest of that Ghost session -- forwards and
- * gallery media included, not only the typed message that earned the reminder.
+ * adds nothing. The suppression is by destination chat, so where the chat can
+ * be identified it applies to every send into it for the rest of that Ghost
+ * session -- forwards and gallery media included, not only the typed message
+ * that earned the reminder. Where it cannot, this fails open and warns: a send
+ * whose destination doesn't resolve cannot be claimed to be one the user was
+ * already told about. Allowlisted requests that carry no destination at all,
+ * such as TL_messages_sendEncryptedMultiMedia and TL_messages_sendWebViewData,
+ * therefore always warn, reminded chat or not.
  * <p>
  * In every chat the reminder has not covered, this still warns for everything
  * on the allowlist: forwards, gallery media, text shared in from another app,

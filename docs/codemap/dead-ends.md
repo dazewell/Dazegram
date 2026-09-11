@@ -542,10 +542,11 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
 (`GhostTypingReminderHelper.java:227-260`) is a second UI-thread access path,
-not a background one -- nothing in the send path or the settings screen ever
-touches this state. If a future change makes this state reachable from
-anywhere but those two UI-thread paths, revisit this exemption rather than
-assuming it still holds.
+not a background one. The settings screen never touches this set, and the send
+path touches it only as a read-only UI-thread reader, described in the
+paragraph below. If a future change makes this state reachable from anywhere
+but those UI-thread paths, revisit this exemption rather than assuming it
+still holds.
 
 That revisit has since happened once, and the exemption survived it. A later
 `#ghost-type-warning` change added a third reader: the send-time warning now

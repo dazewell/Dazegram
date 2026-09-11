@@ -1016,17 +1016,22 @@ polls. The ephemeral receiver itself is resolved for every send including
 media, from the caption where there is one
 (`SendMessagesHelper.java:4439-4450`).
 
-Cost of missing it: any code classifying outgoing requests by TL class -- the
-Ghost Mode send warning's allowlist is the fork's example
-(`GhostSendWarningHelper.java`) -- that files this class under "text" will
-silently mis-handle ephemeral photo, video, document, poll and paid-media
-sends. Silent in the literal sense: no crash, no log, nothing to notice. If
-the text/media distinction actually matters, the discriminator is `media ==
-null`, which is what the two branches above establish; but prefer not to
-classify user intent by request type at all, since the reverse case bites
-equally -- a typed message with a resolved link preview leaves as
-`TL_messages_sendMedia` carrying `TL_inputMediaWebPage`
+Cost of missing it: any code classifying outgoing requests by TL class that
+files this class under "text" will silently mis-handle ephemeral photo, video,
+document, poll and paid-media sends. Silent in the literal sense: no crash, no
+log, nothing to notice. If the text/media distinction actually matters, the
+discriminator is `media == null`, which is what the two branches above
+establish; but prefer not to classify user intent by request type at all,
+since the reverse case bites equally -- a typed message with a resolved link
+preview leaves as `TL_messages_sendMedia` carrying `TL_inputMediaWebPage`
 (`SendMessagesHelper.java:5338-5355`), not as `TL_messages_sendMessage`.
+
+This is a warning for a future classifier, not a description of existing code.
+The fork's nearest thing to one, the Ghost Mode send warning
+(`GhostSendWarningHelper.java`), deliberately does **not** classify: it
+allowlists request classes as "this produces a message" and then resolves the
+destination chat, and it draws no text/media distinction anywhere. That design
+was chosen in review precisely because of this trap.
 
 *(Established 2026-09-10, #ghost-type-warning -- found in design review, before
 the mis-classification reached code.)*
