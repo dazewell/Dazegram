@@ -450,9 +450,10 @@ public final class EventScheduleController {
     /**
      * Arms (or re-arms) a trigger while editing a scheduled message. Ownership is re-resolved at this
      * point across both id spaces, so a snapshot taken when the sheet opened cannot strand a pending
-     * owner or duplicate it. Returns false when the store rejects the claim -- either the message is
-     * already owned by more than one entry (a pre-existing corruption) or the id set is empty/non-positive
-     * -- in which case nothing is changed and the caller must not report success.
+     * owner or duplicate it. Returns false when the store rejects the claim -- the message is already
+     * owned by more than one entry (a pre-existing corruption), the id set is empty/non-positive, or the
+     * captured generation no longer matches the slot's (a logout, and maybe a reuse, landed between intent
+     * and this claim) -- in which case nothing is changed and the caller must not report success.
      */
     public static boolean commitEditArm(int account, int generation, long dialogId, int[] serverIds, int[] localIds,
                                         @NonNull EventScheduleConfig config, int fallbackDate) {
@@ -484,7 +485,8 @@ public final class EventScheduleController {
      * hold. Never removes an entry -- a merge updates the survivor in place, and on the merge path the
      * existing entry IS the survivor being armed, so a create-then-remove would delete what was just armed.
      * Returns the resolved entry's key on success (merged or freshly claimed), or null when the store
-     * rejects the claim (multi-owner, or an empty/non-positive id set). {@code negativeLocalIds} carries
+     * rejects the claim (multi-owner, an empty/non-positive id set, or a captured generation that no longer
+     * matches the slot's -- a logout, and maybe a reuse, landed mid-run). {@code negativeLocalIds} carries
      * the album's local_id echoes so ownership is resolved across both id spaces (mirroring
      * {@link #commitEditArm}) -- a still-pending owner reachable only by local id must not be missed, or
      * a second trigger gets armed beside it.

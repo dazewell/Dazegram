@@ -4309,7 +4309,7 @@ public class AlertsCreator {
     // per-message interval, and the shared "Send on event" trigger the chip captured (null when Off),
     // so the caller can spread the selected messages out from the base and arm them on the same trigger.
     public interface RescheduleDatePickerDelegate {
-        void didSelectReschedule(int baseScheduleDate, int intervalSeconds, com.radolyn.ayugram.eventschedule.EventScheduleConfig trigger);
+        void didSelectReschedule(int baseScheduleDate, int intervalSeconds, com.radolyn.ayugram.eventschedule.EventScheduleHelper.TriggerArmIntent trigger);
     }
 
     // NagramX: marks the schedule sheet as a bulk-reschedule sheet (carries how many messages are

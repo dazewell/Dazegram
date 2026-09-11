@@ -59,8 +59,30 @@ public final class EventScheduleHelper {
     public interface TriggerRow {
         void commit(int scheduleDate, int repeatPeriod);
 
-        /** The trigger the user configured on this chip, or null when the chip is left Off. */
-        EventScheduleConfig snapshot();
+        /**
+         * The trigger the user configured on this chip together with the slot generation captured when the
+         * Row was built, or null when the chip is left Off or the slot was logged out before the picker was
+         * accepted. The carried generation lets the bulk armer re-check after the >50-item confirm dialog,
+         * which its admission runs on the far side of.
+         */
+        TriggerArmIntent snapshot();
+    }
+
+    /**
+     * What {@link TriggerRow#snapshot()} hands the bulk reschedule path: the configured trigger plus the
+     * store logout generation as it stood when the Row was constructed (before the picker was shown). The
+     * armer carries this token instead of re-reading currentGeneration at admission -- admission runs after
+     * the >50-item confirm dialog, a bare AlertDialog the logout swap never dismisses, so a re-read there
+     * would see the already-bumped post-logout value and wave a departed slot's arm through.
+     */
+    public static final class TriggerArmIntent {
+        public final EventScheduleConfig config;
+        public final int storeGeneration;
+
+        public TriggerArmIntent(EventScheduleConfig config, int storeGeneration) {
+            this.config = config;
+            this.storeGeneration = storeGeneration;
+        }
     }
 
     /**
@@ -248,6 +270,10 @@ public final class EventScheduleHelper {
         // re-read the already-bumped value at commit time -- re-reading makes every downstream check a
         // tautology. commit() and snapshot() fail closed on a mismatch; the store's own add()/remove()/put()
         // guards use lastSetupGeneration/presetGeneration as the second backstop for still-open dialogs.
+        // On the bulk path storeGeneration travels further still: snapshot() packs it into the TriggerArmIntent
+        // handed to the reschedule delegate, and the EventScheduleBulkArmer carries it as its own token so the
+        // arm is re-checked after the >50-item confirm dialog -- the one window past the picker where a logout
+        // can straddle the action, and one the armer's admission itself runs too late to capture.
         final int storeGeneration;
         final int lastSetupGeneration;
         final int presetGeneration;
@@ -1594,14 +1620,19 @@ public final class EventScheduleHelper {
         }
 
         @Override
-        public EventScheduleConfig snapshot() {
+        public TriggerArmIntent snapshot() {
             // Same fail-closed gate as commit(): snapshot() feeds AlertsCreator's reschedule path, which
             // constructs the EventScheduleBulkArmer. Returning null on a post-logout generation mismatch
-            // means no armer is ever built for a departed slot, closing the bulk-arm straddle at the source.
+            // means no armer is ever built for a slot already logged out by the time the picker was accepted.
+            // When the chip is on and the slot still current, hand back the config together with the
+            // construction-time storeGeneration: the >50-item confirm dialog defers the armer's admission past
+            // this point, so the armer must carry this token and re-check it rather than re-read
+            // currentGeneration for itself after the dialog (which would read the post-logout value and defeat
+            // the guard).
             if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
                 return null;
             }
-            return enabled ? new EventScheduleConfig(types, patterns, regex, delay) : null;
+            return enabled ? new TriggerArmIntent(new EventScheduleConfig(types, patterns, regex, delay), storeGeneration) : null;
         }
 
         @Override

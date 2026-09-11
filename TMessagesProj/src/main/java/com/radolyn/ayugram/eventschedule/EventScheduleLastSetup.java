@@ -66,9 +66,9 @@ public final class EventScheduleLastSetup {
     }
 
     /**
-     * The sheet captures this once, when it opens, and passes it back into {@link #put}. Both the
-     * capture and the write go through {@code monitor(account)} so a capture can never straddle a
-     * concurrent {@link #clearAccountState} bump.
+     * The Row captures this once, when it is constructed -- before the schedule picker is shown -- and
+     * passes it back into {@link #put}. Both the capture and the write go through {@code monitor(account)}
+     * so a capture can never straddle a concurrent {@link #clearAccountState} bump.
      */
     public static int currentGeneration(int account) {
         synchronized (monitor(account)) {

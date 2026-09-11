@@ -161,19 +161,27 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
     private final HashSet<Integer> deletedDuringRun = new HashSet<>();
     private boolean collecting;
 
-    // Store logout generation for this run's slot, captured at admission (before any RPC) so a survivor
-    // claim that only completes after a logout has cleared and possibly reused the slot is rejected by the
-    // store rather than persisted into it. Read and written on the UI thread (admission and finalization),
-    // so it needs no synchronization of its own.
-    private int storeGeneration;
+    // Store logout generation for this run's slot, captured when the Row was built (before the schedule
+    // picker, and before the >50-item confirm dialog this armer's admission runs on the far side of) and
+    // carried in through the constructor. onAdmission compares it against the live generation and refuses a
+    // stale run; a survivor armed at finalization also carries it, so a claim completing after a logout that
+    // cleared and possibly reused the slot is rejected by the store rather than persisted into it. UI thread
+    // only (admission and finalization), so it needs no synchronization of its own.
+    private final int storeGeneration;
+
+    // Set in onAdmission when the carried construction-time generation no longer matches the live slot: a
+    // logout straddled the >50-item confirm dialog. A stale run registers no observer, suppresses nothing,
+    // and arms nothing -- finalize folds it into failClosed and skips the reconcile storage hop entirely.
+    private boolean staleSlot;
 
     // Built in the constructor, not as a field initializer, so its capture of account/dialogId reads
     // fields that are already assigned (a field initializer would run before the constructor body).
     private final NotificationCenter.NotificationCenterDelegate deletionCollector;
 
-    public EventScheduleBulkArmer(int account, long dialogId, @NonNull EventScheduleConfig config, @NonNull List<AlbumIdentity> selection, @Nullable TriggerRefresh refresh) {
+    public EventScheduleBulkArmer(int account, long dialogId, int intentGeneration, @NonNull EventScheduleConfig config, @NonNull List<AlbumIdentity> selection, @Nullable TriggerRefresh refresh) {
         this.account = account;
         this.dialogId = dialogId;
+        this.storeGeneration = intentGeneration;
         this.config = config;
         this.selection = selection;
         this.refresh = refresh;
@@ -195,9 +203,17 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
     @Override
     public void onAdmission() {
-        // Before any RPC: snapshot the slot's logout generation so a survivor armed at finalization is
-        // rejected if a logout clears/reuses the slot during this run's tens-of-seconds network window.
-        storeGeneration = EventScheduleStore.currentGeneration(account);
+        // storeGeneration is the token captured when the Row was built, carried here through snapshot() ->
+        // the reschedule delegate -> the constructor. Compare it against live BEFORE touching any state: the
+        // >50-item confirm dialog is a bare AlertDialog the logout fragment swap never dismisses, so a logout
+        // can land while it is up and this run's intent then predates a slot clear (and maybe a reuse). On a
+        // mismatch, refuse the whole run here -- register no observer (so collecting stays false and nothing
+        // leaks) and suppress nothing (so the new occupant's live triggers are never held back); finalize's
+        // failClosed then surfaces the existing fail-closed bulletin, nothing new.
+        if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
+            staleSlot = true;
+            return;
+        }
         EventScheduleStore.ensureLoaded(account);
         NotificationCenter.getInstance(account).addObserver(deletionCollector, NotificationCenter.messagesDeleted);
         collecting = true;
@@ -246,6 +262,16 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
 
     private void finalizeOnUi(List<RescheduleSpreadExecutor.TargetOutcome> outcomes, int[] scheduledIds, int[] scheduledDates,
                               boolean authoritative, RescheduleSpreadExecutor.RunGeneration generation, int rescheduleWrong, int rescheduleTotal, BaseFragment fragment) {
+        if (staleSlot) {
+            // onAdmission refused this run: the slot was logged out during the >50-item confirm dialog, so no
+            // observer was registered and nothing was suppressed. There is no durable state to reconcile for a
+            // departed (and maybe reused) slot, so skip the reconcile storage hop -- which would otherwise
+            // snapshot the new occupant's entries -- and finalize directly. failClosed arms nothing and its
+            // finally still releases this run's generation, so a later run for the dialog isn't compared
+            // against a stale claim.
+            finalizeAfterReconcile(outcomes, scheduledIds, scheduledDates, authoritative, generation, rescheduleWrong, rescheduleTotal, fragment);
+            return;
+        }
         // Safety argument for the deferred activation. Finalization MAY yield -- reconcileDialogThen below
         // does a storage hop whenever this dialog has unbound orphans, and after a HEAL that clears the
         // unbound condition the dialog gate is no longer up, so arming proceeds after that yield. So the
@@ -295,10 +321,11 @@ public final class EventScheduleBulkArmer implements RescheduleSpreadExecutor.Tr
         // window it closes. The counter is written in RescheduleSpreadExecutor.run(); do not treat that
         // write as dead just because it looks unread there.
         final boolean superseded = generation.superseded();
-        // Fail closed on supersession (a later run moved these dates under us) or on a failed authoritative
-        // read (we can't trust membership). Arm nothing new; the finally below still releases every hold
-        // this run placed, so the pre-existing triggers survive untouched.
-        final boolean failClosed = superseded || !authoritative;
+        // Fail closed on supersession (a later run moved these dates under us), on a failed authoritative
+        // read (we can't trust membership), or on a stale slot (onAdmission saw a logout straddle the confirm
+        // dialog). Arm nothing new; the finally below still releases every hold this run placed -- none on the
+        // stale path, since onAdmission suppressed nothing -- so the pre-existing triggers survive untouched.
+        final boolean failClosed = superseded || !authoritative || staleSlot;
 
         // Dialog-wide decline: an unbound durable orphan that survived the reconcile above still sits in
         // this chat, and a bulk selection is dialog-scoped by definition, so it declines the WHOLE

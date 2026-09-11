@@ -37735,7 +37735,7 @@ public class ChatActivity extends BaseFragment implements
                 com.radolyn.ayugram.reschedule.RescheduleSpreadExecutor.TriggerArmingHooks hooks = null;
                 if (triggerConfig != null) {
                     hooks = new com.radolyn.ayugram.eventschedule.EventScheduleBulkArmer(
-                            currentAccount, dialog_id, triggerConfig, selectionIdentity,
+                            currentAccount, dialog_id, triggerConfig.storeGeneration, triggerConfig.config, selectionIdentity,
                             armedIds -> updateVisibleRows(msg -> msg != null && armedIds.contains(msg.getId())));
                 }
                 final boolean started = hooks != null
