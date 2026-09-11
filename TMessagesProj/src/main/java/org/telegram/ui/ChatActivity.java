@@ -37281,14 +37281,7 @@ public class ChatActivity extends BaseFragment implements
             // the selection rather than dispatch an empty forward and strand the user.
             forwardingMessage = null;
             forwardingMessageGroup = null;
-            for (int a = 1; a >= 0; a--) {
-                selectedMessagesCanCopyIds[a].clear();
-                selectedMessagesCanStarIds[a].clear();
-                selectedMessagesIds[a].clear();
-            }
-            hideActionMode();
-            updatePinnedMessageView(true);
-            updateVisibleRows();
+            clearSelectionMode();
             return false;
         }
         for (int j = 0; j < dids.size(); j++) {
