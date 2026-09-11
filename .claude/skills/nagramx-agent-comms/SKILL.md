@@ -565,8 +565,12 @@ and the predecessor's last messages can still be in flight when the successor
 starts. A predecessor that reached `v7` before dying, whose `v7` was delayed past
 the replacement, would otherwise be *accepted over* a successor sitting at `v6`,
 overwriting live state with a dead session's list. Order snapshots by
-**`g` first, then `v`**: every replacement session on a unit increments `g` and
-inherits `v`, so any message from a superseded session is strictly earlier no
+**`g` first, then `v`**: `g` is incremented exactly once per replacement, by the
+coordinator writing the replacement brief, and the successor then reports that
+brief's token verbatim rather than bumping it again — one increment point, so the
+generation a session announces always matches the handoff token it was given.
+Because the successor's `g` is thereby above the predecessor's while `v` is
+inherited, any message from a superseded session is strictly earlier no
 matter how high its `v` climbed, and no in-flight straggler can win. A parent
 additionally **fences the predecessor's channel**: from the moment it dispatches
 a replacement it accepts no further snapshot from the session it replaced,
@@ -579,7 +583,8 @@ including a human reading it in a transcript.
 **The counter belongs to the unit, not to the session.** A replacement
 coordinator does not restart at `v0` — it inherits the version its brief's
 `Outstanding authorizations (gG.vN)` field carries and continues from there, so
-its first change to the list is `v(N+1)`, under its own incremented `g`.
+its first change to the list is `v(N+1)`, under the `g` its brief already
+carried.
 Restarting at zero would make every
 snapshot the replacement sends compare as stale against the dead session's last
 one and be discarded by exactly the recipient that needs it — including the

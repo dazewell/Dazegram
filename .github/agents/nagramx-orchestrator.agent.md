@@ -88,8 +88,12 @@ re-run any of your gates; it is a pure supervisor. So:
     your resolved agent identity and your `coord-<slug>` branch, plus your
     current `Outstanding authorizations (gG.vN): …` snapshot at startup —
     **initialized from your brief's own `Outstanding authorizations (gG.vN)`
-    field, carrying its generation and version and its list verbatim**, not
-    reset to empty, then incrementing `g` for your own generation. A
+    field, carrying its generation, its version and its list verbatim** — not
+    reset to empty, and **not incremented**. The brief is the single place `g`
+    is incremented (the coordinator writing it does so when it dispatches you);
+    bumping it again here would make you announce a generation that differs from
+    your own handoff token, so your parent's ordering would no longer line up
+    with the brief it wrote. A
     replacement child inherits real outstanding work through that field, so
     reporting `(g1.v0): <none>` because *this session* has authorized nothing
     would drop the carried obligation at the first message your parent ever
@@ -125,10 +129,16 @@ re-run any of your gates; it is a pure supervisor. So:
     pre-`RUNNING` failure** — a failed `coord-<slug>` rename or a failed
     preflight). Send it before you stop, with the exact reason, so the parent
     surfaces it upward without re-investigating and never mistakes a dead
-    session for a working one. Include your current versioned `Outstanding
-    authorizations (vN): …` snapshot when you have started work — it is the
+    session for a working one. **Always include your current `Outstanding
+    authorizations (gG.vN): …` snapshot — on every `ABORTED`, pre-`RUNNING`
+    failures included** — it is the
     only durable record your parent will ever have of what you had committed
-    to, since your branch carries none of it. **List every open
+    to, since your branch carries none of it. "I had not started work" is not a
+    reason to omit it: a replacement child holds a non-empty inherited list from
+    its brief before it does anything at all, and an omitted or unversioned
+    snapshot is one the parent cannot order against what it already holds. When
+    you genuinely hold nothing, send the brief's own value, which is an explicit
+    `<none>` at its stated generation and version. **List every open
     authorization, whether or not you have dispatched it** — an item already
     sent to a descendant but not yet landed is still open and still yours to
     report; narrowing the snapshot to undispatched work would drop exactly the
@@ -1362,8 +1372,16 @@ Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
 `.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. Before you archive,
 also discharge every outstanding authorization that session held (comms protocol
-Rule 11): diff what you authorized against what the branch actually contains, and
-for anything not landed, either cite the commit that covers it, record why it is
+Rule 11). **Where you read the outstanding list from depends on what you are
+archiving, because only one kind of child leaves a branch to diff.** Archiving a
+**leaf implementer**: diff what you authorized against what its branch actually
+contains. Archiving a **child orchestrator**: its `coord-<slug>` branch is never
+committed, so a diff there proves nothing — an empty coordinator branch is not
+evidence that nothing is outstanding, and blocking on an impossible diff would
+strand the archive. Read instead from the `CLOSED` ledger on an orderly exit, or
+from the last versioned snapshot you accepted from it when it died without one.
+Then, for anything not landed, either
+cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
 — write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
 and verify it is actually there. Transfer discharges *this session* for the
