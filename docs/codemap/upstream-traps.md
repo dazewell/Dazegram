@@ -949,13 +949,13 @@ The subtle half: the schedule **picker** is a directly-shown `BottomSheet`
 never registered as the fragment's `visibleDialog`, so
 `LaunchActivity.switchToAvailableAccountOrLogout`'s fragment swap does **not**
 dismiss it on logout -- the same structural gap #330 documented for the child
-sheet via `presetLogoutObserver` (`EventScheduleHelper.java:919-931`). So a
+sheet via `presetLogoutObserver` (`EventScheduleHelper.java:945-952`). So a
 generation captured *when the picker opens*, or at the top of `commit()`, can
 read the already-bumped post-logout value, making every downstream check a
 tautology. The tokens are therefore captured at `EventScheduleHelper.Row`
-**construction** -- before the picker is shown (`EventScheduleHelper.java:251-253`,
-`:394-396`) -- and re-verified fail-closed in `snapshot()` and `commit()`
-(`EventScheduleHelper.java:1601`, `:1615`). `snapshot()` returning null also
+**construction** -- before the picker is shown (`EventScheduleHelper.java:277-279`,
+`:417-422`) -- and re-verified fail-closed in `snapshot()` and `commit()`
+(`EventScheduleHelper.java:1632`, `:1646`). `snapshot()` returning null also
 stops any `EventScheduleBulkArmer` being built for a departed slot, and
 `armPending -> EventScheduleStore.persist` carries no token of its own, so that
 `commit()` gate is the only thing covering it.
