@@ -1530,6 +1530,13 @@ public final class GhostHoldController {
      */
     private static void postScheduledCount(int account, long dialogId) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
+        // NagramX: #ghost-hold. Pin the session before the storage-queue hop. D (the
+        // deletion-notification tail) and the other callers reach the UI publish below
+        // after an async hop, and none captured the session, so a logout racing the hop
+        // would post a count computed for this user's dialog into whoever now owns the
+        // reused account slot. sessionEpoch moves synchronously on the UI thread at
+        // logout, so comparing it there is race-free.
+        final int session = sessionEpoch.get(account);
         storage.getStorageQueue().postRunnable(() -> {
             int stock = 0;
             try {
@@ -1548,8 +1555,12 @@ public final class GhostHoldController {
                 fork = store.cachedCountForDialog(dialogId);
             }
             final int total = stock + fork;
-            AndroidUtilities.runOnUIThread(() ->
-                    NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, total, true));
+            AndroidUtilities.runOnUIThread(() -> {
+                if (sessionEpoch.get(account) != session) {
+                    return;
+                }
+                NotificationCenter.getInstance(account).postNotificationName(NotificationCenter.scheduledMessagesUpdated, dialogId, total, true);
+            });
         });
     }
 
