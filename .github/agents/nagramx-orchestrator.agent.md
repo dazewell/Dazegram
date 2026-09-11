@@ -1139,8 +1139,13 @@ $reviews = gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews" |
 @($reviews | Where-Object { $_.user.login -like '*copilot*' }).Count
 
 # graphql takes real variables; backslash-escaped quotes do not survive this shell
-$q = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{isResolved path line}}}}}'
-$t = gh api graphql -f query=$q -F o=dazewell -F n=Dazegram -F p=$pr | ConvertFrom-Json
+# --paginate here too: reviewThreads caps at 100, so thread 101+ on a busy PR
+# reads as "all resolved" when it was never fetched — the same under-count the
+# --paginate on $reviews above guards against. gh walks the pages when the query
+# exposes pageInfo{ hasNextPage endCursor } and an $endCursor variable it fills.
+$q = 'query($o:String!,$n:String!,$p:Int!,$endCursor:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100, after:$endCursor){nodes{isResolved path line} pageInfo{hasNextPage endCursor}}}}}'
+$t = gh api graphql --paginate -f query=$q -F o=dazewell -F n=Dazegram -F p=$pr |
+  ConvertFrom-Json | ForEach-Object { $_ }
 $t.data.repository.pullRequest.reviewThreads.nodes | Select-Object isResolved, path, line
 ```
 
