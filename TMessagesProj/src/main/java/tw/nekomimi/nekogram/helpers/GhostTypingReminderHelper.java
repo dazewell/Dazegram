@@ -20,10 +20,27 @@ import tw.nekomimi.nekogram.NekoConfig;
  * Reminds the user, once per chat per Ghost Mode session, the first time they
  * start typing into an empty composer while Ghost Mode is on -- ahead of the
  * send, unlike {@link GhostSendWarningHelper} which fires at the last moment
- * before a message-producing request is actually dispatched to tgnet. Both
- * stay independently correct: this one is an early nudge and can be silently
- * missed (a covered fragment, a paused screen); the send-time warning is the
- * one accurate signal for every message type in every configuration.
+ * before a message-producing request is actually dispatched to tgnet.
+ * <p>
+ * This is the primary signal of the two, and the send-time warning defers to
+ * it: once this has reminded a chat during the current Ghost session, the
+ * send-time warning stays quiet in that chat (it asks via
+ * {@link #wasRemindedThisGhostSession}). Sending after being reminded is a
+ * deliberate act, and announcing it a second time is noise.
+ * <p>
+ * The send-time warning still fires in an already-reminded chat for anything
+ * this reminder structurally cannot see. It only watches ChatActivity's own
+ * composer, so forwards, media picked from the gallery, text shared in from
+ * another app, bot keyboard buttons, story and popup-notification replies, and
+ * the automatic retry of an unsent message all reach the network without ever
+ * passing through here. Those are exactly the sends the send-time warning
+ * exists to cover, and narrowing it by request type instead would have gone
+ * wrong in both directions at once -- see GhostSendWarningHelper for why.
+ * <p>
+ * The deferral is keyed on a reminder that was actually shown, never one that
+ * was merely due: this reminder can be silently missed (a covered fragment, a
+ * paused screen), and when it is, the send-time warning is the only signal the
+ * user gets and must not be suppressed.
  * <p>
  * NagramX: a future change should add a Hold-Messages-inactive condition here
  * (once the currently-unmerged Hold Messages setting lands) and update
@@ -105,6 +122,22 @@ public class GhostTypingReminderHelper {
             stateByAccount.put(account, state);
         }
         return state.reminded;
+    }
+
+    // NagramX: the query GhostSendWarningHelper uses to stay quiet in a chat this
+    // Ghost session has already reminded about. UI thread only, exactly like every
+    // other access to this state -- that caller reads it from inside its own
+    // runOnUIThread block, never from the stage queue its hook runs on. It goes
+    // through remindedSetForEpoch with a freshly-read ghostSessionEpoch for the
+    // same reason the posted runnable below does: a set that belongs to an
+    // already-ended Ghost session must never answer for the current one, and
+    // reading through the accessor is what guarantees there is no stale set left
+    // lying around to read by mistake.
+    // Returns true only for a chat where a bulletin was actually attempted, since
+    // that is the only thing added to the set -- a reminder that was due but
+    // silently missed leaves this false, so the send-time warning still fires.
+    static boolean wasRemindedThisGhostSession(int account, long dialogId) {
+        return remindedSetForEpoch(account, ghostSessionEpoch).contains(dialogId);
     }
 
     /**
@@ -191,8 +224,15 @@ public class GhostTypingReminderHelper {
             return false;
         }
 
+        // NagramX: createErrorBulletin builds at Bulletin.DURATION_SHORT (1.5s),
+        // which is too short to read a full sentence and still have a moment to
+        // act on it. DURATION_PROLONG (5s) is the codebase's existing long-form
+        // value, set the same way at e.g. DialogsActivity.java:6303 -- no custom
+        // timer. Note 5s is an upper bound, not a guarantee: the bulletin slot is
+        // global, so anything shown after this replaces it.
         Bulletin bulletin = resolveBulletinFactory(fragment)
-                .createErrorBulletin(getString(R.string.GhostTypingReminder));
+                .createErrorBulletin(getString(R.string.GhostTypingReminder))
+                .setDuration(Bulletin.DURATION_PROLONG);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
             return false;
         }

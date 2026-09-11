@@ -547,6 +547,21 @@ touches this state. If a future change makes this state reachable from
 anywhere but those two UI-thread paths, revisit this exemption rather than
 assuming it still holds.
 
+That revisit has since happened once, and the exemption survived it. A later
+`#ghost-type-warning` change added a third reader: the send-time warning now
+stays quiet in a chat the typing reminder already covered this Ghost session,
+which it asks via `GhostTypingReminderHelper.wasRemindedThisGhostSession`. The
+tempting place to put that question is the send hook itself, which is exactly
+the cross-thread read that got the old design deleted -- `sendRequestInternal`
+runs on `Utilities.stageQueue`. It isn't there: the destination dialog id is
+resolved on the stage queue (where the outgoing request is in hand) and
+captured, and the set is only ever touched from inside
+`GhostSendWarningHelper`'s pre-existing `runOnUIThread` block, so this is a
+third *UI-thread* path rather than a background one. It is also read-only --
+the send path never records a reminder -- so it cannot consume a slot the user
+was never shown. The rule the exemption actually rests on is unchanged: no
+background-thread access, so still no lock.
+
 Unlike the deleted send-time state, this feature needed its own transition
 counter to know when a Ghost session actually restarted, and that counter
 went through three revisions before landing on its current shape, each one

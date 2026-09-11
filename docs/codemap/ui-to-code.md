@@ -556,4 +556,20 @@ reminder added under `#ghost-type-warning` is one example
 share-comment field, the gift-message sheet, the popup-notification reply box,
 or the story reply box, none of which represent an actual open chat.
 
-*(Established 2026-09-10, #ghost-type-warning.)*
+The corollary matters just as much, and cost a design round to work out: those
+four surfaces send real messages. Only one of the five instantiations passes a
+fragment (`ChatActivity.java:8604`); the other four pass `null` —
+`DialogsActivity.java:5075` (share/forward sheet comment),
+`Gifts/GiftMessageBottomSheet.java:179`, `Stories/PeerStoriesView.java:3202`
+(story reply) and `PopupNotificationActivity.java:317` (notification quick
+reply). So a feature hooked on this widget covers only chat-composer sends by
+construction, and can never see a story reply, a notification reply, or a
+share-sheet comment — nor, since they don't go through any composer at all, a
+forward, gallery media, a bot keyboard button, or
+`SendMessagesHelper`'s automatic retry of unsent messages on reconnect
+(`SendMessagesHelper.java:9095-9114`). Anything that needs to observe *every*
+outgoing message needs a hook at the send or network layer, not here; the pair
+of Ghost Mode warnings is split along exactly this line.
+
+*(Established 2026-09-10, #ghost-type-warning; corollary added 2026-09-10 in
+the same feature's warning-tuning change.)*

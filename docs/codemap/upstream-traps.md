@@ -999,3 +999,34 @@ upstream's to grow, not ours to police.
 *(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
+
+## `TL_ephemeral.TL_sendMessage` is not a text RPC -- it is the merged wrapper for both `messages.sendMessage` and `messages.sendMedia`
+
+The name reads like a text-only send, and it is not. When a send has an
+ephemeral receiver bot set, `EphemeralMessagesHelper#beforeSendingFinalRequest`
+rewrites the outgoing request into a single `TL_ephemeral.TL_sendMessage`
+regardless of what it started as: the `TL_messages_sendMessage` branch
+(`EphemeralMessagesHelper.java:141`) sets `newRequest.media = null` (`:155`),
+and the `TL_messages_sendMedia` branch (`:182`) copies `newRequest.media =
+request.media` straight across (`:196`). The class declares `public
+TLRPC.InputMedia media` (`TL_ephemeral.java:343`) precisely because of that
+second branch, and
+`FileRefController.java:161-163` shows it routinely carrying paid media and
+polls. The ephemeral receiver itself is resolved for every send including
+media, from the caption where there is one
+(`SendMessagesHelper.java:4439-4450`).
+
+Cost of missing it: any code classifying outgoing requests by TL class -- the
+Ghost Mode send warning's allowlist is the fork's example
+(`GhostSendWarningHelper.java`) -- that files this class under "text" will
+silently mis-handle ephemeral photo, video, document, poll and paid-media
+sends. Silent in the literal sense: no crash, no log, nothing to notice. If
+the text/media distinction actually matters, the discriminator is `media ==
+null`, which is what the two branches above establish; but prefer not to
+classify user intent by request type at all, since the reverse case bites
+equally -- a typed message with a resolved link preview leaves as
+`TL_messages_sendMedia` carrying `TL_inputMediaWebPage`
+(`SendMessagesHelper.java:5338-5355`), not as `TL_messages_sendMessage`.
+
+*(Established 2026-09-10, #ghost-type-warning -- found in design review, before
+the mis-classification reached code.)*

@@ -3,8 +3,10 @@ package tw.nekomimi.nekogram.helpers;
 import static org.telegram.messenger.LocaleController.getString;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
+import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_ephemeral;
@@ -17,9 +19,30 @@ import org.telegram.ui.LaunchActivity;
 import tw.nekomimi.nekogram.NekoConfig;
 
 /**
- * Warns the user, every time it happens, that a message they just sent while
- * Ghost Mode was on still went out over the network and exposed their online
- * status. Ghost Mode never held sends back -- this only informs.
+ * Warns the user that a message they just sent while Ghost Mode was on still
+ * went out over the network and exposed their online status. Ghost Mode never
+ * held sends back -- this only informs.
+ * <p>
+ * It covers what {@link GhostTypingReminderHelper} cannot, and defers to it
+ * where it can: in a chat already reminded during the current Ghost session,
+ * this stays quiet, because the user typed that message having just been told.
+ * Everything the composer reminder never sees still warns here -- forwards,
+ * gallery media, text shared in from another app, stickers and GIFs, voice,
+ * bot keyboard buttons, story and popup-notification replies, and the
+ * automatic retry of an unsent message.
+ * <p>
+ * The suppression is deliberately keyed on the destination chat rather than on
+ * the request type. Classifying "the user typed this" from the outgoing TL
+ * class was tried on paper first and fails in both directions at once:
+ * TL_ephemeral.TL_sendMessage is not a text request but the merged wrapper for
+ * both messages.sendMessage and messages.sendMedia whenever an ephemeral
+ * receiver is set (EphemeralMessagesHelper#beforeSendingFinalRequest copies
+ * request.media straight into it), so treating it as typed text would silence
+ * ephemeral photo and poll sends; and a typed message carrying a resolved link
+ * preview leaves as TL_messages_sendMedia with TL_inputMediaWebPage, so
+ * treating that class as untyped would keep double-warning the commonest
+ * message there is. The chat is the thing actually being asked about, so the
+ * chat is what gets asked.
  * <p>
  * Call {@link #onMessageRequestReady(int, TLObject)} at the last point before a
  * request is actually handed to tgnet (ConnectionsManager#sendRequestInternal,
@@ -91,6 +114,36 @@ public class GhostSendWarningHelper {
         }
     }
 
+    // NagramX: 0 is never a real dialog id, so it doubles as "couldn't work out
+    // which chat this is headed for". Resolution failing must mean the warning is
+    // shown, never suppressed: suppression is only ever justified by a reminder
+    // the user got for that exact chat, and an unidentified chat cannot support
+    // that claim. Fail open, always.
+    private static final long DIALOG_ID_UNRESOLVED = 0;
+
+    // NagramX: runs on Utilities.stageQueue, synchronously with the caller, since
+    // that is the only point the outgoing request is in hand. It reads plain
+    // fields off an object the same thread is about to serialize, so there is
+    // nothing to race.
+    // TlUtils.getInputPeerFromSendMessageRequest handles the cloud sends it knows
+    // and returns null for everything else. Secret-chat sends aren't in it at all
+    // and carry a TL_inputEncryptedChat rather than an InputPeer, so they're
+    // mapped here onto the same encrypted dialog id ChatActivity uses -- that is
+    // the id the typing reminder would have recorded for that chat, and matching
+    // it is the whole point. TL_messages_sendEncryptedMultiMedia carries no peer
+    // at all and so resolves to unresolved, which warns.
+    private static long resolveDialogId(TLObject request) {
+        if (request instanceof TLRPC.TL_messages_sendEncrypted) {
+            TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncrypted) request).peer;
+            return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
+        }
+        if (request instanceof TLRPC.TL_messages_sendEncryptedFile) {
+            TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncryptedFile) request).peer;
+            return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
+        }
+        return DialogObject.getPeerDialogId(TlUtils.getInputPeerFromSendMessageRequest(request));
+    }
+
     private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
         if (!isMessageSendRequest(request)) {
             return;
@@ -99,6 +152,12 @@ public class GhostSendWarningHelper {
         if (!NekoConfig.isGhostModeActive()) {
             return;
         }
+
+        // NagramX: resolved on this thread and captured into the runnable rather
+        // than re-derived inside it -- the request belongs to the caller and its
+        // resources are freed once the send completes, so it must not be read
+        // from a runnable that runs later.
+        final long dialogId = resolveDialogId(request);
 
         // NagramX: resolve the fragment on the UI thread, where sendRequestInternal
         // does not run (it's on Utilities.stageQueue), and decide + show against
@@ -110,6 +169,19 @@ public class GhostSendWarningHelper {
         // the app on the main looper.
         AndroidUtilities.runOnUIThread(() -> {
             try {
+                // NagramX: the typing reminder already told the user, in this chat,
+                // during this Ghost session -- so this send is something they chose
+                // knowing it wasn't covered, and saying it again is the noise this
+                // check removes. Read here rather than above because the reminder's
+                // set is UI-thread-only state; reading it from the stage queue would
+                // reintroduce exactly the cross-thread access that got an earlier
+                // per-chat design deleted (docs/codemap/dead-ends.md). It stays a
+                // read-only query -- this path never records anything, so it cannot
+                // consume a reminder the user has not actually been shown.
+                if (dialogId != DIALOG_ID_UNRESOLVED
+                        && GhostTypingReminderHelper.wasRemindedThisGhostSession(account, dialogId)) {
+                    return;
+                }
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
                 tryShowBulletin(fragment, account);
             } catch (Throwable t) {
@@ -129,7 +201,8 @@ public class GhostSendWarningHelper {
     // constructed and .show() was called against a non-empty instance -- it does
     // NOT mean the user necessarily saw it (see tryShowBulletin below for why that
     // can't be guaranteed here). Every other value names a specific reason the
-    // attempt itself didn't happen.
+    // attempt itself didn't happen. Suppression by an earlier typing reminder is
+    // decided before this runs and so has no value here.
     private enum BulletinOutcome {
         ATTEMPTED, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
     }
@@ -164,8 +237,13 @@ public class GhostSendWarningHelper {
             return BulletinOutcome.WRONG_ACCOUNT;
         }
 
+        // NagramX: same longer duration as the typing reminder -- createErrorBulletin
+        // builds at Bulletin.DURATION_SHORT (1.5s), and this warning now fires only
+        // where no earlier heads-up was possible, which makes it the sole signal for
+        // that send and the last one that should flash past unread.
         Bulletin bulletin = resolveBulletinFactory(fragment)
-                .createErrorBulletin(getString(R.string.GhostSendExposedWarning));
+                .createErrorBulletin(getString(R.string.GhostSendExposedWarning))
+                .setDuration(Bulletin.DURATION_PROLONG);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
             return BulletinOutcome.EMPTY_CONTAINER;
         }
