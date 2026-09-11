@@ -895,8 +895,12 @@ code are not.
 
 10. **Land it / propose it.** Landing a finished change into `dev` is a
     **squash merge** — mark the PR from step 9 ready and merge it with
-    `gh pr merge <n> --squash` (or, if you skipped the PR, a local
-    `git merge --squash` collapsed to one tagged commit) — so `dev` gets one
+    `gh pr merge <n> --squash --match-head-commit <sha>` (the
+    `--match-head-commit` pin binds the merge to the reviewed head so a
+    concurrent push can't land an unreviewed commit — see the
+    `nagramx-branch-flow` skill for the full precondition), or, if you skipped
+    the PR, a local `git merge --squash` collapsed to one tagged commit — so
+    `dev` gets one
     clean commit per change and never needs a force-push; GitHub preserves the
     `#tags` by concatenating the branch commit messages into the squash body
     (the `COMMIT_MESSAGES` setting — see the `nagramx-branch-flow` skill and the
