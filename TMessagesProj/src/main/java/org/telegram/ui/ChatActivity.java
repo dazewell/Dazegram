@@ -37235,10 +37235,14 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
-        if (fmessages.isEmpty()) {
+        if (fmessages.isEmpty()
+                && (forwardingMessage != null || selectedMessagesIds[0].size() + selectedMessagesIds[1].size() > 0)) {
             // NagramX: the send boundary dropped every row (an all-held selection, or a single held row
-            // armed by the context-menu forward), so there is nothing to forward. Clear the one-shot
-            // forward source and the selection rather than dispatch an empty forward and strand the user.
+            // armed by the context-menu forward), so there is nothing to forward. Guarded on a forward
+            // selection actually having existed -- the quote-forward flow carries its payload in
+            // messagePreviewParams / replyingMessageObject with no forward rows, and must fall through to
+            // its own dispatch below rather than be aborted here. Clear the one-shot forward source and
+            // the selection rather than dispatch an empty forward and strand the user.
             forwardingMessage = null;
             forwardingMessageGroup = null;
             for (int a = 1; a >= 0; a--) {
