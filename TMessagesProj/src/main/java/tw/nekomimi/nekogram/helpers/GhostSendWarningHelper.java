@@ -223,20 +223,29 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: taken first, before anything else looks at this slot, so every
-        // later step works from one observation of who is logged in. The slot is
-        // reused across a logout and a fresh login, and both the resolution below
-        // and the runnable after it can otherwise see a different user: the
-        // resolution reads it for the Saved Messages mapping, and the runnable
-        // runs a main-loop turn later. remindedSetForEpoch already rejects a set
-        // belonging to a different user, but that asks "does the set belong to
-        // whoever is logged in now", not "does it belong to whoever sent this" --
-        // so if the new user happens to have been reminded about a dialog id they
-        // share with the old one (any group both are in), their set would answer
-        // for a send that was not theirs and suppress it. Suppression is only
-        // ever justified by a reminder shown to the sender, for the sender's
-        // chat, so a slot that changed hands at any point in here falls back to
-        // warning like every other unresolvable case.
+        // NagramX: taken first, before anything else in this hook looks at this
+        // slot, so every later step works from one observation of who is logged
+        // in. The slot is reused across a logout and a fresh login, and both the
+        // resolution below and the runnable after it can otherwise see a
+        // different user: the resolution reads it for the Saved Messages
+        // mapping, and the runnable runs a main-loop turn later.
+        // remindedSetForEpoch already rejects a set belonging to a different
+        // user, but that asks "does the set belong to whoever is logged in now",
+        // not "does it belong to whoever sent this" -- so if the new user happens
+        // to have been reminded about a dialog id they share with the old one
+        // (any group both are in), their set would answer for a send that was not
+        // theirs and suppress it. Suppression is only ever justified by a
+        // reminder shown to the sender, for the sender's chat, so a slot that
+        // changed hands at any point in here falls back to warning like every
+        // other unresolvable case.
+        // This is "first" within the hook, not the request's originating
+        // identity: sendRequest posts sendRequestInternal to Utilities.stageQueue
+        // before this is reached (ConnectionsManager.java:400-402). That gap
+        // fails open rather than suppressing -- the queue is FIFO, so a send
+        // queued before a logout runs before the next login's own requests, and
+        // a logout nulls currentUser so this would read 0 anyway, which is
+        // DIALOG_ID_UNRESOLVED and can never match a real user id at the check
+        // below. See docs/codemap/dead-ends.md for what would invalidate that.
         final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
 
         // NagramX: resolved here, synchronously, and captured into the runnable as

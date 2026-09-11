@@ -654,8 +654,9 @@ at the point of use — a raw `get()` doesn't know it's stale. The current shape
 (`GhostTypingReminderHelper.java`) closes that by giving every stored set its
 own epoch and only ever reaching it through one accessor: `PerAccountState`
 pairs a `HashSet<Long>` with the epoch it was created for (and with the account
-slot's logged-in user id, so a logout and fresh login into the same slot
-invalidates it the same way a stale epoch does), held in `stateByAccount`, and
+slot's logged-in user id, so a slot that comes back holding a *different* user
+invalidates it the same way a stale epoch does — a logout and fresh login as
+the same user does not, and does not need to), held in `stateByAccount`, and
 `remindedSetForEpoch(account, epoch)` is the only way anything reads or
 creates one — it replaces a stale entry with a fresh one for the requested
 epoch on the spot. All three call sites -- the synchronous check in
@@ -681,6 +682,31 @@ destination is resolved, not after, and the resolver is handed it rather than
 re-reading — otherwise the Saved Messages mapping and the check validating it
 could observe the slot either side of the same logout, and agree.
 
+**State the boundary of that snapshot precisely, because it is not the
+request's originating identity.** It is sampled where the hook is, in
+`sendRequestInternal`, and the usual `ConnectionsManager#sendRequest` posts
+that to `Utilities.stageQueue` first (`ConnectionsManager.java:400-402`, verified
+2026-09-11). So it covers everything from the stage-queue turn onward, not the
+gap between the user's send action and that turn. Closing that gap would mean
+capturing an identity in `sendRequest` and threading it through
+`sendRequestInternal`'s signature — a permanent widening of the fork's
+footprint in one of the hottest methods upstream owns, which is not worth it
+here, because the ordering makes the gap fail open rather than suppress:
+
+- `Utilities.stageQueue` is a single FIFO `DispatchQueue`, so a send posted
+  before a logout runs before anything the subsequent login posts to it. The
+  queued send cannot be overtaken by the new user's session coming up.
+- A logout nulls `currentUser` via `UserConfig.clearConfig()`, so a send that
+  did somehow run after it samples `getClientUserId()` as 0 — which is
+  `DIALOG_ID_UNRESOLVED`, and which then cannot equal the new user's id at the
+  UI check either. Both the resolution and the validation fail open.
+
+So the suppression cannot be handed the wrong user's set this way; it can only
+lose the suppression and warn. Anything that later moves this hook earlier, or
+makes `getClientUserId()` return a stale non-zero value across a logout, breaks
+that reasoning and puts the prescribed capture-before-the-hop fix back on the
+table.
+
 **The residual gap this entry used to record as accepted is now closed, and
 the thing that forced the issue is worth recording.** Revisions 1 and 3 both
 observed exactly one path back into an active Ghost session: the master Ghost
@@ -691,11 +717,11 @@ so whichever chats were already reminded stayed suppressed into what the user
 experienced as a new session. That was tolerable only while the worst case was
 a missed *reminder*: `GhostSendWarningHelper` checked
 `NekoConfig.isGhostModeActive()` fresh at send time
-(`GhostSendWarningHelper.java:212-214`) and carried no per-chat state, so a send
+(`GhostSendWarningHelper.java:222-224`) and carried no per-chat state, so a send
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:268-271` asking
+(`GhostSendWarningHelper.java:287-290` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a
