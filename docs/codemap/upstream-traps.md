@@ -1211,23 +1211,35 @@ A held Ghost Hold row is a real `TYPE_TEXT` `MessageObject` with a negative
 local id, and it renders in the Scheduled list like any other row, so it is
 selectable into multi-select -- `addToSelectedMessages`
 (`ChatActivity.java:20835`) adds it to `selectedMessagesIds` and, because the
-type is text, to `selectedMessagesCanCopyIds` too. That means every bulk action
-the Scheduled action mode exposes acts on it unless it carries its own held
-guard. Send-Now (`confirmSendNowSelectedMessages`), the single-row context
-menu, and edit-schedule-time each guard it individually; the reschedule spread
-did not until it was excluded at the `resolveRescheduleItems` chokepoint
-(`ChatActivity.java:37785`). But three more actions that are reachable on the
-Scheduled list still act on held rows with no guard and would push their content
-to the server now: `combine_message` (`ChatActivity.java:4327`), `nkbtn_repeat`
-/ `nkbtn_repeatascopy` (handlers at `ChatActivity.java:48159`/`48162` -> 
-`doRepeatMessage` at `:49005` -> `sendMessagesAsCopy`), and `nkbtn_savemessage`
-(`ChatActivity.java:48083`, forwards to Saved Messages) -- all added to the
-scheduled action-mode overflow at `ChatActivity.java:11489-11493`. The lesson:
-guarding held rows action-by-action is the wrong shape, because the held row is
-admitted to the *selection* upstream of every action; the durable fix is to keep
-held rows out of the bulk selection (or out of these actions at the selection
-boundary), not to chase each new action. Recorded as an open presentation
-decision, not yet fixed.
+type is text, to `selectedMessagesCanCopyIds` too. That means a bulk action the
+Scheduled action mode exposes acts on it unless either its own held guard or its
+scheduled-mode visibility gate excludes it. Send-Now
+(`confirmSendNowSelectedMessages`), the single-row context menu, and
+edit-schedule-time each guard it individually; the reschedule spread did not
+until it was excluded at the `resolveRescheduleItems` chokepoint
+(`ChatActivity.java:37785`).
+
+Getting the *reachable* set right matters, because two of the send-capable
+overflow items are already hidden in scheduled mode and two others are not.
+`nkbtn_savemessage` and plain `nkbtn_repeat` are added to the overflow at
+`ChatActivity.java:11489-11490` but their visibility is set to `canForward`
+(`ChatActivity.java:20997`, `:20999`), and `canForward` is
+`chatMode != MODE_SCHEDULED && ...` (`ChatActivity.java:20980`) -- so both are
+**hidden** on the Scheduled list and cannot act on a held row there. The three
+that *are* reachable and unguarded, and would push held text to the server now,
+are: `combine_message` (visibility gated only on copyable selection,
+`ChatActivity.java:11515`; handler `:4327`), `nkbtn_repeatascopy` (visibility
+`canSendMessage && (!noforwards || canSendMessagesAsCopy(...))` with no
+scheduled gate, `ChatActivity.java:21001`; handler `:48162` ->
+`doRepeatMessage` `:49005` -> `sendMessagesAsCopy`), and the scheduled
+`forward` overflow item (added at `ChatActivity.java:11507` under
+`getActionBarButtonForward()`, enabled via
+`canSendMessagesAsCopy(getSelectedMessages1())` at
+`ChatActivity.java:21093-21097`). The lesson: guarding held rows action-by-action
+is the wrong shape, because the held row is admitted to the *selection* upstream
+of every action; the durable fix is to keep held rows out of the bulk selection
+(or out of the send-capable actions at that boundary), not to chase each new
+action. Recorded as an open presentation decision, not yet fixed.
 
 *(Established 2026-09-10, `#ghost-hold`, during the ghost-hold-audit branch
 superseding PR #336 -- the item-3 re-audit that asked, for every Scheduled-list
