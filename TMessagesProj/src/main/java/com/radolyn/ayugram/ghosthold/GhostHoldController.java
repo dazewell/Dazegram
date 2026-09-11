@@ -967,10 +967,17 @@ public final class GhostHoldController {
         // inside the callback would then report the later flush's number on this
         // flush's bulletin (item 8). Capturing it here pins it to this flush.
         final int sent = flushSent.get();
-        if (sent <= 0) {
-            return;
-        }
         countHeld(stillHeld -> {
+            // Report even when nothing was sent, as long as rows remain held. A held
+            // row the flush declined to send -- its dialog became paid, or Ghost came
+            // back on -- stays held and must be reported as not sent, never silently
+            // omitted: the user toggled Ghost off expecting a drain and is owed the
+            // count that did not go. Stay silent only when nothing was sent AND nothing
+            // remains held (e.g. the only row was deleted mid-flush), where there is
+            // genuinely nothing to report.
+            if (sent <= 0 && stillHeld <= 0) {
+                return;
+            }
             BaseFragment f = LaunchActivity.getLastFragment();
             if (f == null || f.getParentActivity() == null) {
                 return;
