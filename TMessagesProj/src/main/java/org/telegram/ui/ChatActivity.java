@@ -37677,7 +37677,14 @@ public class ChatActivity extends BaseFragment implements
                 req.id.add(id);
             }
         }
-        if (req.id.isEmpty()) return;
+        if (req.id.isEmpty()) {
+            // NagramX: an all-held selection produces no server ids, so there is nothing
+            // to send now. Still clear the selection -- the scheduled action bar offered
+            // Send Now for any non-empty selection, and returning without clearing would
+            // strand the user in selection mode after they confirmed the dialog.
+            clearSelectionMode();
+            return;
+        }
 
         ConnectionsManager.getInstance(currentAccount).sendRequest(req, (response, error) -> handleSendScheduledNowResponse(req, response, error));
         clearSelectionMode();
