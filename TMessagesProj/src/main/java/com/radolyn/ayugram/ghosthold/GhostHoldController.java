@@ -110,7 +110,7 @@ public final class GhostHoldController {
 
     private static volatile boolean flushInProgress;
 
-    // NagramX (item 2): a synchronous per-account logout barrier for an in-flight
+    // NagramX: a synchronous per-account logout barrier for an in-flight
     // flush. The store's own ownership gate (runOwned/generation) only advances when
     // the async teardown actually runs on the fork queue, which can lag the instant
     // logout begins by an arbitrary amount. A flush that pinned its generation before
@@ -126,13 +126,24 @@ public final class GhostHoldController {
     // and a plain array element carries no cross-thread visibility guarantee.
     private static final AtomicIntegerArray sessionEpoch = new AtomicIntegerArray(UserConfig.MAX_ACCOUNT_COUNT);
 
-    // NagramX (item 8): messages the in-flight flush actually handed back to the send
+    // NagramX: messages the in-flight flush actually handed back to the send
     // funnel, so the completion bulletin reports what happened rather than what was
     // queued. Only completeHandoff's handed-off branch increments it; a row the user
     // deleted mid-flush, or one re-held because Ghost returned, never does -- so a
     // flush whose only row was deleted reports nothing instead of "1 sent". Reset at
     // performFlush start; one flush runs at a time (flushInProgress).
     private static final AtomicInteger flushSent = new AtomicInteger();
+
+    // NagramX: the per-account session tokens this flush pinned at confirm time
+    // (promptFlush's collect callback), stashed for the terminal completion report.
+    // onItemTerminal reads global flushSent and publishes a bulletin against the
+    // current LaunchActivity fragment; if a logout reused an account slot mid-flush
+    // that fragment now belongs to a different session, so the report must be
+    // suppressed. Held as a field rather than threaded through the ~11 onItemTerminal
+    // call sites for the same reason flushSent is: one flush runs at a time
+    // (flushInProgress), and the terminal callback validates it synchronously on the
+    // UI thread -- the thread logout bumps sessionEpoch on -- before the async count.
+    private static volatile java.util.Map<Integer, Integer> flushSessionByAccount;
 
     // Set once we register the foreground retry below, so it is never added twice.
     private static volatile boolean foregroundRetryArmed;
@@ -615,7 +626,7 @@ public final class GhostHoldController {
         // ever moves on logout teardown, so an invalidation here means the account slot
         // is being torn down: re-driving originalParams through sendMessage(account) now
         // would transmit through whoever next owns the slot -- the very cross-account
-        // leak item 2 guards. So we cannot honour NOT LOST by redriving, because the
+        // leak the session-epoch barrier guards. So we cannot honour NOT LOST by redriving, because the
         // redrive would not send THIS user's message, it would send from the wrong
         // account. Route both failure paths through redriveAfterPersistFailure, which
         // redrives only when the session epoch is unchanged (a same-session disk-full:
@@ -637,7 +648,7 @@ public final class GhostHoldController {
             }
             postScheduledCount(account, peer, holdSession);
             AndroidUtilities.runOnUIThread(() -> {
-                // NagramX (item 2, success side): this hop publishes stableMsg and the
+                // NagramX (success side): this hop publishes stableMsg and the
                 // divert bulletin through the account's MessagesController. If logout
                 // began while it was queued, the slot may already belong to the next
                 // user, so rendering here would surface the previous session's held
@@ -920,7 +931,9 @@ public final class GhostHoldController {
             return;
         }
         flushInProgress = true;
-        // Reset the honest sent-counter for this flush (item 8). Only a proven handoff
+        // Stash this flush's pinned per-account session tokens for the terminal report.
+        flushSessionByAccount = sessionByAccount;
+        // Reset the honest sent-counter for this flush. Only a proven handoff
         // increments it, so the completion bulletin reports transmitted messages, not
         // merely queued ones.
         flushSent.set(0);
@@ -966,8 +979,24 @@ public final class GhostHoldController {
         // below. flushInProgress was just cleared, so a second flush may start, reset
         // flushSent and repopulate it while our count is in flight; reading flushSent
         // inside the callback would then report the later flush's number on this
-        // flush's bulletin (item 8). Capturing it here pins it to this flush.
+        // flush's bulletin. Capturing it here pins it to this flush.
         final int sent = flushSent.get();
+        // Validate this flush's pinned per-account sessions synchronously here, on the
+        // UI thread logout bumps sessionEpoch on, before the async countHeld hop and
+        // the bulletin. The completion report reads the global flushSent and displays
+        // against the current LaunchActivity fragment; if a logout reused any
+        // participating account's slot mid-flush, that fragment now belongs to a
+        // different session and must not receive this flush's result. A moved epoch on
+        // any of them means abandon the report -- the per-item sends already ran under
+        // their own guards, this only suppresses the stale UI publish.
+        final java.util.Map<Integer, Integer> pinned = flushSessionByAccount;
+        if (pinned != null) {
+            for (java.util.Map.Entry<Integer, Integer> e : pinned.entrySet()) {
+                if (sessionEpoch.get(e.getKey()) != e.getValue()) {
+                    return;
+                }
+            }
+        }
         countHeld(stillHeld -> {
             // Report even when nothing was sent, as long as rows remain held. A held
             // row the flush declined to send -- its dialog became paid, or Ghost came
@@ -983,7 +1012,7 @@ public final class GhostHoldController {
             if (f == null || f.getParentActivity() == null) {
                 return;
             }
-            // Report what actually happened, not what was queued (item 8). flushSent
+            // Report what actually happened, not what was queued. flushSent
             // counts only proven, uncancelled handoffs; a row the user deleted mid-flush
             // or one re-held because Ghost returned never increments it. So a flush whose
             // only row was deleted reports nothing instead of the old "1 held message
@@ -1148,7 +1177,7 @@ public final class GhostHoldController {
                     onItemTerminal(remaining, pending);
                     return;
                 }
-                // NagramX (item 2): Ghost and paid were checked before this final
+                // NagramX: Ghost and paid were checked before this final
                 // store-queue hop, but the user can re-enable Ghost -- or the dialog can
                 // become paid, or LOG OUT -- during it. The retry object bypasses
                 // maybeHold, so dispatching now would transmit under Ghost, open a Stars
@@ -1204,20 +1233,24 @@ public final class GhostHoldController {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             boolean handedOff = false;
+            SQLiteCursor probe = null;
             try {
                 SQLiteDatabase db = storage.getDatabase();
                 String table = future ? "scheduled_messages_v2" : "messages_v2";
-                SQLiteCursor probe = db.queryFinalized("SELECT 1 FROM " + table + " WHERE mid = " + mid + " AND uid = " + dialogId + " LIMIT 1");
+                probe = db.queryFinalized("SELECT 1 FROM " + table + " WHERE mid = " + mid + " AND uid = " + dialogId + " LIMIT 1");
                 handedOff = probe.next();
-                probe.dispose();
             } catch (Exception e) {
                 FileLog.e(e);
+            } finally {
+                if (probe != null) {
+                    probe.dispose();
+                }
             }
             final boolean ho = handedOff;
             GhostHoldStore store = GhostHoldStore.getInstance(account);
             store.runOwned(epoch, () -> {
                 if (ho) {
-                    // NagramX (item 3): the funnel wrote the stock twin, but check the
+                    // NagramX: the funnel wrote the stock twin, but check the
                     // fork row is still present before completing. If it is GONE, the
                     // user deleted the held object during the handoff window and the
                     // messagesDeleted observer already removed the fork row -- both it
@@ -1252,7 +1285,7 @@ public final class GhostHoldController {
                     }
                     if (rowGone && sentObj != null) {
                         AndroidUtilities.runOnUIThread(() -> {
-                            // NagramX (:1197): the runOwned gate above is the async store
+                            // NagramX: the runOwned gate above is the async store
                             // generation, which only moves once logout's queued teardown
                             // runs. The flush's captured session moved synchronously the
                             // instant logout began, on this same UI thread. Revalidate it
@@ -1268,7 +1301,7 @@ public final class GhostHoldController {
                         });
                     } else {
                         store.deleteOnQueue(mid);
-                        // item 8: only a genuine, uncancelled handoff counts as sent.
+                        // Only a genuine, uncancelled handoff counts as sent.
                         flushSent.incrementAndGet();
                         if (!future) {
                             // NagramX: a send-now handoff wrote the messages_v2 twin and
@@ -1280,7 +1313,7 @@ public final class GhostHoldController {
                             // twin for the unsent scan. Pure UI dispatch, no stock write;
                             // scheduled-scoped so the main-view twin's fragment ignores it.
                             AndroidUtilities.runOnUIThread(() -> {
-                                // NagramX (:1197): same UI-thread revalidation as the cancel
+                                // NagramX: same UI-thread revalidation as the cancel
                                 // hop. This posts a scheduled messagesDeleted through the
                                 // account's NotificationCenter, so a logout that reused the
                                 // slot mid-handoff must abort it rather than reach the new
@@ -1542,15 +1575,19 @@ public final class GhostHoldController {
         // token there is race-free.
         storage.getStorageQueue().postRunnable(() -> {
             int stock = 0;
+            SQLiteCursor cursor = null;
             try {
                 SQLiteDatabase db = storage.getDatabase();
-                SQLiteCursor cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
+                cursor = db.queryFinalized("SELECT COUNT(mid) FROM scheduled_messages_v2 WHERE uid = " + dialogId);
                 if (cursor.next()) {
                     stock = cursor.intValue(0);
                 }
-                cursor.dispose();
             } catch (Exception e) {
                 FileLog.e(e);
+            } finally {
+                if (cursor != null) {
+                    cursor.dispose();
+                }
             }
             int fork = 0;
             GhostHoldStore store = GhostHoldStore.getInstance(account);
@@ -1636,7 +1673,7 @@ public final class GhostHoldController {
         // queue, so a logout that has begun but whose teardown has not yet run would
         // still pass the generation gate and insert the old user's stock rows into the
         // reused slot. The epoch moved the instant appDidLogout was seen, so rechecking
-        // it before the insert closes that lag (finding: legacy migration ignored it).
+        // it before the insert closes that lag.
         final int genAtStart = store.currentGeneration();
         final int sessionAtStart = sessionEpoch.get(account);
         storage.getStorageQueue().postRunnable(() -> {
@@ -1773,12 +1810,16 @@ public final class GhostHoldController {
                 SQLiteDatabase db = storage.getDatabase();
                 for (GhostHoldStore.HeldRecord rec : flushing) {
                     boolean found = false;
+                    SQLiteCursor c = null;
                     try {
-                        SQLiteCursor c = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " UNION ALL SELECT 1 FROM scheduled_messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " LIMIT 1");
+                        c = db.queryFinalized("SELECT 1 FROM messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " UNION ALL SELECT 1 FROM scheduled_messages_v2 WHERE mid = " + rec.mid + " AND uid = " + rec.dialogId + " LIMIT 1");
                         found = c.next();
-                        c.dispose();
                     } catch (Exception e) {
                         FileLog.e(e);
+                    } finally {
+                        if (c != null) {
+                            c.dispose();
+                        }
                     }
                     (found ? present : absent).add(rec.mid);
                 }
@@ -1833,7 +1874,7 @@ public final class GhostHoldController {
         @Override
         public void didReceivedNotification(int id, int acc, Object... args) {
             if (id == NotificationCenter.appDidLogout) {
-                // NagramX (item 2): bump the synchronous session epoch FIRST, before the
+                // NagramX: bump the synchronous session epoch FIRST, before the
                 // async store teardown is even queued. appDidLogout is delivered on the
                 // UI thread and the flush's pre-send recheck reads this on the UI thread,
                 // so an in-flight flush that pinned the old value is guaranteed to see
