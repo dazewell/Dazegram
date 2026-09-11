@@ -975,6 +975,27 @@ registers an observer or suppresses the new occupant's triggers. Lesson: a
 generation captured before *any* directly-shown dialog must be carried to the
 actual mutation site, never re-derived past the dialog.
 
+A reused slot also gets installed a *second* way -- `LoginActivity.onAuthSuccess`
+(`LoginActivity.java:1710`), which already carries its own fork per-slot reset
+(`PasscodeHelper.clearAccountState`, `:1715`) -- so it is fair to ask whether the
+event-schedule clears belong there too, or behind some shared hook both paths
+share. They do not: `performLogout` stays the sole chokepoint that matters for
+*our* state, because a slot can never reach a login picker without it having run
+first. Every slot-picking login entry point gates on
+`!UserConfig.isClientActivated()`, i.e. `currentUser == null`; `currentUser` is
+nulled in exactly one place, `UserConfig.clearConfig()`; and every
+`clearConfig()` call site outside `onAuthSuccess` itself is either inside
+`performLogout` or immediately followed by `performLogout(0)` in the same
+UI-thread runnable (the native auth-key-unregistered path and the SESSION_REVOKE
+push path both do `clearConfig()` then `performLogout(0)`). So the
+remote-session-revoked-while-closed case still tears our state down before any
+picker sees the slot as free. Extending `MessagesController.cleanup()` into a
+shared clear-hook was considered and **rejected**: it is upstream's generic
+runtime reset, called from two sites including `onAuthSuccess` itself
+(`LoginActivity.java:1716`), so a persisted store-clear parked behind it becomes
+a data-loss bug the day upstream adds a non-logout caller -- its call-site set is
+upstream's to grow, not ours to police.
+
 *(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
