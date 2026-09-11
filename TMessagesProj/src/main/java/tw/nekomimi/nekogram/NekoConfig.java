@@ -31,6 +31,7 @@ import java.util.Set;
 
 import tw.nekomimi.nekogram.config.ConfigItem;
 import tw.nekomimi.nekogram.helpers.CloudSettingsHelper;
+import tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper;
 
 @SuppressLint("ApplySharedPref")
 @SuppressWarnings("unused")
@@ -303,50 +304,7 @@ public class NekoConfig {
 
     // --- Ghost Mode ---
 
-    // NagramX: bumped inside isGhostModeActive() below on every observed
-    // false->true transition, so a feature that needs to know "a new Ghost
-    // session started" can key a lazy reset off this value instead of
-    // inferring the edge itself at its own unrelated call site (see
-    // GhostTypingReminderHelper and docs/codemap/dead-ends.md for why that
-    // inference was unreliable). Deliberately bumped from the read side
-    // (isGhostModeActive itself), not from setGhostMode or any individual
-    // toggle-row write path: isGhostModeActive is already called from many
-    // places well beyond this feature (ActionBar, DialogsActivity,
-    // DialogStoriesCell, GhostModeActivity's own row rendering, ...), so any
-    // real transition -- whether via the master switch or by flipping
-    // individual signal/lock rows one at a time until the combined predicate
-    // reads true again -- gets picked up the next time anything asks the
-    // question, without instrumenting every mutation site individually.
-    public static int ghostSessionEpoch;
-
-    // NagramX: last value isGhostModeActive() itself observed, purely to
-    // detect the false->true edge above -- not a public flag, and not to be
-    // confused with a caller's own idea of "was Ghost on last time I checked".
-    private static boolean lastKnownGhostModeActive;
-
-    // NagramX: guards the lastKnownGhostModeActive/ghostSessionEpoch pair.
-    // isGhostModeActive() is not UI-thread-only -- GhostSendWarningHelper
-    // calls it synchronously from ConnectionsManager#sendRequestInternal on
-    // Utilities.stageQueue, on every message send, while every other caller
-    // (ActionBar, DialogsActivity, DialogStoriesCell, GhostModeActivity,
-    // GhostTypingReminderHelper, ...) calls it from the UI thread. Before this
-    // pair existed, the method was a pure read of pre-existing ConfigItems and
-    // needed no lock; now that a call also writes these two fields, the
-    // read-modify-write has to be atomic and visible across both threads.
-    private static final Object ghostModeStateLock = new Object();
-
     public static boolean isGhostModeActive() {
-        boolean active = computeGhostModeActive();
-        synchronized (ghostModeStateLock) {
-            if (active && !lastKnownGhostModeActive) {
-                ghostSessionEpoch++;
-            }
-            lastKnownGhostModeActive = active;
-        }
-        return active;
-    }
-
-    private static boolean computeGhostModeActive() {
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -363,6 +321,14 @@ public class NekoConfig {
     }
 
     public static void setGhostMode(boolean enabled) {
+        // NagramX: captured before the loop below changes anything, purely so
+        // GhostTypingReminderHelper can be told about a real false->true
+        // transition of the master switch -- see that class and
+        // docs/codemap/dead-ends.md for why this observation lives there
+        // rather than as a field on isGhostModeActive() itself: that method
+        // must stay a pure, side-effect-free predicate, since Ghost Hold's own
+        // PR #336 also calls it from multiple threads and relies on that.
+        boolean wasActive = isGhostModeActive();
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -370,6 +336,9 @@ public class NekoConfig {
                 boolean targetValue = (item == sendOfflinePacketAfterOnline) == enabled;
                 item.setConfigBool(targetValue);
             }
+        }
+        if (enabled && !wasActive) {
+            GhostTypingReminderHelper.onGhostModeMasterSwitchActivated();
         }
     }
 

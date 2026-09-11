@@ -36,6 +36,26 @@ public class GhostTypingReminderHelper {
     private GhostTypingReminderHelper() {
     }
 
+    // NagramX: bumped only by NekoConfig#setGhostMode, on an observed
+    // false->true transition of the master Ghost Mode switch -- see the
+    // docs/codemap/dead-ends.md entry for why this lives here rather than in
+    // NekoConfig (isGhostModeActive() must stay a pure, side-effect-free
+    // predicate: Ghost Hold's own PR #336 also calls it, from multiple
+    // threads, and relies on exactly that purity) and for the narrower scope
+    // this implies (individual per-signal toggle/lock rows in
+    // GhostModeActivity that cycle the predicate without ever calling
+    // setGhostMode do not advance this).
+    private static int ghostSessionEpoch;
+
+    // NagramX: called only by NekoConfig#setGhostMode, on the UI thread
+    // (verified: every caller of setGhostMode/toggleGhostMode --
+    // GhostModeActivity's menu action, DialogsActivity, MainTabsActivity,
+    // LaunchActivity's launcher-shortcut handler -- is a UI-thread
+    // click/action handler), so no synchronization is needed here.
+    public static void onGhostModeMasterSwitchActivated() {
+        ghostSessionEpoch++;
+    }
+
     // NagramX: account -> this account's reminded-dialogs state for whichever
     // Ghost session epoch it was last touched under. remindedSetForEpoch below
     // is the single accessor both call sites (the synchronous check and the
@@ -58,9 +78,9 @@ public class GhostTypingReminderHelper {
     // deleted state that raced against the send path on Utilities.stageQueue.
     private static final SparseArray<PerAccountState> stateByAccount = new SparseArray<>();
 
-    // NagramX: epoch is the NekoConfig.ghostSessionEpoch value this account's
-    // reminded set is valid for -- see remindedSetForEpoch, the only place that
-    // creates or replaces one of these.
+    // NagramX: epoch is the ghostSessionEpoch value this account's reminded
+    // set is valid for -- see remindedSetForEpoch, the only place that creates
+    // or replaces one of these.
     private static final class PerAccountState {
         final int epoch;
         final HashSet<Long> reminded = new HashSet<>();
@@ -107,7 +127,7 @@ public class GhostTypingReminderHelper {
             return;
         }
 
-        HashSet<Long> reminded = remindedSetForEpoch(account, NekoConfig.ghostSessionEpoch);
+        HashSet<Long> reminded = remindedSetForEpoch(account, ghostSessionEpoch);
         if (reminded.contains(dialogId)) {
             return;
         }
@@ -133,7 +153,7 @@ public class GhostTypingReminderHelper {
                 // reset anything. Re-deriving the set from the live epoch here means
                 // it is always the right one for whatever session is current right
                 // now, never a stale one left over from whichever session queued this.
-                HashSet<Long> currentReminded = remindedSetForEpoch(account, NekoConfig.ghostSessionEpoch);
+                HashSet<Long> currentReminded = remindedSetForEpoch(account, ghostSessionEpoch);
                 // NagramX: two qualifying transitions in the same chat (e.g. a fast
                 // type-delete-retype) can each post one of these before either runs,
                 // and both would have passed the membership check above against the
