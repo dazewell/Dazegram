@@ -677,3 +677,24 @@ flush trigger -- rather than instrumenting `GhostModeActivity` directly or
 reviving a stateful `isGhostModeActive()`.
 
 *(Established 2026-09-10, #ghost-type-warning.)*
+
+## "GhostHoldStore.encode() truncates the attach path that decode() reads back"
+
+Disproven by reading the serialization path on 2026-09-11. The automated
+reviewer flagged `GhostHoldStore.decode()` calling `message.readAttachPath(nbb,
+selfId)` (`GhostHoldStore.java:610`) while `encode()`
+(`GhostHoldStore.java:625-640`) "does not append an attach-path payload despite
+the docstring saying it does," suspecting a decode misparse. It does append it,
+implicitly. `encode()` allocates `message.getObjectSize()` bytes and calls
+`message.serializeToStream(data)` -- byte-for-byte the stock store pattern at
+`MessagesStorage.java:11431-11432`. Every `TL_message*.serializeToStream(...)`
+ends with `writeAttachPath(stream)` (e.g. `TLRPC.java:57927`), and
+`getObjectSize()` computes its size by running that same `serializeToStream`
+into a counting buffer (`TLObject.java:86-91`), so the attach path is inside
+the blob and the allocation already accounts for it. `decode()`'s
+`readAttachPath` is additionally guarded by `if (stream.remaining() > 0)`
+(`TLRPC.java:57661`), so even a blob with no trailing bytes is a safe no-op
+rather than a misparse. The docstring is accurate; there is no asymmetry versus
+stock. No code change was made.
+
+*(Established 2026-09-11, #ghost-hold.)*
