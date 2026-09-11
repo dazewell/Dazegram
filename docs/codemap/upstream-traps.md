@@ -1203,3 +1203,56 @@ upstream's to grow, not ours to police.
 *(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
+
+
+## Ghost Hold: held rows ride the Scheduled-list bulk actions without a per-action guard
+
+A held Ghost Hold row is a real `TYPE_TEXT` `MessageObject` with a negative
+local id, and it renders in the Scheduled list like any other row, so it is
+selectable into multi-select -- `addToSelectedMessages`
+(`ChatActivity.java:20835`) adds it to `selectedMessagesIds` and, because the
+type is text, to `selectedMessagesCanCopyIds` too. That means every bulk action
+the Scheduled action mode exposes acts on it unless it carries its own held
+guard. Send-Now (`confirmSendNowSelectedMessages`), the single-row context
+menu, and edit-schedule-time each guard it individually; the reschedule spread
+did not until it was excluded at the `resolveRescheduleItems` chokepoint
+(`ChatActivity.java:37785`). But three more actions that are reachable on the
+Scheduled list still act on held rows with no guard and would push their content
+to the server now: `combine_message` (`ChatActivity.java:4327`), `nkbtn_repeat`
+/ `nkbtn_repeatascopy` (handlers at `ChatActivity.java:48159`/`48162` -> 
+`doRepeatMessage` at `:49005` -> `sendMessagesAsCopy`), and `nkbtn_savemessage`
+(`ChatActivity.java:48083`, forwards to Saved Messages) -- all added to the
+scheduled action-mode overflow at `ChatActivity.java:11489-11493`. The lesson:
+guarding held rows action-by-action is the wrong shape, because the held row is
+admitted to the *selection* upstream of every action; the durable fix is to keep
+held rows out of the bulk selection (or out of these actions at the selection
+boundary), not to chase each new action. Recorded as an open presentation
+decision, not yet fixed.
+
+*(Established 2026-09-10, `#ghost-hold`, during the ghost-hold-audit branch
+superseding PR #336 -- the item-3 re-audit that asked, for every Scheduled-list
+action, both "can it act on a held row?" and "can a held row change what it does
+to other rows?".)*
+
+## Ghost Hold: logout purge cannot run on a doubly-broken teardown
+
+`GhostHoldStore.deleteDatabaseFileOnQueue` (`GhostHoldStore.java:490` onward)
+invalidates a logged-out account's held rows by purging them in place, then
+unlinking the file, so a same-user relogin inherits nothing (`enforceOwner`
+only purges on an owner *mismatch*, and a same-user reopen is not one). That
+holds as long as *either* the in-place purge *or* the unlink succeeds. It does
+not on the doubly-rare case where the DB is both unopenable (the on-demand
+`db()` at `GhostHoldStore.java:502` throws, so the purge block is skipped) *and*
+undeletable (the unlink then fails on a WAL/SHM lock or permission). On that one
+path the owner stamp and rows survive on disk and a same-user relogin can reload
+them. Closing it properly needs an out-of-band tombstone that forces a purge on
+the next open regardless of owner -- storage-redesign territory the safety
+bundle scopes out, and doubly rare on top. Accepted and documented rather than
+fixed. (Separately, the held-count refresh in
+`GhostModeActivity.refreshHeldCount` (`settings/GhostModeActivity.java:120`) is
+an async `countHeld` callback fired from `onResume`; a stale count can flash for
+one frame after a rapid resume -- below the severity floor, recorded, left as
+is.)
+
+*(Established 2026-09-10, `#ghost-hold`, ghost-hold-audit branch superseding
+PR #336.)*
