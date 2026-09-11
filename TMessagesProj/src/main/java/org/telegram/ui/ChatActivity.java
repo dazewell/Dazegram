@@ -1986,6 +1986,12 @@ public class ChatActivity extends BaseFragment implements
                 int i = position - chatAdapter.messagesStartRow;
                 if (i >= 0 && i < messages.size()) {
                     MessageObject messageObject = messages.get(i);
+                    // NagramX: #ghost-hold. Drag/range select decides its span from here, so
+                    // refusing held rows keeps them out of the range before addToSelectedMessages
+                    // is ever reached -- the range route stays clean visually, not just in-model.
+                    if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                        return false;
+                    }
                     if (messageObject.contentType == 0) {
                         if (!unselect && alreadySelectedMessagesIds.get(messageObject.getId(), null) == null) {
                             return true;
@@ -12341,6 +12347,12 @@ public class ChatActivity extends BaseFragment implements
                     if (messagePreviewParams.forwardMessages != null) {
                         for (int a = 0, N = messagePreviewParams.forwardMessages.messages.size(); a < N; a++) {
                             MessageObject messageObject = messagePreviewParams.forwardMessages.messages.get(a);
+                            // NagramX: #ghost-hold. The second put into the selection model, this
+                            // one the reply/quote payload channel. Keep held rows out of it too so
+                            // the entrance stays sealed on every route, not just direct selection.
+                            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+                                continue;
+                            }
                             if (messageObject.isTodo()) {
                                 hasPoll = 3;
                             } else if (messageObject.isPoll()) {
@@ -20853,6 +20865,16 @@ public class ChatActivity extends BaseFragment implements
     }
 
     private void addToSelectedMessages(MessageObject messageObject, boolean outside, boolean last) {
+        // NagramX: #ghost-hold. The entrance to the selection model. A held row must
+        // never enter it: selectedMessagesIds is what every multi-select action --
+        // forward, quote, reply, copy, draft publication, off-screen range select --
+        // reads from, so guarding the two put sites (here and the message-preview
+        // repopulation) keeps held content out of all of them by construction instead
+        // of filtering each consumer one at a time. A held row's only action is delete,
+        // which runs through the single-row cancel menu, not the selection model.
+        if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(messageObject)) {
+            return;
+        }
         int prevCantForwardCount = cantForwardMessagesCount;
         if (messageObject != null) {
             if (threadMessageObjects != null && threadMessageObjects.contains(messageObject) && !isThreadChat()) {
