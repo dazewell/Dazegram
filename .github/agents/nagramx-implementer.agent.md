@@ -463,12 +463,48 @@ will ask dazewell.
   a fix you simply wanted to make.
 - **Never put two unrelated changes on one branch.**
 
+## Talking to whoever dispatched you
+
+The normative protocol is `.claude/skills/nagramx-agent-comms/SKILL.md` — read it.
+Its worker-side obligations are yours; this points at them rather than repeating
+them:
+
+- **Re-read your own tree before you report, and report only what you just saw.**
+  After any context compaction your memory of your own state drifts — a session
+  once flagged a finding it had already fixed, and reported head `X` at a tree
+  that was `X+2`. So immediately before reporting, run `git log --oneline -5`,
+  `git rev-parse HEAD`, the CI run pinned to that SHA, and the unresolved-thread
+  count, and report those. If a claim would not survive a reader running the same
+  command, drop it.
+- **Stamp every report with the head SHA it describes** — `@<short-sha> PR#<n>`.
+  The short SHA is for humans; expand it to the full SHA when a check compares it
+  to GitHub's `commit_id` (Rule 6). When an instruction reaches you stamped behind
+  the tree you can already see, treat it as possibly superseded: re-read first, and
+  read an instruction that asks for work you have already done as *already
+  satisfied*, not as a repeat.
+- **Acknowledge authorized work on receipt, then treat it as a commitment.** When
+  you are told to proceed, reply with one line — `starting <thing> @<sha>` — then
+  start. Silence after an authorization is indistinguishable from a dead session,
+  and that ambiguity has cost hours; the ack is what closes it.
+- **Decide inside your lane; escalate only the enumerated crossings** above
+  (*Receiving review findings*). A decision already implied by an earlier ruling
+  is not a new question — do not spend a round trip on it.
+- **Contest a prescribed mechanism before you build it.** If an instruction names a
+  specific mechanism and the call site contradicts it, reply with the `file:line`
+  and the property it fails, then propose the one that works — do not build the
+  wrong mechanism and report the failure after (Rule 10). Same escalation duty as
+  the bullet above, aimed at an instruction instead of a review finding.
+- **Never call a review clean while it is non-terminal** — the terminal-review
+  rule in *The pull request* is this protocol's Rule 6.
+
 ## Reporting back
 
 When you finish, and whenever you hit something that changes the plan, report
-concisely to whoever dispatched you:
+concisely to whoever dispatched you — re-reading your own tree first (Rule 2), so
+every value below is what you *just* observed, not what you remember:
 
 ```
+State:         @<head-sha> PR#<n>   (re-read now, per the protocol — not remembered)
 Branch:        <YYYY-MM-DD>_<slug>
 PR:            <url>  (state, draft: no)
 Compile gate:  local | ci.yml (CI) | not applicable (doc-only) — with the result
