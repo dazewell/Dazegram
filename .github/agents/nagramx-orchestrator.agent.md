@@ -115,10 +115,18 @@ re-run any of your gates; it is a pure supervisor. So:
     `CLOSED` with no ledger is rejected. **You may not send `CLOSED` while you
     still hold an open authorization toward one of your own dispatched
     sessions** (comms protocol Rule 11, applied recursively to you as a
-    coordinator) — discharge each one first, either by closing it on the item's
-    ledger (landed, declined, or superseded) or by transferring it into a named
-    successor brief's `Outstanding authorizations (gG.vN)` field and verifying it
-    is present there; your `coord-<slug>` branch is never committed, so this
+    coordinator) — **close each one on the item's ledger first: landed,
+    declined, or superseded.** Transfer is not a move available to you here:
+    dispatching a successor to carry an item would leave an unarchived direct
+    child and break the precondition above, and a successor your parent owns is
+    one you can neither create nor verify before you must send this message.
+    Transfer belongs to whoever archives or replaces a session, not to a session
+    closing itself — and you are still alive at this point, so you can land,
+    decline or supersede anything you hold. If an item genuinely ought to carry
+    forward, either decline it explicitly with the reason, or send
+    `BLOCKED_PARENT` and let your parent, who owns the successor, transfer it on
+    the replacement path. Your
+    `coord-<slug>` branch is never committed, so this
     precondition, not a git diff, is what closes the gap for your own subtree.
     Leaf-to-root only (see the process-lifecycle skill).
   - `BLOCKED_ARCHIVE <unit-slug>: <evidence>` — you cannot cleanly close because
@@ -149,11 +157,16 @@ re-run any of your gates; it is a pure supervisor. So:
   authorizations (gG.vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
   `ABORTED`** — it is cheap to restate and it is the only place this state
   exists outside your own context. Increment `N` on **any** change to the
-  rendered list — an item added, an item closed, an item *transferred* out to a
-  successor brief, one entry leaving a multi-item list, or the list becoming
+  rendered list — an item added, an item closed, an item re-pointed at a
+  different session when you replace a stalled descendant of your own, one entry
+  leaving a multi-item list, or the list becoming
   `<none>`; the test is simply whether the list differs from the one you last
   sent, so never re-send changed content at an old version. Leave `N` alone on a
-  message that merely repeats it unchanged. **The control vocabulary can
+  message that merely repeats it unchanged. Note that re-pointing an item at a
+  replacement descendant does **not** remove it from *your* list: transferring it
+  discharges the stalled descendant's ledger, while the item itself stays open
+  and stays yours until it lands, is declined, or is superseded. **The control
+  vocabulary can
   arrive out of order** (comms protocol Rule 1's carve-out for recurring
   messages), so your parent orders snapshots by **`g` first, then `N`** and
   adopts one only if it orders strictly after the last it accepted — an equal or
@@ -1384,7 +1397,11 @@ Then, for anything not landed, either
 cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
 — write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
-and verify it is actually there. Transfer discharges *this session* for the
+and verify it is actually there. **Transfer is yours to perform as the archiving
+coordinator** — you own the successor, so you can write the brief and verify the
+item reached it; the session being archived could do neither, which is why it is
+barred from transferring its way out of its own clean exit. Transfer discharges
+*that session* for the
 archive gate while leaving the *item* open against the new brief, which is the
 normal pass for work that was authorized and never started — the very case this
 rule exists for. Closing the item and transferring it are different acts; do not

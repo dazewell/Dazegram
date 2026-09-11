@@ -542,11 +542,12 @@ version is newest if two arrive out of sequence.** Carry your own local,
 monotonically increasing counter on the list itself —
 `Outstanding authorizations (g1.v3): …`. **Increment `v` on any change to the
 rendered list, without exception**: an item added, an item closed, an item
-*transferred* out of your ledger into a successor brief, one entry leaving a
+re-pointed at a replacement when you transfer it on behalf of a stalled
+descendant, one entry leaving a
 multi-item list, or the list becoming `<none>`. Read that as the general rule
 and the list as examples, not as an exhaustive set — the question is only
-whether the rendered list differs from the one you last sent, and a transfer
-that removes a single entry counts exactly as much as the list emptying. Send an
+whether the rendered list differs from the one you last sent, and a change that
+touches a single entry counts exactly as much as the list emptying. Send an
 unchanged list at the version you last used; never re-send changed content at an
 old version, which is the one move that makes the recipient discard a snapshot
 it needed. The recipient (dazewell reading back through a transcript, or a
@@ -601,11 +602,24 @@ against to reconstruct a dead child's outstanding authorizations toward *its
 own* descendants. Two consequences, not one workaround:
 
 - **The clean-exit path is closed by a precondition, not a diff.** A child
-  orchestrator may not send `CLOSED` while it still holds an authorization
-  toward one of its own descendants that is neither closed on the item's ledger
-  (landed, declined, or superseded) nor transferred into a named successor
-  brief — discharging every one of them is a precondition of `CLOSED`, exactly as
-  archiving a leaf session requires it above. This covers every orderly
+  orchestrator may not send `CLOSED` while it still holds an open authorization
+  toward one of its own descendants: every one must be **closed on the item's
+  ledger — landed, declined, or superseded — before `CLOSED` goes out**, exactly
+  as archiving a leaf session requires it above. **Transfer is deliberately not
+  available here**, because a session cannot transfer its way out of its own
+  clean exit: writing an item into a successor brief means either dispatching a
+  successor, which is then an unarchived direct child and breaks `CLOSED`'s other
+  precondition, or relying on a successor the parent owns, which this child can
+  neither create nor verify before it must send `CLOSED`. Transfer belongs to the
+  coordinator that **archives or replaces** a session, not to the session
+  discharging itself — and that is the path where it is actually needed, since a
+  session exiting cleanly is by definition still alive and able to land, decline
+  or supersede whatever it holds. A live child that believes an item genuinely
+  should carry forward has two honest moves and does not need a third: **decline
+  it explicitly**, with the reason, which is a real disposition rather than an
+  evasion; or **escalate with `BLOCKED_PARENT`**, since the parent owns the
+  successor and can perform the transfer on the replacement path. This covers
+  every orderly
   shutdown; it does nothing for a child that never gets to send `CLOSED`.
 - **A child that dies before reporting is an honest gap, not a solved one** —
   the same limit Rules 7–8 already state for liveness in general, applied here
@@ -635,17 +649,25 @@ verification step, and the next stall may not be caught by one.
   form of carrying it forward). **The session's ledger** closes when every
   authorization it held is either closed on the item's ledger *or* **transferred**:
   written into a named successor brief's `Outstanding authorizations (gG.vN)` field,
-  at a stated version, verified present there before the archive. Transfer
+  at a stated version, verified present there before the archive. **Transfer is
+  performed by the coordinator archiving or replacing that session, never by the
+  session discharging itself** — a session cannot hand its obligations to a
+  successor it does not have, and letting it try is what deadlocks a clean exit
+  (see the child-orchestrator `CLOSED` precondition above). A session closing
+  itself while still alive uses landed, declined or superseded, which are always
+  available to it; transfer is the *stalled*-session path, run by the parent.
+  Transfer
   discharges the *session*; it does not close the *item*, which stays open and is
   tracked against the successor brief until it lands, is declined, or is
   superseded there. Both ledgers are required, and neither substitutes for the
   other: archiving a session with an untransferred, unclosed authorization is the
   failure this rule exists to stop, and calling a scope complete because the
   session that held it was archived is the same failure wearing a different hat.
-  An unstarted item is exactly the item that must be transferred, so "transferred"
+  An unstarted item in a stalled session is exactly the item that must be
+  transferred, so "transferred"
   is the archive gate's normal pass for it — not an exception to the gate. A
   snapshot version number is present on every restatement, increases on **any**
-  change to the rendered list — including a transfer that removes one entry from
+  change to the rendered list — including a change that touches one entry of
   a multi-item list — and is inherited by a replacement under an incremented
   generation rather than reset; a recipient that adopts an equal-or-earlier
   snapshot over one it already saw, or accepts anything from a session it has
