@@ -1207,6 +1207,11 @@ top of the `EventSchedulePresetStore` fix in #330.)*
 
 ## Ghost Hold: held rows ride the Scheduled-list bulk actions without a per-action guard
 
+**Status (2026-09-11): resolved by an entrance guard — the present-tense
+description in the next two paragraphs is the pre-fix behaviour, kept for the
+reasoning. See "First fixed with a shared send boundary … then superseded by an
+entrance guard" below for what actually ships now.**
+
 A held Ghost Hold row is a real `TYPE_TEXT` `MessageObject` with a negative
 local id, and it renders in the Scheduled list like any other row, so it is
 selectable into multi-select -- `addToSelectedMessages`
