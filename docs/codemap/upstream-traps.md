@@ -960,6 +960,21 @@ stops any `EventScheduleBulkArmer` being built for a departed slot, and
 `armPending -> EventScheduleStore.persist` carries no token of its own, so that
 `commit()` gate is the only thing covering it.
 
+The picker is not the last non-dismissed surface on the bulk path. A selection
+of more than 50 messages defers the whole reschedule behind a **second** bare
+`AlertDialog` confirmation (`ChatActivity.java:37750-37756`), built directly and
+likewise never a `visibleDialog`. `EventScheduleBulkArmer.onAdmission` runs
+*inside* that dialog's positive-button callback, so a token re-read there sees
+the post-logout value just as the picker case does -- one window later. The
+construction-time `storeGeneration` therefore travels the whole way: `snapshot()`
+packs it into an `EventScheduleHelper.TriggerArmIntent` carrier
+(`EventScheduleHelper.java:1635`) threaded through the reschedule delegate
+(`AlertsCreator.java:4312`) into the armer, which compares the carried token at
+admission (`EventScheduleBulkArmer.java:213`) and fails closed before it
+registers an observer or suppresses the new occupant's triggers. Lesson: a
+generation captured before *any* directly-shown dialog must be carried to the
+actual mutation site, never re-derived past the dialog.
+
 *(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
