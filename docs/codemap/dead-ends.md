@@ -553,11 +553,14 @@ That revisit has since happened once, and the exemption survived it. A later
 stays quiet in a chat the typing reminder already covered this Ghost session,
 which it asks via `GhostTypingReminderHelper.wasRemindedThisGhostSession`. The
 tempting place to put that question is the send hook itself, which is exactly
-the cross-thread read that got the old design deleted -- `sendRequestInternal`
-runs on `Utilities.stageQueue`. It isn't there: the destination dialog id is
-resolved on the stage queue (where the outgoing request is in hand) and
-captured, and the *send path's* access to the set happens only inside
-`GhostSendWarningHelper`'s pre-existing `runOnUIThread` block. The composer's
+the cross-thread read that got the old design deleted --
+`sendRequestInternal` runs on whichever thread dispatched the request, normally
+`Utilities.stageQueue` but inline on the caller's own thread for
+`sendRequestSync` (`ConnectionsManager.java:393-395`), and in neither case the
+UI thread. It isn't there: only the destination dialog id is resolved on that
+thread, where the outgoing request is in hand, and captured as a primitive; the
+*send path's* access to the set happens only inside `GhostSendWarningHelper`'s
+pre-existing `runOnUIThread` block. The composer's
 own two paths are unchanged and still write it (the `TextWatcher` at
 `ChatActivityEnterView.java:7069` and the UI runnable it posts), so the full
 inventory is now three access paths, all on the UI thread: two writers in the
@@ -565,6 +568,23 @@ reminder helper and one read-only reader in the send helper. That reader never
 records anything, so it cannot consume a slot the user was never shown. The
 rule the exemption actually rests on is unchanged: no background-thread
 access, so still no lock.
+
+Keeping the read on the UI thread has a consequence worth stating, because it
+was raised in review and **accepted rather than fixed**: the send path reads
+the set when its runnable runs, not when the request was dispatched, so the two
+are not ordered against each other. A send dispatched at T0 hops to the stage
+queue and only posts its UI runnable from there, while a first keystroke in the
+same chat's composer at T0+ε posts its reminder runnable directly. The reminder
+can therefore be recorded first and suppress a warning for a send that actually
+predates it. Ordering them properly would mean the send path sampling the set
+at dispatch time -- on a non-UI thread -- which is the exact cross-thread read
+this whole entry exists to forbid, so the alternative is a lock and timestamps,
+i.e. reviving the shape that was deleted. Not worth it here: the window is a
+few milliseconds wide, it requires an untyped send immediately followed by a
+first keystroke in the same chat, and in it the user is still shown a Ghost
+exposure bulletin -- the typing reminder, whose message is materially the same
+warning. The outcome is one bulletin instead of two, which is what this change
+was for, not silence.
 
 Unlike the deleted send-time state, this feature needed its own transition
 counter to know when a Ghost session actually restarted, and that counter
@@ -660,7 +680,7 @@ a missed *reminder*: `GhostSendWarningHelper` checked
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:237-239` asking
+(`GhostSendWarningHelper.java:243-245` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a

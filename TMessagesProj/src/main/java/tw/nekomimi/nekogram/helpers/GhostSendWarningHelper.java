@@ -234,6 +234,12 @@ public class GhostSendWarningHelper {
                 // per-chat design deleted (docs/codemap/dead-ends.md). It stays a
                 // read-only query -- this path never records anything, so it cannot
                 // consume a reminder the user has not actually been shown.
+                // The set is read when this runnable runs, not when the request was
+                // dispatched, so a reminder recorded in between can suppress a send
+                // that predates it. Accepted: ordering the two would mean sampling
+                // the set at dispatch time, off the UI thread, which is the read
+                // this design exists to avoid. The window is milliseconds and the
+                // user is shown the reminder bulletin inside it anyway.
                 if (dialogId != DIALOG_ID_UNRESOLVED
                         && GhostTypingReminderHelper.wasRemindedThisGhostSession(account, dialogId)) {
                     return;
