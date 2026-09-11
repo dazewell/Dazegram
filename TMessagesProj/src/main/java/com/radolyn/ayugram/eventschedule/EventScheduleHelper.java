@@ -241,6 +241,16 @@ public final class EventScheduleHelper {
         final int[] editIds;
         final int[] editLocalIds;
         final Runnable onChanged;
+        // Logout generation tokens for this slot, captured when the Row is constructed -- before the
+        // schedule picker is ever shown. That picker is a directly-shown BottomSheet the logout fragment
+        // swap (LaunchActivity.switchToAvailableAccountOrLogout) never dismisses, so a commit()/snapshot()
+        // that runs after a logout must compare against the generation as it stood at construction, not
+        // re-read the already-bumped value at commit time -- re-reading makes every downstream check a
+        // tautology. commit() and snapshot() fail closed on a mismatch; the store's own add()/remove()/put()
+        // guards use lastSetupGeneration/presetGeneration as the second backstop for still-open dialogs.
+        final int storeGeneration;
+        final int lastSetupGeneration;
+        final int presetGeneration;
 
         boolean enabled;
         // Whether the user actually operated the trigger controls this time (hit Done to arm, or Clear to
@@ -378,6 +388,12 @@ public final class EventScheduleHelper {
             this.editIds = editIds;
             this.editLocalIds = editLocalIds;
             this.onChanged = onChanged;
+            // Bind all three slot generations to this moment -- construction, ahead of the picker. See the
+            // field declarations for why capturing here rather than at commit/sheet-open time is what makes
+            // the fail-closed gates actually reject a post-logout action.
+            this.storeGeneration = EventScheduleStore.currentGeneration(account);
+            this.lastSetupGeneration = EventScheduleLastSetup.currentGeneration(account);
+            this.presetGeneration = EventSchedulePresetStore.currentGeneration(account);
             // Seed the controls from any trigger this message already has, resolved the same exact-id way
             // as commit (all edit ids + local ids) so a still-pending owner shows as armed instead of off.
             // Only an unambiguous single owner seeds the controls "on"; a MULTI conflict stays off and is
@@ -856,16 +872,11 @@ public final class EventScheduleHelper {
 
             // ---- Presets section (I-8: starts its own section run right after textDelaySpacer) ----
             final ArrayList<EventSchedulePresetStore.Preset> presetList = EventSchedulePresetStore.getAll(account);
-            // Captured once per sheet open; add()/remove() reject a write whose caller captured a
-            // generation that clearAccountState has since bumped. This sheet is a directly-shown
-            // BottomSheet with no fragment to tear it down when LaunchActivity swaps fragments out
-            // from under it on logout, so a still-open dialog's stale Save/Delete callback needs the
-            // store itself to refuse the write, not just an earlier dismiss.
-            final int presetGeneration = EventSchedulePresetStore.currentGeneration(account);
-            // Captured once per sheet open, same reasoning as presetGeneration above: a Done submission
-            // from a sheet that outlived this account's logout (the IME "Done" action path isn't gated
-            // by the sheet's dismissed flag) is rejected by put() rather than re-seeding a reused slot.
-            final int lastSetupGeneration = EventScheduleLastSetup.currentGeneration(account);
+            // presetGeneration and lastSetupGeneration are captured at Row construction (see the fields),
+            // not here: the picker BottomSheet that leads to this sheet is never dismissed by the logout
+            // fragment swap, so a stale Save/Delete or Done callback must be checked against the token as it
+            // stood before the picker was shown. add()/remove()/put() still reject a write whose caller
+            // carried a generation that clearAccountState has since bumped.
             final java.text.Collator presetCollator = java.text.Collator.getInstance();
             presetCollator.setStrength(java.text.Collator.SECONDARY);
             final java.util.Comparator<EventSchedulePresetStore.Preset> presetComparator = (a, b) -> {
@@ -1584,11 +1595,26 @@ public final class EventScheduleHelper {
 
         @Override
         public EventScheduleConfig snapshot() {
+            // Same fail-closed gate as commit(): snapshot() feeds AlertsCreator's reschedule path, which
+            // constructs the EventScheduleBulkArmer. Returning null on a post-logout generation mismatch
+            // means no armer is ever built for a departed slot, closing the bulk-arm straddle at the source.
+            if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
+                return null;
+            }
             return enabled ? new EventScheduleConfig(types, patterns, regex, delay) : null;
         }
 
         @Override
         public void commit(int scheduleDate, int repeatPeriod) {
+            // Fail closed before any branch if this slot was logged out after the Row was built. The picker
+            // that fires this commit is a directly-shown BottomSheet the logout fragment swap never
+            // dismisses, so commit() can run after a logout -- and after a re-login into the same slot.
+            // storeGeneration was captured at construction; a mismatch means a departed account's action is
+            // landing, so drop it. This is also the one gate covering the armed path's armPending->persist,
+            // which carries no generation token of its own.
+            if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
+                return;
+            }
             // NOTE: this decision tree (!userTouchedTrigger -> refresh / armed -> arm / else off) has an
             // async twin in EventScheduleController.finishCommitEdit, reached via reconcileThenCommitEdit
             // just below when a durable orphan forces a storage hop first. They diverge on purpose: this
@@ -1597,11 +1623,9 @@ public final class EventScheduleHelper {
             // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
-            // Capture the store's logout generation for this slot at the moment the user commits. The arm
-            // carries it -- synchronously below, or across the async durable-reconcile hop -- and the store
-            // rejects it if a logout clears (and possibly reuses) the slot in between. Mirrors the
-            // lastSetupGeneration capture the sheet already does for its seed store.
-            final int storeGeneration = EventScheduleStore.currentGeneration(account);
+            // The arm carries the construction-time storeGeneration (a field) -- synchronously below, or
+            // across the async durable-reconcile hop -- and the store rejects it if a logout clears (and
+            // possibly reuses) the slot in between.
             EventScheduleConfig config = new EventScheduleConfig(types, patterns, regex, delay);
             if (editIds != null && editIds.length > 0) {
                 // Editing an existing scheduled message. The schedule picker fires this commit even when the

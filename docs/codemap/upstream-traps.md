@@ -913,3 +913,52 @@ Any guard written as "reject absolute paths, then join" therefore lets drive-rel
 Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
+## Event-schedule per-account state survives logout unless explicitly torn down, and a BottomSheet picker can straddle the logout
+
+Account slot indices are reused: logging out of an account and logging into a
+new one reuses the same numeric slot. Every `com.radolyn.ayugram.eventschedule`
+store keys off that slot, not a stable identity, so nothing is cleared for free
+on logout. `MessagesController.performLogout` is the single teardown chokepoint
+(`MessagesController.java:16388-16402`, beside the `PasscodeHelper`/preset
+clears). Two distinct leak shapes must be closed there, needing different
+mechanisms:
+
+- **Field-level teardown** for state a stale read would match: each store's
+  `clearAccountState(account)` (cache, loaded flag, prefs, and
+  `EventScheduleStore.nonEmptyAccounts` bit), plus
+  `EventScheduleController.onAccountLoggedOut(account)` for its runtime maps
+  (`PENDING`, `QUEUES`/`SUPPRESSED`, `DURABLE_INFLIGHT`, `warmedAccounts`,
+  `pendingAccounts`). Miss one and the new account matches the departed
+  account's armed triggers on the hot new-message path.
+
+- **Generation-guarded continuations** for writes already *in flight* when
+  logout ran. Each store carries a `GENERATION` counter bumped inside
+  `clearAccountState`; an action captures the token at intent and the store
+  rejects a write whose token no longer matches. Placement matters: the guard
+  lives at the store *writer* (`EventScheduleStore.resolveAndClaimForEdit`), not
+  the dispatcher, because the bulk-arm path (`EventScheduleBulkArmer` ->
+  `RescheduleSpreadExecutor.run` -> `onFinalize` -> `finalizeOnUi` ->
+  `reconcileDialogThen` -> `armSurvivor` -> `bulkArmSurvivor`) reaches
+  `resolveAndClaimForEdit`/`persist` **without** ever passing through
+  `postDurableLookup` -- a token captured only in `postDurableLookup` would
+  never fire on that path.
+
+The subtle half: the schedule **picker** is a directly-shown `BottomSheet`
+(`AlertsCreator.createScheduleDatePickerDialog`, `AlertsCreator.java:4406`),
+never registered as the fragment's `visibleDialog`, so
+`LaunchActivity.switchToAvailableAccountOrLogout`'s fragment swap does **not**
+dismiss it on logout -- the same structural gap #330 documented for the child
+sheet via `presetLogoutObserver` (`EventScheduleHelper.java:919-931`). So a
+generation captured *when the picker opens*, or at the top of `commit()`, can
+read the already-bumped post-logout value, making every downstream check a
+tautology. The tokens are therefore captured at `EventScheduleHelper.Row`
+**construction** -- before the picker is shown (`EventScheduleHelper.java:251-253`,
+`:394-396`) -- and re-verified fail-closed in `snapshot()` and `commit()`
+(`EventScheduleHelper.java:1601`, `:1615`). `snapshot()` returning null also
+stops any `EventScheduleBulkArmer` being built for a departed slot, and
+`armPending -> EventScheduleStore.persist` carries no token of its own, so that
+`commit()` gate is the only thing covering it.
+
+*(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
+across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
+top of the `EventSchedulePresetStore` fix in #330.)*
