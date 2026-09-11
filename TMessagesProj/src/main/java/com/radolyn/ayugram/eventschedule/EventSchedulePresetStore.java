@@ -33,10 +33,10 @@ public final class EventSchedulePresetStore {
     private static final Map<Integer, ArrayList<Preset>> CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Boolean> LOADED = new ConcurrentHashMap<>();
     private static final Map<Integer, Object> MONITORS = new ConcurrentHashMap<>();
-    // Bumped by clearAccountState under the same account monitor. A UI surface captures the
-    // generation for its slot when it opens and passes it back into add()/remove(); a write from a
-    // callback that outlived a logout (its account cleared and its slot possibly reused) gets
-    // rejected instead of silently repopulating the slot for whoever logs into it next.
+    // Bumped by clearAccountState under the same account monitor. The Row captures the generation for its
+    // slot when it is constructed -- before the schedule picker is shown -- and passes it back into
+    // add()/remove(); a write from a callback that outlived a logout (its account cleared and its slot
+    // possibly reused) gets rejected instead of silently repopulating the slot for whoever logs into it next.
     private static final Map<Integer, Integer> GENERATION = new ConcurrentHashMap<>();
 
     private EventSchedulePresetStore() {}
@@ -96,9 +96,9 @@ public final class EventSchedulePresetStore {
     }
 
     /**
-     * A UI surface for this account captures this once, when it opens, and passes it back into
-     * {@link #add} / {@link #remove}. Reads and writes both go through {@code monitor(account)} so a
-     * capture can never straddle a concurrent {@link #clearAccountState} bump.
+     * The Row for this account captures this once, when it is constructed -- before the schedule picker is
+     * shown -- and passes it back into {@link #add} / {@link #remove}. Reads and writes both go through
+     * {@code monitor(account)} so a capture can never straddle a concurrent {@link #clearAccountState} bump.
      */
     public static int currentGeneration(int account) {
         synchronized (monitor(account)) {

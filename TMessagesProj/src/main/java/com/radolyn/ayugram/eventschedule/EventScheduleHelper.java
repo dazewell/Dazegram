@@ -48,7 +48,6 @@ import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.ui.BottomBuilder;
 import tw.nekomimi.nekogram.utils.AlertUtil;
 import tw.nekomimi.nekogram.utils.AndroidUtil;
-import xyz.nextalone.nagram.NaConfig;
 
 /**
  * UI glue for event-triggered scheduled messages: the "Send on event" chip injected into
@@ -60,8 +59,31 @@ public final class EventScheduleHelper {
     public interface TriggerRow {
         void commit(int scheduleDate, int repeatPeriod);
 
-        /** The trigger the user configured on this chip, or null when the chip is left Off. */
-        EventScheduleConfig snapshot();
+        /**
+         * The trigger the user configured on this chip together with the slot generation captured when the
+         * Row was built, or null when the chip is left Off or the slot was logged out before the picker was
+         * accepted. The bulk armer's admission runs on the far side of the >50-item confirm dialog, so the
+         * carried generation lets it re-check against that construction-time token rather than re-reading the
+         * (by then post-logout) live value itself.
+         */
+        TriggerArmIntent snapshot();
+    }
+
+    /**
+     * What {@link TriggerRow#snapshot()} hands the bulk reschedule path: the configured trigger plus the
+     * store logout generation as it stood when the Row was constructed (before the picker was shown). The
+     * armer carries this token instead of re-reading currentGeneration at admission -- admission runs after
+     * the >50-item confirm dialog, a bare AlertDialog the logout swap never dismisses, so a re-read there
+     * would see the already-bumped post-logout value and wave a departed slot's arm through.
+     */
+    public static final class TriggerArmIntent {
+        public final EventScheduleConfig config;
+        public final int storeGeneration;
+
+        public TriggerArmIntent(EventScheduleConfig config, int storeGeneration) {
+            this.config = config;
+            this.storeGeneration = storeGeneration;
+        }
     }
 
     /**
@@ -242,6 +264,20 @@ public final class EventScheduleHelper {
         final int[] editIds;
         final int[] editLocalIds;
         final Runnable onChanged;
+        // Logout generation tokens for this slot, captured when the Row is constructed -- before the
+        // schedule picker is ever shown. That picker is a directly-shown BottomSheet the logout fragment
+        // swap (LaunchActivity.switchToAvailableAccountOrLogout) never dismisses, so a commit()/snapshot()
+        // that runs after a logout must compare against the generation as it stood at construction, not
+        // re-read the already-bumped value at commit time -- re-reading makes every downstream check a
+        // tautology. commit() and snapshot() fail closed on a mismatch; the store's own add()/remove()/put()
+        // guards use lastSetupGeneration/presetGeneration as the second backstop for still-open dialogs.
+        // On the bulk path storeGeneration travels further still: snapshot() packs it into the TriggerArmIntent
+        // handed to the reschedule delegate, and the EventScheduleBulkArmer carries it as its own token so the
+        // arm is re-checked after the >50-item confirm dialog -- the one window past the picker where a logout
+        // can straddle the action, and one the armer's admission itself runs too late to capture.
+        final int storeGeneration;
+        final int lastSetupGeneration;
+        final int presetGeneration;
 
         boolean enabled;
         // Whether the user actually operated the trigger controls this time (hit Done to arm, or Clear to
@@ -379,6 +415,12 @@ public final class EventScheduleHelper {
             this.editIds = editIds;
             this.editLocalIds = editLocalIds;
             this.onChanged = onChanged;
+            // Bind all three slot generations to this moment -- construction, ahead of the picker. See the
+            // field declarations for why capturing here rather than at commit/sheet-open time is what makes
+            // the fail-closed gates actually reject a post-logout action.
+            this.storeGeneration = EventScheduleStore.currentGeneration(account);
+            this.lastSetupGeneration = EventScheduleLastSetup.currentGeneration(account);
+            this.presetGeneration = EventSchedulePresetStore.currentGeneration(account);
             // Seed the controls from any trigger this message already has, resolved the same exact-id way
             // as commit (all edit ids + local ids) so a still-pending owner shows as armed instead of off.
             // Only an unambiguous single owner seeds the controls "on"; a MULTI conflict stays off and is
@@ -402,30 +444,14 @@ public final class EventScheduleHelper {
                     regex = remembered.regex;
                     delay = remembered.delaySeconds;
                 } else {
-                    // NagramX: new trigger seeds are per-account local prefs so they stay device-local and
-                    // avoid cloud-exported globals; legacy NaConfig scalars stay read-only fallback for users
-                    // upgrading with a pre-existing last setup.
-                    NaConfig cfg = NaConfig.INSTANCE;
-                    int legacyTypes = cfg.getEventScheduleLastTypes().Int() & EventScheduleEntry.TYPE_MASK;
-                    String firstPattern = EventScheduleEntry.normalizePattern(cfg.getEventScheduleLastPattern().String());
-                    boolean hasLegacy = legacyTypes != 0 || !TextUtils.isEmpty(firstPattern);
-                    if (hasLegacy) {
-                        types = legacyTypes;
-                        if (!TextUtils.isEmpty(firstPattern)) {
-                            patterns.add(firstPattern);
-                        }
-                        regex = cfg.getEventScheduleLastPatternRegex().Bool();
-                        delay = cfg.getEventScheduleLastDelay().Int();
-                    } else {
-                        types = 0;
-                        regex = false;
-                        delay = 0;
-                    }
+                    types = 0;
+                    regex = false;
+                    delay = 0;
                 }
             }
             types &= EventScheduleEntry.TYPE_MASK;
-            // NagramX: unconditional presentation clamp -- an existing trigger predating this cap (or a
-            // stale EventScheduleLastDelay recorded before it shipped) can carry a delay above the max.
+            // NagramX: unconditional presentation clamp -- an existing trigger predating this cap, or a
+            // remembered last setup whose stored delay predates it, can carry a delay above the max.
             // This isn't the actual enforcement (that's EventScheduleStore.persist, which clamps every
             // runtime write regardless of what this field holds), but delay is read directly by snapshot()
             // and commit() below even when the sheet is never opened, so it must already be in range the
@@ -873,12 +899,11 @@ public final class EventScheduleHelper {
 
             // ---- Presets section (I-8: starts its own section run right after textDelaySpacer) ----
             final ArrayList<EventSchedulePresetStore.Preset> presetList = EventSchedulePresetStore.getAll(account);
-            // Captured once per sheet open; add()/remove() reject a write whose caller captured a
-            // generation that clearAccountState has since bumped. This sheet is a directly-shown
-            // BottomSheet with no fragment to tear it down when LaunchActivity swaps fragments out
-            // from under it on logout, so a still-open dialog's stale Save/Delete callback needs the
-            // store itself to refuse the write, not just an earlier dismiss.
-            final int presetGeneration = EventSchedulePresetStore.currentGeneration(account);
+            // presetGeneration and lastSetupGeneration are captured at Row construction (see the fields),
+            // not here: the picker BottomSheet that leads to this sheet is never dismissed by the logout
+            // fragment swap, so a stale Save/Delete or Done callback must be checked against the token as it
+            // stood before the picker was shown. add()/remove()/put() still reject a write whose caller
+            // carried a generation that clearAccountState has since bumped.
             final java.text.Collator presetCollator = java.text.Collator.getInstance();
             presetCollator.setStrength(java.text.Collator.SECONDARY);
             final java.util.Comparator<EventSchedulePresetStore.Preset> presetComparator = (a, b) -> {
@@ -1543,7 +1568,7 @@ public final class EventScheduleHelper {
                 patterns.addAll(extracted.patterns);
                 regex = regexCell.isChecked();
                 delay = newDelay;
-                EventScheduleLastSetup.put(account, types, patterns, regex, delay);
+                EventScheduleLastSetup.put(account, lastSetupGeneration, types, patterns, regex, delay);
                 updateChip();
                 builder.dismiss();
                 return kotlin.Unit.INSTANCE;
@@ -1596,12 +1621,32 @@ public final class EventScheduleHelper {
         }
 
         @Override
-        public EventScheduleConfig snapshot() {
-            return enabled ? new EventScheduleConfig(types, patterns, regex, delay) : null;
+        public TriggerArmIntent snapshot() {
+            // Same fail-closed gate as commit(): snapshot() feeds AlertsCreator's reschedule path, which
+            // constructs the EventScheduleBulkArmer. Returning null on a post-logout generation mismatch
+            // means no armer is ever built for a slot already logged out by the time the picker was accepted.
+            // When the chip is on and the slot still current, hand back the config together with the
+            // construction-time storeGeneration: the >50-item confirm dialog defers the armer's admission past
+            // this point, so the armer must carry this token and re-check it rather than re-read
+            // currentGeneration for itself after the dialog (which would read the post-logout value and defeat
+            // the guard).
+            if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
+                return null;
+            }
+            return enabled ? new TriggerArmIntent(new EventScheduleConfig(types, patterns, regex, delay), storeGeneration) : null;
         }
 
         @Override
         public void commit(int scheduleDate, int repeatPeriod) {
+            // Fail closed before any branch if this slot was logged out after the Row was built. The picker
+            // that fires this commit is a directly-shown BottomSheet the logout fragment swap never
+            // dismisses, so commit() can run after a logout -- and after a re-login into the same slot.
+            // storeGeneration was captured at construction; a mismatch means a departed account's action is
+            // landing, so drop it. This is also the one gate covering the armed path's armPending->persist,
+            // which carries no generation token of its own.
+            if (EventScheduleStore.currentGeneration(account) != storeGeneration) {
+                return;
+            }
             // NOTE: this decision tree (!userTouchedTrigger -> refresh / armed -> arm / else off) has an
             // async twin in EventScheduleController.finishCommitEdit, reached via reconcileThenCommitEdit
             // just below when a durable orphan forces a storage hop first. They diverge on purpose: this
@@ -1610,6 +1655,9 @@ public final class EventScheduleHelper {
             // own and adds the dialog-wide fail-closed gate. A new intent must be added in BOTH places.
             // Premium repeat and early-trigger don't compose; a repeat is always a plain schedule.
             boolean armed = enabled && repeatPeriod == 0;
+            // The arm carries the construction-time storeGeneration (a field) -- synchronously below, or
+            // across the async durable-reconcile hop -- and the store rejects it if a logout clears (and
+            // possibly reuses) the slot in between.
             EventScheduleConfig config = new EventScheduleConfig(types, patterns, regex, delay);
             if (editIds != null && editIds.length > 0) {
                 // Editing an existing scheduled message. The schedule picker fires this commit even when the
@@ -1622,7 +1670,7 @@ public final class EventScheduleHelper {
                     // ids first so the edit can't create a second trigger beside it. Runs async after the
                     // sheet dismisses; on failure the controller shows the toast itself. No fragment or
                     // callback crosses the hop -- the overview repaints on its own, refresh() is not called.
-                    EventScheduleController.reconcileThenCommitEdit(account, dialogId, editIds, editLocalIds,
+                    EventScheduleController.reconcileThenCommitEdit(account, storeGeneration, dialogId, editIds, editLocalIds,
                             userTouchedTrigger, armed, config, scheduleDate);
                     return;
                 }
@@ -1641,7 +1689,7 @@ public final class EventScheduleHelper {
                 // trigger armed or turned off in the meantime is handled correctly and the same message
                 // can't end up with two triggers.
                 if (armed) {
-                    boolean claimed = EventScheduleController.commitEditArm(account, dialogId, editIds, editLocalIds,
+                    boolean claimed = EventScheduleController.commitEditArm(account, storeGeneration, dialogId, editIds, editLocalIds,
                             config, scheduleDate);
                     if (!claimed) {
                         // Another trigger already owns this message (only reachable against data a prior
