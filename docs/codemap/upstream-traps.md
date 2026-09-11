@@ -1401,3 +1401,60 @@ Two consequences worth stating. First, `commit-tag.yml` passing on a PR is **not
 The branch that produced the squash is auto-deleted (`delete_branch_on_merge: true`), but its full pre-squash range is **not** lost: `refs/pull/<N>/head` is permanent and survives the deletion. Verified — #335's branch `2026-09-10-ghost-type-warning` is gone from `origin`, yet `git fetch origin refs/pull/335/head` still returns tip `6465b2fda8` (12 commits, all tagged). That ref is the recovery path for a range you need after the branch is gone. Verified with `git show -s --format='%B' becfe09f63` / `599baff6ee`, the `refs/pull/334/head` and `refs/pull/335/head` commit counts (10 and 12), and the `refs/pull/335/head` fetch on `origin` (2026-09-10).
 
 *(Established 2026-09-10, #docs.)*
+
+## Stock deletion notifications carry no producer-session identity
+
+A fork observer that keys off `sessionEpoch` (or the store generation) at the
+moment a stock `messagesDeleted` notification is *delivered* is pinning the
+wrong session whenever that delivery is delayed across a logout. Stock's
+deletion notification carries only the deleted ids, no token identifying which
+session produced the delete, so there is nothing at delivery time that can tell
+"this delete belongs to the user who is now logged in" apart from "this delete
+belongs to the user who logged out while it was in flight."
+
+Where it bites in this fork: `GhostHoldObserver.didReceivedNotification`
+handles `messagesDeleted` (`GhostHoldController.java:1937`) and captures its
+session at delivery -- `final int deleteSession = sessionEpoch.get(account)`
+(`GhostHoldController.java:1963`) -- then hops to the fork queue via
+`store.runOwned(...)`, which pins the store generation at post time
+(`:1965`, `GhostHoldStore.java:113-137`). `appDidLogout` bumps `sessionEpoch`
+synchronously (`GhostHoldController.java:1918-1927`) and enqueues the store
+teardown that advances the generation. Both guards therefore read *delivery*-
+time state. A stock `messagesDeleted` for a negative (local) id that is posted
+before logout but delivered after a full logout + teardown + relogin (stock can
+defer a post to the UI-thread handler) is delivered post-relogin, so both
+guards sample the *new* session and pass. `UserConfig.clearConfig()` resets
+`lastSendMessageId`, so the reused slot mints the same negative ids, and
+`selectOnQueue(mid)` (`GhostHoldStore.java:441`) can match a genuine held row
+of the new user -- which `deleteManyOnQueue` (`GhostHoldController.java:1978`)
+then deletes, and `postScheduledCount(account, d, deleteSession)` (`:1980`)
+publishes against.
+
+Consequence: the new session's held row is deleted. This is the one member of
+the logout/relogin teardown-race family that fails **unsafe** -- it destroys a
+row rather than the family's usual safe direction of leaving rows held (nothing
+sent, nothing leaked). Bound: a very narrow window (a deletion post delayed
+across an entire logout/relogin), and the loss is a local held draft only --
+never a message that was sent, and nothing leaks to the server or to the wrong
+account's transport.
+
+Why no local fix exists -- three refutations, so this is not re-litigated:
+1. A **delivery-time recheck** of `sessionEpoch` reads only the new session
+   (session B); it is "too late" because delivery already happened under B, so
+   the recheck passes.
+2. **Recording the owning user on the row and comparing** does not discriminate
+   either: the row `selectOnQueue` finds genuinely belongs to session B (the new
+   user reused the same negative id), so an owner check confirms rather than
+   rejects the delete.
+3. A **fork-owned monotonic id space** to avoid the collision would risk
+   colliding with stock's own negative ids for real unsent messages.
+   The only sound fix is a producer-time session/generation stamp carried from
+   stock `MessagesController` / `MessagesStorage` into the notification -- a
+   cross-file storage-lifecycle change, i.e. the same observable "store ready /
+   producer token" primitive #346 already scopes out. Not patchable at the
+   observer.
+
+Filed as #349, scoped alongside the #346 "store ready" work; part of the
+logout/session-teardown-race family with #343 and #346.
+
+*(Established 2026-09-11, #ghost-hold.)*
