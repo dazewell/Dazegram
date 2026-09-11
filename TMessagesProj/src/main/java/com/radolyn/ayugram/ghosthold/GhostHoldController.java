@@ -1170,7 +1170,7 @@ public final class GhostHoldController {
                 // return / became paid), the record is reverted to HELD for the next
                 // flush; nothing is ever lost. mo is passed so a send-now twin can be
                 // cancelled if the user deleted the held object during the handoff.
-                completeHandoff(account, mid, dialogId, fut, epoch, mo, () -> onItemTerminal(remaining, pending));
+                completeHandoff(account, mid, dialogId, fut, epoch, session, mo, () -> onItemTerminal(remaining, pending));
             });
         }, () -> AndroidUtilities.runOnUIThread(() -> onItemTerminal(remaining, pending)));
     }
@@ -1192,7 +1192,7 @@ public final class GhostHoldController {
      * absent-by-{@code -N} and is re-driven, producing a duplicate. Per the design that
      * is the correct direction to fail -- duplicate, never loss.
      */
-    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, @Nullable MessageObject sentObj, @Nullable Runnable onDone) {
+    private static void completeHandoff(int account, int mid, long dialogId, boolean future, int epoch, int session, @Nullable MessageObject sentObj, @Nullable Runnable onDone) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
         storage.getStorageQueue().postRunnable(() -> {
             boolean handedOff = false;
@@ -1243,8 +1243,21 @@ public final class GhostHoldController {
                         rowGone = false;
                     }
                     if (rowGone && sentObj != null) {
-                        AndroidUtilities.runOnUIThread(() ->
-                                SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj));
+                        AndroidUtilities.runOnUIThread(() -> {
+                            // NagramX (:1197): the runOwned gate above is the async store
+                            // generation, which only moves once logout's queued teardown
+                            // runs. The flush's captured session moved synchronously the
+                            // instant logout began, on this same UI thread. Revalidate it
+                            // immediately before acting: if logout landed during the storage
+                            // round trip the account slot may already be a different session,
+                            // and cancelSendingMessage would act on the new account with the
+                            // old message. A stale callback must do nothing, not act on the
+                            // wrong account.
+                            if (sessionEpoch.get(account) != session) {
+                                return;
+                            }
+                            SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj);
+                        });
                     } else {
                         store.deleteOnQueue(mid);
                         // item 8: only a genuine, uncancelled handoff counts as sent.
@@ -1258,7 +1271,17 @@ public final class GhostHoldController {
                             // an empty scheduled_messages_v2 while stranding the messages_v2
                             // twin for the unsent scan. Pure UI dispatch, no stock write;
                             // scheduled-scoped so the main-view twin's fragment ignores it.
-                            AndroidUtilities.runOnUIThread(() -> removeStaleScheduledItem(account, dialogId, mid));
+                            AndroidUtilities.runOnUIThread(() -> {
+                                // NagramX (:1197): same UI-thread revalidation as the cancel
+                                // hop. This posts a scheduled messagesDeleted through the
+                                // account's NotificationCenter, so a logout that reused the
+                                // slot mid-handoff must abort it rather than reach the new
+                                // session's Scheduled list.
+                                if (sessionEpoch.get(account) != session) {
+                                    return;
+                                }
+                                removeStaleScheduledItem(account, dialogId, mid);
+                            });
                         }
                     }
                 } else {
