@@ -62,8 +62,9 @@ public final class EventScheduleHelper {
         /**
          * The trigger the user configured on this chip together with the slot generation captured when the
          * Row was built, or null when the chip is left Off or the slot was logged out before the picker was
-         * accepted. The carried generation lets the bulk armer re-check after the >50-item confirm dialog,
-         * which its admission runs on the far side of.
+         * accepted. The bulk armer's admission runs on the far side of the >50-item confirm dialog, so the
+         * carried generation lets it re-check against that construction-time token rather than re-reading the
+         * (by then post-logout) live value itself.
          */
         TriggerArmIntent snapshot();
     }

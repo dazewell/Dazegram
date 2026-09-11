@@ -33,8 +33,9 @@ public final class EventScheduleStore {
 
     // Bumped by clearAccountState. Every mutator here is static synchronized on this class, so GENERATION
     // rides that same monitor -- no separate map-of-monitors like the UI-seed stores need. An arm captures
-    // this token at intent (the sheet's commit, or the bulk armer's admission) and carries it through the
-    // async durable-reconcile round-trip back into resolveAndClaimForEdit; a claim whose slot was logged
+    // this token at intent (when the trigger Row is constructed, ahead of the picker) and carries it --
+    // through the sheet's commit, or the bulk armer's admission, and on through the async durable-reconcile
+    // round-trip -- back into resolveAndClaimForEdit; a claim whose slot was logged
     // out (and possibly reused) mid-flight no longer matches and is rejected, so a departed account's arm
     // can't persist into the slot for whoever logs in next. Named GENERATION to match the same guard in
     // EventSchedulePresetStore and EventScheduleLastSetup; kept independent per store.

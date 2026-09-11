@@ -720,8 +720,10 @@ public final class EventScheduleController {
      * Rare edit-commit path: an unbound durable orphan still sits in this dialog, so resolve it to
      * current server ids before deciding ownership, otherwise the edit acts on the wrong state -- arming
      * could create a second trigger beside the orphan, and turning off can't reach it (it has no current
-     * server/local id to match). Holds only the plain edit tuple across the storage hop -- no fragment, no
-     * delegate, no {@code proceed} -- and runs after the sheet has dismissed. On completion it either
+     * server/local id to match). Holds only the plain edit tuple plus the intent-time store {@code generation}
+     * across the storage hop -- no fragment, no delegate, no {@code proceed} -- and runs after the sheet has
+     * dismissed; that carried generation is what lets {@link #finishCommitEdit} fail closed if the slot was
+     * logged out (and maybe reused) mid-hop. On completion it either
      * applies the intent against the healed owner or, if any orphan stayed unresolved, fails closed for
      * both arm and off with a toast shown from {@link #finishCommitEdit} itself, so nothing outside the
      * controller is captured across the hop.
