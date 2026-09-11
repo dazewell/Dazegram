@@ -570,6 +570,21 @@ records anything, so it cannot consume a slot the user was never shown. The
 rule the exemption actually rests on is unchanged: no background-thread
 access, so still no lock.
 
+That the send path does not record is a decision, not an oversight, and review
+has proposed reversing it — recording there would make a forward or gallery
+send into a not-yet-reminded chat start the quiet period, which reads as the
+more consistent rule. It is refused for the same reason the reminder path is
+allowed to record: what is observable is that a bulletin reached `show()`
+against an eligible host, which is an eligibility test rather than proof the
+user saw it. On the typing path the two coincide, because a keystroke in a
+chat's own composer means that chat is on screen. On the send path they do not
+— its trigger can arrive long after the user acted, e.g. a completing upload
+dispatching its result while the user is elsewhere — so recording there would
+let an unseen bulletin silence every later warning in that chat. The
+consequence is that a chat only ever warned at send time keeps warning, and
+`FEATURES.md` must say so rather than describing the quiet period as something
+any warning starts.
+
 Keeping the read on the UI thread has a consequence worth stating, because it
 was raised in review and **accepted rather than fixed**: the send path reads
 the set when its runnable runs, not when the request was dispatched, so the two
@@ -694,9 +709,14 @@ capturing an identity in `sendRequest` and threading it through
 footprint in one of the hottest methods upstream owns, which is not worth it
 here, because the ordering makes the gap fail open rather than suppress:
 
-- `Utilities.stageQueue` is a single FIFO `DispatchQueue`, so a send posted
-  before a logout runs before anything the subsequent login posts to it. The
-  queued send cannot be overtaken by the new user's session coming up.
+- `Utilities.stageQueue` is a single FIFO `DispatchQueue`
+  (`Utilities.java:40`), which is one `Thread` with one `Handler`
+  (`DispatchQueue.java:19`, `:133`) whose ordinary `postRunnable` is a plain
+  `handler.post` (`DispatchQueue.java:103`) — and `sendRequest` uses that, not
+  the `postAtFrontOfQueue` variant beside it (`:93`). So a send posted before a
+  logout runs before anything the subsequent login posts to it. The queued send
+  cannot be overtaken by the new user's session coming up. (Verified
+  2026-09-11.)
 - A logout nulls `currentUser` via `UserConfig.clearConfig()`, so a send that
   did somehow run after it samples `getClientUserId()` as 0 — which is
   `DIALOG_ID_UNRESOLVED`, and which then cannot equal the new user's id at the
