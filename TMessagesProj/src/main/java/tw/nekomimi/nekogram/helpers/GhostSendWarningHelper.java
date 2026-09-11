@@ -22,7 +22,16 @@ import tw.nekomimi.nekogram.NekoConfig;
 /**
  * Warns the user that a message they just sent while Ghost Mode was on still
  * went out over the network and exposed their online status. Ghost Mode never
- * held sends back -- this only informs.
+ * held sends back on its own -- this only informs.
+ * <p>
+ * NagramX: Ghost Hold (PR #347) can hold a plain-text send back instead of
+ * letting it reach this hook at all -- see the class javadoc below on
+ * {@link #onMessageRequestReady(int, TLObject)} for why a held send never
+ * arrives here. When Hold Messages is on and a send reaches here anyway (an
+ * attachment, a paid or disappearing-message chat, or a held message the user
+ * sent by hand), the bulletin says so with a distinct string
+ * ({@code GhostSendExposedWarningNotHeld}) rather than the generic one used
+ * with Hold off, read live at display time -- see {@link #tryShowBulletin}.
  * <p>
  * It covers what {@link GhostTypingReminderHelper} cannot, and defers to it
  * where it can: in a chat already reminded during the current Ghost session,
@@ -334,12 +343,26 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: same longer duration as the typing reminder -- createErrorBulletin
-        // builds at Bulletin.DURATION_SHORT (1.5s), and this warning now fires only
-        // where no earlier heads-up was possible, which makes it the sole signal for
-        // that send and the last one that should flash past unread.
+        // NagramX: DURATION_PROLONG (5s) -- createErrorBulletin builds at
+        // Bulletin.DURATION_SHORT (1.5s), and this warning now fires only where no
+        // earlier heads-up was possible, which makes it the sole signal for that
+        // send and the last one that should flash past unread. This stays at 5s for
+        // its single line; the typing reminder's 6s is deliberately separate, sized
+        // for its two-line layout, not an inconsistency to reconcile.
+        // NagramX: read live, right before display -- not cached anywhere earlier
+        // in this hook -- so the string matches Hold Messages' actual state at the
+        // moment this send is reported, not whatever it was when the request was
+        // dispatched a main-loop turn earlier. Hold on means this send is one of
+        // the ones Hold structurally can't or didn't catch (an attachment, a paid
+        // or disappearing-message chat, or a held message the user sent by hand --
+        // a plain-text send Hold actually held never reaches this hook at all, see
+        // the class javadoc), so the generic GhostSendExposedWarningNotHeld is used
+        // instead of naming a specific reason.
+        int warningRes = NekoConfig.holdMessagesWhileGhost.Bool()
+                ? R.string.GhostSendExposedWarningNotHeld
+                : R.string.GhostSendExposedWarning;
         Bulletin bulletin = resolveBulletinFactory(fragment)
-                .createErrorBulletin(getString(R.string.GhostSendExposedWarning))
+                .createErrorBulletin(getString(warningRes))
                 .setDuration(Bulletin.DURATION_PROLONG);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
             return;

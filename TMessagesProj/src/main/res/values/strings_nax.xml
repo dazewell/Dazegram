@@ -207,7 +207,7 @@
     <string name="MarkReadAfterSendNotice">Automatically reads message when you send a new one or tap a reaction.</string>
     <string name="SendWithoutSoundRowNotice">Automatically sends outgoing messages without sound.</string>
     <string name="GhostHoldSwitch">Hold Messages</string>
-    <string name="GhostHoldSwitchNotice">Most plain text messages you send or schedule while Ghost Mode is on stay on this device and go out when you turn it off. If a chat starts charging to send while one of your messages is already held, that message stays held so you can send it by hand. Attachments always send right away, and some messages — paid chats, disappearing messages and other special sends — do too.</string>
+    <string name="GhostHoldSwitchNotice">With Hold Messages on, most plain text messages you send or schedule while Ghost Mode is active stay on this device and go out when you turn Ghost Mode off. If a chat starts charging to send while one of your messages is already held, that message stays held so you can send it by hand. Attachments always send right away, and some messages — paid chats, disappearing messages and other special sends — do too.</string>
     <string name="GhostHoldSwitchNoticeWithCount">%1$s\n%2$s</string>
     <string name="GhostHoldPending_one">%1$d message held</string>
     <string name="GhostHoldPending_other">%1$d messages held</string>
@@ -731,5 +731,7 @@
     <string name="AccDescrVideoGifState">Video quality, GIF. Tap to send as a silent video</string>
     <string name="AccDescrVideoSilentState">Video quality, silent video</string>
     <string name="GhostSendExposedWarning">Ghost Mode doesn\'t cover sending — your online status was just shown</string>
+    <string name="GhostSendExposedWarningNotHeld">Hold Messages didn\'t catch this one — your online status was just shown</string>
     <string name="GhostTypingReminder">Ghost Mode doesn\'t cover sending — this will go out and show you\'re online.</string>
+    <string name="GhostTypingReminderHoldHint">Turn on Hold Messages to keep it on this device.</string>
 </resources>

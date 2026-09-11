@@ -40,9 +40,8 @@ import tw.nekomimi.nekogram.NekoConfig;
  * in that chat and the second bulletin would repeat it. That holds only where
  * the send names a destination the helper can resolve; one that doesn't, such
  * as a bot WebView data submission, fails open and warns anyway. Narrowing by
- * request
- * type instead, to keep them warning, was reviewed and rejected: it goes wrong
- * in both directions at once -- see GhostSendWarningHelper for why.
+ * request type instead, to keep them warning, was reviewed and rejected: it
+ * goes wrong in both directions at once -- see GhostSendWarningHelper for why.
  * <p>
  * The deferral is keyed on a reminder that reached {@code show()} against an
  * eligible, non-paused host for the right account, not on one that was merely
@@ -58,11 +57,21 @@ import tw.nekomimi.nekogram.NekoConfig;
  * on-screen delivery would mean this feature owning presentation, which is out
  * of proportion for a warning.
  * <p>
- * NagramX: Ghost Hold (PR #347) added a Hold Messages setting, but this
- * reminder still fires whenever Ghost Mode is active. Gating it on
- * Hold-Messages-inactive -- and updating {@code GhostTypingReminder}'s copy to
- * mention it -- is a possible future refinement, deliberately left out here so
- * this change adds no new behaviour.
+ * NagramX: Ghost Hold (PR #347) added a Hold Messages setting. This reminder
+ * goes silent whenever Hold Messages is on, regardless of whether the message
+ * the user is about to type will actually be one Hold holds -- most
+ * plain-text sends are (diverted upstream in SendMessagesHelper before they
+ * ever reach a request, so there is nothing to warn about, with the Scheduled
+ * list's "Held" caption as the in-place feedback), but Hold's own allowlist
+ * excludes attachments, paid and disappearing-message chats and a few other
+ * cases (see {@code GhostHoldSwitchNotice}), which reach the send-time
+ * warning below unaffected by this reminder's silence. No bulletin, and no
+ * reminded-state recorded for that chat, either way. That means a chat's
+ * reminder is still owed once Hold is later turned off again in the same
+ * Ghost session; see the live read of {@code holdMessagesWhileGhost} in
+ * {@link #onComposerTypingObservedUnsafe} for why this cannot be decided once
+ * at session start. With Hold off, the bulletin also grew a second line
+ * ({@code GhostTypingReminderHoldHint}) pointing the user at the setting.
  */
 public class GhostTypingReminderHelper {
 
@@ -83,6 +92,12 @@ public class GhostTypingReminderHelper {
     // or opening Ghost settings while Ghost is already on would wipe reminders
     // earned earlier in the same session.
     private static Boolean lastObservedGhostActive;
+
+    // NagramX: the two-line bulletin has more to read than DURATION_PROLONG
+    // (5000ms) was set for -- one second longer, on device feedback. No stock
+    // constant sits above DURATION_PROLONG, so this is a plain literal named
+    // here rather than left inline at the call site.
+    private static final int TYPING_REMINDER_DURATION_MS = 6000;
 
     // NagramX: call after anything that may have changed the config the Ghost
     // predicate is derived from. It is deliberately an *observer* rather than a
@@ -223,6 +238,20 @@ public class GhostTypingReminderHelper {
         if (!NekoConfig.isGhostModeActive()) {
             return;
         }
+        // NagramX: read live, not cached at Ghost session start -- Hold Messages
+        // can be toggled at any point during a Ghost session, and a chat must be
+        // reminded (and recorded reminded) the first time it's typed into after
+        // Hold goes back off, exactly as if that were the first qualifying
+        // keystroke of a fresh session. While Hold is on, most plain-text sends
+        // from this composer are diverted upstream in SendMessagesHelper before
+        // reaching a request, so there is usually nothing to remind about here.
+        // The ones GhostHoldController.maybeHold still lets through -- a chat
+        // isHoldableTextSend rejects, or a persistHeld failure -- get the
+        // send-time warning instead, and recording a reminder that was never
+        // shown here would wrongly suppress that warning too.
+        if (NekoConfig.holdMessagesWhileGhost.Bool()) {
+            return;
+        }
 
         HashSet<Long> reminded = remindedSetForEpoch(account, ghostSessionEpoch);
         if (reminded.contains(dialogId)) {
@@ -253,6 +282,14 @@ public class GhostTypingReminderHelper {
                 // NagramX: re-check here, not just above -- Ghost Mode can be toggled
                 // off in the moment between posting this and it actually running.
                 if (!NekoConfig.isGhostModeActive()) {
+                    return;
+                }
+                // NagramX: re-read here too, for the same reason as the outer check
+                // above -- Hold Messages can be switched on in the gap between
+                // posting this and it running, and if so this chat must not be
+                // recorded reminded, or a later Hold-off keystroke in it would be
+                // wrongly suppressed.
+                if (NekoConfig.holdMessagesWhileGhost.Bool()) {
                     return;
                 }
                 // NagramX: the slot changed hands while this was queued, so the
@@ -307,15 +344,24 @@ public class GhostTypingReminderHelper {
             return false;
         }
 
-        // NagramX: createErrorBulletin builds at Bulletin.DURATION_SHORT (1.5s),
-        // which is too short to read a full sentence and still have a moment to
-        // act on it. DURATION_PROLONG (5s) is the codebase's existing long-form
-        // value, set the same way at e.g. DialogsActivity.java:6303 -- no custom
-        // timer. Note 5s is an upper bound, not a guarantee: the bulletin slot is
-        // global, so anything shown after this replaces it.
+        // NagramX: createErrorBulletinSubtitle builds at Bulletin.DURATION_SHORT
+        // (1.5s), which is too short to read two lines and still have a moment to
+        // act on them. TYPING_REMINDER_DURATION_MS (6s) is one second past
+        // DURATION_PROLONG (5s, the codebase's existing long-form value, set the
+        // same way at e.g. DialogsActivity.java:6303) -- on-device feedback found
+        // 5s tight for two lines of reading. No custom timer either way. Note
+        // this is an upper bound, not a guarantee: the bulletin slot is global,
+        // so anything shown after this replaces it.
+        // Two-line rather than createErrorBulletin's single line: the honest
+        // combined sentence runs 104 characters, needing the full duration just
+        // to read; the two-line layout (title = GhostTypingReminder, subtitle =
+        // GhostTypingReminderHoldHint) is the same stock surface already used at
+        // e.g. ChatAttachAlertDocumentLayout.java:870 for a short label plus a
+        // detail line, and backs Bulletin.TwoLineLottieLayout with the same
+        // chats_infotip icon createErrorBulletin used.
         Bulletin bulletin = resolveBulletinFactory(fragment)
-                .createErrorBulletin(getString(R.string.GhostTypingReminder))
-                .setDuration(Bulletin.DURATION_PROLONG);
+                .createErrorBulletinSubtitle(getString(R.string.GhostTypingReminder), getString(R.string.GhostTypingReminderHoldHint), fragment.getResourceProvider())
+                .setDuration(TYPING_REMINDER_DURATION_MS);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
             return false;
         }

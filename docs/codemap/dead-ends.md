@@ -550,7 +550,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:249-288`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:280-327`) is a second UI-thread access path,
 not a background one. The settings screen never touches this set, and the send
 path touches it only as a read-only UI-thread reader, described in the
 paragraph below. If a future change makes this state reachable from anywhere
@@ -611,6 +611,27 @@ exposure bulletin -- the typing reminder, whose message is materially the same
 warning. The outcome is one bulletin instead of two, which is what this change
 was for, not silence.
 
+A later `#ghost-type-warning` change (2026-09-11) added a fourth condition
+to `onComposerTypingObservedUnsafe`, ahead of every path above: it reads
+`NekoConfig.holdMessagesWhileGhost.Bool()` fresh, both at the synchronous
+entry and again inside the posted runnable, and returns without touching
+`remindedSetForEpoch` at all when Hold Messages is on
+(`GhostTypingReminderHelper.java:237-254,284-293`). This is a plain early
+return, not a new state machine: it sits before every read/write this section
+analyzes, so none of the epoch/account/thread reasoning above changes because
+of it -- a chat this returns for simply never enters the set, exactly as if
+Ghost Mode itself were off for that keystroke. The one property worth stating
+because it does not fall out of anything above: whether a chat's reminder was
+skipped for this reason is not itself remembered anywhere, so a keystroke in
+that chat after Hold Messages is later turned off in the same Ghost session is
+indistinguishable from that chat's first qualifying keystroke of the session,
+and reminds normally. The suppression this section spent so much analysis on
+protecting (the send-time warning deferring to `wasRemindedThisGhostSession`)
+is unaffected by Hold's own state at send time, deliberately: see
+`GhostSendWarningHelper.java`'s class javadoc for why a chat already reminded
+while Hold was off stays quiet for the rest of that session even after Hold is
+later turned on.
+
 Unlike the deleted send-time state, this feature needed its own transition
 counter to know when a Ghost session actually restarted, and that counter
 went through four revisions to reach its current shape, each one
@@ -652,10 +673,10 @@ correcting a different mistake in the last:
    revision 4 had to go back and fix.
 4. The current design keeps revision 3's placement and purity exactly, and
    changes only *who decides an edge happened*. `onGhostSignalsChanged()`
-   (`GhostTypingReminderHelper.java:101-108`) is an **observer**, not a
+   (`GhostTypingReminderHelper.java:116-122`) is an **observer**, not a
    notification: it reads the pure predicate itself, compares against the last
    value it saw (`lastObservedGhostActive`,
-   `GhostTypingReminderHelper.java:85`, deliberately a nullable `Boolean` so
+   `GhostTypingReminderHelper.java:94`, deliberately a nullable `Boolean` so
    the first observation in a process is not mistaken for an activating edge),
    and bumps the epoch only on a real false→true. Callers therefore don't have
    to know whether they caused a transition, which is the whole point --
@@ -747,11 +768,11 @@ so whichever chats were already reminded stayed suppressed into what the user
 experienced as a new session. That was tolerable only while the worst case was
 a missed *reminder*: `GhostSendWarningHelper` checked
 `NekoConfig.isGhostModeActive()` fresh at send time
-(`GhostSendWarningHelper.java:222-224`) and carried no per-chat state, so a send
+(`GhostSendWarningHelper.java:231-233`) and carried no per-chat state, so a send
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:287-290` asking
+(`GhostSendWarningHelper.java:296-299` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a
