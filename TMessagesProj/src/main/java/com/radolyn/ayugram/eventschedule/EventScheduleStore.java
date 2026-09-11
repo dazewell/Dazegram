@@ -621,7 +621,10 @@ public final class EventScheduleStore {
      * entry still matches the snapshot it was classified from (same revision, same random_id set, still
      * unbound). Any mismatch -- an edit, a bind by the live path, a removal -- makes this a no-op so the
      * stale continuation cannot resurrect or overwrite. {@code sortedMids} arrive ascending so
-     * {@code serverIds.get(0)} (the QUEUE_ORDER tie-break and overview preview) is deterministic.
+     * {@code serverIds.get(0)} (the QUEUE_ORDER tie-break and overview preview) is deterministic. The
+     * random_id-set match is a real guard, not a vacuous empty-equals-empty: every snapshot originates
+     * from {@link #collectUnboundRandomSnapshots}, which admits only entries with a non-empty randomIds
+     * set, so a genuine correlator set must match.
      */
     public static synchronized boolean healDurable(int account, EntrySnapshot snap, int[] sortedMids) {
         EventScheduleEntry e = cache(account).get(snap.key);
@@ -651,8 +654,8 @@ public final class EventScheduleStore {
      * Snapshot-guarded expiry removal: drops an entry only if the live entry still matches the snapshot
      * it was classified from (same revision and random-id set), is still unbound, and its bind window has
      * elapsed. The guards stop a slow reconcile result from removing an entry that was edited, bound, or
-     * replaced in the meantime -- the delete must be authorized by the same generation that was looked up,
-     * never by a stale one. Returns whether it removed anything.
+     * replaced in the meantime -- the delete must be authorized by the same entry revision and correlator
+     * set that were looked up, never by a stale one. Returns whether it removed anything.
      */
     public static synchronized boolean removeIfExpiredUnbound(int account, EntrySnapshot snap, long nowSec) {
         EventScheduleEntry e = cache(account).get(snap.key);

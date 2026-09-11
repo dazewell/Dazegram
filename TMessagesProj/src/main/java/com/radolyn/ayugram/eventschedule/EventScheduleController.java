@@ -1081,8 +1081,10 @@ public final class EventScheduleController {
      * fresh login into the reused slot can't inherit the departed account's pending arms, fire queues,
      * suppression holds, in-flight-reconcile marks, or its warmed/pending "has state" bits. Runs entirely
      * on the UI thread, like every other mutation of these maps, so it never interleaves with an async
-     * reconcile completion: that completion either already ran (and this wipes what it left) or runs after
-     * and is rejected by the store's generation guard. The GC scheduled at the end is a fresh reschedule
+     * reconcile completion: that completion either already ran (and this wipes what it left) or runs after,
+     * where the commit-edit continuation is rejected by the store's generation guard and the
+     * durable-reconcile apply is rejected by its own snapshot identity check (revision plus random_id set)
+     * against a slot this clear just emptied. The GC scheduled at the end is a fresh reschedule
      * off the surviving PENDING entries, so a cancelled fire for this slot never resurrects it.
      *
      * <p>Deliberately leaves the per-account observer registration (OBSERVED/{@code ensureObserver})
@@ -1112,7 +1114,12 @@ public final class EventScheduleController {
         }
         for (String key : stale) SUPPRESSED.remove(key);
         // DURABLE_INFLIGHT is keyed by the account directly; a still-enqueued storage lookup for the slot
-        // is left to complete and drain harmlessly (its UI-side write is rejected by the generation guard).
+        // drains harmlessly. Its two writers carry no generation token and need none: both re-fetch by
+        // snapshot key and refuse unless the live entry still matches the snapshot's revision AND its exact
+        // random_id set (EventScheduleStore.healDurable/removeIfExpiredUnbound), which the clear above
+        // emptied and a reused slot's own sends cannot reproduce -- random_ids, unlike negative local ids,
+        // are not redrawn from a counter logout resets. The generation guard covers the other post-logout
+        // continuation, finishCommitEdit's.
         DURABLE_INFLIGHT.remove(account);
         warmedAccounts &= ~accountBit;
         // Rebuild pendingAccounts off the surviving PENDING map (clears this slot's bit) and reschedule GC.

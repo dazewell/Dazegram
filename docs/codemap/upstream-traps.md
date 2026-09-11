@@ -913,6 +913,7 @@ Any guard written as "reject absolute paths, then join" therefore lets drive-rel
 Both path guards in the wall compositor check `.anchor` rather than relying on `is_absolute()` alone — `_confine_source` for panel sources (`Tools/scripts/compose_walls.py:157-171`) and `_require_plain_png_filename` for wall outputs (`Tools/scripts/compose_walls.py:187-200`). The output guard shipped with only the `is_absolute()` check first and was caught in review; the source guard had the same gap and was closed in the same pass.
 
 *(Established 2026-09-06, #docs, PR #294.)*
+
 ## Event-schedule per-account state survives logout unless explicitly torn down, and a BottomSheet picker can straddle the logout
 
 Account slot indices are reused: logging out of an account and logging into a

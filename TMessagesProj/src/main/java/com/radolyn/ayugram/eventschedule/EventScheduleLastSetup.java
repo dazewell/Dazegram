@@ -26,11 +26,11 @@ public final class EventScheduleLastSetup {
     private static final Map<Integer, Setup> CACHE = new ConcurrentHashMap<>();
     private static final Map<Integer, Boolean> LOADED = new ConcurrentHashMap<>();
     private static final Map<Integer, Object> MONITORS = new ConcurrentHashMap<>();
-    // Bumped by clearAccountState under the same account monitor. The sheet captures the generation
-    // for its slot when it opens and passes it back into put(); a Done submission from a sheet that
-    // outlived a logout (its account cleared and its slot possibly reused) gets rejected instead of
-    // re-seeding this slot for whoever logs into it next. Mirrors EventSchedulePresetStore's own
-    // generation guard, kept independent per store.
+    // Bumped by clearAccountState under the same account monitor. The Row captures the generation for
+    // its slot at construction (before the schedule picker opens) and passes it back into put(); a Done
+    // submission from a sheet that outlived a logout (its account cleared and its slot possibly reused)
+    // gets rejected instead of re-seeding this slot for whoever logs into it next. Mirrors
+    // EventSchedulePresetStore's own generation guard, kept independent per store.
     private static final Map<Integer, Integer> GENERATION = new ConcurrentHashMap<>();
 
     private EventScheduleLastSetup() {}
