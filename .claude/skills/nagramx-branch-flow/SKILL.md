@@ -734,7 +734,14 @@ Reading `headRefOid` is not enough on its own: a concurrent push can advance the
 head between the read and the merge, so **bind the merge to the SHA you verified**
 — `gh pr merge <n> --squash --match-head-commit <headRefOid>`, which fails rather
 than landing a head you did not check. Without it, "re-read each time" does not
-actually tie the reviewed code to what gets merged.
+actually tie the reviewed code to what gets merged. **Pass neither `--body` nor
+`--subject`**: `squash_merge_commit_message: COMMIT_MESSAGES` only sets the
+*default* squash body, and either flag silently overrides it — `--body` drops the
+concatenated commit messages that carry the `#<slug>` tags, `--subject` replaces
+the `PR_TITLE` default — so an override can land a tag-less commit on `dev` with
+every preflight green, since `commit-tag.yml` never sees the squash. The bare
+command lets the `COMMIT_MESSAGES` default apply unmodified; it is the same class
+of hazard as `--admin`/`--auto`.
 
 **Landing several PRs in one sitting — the ordering procedure.** Derive a
 *suggested* order, in this priority: (1) a **declared blocker** in a PR's linked

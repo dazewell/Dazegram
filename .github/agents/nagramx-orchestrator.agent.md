@@ -1694,6 +1694,15 @@ lighter touch.
     CLEAN` with the live head still at the approved SHA aborts to stop-and-report
     instead of merging (the branch-flow `mergeStateStatus` poll is the normative
     form of that precondition).
+  - **Pass neither `--body` nor `--subject` to `gh pr merge`.** Same class of
+    hazard as `--admin`/`--auto`: `squash_merge_commit_message: COMMIT_MESSAGES`
+    only sets the *default* squash body, and either flag silently overrides it —
+    `--subject` replaces the `PR_TITLE` default, `--body` replaces the
+    concatenated commit messages that carry the `#<slug>` tags across the squash.
+    Overriding either can land a tag-less commit on `dev` with every preflight
+    still green, since `commit-tag.yml` never sees the squash. Merge with the
+    bare `gh pr merge <n> --squash --match-head-commit <sha>` so the
+    `COMMIT_MESSAGES` default applies unmodified.
   - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
     change flips `sync-guard-check` red on every other open branch, not just the
     merged one, so it is a human step regardless of approval — hand it back.
