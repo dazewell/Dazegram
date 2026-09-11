@@ -528,13 +528,15 @@ reminder added under `#ghost-type-warning`
 off→on edge) keeps materially the same shape of state (an account-keyed set of
 already-reminded dialogIds, reset lazily on a Ghost off→on edge) and is fine,
 because the thing that made the old design unsafe — a background-thread writer
-racing a UI-thread writer — doesn't apply to it. Its only reader/writer is
-`ChatActivityEnterView`'s own `TextWatcher`, invoked exclusively on the UI
-thread from the composer the user is actively looking at
+racing a UI-thread writer — doesn't apply to it. Every read and write happens
+on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
-`GhostTypingReminderHelper.onComposerTypingObserved`); nothing in the send
-path or the settings screen ever touches this state. If a future change makes
-this state reachable from anywhere but that one UI-thread callback, revisit
-this exemption rather than assuming it still holds.
+`GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
+and the `AndroidUtilities.runOnUIThread` runnable it posts
+(`GhostTypingReminderHelper.java:101-131`) is a second UI-thread access path,
+not a background one -- nothing in the send path or the settings screen ever
+touches this state. If a future change makes this state reachable from
+anywhere but those two UI-thread paths, revisit this exemption rather than
+assuming it still holds.
 
 *(Established 2026-09-10, #ghost-type-warning.)*

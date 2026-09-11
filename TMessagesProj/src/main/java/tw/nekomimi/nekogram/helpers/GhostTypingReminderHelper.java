@@ -111,6 +111,14 @@ public class GhostTypingReminderHelper {
                 if (!NekoConfig.isGhostModeActive()) {
                     return;
                 }
+                // NagramX: two qualifying transitions in the same chat (e.g. a fast
+                // type-delete-retype) can each post one of these before either runs,
+                // and both would have passed the membership check above against the
+                // same not-yet-updated set. Recheck immediately before showing so at
+                // most one of them actually spends the budget and displays a bulletin.
+                if (remindedForAccount.contains(dialogId)) {
+                    return;
+                }
                 if (tryShowBulletin(fragment, account)) {
                     remindedForAccount.add(dialogId);
                 }
