@@ -1011,3 +1011,18 @@ upstream's to grow, not ours to police.
 *(Established 2026-09-10, `#eventschedule`, PR #338 -- closing the logout leak
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
+
+## `squash_merge_commit_message: COMMIT_MESSAGES` is the single setting keeping `#slug` tags alive on `dev` — and no CI check guards it
+
+The repo lands PRs by **squash merge** (`allow_merge_commit: false`, `allow_squash_merge: true`, 2026-09-10). A squash writes one new commit onto `dev` and discards the PR branch's commits — the very commits `commit-tag.yml` validated. So whether the `#<slug>` tag reaches `dev` at all rests entirely on **`squash_merge_commit_message`**: with `COMMIT_MESSAGES` (the current, correct value) GitHub concatenates every branch commit's message into the squash body, carrying the tags across; flip it to `PR_BODY` or `BLANK` and every subsequent merge lands a tag-less commit on `dev`. **No CI check catches this** — `commit-tag.yml` runs against the PR branch, which was tagged; it never sees the squash GitHub writes afterward. The failure is silent and permanent in the `dev` log.
+
+Proven both directions on `dev` (2026-09-10):
+
+- **#334 landed untagged.** `becfe09f63` is the whole squash: `Carry a stalled session's outstanding authorized work into its replacement (#334)` — one line, no body, its only hashtag the bare PR number `#334`, which is explicitly **not** a `#<slug>` tag. Its branch commits carried tags; the landed commit carries none, so `git log --grep '#<slug>'` will never find it. (It merged before the setting was corrected.)
+- **#335 kept its tags, via `COMMIT_MESSAGES`.** `599baff6ee`'s subject `remind at typing time that ghost mode doesn't cover sending (#335)` is likewise untagged, but the concatenated branch bodies in the squash body still contain `#ghost-type-warning`, so the tag survived in the body — exactly the mechanism `COMMIT_MESSAGES` provides, and the reason a single-commit PR whose body omits the tag would land untagged like #334.
+
+Two consequences worth stating. First, `commit-tag.yml` passing on a PR is **not** evidence that what lands on `dev` is tagged — the guarantee survives the squash only because of this one setting, which is why the *Land a change* preflight in `.claude/skills/nagramx-branch-flow/SKILL.md` stop-and-reports if `squash_merge_commit_message` is not `COMMIT_MESSAGES`. Second, `squash_merge_commit_title: PR_TITLE` makes the **PR title the permanent `dev` commit subject**, so a vague or AI-referencing title is a permanent defect in the log, not cosmetic.
+
+The branch that produced the squash is auto-deleted (`delete_branch_on_merge: true`), but its full pre-squash range is **not** lost: `refs/pull/<N>/head` is permanent and survives the deletion. Verified — #335's branch `2026-09-10-ghost-type-warning` is gone from `origin`, yet `git fetch origin refs/pull/335/head` still returns tip `6465b2fda8` (12 commits, all tagged). That ref is the recovery path for a range you need after the branch is gone. Verified with `git show -s --format='%B' becfe09f63` / `599baff6ee` and the `refs/pull/335/head` fetch on `origin` (2026-09-10).
+
+*(Established 2026-09-10, #docs.)*
