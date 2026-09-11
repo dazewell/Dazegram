@@ -541,7 +541,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:230-263`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:249-288`) is a second UI-thread access path,
 not a background one. The settings screen never touches this set, and the send
 path touches it only as a read-only UI-thread reader, described in the
 paragraph below. If a future change makes this state reachable from anywhere
@@ -666,6 +666,18 @@ reference or branching on "did the epoch move" — there is no separate reset
 step for a future change to forget to call, and no window where a set can be
 read before it's known to be current for its epoch.
 
+The user-id half of that needs one more piece, because the accessor answers for
+whoever is logged into the slot *at the moment it is called*, and two of those
+three call sites run a main-loop turn after the event they describe. So both
+also carry the user id they started with — captured before the
+`AndroidUtilities.runOnUIThread` hop in each case — and bail if the slot has
+changed hands since. Without it, binding the set to a user id is defeated from
+either end: the reminder's posted runnable would record a chat into the *new*
+user's set, and the send-time query would let the new user's set answer for a
+send that was not theirs. Both then cost a warning in a chat nobody was
+reminded about, since two users in one slot can share a dialog id through any
+group both are in.
+
 **The residual gap this entry used to record as accepted is now closed, and
 the thing that forced the issue is worth recording.** Revisions 1 and 3 both
 observed exactly one path back into an active Ghost session: the master Ghost
@@ -680,7 +692,7 @@ a missed *reminder*: `GhostSendWarningHelper` checked
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:249-251` asking
+(`GhostSendWarningHelper.java:263-266` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a
@@ -701,7 +713,7 @@ proposed waiting for `#336` to land and then reusing its
 `GhostHoldController#onGhostStateMaybeChanged`. That is the same
 derived-edge-detector shape arrived at here independently, which is good
 evidence it is the right one -- but it could not be waited for, so there are
-now two detectors for one predicate. **When `#336`/`#342` merge, collapse them
+now two detectors for one predicate. **When Ghost Hold lands, collapse them
 into one shared detector rather than leaving both.** Reviving a stateful
 `isGhostModeActive()` remains ruled out for the reason in revision 2.
 

@@ -167,6 +167,12 @@ public class GhostTypingReminderHelper {
     // user id like a stale epoch keeps the fix inside this accessor, where
     // staleness is already corrected on the spot, rather than needing a teardown
     // hook to have run first.
+    // This check alone is not the whole mitigation, because it answers for
+    // whoever is logged in at the moment it is called. Both callers that cross a
+    // main-loop turn -- the posted reminder runnable and the send-time query --
+    // additionally carry the user id they started with and bail if the slot has
+    // changed hands since, so a write cannot land in the wrong user's set and a
+    // read cannot answer for a send that was not theirs.
     private static HashSet<Long> remindedSetForEpoch(int account, int epoch) {
         long userId = UserConfig.getInstance(account).getClientUserId();
         PerAccountState state = stateByAccount.get(account);
@@ -221,6 +227,19 @@ public class GhostTypingReminderHelper {
             return;
         }
 
+        // NagramX: captured before posting. remindedSetForEpoch resolves the set
+        // against whoever is logged into this slot at the moment it is called, and
+        // it is called again inside the runnable a main-loop turn later -- so if
+        // the slot is logged out and reused in between, the runnable would record
+        // this chat into the *new* user's set. That is the one direction that
+        // actually costs something: the send-time warning suppresses on exactly
+        // this answer, so the new user would silently lose a warning in a chat
+        // they were never reminded about (two users in one slot can share a dialog
+        // id through any group both are in). Binding the state to a user id is no
+        // use if the write can arrive after the user changed, so the write is
+        // dropped instead.
+        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+
         // NagramX: post rather than show inline -- this runs from inside the
         // TextWatcher's own call stack (checkSendButton, delegate callbacks and
         // layout updates all happen around it), and showing a bulletin there would
@@ -232,6 +251,12 @@ public class GhostTypingReminderHelper {
                 // NagramX: re-check here, not just above -- Ghost Mode can be toggled
                 // off in the moment between posting this and it actually running.
                 if (!NekoConfig.isGhostModeActive()) {
+                    return;
+                }
+                // NagramX: the slot changed hands while this was queued, so the
+                // chat this was about is not this user's chat and the reminder is
+                // neither theirs to see nor theirs to have recorded against them.
+                if (UserConfig.getInstance(account).getClientUserId() != dispatchUserId) {
                     return;
                 }
                 // NagramX: re-read the epoch and go through remindedSetForEpoch again

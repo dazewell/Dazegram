@@ -221,6 +221,20 @@ public class GhostSendWarningHelper {
         // something release NativeByteBuffers.
         final long dialogId = resolveDialogId(account, request);
 
+        // NagramX: captured here, on the dispatch thread, for the same reason the
+        // dialog id is. The account slot is reused across a logout and a fresh
+        // login, and the runnable below runs a main-loop turn later, so the slot
+        // can be holding a different user by then. remindedSetForEpoch already
+        // rejects a set belonging to a different user, but that check asks "does
+        // the stored set belong to whoever is logged in now", not "does it belong
+        // to whoever sent this" -- so if the new user happens to have been
+        // reminded about a dialog id they share with the old one (any group both
+        // are in), their set would answer for a send that was not theirs and
+        // suppress it. Suppression is only ever justified by a reminder shown to
+        // the sender, for the sender's chat, so a slot that changed hands in the
+        // meantime falls back to warning like every other unresolvable case.
+        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+
         // NagramX: resolve the fragment on the UI thread, which is not the thread
         // sendRequestInternal runs on, and decide + show against
         // that exact instance -- never test one fragment instance and show on a
@@ -247,6 +261,7 @@ public class GhostSendWarningHelper {
                 // this design exists to avoid. The window is milliseconds and the
                 // user is shown the reminder bulletin inside it anyway.
                 if (dialogId != DIALOG_ID_UNRESOLVED
+                        && UserConfig.getInstance(account).getClientUserId() == dispatchUserId
                         && GhostTypingReminderHelper.wasRemindedThisGhostSession(account, dialogId)) {
                     return;
                 }
