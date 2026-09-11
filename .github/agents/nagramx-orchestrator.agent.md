@@ -1559,10 +1559,16 @@ priority:
   order carrying almost no information — worse than none, because he asked for
   this so he could *stop* re-deriving it and will trust the output. Report them
   only as "these may conflict textually; resolve at merge", with no order implied.
+  **Classify by the changed hunk, not the filename** — `NaConfig.kt` and
+  `NekoConfig.java` are catalogues *and* live config/init code, so an isolated
+  declaration or registry-line addition is textual risk, but a change to shared
+  initialization, persistence or runtime behaviour in the same file is a
+  behavioural overlap and belongs in the ordering list below, not here.
 - **Behavioural-overlap list (imposes ordering).** Shared base file or shared
-  hook point per heuristic 3. This is where a genuine "#336 and #338 both touch
-  `MessagesController.java`" belongs, and it must not be given the same visual
-  weight as two `FEATURES.md` lines.
+  hook point per heuristic 3 — including a behavioural hunk in an otherwise
+  registry-like file per the note above. This is where a genuine "#336 and #338
+  both touch `MessagesController.java`" belongs, and it must not be given the same
+  visual weight as two `FEATURES.md` lines.
 
 ### What the plan must print, per PR and once for the batch
 
@@ -1600,10 +1606,15 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   and report; do not wait it out silently. The empty-run check alone is **not
   sufficient**: a `sync-land` run can fast-forward `origin/nbase` and then fail
   before opening the pins PR, which leaves no in-progress run and no open pins PR
-  while `sync-guard-check` is still red on every branch. So also confirm the
-  candidate PR's own `sync-guard-check` is not failing before you merge it —
-  a red guard with the run-list clear is exactly this failure mode, and it is
-  still stop-and-report, not a state to merge through.
+  while the fork's pins are now stale. So also require the candidate PR's own
+  `sync-guard-check` to be a **completed `success`** pinned to the current
+  `headRefOid` — **not merely "not failing"**, since a missing or still-pending
+  run also reads as not-failing and `mergeStateStatus` won't catch it (the guard
+  is not a required check in the ruleset). Stop on missing, pending, or red. And
+  because `sync-guard-check` only re-runs on push/PR, a green result recorded
+  *before* an `nbase` advance is stale: confirm live `origin/nbase` still matches
+  the baseline the PR's `.github/sync/pins.env` was computed against before you
+  trust a green guard — a mismatch is stop-and-report.
 - **Gate on `mergeStateStatus == CLEAN`** (not `mergeable: MERGEABLE`, which only
   says it textually merges) **plus the head check green on the PR's *current*
   `headRefOid`**, re-read every time — a `ci.yml` run whose `conclusion ==
@@ -1616,12 +1627,28 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   it is no longer `UNKNOWN`, with a **declared wall-clock deadline**, and require
   `CLEAN` — do not proceed on a settled `mergeable` while `mergeStateStatus` is
   still `UNKNOWN`, they are different fields. `UNKNOWN`, `BEHIND`, `UNSTABLE`,
-  `BLOCKED` and `DIRTY` are each **stop and report**, never permission.
+  `BLOCKED` and `DIRTY` are each **stop and report**, never permission. Read the
+  gate field explicitly — the earlier `gh pr view` example in this file requests
+  `mergeable` only, which is the field this gate rejects — with a deadline-bounded
+  poll such as:
+
+  ```powershell
+  $pr = '<n>'; $deadline = (Get-Date).AddMinutes(10)
+  do {
+    $v = gh pr view $pr --repo dazewell/Dazegram --json mergeStateStatus,headRefOid | ConvertFrom-Json
+    "$(Get-Date -Format HH:mm:ss)  $($v.mergeStateStatus)  $($v.headRefOid)"
+    if ($v.mergeStateStatus -ne 'UNKNOWN') { break }
+    Start-Sleep 20
+  } while ((Get-Date) -lt $deadline)
+  # proceed only if $v.mergeStateStatus -eq 'CLEAN'
+  ```
 - **Re-verify the non-CI Phase 4 gates on the same current head**, so "every
   Phase 4 gate re-verified" is honest and not just the sync/merge/CI subset: the
   PR still targets `dev` and is not converted to draft; the two hard-line
   attribution greps and the missing-`#slug` query still return nothing on the head
-  tree; every review thread is still resolved; and any required final-state or
+  tree; every review thread is still resolved (paginate `reviewThreads` until
+  `pageInfo.hasNextPage` is false — the Phase 4 snippet's `first:100` silently
+  hides thread 101+ on a heavily-reviewed PR); and any required final-state or
   whole-feature pass recorded in the handback still holds for this head. A PR that
   became ineligible after the landing plan was drawn — a new commit, a reopened
   thread, a draft toggle — is **stop and report**, not merge.
@@ -1644,9 +1671,12 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   the batch contained any app-source merge, confirm exactly one green run with
   `Upload staging` green pinned to that final SHA — or, if the last merge was
   doc-only and path-ignored, to the last **app-source** merge's SHA. If **every**
-  PR in the batch was doc/`.github`-only, `staging.yml` is path-ignored for all of
-  them: record that **no staging run was expected** and confirm none was needed,
-  rather than waiting for a run that will never fire.
+  PR in the batch was doc/`.github`-only, `staging.yml`'s *push* trigger is
+  path-ignored for all of them — but its `pull_request: labeled` trigger has **no**
+  path filter, so a doc-only PR carrying `build-apk` (or a manual dispatch) still
+  produced a run. So record "no staging run expected" only when no publish was
+  requested for any PR in the batch; if one was, confirm that requested run's
+  `Upload staging` result instead of reporting none was expected.
 
 The live backstop that makes all of this safe: ruleset `22861936`
 (`dev required checks (no bypass)`) requires the status-check context

@@ -675,13 +675,23 @@ ordering constraint; (4) a feature lands before its own `*-fix`. Keep two
 **separate** lists: append-only registry files (`FEATURES.md`, `strings_nax.xml`,
 `NaConfig.kt`, `NekoConfig.java`, `docs/codemap/*`) are a *textual-conflict-risk*
 note that imposes **no** order — nearly every branch touches them — while shared
-base files / hook points are the *behavioural* list that does. Do not collapse
+base files / hook points are the *behavioural* list that does. Classify by the
+changed **hunk**, not the filename: `NaConfig.kt`/`NekoConfig.java` also hold live
+config/init behaviour, so an isolated declaration or registry-line addition is
+textual risk, but a behavioural change to shared init/persistence in one of them
+is an ordering constraint and goes in the behavioural list. Do not collapse
 the two into one total order; the registry overlap is near-complete and would
 drown the one constraint that matters. Before the first merge and again before
 each later one, confirm **no sync is in flight** (`sync-upstream.yml` /
 `sync-land.yml` not `in_progress`/`queued`, and no open pins PR) — landing
 through the red-guard window between a `sync-land` fast-forward and its pins PR is
-exactly the mistake to avoid. Merge the batch **back-to-back**: `staging.yml`'s
+exactly the mistake to avoid. That empty-run check is not enough on its own: a
+`sync-land` run can advance `origin/nbase` then fail before opening the pins PR,
+so also require the candidate's `sync-guard-check` to be a **completed `success`**
+on the current head (not merely "not failing" — a missing or pending run reads as
+not-failing) and confirm live `origin/nbase` still matches the baseline its
+`pins.env` was computed against, since the guard only re-runs on push/PR and a
+pre-advance green is stale. Merge the batch **back-to-back**: `staging.yml`'s
 `staging-dev` group is `cancel-in-progress: true`, so consecutive merges
 **best-effort** collapse to one surviving build and one upload of the final state
 — best-effort because the cancel only reaches a run still queued or in progress,
@@ -691,9 +701,10 @@ trips the flood limit. Intermediate `cancelled` `staging-dev` runs are expected.
 After the batch, confirm the staging outcome on `dev`'s final SHA: if the batch
 had any app-source merge, confirm one green run with `Upload staging` green on
 that final SHA (or, if the last merge was doc-only and path-ignored, on the last
-app-source merge's SHA); if **every** PR was doc/`.github`-only, `staging.yml` is
-path-ignored throughout, so record that no staging run was expected rather than
-waiting for one.
+app-source merge's SHA); if **every** PR was doc/`.github`-only, `staging.yml`'s
+push trigger is path-ignored throughout, so record that no staging run was
+expected — **unless** a publish was requested via `build-apk`/dispatch (its
+`labeled` trigger has no path filter), in which case confirm that run instead.
 
 Landing locally instead of via PR:
 ```powershell

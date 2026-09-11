@@ -696,7 +696,13 @@ merge approval is recorded on the item's ledger as **non-transferable**. How it
 *closes* depends on whether it was used: an approval the session **exercised**
 closes as **`landed`**, citing the merge commit, exactly like any other completed
 authorization; an approval that goes **unused** when its session ends (an orderly
-`CLOSED`, an archive, or a replacement) closes as **`superseded`**. Either way it
+`CLOSED`, an archive, or a replacement) closes as **`superseded`**. When an
+approval names **several** PRs and only some were merged before the session ended,
+disposition is **per PR, not per approval**: record each named PR that landed as
+`landed` (with its merge commit) and each that did not as `superseded`, so the
+ledger never claims a whole batch landed when only part did — and a replacement
+re-asks for the leftover PRs specifically, since the merged ones no longer need
+approval. Either way it
 is **never written into a successor brief's `Outstanding authorizations (gG.vN)`
 field** — that is the non-transferable part, and it holds whether the approval was
 used or not. A replacement session holds no merge
