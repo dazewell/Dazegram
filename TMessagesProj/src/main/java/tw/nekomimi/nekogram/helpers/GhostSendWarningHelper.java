@@ -32,9 +32,18 @@ import tw.nekomimi.nekogram.NekoConfig;
  * session -- forwards and gallery media included, not only the typed message
  * that earned the reminder. Where it cannot, this fails open and warns: a send
  * whose destination doesn't resolve cannot be claimed to be one the user was
- * already told about. Allowlisted requests that carry no destination at all,
- * such as TL_messages_sendEncryptedMultiMedia and TL_messages_sendWebViewData,
- * therefore always warn, reminded chat or not.
+ * already told about. TL_messages_sendWebViewData is the one allowlisted
+ * request that reaches this hook carrying no destination at all, so it always
+ * warns, reminded chat or not.
+ * <p>
+ * TL_messages_sendEncryptedMultiMedia is on the allowlist but never arrives
+ * here: SecretChatHelper#performSendEncryptedRequest unwraps it into one
+ * TL_messages_sendEncrypted or TL_messages_sendEncryptedFile per file
+ * (SecretChatHelper.java:597-601), and only those reach ConnectionsManager.
+ * Both carry a TL_inputEncryptedChat, so a secret-chat media send resolves to
+ * its chat and is covered by the suppression like any other send. It stays on
+ * the allowlist defensively; nothing should be built on the assumption that
+ * the wrapper is observable at this hook.
  * <p>
  * In every chat the reminder has not covered, this still warns for everything
  * on the allowlist: forwards, gallery media, text shared in from another app,
@@ -153,8 +162,9 @@ public class GhostSendWarningHelper {
     // and carry a TL_inputEncryptedChat rather than an InputPeer, so they're
     // mapped here onto the same encrypted dialog id ChatActivity uses -- that is
     // the id the typing reminder would have recorded for that chat, and matching
-    // it is the whole point. TL_messages_sendEncryptedMultiMedia carries no peer
-    // at all and so resolves to unresolved, which warns.
+    // it is the whole point. TL_messages_sendEncryptedMultiMedia has no branch
+    // here because it never reaches this hook -- SecretChatHelper unwraps it into
+    // the two requests above before anything is sent (SecretChatHelper.java:597-601).
     // Saved Messages is the one case the InputPeer doesn't carry an id for:
     // MessagesController#getInputPeer builds a TL_inputPeerSelf for the client
     // user (MessagesController.java:6016-6019), which has no user_id/chat_id/
