@@ -757,6 +757,15 @@ public final class EventScheduleController {
     private static void finishCommitEdit(int account, int generation, long dialogId, int[] editIds, int[] editLocalIds,
                                          boolean userTouchedTrigger, boolean armed,
                                          @NonNull EventScheduleConfig config, int scheduleDate) {
+        // The armed branch's own gate in resolveAndClaimForEdit rejects a stale claim, but the
+        // schedule-only refresh (commitEditRefresh) and turn-off (commitEditOff) branches below reach the
+        // store without it. On the async reconcile path this runnable can land after a logout that cleared
+        // and reused the slot, where a refresh would rewrite -- and an off would delete -- whatever the new
+        // account now owns for these ids. Fail closed for all three branches on a generation mismatch;
+        // harmless on the synchronous path, where the generation captured at commit is still current.
+        if (EventScheduleStore.currentGeneration(account) != generation) {
+            return;
+        }
         if (!userTouchedTrigger) {
             commitEditRefresh(account, dialogId, editIds, editLocalIds, scheduleDate);
             return;
