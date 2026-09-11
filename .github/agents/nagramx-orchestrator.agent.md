@@ -1593,9 +1593,9 @@ adds only what is *authority* rather than mechanics, and it is stated once, in
 **named in-chat approval** that is bound to both this root session and the specific
 reviewed head SHA, is **non-transferable** (not inherited by a successor or
 fallback session — comms Rule 11), forbids `--admin`/`--auto`, and does **not**
-carry branch-deletion authority (a landed branch is deleted only when the approval
-names it *and* the PR body or linked issue records it is not an upstream
-candidate). Approval authorises the button, never the evidence: it does not waive
+involve branch deletion at all (the repo auto-deletes the head branch on merge —
+not an agent action, and nothing is lost, since `refs/pull/<N>/head` preserves the
+range). Approval authorises the button, never the evidence: it does not waive
 review, the hard-line greps, the missing-`#slug` query, or the `.github/sync/**`
 exclusion, and every gate in the branch-flow procedure is re-verified fresh on the
 head being merged. Keep *Hard limits* and the branch-flow procedure as the single
@@ -1695,12 +1695,14 @@ lighter touch.
     change flips `sync-guard-check` red on every other open branch, not just the
     merged one, so it is a human step regardless of approval — hand it back.
   - **No sync is in flight** (see the execution procedure's precondition).
-  - **Branch deletion is not part of the grant.** Delete a landed branch only
-    when the approval explicitly names it *and* the PR body or its linked issue
-    records that the branch is not an upstream candidate — never by default,
-    since whether a branch is an upstream candidate is a fact that lives with
-    dazewell, not in the diff. This keeps merge authority to merging alone and
-    stays inside the destructive-git limit above.
+  - **Branch deletion is not something you do at all.** The repo auto-deletes the
+    head branch on every merge (`delete_branch_on_merge: true`) — it is not part
+    of the grant because it is not an agent action: you never pass
+    `--delete-branch`, and there is no "is this an upstream candidate" judgement
+    to make, because nothing is lost. `refs/pull/<N>/head` is permanent and keeps
+    the merged branch's range recoverable (see `nagramx-branch-flow`, *Land a
+    change*). Merge authority is merging alone; deletion happens *to* the branch,
+    not *by* you.
 - **Do not widen the diff.** Unrelated cleanups and drive-by refactors make the
   next upstream merge more expensive. Raise them as separate suggestions. The one
   exception a child may legitimately take: a defect it proves is a data-loss or
