@@ -86,7 +86,8 @@ re-run any of your gates; it is a pure supervisor. So:
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch, plus your
-    current `Outstanding authorizations` snapshot (`<none>` at startup).
+    current `Outstanding authorizations (v0): <none>` snapshot at startup —
+    version 0, since nothing has been authorized yet.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
     `ask_user`, so a lost or never-observed `ask_user` cannot stall you
     invisibly. Your own stall clock is considered paused while you wait.
@@ -115,19 +116,26 @@ re-run any of your gates; it is a pure supervisor. So:
     pre-`RUNNING` failure** — a failed `coord-<slug>` rename or a failed
     preflight). Send it before you stop, with the exact reason, so the parent
     surfaces it upward without re-investigating and never mistakes a dead
-    session for a working one. Include your current `Outstanding
-    authorizations` snapshot when you have started work — it is the only
-    durable record your parent will ever have of what you had committed to but
-    not yet dispatched, since your branch carries none of it. The one case you
-    cannot send it is a missing parent address, above.
+    session for a working one. Include your current versioned `Outstanding
+    authorizations (vN): …` snapshot when you have started work — it is the
+    only durable record your parent will ever have of what you had committed
+    to but not yet dispatched, since your branch carries none of it. The one
+    case you cannot send it is a missing parent address, above.
 
   **Every control message above carries your current `Outstanding
-  authorizations` snapshot, not only `RUNNING`, `CLOSED`, and `ABORTED`** — it
-  is cheap to restate and it is the only place this state exists outside your
-  own context. A child that goes dark between two control messages having
-  authorized new descendant work in that gap loses it exactly as a leaf
-  session's uncommitted edits are lost on a stall — restating it every message
-  narrows that window, it does not close it (comms protocol Rule 11).
+  authorizations (vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
+  `ABORTED`** — it is cheap to restate and it is the only place this state
+  exists outside your own context. Increment `N` every time the list itself
+  changes (an item added, closed, or the list becoming `<none>`); never on a
+  message that merely repeats it unchanged. **The control vocabulary can
+  arrive out of order** (comms protocol Rule 1's carve-out for recurring
+  messages), so your parent adopts a snapshot only if its version exceeds the
+  last one it accepted — a lower- or equal-versioned snapshot arriving late is
+  discarded as stale, never used to overwrite what the parent already holds. A
+  child that goes dark between two control messages having authorized new
+  descendant work in that gap loses it exactly as a leaf session's uncommitted
+  edits are lost on a stall — restating it every message narrows that window,
+  it does not close it (comms protocol Rule 11).
 - **You forfeit the trivial-work commit exception entirely** (see *You do not
   implement*). A root orchestrator may make a one-line doc/CI commit itself; a
   child orchestrator never commits — its branch is `coord-<slug>`, which is not
@@ -1478,7 +1486,12 @@ not repeat what that file states — they point at it:
   Keep that list somewhere that survives the session dying, not only in its own
   memory, and before you call a scope complete diff what was authorized against
   what the branch actually contains rather than trusting the last report
-  (Rule 11).
+  (Rule 11). **As a root orchestrator your durable channel is your own session
+  transcript with dazewell** — the app preserves it independent of your process
+  being responsive, unlike conversational memory — so restate a versioned
+  `Outstanding authorizations (vN): …` line in your next reply whenever the list
+  changes, incrementing `N` on every change, so a replacement (yours or
+  dazewell's) can find the latest one without re-reading the whole history.
 
 ## Reporting while you work
 

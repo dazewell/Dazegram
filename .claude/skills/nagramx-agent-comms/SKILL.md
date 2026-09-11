@@ -505,6 +505,39 @@ against the last report**: diff what was authorized against what the commits
 actually contain, the same own-tree re-read Rule 2 already requires, run here by
 the coordinator against a tree that is not its own.
 
+**"Somewhere that survives the session dying" names a concrete channel, not a
+vague aspiration — and it differs by role, because a root and a child report to
+different recipients:**
+
+- **A root orchestrator's durable channel is its own session transcript with
+  dazewell.** The app preserves a session's history independent of its process
+  being responsive (`archive_session` explicitly "preserves the session history
+  so the user can restore it later"), so a transcript line is not lost the way a
+  conversational *memory* is — dazewell, or whoever picks up the replacement,
+  can read back through it even after the session stalls. Restate a versioned
+  `Outstanding authorizations (vN): …` line (below) in your next reply whenever
+  the list changes, so it stays findable without scrolling the whole history.
+- **A child orchestrator's durable channel is its structured control messages
+  to its parent** (below) — the parent does not read the child's transcript, it
+  reads control messages and git, so the transcript argument above does not
+  carry over to that channel.
+
+**Both channels need the same fix for the same reason: the recurring control
+vocabulary is explicitly exempt from Rule 1's SHA stamp and can arrive
+out of order (Rule 1), so a plain restated list is ambiguous about which
+version is newest if two arrive out of sequence.** Carry your own local,
+monotonically increasing counter on the list itself —
+`Outstanding authorizations (v3): …` — incrementing it on every change
+(an addition, a closed item removed, or the list becoming `<none>`). The
+recipient (dazewell reading back through a transcript, or a parent reading
+control messages) adopts a snapshot only if its version exceeds the last one
+it accepted; a lower- or equal-versioned snapshot that arrives late is
+discarded as stale, never used to overwrite a newer state. This is cheap: the
+coordinator already knows how many times it has touched its own list, so the
+counter costs nothing to maintain and closes the reordering gap without
+reopening Rule 1's deliberate decision not to sequence-stamp the rest of the
+control vocabulary.
+
 **This rule recurses onto a child orchestrator, which is a coordinator for its
 own dispatched sessions and binds the same way — with one honest limit.** A
 child orchestrator's `coord-<slug>` branch is deliberately never committed or
@@ -522,14 +555,14 @@ own* descendants. Two consequences, not one workaround:
 - **A child that dies before reporting is an honest gap, not a solved one** —
   the same limit Rules 7–8 already state for liveness in general, applied here
   to authorizations specifically. The mitigation is cheap and partial, not a
-  fix: a child orchestrator states its current outstanding-authorizations
-  snapshot in **every** control message it sends, not only `CLOSED`, so the
-  parent's last-observed message is the freshest available record if the child
-  goes dark before its next one. A child that dies between two control
-  messages having authorized new descendant work in that gap loses it exactly
-  as a leaf session's uncommitted edits are lost on a stall (Rule 7) — state
-  that loss plainly rather than implying a durable ledger exists where none
-  does.
+  fix: a child orchestrator states its current **versioned**
+  outstanding-authorizations snapshot in **every** control message it sends,
+  not only `CLOSED`, so the parent's last-observed, highest-versioned message
+  is the freshest available record if the child goes dark before its next one.
+  A child that dies between two control messages having authorized new
+  descendant work in that gap loses it exactly as a leaf session's uncommitted
+  edits are lost on a stall (Rule 7) — state that loss plainly rather than
+  implying a durable ledger exists where none does.
 
 This is not hypothetical: a five-item safety bundle was authorized, the session
 that held it stalled without starting the work and was archived, the
@@ -548,11 +581,15 @@ verification step, and the next stall may not be caught by one.
   deliberately *not* one of these — it is an open handoff, not a disposition:
   the item still owes a landed/declined/superseded outcome, tracked against the
   *new* brief, and closing the old session on "carried" alone would let the same
-  item silently re-open the gap this rule exists to close.
+  item silently re-open the gap this rule exists to close. A snapshot version
+  number is present on every restatement and strictly increases each time the
+  list changes; a recipient that adopts a lower- or equal-versioned snapshot
+  over a higher one it already saw has not satisfied this check.
 - *Cost:* one running list per coordinator, kept alongside the brief template it
-  already maintains, plus one diff-against-branch check at each handoff and each
-  archive. Cheap next to a Critical that shipped because an item was never
-  written down anywhere the replacement session could see.
+  already maintains, one integer counter incremented on change, plus one
+  diff-against-branch check at each handoff and each archive. Cheap next to a
+  Critical that shipped because an item was never written down anywhere the
+  replacement session could see.
 - *Kills:* authorized work lost silently across a stall/archive/replacement — the
   seam none of Rules 1–10 cover, because they protect messages, not the
   commitments a dead session was carrying.
