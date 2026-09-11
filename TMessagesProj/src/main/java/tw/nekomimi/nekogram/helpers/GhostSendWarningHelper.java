@@ -136,9 +136,15 @@ public class GhostSendWarningHelper {
 
     // NagramX: runs synchronously on whichever thread called sendRequest --
     // usually Utilities.stageQueue, but sendRequestSync dispatches inline on the
-    // caller's own thread. Nothing here depends on which: it reads plain fields
-    // off an object that same thread is about to serialize, so there is nothing
-    // to race either way.
+    // caller's own thread. Nothing here depends on which: the only thread that
+    // can reach these fields at this moment is the one already inside
+    // sendRequestInternal. By then that thread has run both serializeToStream
+    // and freeResources (ConnectionsManager.java:422-424), so the peer fields
+    // read below are read afterwards -- which is safe because freeResources
+    // releases NativeByteBuffers, not TL fields: the base is empty
+    // (TLObject.java:82-84) and the overrides that do anything free buffers.
+    // Nothing in the TL tree nulls a peer there, so a request that carried a
+    // destination before serialization still carries it here.
     // TlUtils.getInputPeerFromSendMessageRequest handles the cloud sends it knows
     // and returns null for everything else, including four allowlisted requests
     // that do carry a destination peer -- scheduled sends, quick replies, bot

@@ -541,7 +541,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:227-260`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:230-263`) is a second UI-thread access path,
 not a background one. The settings screen never touches this set, and the send
 path touches it only as a read-only UI-thread reader, described in the
 paragraph below. If a future change makes this state reachable from anywhere
@@ -676,11 +676,11 @@ so whichever chats were already reminded stayed suppressed into what the user
 experienced as a new session. That was tolerable only while the worst case was
 a missed *reminder*: `GhostSendWarningHelper` checked
 `NekoConfig.isGhostModeActive()` fresh at send time
-(`GhostSendWarningHelper.java:203-205`) and carried no per-chat state, so a send
+(`GhostSendWarningHelper.java:209-211`) and carried no per-chat state, so a send
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:243-245` asking
+(`GhostSendWarningHelper.java:249-251` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a
