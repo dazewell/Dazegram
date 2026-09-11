@@ -82,7 +82,10 @@ re-run any of your gates; it is a pure supervisor. So:
   have done no work, and the parent recovers a never-reported, zero-diff child
   through the **same pre-`RUNNING` cleanup path** it uses for a pre-`RUNNING`
   `ABORTED` — mechanically confirm zero diff, run the lifecycle pre-archive
-  checklist, then archive (see the mis-dispatch / pre-`RUNNING` archive path and
+  checklist, discharge any outstanding-authorization list your brief carried
+  (zero git diff is not an empty ledger, and as a replacement you hold an
+  inherited list from the moment you start), then archive (see the mis-dispatch
+  / pre-`RUNNING` archive path and
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch, plus your
@@ -575,12 +578,35 @@ that never reported one has no processes it recorded, so a clean worktree-
 filtered residual sweep *is* the evidence for an empty ledger (`Processes:
 <none>`), and that empty ledger is a valid checklist input, not a violation of
 it. Only when that checklist passes clean do you archive the session and report
-the dispatch failure. **The same path recovers a correctly-dispatched child that
+the dispatch failure.
+
+**Zero git diff is not an empty authorization ledger, and the two must not be
+collapsed.** The three git checks above prove the session produced no *code*;
+they say nothing about what it was *owed to do*. A **replacement** child holds a
+non-empty inherited list from its brief's `Outstanding authorizations (gG.vN)`
+field from the instant it starts, before it can touch a file — so a replacement
+that fails preflight is precisely the zero-diff session whose ledger is not
+empty, and archiving it on the strength of a clean `git status` would drop the
+carried obligation at the one moment it becomes unrecoverable. That is the
+failure Rule 11 exists to prevent, arriving through the archive path rather than
+the handoff. So before archiving any pre-`RUNNING` child, read its
+outstanding-authorization list — from its own brief, or from the snapshot on its
+`ABORTED` if it managed to send one — and apply the Rule 11 check to it: every
+item either closed (landed, declined, superseded) or **transferred** into the
+next replacement brief and verified present there. Transfer is available to you
+here, because you are the archiving coordinator and you own the successor. An
+explicit `<none>` on a genuinely new unit is the normal case and passes
+immediately; a non-empty list on a replacement is the case that must not be
+waved through.
+
+**The same path recovers a correctly-dispatched child that
 simply never reported** — for instance one whose kickoff was missing your
 `project_session_id`, so it stopped after preflight unable to send even
 `ABORTED`: confirm zero diff the same way — `git -C <path> status`,
 `git -C <path> diff HEAD`, **and** `git -C <path> log <base>..HEAD --oneline` all
-clean (including no commits ahead of base) — run the checklist, and archive. It is a no-work
+clean (including no commits ahead of base) — run the checklist, **discharge its
+outstanding-authorization list per the paragraph above**, and archive. It is a
+no-work
 session, not an orphan. **If it has already produced a diff** — a mis-dispatched
 generic agent can start work before any `RUNNING` — do **not** archive it: that
 would discard real work. Leave it intact, report the exact
@@ -604,10 +630,10 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
 | `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
-| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` + `git -C <path> log <base>..HEAD --oneline` to confirm zero diff — all three clean, including no commits ahead of base (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` + `git -C <path> log <base>..HEAD --oneline` to confirm zero diff — all three clean, including no commits ahead of base (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger), **then discharge its outstanding-authorization list before archiving — zero git diff is not an empty authorization ledger, and a replacement child holds a non-empty inherited list from its brief before it can touch a file** (read it from the brief or the `ABORTED` snapshot; close or transfer each item per Rule 11) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
 | `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
-| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status`, `git -C <path> diff HEAD`, and `git -C <path> log <base>..HEAD --oneline` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** (all three clean, no commits ahead of base) — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
+| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status`, `git -C <path> diff HEAD`, and `git -C <path> log <base>..HEAD --oneline` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** (all three clean, no commits ahead of base) — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then the outstanding-authorization discharge — zero git diff does not mean an empty ledger — then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
 Never take over a delegated unit yourself, and never archive a live-but-
 unresponsive child. The single-probe-then-escalate path above is the only time
@@ -1392,7 +1418,13 @@ contains. Archiving a **child orchestrator**: its `coord-<slug>` branch is never
 committed, so a diff there proves nothing — an empty coordinator branch is not
 evidence that nothing is outstanding, and blocking on an impossible diff would
 strand the archive. Read instead from the `CLOSED` ledger on an orderly exit, or
-from the last versioned snapshot you accepted from it when it died without one.
+from the last versioned snapshot you accepted from it when it died without one —
+and when it died **before `RUNNING`**, so it sent neither, read it from **the
+brief you wrote for it**, which is the copy you hold yourself. A replacement
+child's brief carries a non-empty inherited list from the instant it starts, so
+"it never reported, and its worktree is clean" is not evidence that it owed
+nothing; those are the sessions whose obligations are easiest to drop and least
+recoverable once archived.
 Then, for anything not landed, either
 cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
