@@ -644,15 +644,27 @@ authority in `.github/agents/nagramx-orchestrator.agent.md` (*Hard limits* and
 *Landing approved PRs*) — named in-session approval, all gates re-verified,
 non-transferable, no `--admin`/`--auto`, `.github/sync/**` excluded. This section
 is the **mechanics** those rules invoke; it does not grant anyone authority.
+**Branch deletion is a separate act with its own limit:** the "delete the branch"
+step above and the local-landing `git branch -d`/`--delete` below are dazewell's
+by default. A root orchestrator merging under approval does **not** thereby gain
+deletion authority — it deletes a landed branch only when the approval explicitly
+names the branch *and* the PR body or linked issue records the branch is not an
+upstream candidate, since "is this an upstream candidate" is a fact only dazewell
+holds. Absent that, merge and leave the branch.
 
 **The merge-time gate (whoever lands).** Gate on `mergeStateStatus == CLEAN` —
-not `mergeable: MERGEABLE`, which only says it textually merges — plus a `ci.yml`
-run that is green on the PR's **current** `headRefOid`, re-read each time. GitHub
-recomputes mergeability asynchronously, so the moment a merge moves `dev` every
-other open PR reads `UNKNOWN` until a background job catches up; poll until it
-settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` / `UNSTABLE`
-/ `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or update a
-branch on someone's behalf as part of landing — that is a fresh decision.
+not `mergeable: MERGEABLE`, which only says it textually merges, and a different
+field — plus the head check green on the PR's **current** `headRefOid`, re-read
+each time: a `ci.yml` run whose `conclusion == success` for a code change, or, for
+a doc/`.claude`/`.github/agents`-only change that `ci.yml` path-ignores, the
+required `Every commit carries a` check green with `ci.yml` legitimately not run
+(path-ignored is its own outcome, not green and not pending — do not wait for a
+run that will never fire). GitHub recomputes both fields asynchronously, so the
+moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
+`UNKNOWN` until a background job catches up; **poll `mergeStateStatus` itself**
+until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
+`UNSTABLE` / `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or
+update a branch on someone's behalf as part of landing — that is a fresh decision.
 
 **Landing several PRs in one sitting — the ordering procedure.** Derive a
 *suggested* order, in this priority: (1) a **declared blocker** in a PR's linked
@@ -670,12 +682,18 @@ each later one, confirm **no sync is in flight** (`sync-upstream.yml` /
 `sync-land.yml` not `in_progress`/`queued`, and no open pins PR) — landing
 through the red-guard window between a `sync-land` fast-forward and its pins PR is
 exactly the mistake to avoid. Merge the batch **back-to-back**: `staging.yml`'s
-`staging-dev` group is `cancel-in-progress: true`, so consecutive merges collapse
-to one surviving build and one upload of the final state — spacing them out is
-what produces N uploads and trips the flood limit. Intermediate `cancelled`
-`staging-dev` runs are expected; after the batch, confirm one green run with
-`Upload staging` green on `dev`'s final SHA (or, if the last merge was doc-only
-and path-ignored, on the last app-source merge's SHA).
+`staging-dev` group is `cancel-in-progress: true`, so consecutive merges
+**best-effort** collapse to one surviving build and one upload of the final state
+— best-effort because the cancel only reaches a run still queued or in progress,
+so a fast first run that reaches `Upload staging` before the next merge does
+upload; back-to-back minimises the uploads, spacing them out maximises them and
+trips the flood limit. Intermediate `cancelled` `staging-dev` runs are expected.
+After the batch, confirm the staging outcome on `dev`'s final SHA: if the batch
+had any app-source merge, confirm one green run with `Upload staging` green on
+that final SHA (or, if the last merge was doc-only and path-ignored, on the last
+app-source merge's SHA); if **every** PR was doc/`.github`-only, `staging.yml` is
+path-ignored throughout, so record that no staging run was expected rather than
+waiting for one.
 
 Landing locally instead of via PR:
 ```powershell

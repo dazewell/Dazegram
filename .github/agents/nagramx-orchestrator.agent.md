@@ -1518,8 +1518,13 @@ landing plan is **owned by the root orchestrator** and emitted in the root's own
 session transcript with dazewell — the durable channel Rule 11 already names for
 a root. It is only produced on request or when dazewell is deciding a batch, and
 only for PRs that are actually eligible: each has been through both review rounds
-(**approval authorises the button, never the evidence**), is CI-green on its head
-commit, and has every review thread resolved.
+(**approval authorises the button, never the evidence**), is green on its head
+commit — a `ci.yml` run whose `conclusion == success` pinned to that SHA, or, for
+a doc/`.claude`/`.github/agents`-only change that `ci.yml` legitimately
+path-ignores, the required `Every commit carries a` check green with `ci.yml`
+correctly not run (path-ignored is *not* green and must be recognised as its own
+outcome, never waited on as if a run were coming) — and has every review thread
+resolved.
 
 **The plan is a recommendation for a human decision, never an assertion of
 completeness.** It states plainly what it cannot see and asks him for what only
@@ -1592,29 +1597,56 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   `sync-guard-check` is red on every branch — merging through that window either
   stalls or rationalises a red guard, and rationalising a red guard is the one
   thing this repo's tooling exists to prevent. If either check is non-empty, stop
-  and report; do not wait it out silently.
+  and report; do not wait it out silently. The empty-run check alone is **not
+  sufficient**: a `sync-land` run can fast-forward `origin/nbase` and then fail
+  before opening the pins PR, which leaves no in-progress run and no open pins PR
+  while `sync-guard-check` is still red on every branch. So also confirm the
+  candidate PR's own `sync-guard-check` is not failing before you merge it —
+  a red guard with the run-list clear is exactly this failure mode, and it is
+  still stop-and-report, not a state to merge through.
 - **Gate on `mergeStateStatus == CLEAN`** (not `mergeable: MERGEABLE`, which only
-  says it textually merges) **plus a `ci.yml` run whose `conclusion == success`
-  pinned to the PR's *current* `headRefOid`**, re-read every time. GitHub
-  recomputes mergeability asynchronously, so the instant a merge moves `dev`
-  every remaining PR drops to `UNKNOWN`; poll until `mergeable != UNKNOWN` with a
-  **declared wall-clock deadline**. `UNKNOWN`, `BEHIND`, `UNSTABLE`, `BLOCKED` and
-  `DIRTY` are each **stop and report**, never permission.
+  says it textually merges) **plus the head check green on the PR's *current*
+  `headRefOid`**, re-read every time — a `ci.yml` run whose `conclusion ==
+  success` for a code change, or, for a change `ci.yml` path-ignores, the required
+  `Every commit carries a` check green (there is no `ci.yml` run to wait for in
+  that case, so treat its absence as the expected path-ignored outcome, never as
+  pending). GitHub recomputes both `mergeable` and `mergeStateStatus`
+  asynchronously, so the instant a merge moves `dev` every remaining PR's
+  `mergeStateStatus` drops to `UNKNOWN`; **poll `mergeStateStatus` itself** until
+  it is no longer `UNKNOWN`, with a **declared wall-clock deadline**, and require
+  `CLEAN` — do not proceed on a settled `mergeable` while `mergeStateStatus` is
+  still `UNKNOWN`, they are different fields. `UNKNOWN`, `BEHIND`, `UNSTABLE`,
+  `BLOCKED` and `DIRTY` are each **stop and report**, never permission.
+- **Re-verify the non-CI Phase 4 gates on the same current head**, so "every
+  Phase 4 gate re-verified" is honest and not just the sync/merge/CI subset: the
+  PR still targets `dev` and is not converted to draft; the two hard-line
+  attribution greps and the missing-`#slug` query still return nothing on the head
+  tree; every review thread is still resolved; and any required final-state or
+  whole-feature pass recorded in the handback still holds for this head. A PR that
+  became ineligible after the landing plan was drawn — a new commit, a reopened
+  thread, a draft toggle — is **stop and report**, not merge.
 - **Merge back-to-back and deliberately un-spaced, and record that reason.**
   `staging.yml`'s concurrency group resolves to `staging-dev` with
-  `cancel-in-progress: true`, so N back-to-back merges collapse to **one**
-  surviving build and one Telegram upload of the final `dev` state — spacing
-  merges past a build's duration is the one action that turns a single delivery
-  into N uploads and trips the bot's flood limit. Write the reason down so a later
-  reader does not "improve" it by adding delays. Intermediate **cancelled**
-  `staging-dev` runs are expected, not failures.
+  `cancel-in-progress: true`, so N back-to-back merges **best-effort** collapse to
+  one surviving build and one Telegram upload of the final `dev` state — the
+  mechanism only cancels a run still queued or in progress, so a fast first run
+  that reaches `Upload staging` before the next merge lands does upload, and a
+  batch can still produce more than one upload; back-to-back merging minimises
+  that, spacing merges out past a build's duration maximises it. Either way,
+  spacing is the wrong move: it is what reliably turns a single delivery into N
+  uploads and trips the bot's flood limit. Write the reason down so a later reader
+  does not "improve" it by adding delays. Intermediate **cancelled** `staging-dev`
+  runs are expected, not failures.
 - **Never resolve conflicts or update a branch on his behalf.** If a merge makes
   a later PR conflict or go stale, stop and report it — that is a new decision,
   not a mechanical step.
-- **After the batch**, confirm exactly one green staging run with `Upload
-  staging` green pinned to `dev`'s **final** SHA. Note the doc-only caveat: if the
-  last merge is doc-only it triggers nothing (`paths-ignore`), so the run to
-  confirm is the last **app-source** merge's.
+- **After the batch**, confirm the staging outcome on `dev`'s **final** SHA. If
+  the batch contained any app-source merge, confirm exactly one green run with
+  `Upload staging` green pinned to that final SHA — or, if the last merge was
+  doc-only and path-ignored, to the last **app-source** merge's SHA. If **every**
+  PR in the batch was doc/`.github`-only, `staging.yml` is path-ignored for all of
+  them: record that **no staging run was expected** and confirm none was needed,
+  rather than waiting for a run that will never fire.
 
 The live backstop that makes all of this safe: ruleset `22861936`
 (`dev required checks (no bypass)`) requires the status-check context
@@ -1675,7 +1707,10 @@ lighter touch.
     clearing. Approval authorises **the button, never the evidence** — it does
     not waive review, the hard-line greps, or the missing-`#slug` query, and a
     PR that has not been through both review rounds is not eligible for a landing
-    plan at all.
+    plan at all. Approval attaches to the **reviewed head SHA**, not just the PR
+    number: record the `headRefOid` you presented, and if a named PR gains any
+    commit after he approved, the approval is stale — re-verify the new head
+    through the gates and re-ask before merging it.
   - **Every Phase 4 gate re-verified at merge time**, per the execution
     procedure in *Landing approved PRs*. A pass Phase 4 recorded earlier is
     evidence about earlier code.

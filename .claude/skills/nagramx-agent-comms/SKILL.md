@@ -692,10 +692,14 @@ approval is dazewell's judgement about specific PRs at a specific moment; those
 PRs can change, land, or go stale in the hours between the approving session
 stalling and a replacement starting, and a replacement that *inherited* the
 approval would merge on his say-so given to a session that no longer exists. So a
-merge approval is recorded on the item's ledger as **non-transferable**, is
-**closed as `superseded` when its session ends** (an orderly `CLOSED`, an archive,
-or a replacement), and is **never written into a successor brief's
-`Outstanding authorizations (gG.vN)` field**. A replacement session holds no merge
+merge approval is recorded on the item's ledger as **non-transferable**. How it
+*closes* depends on whether it was used: an approval the session **exercised**
+closes as **`landed`**, citing the merge commit, exactly like any other completed
+authorization; an approval that goes **unused** when its session ends (an orderly
+`CLOSED`, an archive, or a replacement) closes as **`superseded`**. Either way it
+is **never written into a successor brief's `Outstanding authorizations (gG.vN)`
+field** — that is the non-transferable part, and it holds whether the approval was
+used or not. A replacement session holds no merge
 authority until it **re-asks dazewell and he re-approves against the current
 PRs** — which is a fresh authorization at the new generation, not a carried one.
 This is the single exception to "authorized work outlives the session"; it exists
