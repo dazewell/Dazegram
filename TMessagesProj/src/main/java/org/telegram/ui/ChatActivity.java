@@ -13681,10 +13681,13 @@ public class ChatActivity extends BaseFragment implements
 
     public void openForward(boolean fromActionBar) {
         boolean hasSelectedAyuDeletedMessage = hasSelectedAyuDeletedMessage();
-        if (forwardingMessage == null && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0
-                && naxBuildForwardSpreadSelection().isEmpty()) {
-            // NagramX: an all-held multi-selection has nothing left to forward once the send boundary
-            // excludes held rows. Clear rather than open the picker onto an empty forward.
+        if (naxBuildForwardSpreadSelection().isEmpty()
+                && (forwardingMessage != null || (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0)) {
+            // NagramX: nothing left to forward once the send boundary excludes held rows -- either an
+            // all-held multi-selection, or a single held row armed by the context-menu forward. Clear the
+            // one-shot forward source and the selection rather than open the picker onto an empty forward.
+            forwardingMessage = null;
+            forwardingMessageGroup = null;
             clearSelectionMode();
             return;
         }
@@ -13764,7 +13767,7 @@ public class ChatActivity extends BaseFragment implements
         Bundle args = new Bundle();
         args.putBoolean("onlySelect", true);
         args.putInt("dialogsType", DialogsActivity.DIALOGS_TYPE_FORWARD);
-        args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? selectedMessagesIds[0].size() + selectedMessagesIds[1].size() : canForwardMessagesCount);
+        args.putInt("messagesCount", chatMode == MODE_SCHEDULED ? naxBuildForwardSpreadSelection().size() : canForwardMessagesCount);
         args.putInt("hasPoll", hasPoll);
         args.putBoolean("hasInvoice", hasInvoice);
         args.putBoolean("canSelectTopics", true);
@@ -37152,14 +37155,15 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
-    // NagramX: the one boundary that keeps a Ghost-held row out of every send-capable bulk action on
-    // the Scheduled list. A held row keeps a negative local id the server has never seen and must never
-    // be dispatched while it is held, yet it stays selectable so delete, edit-time and reschedule still
-    // act on it -- so the exclusion belongs where a selection turns into a send, not at selection time.
-    // Every send path routes its message list through here, so the rule lives in one place and a send
-    // action added later inherits it instead of having to remember it -- the same single-chokepoint
-    // shape as the store-ownership gate and the dispatch session token. Off the Scheduled list there are
-    // no held rows, so this is inert there.
+    // NagramX: the one boundary that keeps a Ghost-held row out of the copy/repeat/forward sends on the
+    // Scheduled list. A held row keeps a negative local id the server has never seen and must never be
+    // dispatched while it is held, yet it stays selectable so it can still be deleted -- the exclusion
+    // belongs where a selection turns into a send, not at selection time. Combine, repeat-as-copy and
+    // scheduled forward each route their send list through here, so the rule lives in one place and a
+    // similar action added later inherits it instead of re-deriving an isHeld check. Send Now and the
+    // reschedule spread predate this and keep their own isHeld guards at their assembly loops (and the
+    // single-row edit-schedule-time menu is !isHeld-gated) -- they enforce the same property, they just
+    // don't funnel through this helper. Off the Scheduled list there are no held rows, so this is inert.
     private ArrayList<MessageObject> naxExcludeHeldFromSend(ArrayList<MessageObject> messages) {
         if (messages == null || messages.isEmpty()) {
             return messages;
@@ -37232,8 +37236,11 @@ public class ChatActivity extends BaseFragment implements
         }
         ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
         if (fmessages.isEmpty()) {
-            // NagramX: the send boundary dropped every row (an all-held selection), so there is nothing
-            // to forward. Clear rather than dispatch an empty forward and strand the user in selection.
+            // NagramX: the send boundary dropped every row (an all-held selection, or a single held row
+            // armed by the context-menu forward), so there is nothing to forward. Clear the one-shot
+            // forward source and the selection rather than dispatch an empty forward and strand the user.
+            forwardingMessage = null;
+            forwardingMessageGroup = null;
             for (int a = 1; a >= 0; a--) {
                 selectedMessagesCanCopyIds[a].clear();
                 selectedMessagesCanStarIds[a].clear();

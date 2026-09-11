@@ -1243,10 +1243,15 @@ selection at one boundary, not to chase each new action.
 **Fixed with one shared boundary.** `naxExcludeHeldFromSend`
 (`ChatActivity.java:37163`) is the single place the exclusion rule lives: given
 the message list an action is about to send, it drops every `isHeld` row. Held
-rows stay selectable, so delete / edit-time / reschedule still act on them --
-the filter is applied where a selection *turns into a send*, not at selection
-time. Each of the three reachable send-capable actions routes its assembly
-through it: `combine_message` per side (`ChatActivity.java:4353`),
+rows stay selectable, so a held row can still be **deleted** -- the filter is
+applied where a selection *turns into a send*, not at selection time, and delete
+is not a send. Edit-schedule-time and reschedule are not routed through the
+boundary because they already exclude held rows on their own: the single-row
+edit-time menu item is `!isHeld`-gated (hidden for a held row), and the
+reschedule spread skips held rows in its assembly loop. Send Now likewise keeps
+its own pre-existing `isHeld` guard. So the boundary's job is specifically the
+three send-capable actions that did *not* already have one. Each routes its
+assembly through it: `combine_message` per side (`ChatActivity.java:4353`),
 `repeatMessage`'s multi-select list and its single-object context-menu path
 (`ChatActivity.java:49040` and the `isHeld(selectedObject)` guard just below),
 and the scheduled `forward` at the one assembly chokepoint every forward
