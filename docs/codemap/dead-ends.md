@@ -676,7 +676,10 @@ either end: the reminder's posted runnable would record a chat into the *new*
 user's set, and the send-time query would let the new user's set answer for a
 send that was not theirs. Both then cost a warning in a chat nobody was
 reminded about, since two users in one slot can share a dialog id through any
-group both are in.
+group both are in. On the send side that snapshot is taken before the
+destination is resolved, not after, and the resolver is handed it rather than
+re-reading — otherwise the Saved Messages mapping and the check validating it
+could observe the slot either side of the same logout, and agree.
 
 **The residual gap this entry used to record as accepted is now closed, and
 the thing that forced the issue is worth recording.** Revisions 1 and 3 both
@@ -688,11 +691,11 @@ so whichever chats were already reminded stayed suppressed into what the user
 experienced as a new session. That was tolerable only while the worst case was
 a missed *reminder*: `GhostSendWarningHelper` checked
 `NekoConfig.isGhostModeActive()` fresh at send time
-(`GhostSendWarningHelper.java:209-211`) and carried no per-chat state, so a send
+(`GhostSendWarningHelper.java:212-214`) and carried no per-chat state, so a send
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:263-266` asking
+(`GhostSendWarningHelper.java:268-271` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a

@@ -160,8 +160,11 @@ public class GhostSendWarningHelper {
     // user (MessagesController.java:6016-6019), which has no user_id/chat_id/
     // channel_id, so DialogObject#getPeerDialogId would return 0 and every typed
     // message to Saved Messages would keep double-warning. Map it back to this
-    // account's own user id, which is the dialog id ChatActivity uses there.
-    private static long resolveDialogId(int account, TLObject request) {
+    // account's own user id, which is the dialog id ChatActivity uses there --
+    // taken from the caller's snapshot rather than re-read here, so the id this
+    // resolves to and the id the suppression check validates against are the
+    // same one observation of the slot.
+    private static long resolveDialogId(long clientUserId, TLObject request) {
         if (request instanceof TLRPC.TL_messages_sendEncrypted) {
             TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncrypted) request).peer;
             return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
@@ -176,7 +179,7 @@ public class GhostSendWarningHelper {
         }
         if (peer instanceof TLRPC.TL_inputPeerSelf) {
             // Still fails open while logged out, where this reads 0.
-            return UserConfig.getInstance(account).getClientUserId();
+            return clientUserId;
         }
         return DialogObject.getPeerDialogId(peer);
     }
@@ -210,6 +213,22 @@ public class GhostSendWarningHelper {
             return;
         }
 
+        // NagramX: taken first, before anything else looks at this slot, so every
+        // later step works from one observation of who is logged in. The slot is
+        // reused across a logout and a fresh login, and both the resolution below
+        // and the runnable after it can otherwise see a different user: the
+        // resolution reads it for the Saved Messages mapping, and the runnable
+        // runs a main-loop turn later. remindedSetForEpoch already rejects a set
+        // belonging to a different user, but that asks "does the set belong to
+        // whoever is logged in now", not "does it belong to whoever sent this" --
+        // so if the new user happens to have been reminded about a dialog id they
+        // share with the old one (any group both are in), their set would answer
+        // for a send that was not theirs and suppress it. Suppression is only
+        // ever justified by a reminder shown to the sender, for the sender's
+        // chat, so a slot that changed hands at any point in here falls back to
+        // warning like every other unresolvable case.
+        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+
         // NagramX: resolved here, synchronously, and captured into the runnable as
         // a primitive rather than re-derived inside it. By this point
         // sendRequestInternal has already serialized the request and called
@@ -219,21 +238,7 @@ public class GhostSendWarningHelper {
         // are plain TL fields, and freeResources() does not touch them -- the base
         // implementation is empty (TLObject.java:82-84) and the overrides that do
         // something release NativeByteBuffers.
-        final long dialogId = resolveDialogId(account, request);
-
-        // NagramX: captured here, on the dispatch thread, for the same reason the
-        // dialog id is. The account slot is reused across a logout and a fresh
-        // login, and the runnable below runs a main-loop turn later, so the slot
-        // can be holding a different user by then. remindedSetForEpoch already
-        // rejects a set belonging to a different user, but that check asks "does
-        // the stored set belong to whoever is logged in now", not "does it belong
-        // to whoever sent this" -- so if the new user happens to have been
-        // reminded about a dialog id they share with the old one (any group both
-        // are in), their set would answer for a send that was not theirs and
-        // suppress it. Suppression is only ever justified by a reminder shown to
-        // the sender, for the sender's chat, so a slot that changed hands in the
-        // meantime falls back to warning like every other unresolvable case.
-        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+        final long dialogId = resolveDialogId(dispatchUserId, request);
 
         // NagramX: resolve the fragment on the UI thread, which is not the thread
         // sendRequestInternal runs on, and decide + show against
