@@ -1429,13 +1429,39 @@ public final class GhostHoldController {
             AndroidUtilities.runOnUIThread(() -> onDone.run(new ArrayList<>()));
             return;
         }
+        // NagramX: pin each account's session epoch at the collection root, on the UI
+        // thread, before the async store-queue hop. runOwned pins the store generation
+        // so a stale row is never read, but the session epoch was previously sampled
+        // only downstream (promptFlush, at dialog creation) after this collection had
+        // already returned -- so a logout that raced the collection window let the
+        // aggregate publish the previous session's snapshot while the downstream
+        // capture read the new session's token, and the two matched. Re-checking here,
+        // at the single point every held-row collection funnels through, closes that
+        // window for both consumers (the flush confirmation and the settings count) at
+        // once, instead of adding a fourth per-consumer guard. Logout bumps sessionEpoch
+        // on the UI thread, and this capture and the completion re-check below both run
+        // on it, so the comparison is serialised against logout. Fail toward publishing
+        // nothing: a mismatch delivers an empty result, so the flush finds no rows and
+        // every held message stays held under whoever now owns the slot.
+        final int[] sessionAtCollect = new int[UserConfig.MAX_ACCOUNT_COUNT];
+        for (int account : accounts) {
+            sessionAtCollect[account] = sessionEpoch.get(account);
+        }
         final List<HeldItem> result = Collections.synchronizedList(new ArrayList<>());
         final AtomicInteger remaining = new AtomicInteger(accounts.size());
         for (int account : accounts) {
             final GhostHoldStore store = GhostHoldStore.getInstance(account);
             Runnable done = () -> {
                 if (remaining.decrementAndGet() == 0) {
-                    AndroidUtilities.runOnUIThread(() -> onDone.run(new ArrayList<>(result)));
+                    AndroidUtilities.runOnUIThread(() -> {
+                        for (int a : accounts) {
+                            if (sessionEpoch.get(a) != sessionAtCollect[a]) {
+                                onDone.run(new ArrayList<>());
+                                return;
+                            }
+                        }
+                        onDone.run(new ArrayList<>(result));
+                    });
                 }
             };
             store.runOwned(store.currentGeneration(), () -> {
