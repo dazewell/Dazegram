@@ -26,11 +26,18 @@ import tw.nekomimi.nekogram.NekoConfig;
  * <p>
  * It covers what {@link GhostTypingReminderHelper} cannot, and defers to it
  * where it can: in a chat already reminded during the current Ghost session,
- * this stays quiet, because the user typed that message having just been told.
- * Everything the composer reminder never sees still warns here -- forwards,
- * gallery media, text shared in from another app, stickers and GIFs, voice,
- * bot keyboard buttons, story and popup-notification replies, and the
- * automatic retry of an unsent message.
+ * this stays quiet, because the user was told in that chat and repeating it
+ * adds nothing. The suppression is by destination chat, so it applies to every
+ * send into such a chat for the rest of that Ghost session -- forwards and
+ * gallery media included, not only the typed message that earned the reminder.
+ * <p>
+ * In every chat the reminder has not covered, this still warns for everything
+ * on the allowlist: forwards, gallery media, text shared in from another app,
+ * stickers and GIFs, voice, bot keyboard buttons, story and
+ * popup-notification replies, and the automatic retry of an unsent message.
+ * That is where the real gap would otherwise be -- the composer reminder never
+ * sees any of them, because only one of the five ChatActivityEnterView
+ * instances passes a fragment.
  * <p>
  * The suppression is deliberately keyed on the destination chat rather than on
  * the request type. Classifying "the user typed this" from the outgoing TL

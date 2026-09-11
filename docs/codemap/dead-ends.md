@@ -541,7 +541,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:141-174`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:205-239`) is a second UI-thread access path,
 not a background one -- nothing in the send path or the settings screen ever
 touches this state. If a future change makes this state reachable from
 anywhere but those two UI-thread paths, revisit this exemption rather than
@@ -598,9 +598,9 @@ correcting a different mistake in the last:
    loop over `ghostToggleItems`, nothing else, no state, safe to call from
    any thread. All of this feature's own transition-tracking moved out of
    `NekoConfig` entirely and into `GhostTypingReminderHelper`: a private
-   `ghostSessionEpoch` field (`GhostTypingReminderHelper.java:48`) is bumped
+   `ghostSessionEpoch` field (`GhostTypingReminderHelper.java:78`) is bumped
    only by a new `onGhostModeMasterSwitchActivated()` method
-   (`GhostTypingReminderHelper.java:55-57`), called from
+   (`GhostTypingReminderHelper.java:85-87`), called from
    `NekoConfig#setGhostMode` (`NekoConfig.java:323-341`) on an observed
    false→true transition captured via `wasActive = isGhostModeActive()`
    (`NekoConfig.java:331`) before the loop mutates anything -- still just
@@ -621,10 +621,12 @@ that belonged to an already-ended session, because nothing forced a re-check
 at the point of use — a raw `get()` doesn't know it's stale. The current shape
 (`GhostTypingReminderHelper.java`) closes that by giving every stored set its
 own epoch and only ever reaching it through one accessor: `PerAccountState`
-(`GhostTypingReminderHelper.java:84-91`) pairs a `HashSet<Long>` with the epoch
-it was created for, held in `stateByAccount`
-(`GhostTypingReminderHelper.java:79`), and `remindedSetForEpoch(account, epoch)`
-(`GhostTypingReminderHelper.java:101-108`) is the only way anything reads or
+(`GhostTypingReminderHelper.java:115-124`) pairs a `HashSet<Long>` with the
+epoch it was created for (and with the account slot's logged-in user id, so a
+logout and fresh login into the same slot invalidates it the same way a stale
+epoch does), held in `stateByAccount`
+(`GhostTypingReminderHelper.java:109`), and `remindedSetForEpoch(account, epoch)`
+(`GhostTypingReminderHelper.java:145-153`) is the only way anything reads or
 creates one — it replaces a stale entry with a fresh one for the requested
 epoch on the spot. Both the synchronous check in
 `onComposerTypingObservedUnsafe` and the posted runnable call this same
@@ -664,19 +666,32 @@ two costs revision 2 ran into apply to any further fix here -- instrumenting
 `GhostModeActivity`'s individual mutation sites directly was ruled out in
 round 1 to stay conflict-free with the unmerged `#ghost-hold` PR that touches
 the same file, and making `isGhostModeActive()` stateful again to self-heal
-from any caller is exactly the mistake just reverted; second, the master
+from any caller is exactly the mistake just reverted; and second, the master
 toggle is still the normal, common way Ghost Mode is turned on and off, so
-this gap is not the typical path even though it is a real one; and third, as
-always, the worst case for *this* feature specifically is a missed
-*reminder* (this feature's own early nudge), never a missed *warning*:
-`GhostSendWarningHelper`'s send-time bulletin already checks
-`NekoConfig.isGhostModeActive()` fresh at send time (`GhostSendWarningHelper.java:99`)
-and carries no epoch or per-chat state of its own -- so while it is
-conditional on Ghost Mode being active, it never depends on a stale
-"already reminded" flag that could wrongly suppress it, unlike this
-feature's own reset. There is no configuration in which this gap leaves an
-actual Ghost-Mode-active send fully unsignaled for this feature, unlike the
-Critical severity it carries for Ghost Hold's held-message flush.
+this gap is not the typical path even though it is a real one.
+
+The third reason originally recorded here no longer holds, and the gap is
+correspondingly wider than it was. It used to read that the worst case for
+this feature was a missed *reminder* and never a missed *warning*, because
+`GhostSendWarningHelper` checked `NekoConfig.isGhostModeActive()` fresh at
+send time (`GhostSendWarningHelper.java:171`) and carried no per-chat state of
+its own. The freshness check is still there and still true, but the
+independence is not: a later `#ghost-type-warning` change made the send-time
+warning suppress itself in a chat this helper reports as already reminded
+(`GhostSendWarningHelper.java:200-203` asking
+`GhostTypingReminderHelper.wasRemindedThisGhostSession`). So the two now share
+one piece of state, and a reset this gap causes the epoch to miss leaves that
+state stale for both. Concretely: cycle Ghost off and back on by a path that
+doesn't go through `NekoConfig#setGhostMode`, and a chat reminded during the
+previous session still reads as reminded, which now costs not just the early
+nudge but the send-time bulletin as well -- a media send or forward into that
+one chat goes out unsignaled. It is bounded (only chats already reminded in
+the immediately preceding session, only until the master toggle is next used,
+which advances the epoch and clears everything) but it is no longer the
+"never fully unsignaled" guarantee this entry used to claim. Closing the gap
+properly means widening what advances the epoch, which is the same fix this
+paragraph has always pointed at; the change here raised its value rather than
+creating it.
 
 The actual fix is tracked in
 [issue #339](https://github.com/dazewell/Dazegram/issues/339): once `#336`

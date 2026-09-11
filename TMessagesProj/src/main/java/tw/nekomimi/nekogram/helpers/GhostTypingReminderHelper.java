@@ -7,6 +7,7 @@ import android.util.SparseArray;
 import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.BottomSheet;
 import org.telegram.ui.Components.Bulletin;
@@ -28,14 +29,17 @@ import tw.nekomimi.nekogram.NekoConfig;
  * {@link #wasRemindedThisGhostSession}). Sending after being reminded is a
  * deliberate act, and announcing it a second time is noise.
  * <p>
- * The send-time warning still fires in an already-reminded chat for anything
- * this reminder structurally cannot see. It only watches ChatActivity's own
- * composer, so forwards, media picked from the gallery, text shared in from
- * another app, bot keyboard buttons, story and popup-notification replies, and
- * the automatic retry of an unsent message all reach the network without ever
- * passing through here. Those are exactly the sends the send-time warning
- * exists to cover, and narrowing it by request type instead would have gone
- * wrong in both directions at once -- see GhostSendWarningHelper for why.
+ * The send-time warning still fires in a chat this has never reminded, for
+ * everything this reminder structurally cannot see. It only watches
+ * ChatActivity's own composer, so forwards, media picked from the gallery,
+ * text shared in from another app, bot keyboard buttons, story and
+ * popup-notification replies, and the automatic retry of an unsent message all
+ * reach the network without ever passing through here. In a chat that *has*
+ * been reminded this Ghost session, the suppression is by destination chat and
+ * so covers those sends too, for the rest of that session -- the user was told
+ * in that chat and the second bulletin would repeat it. Narrowing by request
+ * type instead, to keep them warning, was reviewed and rejected: it goes wrong
+ * in both directions at once -- see GhostSendWarningHelper for why.
  * <p>
  * The deferral is keyed on a reminder that reached {@code show()} against an
  * eligible, non-paused host for the right account, not on one that was merely
@@ -105,14 +109,17 @@ public class GhostTypingReminderHelper {
     private static final SparseArray<PerAccountState> stateByAccount = new SparseArray<>();
 
     // NagramX: epoch is the ghostSessionEpoch value this account's reminded
-    // set is valid for -- see remindedSetForEpoch, the only place that creates
-    // or replaces one of these.
+    // set is valid for, and userId is the account slot's logged-in user at the
+    // time it was created -- see remindedSetForEpoch, the only place that
+    // creates or replaces one of these.
     private static final class PerAccountState {
         final int epoch;
+        final long userId;
         final HashSet<Long> reminded = new HashSet<>();
 
-        PerAccountState(int epoch) {
+        PerAccountState(int epoch, long userId) {
             this.epoch = epoch;
+            this.userId = userId;
         }
     }
 
@@ -124,10 +131,22 @@ public class GhostTypingReminderHelper {
     // caching a set reference across a Ghost Mode toggle, so a set that turns
     // out to belong to an already-ended session is never mistaken for the
     // current one.
+    // The stored user id is checked for the same reason: stateByAccount is keyed
+    // by the account *slot*, which is reused across a logout and a fresh login,
+    // while Ghost Mode is global and nothing about logging out advances the
+    // epoch. Dialog ids are peer ids and two users in one slot can genuinely
+    // share them (any group or channel both are in), so without this a chat the
+    // previous user was reminded about would read as reminded for the new one --
+    // and since the send-time warning now suppresses on exactly this answer,
+    // that would cost the new user a warning they never had. Treating a changed
+    // user id like a stale epoch keeps the fix inside this accessor, where
+    // staleness is already corrected on the spot, rather than needing a teardown
+    // hook to have run first.
     private static HashSet<Long> remindedSetForEpoch(int account, int epoch) {
+        long userId = UserConfig.getInstance(account).getClientUserId();
         PerAccountState state = stateByAccount.get(account);
-        if (state == null || state.epoch != epoch) {
-            state = new PerAccountState(epoch);
+        if (state == null || state.epoch != epoch || state.userId != userId) {
+            state = new PerAccountState(epoch, userId);
             stateByAccount.put(account, state);
         }
         return state.reminded;
