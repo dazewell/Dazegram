@@ -829,3 +829,39 @@ rather than a misparse. The docstring is accurate; there is no asymmetry versus
 stock. No code change was made.
 
 *(Established 2026-09-11, #ghost-hold.)*
+
+## `verCode`'s low digit does not encode a distribution channel in this fork
+
+Raised in review on PR #351 (the 1262 -> 1263 bump): that upstream treats the
+last digit of `versionCode` as a distribution marker, so `...3` is "not a valid
+next value" and every `% 10` / `/ 10` consumer would have to be updated with it.
+The cited code is real, but the conclusion does not hold here, on three counts.
+
+**There is no invalid low digit.** Both switch sites give `default:` and
+`case 9:` the same branch body (`ApplicationLoader.java:357-365`,
+`AndroidUtilities.java:6722-6730`). Any low digit other than `1` or `2` takes the
+identical path, so `3` is handled exactly as `9` is — not unhandled.
+
+**The lineage abandoned the convention long ago.** Release tags in this repo:
+1231 (1), 1233 (3), 1240 (0), 1244 (4), 1246 (6), 1250 (0), 1254 (4), 1256 (6),
+1258 (8), 1260 (0). Tag `1233` already shipped the exact low digit flagged. The
+1/2/9 scheme is a Telegram-official-distribution artifact; 1261 and 1262 landing
+on "store bundled" was the anomaly, not the baseline.
+
+**The consumers are diagnostic strings, not behaviour.** The `ApplicationLoader`
+site is inside `if (BuildVars.LOGS_ENABLED)` and only composes a `FileLog.d`
+line. `AndroidUtilities.getBuildVersionInfo()` (`AndroidUtilities.java:6712`) is
+called only from the debug-report builder (`LaunchActivity.java:7881,7887,7918`).
+Decisively, `ApplicationLoader.isStandaloneBuild()` (`ApplicationLoader.java:160`)
+does **not** read `versionCode` — the low digit selects a label appended to a log
+string and nothing else. No install-identity, update or billing path consumes it.
+The fork's own about screen uses `AndroidUtil.getVersionText()`
+(`AndroidUtil.java:194`), which prints `BuildConfig.VERSION_CODE` whole rather
+than divided by 10.
+
+Net effect of a low-digit change: one debug log line and the copy-debug-info
+string read "direct"/"universal" instead of "store bundled". Do not edit the
+`% 10` / `/ 10` consumers to "fix" this — they are upstream base files and the
+change would buy a diagnostic string at the cost of merge surface.
+
+*(Established 2026-09-11, #release.)*
