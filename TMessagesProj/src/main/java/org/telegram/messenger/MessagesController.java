@@ -16389,6 +16389,17 @@ public class MessagesController extends BaseController implements NotificationCe
         // NagramX: saved trigger presets are keyed by this reusable account slot; without this a
         // fresh login into the same slot would inherit the previous account's cached/persisted presets.
         com.radolyn.ayugram.eventschedule.EventSchedulePresetStore.clearAccountState(currentAccount);
+        // NagramX: the remembered last-trigger setup (sheet seed) is keyed by this slot too, so it
+        // must die with the account or it seeds the trigger sheet for whoever reuses the slot next.
+        com.radolyn.ayugram.eventschedule.EventScheduleLastSetup.clearAccountState(currentAccount);
+        // NagramX: armed triggers are keyed by this slot AND drive a nonEmptyAccounts hot-path flag;
+        // without clearing, the new account's incoming messages match the departed account's triggers.
+        com.radolyn.ayugram.eventschedule.EventScheduleStore.clearAccountState(currentAccount);
+        // NagramX: drop the trigger controller's process-local runtime state for the slot (pending arms,
+        // fire queues, suppression holds, in-flight-reconcile marks, warmed/pending bits) and bump the
+        // store generation via the clear above, so an async arm that outlived this logout is rejected
+        // instead of re-persisting the departed account's trigger into the reused slot.
+        com.radolyn.ayugram.eventschedule.EventScheduleController.onAccountLoggedOut(currentAccount);
 
         boolean shouldHandle = true;
         ArrayList<NotificationCenter.NotificationCenterDelegate> observers = getNotificationCenter().getObservers(NotificationCenter.appDidLogout);

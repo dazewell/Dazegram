@@ -31,6 +31,16 @@ public final class EventScheduleStore {
     // Read on every incoming message off the cache lock, so triggers with no state stay cheap.
     private static volatile long nonEmptyAccounts;
 
+    // Bumped by clearAccountState. Every mutator here is static synchronized on this class, so GENERATION
+    // rides that same monitor -- no separate map-of-monitors like the UI-seed stores need. An arm captures
+    // this token at intent (when the trigger Row is constructed, ahead of the picker) and carries it --
+    // through the sheet's commit, or the bulk armer's admission, and on through the async durable-reconcile
+    // round-trip -- back into resolveAndClaimForEdit; a claim whose slot was logged
+    // out (and possibly reused) mid-flight no longer matches and is rejected, so a departed account's arm
+    // can't persist into the slot for whoever logs in next. Named GENERATION to match the same guard in
+    // EventSchedulePresetStore and EventScheduleLastSetup; kept independent per store.
+    private static final Map<Integer, Integer> GENERATION = new HashMap<>();
+
     private EventScheduleStore() {}
 
     private static String prefsName(int account) {
@@ -150,6 +160,45 @@ public final class EventScheduleStore {
         return cache(account).containsKey(key);
     }
 
+    /**
+     * Called from {@code MessagesController#performLogout} for the departing account slot. This
+     * store keys off the reusable numeric slot, so without this the departed account's armed
+     * triggers stay cached AND its {@link #nonEmptyAccounts} bit stays set -- the hot new-message
+     * path would keep matching whoever logs into the slot next against the previous account's armed
+     * entries. Drops the in-memory cache and loaded flag, clears the slot's {@code nonEmptyAccounts}
+     * bit, and clears its SharedPreferences file.
+     *
+     * <p>The delayed-<em>fire</em> path needs no guard from here: it self-gates on {@link #contains},
+     * so a pending fire against a cleared slot drains its queue without sending. The <em>create</em>
+     * path is the one that does need protecting: an arm can start before this clear, round-trip through
+     * an async durable reconcile, and only reach {@link #resolveAndClaimForEdit} after it -- which would
+     * persist a departed account's trigger into the (possibly reused) slot. So this bumps
+     * {@link #GENERATION}; an arm carries the generation it captured at intent and is rejected there on
+     * mismatch.
+     */
+    public static synchronized void clearAccountState(int account) {
+        CACHE.remove(account);
+        LOADED.remove(account);
+        GENERATION.merge(account, 1, Integer::sum);
+        markAccount(account, false);
+        try {
+            ApplicationLoader.applicationContext.getSharedPreferences(prefsName(account), 0)
+                    .edit().clear().apply();
+        } catch (Throwable ignore) {
+        }
+    }
+
+    /**
+     * This slot's current logout generation (0 if it has never been cleared). An arm captures this at
+     * intent and passes it back into {@link #resolveAndClaimForEdit}; a mismatch there means a logout
+     * cleared the slot after the arm started, so the arm is rejected rather than persisted into the
+     * (possibly reused) slot. Reads under this class's monitor, the same one {@link #clearAccountState}
+     * bumps under.
+     */
+    public static synchronized int currentGeneration(int account) {
+        return GENERATION.getOrDefault(account, 0);
+    }
+
     public static synchronized EventScheduleEntry findByMessage(int account, long dialogId, int msgId) {
         for (EventScheduleEntry e : cache(account).values()) {
             if (e.dialogId == dialogId && e.serverIds.contains(msgId)) return e;
@@ -159,7 +208,7 @@ public final class EventScheduleStore {
 
     /** Outcome of {@link #resolveAndClaimForEdit}; consumed by the controller, never by the UI directly. */
     public static final class EditClaim {
-        public enum Status { REJECTED_MULTI, REJECTED_INVALID_IDS, UPDATED_EXISTING, CLAIMED_FRESH }
+        public enum Status { REJECTED_MULTI, REJECTED_INVALID_IDS, REJECTED_STALE, UPDATED_EXISTING, CLAIMED_FRESH }
         public final Status status;
         public final EventScheduleEntry entry;      // live resolved entry (null on reject)
         public final String previousTriggerKey;     // the entry's triggerKey() BEFORE the edit; null on fresh/reject
@@ -216,10 +265,23 @@ public final class EventScheduleStore {
      * <p>Neither branch below clamps {@code delaySeconds} itself -- the delay cap is enforced once, in
      * {@link #persist}, the common durability boundary both branches (and every other live writer) funnel
      * through, so it can't drift out of sync between them.
+     *
+     * <p>{@code generation} is the slot's {@link #currentGeneration} captured by the caller at intent. A
+     * claim whose captured generation no longer matches (a logout cleared the slot after the arm started,
+     * possibly reusing it) is rejected as {@link EditClaim.Status#REJECTED_STALE} before any state is
+     * touched. This is the sole thing standing between an in-flight async reconcile completing after a
+     * logout and re-persisting a departed account's trigger into the slot -- the store clear alone can't
+     * stop it, because the completion runs after the clear.
      */
     public static synchronized EditClaim resolveAndClaimForEdit(
-            int account, long dialogId, int[] positiveIds, int[] negativeLocalIds,
+            int account, int generation, long dialogId, int[] positiveIds, int[] negativeLocalIds,
             @NonNull EventScheduleConfig config, int fallbackDate, long freshCreatedAt) {
+        // First act under the monitor: reject a claim whose slot was logged out (and possibly reused)
+        // after the arm captured its generation at intent. Sharing this method's lock with
+        // clearAccountState's bump leaves no check-then-act gap.
+        if (GENERATION.getOrDefault(account, 0) != generation) {
+            return new EditClaim(EditClaim.Status.REJECTED_STALE, null, null);
+        }
         if (positiveIds == null || positiveIds.length == 0) {
             return new EditClaim(EditClaim.Status.REJECTED_INVALID_IDS, null, null);
         }
@@ -560,7 +622,10 @@ public final class EventScheduleStore {
      * entry still matches the snapshot it was classified from (same revision, same random_id set, still
      * unbound). Any mismatch -- an edit, a bind by the live path, a removal -- makes this a no-op so the
      * stale continuation cannot resurrect or overwrite. {@code sortedMids} arrive ascending so
-     * {@code serverIds.get(0)} (the QUEUE_ORDER tie-break and overview preview) is deterministic.
+     * {@code serverIds.get(0)} (the QUEUE_ORDER tie-break and overview preview) is deterministic. The
+     * random_id-set match is a real guard, not a vacuous empty-equals-empty: every snapshot originates
+     * from {@link #collectUnboundRandomSnapshots}, which admits only entries with a non-empty randomIds
+     * set, so a genuine correlator set must match.
      */
     public static synchronized boolean healDurable(int account, EntrySnapshot snap, int[] sortedMids) {
         EventScheduleEntry e = cache(account).get(snap.key);
@@ -590,8 +655,8 @@ public final class EventScheduleStore {
      * Snapshot-guarded expiry removal: drops an entry only if the live entry still matches the snapshot
      * it was classified from (same revision and random-id set), is still unbound, and its bind window has
      * elapsed. The guards stop a slow reconcile result from removing an entry that was edited, bound, or
-     * replaced in the meantime -- the delete must be authorized by the same generation that was looked up,
-     * never by a stale one. Returns whether it removed anything.
+     * replaced in the meantime -- the delete must be authorized by the same entry revision and correlator
+     * set that were looked up, never by a stale one. Returns whether it removed anything.
      */
     public static synchronized boolean removeIfExpiredUnbound(int account, EntrySnapshot snap, long nowSec) {
         EventScheduleEntry e = cache(account).get(snap.key);
