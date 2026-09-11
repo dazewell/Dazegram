@@ -191,6 +191,7 @@ public class NekoConfig {
     public static ConfigItem markReadAfterSend = addConfig("markReadAfterSend", configTypeBool, true);
     public static ConfigItem showGhostInDrawer = addConfig("showGhostInDrawer", configTypeBool, false);
     public static ConfigItem showGhostModeStatus = addConfig("showGhostModeStatus", configTypeBool, false);
+    public static ConfigItem holdMessagesWhileGhost = addConfig("holdMessagesWhileGhost", configTypeBool, false);
 
     // --- Locked Status ---
     public static ConfigItem sendReadMessagePacketsLocked = addConfig("sendReadMessagePacketsLocked", configTypeBool, false);
@@ -337,6 +338,10 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
+        // NagramX: a ghost-off edge here drains the Ghost Hold queue; on a
+        // ghost-on edge it only snapshots the toggle state, so it never
+        // collides with the reminder below (disjoint state, opposite edges).
+        com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
         if (enabled && !wasActive) {
             GhostTypingReminderHelper.onGhostModeMasterSwitchActivated();
         }
