@@ -635,7 +635,7 @@ public final class GhostHoldController {
                 AndroidUtilities.runOnUIThread(() -> redriveAfterPersistFailure(account, originalParams, holdSession));
                 return;
             }
-            postScheduledCount(account, peer);
+            postScheduledCount(account, peer, holdSession);
             AndroidUtilities.runOnUIThread(() -> {
                 // NagramX (item 2, success side): this hop publishes stableMsg and the
                 // divert bulletin through the account's MessagesController. If logout
@@ -1035,7 +1035,7 @@ public final class GhostHoldController {
                     // deleted" case, so this revert belongs here where rec proves the
                     // row still exists.
                     store.updateStateOnQueue(item.mid, GhostHoldStore.STATE_HELD);
-                    postScheduledCount(item.account, item.dialogId);
+                    postScheduledCount(item.account, item.dialogId, session);
                 }
             }
             final HeldItem f = fresh;
@@ -1295,7 +1295,7 @@ public final class GhostHoldController {
                 } else {
                     store.updateStateOnQueue(mid, GhostHoldStore.STATE_HELD);
                 }
-                postScheduledCount(account, dialogId);
+                postScheduledCount(account, dialogId, session);
                 // Signal the item terminal only after this resolution has run, whatever
                 // its outcome, and always on the UI thread (flushInProgress lives there).
                 // This is what makes flush completion observed, not timed.
@@ -1528,15 +1528,18 @@ public final class GhostHoldController {
      * cannot double-count. The stock count is read on the storage queue; the fork count
      * comes from the store's published snapshot.
      */
-    private static void postScheduledCount(int account, long dialogId) {
+    private static void postScheduledCount(int account, long dialogId, int session) {
         MessagesStorage storage = MessagesStorage.getInstance(account);
-        // NagramX: #ghost-hold. Pin the session before the storage-queue hop. D (the
-        // deletion-notification tail) and the other callers reach the UI publish below
-        // after an async hop, and none captured the session, so a logout racing the hop
-        // would post a count computed for this user's dialog into whoever now owns the
-        // reused account slot. sessionEpoch moves synchronously on the UI thread at
-        // logout, so comparing it there is race-free.
-        final int session = sessionEpoch.get(account);
+        // NagramX: #ghost-hold. session is the initiating operation's token, captured by
+        // the caller when that operation began -- persistHeld's holdSession, the flush's
+        // and completeHandoff's session, migration's sessionAtStart, the deletion
+        // observer's arrival epoch. It must be passed in, not recaptured here: several
+        // callers reach this from a callback that began under an older session, so
+        // reading sessionEpoch at this point could sample the NEW session's value and
+        // then the UI recheck below would wrongly pass, publishing a count that belongs
+        // to the old operation into whoever now owns the reused account slot. sessionEpoch
+        // moves synchronously on the UI thread at logout, so comparing the initiating
+        // token there is race-free.
         storage.getStorageQueue().postRunnable(() -> {
             int stock = 0;
             try {
@@ -1704,7 +1707,7 @@ public final class GhostHoldController {
                         FileLog.e(e);
                     }
                     for (long d : dialogs) {
-                        postScheduledCount(account, d);
+                        postScheduledCount(account, d, sessionAtStart);
                     }
                 });
             });
@@ -1871,6 +1874,10 @@ public final class GhostHoldController {
                 if (negs.isEmpty()) {
                     return;
                 }
+                // NagramX: #ghost-hold. This deletion began now, in the current session;
+                // capture that epoch so the count publish below rejects if a logout races
+                // the fork-queue hop rather than posting into the reused slot's new owner.
+                final int deleteSession = sessionEpoch.get(account);
                 GhostHoldStore store = GhostHoldStore.getInstance(account);
                 store.runOwned(() -> {
                     java.util.HashSet<Long> dialogs = new java.util.HashSet<>();
@@ -1887,7 +1894,7 @@ public final class GhostHoldController {
                     }
                     store.deleteManyOnQueue(toDelete);
                     for (long d : dialogs) {
-                        postScheduledCount(account, d);
+                        postScheduledCount(account, d, deleteSession);
                     }
                 });
             }
