@@ -66,30 +66,48 @@ public class GhostTypingReminderHelper {
     private GhostTypingReminderHelper() {
     }
 
-    // NagramX: bumped only by NekoConfig#setGhostMode, on an observed
-    // false->true transition of the master Ghost Mode switch -- see the
-    // docs/codemap/dead-ends.md entry for why this lives here rather than in
-    // NekoConfig (isGhostModeActive() must stay a pure, side-effect-free
-    // predicate: Ghost Hold's own PR #336 also calls it, from multiple
-    // threads, and relies on exactly that purity) and for the narrower scope
-    // this implies (individual per-signal toggle/lock rows in
-    // GhostModeActivity that cycle the predicate without ever calling
-    // setGhostMode do not advance this).
+    // NagramX: bumped whenever an observation of NekoConfig#isGhostModeActive()
+    // sees it go false->true. It lives here rather than in NekoConfig because
+    // isGhostModeActive() must stay a pure, side-effect-free predicate: Ghost
+    // Hold's own PR #336 also calls it, from multiple threads, and relies on
+    // exactly that purity. See the docs/codemap/dead-ends.md entry for the two
+    // earlier shapes this went through.
     private static int ghostSessionEpoch;
 
-    // NagramX: called only by NekoConfig#setGhostMode, on the UI thread
-    // (verified: every caller of setGhostMode/toggleGhostMode --
-    // GhostModeActivity's menu action, DialogsActivity, MainTabsActivity,
-    // LaunchActivity's launcher-shortcut handler -- is a UI-thread
-    // click/action handler), so no synchronization is needed here.
-    public static void onGhostModeMasterSwitchActivated() {
-        ghostSessionEpoch++;
+    // NagramX: last value of the derived Ghost predicate this has seen, or null
+    // before the first observation. Null is deliberately not treated as false:
+    // the first observation in a process must not count as an activating edge,
+    // or opening Ghost settings while Ghost is already on would wipe reminders
+    // earned earlier in the same session.
+    private static Boolean lastObservedGhostActive;
+
+    // NagramX: call after anything that may have changed the config the Ghost
+    // predicate is derived from. It is deliberately an *observer* rather than a
+    // "Ghost was just switched on" notification, because the predicate has no
+    // single writer: NekoConfig#setGhostMode drives it from the master switch,
+    // but GhostModeActivity's individual signal rows and their long-press lock
+    // rows each move one input and can flip the derived value without going
+    // near setGhostMode. Asking the predicate here and comparing means every
+    // such path reports a real edge without each one having to know it caused
+    // one, and an extra call that changed nothing is a no-op.
+    // Callers are all UI-thread click/action handlers (every caller of
+    // setGhostMode/toggleGhostMode -- GhostModeActivity's menu action,
+    // DialogsActivity, MainTabsActivity, LaunchActivity's launcher-shortcut
+    // handler -- plus GhostModeActivity's own row callbacks), so no
+    // synchronization is needed here.
+    public static void onGhostSignalsChanged() {
+        boolean active = NekoConfig.isGhostModeActive();
+        Boolean previous = lastObservedGhostActive;
+        lastObservedGhostActive = active;
+        if (active && previous != null && !previous) {
+            ghostSessionEpoch++;
+        }
     }
 
     // NagramX: account -> this account's reminded-dialogs state for whichever
     // Ghost session epoch it was last touched under. remindedSetForEpoch below
-    // is the single accessor both call sites (the synchronous check and the
-    // posted runnable) must go through -- it replaces a stale entry with a
+    // is the single accessor all three call sites (the synchronous check, the
+    // posted runnable, and the send helper's read-only query) must go through -- it replaces a stale entry with a
     // fresh one for the current epoch on the spot, so staleness is corrected
     // wherever/whenever it's noticed rather than needing a separate reset step
     // someone else must already have run first. That matters because Ghost
@@ -101,11 +119,15 @@ public class GhostTypingReminderHelper {
     // there is no separate stale set left lying around to read by mistake.
     // See docs/codemap/dead-ends.md for why a previous, differently-shaped
     // version of per-chat Ghost state was deleted, and why this one is not the
-    // same mistake: every read and write here happens on the UI thread, from
-    // ChatActivityEnterView's TextWatcher (itself only ever invoked on the main
-    // looper) plus the UI-thread runnable it posts below -- there is no
-    // background-thread writer, so no synchronization is needed, unlike the
-    // deleted state that raced against the send path on Utilities.stageQueue.
+    // same mistake. There are three access paths and every one of them is on
+    // the UI thread: ChatActivityEnterView's TextWatcher (itself only ever
+    // invoked on the main looper), the UI-thread runnable it posts below, and
+    // -- read-only -- GhostSendWarningHelper asking wasRemindedThisGhostSession
+    // from inside its own runOnUIThread block, never from the stage queue its
+    // hook runs on. The first two write; the third never records anything. So
+    // there is still no background-thread access and no synchronization is
+    // needed, unlike the deleted state that raced against the send path on
+    // Utilities.stageQueue.
     private static final SparseArray<PerAccountState> stateByAccount = new SparseArray<>();
 
     // NagramX: epoch is the ghostSessionEpoch value this account's reminded

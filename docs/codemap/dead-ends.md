@@ -541,7 +541,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:205-239`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:227-260`) is a second UI-thread access path,
 not a background one -- nothing in the send path or the settings screen ever
 touches this state. If a future change makes this state reachable from
 anywhere but those two UI-thread paths, revisit this exemption rather than
@@ -593,23 +593,34 @@ correcting a different mistake in the last:
    bookkeeping was the wrong trade regardless of whether the immediate race
    got fixed -- a shared function's threading contract isn't this feature's
    to change out from under a sibling that depends on it.
-3. The current design reverts `isGhostModeActive()`
+3. Revision 3 reverted `isGhostModeActive()`
    (`NekoConfig.java:307-320`) to exactly its pre-feature form: the original
    loop over `ghostToggleItems`, nothing else, no state, safe to call from
    any thread. All of this feature's own transition-tracking moved out of
    `NekoConfig` entirely and into `GhostTypingReminderHelper`: a private
-   `ghostSessionEpoch` field (`GhostTypingReminderHelper.java:78`) is bumped
-   only by a new `onGhostModeMasterSwitchActivated()` method
-   (`GhostTypingReminderHelper.java:85-87`), called from
-   `NekoConfig#setGhostMode` (`NekoConfig.java:323-341`) on an observed
-   false→true transition captured via `wasActive = isGhostModeActive()`
-   (`NekoConfig.java:331`) before the loop mutates anything -- still just
-   *reading* the now-pure predicate, never writing through it. This
-   reintroduces revision 1's master-switch-only scope limitation (see the
-   residual-gap paragraph below), but that trade -- a narrower, well
-   understood reset scope versus silently changing a shared predicate's
-   threading contract for a sibling feature that depends on it staying pure
-   -- was judged clearly the right one.
+   `ghostSessionEpoch` field bumped by an `onGhostModeMasterSwitchActivated()`
+   method called from `NekoConfig#setGhostMode` on a false→true transition
+   captured before the loop mutates anything -- still just *reading* the
+   now-pure predicate, never writing through it. That kept the purity win but
+   reintroduced revision 1's master-switch-only scope limitation, which is what
+   revision 4 had to go back and fix.
+4. The current design keeps revision 3's placement and purity exactly, and
+   changes only *who decides an edge happened*. `onGhostSignalsChanged()`
+   (`GhostTypingReminderHelper.java:98-105`) is an **observer**, not a
+   notification: it reads the pure predicate itself, compares against the last
+   value it saw (`lastObservedGhostActive`,
+   `GhostTypingReminderHelper.java:82`, deliberately a nullable `Boolean` so
+   the first observation in a process is not mistaken for an activating edge),
+   and bumps the epoch only on a real false→true. Callers therefore don't have
+   to know whether they caused a transition, which is the whole point --
+   the predicate has no single writer. It is called from
+   `NekoConfig#setGhostMode` (`NekoConfig.java:323-341`), from
+   `GhostModeActivity#updateGhostViews` (`GhostModeActivity.java:100`, the one
+   point all five individual signal rows already route through after toggling),
+   and from `GhostModeActivity#onItemLongClick`'s lock branch
+   (`GhostModeActivity.java:200`, since a locked signal is skipped by the
+   predicate and so locking one can flip it on its own). An extra call that
+   changed nothing is a no-op, so density is free.
 
 The helper's own state went through a separate correction of its own. An
 earlier cut paired the epoch with a raw `SparseArray<HashSet<Long>>` plus a
@@ -621,83 +632,57 @@ that belonged to an already-ended session, because nothing forced a re-check
 at the point of use — a raw `get()` doesn't know it's stale. The current shape
 (`GhostTypingReminderHelper.java`) closes that by giving every stored set its
 own epoch and only ever reaching it through one accessor: `PerAccountState`
-(`GhostTypingReminderHelper.java:115-124`) pairs a `HashSet<Long>` with the
-epoch it was created for (and with the account slot's logged-in user id, so a
-logout and fresh login into the same slot invalidates it the same way a stale
-epoch does), held in `stateByAccount`
-(`GhostTypingReminderHelper.java:109`), and `remindedSetForEpoch(account, epoch)`
-(`GhostTypingReminderHelper.java:145-153`) is the only way anything reads or
+pairs a `HashSet<Long>` with the epoch it was created for (and with the account
+slot's logged-in user id, so a logout and fresh login into the same slot
+invalidates it the same way a stale epoch does), held in `stateByAccount`, and
+`remindedSetForEpoch(account, epoch)` is the only way anything reads or
 creates one — it replaces a stale entry with a fresh one for the requested
-epoch on the spot. Both the synchronous check in
-`onComposerTypingObservedUnsafe` and the posted runnable call this same
-accessor with a freshly-read `ghostSessionEpoch` each time, rather than either
-caching a set reference or branching on "did the epoch move" — there is no
-separate reset step for a future change to forget to call, and no window
-where a set can be read before it's known to be current for its epoch.
+epoch on the spot. All three call sites -- the synchronous check in
+`onComposerTypingObservedUnsafe`, the posted runnable, and
+`wasRemindedThisGhostSession` -- go through this same accessor with a
+freshly-read `ghostSessionEpoch` each time, rather than either caching a set
+reference or branching on "did the epoch move" — there is no separate reset
+step for a future change to forget to call, and no window where a set can be
+read before it's known to be current for its epoch.
 
-**Known residual gap, accepted for now but tracked, not dismissed as
-unusual:** because the epoch now lives in `GhostTypingReminderHelper` and is
-bumped only from `NekoConfig#setGhostMode`, it observes exactly one path back
-into an active Ghost session: the master Ghost Mode toggle
-(`GhostModeActivity`'s own top row, or any other UI that calls
-`NekoConfig#toggleGhostMode`/`setGhostMode` directly -- `DialogsActivity`,
-`MainTabsActivity`, the launcher-shortcut handler). An off→on transition
-produced entirely by flipping individual per-signal toggle rows or their
-locks in `GhostModeActivity` (`onItemClick`/`onItemLongClick`), one at a
-time, until the combined predicate happens to read true again, does **not**
-advance the epoch -- and unlike the read-side design in revision 2 above,
-nothing about calling `isGhostModeActive()` anywhere else in the app heals
-this either, since that method carries no state at all anymore. A user who
-composes a Ghost off→on cycle purely through the individual rows, without
-ever using the master toggle itself, keeps whichever chats were already
-reminded in the previous session suppressed until they do use the master
-toggle at least once.
+**The residual gap this entry used to record as accepted is now closed, and
+the thing that forced the issue is worth recording.** Revisions 1 and 3 both
+observed exactly one path back into an active Ghost session: the master Ghost
+Mode toggle. An off→on transition produced by flipping individual per-signal
+toggle rows or their locks in `GhostModeActivity`, one at a time, until the
+combined predicate happened to read true again, did **not** advance the epoch,
+so whichever chats were already reminded stayed suppressed into what the user
+experienced as a new session. That was tolerable only while the worst case was
+a missed *reminder*: `GhostSendWarningHelper` checked
+`NekoConfig.isGhostModeActive()` fresh at send time
+(`GhostSendWarningHelper.java:198`) and carried no per-chat state, so a send
+was never left unsignaled.
 
-This is the same underlying mechanism gap Ghost Hold's own review (PR #336,
-unmerged) rated **Critical** for their feature: `GhostModeActivity.onItemClick`
-flipping the five per-signal toggles without ever calling
-`toggleGhostMode`/`setGhostMode` slips past their flush trigger too, and for
-them the consequence is a message held indefinitely rather than a merely
-missed nudge -- so this is not an unusual corner to wave off, it is a real,
-shared blind spot in how `GhostModeActivity`'s individual rows interact with
-anything that only observes the master-switch call. It is accepted here
-*for now*, not fixed further in this unit, for three reasons: first, the same
-two costs revision 2 ran into apply to any further fix here -- instrumenting
-`GhostModeActivity`'s individual mutation sites directly was ruled out in
-round 1 to stay conflict-free with the unmerged `#ghost-hold` PR that touches
-the same file, and making `isGhostModeActive()` stateful again to self-heal
-from any caller is exactly the mistake just reverted; and second, the master
-toggle is still the normal, common way Ghost Mode is turned on and off, so
-this gap is not the typical path even though it is a real one.
+Making the send-time warning defer to the reminder
+(`GhostSendWarningHelper.java:227-230` asking
+`GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
+independence: the two now share one piece of state, so a reset the epoch
+missed cost not just the early nudge but the send-time bulletin too, and a
+media send or forward into that chat would have gone out with no signal at
+all. A stale-state bug that costs a redundant notification and one that costs
+the only warning are not the same bug, and the accepted trade did not survive
+the severity change. Hence revision 4. The lesson generalizes past this
+feature: **when something starts consuming an existing piece of state to
+*suppress* a safety signal, the state's known-imprecise cases have to be
+re-costed at the new severity, not inherited along with the state.**
 
-The third reason originally recorded here no longer holds, and the gap is
-correspondingly wider than it was. It used to read that the worst case for
-this feature was a missed *reminder* and never a missed *warning*, because
-`GhostSendWarningHelper` checked `NekoConfig.isGhostModeActive()` fresh at
-send time (`GhostSendWarningHelper.java:171`) and carried no per-chat state of
-its own. The freshness check is still there and still true, but the
-independence is not: a later `#ghost-type-warning` change made the send-time
-warning suppress itself in a chat this helper reports as already reminded
-(`GhostSendWarningHelper.java:200-203` asking
-`GhostTypingReminderHelper.wasRemindedThisGhostSession`). So the two now share
-one piece of state, and a reset this gap causes the epoch to miss leaves that
-state stale for both. Concretely: cycle Ghost off and back on by a path that
-doesn't go through `NekoConfig#setGhostMode`, and a chat reminded during the
-previous session still reads as reminded, which now costs not just the early
-nudge but the send-time bulletin as well -- a media send or forward into that
-one chat goes out unsignaled. It is bounded (only chats already reminded in
-the immediately preceding session, only until the master toggle is next used,
-which advances the epoch and clears everything) but it is no longer the
-"never fully unsignaled" guarantee this entry used to claim. Closing the gap
-properly means widening what advances the epoch, which is the same fix this
-paragraph has always pointed at; the change here raised its value rather than
-creating it.
+Two constraints recorded in earlier rounds were overridden to do it, both
+deliberately. Instrumenting `GhostModeActivity` was avoided in round 1 to stay
+textually conflict-free with the unmerged `#ghost-hold` work that touches the
+same file; correctness won, and the cost is two added lines in that file to
+resolve at merge. And [issue #339](https://github.com/dazewell/Dazegram/issues/339)
+proposed waiting for `#336` to land and then reusing its
+`GhostHoldController#onGhostStateMaybeChanged`. That is the same
+derived-edge-detector shape arrived at here independently, which is good
+evidence it is the right one -- but it could not be waited for, so there are
+now two detectors for one predicate. **When `#336`/`#342` merge, collapse them
+into one shared detector rather than leaving both.** Reviving a stateful
+`isGhostModeActive()` remains ruled out for the reason in revision 2.
 
-The actual fix is tracked in
-[issue #339](https://github.com/dazewell/Dazegram/issues/339): once `#336`
-merges, generalize or reuse its `GhostHoldController#onGhostStateMaybeChanged`
--- a derived-edge detector built to solve exactly this class of gap for their
-flush trigger -- rather than instrumenting `GhostModeActivity` directly or
-reviving a stateful `isGhostModeActive()`.
-
-*(Established 2026-09-10, #ghost-type-warning.)*
+*(Established 2026-09-10, #ghost-type-warning. Revision 4 and the
+severity-re-costing lesson added 2026-09-10, same slug.)*

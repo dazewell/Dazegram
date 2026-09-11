@@ -129,12 +129,16 @@ public class GhostSendWarningHelper {
     // that claim. Fail open, always.
     private static final long DIALOG_ID_UNRESOLVED = 0;
 
-    // NagramX: runs on Utilities.stageQueue, synchronously with the caller, since
-    // that is the only point the outgoing request is in hand. It reads plain
-    // fields off an object the same thread is about to serialize, so there is
-    // nothing to race.
+    // NagramX: runs synchronously on whichever thread called sendRequest --
+    // usually Utilities.stageQueue, but sendRequestSync dispatches inline on the
+    // caller's own thread. Nothing here depends on which: it reads plain fields
+    // off an object that same thread is about to serialize, so there is nothing
+    // to race either way.
     // TlUtils.getInputPeerFromSendMessageRequest handles the cloud sends it knows
-    // and returns null for everything else. Secret-chat sends aren't in it at all
+    // and returns null for everything else, including four allowlisted requests
+    // that do carry a destination peer -- scheduled sends, quick replies, bot
+    // requested-peer replies and bot starts -- so those are read directly here.
+    // Secret-chat sends aren't in it at all
     // and carry a TL_inputEncryptedChat rather than an InputPeer, so they're
     // mapped here onto the same encrypted dialog id ChatActivity uses -- that is
     // the id the typing reminder would have recorded for that chat, and matching
@@ -156,11 +160,34 @@ public class GhostSendWarningHelper {
             return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
         }
         TLRPC.InputPeer peer = TlUtils.getInputPeerFromSendMessageRequest(request);
+        if (peer == null) {
+            peer = inputPeerFromUnhandledSendRequest(request);
+        }
         if (peer instanceof TLRPC.TL_inputPeerSelf) {
             // Still fails open while logged out, where this reads 0.
             return UserConfig.getInstance(account).getClientUserId();
         }
         return DialogObject.getPeerDialogId(peer);
+    }
+
+    // NagramX: the allowlisted requests TlUtils doesn't know about but that do
+    // name their destination. Anything still unhandled returns null and so fails
+    // open, which is the right default -- a send whose chat can't be identified
+    // can't be claimed to be one the user was already warned about.
+    private static TLRPC.InputPeer inputPeerFromUnhandledSendRequest(TLObject request) {
+        if (request instanceof TLRPC.TL_messages_sendScheduledMessages) {
+            return ((TLRPC.TL_messages_sendScheduledMessages) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages) {
+            return ((TLRPC.TL_messages_sendQuickReplyMessages) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_sendBotRequestedPeer) {
+            return ((TLRPC.TL_messages_sendBotRequestedPeer) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_startBot) {
+            return ((TLRPC.TL_messages_startBot) request).peer;
+        }
+        return null;
     }
 
     private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
