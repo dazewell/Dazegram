@@ -550,7 +550,7 @@ and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:281-328`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:280-327`) is a second UI-thread access path,
 not a background one. The settings screen never touches this set, and the send
 path touches it only as a read-only UI-thread reader, described in the
 paragraph below. If a future change makes this state reachable from anywhere
@@ -616,7 +616,7 @@ to `onComposerTypingObservedUnsafe`, ahead of every path above: it reads
 `NekoConfig.holdMessagesWhileGhost.Bool()` fresh, both at the synchronous
 entry and again inside the posted runnable, and returns without touching
 `remindedSetForEpoch` at all when Hold Messages is on
-(`GhostTypingReminderHelper.java:238-255,285-294`). This is a plain early
+(`GhostTypingReminderHelper.java:237-254,284-293`). This is a plain early
 return, not a new state machine: it sits before every read/write this section
 analyzes, so none of the epoch/account/thread reasoning above changes because
 of it -- a chat this returns for simply never enters the set, exactly as if
@@ -673,10 +673,10 @@ correcting a different mistake in the last:
    revision 4 had to go back and fix.
 4. The current design keeps revision 3's placement and purity exactly, and
    changes only *who decides an edge happened*. `onGhostSignalsChanged()`
-   (`GhostTypingReminderHelper.java:117-123`) is an **observer**, not a
+   (`GhostTypingReminderHelper.java:116-122`) is an **observer**, not a
    notification: it reads the pure predicate itself, compares against the last
    value it saw (`lastObservedGhostActive`,
-   `GhostTypingReminderHelper.java:95`, deliberately a nullable `Boolean` so
+   `GhostTypingReminderHelper.java:94`, deliberately a nullable `Boolean` so
    the first observation in a process is not mistaken for an activating edge),
    and bumps the epoch only on a real false→true. Callers therefore don't have
    to know whether they caused a transition, which is the whole point --
