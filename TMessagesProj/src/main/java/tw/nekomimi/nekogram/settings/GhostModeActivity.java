@@ -15,7 +15,6 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.NotificationCenter;
 import org.telegram.messenger.R;
-import org.telegram.messenger.UserConfig;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.CheckBoxCell;
 import org.telegram.ui.Cells.TextCheckCell;
@@ -150,7 +149,9 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
         // updateGhostRows() + refreshHeldCount() once, and the post also refreshes other
         // ghost-aware surfaces. Calling updateGhostRows() directly here too would double the
         // per-click DB work.
-        NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
+        // NagramX: post on this fragment's own account center (the one the observer is
+        // registered on), so the refresh reaches it whichever account the screen shows.
+        getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
 
 
@@ -204,11 +205,11 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
         } else if (position == showGhostInDrawerRow) {
             NekoConfig.showGhostInDrawer.toggleConfigBool();
             ((TextCheckCell) view).setChecked(NekoConfig.showGhostInDrawer.Bool());
-            NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
+            getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
         } else if (position == showGhostModeStatusRow) {
             NekoConfig.showGhostModeStatus.toggleConfigBool();
             ((TextCheckCell) view).setChecked(NekoConfig.showGhostModeStatus.Bool());
-            NotificationCenter.getInstance(UserConfig.selectedAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
+            getNotificationCenter().postNotificationName(NotificationCenter.mainUserInfoChanged);
         }
     }
 
