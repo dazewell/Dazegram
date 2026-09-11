@@ -796,9 +796,13 @@ an all-ignored batch can have a run **if** a publish was requested via
 `build-apk`/dispatch (its `labeled` trigger has no path filter), in which case
 confirm that run instead.
 
-Landing locally instead of via PR (rare — chores, when you skip the PR). Keep it
-consistent with the squash convention: collapse to one tagged commit rather than
-pushing a merge commit, so `dev`'s first-parent log stays one-commit-per-change.
+Landing locally instead of via PR (rare — chores, when you skip the PR). This is
+a manual/chore path, **not** the conditional-approval merge path: an agent merging
+under dazewell's approval always uses the PR route with
+`gh pr merge <n> --squash --match-head-commit <sha>` below, never a local merge,
+so the approved-SHA binding is never bypassed by this route. Keep it consistent
+with the squash convention: collapse to one tagged commit rather than pushing a
+merge commit, so `dev`'s first-parent log stays one-commit-per-change.
 ```powershell
 git switch dev; git pull --ff-only origin dev
 git merge --squash <YYYY-MM-DD>_<slug>      # stage the change, no commit yet
