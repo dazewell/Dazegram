@@ -496,14 +496,19 @@ started. Keep the outstanding-authorization list somewhere that survives the
 session dying, not only in that session's own conversational memory — the same
 distrust Rule 8 already applies to a degraded session's self-reports. When you
 write a replacement brief (Rule 9's self-contained template), the fixed block's
-**`Outstanding authorizations (vN)` field** carries every authorization the dead
+**`Outstanding authorizations (gG.vN)` field** carries every authorization the dead
 session had not yet landed, or an explicit `<none>` — not only the branch state
 and whatever new task prompted the replacement — an urgent new task does not
 retire an old one nobody did. Before you call a scope complete, or
 before you archive the session that held it, **verify against the branch, not
 against the last report**: diff what was authorized against what the commits
 actually contain, the same own-tree re-read Rule 2 already requires, run here by
-the coordinator against a tree that is not its own.
+the coordinator against a tree that is not its own. **That diff is available
+only when the dead session had a committed branch — a leaf implementer.** A
+child orchestrator's `coord-<slug>` branch is never committed, so there is
+nothing to diff; source its replacement's field from the last control snapshot
+its parent accepted, and carry the honest gap below rather than implying a diff
+happened. The two cases are spelled out in the brief template's field.
 
 **"Somewhere that survives the session dying" names a concrete channel, not a
 vague aspiration — and it differs by role, because a root and a child report to
@@ -515,7 +520,7 @@ different recipients:**
   so the user can restore it later"), so a transcript line is not lost the way a
   conversational *memory* is — dazewell, or whoever picks up the replacement,
   can read back through it even after the session stalls. Restate a versioned
-  `Outstanding authorizations (vN): …` line (below) whenever the list changes,
+  `Outstanding authorizations (gG.vN): …` line (below) whenever the list changes,
   so it stays findable without scrolling the whole history — **in the same turn
   that changes it, not in a later reply.** Deferring it to the next reply leaves
   open precisely the window this rule exists to close: authorize, stall, and no
@@ -535,26 +540,52 @@ vocabulary is explicitly exempt from Rule 1's SHA stamp and can arrive
 out of order (Rule 1), so a plain restated list is ambiguous about which
 version is newest if two arrive out of sequence.** Carry your own local,
 monotonically increasing counter on the list itself —
-`Outstanding authorizations (v3): …` — incrementing it on every change
-(an addition, a closed item removed, or the list becoming `<none>`). The
-recipient (dazewell reading back through a transcript, or a parent reading
-control messages) adopts a snapshot only if its version exceeds the last one
-it accepted; a lower- or equal-versioned snapshot that arrives late is
+`Outstanding authorizations (g1.v3): …`. **Increment `v` on any change to the
+rendered list, without exception**: an item added, an item closed, an item
+*transferred* out of your ledger into a successor brief, one entry leaving a
+multi-item list, or the list becoming `<none>`. Read that as the general rule
+and the list as examples, not as an exhaustive set — the question is only
+whether the rendered list differs from the one you last sent, and a transfer
+that removes a single entry counts exactly as much as the list emptying. Send an
+unchanged list at the version you last used; never re-send changed content at an
+old version, which is the one move that makes the recipient discard a snapshot
+it needed. The recipient (dazewell reading back through a transcript, or a
+parent reading control messages) adopts a snapshot only if it orders strictly
+after the last one it accepted; an equal or earlier one arriving late is
 discarded as stale, never used to overwrite a newer state. This is cheap: the
 coordinator already knows how many times it has touched its own list, so the
 counter costs nothing to maintain and closes the reordering gap without
 reopening Rule 1's deliberate decision not to sequence-stamp the rest of the
 control vocabulary.
 
+**`v` alone is not enough across a replacement, which is why the token carries a
+generation `g` as well, compared first.** The counter is inherited by a
+successor (below), so predecessor and successor draw from the same number line —
+and the predecessor's last messages can still be in flight when the successor
+starts. A predecessor that reached `v7` before dying, whose `v7` was delayed past
+the replacement, would otherwise be *accepted over* a successor sitting at `v6`,
+overwriting live state with a dead session's list. Order snapshots by
+**`g` first, then `v`**: every replacement session on a unit increments `g` and
+inherits `v`, so any message from a superseded session is strictly earlier no
+matter how high its `v` climbed, and no in-flight straggler can win. A parent
+additionally **fences the predecessor's channel**: from the moment it dispatches
+a replacement it accepts no further snapshot from the session it replaced,
+whatever that snapshot claims. The fence is the primary defence and costs
+nothing — the parent created the replacement, so it knows exactly when the
+predecessor stopped being authoritative — and `g` is the backstop that makes a
+stale snapshot self-evidently stale to a reader who is not the dispatcher,
+including a human reading it in a transcript.
+
 **The counter belongs to the unit, not to the session.** A replacement
 coordinator does not restart at `v0` — it inherits the version its brief's
-`Outstanding authorizations (vN)` field carries and continues from there, so its
-first change to the list is `v(N+1)`. Restarting at zero would make every
+`Outstanding authorizations (gG.vN)` field carries and continues from there, so
+its first change to the list is `v(N+1)`, under its own incremented `g`.
+Restarting at zero would make every
 snapshot the replacement sends compare as stale against the dead session's last
 one and be discarded by exactly the recipient that needs it — including the
 `<none>` that says the work is finally done. A genuinely new unit, with no prior
-session, starts at `Outstanding authorizations (v0): <none>`; that is the only
-place `v0` is correct.
+session, starts at `Outstanding authorizations (g1.v0): <none>`; that is the
+only place `v0` is correct.
 
 **This rule recurses onto a child orchestrator, which is a coordinator for its
 own dispatched sessions and binds the same way — with one honest limit.** A
@@ -598,7 +629,7 @@ verification step, and the next stall may not be caught by one.
   `supersedes my @X` per Rule 4 — the older instruction's own completion, not a
   form of carrying it forward). **The session's ledger** closes when every
   authorization it held is either closed on the item's ledger *or* **transferred**:
-  written into a named successor brief's `Outstanding authorizations (vN)` field,
+  written into a named successor brief's `Outstanding authorizations (gG.vN)` field,
   at a stated version, verified present there before the archive. Transfer
   discharges the *session*; it does not close the *item*, which stays open and is
   tracked against the successor brief until it lands, is declined, or is
@@ -608,10 +639,12 @@ verification step, and the next stall may not be caught by one.
   session that held it was archived is the same failure wearing a different hat.
   An unstarted item is exactly the item that must be transferred, so "transferred"
   is the archive gate's normal pass for it — not an exception to the gate. A
-  snapshot version number is present on every restatement, strictly increases
-  each time the list changes, and is inherited by a replacement rather than reset;
-  a recipient that adopts a lower- or equal-versioned snapshot over a higher one
-  it already saw has not satisfied this check.
+  snapshot version number is present on every restatement, increases on **any**
+  change to the rendered list — including a transfer that removes one entry from
+  a multi-item list — and is inherited by a replacement under an incremented
+  generation rather than reset; a recipient that adopts an equal-or-earlier
+  snapshot over one it already saw, or accepts anything from a session it has
+  already replaced, has not satisfied this check.
 - *Cost:* one running list per unit, kept alongside the brief template the
   coordinator already maintains, one integer counter incremented on change and
   inherited across a replacement, plus one diff-against-branch check at each

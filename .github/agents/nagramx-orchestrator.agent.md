@@ -86,13 +86,14 @@ re-run any of your gates; it is a pure supervisor. So:
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
     your resolved agent identity and your `coord-<slug>` branch, plus your
-    current `Outstanding authorizations (vN): …` snapshot at startup —
-    **initialized from your brief's own `Outstanding authorizations (vN)`
-    field, carrying its version and its list verbatim**, not reset to empty. A
+    current `Outstanding authorizations (gG.vN): …` snapshot at startup —
+    **initialized from your brief's own `Outstanding authorizations (gG.vN)`
+    field, carrying its generation and version and its list verbatim**, not
+    reset to empty, then incrementing `g` for your own generation. A
     replacement child inherits real outstanding work through that field, so
-    reporting `(v0): <none>` because *this session* has authorized nothing
+    reporting `(g1.v0): <none>` because *this session* has authorized nothing
     would drop the carried obligation at the first message your parent ever
-    sees. `(v0): <none>` is correct only when the brief's field is itself
+    sees. `(g1.v0): <none>` is correct only when the brief's field is itself
     explicitly `<none>` on a genuinely new unit.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
     `ask_user`, so a lost or never-observed `ask_user` cannot stall you
@@ -112,7 +113,7 @@ re-run any of your gates; it is a pure supervisor. So:
     sessions** (comms protocol Rule 11, applied recursively to you as a
     coordinator) — discharge each one first, either by closing it on the item's
     ledger (landed, declined, or superseded) or by transferring it into a named
-    successor brief's `Outstanding authorizations (vN)` field and verifying it
+    successor brief's `Outstanding authorizations (gG.vN)` field and verifying it
     is present there; your `coord-<slug>` branch is never committed, so this
     precondition, not a git diff, is what closes the gap for your own subtree.
     Leaf-to-root only (see the process-lifecycle skill).
@@ -135,15 +136,22 @@ re-run any of your gates; it is a pure supervisor. So:
     send it is a missing parent address, above.
 
   **Every control message above carries your current `Outstanding
-  authorizations (vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
+  authorizations (gG.vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
   `ABORTED`** — it is cheap to restate and it is the only place this state
-  exists outside your own context. Increment `N` every time the list itself
-  changes (an item added, closed, or the list becoming `<none>`); never on a
+  exists outside your own context. Increment `N` on **any** change to the
+  rendered list — an item added, an item closed, an item *transferred* out to a
+  successor brief, one entry leaving a multi-item list, or the list becoming
+  `<none>`; the test is simply whether the list differs from the one you last
+  sent, so never re-send changed content at an old version. Leave `N` alone on a
   message that merely repeats it unchanged. **The control vocabulary can
   arrive out of order** (comms protocol Rule 1's carve-out for recurring
-  messages), so your parent adopts a snapshot only if its version exceeds the
-  last one it accepted — a lower- or equal-versioned snapshot arriving late is
-  discarded as stale, never used to overwrite what the parent already holds. A
+  messages), so your parent orders snapshots by **`g` first, then `N`** and
+  adopts one only if it orders strictly after the last it accepted — an equal or
+  earlier snapshot arriving late is discarded as stale, never used to overwrite
+  what the parent already holds. `g` is what stops a superseded predecessor's
+  delayed high-`N` snapshot from overwriting its replacement's live state; your
+  parent also stops accepting from a session the moment it dispatches that
+  session's replacement. A
   child that goes dark between two control messages having authorized new
   descendant work in that gap loses it exactly as a leaf session's uncommitted
   edits are lost on a stall — restating it every message narrows that window,
@@ -807,22 +815,42 @@ Trade-off budget: <what may be spent for correctness — an extra query, an extr
                   you're deliberately overriding that with a costed migration
                   decision from the gate above.>
 Out of scope:   <explicit list>
-Outstanding authorizations (vN): <every authorization owed on this unit that has
+Outstanding authorizations (gG.vN): <every authorization owed on this unit that has
                   not yet landed in a commit, or an explicit `<none>` — a blank
                   field is not the same as a checked `<none>` and must not be left
                   implicit. **Rendered on every brief, ordinary or replacement**,
-                  because the version is what makes the snapshot orderable later
-                  (comms protocol Rule 11). A genuinely new unit renders
-                  `Outstanding authorizations (v0): <none>`. A replacement brief
-                  renders the **inherited** version and list — not `v0` — so the
-                  successor's counter continues from the dead session's last
-                  value instead of restarting and comparing as stale: diff what
-                  was authorized against what the dead session's branch actually
-                  contains, and carry forward exactly what is missing. Never
+                  because the generation and version are what make the snapshot
+                  orderable later (comms protocol Rule 11). A genuinely new unit
+                  renders `Outstanding authorizations (g1.v0): <none>`. A
+                  replacement brief renders the **inherited** version and list —
+                  not `v0` — under an **incremented `g`**, so the successor's
+                  counter continues from the dead session's last value instead of
+                  restarting and comparing as stale, while any straggler message
+                  from the predecessor still orders strictly earlier. Never
                   assume the new task this brief was written for supersedes an
                   old authorization nobody did. Writing an item here is what
                   makes it *transferred* — it discharges the old session for the
-                  archive gate, and leaves the item open against this brief.>
+                  archive gate, and leaves the item open against this brief.
+
+                  **Where you source the list depends on what kind of session
+                  died, because only one of them leaves a branch to read.**
+                  Replacing a **leaf implementer**: diff what was authorized
+                  against what its branch actually contains, and carry forward
+                  exactly what is missing — the branch is committed, so this is
+                  a mechanical check, not a judgement. Replacing a **child
+                  orchestrator**: there is no such diff available. Its
+                  `coord-<slug>` branch is deliberately never committed or
+                  pushed, so it holds none of the obligations the child had
+                  toward its own descendants. Populate the field instead from
+                  **the last control snapshot you accepted from that child** —
+                  the highest `gG.vN` you hold for it — and say in the brief that
+                  this is the source. Then carry the honest gap explicitly:
+                  anything the child authorized after its last control message is
+                  unrecoverable (Rule 11's stated limit), so the successor must
+                  treat this list as the best available record rather than a
+                  complete one, and re-derive descendant state from the session
+                  tree and its children's branches rather than trusting the list
+                  to be exhaustive.>
 
 ## What dazewell asked for, and why
 ## His answers at the gate
@@ -1337,7 +1365,7 @@ also discharge every outstanding authorization that session held (comms protocol
 Rule 11): diff what you authorized against what the branch actually contains, and
 for anything not landed, either cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
-— write it into a named successor brief's `Outstanding authorizations (vN)` field
+— write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
 and verify it is actually there. Transfer discharges *this session* for the
 archive gate while leaving the *item* open against the new brief, which is the
 normal pass for work that was authorized and never started — the very case this
@@ -1509,13 +1537,20 @@ not repeat what that file states — they point at it:
   (Rule 11). **As a root orchestrator your durable channel is your own session
   transcript with dazewell** — the app preserves it independent of your process
   being responsive, unlike conversational memory — so restate a versioned
-  `Outstanding authorizations (vN): …` line **in the same turn that changes the
+  `Outstanding authorizations (gG.vN): …` line **in the same turn that changes the
   list**, not in a later reply, incrementing `N` on every change, so a
   replacement (yours or dazewell's) can find the latest one without re-reading
   the whole history. Deferring the line to your next reply reopens the exact
   window the rule closes: authorize, stall, and nothing durable records it. The
   counter belongs to the **unit**, so a replacement continues from the version
-  its brief carried rather than resetting to `v0` and being discarded as stale.
+  its brief carried rather than resetting to `v0` and being discarded as stale,
+  under an incremented `g` so a superseded predecessor's delayed snapshot can
+  never order above it. **The mirror duty when you are the recipient:** the
+  moment you dispatch a replacement for a session, stop accepting
+  outstanding-authorization snapshots from the session you replaced, whatever
+  version they claim. You created the replacement, so you know precisely when
+  the predecessor stopped being authoritative — and a straggler from it would
+  otherwise overwrite live state with a dead session's list.
 
 ## Reporting while you work
 
