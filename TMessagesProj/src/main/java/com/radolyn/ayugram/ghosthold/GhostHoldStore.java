@@ -478,10 +478,13 @@ public final class GhostHoldStore {
     }
 
     /**
-     * Closes and deletes this account's database file (WAL/SHM sidecars included)
-     * and clears the in-memory view. Called on logout so a re-login on the same
-     * account never inherits a previous session's held messages. Posted via
-     * {@link #postTeardown()}; it is the one queue op that bypasses the ownership gate.
+     * Closes and deletes this account's database file and clears the in-memory view.
+     * The rows and owner stamp are purged in place first and the WAL is checkpointed
+     * into the main file, so the logout invalidation holds even if the file cannot be
+     * unlinked; the WAL/SHM sidecars are removed only once the main file is gone.
+     * Called on logout so a re-login on the same account never inherits a previous
+     * session's held messages. Posted via {@link #postTeardown()}; it is the one queue
+     * op that bypasses the ownership gate.
      */
     private void deleteDatabaseFileOnQueue() {
         File dir = ApplicationLoader.getFilesDirFixed();
@@ -519,6 +522,19 @@ public final class GhostHoldStore {
                     FileLog.e(e);
                 }
                 try {
+                    // WAL mode (see db(): journal_mode = WAL): the DELETEs above are
+                    // written to the -wal sidecar, not the main file, and this SQLite
+                    // wrapper's close() does not checkpoint. Merge them into the main file
+                    // now, so the purge survives even if the unlink below fails and the
+                    // sidecars are then dropped. Matches the Ayu database cleanup, which
+                    // checkpoints FULL before removing sidecars. If this throws (the same
+                    // lock that would fail the unlink), the sidecar guard below is the
+                    // backstop: it keeps the -wal so a reopen still replays the DELETEs.
+                    database.executeFast("PRAGMA wal_checkpoint(FULL)").stepThis().dispose();
+                } catch (Exception e) {
+                    FileLog.e(e);
+                }
+                try {
                     database.close();
                 } catch (Exception e) {
                     FileLog.e(e);
@@ -527,8 +543,16 @@ public final class GhostHoldStore {
             }
         }
         boolean gone = deleteQuietly(dbFile);
-        deleteQuietly(new File(dir, "ghosthold_" + account + ".db-wal"));
-        deleteQuietly(new File(dir, "ghosthold_" + account + ".db-shm"));
+        if (gone) {
+            // Only drop the sidecars once the main file is gone. If it survived (a WAL/SHM
+            // lock or permission failure) the -wal may still carry DELETEs the checkpoint
+            // above could not merge; removing it then would leave the old rows and owner
+            // stamp in the surviving main file, which a same-user reopen would reload --
+            // the exact leak this teardown exists to prevent. Keeping the sidecars lets
+            // that reopen replay the purge instead.
+            deleteQuietly(new File(dir, "ghosthold_" + account + ".db-wal"));
+            deleteQuietly(new File(dir, "ghosthold_" + account + ".db-shm"));
+        }
         master.clear();
         loaded = false;
         // Drop ownership so no off-queue reader trusts the snapshot until the next
