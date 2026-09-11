@@ -1526,14 +1526,17 @@ only for PRs that are actually eligible: each has been through both review round
 (**approval authorises the button, never the evidence**), is green on its head
 commit — a `ci.yml` run whose `conclusion == success` pinned to that SHA, or, for
 a change `ci.yml` path-ignores, the required `Every commit carries a` check green
-with `ci.yml` correctly not run. Decide which case applies by whether a `ci.yml`
-run actually **exists** for the head SHA, not by re-deriving the ignored-path list
-in prose — that list differs between the `push` and `pull_request` triggers (e.g.
-`.github/skills/**` and `.claude/**` are ignored on push but not on `pull_request`,
-so a non-`.md` PR touching them still gets a PR-check run) and a copy here would
-drift. Path-ignored is *not* green and must be recognised as its own
-outcome, never waited on as if a run were coming — and has every review thread
-resolved.
+with `ci.yml` correctly not run. Decide which case applies by evaluating the actual
+triggering event's `paths-ignore` (read live from `.github/workflows/ci.yml` — do
+not trust a copy here) against the PR's changed files: if **every** changed file
+matches an ignored glob the run is legitimately absent (path-ignored), and if any
+file does not match then `ci.yml` must run and you wait for it. Do **not** make
+run-absence itself the classifier — an absent run is ambiguous (path-ignored and
+never-fired look identical), so absence is acceptable *only* once you have
+positively confirmed the path filter accounts for it; an absent run the filter
+does **not** explain is **stop-and-report**, never a pass. Path-ignored is *not*
+green and must be recognised as its own outcome, never waited on as if a run were
+coming — and has every review thread resolved.
 
 **The plan is a recommendation for a human decision, never an assertion of
 completeness.** It states plainly what it cannot see and asks him for what only
@@ -1657,15 +1660,31 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   poll such as:
 
   ```powershell
-  $pr = '<n>'; $deadline = (Get-Date).AddMinutes(10)
+  $pr = '<n>'; $approved = '<full headRefOid dazewell approved>'
+  $deadline = (Get-Date).AddMinutes(10)
   do {
     $v = gh pr view $pr --repo dazewell/Dazegram --json mergeStateStatus,headRefOid | ConvertFrom-Json
     "$(Get-Date -Format HH:mm:ss)  $($v.mergeStateStatus)  $($v.headRefOid)"
+    if ($v.headRefOid -ne $approved) { throw "head moved off the approved SHA $approved — abort and re-ask" }
     if ($v.mergeStateStatus -ne 'UNKNOWN') { break }
     Start-Sleep 20
   } while ((Get-Date) -lt $deadline)
-  # proceed only if $v.mergeStateStatus -eq 'CLEAN'
+  # proceed only if $v.mergeStateStatus -eq 'CLEAN' AND $v.headRefOid -eq $approved
   ```
+- **Bind the approval to the SHA it was given for, and re-check the head every
+  poll iteration.** Record the full `headRefOid` you presented when he approved
+  (`$approved` above). A poll that only *prints* the current head silently lets a
+  commit that landed after approval settle `CLEAN` on a head the approval never
+  covered, with the non-CI gates (the missing-`#slug` query, the attribution
+  greps, the `.github/sync/**` exclusion, the thread check) never run against that
+  head. So compare the live `headRefOid` to `$approved` on **every** iteration and
+  **abort-and-re-ask** the instant it differs — never merge the new head on the
+  old approval — then re-check it once more immediately before the merge call. The
+  `--match-head-commit <approved>` pin below is the mechanical backstop that makes
+  the merge itself *fail* rather than land a head you did not re-verify, but the
+  poll-time comparison is what turns a stale approval into a re-ask instead of a
+  late failure. An approval is bound to a **SHA as well as to a session** (comms
+  protocol Rule 11): a new commit invalidates it exactly as a new session does.
 - **Re-confirm the declared-blocker constraint at merge time, not just when the
   order was drawn.** A PR whose linked issue carries `status:blocked` +
   `> Blocked until PR #<n> …` is eligible to land only once that named PR has
@@ -1801,10 +1820,12 @@ lighter touch.
     replacement session must re-ask dazewell for any still-unmerged PR rather than
     inherit it.
   - **`gh pr merge --admin` and `gh pr merge --auto` are forbidden**, always.
-    `--admin` bypasses ruleset `22861936` — the one no-bypass gate on `dev` — and
-    you hold the admin token that makes it available; `--auto` merges on a future
-    state you have not verified. Merge only with a plain merge commit (never
-    squash) once the gates are green *now*.
+    `--admin` is an administrative override whose purpose is to force a merge past
+    branch protections, and you hold the admin token that makes it available —
+    whether it would defeat ruleset `22861936`'s empty-`bypass_actors` tag check
+    is untested and beside the point: an agent must never reach for the override
+    at all. `--auto` merges on a future state you have not verified. Merge only
+    with a plain merge commit (never squash) once the gates are green *now*.
   - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
     change flips `sync-guard-check` red on every other open branch, not just the
     merged one, so it is a human step regardless of approval — hand it back.

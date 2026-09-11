@@ -657,11 +657,15 @@ not `mergeable: MERGEABLE`, which only says it textually merges, and a different
 field — plus the head check green on the PR's **current** `headRefOid`, re-read
 each time: a `ci.yml` run whose `conclusion == success` for a code change, or, for
 a change `ci.yml` path-ignores, the required `Every commit carries a` check green
-with `ci.yml` legitimately not run — decide which case applies by whether a
-`ci.yml` run **exists** for the head SHA, not by re-deriving the ignored-path list
-here (it differs between the `push` and `pull_request` triggers, so a copied list
-drifts). Path-ignored is its own outcome, not green and not pending — do not wait
-for a run that will never fire. GitHub recomputes both fields asynchronously, so the
+with `ci.yml` legitimately not run — decide which case applies by evaluating the
+triggering event's `paths-ignore` (read live from `.github/workflows/ci.yml`, not a
+copy here) against the PR's changed files — every changed file matching an ignored
+glob means the run is legitimately path-ignored, any non-matching file means
+`ci.yml` must run and you wait for it. Do not treat run-absence itself as the
+classifier: absence alone is ambiguous — path-ignored and never-fired are
+indistinguishable — so an absent run the path filter does **not** explain is
+stop-and-report, never a pass. Path-ignored is its own
+outcome, not green and not pending — do not wait for a run that will never fire. GitHub recomputes both fields asynchronously, so the
 moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
 `UNKNOWN` until a background job catches up; **poll `mergeStateStatus` itself**
 until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
