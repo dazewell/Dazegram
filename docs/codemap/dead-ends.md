@@ -615,35 +615,53 @@ caching a set reference or branching on "did the epoch move" — there is no
 separate reset step for a future change to forget to call, and no window
 where a set can be read before it's known to be current for its epoch.
 
-**Known residual gap, accepted rather than chased further:** because the
-epoch now lives in `GhostTypingReminderHelper` and is bumped only from
-`NekoConfig#setGhostMode`, it observes exactly one path back into an active
-Ghost session: the master Ghost Mode toggle (`GhostModeActivity`'s own top
-row, or any other UI that calls `NekoConfig#toggleGhostMode`/`setGhostMode`
-directly -- `DialogsActivity`, `MainTabsActivity`, the launcher-shortcut
-handler). An off→on transition produced entirely by flipping individual
-per-signal toggle rows or their locks in `GhostModeActivity`, one at a time,
-until the combined predicate happens to read true again, does **not** advance
-the epoch -- and unlike the read-side design in revision 2 above, nothing
-about calling `isGhostModeActive()` anywhere else in the app heals this
-either, since that method carries no state at all anymore. A user who
+**Known residual gap, accepted for now but tracked, not dismissed as
+unusual:** because the epoch now lives in `GhostTypingReminderHelper` and is
+bumped only from `NekoConfig#setGhostMode`, it observes exactly one path back
+into an active Ghost session: the master Ghost Mode toggle
+(`GhostModeActivity`'s own top row, or any other UI that calls
+`NekoConfig#toggleGhostMode`/`setGhostMode` directly -- `DialogsActivity`,
+`MainTabsActivity`, the launcher-shortcut handler). An off→on transition
+produced entirely by flipping individual per-signal toggle rows or their
+locks in `GhostModeActivity` (`onItemClick`/`onItemLongClick`), one at a
+time, until the combined predicate happens to read true again, does **not**
+advance the epoch -- and unlike the read-side design in revision 2 above,
+nothing about calling `isGhostModeActive()` anywhere else in the app heals
+this either, since that method carries no state at all anymore. A user who
 composes a Ghost off→on cycle purely through the individual rows, without
 ever using the master toggle itself, keeps whichever chats were already
 reminded in the previous session suppressed until they do use the master
-toggle at least once. This is accepted, not fixed further, for three reasons:
-first, the same two costs revision 2 ran into apply to any further fix here --
-instrumenting `GhostModeActivity`'s individual mutation sites directly was
-ruled out in round 1 to stay conflict-free with the unmerged `#ghost-hold` PR
-that touches the same file, and making `isGhostModeActive()` stateful again to
-self-heal from any caller is exactly the mistake just reverted; second, the
-master toggle *is* how Ghost Mode is normally turned on and off -- the
-individual rows exist to fine-tune which signals are covered while it's on,
-not as a routine substitute for the master switch, so composing a full
-off→on cycle through them alone is an unusual path; and third, as always, the
-worst case is a missed *reminder* (this feature's own early nudge), never a
-missed *warning*: `GhostSendWarningHelper`'s send-time bulletin is
-unconditional on Ghost Mode being active at send time and carries no epoch or
-per-chat state of its own, so there is no configuration in which this gap
-leaves a send fully unsignaled.
+toggle at least once.
+
+This is the same underlying mechanism gap Ghost Hold's own review (PR #336,
+unmerged) rated **Critical** for their feature: `GhostModeActivity.onItemClick`
+flipping the five per-signal toggles without ever calling
+`toggleGhostMode`/`setGhostMode` slips past their flush trigger too, and for
+them the consequence is a message held indefinitely rather than a merely
+missed nudge -- so this is not an unusual corner to wave off, it is a real,
+shared blind spot in how `GhostModeActivity`'s individual rows interact with
+anything that only observes the master-switch call. It is accepted here
+*for now*, not fixed further in this unit, for three reasons: first, the same
+two costs revision 2 ran into apply to any further fix here -- instrumenting
+`GhostModeActivity`'s individual mutation sites directly was ruled out in
+round 1 to stay conflict-free with the unmerged `#ghost-hold` PR that touches
+the same file, and making `isGhostModeActive()` stateful again to self-heal
+from any caller is exactly the mistake just reverted; second, the master
+toggle is still the normal, common way Ghost Mode is turned on and off, so
+this gap is not the typical path even though it is a real one; and third, as
+always, the worst case for *this* feature specifically is a missed
+*reminder* (this feature's own early nudge), never a missed *warning*:
+`GhostSendWarningHelper`'s send-time bulletin is unconditional on Ghost Mode
+being active at send time and carries no epoch or per-chat state of its own,
+so there is no configuration in which this gap leaves a send fully
+unsignaled for this feature, unlike the Critical severity it carries for
+Ghost Hold's held-message flush.
+
+The actual fix is tracked in
+[issue #339](https://github.com/dazewell/Dazegram/issues/339): once `#336`
+merges, generalize or reuse its `GhostHoldController#onGhostStateMaybeChanged`
+-- a derived-edge detector built to solve exactly this class of gap for their
+flush trigger -- rather than instrumenting `GhostModeActivity` directly or
+reviving a stateful `isGhostModeActive()`.
 
 *(Established 2026-09-10, #ghost-type-warning.)*
