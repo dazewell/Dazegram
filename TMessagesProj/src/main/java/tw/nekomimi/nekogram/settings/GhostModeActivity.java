@@ -26,6 +26,7 @@ import java.util.Locale;
 
 import tw.nekomimi.nekogram.NekoConfig;
 import tw.nekomimi.nekogram.config.ConfigItem;
+import tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper;
 import tw.nekomimi.nekogram.ui.cells.HeaderCell;
 import xyz.nextalone.nagram.NaConfig;
 
@@ -145,6 +146,12 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
         // NagramX: a ghost toggle here may have flipped isGhostModeActive() false; drain the hold queue on that edge
         com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
 
+        // NagramX: every individual signal row routes through here after
+        // toggling, and each of those can flip the derived Ghost predicate
+        // without going near NekoConfig#setGhostMode. Reporting the change here
+        // covers all of them at one point instead of five.
+        GhostTypingReminderHelper.onGhostSignalsChanged();
+
         // Single update path: the mainUserInfoChanged observer (added by this fragment) runs
         // updateGhostRows() + refreshHeldCount() once, and the post also refreshes other
         // ghost-aware surfaces. Calling updateGhostRows() directly here too would double the
@@ -242,6 +249,10 @@ public class GhostModeActivity extends BaseNekoSettingsActivity implements Notif
                 return true;
             }
             lockedItem.setConfigBool(!currentLocked);
+            // NagramX: a locked signal is skipped by isGhostModeActive(), so
+            // locking or unlocking one can flip the derived predicate on its
+            // own, with no signal row and no setGhostMode call involved.
+            GhostTypingReminderHelper.onGhostSignalsChanged();
             view.setEnabled(currentLocked);
             listAdapter.notifyItemChanged(ghostModeToggleRow, PARTIAL);
             return true;

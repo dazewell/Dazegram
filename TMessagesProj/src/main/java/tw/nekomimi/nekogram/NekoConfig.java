@@ -322,14 +322,6 @@ public class NekoConfig {
     }
 
     public static void setGhostMode(boolean enabled) {
-        // NagramX: captured before the loop below changes anything, purely so
-        // GhostTypingReminderHelper can be told about a real false->true
-        // transition of the master switch -- see that class and
-        // docs/codemap/dead-ends.md for why this observation lives there
-        // rather than as a field on isGhostModeActive() itself: that method
-        // must stay a pure, side-effect-free predicate, since Ghost Hold's own
-        // PR #336 also calls it from multiple threads and relies on that.
-        boolean wasActive = isGhostModeActive();
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -338,13 +330,22 @@ public class NekoConfig {
                 item.setConfigBool(targetValue);
             }
         }
-        // NagramX: a ghost-off edge here drains the Ghost Hold queue; on a
-        // ghost-on edge it only snapshots the toggle state, so it never
-        // collides with the reminder below (disjoint state, opposite edges).
+        // NagramX: two independent observers of the same derived Ghost-state
+        // edge, deliberately not merged -- their consumers are disjoint and
+        // issue #339 tracks folding them into one edge detector.
+        //
+        // GhostHoldController drains its held-message queue on the ghost-off
+        // edge (Ghost Hold shipped in PR #347); on the ghost-on edge it only
+        // snapshots the toggle state, so it never touches the reminder's state.
+        //
+        // GhostTypingReminderHelper detects its own transition by comparing
+        // against what it last saw, since setGhostMode is only one of several
+        // ways the predicate can change. That observation lives in the helper,
+        // not as a field on isGhostModeActive(), because that predicate must
+        // stay pure and side-effect-free -- Ghost Hold (PR #347) also calls it
+        // from multiple threads and relies on that.
         com.radolyn.ayugram.ghosthold.GhostHoldController.onGhostStateMaybeChanged();
-        if (enabled && !wasActive) {
-            GhostTypingReminderHelper.onGhostModeMasterSwitchActivated();
-        }
+        GhostTypingReminderHelper.onGhostSignalsChanged();
     }
 
     public static void toggleGhostMode() {

@@ -566,10 +566,10 @@ last active toggle turns Ghost off without that method ever running.
 `ChatActivityEnterView` is instantiated from five call sites, but only one of
 them gives it a real hosting fragment and a real chat to key state on:
 
-- `ChatActivity.java:8604` — passes `this` as the `fragment` constructor
+- `ChatActivity.java:8645` — passes `this` as the `fragment` constructor
   argument (stored in the `parentFragment` field, declared
   `ChatActivityEnterView.java:811` as `ChatActivity parentFragment`) and later
-  (`ChatActivity.java:8853`) calls `setDialogId(long, int)`
+  (`ChatActivity.java:8894`) calls `setDialogId(long, int)`
   (`ChatActivityEnterView.java:8237`) with the real chat's dialogId. This is
   the only call site where `parentFragment` is ever non-null and `dialog_id`
   (`ChatActivityEnterView.java:812`) is ever the actual open chat.
@@ -592,4 +592,20 @@ reminder added under `#ghost-type-warning` is one example
 share-comment field, the gift-message sheet, the popup-notification reply box,
 or the story reply box, none of which represent an actual open chat.
 
-*(Established 2026-09-10, #ghost-type-warning.)*
+The corollary matters just as much, and cost a design round to work out: those
+four surfaces send real messages. Only one of the five instantiations passes a
+fragment (`ChatActivity.java:8645`); the other four pass `null` —
+`DialogsActivity.java:5075` (share/forward sheet comment),
+`Gifts/GiftMessageBottomSheet.java:179`, `Stories/PeerStoriesView.java:3202`
+(story reply) and `PopupNotificationActivity.java:317` (notification quick
+reply). So a feature hooked on this widget covers only chat-composer sends by
+construction, and can never see a story reply, a notification reply, or a
+share-sheet comment — nor, since they don't go through any composer at all, a
+forward, gallery media, a bot keyboard button, or
+`SendMessagesHelper`'s automatic retry of unsent messages on reconnect
+(`SendMessagesHelper.java:9095-9114`). Anything that needs to observe *every*
+outgoing message needs a hook at the send or network layer, not here; the pair
+of Ghost Mode warnings is split along exactly this line.
+
+*(Established 2026-09-10, #ghost-type-warning; corollary added 2026-09-10 in
+the same feature's warning-tuning change.)*

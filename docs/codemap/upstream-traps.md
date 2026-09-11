@@ -1233,6 +1233,41 @@ upstream's to grow, not ours to police.
 across `EventScheduleLastSetup`, `EventScheduleStore`, and the controller, on
 top of the `EventSchedulePresetStore` fix in #330.)*
 
+## `TL_ephemeral.TL_sendMessage` is not a text RPC -- it is the merged wrapper for both `messages.sendMessage` and `messages.sendMedia`
+
+The name reads like a text-only send, and it is not. When a send has an
+ephemeral receiver bot set, `EphemeralMessagesHelper#beforeSendingFinalRequest`
+rewrites the outgoing request into a single `TL_ephemeral.TL_sendMessage`
+regardless of what it started as: the `TL_messages_sendMessage` branch
+(`EphemeralMessagesHelper.java:141`) sets `newRequest.media = null` (`:155`),
+and the `TL_messages_sendMedia` branch (`:182`) copies `newRequest.media =
+request.media` straight across (`:196`). The class declares `public
+TLRPC.InputMedia media` (`TL_ephemeral.java:343`) precisely because of that
+second branch, and
+`FileRefController.java:161-163` shows it routinely carrying paid media and
+polls. The ephemeral receiver itself is resolved for every send including
+media, from the caption where there is one
+(`SendMessagesHelper.java:4439-4450`).
+
+Cost of missing it: any code classifying outgoing requests by TL class that
+files this class under "text" will silently mis-handle ephemeral photo, video,
+document, poll and paid-media sends. Silent in the literal sense: no crash, no
+log, nothing to notice. If the text/media distinction actually matters, the
+discriminator is `media == null`, which is what the two branches above
+establish; but prefer not to classify user intent by request type at all,
+since the reverse case bites equally -- a typed message with a resolved link
+preview leaves as `TL_messages_sendMedia` carrying `TL_inputMediaWebPage`
+(`SendMessagesHelper.java:5363-5380`), not as `TL_messages_sendMessage`.
+
+This is a warning for a future classifier, not a description of existing code.
+The fork's nearest thing to one, the Ghost Mode send warning
+(`GhostSendWarningHelper.java`), deliberately does **not** classify: it
+allowlists request classes as "this produces a message" and then resolves the
+destination chat, and it draws no text/media distinction anywhere. That design
+was chosen in review precisely because of this trap.
+
+*(Established 2026-09-10, #ghost-type-warning -- found in design review, before
+the mis-classification reached code.)*
 
 ## Ghost Hold: held rows ride the Scheduled-list bulk actions without a per-action guard
 
@@ -1386,6 +1421,7 @@ is.)
 
 *(Established 2026-09-10, `#ghost-hold`, ghost-hold-audit branch superseding
 PR #336.)*
+
 ## `squash_merge_commit_message: COMMIT_MESSAGES` plus an un-overridden squash message is what keeps `#slug` tags alive on `dev` — and no CI check guards either
 
 The repo lands PRs by **squash merge** (`allow_merge_commit: false`, `allow_squash_merge: true`, 2026-09-10). A squash writes one new commit onto `dev` and discards the PR branch's commits — the very commits `commit-tag.yml` validated. So whether the `#<slug>` tag reaches `dev` at all rests on **two** things, not one: the `squash_merge_commit_message` setting **and** the squash message being left at its default rather than overridden at merge time. With `COMMIT_MESSAGES` (the current, correct value) GitHub builds the *default* squash body from every branch commit's message — **including each commit's subject line, rendered as a `* <subject>` bullet** — so a tag that lives only in a commit *subject* still lands in the squash body and survives (verified 2026-09-10). But that is only the default: flipping the setting to `PR_BODY` or `BLANK`, **or** overriding the body at merge time (the merge UI's editable message, or `gh pr merge --body`/`--subject` — see the merge-command note in `.claude/skills/nagramx-branch-flow/SKILL.md`), can drop the tags, so a later merge **can** land a tag-less commit on `dev`. **No CI check catches this** — `commit-tag.yml` runs against the PR branch, which was tagged; it never sees the squash GitHub writes afterward. The failure is silent and permanent in the `dev` log.

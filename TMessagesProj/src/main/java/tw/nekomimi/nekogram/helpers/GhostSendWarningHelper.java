@@ -3,8 +3,11 @@ package tw.nekomimi.nekogram.helpers;
 import static org.telegram.messenger.LocaleController.getString;
 
 import org.telegram.messenger.AndroidUtilities;
+import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
 import org.telegram.tgnet.tl.TL_ephemeral;
@@ -17,9 +20,51 @@ import org.telegram.ui.LaunchActivity;
 import tw.nekomimi.nekogram.NekoConfig;
 
 /**
- * Warns the user, every time it happens, that a message they just sent while
- * Ghost Mode was on still went out over the network and exposed their online
- * status. Ghost Mode never held sends back -- this only informs.
+ * Warns the user that a message they just sent while Ghost Mode was on still
+ * went out over the network and exposed their online status. Ghost Mode never
+ * held sends back -- this only informs.
+ * <p>
+ * It covers what {@link GhostTypingReminderHelper} cannot, and defers to it
+ * where it can: in a chat already reminded during the current Ghost session,
+ * this stays quiet, because the user was told in that chat and repeating it
+ * adds nothing. The suppression is by destination chat, so where the chat can
+ * be identified it applies to every send into it for the rest of that Ghost
+ * session -- forwards and gallery media included, not only the typed message
+ * that earned the reminder. Where it cannot, this fails open and warns: a send
+ * whose destination doesn't resolve cannot be claimed to be one the user was
+ * already told about. TL_messages_sendWebViewData is the one allowlisted
+ * request that reaches this hook carrying no destination at all, so it always
+ * warns, reminded chat or not.
+ * <p>
+ * TL_messages_sendEncryptedMultiMedia is on the allowlist but never arrives
+ * here: SecretChatHelper#performSendEncryptedRequest unwraps it into one
+ * TL_messages_sendEncrypted or TL_messages_sendEncryptedFile per file
+ * (SecretChatHelper.java:597-601), and only those reach ConnectionsManager.
+ * Both carry a TL_inputEncryptedChat, so a secret-chat media send resolves to
+ * its chat and is covered by the suppression like any other send. It stays on
+ * the allowlist defensively; nothing should be built on the assumption that
+ * the wrapper is observable at this hook.
+ * <p>
+ * In every chat the reminder has not covered, this still warns for everything
+ * on the allowlist: forwards, gallery media, text shared in from another app,
+ * stickers and GIFs, voice, bot keyboard buttons, story and
+ * popup-notification replies, and the automatic retry of an unsent message.
+ * That is where the real gap would otherwise be -- the composer reminder never
+ * sees any of them, because only one of the five ChatActivityEnterView
+ * instances passes a fragment.
+ * <p>
+ * The suppression is deliberately keyed on the destination chat rather than on
+ * the request type. Classifying "the user typed this" from the outgoing TL
+ * class was tried on paper first and fails in both directions at once:
+ * TL_ephemeral.TL_sendMessage is not a text request but the merged wrapper for
+ * both messages.sendMessage and messages.sendMedia whenever an ephemeral
+ * receiver is set (EphemeralMessagesHelper#beforeSendingFinalRequest copies
+ * request.media straight into it), so treating it as typed text would silence
+ * ephemeral photo and poll sends; and a typed message carrying a resolved link
+ * preview leaves as TL_messages_sendMedia with TL_inputMediaWebPage, so
+ * treating that class as untyped would keep double-warning the commonest
+ * message there is. The chat is the thing actually being asked about, so the
+ * chat is what gets asked.
  * <p>
  * Call {@link #onMessageRequestReady(int, TLObject)} at the last point before a
  * request is actually handed to tgnet (ConnectionsManager#sendRequestInternal,
@@ -91,6 +136,84 @@ public class GhostSendWarningHelper {
         }
     }
 
+    // NagramX: 0 is never a real dialog id, so it doubles as "couldn't work out
+    // which chat this is headed for". Resolution failing must mean the warning is
+    // shown, never suppressed: suppression is only ever justified by a reminder
+    // the user got for that exact chat, and an unidentified chat cannot support
+    // that claim. Fail open, always.
+    private static final long DIALOG_ID_UNRESOLVED = 0;
+
+    // NagramX: runs synchronously on whichever thread called sendRequest --
+    // usually Utilities.stageQueue, but sendRequestSync dispatches inline on the
+    // caller's own thread. Nothing here depends on which: the only thread that
+    // can reach these fields at this moment is the one already inside
+    // sendRequestInternal. By then that thread has run both serializeToStream
+    // and freeResources (ConnectionsManager.java:422-424), so the peer fields
+    // read below are read afterwards -- which is safe because freeResources
+    // releases NativeByteBuffers, not TL fields: the base is empty
+    // (TLObject.java:82-84) and the overrides that do anything free buffers.
+    // Nothing in the TL tree nulls a peer there, so a request that carried a
+    // destination before serialization still carries it here.
+    // TlUtils.getInputPeerFromSendMessageRequest handles the cloud sends it knows
+    // and returns null for everything else, including four allowlisted requests
+    // that do carry a destination peer -- scheduled sends, quick replies, bot
+    // requested-peer replies and bot starts -- so those are read directly here.
+    // Secret-chat sends aren't in it at all
+    // and carry a TL_inputEncryptedChat rather than an InputPeer, so they're
+    // mapped here onto the same encrypted dialog id ChatActivity uses -- that is
+    // the id the typing reminder would have recorded for that chat, and matching
+    // it is the whole point. TL_messages_sendEncryptedMultiMedia has no branch
+    // here because it never reaches this hook -- SecretChatHelper unwraps it into
+    // the two requests above before anything is sent (SecretChatHelper.java:597-601).
+    // Saved Messages is the one case the InputPeer doesn't carry an id for:
+    // MessagesController#getInputPeer builds a TL_inputPeerSelf for the client
+    // user (MessagesController.java:6016-6019), which has no user_id/chat_id/
+    // channel_id, so DialogObject#getPeerDialogId would return 0 and every typed
+    // message to Saved Messages would keep double-warning. Map it back to this
+    // account's own user id, which is the dialog id ChatActivity uses there --
+    // taken from the caller's snapshot rather than re-read here, so the id this
+    // resolves to and the id the suppression check validates against are the
+    // same one observation of the slot.
+    private static long resolveDialogId(long clientUserId, TLObject request) {
+        if (request instanceof TLRPC.TL_messages_sendEncrypted) {
+            TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncrypted) request).peer;
+            return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
+        }
+        if (request instanceof TLRPC.TL_messages_sendEncryptedFile) {
+            TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncryptedFile) request).peer;
+            return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
+        }
+        TLRPC.InputPeer peer = TlUtils.getInputPeerFromSendMessageRequest(request);
+        if (peer == null) {
+            peer = inputPeerFromUnhandledSendRequest(request);
+        }
+        if (peer instanceof TLRPC.TL_inputPeerSelf) {
+            // Still fails open while logged out, where this reads 0.
+            return clientUserId;
+        }
+        return DialogObject.getPeerDialogId(peer);
+    }
+
+    // NagramX: the allowlisted requests TlUtils doesn't know about but that do
+    // name their destination. Anything still unhandled returns null and so fails
+    // open, which is the right default -- a send whose chat can't be identified
+    // can't be claimed to be one the user was already warned about.
+    private static TLRPC.InputPeer inputPeerFromUnhandledSendRequest(TLObject request) {
+        if (request instanceof TLRPC.TL_messages_sendScheduledMessages) {
+            return ((TLRPC.TL_messages_sendScheduledMessages) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_sendQuickReplyMessages) {
+            return ((TLRPC.TL_messages_sendQuickReplyMessages) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_sendBotRequestedPeer) {
+            return ((TLRPC.TL_messages_sendBotRequestedPeer) request).peer;
+        }
+        if (request instanceof TLRPC.TL_messages_startBot) {
+            return ((TLRPC.TL_messages_startBot) request).peer;
+        }
+        return null;
+    }
+
     private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
         if (!isMessageSendRequest(request)) {
             return;
@@ -100,8 +223,44 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: resolve the fragment on the UI thread, where sendRequestInternal
-        // does not run (it's on Utilities.stageQueue), and decide + show against
+        // NagramX: taken first, before anything else in this hook looks at this
+        // slot, so every later step works from one observation of who is logged
+        // in. The slot is reused across a logout and a fresh login, and both the
+        // resolution below and the runnable after it can otherwise see a
+        // different user: the resolution reads it for the Saved Messages
+        // mapping, and the runnable runs a main-loop turn later.
+        // remindedSetForEpoch already rejects a set belonging to a different
+        // user, but that asks "does the set belong to whoever is logged in now",
+        // not "does it belong to whoever sent this" -- so if the new user happens
+        // to have been reminded about a dialog id they share with the old one
+        // (any group both are in), their set would answer for a send that was not
+        // theirs and suppress it. Suppression is only ever justified by a
+        // reminder shown to the sender, for the sender's chat, so a slot that
+        // changed hands at any point in here falls back to warning like every
+        // other unresolvable case.
+        // This is "first" within the hook, not the request's originating
+        // identity: sendRequest posts sendRequestInternal to Utilities.stageQueue
+        // before this is reached (ConnectionsManager.java:400-402). That gap
+        // fails open rather than suppressing -- the queue is FIFO, so a send
+        // queued before a logout runs before the next login's own requests, and
+        // a logout nulls currentUser so this would read 0 anyway, which is
+        // DIALOG_ID_UNRESOLVED and can never match a real user id at the check
+        // below. See docs/codemap/dead-ends.md for what would invalidate that.
+        final long dispatchUserId = UserConfig.getInstance(account).getClientUserId();
+
+        // NagramX: resolved here, synchronously, and captured into the runnable as
+        // a primitive rather than re-derived inside it. By this point
+        // sendRequestInternal has already serialized the request and called
+        // object.freeResources() (ConnectionsManager.java:422-424), and the object
+        // belongs to its caller from here on, so a runnable that runs later must
+        // not hold on to it. Reading it now is fine: the peer fields this needs
+        // are plain TL fields, and freeResources() does not touch them -- the base
+        // implementation is empty (TLObject.java:82-84) and the overrides that do
+        // something release NativeByteBuffers.
+        final long dialogId = resolveDialogId(dispatchUserId, request);
+
+        // NagramX: resolve the fragment on the UI thread, which is not the thread
+        // sendRequestInternal runs on, and decide + show against
         // that exact instance -- never test one fragment instance and show on a
         // different one. The whole runnable body is guarded: it runs on the UI
         // thread's own dispatch, on a call stack the caller-side guard around
@@ -110,6 +269,26 @@ public class GhostSendWarningHelper {
         // the app on the main looper.
         AndroidUtilities.runOnUIThread(() -> {
             try {
+                // NagramX: the typing reminder already told the user, in this chat,
+                // during this Ghost session -- so this send is something they chose
+                // knowing it wasn't covered, and saying it again is the noise this
+                // check removes. Read here rather than above because the reminder's
+                // set is UI-thread-only state; reading it from the stage queue would
+                // reintroduce exactly the cross-thread access that got an earlier
+                // per-chat design deleted (docs/codemap/dead-ends.md). It stays a
+                // read-only query -- this path never records anything, so it cannot
+                // consume a reminder the user has not actually been shown.
+                // The set is read when this runnable runs, not when the request was
+                // dispatched, so a reminder recorded in between can suppress a send
+                // that predates it. Accepted: ordering the two would mean sampling
+                // the set at dispatch time, off the UI thread, which is the read
+                // this design exists to avoid. The window is milliseconds and the
+                // user is shown the reminder bulletin inside it anyway.
+                if (dialogId != DIALOG_ID_UNRESOLVED
+                        && UserConfig.getInstance(account).getClientUserId() == dispatchUserId
+                        && GhostTypingReminderHelper.wasRemindedThisGhostSession(account, dialogId)) {
+                    return;
+                }
                 BaseFragment fragment = LaunchActivity.getSafeLastFragment();
                 tryShowBulletin(fragment, account);
             } catch (Throwable t) {
@@ -123,15 +302,6 @@ public class GhostSendWarningHelper {
                 }
             }
         });
-    }
-
-    // NagramX: the result of tryShowBulletin. ATTEMPTED means a bulletin was
-    // constructed and .show() was called against a non-empty instance -- it does
-    // NOT mean the user necessarily saw it (see tryShowBulletin below for why that
-    // can't be guaranteed here). Every other value names a specific reason the
-    // attempt itself didn't happen.
-    private enum BulletinOutcome {
-        ATTEMPTED, NO_HOST, PAUSED, WRONG_ACCOUNT, EMPTY_CONTAINER
     }
 
     // NagramX: single place answering "is there a plausible host to attempt this
@@ -153,24 +323,28 @@ public class GhostSendWarningHelper {
     // -- so this stays a best-effort check, and a bulletin missed this way simply
     // isn't shown; with no per-chat state to consume, the next real send in that
     // chat warns again.
-    private static BulletinOutcome tryShowBulletin(BaseFragment fragment, int account) {
+    private static void tryShowBulletin(BaseFragment fragment, int account) {
         if (fragment == null || !BulletinFactory.canShowBulletin(fragment)) {
-            return BulletinOutcome.NO_HOST;
+            return;
         }
         if (fragment.isPaused()) {
-            return BulletinOutcome.PAUSED;
+            return;
         }
         if (fragment.getCurrentAccount() != account) {
-            return BulletinOutcome.WRONG_ACCOUNT;
+            return;
         }
 
+        // NagramX: same longer duration as the typing reminder -- createErrorBulletin
+        // builds at Bulletin.DURATION_SHORT (1.5s), and this warning now fires only
+        // where no earlier heads-up was possible, which makes it the sole signal for
+        // that send and the last one that should flash past unread.
         Bulletin bulletin = resolveBulletinFactory(fragment)
-                .createErrorBulletin(getString(R.string.GhostSendExposedWarning));
+                .createErrorBulletin(getString(R.string.GhostSendExposedWarning))
+                .setDuration(Bulletin.DURATION_PROLONG);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
-            return BulletinOutcome.EMPTY_CONTAINER;
+            return;
         }
         bulletin.show();
-        return BulletinOutcome.ATTEMPTED;
     }
 
     // NagramX: mirrors BulletinFactory.global()'s bottom-sheet handling (BulletinFactory.java:87-88)
