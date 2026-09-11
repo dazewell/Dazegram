@@ -303,18 +303,37 @@ public class NekoConfig {
 
     // --- Ghost Mode ---
 
-    // NagramX: bumped on every observed false->true transition inside
-    // setGhostMode below, so a feature that needs to know "a new Ghost session
-    // started" can key a lazy reset off this value instead of an inferred
-    // boolean that can only be sampled from its own unrelated call site (see
+    // NagramX: bumped inside isGhostModeActive() below on every observed
+    // false->true transition, so a feature that needs to know "a new Ghost
+    // session started" can key a lazy reset off this value instead of
+    // inferring the edge itself at its own unrelated call site (see
     // GhostTypingReminderHelper and docs/codemap/dead-ends.md for why that
-    // inference was unreliable). Only the master on/off switch
-    // (toggleGhostMode -> setGhostMode) advances this; flipping one of the
-    // individual Ghost toggle rows below the master switch does not, matching
-    // the narrow, additive scope this field was added under.
+    // inference was unreliable). Deliberately bumped from the read side
+    // (isGhostModeActive itself), not from setGhostMode or any individual
+    // toggle-row write path: isGhostModeActive is already called from many
+    // places well beyond this feature (ActionBar, DialogsActivity,
+    // DialogStoriesCell, GhostModeActivity's own row rendering, ...), so any
+    // real transition -- whether via the master switch or by flipping
+    // individual signal/lock rows one at a time until the combined predicate
+    // reads true again -- gets picked up the next time anything asks the
+    // question, without instrumenting every mutation site individually.
     public static int ghostSessionEpoch;
 
+    // NagramX: last value isGhostModeActive() itself observed, purely to
+    // detect the false->true edge above -- not a public flag, and not to be
+    // confused with a caller's own idea of "was Ghost on last time I checked".
+    private static boolean lastKnownGhostModeActive;
+
     public static boolean isGhostModeActive() {
+        boolean active = computeGhostModeActive();
+        if (active && !lastKnownGhostModeActive) {
+            ghostSessionEpoch++;
+        }
+        lastKnownGhostModeActive = active;
+        return active;
+    }
+
+    private static boolean computeGhostModeActive() {
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -331,7 +350,6 @@ public class NekoConfig {
     }
 
     public static void setGhostMode(boolean enabled) {
-        boolean wasActive = isGhostModeActive();
         for (Pair<ConfigItem, ConfigItem> pair : ghostToggleItems) {
             ConfigItem item = pair.first;
             ConfigItem lockedItem = pair.second;
@@ -339,9 +357,6 @@ public class NekoConfig {
                 boolean targetValue = (item == sendOfflinePacketAfterOnline) == enabled;
                 item.setConfigBool(targetValue);
             }
-        }
-        if (enabled && !wasActive) {
-            ghostSessionEpoch++;
         }
     }
 

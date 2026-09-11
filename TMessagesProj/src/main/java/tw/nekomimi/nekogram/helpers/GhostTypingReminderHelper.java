@@ -36,33 +36,56 @@ public class GhostTypingReminderHelper {
     private GhostTypingReminderHelper() {
     }
 
-    // NagramX: account -> dialogIds already reminded this Ghost Mode session.
-    // Reset lazily below whenever NekoConfig.ghostSessionEpoch (bumped once per
-    // observed false->true Ghost Mode transition, at the single write path
-    // NekoConfig#setGhostMode) no longer matches the last epoch this class saw
-    // -- see docs/codemap/dead-ends.md for why a previous, differently-shaped
+    // NagramX: account -> this account's reminded-dialogs state for whichever
+    // Ghost session epoch it was last touched under. remindedSetForEpoch below
+    // is the single accessor both call sites (the synchronous check and the
+    // posted runnable) must go through -- it replaces a stale entry with a
+    // fresh one for the current epoch on the spot, so staleness is corrected
+    // wherever/whenever it's noticed rather than needing a separate reset step
+    // someone else must already have run first. That matters because Ghost
+    // Mode can cycle off->on more than once between this being queued and the
+    // posted runnable actually getting to run, with no composer callback ever
+    // observing the intermediate cycle -- a plain "did the epoch move since I
+    // queued this" check would still read a set some earlier, now-stale entry
+    // left behind; going through this accessor on every access instead means
+    // there is no separate stale set left lying around to read by mistake.
+    // See docs/codemap/dead-ends.md for why a previous, differently-shaped
     // version of per-chat Ghost state was deleted, and why this one is not the
     // same mistake: every read and write here happens on the UI thread, from
     // ChatActivityEnterView's TextWatcher (itself only ever invoked on the main
     // looper) plus the UI-thread runnable it posts below -- there is no
     // background-thread writer, so no synchronization is needed, unlike the
     // deleted state that raced against the send path on Utilities.stageQueue.
-    // An earlier revision of this class inferred the reset edge from an
-    // observed boolean read only inside onComposerTypingObservedUnsafe itself,
-    // which meant an off->on->off->on cycle with no composer keystroke anywhere
-    // in it was invisible and left every already-reminded chat wrongly
-    // suppressed for good. Keying off the epoch instead -- a value NekoConfig
-    // itself advances at the moment Ghost Mode actually turns on -- means this
-    // class always resets correctly the next time it is called, regardless of
-    // how much composer activity happened while Ghost Mode was off. This still
-    // only observes the toggle through NekoConfig#setGhostMode, i.e. the master
-    // Ghost Mode switch (NekoConfig#toggleGhostMode) -- flipping the individual
-    // per-signal rows in GhostModeActivity one at a time until the combined
-    // predicate happens to read true again does not advance the epoch, since
-    // this change's scope was deliberately kept to the one counter in
-    // NekoConfig and nothing in GhostModeActivity.
-    private static final SparseArray<HashSet<Long>> remindedDialogs = new SparseArray<>();
-    private static int lastObservedGhostSessionEpoch;
+    private static final SparseArray<PerAccountState> stateByAccount = new SparseArray<>();
+
+    // NagramX: epoch is the NekoConfig.ghostSessionEpoch value this account's
+    // reminded set is valid for -- see remindedSetForEpoch, the only place that
+    // creates or replaces one of these.
+    private static final class PerAccountState {
+        final int epoch;
+        final HashSet<Long> reminded = new HashSet<>();
+
+        PerAccountState(int epoch) {
+            this.epoch = epoch;
+        }
+    }
+
+    // NagramX: returns this account's reminded-dialogs set for the given Ghost
+    // session epoch, replacing it with a fresh empty one first if the stored
+    // entry belongs to an older epoch (including "no entry yet", epoch 0's
+    // initial default). Every caller -- the synchronous check and the posted
+    // runnable alike -- must read the current epoch and call this rather than
+    // caching a set reference across a Ghost Mode toggle, so a set that turns
+    // out to belong to an already-ended session is never mistaken for the
+    // current one.
+    private static HashSet<Long> remindedSetForEpoch(int account, int epoch) {
+        PerAccountState state = stateByAccount.get(account);
+        if (state == null || state.epoch != epoch) {
+            state = new PerAccountState(epoch);
+            stateByAccount.put(account, state);
+        }
+        return state.reminded;
+    }
 
     /**
      * Call from the composer's own text-change callback, on the UI thread, on the
@@ -80,21 +103,11 @@ public class GhostTypingReminderHelper {
     }
 
     private static void onComposerTypingObservedUnsafe(int account, long dialogId, BaseFragment fragment) {
-        int epoch = NekoConfig.ghostSessionEpoch;
-        if (epoch != lastObservedGhostSessionEpoch) {
-            remindedDialogs.clear();
-            lastObservedGhostSessionEpoch = epoch;
-        }
-
         if (!NekoConfig.isGhostModeActive()) {
             return;
         }
 
-        HashSet<Long> reminded = remindedDialogs.get(account);
-        if (reminded == null) {
-            reminded = new HashSet<>();
-            remindedDialogs.put(account, reminded);
-        }
+        HashSet<Long> reminded = remindedSetForEpoch(account, NekoConfig.ghostSessionEpoch);
         if (reminded.contains(dialogId)) {
             return;
         }
@@ -105,8 +118,6 @@ public class GhostTypingReminderHelper {
         // interleave a view-hierarchy change with the composer's own in-flight
         // update. Posting lets that unwind first, mirroring how
         // GhostSendWarningHelper hops onto the UI thread from its own caller.
-        int observedEpoch = epoch;
-        HashSet<Long> remindedForAccount = reminded;
         AndroidUtilities.runOnUIThread(() -> {
             try {
                 // NagramX: re-check here, not just above -- Ghost Mode can be toggled
@@ -114,22 +125,15 @@ public class GhostTypingReminderHelper {
                 if (!NekoConfig.isGhostModeActive()) {
                     return;
                 }
-                // NagramX: a Ghost off->on->off->on cycle can also land in this same
-                // window, which both ends the session remindedForAccount belonged to
-                // and starts a new one before this runnable gets to run. That clears
-                // remindedDialogs (orphaning this closure's captured reference, since
-                // clear() drops the whole per-account entry rather than emptying it in
-                // place) and re-active-checks true again above, so re-fetch this
-                // account's set for the current epoch instead of writing into the
-                // orphaned one, which nothing else would ever read again.
-                HashSet<Long> currentReminded = remindedForAccount;
-                if (NekoConfig.ghostSessionEpoch != observedEpoch) {
-                    currentReminded = remindedDialogs.get(account);
-                    if (currentReminded == null) {
-                        currentReminded = new HashSet<>();
-                        remindedDialogs.put(account, currentReminded);
-                    }
-                }
+                // NagramX: re-read the epoch and go through remindedSetForEpoch again
+                // rather than reusing the outer scope's `reminded` reference -- Ghost
+                // Mode can cycle off->on any number of times, including more than
+                // once, in the window between posting this and it running, with no
+                // composer callback ever observing an intermediate cycle to have
+                // reset anything. Re-deriving the set from the live epoch here means
+                // it is always the right one for whatever session is current right
+                // now, never a stale one left over from whichever session queued this.
+                HashSet<Long> currentReminded = remindedSetForEpoch(account, NekoConfig.ghostSessionEpoch);
                 // NagramX: two qualifying transitions in the same chat (e.g. a fast
                 // type-delete-retype) can each post one of these before either runs,
                 // and both would have passed the membership check above against the

@@ -532,21 +532,16 @@ session-scoped decision to protect from a race" (note "no longer" — the race
 itself was old news by then, already closed by `67042a6884`).
 
 This is **not** a blanket rule against any per-chat Ghost state — the typing-time
-reminder added under `#ghost-type-warning`
-(`GhostTypingReminderHelper.java:64-65` — a `SparseArray<HashSet<Long>>` plus a
-`lastObservedGhostSessionEpoch` int, reset lazily at `:83-86` whenever that
-value no longer matches `NekoConfig.ghostSessionEpoch`, a counter `NekoConfig`
-itself advances on every observed false→true Ghost Mode transition) keeps
-materially the same shape of state (an account-keyed set of already-reminded
-dialogIds, reset lazily on a Ghost off→on edge) and is fine, because the thing
-that made the old design's *state* need a lock — a background-thread writer
-(the send path) racing a UI-thread writer (the settings toggle) — doesn't
-apply here at all. Every read and write happens on the UI thread:
-`ChatActivityEnterView`'s own `TextWatcher`
+reminder added under `#ghost-type-warning` keeps materially the same shape of
+state (an account-keyed set of already-reminded dialogIds, reset lazily on a
+Ghost off→on edge) and is fine, because the thing that made the old design's
+*state* need a lock — a background-thread writer (the send path) racing a
+UI-thread writer (the settings toggle) — doesn't apply here at all. Every read
+and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
 (`ChatActivityEnterView.java:7069` is the only call site of
 `GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
 and the `AndroidUtilities.runOnUIThread` runnable it posts
-(`GhostTypingReminderHelper.java:110-150`) is a second UI-thread access path,
+(`GhostTypingReminderHelper.java:121-154`) is a second UI-thread access path,
 not a background one -- nothing in the send path or the settings screen ever
 touches this state. If a future change makes this state reachable from
 anywhere but those two UI-thread paths, revisit this exemption rather than
@@ -554,18 +549,53 @@ assuming it still holds.
 
 Unlike the deleted send-time state, this reset is driven by `NekoConfig`
 itself rather than inferred from an observed boolean sampled only inside the
-composer callback: `NekoConfig#setGhostMode` (`NekoConfig.java:333-345`)
-increments a `ghostSessionEpoch` counter (`NekoConfig.java:315`) the
-moment it observes its own false→true transition, so this class always
-resets correctly the next time it runs, regardless of how much (or how
-little) composer activity happened while Ghost Mode was off in between —
-there is no missed-edge case left to accept here, unlike an earlier revision
-of this same class that inferred the edge from its own call site alone. This
-still only observes the toggle through the master Ghost Mode switch
-(`NekoConfig#toggleGhostMode`); flipping the individual per-signal rows in
-`GhostModeActivity` one at a time until the combined predicate happens to
-read true again does not advance the epoch, since this addition's scope was
-deliberately kept to that one counter and nothing else in
-`NekoConfig`/`GhostModeActivity`.
+composer callback — and it went through two revisions of its own before
+landing on the current shape, both because the first cut of "driven by
+NekoConfig" still missed real transitions:
+
+1. The first cut bumped a `ghostSessionEpoch` counter (`NekoConfig.java`)
+   from inside `NekoConfig#setGhostMode`, i.e. only the master Ghost Mode
+   switch's write path. That missed any false→true transition produced by
+   flipping the individual per-signal toggle rows or their locks in
+   `GhostModeActivity` one at a time until the combined predicate happened to
+   read true again, since none of those paths call `setGhostMode`.
+2. The fix moved the bump to the *read* side instead: `NekoConfig#isGhostModeActive()`
+   (`NekoConfig.java:327-334`) now tracks the last value it returned in a
+   private `lastKnownGhostModeActive` field (`NekoConfig.java:325`) and
+   increments `ghostSessionEpoch` (`NekoConfig.java:320`) itself whenever it
+   observes a false→true edge, regardless of which write path caused it.
+   `isGhostModeActive()` is already called from many places well beyond this
+   feature (`ActionBar`, `DialogsActivity`, `DialogStoriesCell`,
+   `GhostModeActivity`'s own row rendering, ...), so any real transition gets
+   picked up the next time *anything* asks the question — there is no longer
+   a "which write path" gap to have. The original predicate logic itself is
+   unchanged, just renamed to a private `computeGhostModeActive()`
+   (`NekoConfig.java:336-350`) that `isGhostModeActive()` delegates to.
+   `setGhostMode` no longer touches the epoch at all — keeping a duplicate
+   write-side bump there was considered and rejected, since the read side is
+   a strict superset and a duplicate would double-increment on the
+   master-switch path for no benefit.
+
+The helper's own state went through the same kind of correction. The first cut
+paired the epoch with a raw `SparseArray<HashSet<Long>>` plus a separate
+`lastObservedGhostSessionEpoch` int, cleared with an explicit `clear()` call
+when the two didn't match. That still had a gap: if Ghost Mode cycled off→on a
+*second* time with no composer callback in between to observe the first reset,
+the posted `runOnUIThread` runnable could still read back a set that belonged
+to an already-ended session, because nothing forced a re-check at the point of
+use — a raw `get()` doesn't know it's stale. The current shape
+(`GhostTypingReminderHelper.java`) closes that by giving every stored set its
+own epoch and only ever reaching it through one accessor: `PerAccountState`
+(`GhostTypingReminderHelper.java:64-71`) pairs a `HashSet<Long>` with the epoch
+it was created for, held in `stateByAccount`
+(`GhostTypingReminderHelper.java:59`), and `remindedSetForEpoch(account, epoch)`
+(`GhostTypingReminderHelper.java:81-88`) is the only way anything reads or
+creates one — it replaces a stale entry with a fresh one for the requested
+epoch on the spot. Both the synchronous check in
+`onComposerTypingObservedUnsafe` and the posted runnable call this same
+accessor with a freshly-read `NekoConfig.ghostSessionEpoch` each time, rather
+than either caching a set reference or branching on "did the epoch move" —
+there is no separate reset step for a future change to forget to call, and no
+window where a set can be read before it's known to be current for its epoch.
 
 *(Established 2026-09-10, #ghost-type-warning.)*
