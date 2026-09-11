@@ -6,6 +6,7 @@ import org.telegram.messenger.AndroidUtilities;
 import org.telegram.messenger.DialogObject;
 import org.telegram.messenger.FileLog;
 import org.telegram.messenger.R;
+import org.telegram.messenger.UserConfig;
 import org.telegram.messenger.utils.tlutils.TlUtils;
 import org.telegram.tgnet.TLObject;
 import org.telegram.tgnet.TLRPC;
@@ -132,7 +133,13 @@ public class GhostSendWarningHelper {
     // the id the typing reminder would have recorded for that chat, and matching
     // it is the whole point. TL_messages_sendEncryptedMultiMedia carries no peer
     // at all and so resolves to unresolved, which warns.
-    private static long resolveDialogId(TLObject request) {
+    // Saved Messages is the one case the InputPeer doesn't carry an id for:
+    // MessagesController#getInputPeer builds a TL_inputPeerSelf for the client
+    // user (MessagesController.java:6016-6019), which has no user_id/chat_id/
+    // channel_id, so DialogObject#getPeerDialogId would return 0 and every typed
+    // message to Saved Messages would keep double-warning. Map it back to this
+    // account's own user id, which is the dialog id ChatActivity uses there.
+    private static long resolveDialogId(int account, TLObject request) {
         if (request instanceof TLRPC.TL_messages_sendEncrypted) {
             TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncrypted) request).peer;
             return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
@@ -141,7 +148,12 @@ public class GhostSendWarningHelper {
             TLRPC.TL_inputEncryptedChat peer = ((TLRPC.TL_messages_sendEncryptedFile) request).peer;
             return peer == null ? DIALOG_ID_UNRESOLVED : DialogObject.makeEncryptedDialogId(peer.chat_id);
         }
-        return DialogObject.getPeerDialogId(TlUtils.getInputPeerFromSendMessageRequest(request));
+        TLRPC.InputPeer peer = TlUtils.getInputPeerFromSendMessageRequest(request);
+        if (peer instanceof TLRPC.TL_inputPeerSelf) {
+            // Still fails open while logged out, where this reads 0.
+            return UserConfig.getInstance(account).getClientUserId();
+        }
+        return DialogObject.getPeerDialogId(peer);
     }
 
     private static void onMessageRequestReadyUnsafe(int account, TLObject request) {
@@ -157,7 +169,7 @@ public class GhostSendWarningHelper {
         // than re-derived inside it -- the request belongs to the caller and its
         // resources are freed once the send completes, so it must not be read
         // from a runnable that runs later.
-        final long dialogId = resolveDialogId(request);
+        final long dialogId = resolveDialogId(account, request);
 
         // NagramX: resolve the fragment on the UI thread, where sendRequestInternal
         // does not run (it's on Utilities.stageQueue), and decide + show against

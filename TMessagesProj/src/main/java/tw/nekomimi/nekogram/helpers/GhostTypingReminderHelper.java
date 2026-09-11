@@ -37,10 +37,19 @@ import tw.nekomimi.nekogram.NekoConfig;
  * exists to cover, and narrowing it by request type instead would have gone
  * wrong in both directions at once -- see GhostSendWarningHelper for why.
  * <p>
- * The deferral is keyed on a reminder that was actually shown, never one that
- * was merely due: this reminder can be silently missed (a covered fragment, a
- * paused screen), and when it is, the send-time warning is the only signal the
- * user gets and must not be suppressed.
+ * The deferral is keyed on a reminder that reached {@code show()} against an
+ * eligible, non-paused host for the right account, not on one that was merely
+ * due -- a reminder skipped because there was no host to show it on leaves the
+ * send-time warning as the only signal, and it fires. That check is an
+ * eligibility test, not proof the user's eyes were on it: the two known cases
+ * where a bulletin is attempted but covered (the passcode screen's INVISIBLE
+ * navigation layout, a PhotoViewer window) would suppress the later warning
+ * too. Both need the chat to be off-screen, which cannot be true at the moment
+ * a keystroke in that chat's own composer posts the reminder, so this is a
+ * narrower residual than it is for the send-time warning -- whose own trigger
+ * can arrive long after the fact, on a completing upload. Verifying real
+ * on-screen delivery would mean this feature owning presentation, which is out
+ * of proportion for a warning.
  * <p>
  * NagramX: a future change should add a Hold-Messages-inactive condition here
  * (once the currently-unmerged Hold Messages setting lands) and update
@@ -133,9 +142,12 @@ public class GhostTypingReminderHelper {
     // already-ended Ghost session must never answer for the current one, and
     // reading through the accessor is what guarantees there is no stale set left
     // lying around to read by mistake.
-    // Returns true only for a chat where a bulletin was actually attempted, since
-    // that is the only thing added to the set -- a reminder that was due but
-    // silently missed leaves this false, so the send-time warning still fires.
+    // Returns true only for a chat where a bulletin reached show() against an
+    // eligible, non-paused host -- that is the only thing added to the set -- so
+    // a reminder that was due but had nowhere to show leaves this false and the
+    // send-time warning still fires. See the class javadoc for why that is an
+    // eligibility test rather than proof of delivery, and why the residual is
+    // narrow on this path specifically.
     static boolean wasRemindedThisGhostSession(int account, long dialogId) {
         return remindedSetForEpoch(account, ghostSessionEpoch).contains(dialogId);
     }
