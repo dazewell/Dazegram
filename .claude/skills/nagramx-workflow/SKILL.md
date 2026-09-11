@@ -895,9 +895,16 @@ code are not.
     **merge** — mark the PR from step 9 ready and merge it with a **merge
     commit, never a squash-merge** (or, if you skipped the PR, a local
     `git merge --no-edit <YYYY-MM-DD>_<slug>`) — so the change's commits and their
-    `#tags` stay whole and `dev` never needs a force-push. The merge into `dev`
+    `#tags` stay whole and `dev` never needs a force-push. **Who may press that
+    button, and when, is gated:** an agent merges into `dev` only under the
+    conditional authority in `nagramx-orchestrator.agent.md`'s *Landing approved
+    PRs* — root-orchestrator-only, on a named in-session approval, gates
+    re-verified at merge time — and an implementer never merges at all. The merge into `dev`
     triggers `staging.yml` (the signed dual-package build + Telegram upload).
-    Then **delete the branch** unless it's an upstream candidate. A squashed
+    Then **delete the branch** only when it is not an upstream candidate *and*
+    the approval names the deletion — never by default, since "is this an
+    upstream candidate" is a fact only dazewell holds; absent that, merge and
+    leave the branch. A squashed
     single commit is reserved for the separate act of **proposing the feature
     to the base fork** (`risin42/NagramX`), on a throwaway `-pr` copy that also
     drops the `FEATURES.md` hunk. The no-AI-in-the-log rule applies to every PR

@@ -656,10 +656,12 @@ holds. Absent that, merge and leave the branch.
 not `mergeable: MERGEABLE`, which only says it textually merges, and a different
 field — plus the head check green on the PR's **current** `headRefOid`, re-read
 each time: a `ci.yml` run whose `conclusion == success` for a code change, or, for
-a doc/`.claude`/`.github/agents`-only change that `ci.yml` path-ignores, the
-required `Every commit carries a` check green with `ci.yml` legitimately not run
-(path-ignored is its own outcome, not green and not pending — do not wait for a
-run that will never fire). GitHub recomputes both fields asynchronously, so the
+a change `ci.yml` path-ignores, the required `Every commit carries a` check green
+with `ci.yml` legitimately not run — decide which case applies by whether a
+`ci.yml` run **exists** for the head SHA, not by re-deriving the ignored-path list
+here (it differs between the `push` and `pull_request` triggers, so a copied list
+drifts). Path-ignored is its own outcome, not green and not pending — do not wait
+for a run that will never fire. GitHub recomputes both fields asynchronously, so the
 moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
 `UNKNOWN` until a background job catches up; **poll `mergeStateStatus` itself**
 until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
@@ -699,12 +701,16 @@ so a fast first run that reaches `Upload staging` before the next merge does
 upload; back-to-back minimises the uploads, spacing them out maximises them and
 trips the flood limit. Intermediate `cancelled` `staging-dev` runs are expected.
 After the batch, confirm the staging outcome on `dev`'s final SHA: if the batch
-had any app-source merge, confirm one green run with `Upload staging` green on
-that final SHA (or, if the last merge was doc-only and path-ignored, on the last
-app-source merge's SHA); if **every** PR was doc/`.github`-only, `staging.yml`'s
-push trigger is path-ignored throughout, so record that no staging run was
-expected — **unless** a publish was requested via `build-apk`/dispatch (its
-`labeled` trigger has no path filter), in which case confirm that run instead.
+had any merge that `staging.yml` did **not** path-ignore, confirm one green run
+with `Upload staging` green on that final SHA (or, if the last merge was
+path-ignored, on the last SHA that fired a run); record "no staging run expected"
+only when the push trigger fired nothing for the whole batch. `staging.yml`'s push
+`paths-ignore` is not identical to `ci.yml`'s — it ignores `**.md`, `.github/**`,
+`docs/**`, `.githooks/**` but not `.claude/**` except via `**.md` — so decide by
+whether a `staging-dev` run exists for the SHA, not by re-deriving the list. Even
+an all-ignored batch can have a run **if** a publish was requested via
+`build-apk`/dispatch (its `labeled` trigger has no path filter), in which case
+confirm that run instead.
 
 Landing locally instead of via PR:
 ```powershell

@@ -1520,10 +1520,14 @@ a root. It is only produced on request or when dazewell is deciding a batch, and
 only for PRs that are actually eligible: each has been through both review rounds
 (**approval authorises the button, never the evidence**), is green on its head
 commit — a `ci.yml` run whose `conclusion == success` pinned to that SHA, or, for
-a doc/`.claude`/`.github/agents`-only change that `ci.yml` legitimately
-path-ignores, the required `Every commit carries a` check green with `ci.yml`
-correctly not run (path-ignored is *not* green and must be recognised as its own
-outcome, never waited on as if a run were coming) — and has every review thread
+a change `ci.yml` path-ignores, the required `Every commit carries a` check green
+with `ci.yml` correctly not run. Decide which case applies by whether a `ci.yml`
+run actually **exists** for the head SHA, not by re-deriving the ignored-path list
+in prose — that list differs between the `push` and `pull_request` triggers (e.g.
+`.github/skills/**` and `.claude/**` are ignored on push but not on `pull_request`,
+so a non-`.md` PR touching them still gets a PR-check run) and a copy here would
+drift. Path-ignored is *not* green and must be recognised as its own
+outcome, never waited on as if a run were coming — and has every review thread
 resolved.
 
 **The plan is a recommendation for a human decision, never an assertion of
@@ -1597,9 +1601,14 @@ priority:
 Preconditions and gates, applied fresh for **each** merge — never cached:
 
 - **No sync in flight, re-checked before the first merge and again before each
-  later one.** `gh run list` for `sync-upstream.yml` and `sync-land.yml` with
-  `--status in_progress --status queued` must be empty, **and** no open pins PR
-  may exist. Between `sync-land`'s fast-forward and the pins PR merging,
+  later one.** Check that no `sync-upstream.yml` or `sync-land.yml` run is
+  `in_progress` **or** `queued` — but note `gh run list` takes a **single**
+  `--status`, and repeating the flag does not OR the values (the last one wins,
+  so `--status in_progress --status queued` silently checks only `queued`). Query
+  each status separately, or list recent runs for the workflow and filter
+  client-side, e.g. `gh run list --workflow sync-upstream.yml --json status,conclusion`
+  then reject any with `status` in `in_progress`/`queued`. Both must be empty,
+  **and** no open pins PR may exist. Between `sync-land`'s fast-forward and the pins PR merging,
   `sync-guard-check` is red on every branch — merging through that window either
   stalls or rationalises a red guard, and rationalising a red guard is the one
   thing this repo's tooling exists to prevent. If either check is non-empty, stop
@@ -1642,6 +1651,13 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   } while ((Get-Date) -lt $deadline)
   # proceed only if $v.mergeStateStatus -eq 'CLEAN'
   ```
+- **Re-confirm the declared-blocker constraint at merge time, not just when the
+  order was drawn.** A PR whose linked issue carries `status:blocked` +
+  `> Blocked until PR #<n> …` is eligible to land only once that named PR has
+  actually merged — re-read it before *this* merge, because the ordering plan was
+  a snapshot and a blocker that was open then may still be open now (or a PR may
+  have gained a blocker after the plan was drawn). An open declared blocker is
+  **stop and report**, never a heuristic to weigh against the others.
 - **Re-verify the non-CI Phase 4 gates on the same current head**, so "every
   Phase 4 gate re-verified" is honest and not just the sync/merge/CI subset: the
   PR still targets `dev` and is not converted to draft; the two hard-line
@@ -1670,13 +1686,16 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
 - **After the batch**, confirm the staging outcome on `dev`'s **final** SHA. If
   the batch contained any app-source merge, confirm exactly one green run with
   `Upload staging` green pinned to that final SHA — or, if the last merge was
-  doc-only and path-ignored, to the last **app-source** merge's SHA. If **every**
-  PR in the batch was doc/`.github`-only, `staging.yml`'s *push* trigger is
-  path-ignored for all of them — but its `pull_request: labeled` trigger has **no**
-  path filter, so a doc-only PR carrying `build-apk` (or a manual dispatch) still
-  produced a run. So record "no staging run expected" only when no publish was
-  requested for any PR in the batch; if one was, confirm that requested run's
-  `Upload staging` result instead of reporting none was expected.
+  path-ignored by `staging.yml`, to the last SHA that was **not**. `staging.yml`'s
+  push `paths-ignore` is not identical to `ci.yml`'s — it ignores `**.md`,
+  `.github/**`, `docs/**`, `.githooks/**`, but **not** `.claude/**` except via
+  `**.md` — so decide "did a push build fire" by whether a `staging-dev` run
+  exists for that SHA, not by re-deriving the list here. Record "no staging run
+  expected" only when the push trigger fired nothing for the whole batch **and**
+  no publish was requested — its `pull_request: labeled` trigger has **no** path
+  filter, so a doc-only PR carrying `build-apk` (or a manual dispatch) still
+  produced a run; if one was requested, confirm that run's `Upload staging` result
+  instead of reporting none was expected.
 
 The live backstop that makes all of this safe: ruleset `22861936`
 (`dev required checks (no bypass)`) requires the status-check context
@@ -1745,10 +1764,12 @@ lighter touch.
     procedure in *Landing approved PRs*. A pass Phase 4 recorded earlier is
     evidence about earlier code.
   - The approval is **non-transferable** (comms protocol Rule 11): it is recorded
-    as an authorization held by *this* session, closed as `superseded` when the
-    session ends, **never** written into a successor brief's
-    `Outstanding authorizations (gG.vN)` field, and a replacement session must
-    re-ask dazewell rather than inherit it.
+    as an authorization held by *this* session, closed **per PR** when the session
+    ends — each named PR that this session actually merged as `landed` (citing the
+    merge commit), each it did not as `superseded` — **never** written into a
+    successor brief's `Outstanding authorizations (gG.vN)` field, and a
+    replacement session must re-ask dazewell for any still-unmerged PR rather than
+    inherit it.
   - **`gh pr merge --admin` and `gh pr merge --auto` are forbidden**, always.
     `--admin` bypasses ruleset `22861936` — the one no-bypass gate on `dev` — and
     you hold the admin token that makes it available; `--auto` merges on a future
