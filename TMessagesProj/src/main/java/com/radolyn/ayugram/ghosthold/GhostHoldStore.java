@@ -500,6 +500,12 @@ public final class GhostHoldStore {
                 try {
                     db();
                 } catch (Exception e) {
+                    // Accepted residual: if the DB is BOTH unopenable here AND the unlink
+                    // below then fails, neither the in-place purge nor the file removal
+                    // runs, so the owner stamp and rows survive and a same-user relogin
+                    // can reload them. Closing it needs an out-of-band tombstone forcing a
+                    // purge on next open regardless of owner -- storage-redesign scope the
+                    // safety bundle leaves out, and doubly rare on top. Documented, not fixed.
                     FileLog.e(e);
                 }
             }
