@@ -560,7 +560,7 @@ NekoConfig" still missed real transitions:
    `GhostModeActivity` one at a time until the combined predicate happened to
    read true again, since none of those paths call `setGhostMode`.
 2. The fix moved the bump to the *read* side instead: `NekoConfig#isGhostModeActive()`
-   (`NekoConfig.java:327-334`) now tracks the last value it returned in a
+   (`NekoConfig.java:338-347`) now tracks the last value it returned in a
    private `lastKnownGhostModeActive` field (`NekoConfig.java:325`) and
    increments `ghostSessionEpoch` (`NekoConfig.java:320`) itself whenever it
    observes a false→true edge, regardless of which write path caused it.
@@ -570,11 +570,31 @@ NekoConfig" still missed real transitions:
    picked up the next time *anything* asks the question — there is no longer
    a "which write path" gap to have. The original predicate logic itself is
    unchanged, just renamed to a private `computeGhostModeActive()`
-   (`NekoConfig.java:336-350`) that `isGhostModeActive()` delegates to.
+   (`NekoConfig.java:349-363`) that `isGhostModeActive()` delegates to.
    `setGhostMode` no longer touches the epoch at all — keeping a duplicate
    write-side bump there was considered and rejected, since the read side is
    a strict superset and a duplicate would double-increment on the
    master-switch path for no benefit.
+3. Moving the bump onto the read side introduced a real cross-thread bug of
+   its own, caught in a later review pass: `isGhostModeActive()` is not
+   UI-thread-only. `GhostSendWarningHelper#onMessageRequestReadyUnsafe`
+   (`GhostSendWarningHelper.java:99`) calls it synchronously from
+   `ConnectionsManager#sendRequestInternal`, which itself always runs inside
+   an `Utilities.stageQueue.postRunnable` (`ConnectionsManager.java:401-402`,
+   with the helper call at `:512`, before `native_sendRequest` at `:515`) —
+   i.e. on every message send, on tgnet's background stage queue, not the UI
+   thread. Every *other* caller (`ActionBar`, `DialogsActivity`,
+   `DialogStoriesCell`, `GhostModeActivity`, `GhostTypingReminderHelper`, ...)
+   is UI-thread. Before this feature, `isGhostModeActive()` only read
+   pre-existing `ConfigItem`s and never wrote shared mutable state, so being
+   called from a background thread was always safe; turning it into a
+   read-modify-write over `lastKnownGhostModeActive`/`ghostSessionEpoch`
+   without re-checking that invariant made it an unsynchronized race between
+   the UI thread and the stage queue on every single Ghost-Mode-active send.
+   Fixed by guarding just the transition-tracking pair with a dedicated
+   `ghostModeStateLock` (`NekoConfig.java:327-336`); `computeGhostModeActive()`
+   itself stays outside the lock since it only reads state that already
+   tolerated being read from any thread.
 
 The helper's own state went through the same kind of correction. The first cut
 paired the epoch with a raw `SparseArray<HashSet<Long>>` plus a separate
@@ -597,5 +617,37 @@ accessor with a freshly-read `NekoConfig.ghostSessionEpoch` each time, rather
 than either caching a set reference or branching on "did the epoch move" —
 there is no separate reset step for a future change to forget to call, and no
 window where a set can be read before it's known to be current for its epoch.
+
+**Known residual gap, accepted rather than chased further:** the read-side
+epoch bump only fires when something actually *calls*
+`NekoConfig#isGhostModeActive()`. Toggling an individual signal row (e.g.
+`sendReadMessagePacketsRow`) does call it, via `onItemClick`'s
+`updateGhostViews()` (`GhostModeActivity.java:92`) -- so that path is already
+covered. Toggling a row's *lock* instead does not: `onItemLongClick`
+(`GhostModeActivity.java:191`) only calls
+`listAdapter.notifyItemChanged(ghostModeToggleRow, PARTIAL)` to redraw the
+master row's cell, never `updateGhostViews()` or `isGhostModeActive()` --
+even though `computeGhostModeActive()`'s predicate does skip a locked item
+entirely (`NekoConfig.java:353`, `if (!lockedItem.Bool())`), so locking the
+one item still holding the predicate false can itself flip it true. So an
+off→on cycle produced by locking that one item -- with the master toggle
+row's own `bind()` never re-running in the same window (e.g. it's scrolled
+off-screen) and with literally nothing else in the app calling
+`isGhostModeActive()` during that window either -- would still miss the epoch
+bump. This is not being fixed further, for two reasons: fixing it properly
+means either instrumenting `GhostModeActivity`'s lock-toggle site directly,
+which round 1 review ruled out to stay conflict-free with the unmerged
+`#ghost-hold` PR that touches the same file, or another mechanism redesign --
+and the trigger condition is narrow enough (it requires *zero* calls to
+`isGhostModeActive()` from anywhere in the app for the whole cycle, when the
+method is already called from `ActionBar`, `DialogsActivity`,
+`DialogStoriesCell`, `MainTabsActivity`, and `GhostModeActivity`'s own row
+rendering, any one of which self-heals it the moment it fires) that it is
+judged self-healing in virtually all real usage. Critically, the worst case is
+a missed *reminder* (this feature's own early nudge), never a missed
+*warning*: `GhostSendWarningHelper`'s send-time bulletin is unconditional on
+Ghost Mode being active at send time and carries no epoch or per-chat state of
+its own, so there is no configuration in which this gap leaves a send fully
+unsignaled.
 
 *(Established 2026-09-10, #ghost-type-warning.)*

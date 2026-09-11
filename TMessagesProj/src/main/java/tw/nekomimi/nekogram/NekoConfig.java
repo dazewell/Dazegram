@@ -324,12 +324,25 @@ public class NekoConfig {
     // confused with a caller's own idea of "was Ghost on last time I checked".
     private static boolean lastKnownGhostModeActive;
 
+    // NagramX: guards the lastKnownGhostModeActive/ghostSessionEpoch pair.
+    // isGhostModeActive() is not UI-thread-only -- GhostSendWarningHelper
+    // calls it synchronously from ConnectionsManager#sendRequestInternal on
+    // Utilities.stageQueue, on every message send, while every other caller
+    // (ActionBar, DialogsActivity, DialogStoriesCell, GhostModeActivity,
+    // GhostTypingReminderHelper, ...) calls it from the UI thread. Before this
+    // pair existed, the method was a pure read of pre-existing ConfigItems and
+    // needed no lock; now that a call also writes these two fields, the
+    // read-modify-write has to be atomic and visible across both threads.
+    private static final Object ghostModeStateLock = new Object();
+
     public static boolean isGhostModeActive() {
         boolean active = computeGhostModeActive();
-        if (active && !lastKnownGhostModeActive) {
-            ghostSessionEpoch++;
+        synchronized (ghostModeStateLock) {
+            if (active && !lastKnownGhostModeActive) {
+                ghostSessionEpoch++;
+            }
+            lastKnownGhostModeActive = active;
         }
-        lastKnownGhostModeActive = active;
         return active;
     }
 
