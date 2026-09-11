@@ -127,7 +127,9 @@ public class GhostTypingReminderHelper {
     // invoked on the main looper), the UI-thread runnable it posts below, and
     // -- read-only -- GhostSendWarningHelper asking wasRemindedThisGhostSession
     // from inside its own runOnUIThread block, never from the stage queue its
-    // hook runs on. The first two write; the third never records anything. So
+    // hook runs on. Only the posted runnable ever adds a dialog id -- the
+    // TextWatcher path just reads membership and posts, and the send helper
+    // never records at all. So
     // there is still no background-thread access and no synchronization is
     // needed, unlike the deleted state that raced against the send path on
     // Utilities.stageQueue.

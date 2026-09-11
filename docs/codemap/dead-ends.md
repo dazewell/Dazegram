@@ -561,10 +561,11 @@ UI thread. It isn't there: only the destination dialog id is resolved on that
 thread, where the outgoing request is in hand, and captured as a primitive; the
 *send path's* access to the set happens only inside `GhostSendWarningHelper`'s
 pre-existing `runOnUIThread` block. The composer's
-own two paths are unchanged and still write it (the `TextWatcher` at
+own two paths are unchanged (the `TextWatcher` at
 `ChatActivityEnterView.java:7069` and the UI runnable it posts), so the full
-inventory is now three access paths, all on the UI thread: two writers in the
-reminder helper and one read-only reader in the send helper. That reader never
+inventory is now three access paths, all on the UI thread. Only one of them
+writes a dialog id into the set: the posted runnable. The `TextWatcher` path
+reads membership and posts; the send helper's path is read-only and never
 records anything, so it cannot consume a slot the user was never shown. The
 rule the exemption actually rests on is unchanged: no background-thread
 access, so still no lock.
