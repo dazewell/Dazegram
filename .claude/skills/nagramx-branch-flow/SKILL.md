@@ -18,10 +18,12 @@ fork. Features land on it and stay on it. Upstream flows *into* `dev`. Feature
 branches are short-lived scaffolding you delete after merging.
 
 **Two long-lived branches:**
-- `dev` — the trunk. Everything lands here (via a PR merged with a **merge
-  commit**). Upstream merges *forward* into it through a guarded snapshot (see
-  The topology and Automation). It holds unique history that exists nowhere
-  else, so it is **never rebuilt and never force-pushed**.
+- `dev` — the trunk. Everything lands here (via a PR **squash-merged** into it,
+  collapsing the branch to one tagged commit — `allow_merge_commit: false`,
+  `allow_squash_merge: true`). Upstream merges *forward* into it through a
+  guarded snapshot (see The topology and Automation), which is the one path that
+  still lands a merge commit. It holds unique history that exists nowhere else,
+  so it is **never rebuilt and never force-pushed**.
 - `nbase` — the upstream anchor: a chain of locally-authored snapshot commits
   carrying Nagram's trees, **append-only** and an ancestor of `dev`. Each new
   snapshot is merged forward into `dev` by the guarded sync. Never force-pushed,
@@ -29,10 +31,12 @@ branches are short-lived scaffolding you delete after merging.
 
 **Short-lived per change:**
 - `<YYYY-MM-DD>_<slug>` (the date you start it, e.g. `2026-07-07_chatlock`) —
-  one branch per change, cut from `dev`, PR'd into `dev`, then **deleted after
-  merge**. Keep it alive *only* if you intend to propose that feature upstream
-  (then it stays append-only). **The date prefix is mandatory** — an undated
-  name like `video-cc` is wrong; see *Branch naming* below.
+  one branch per change, cut from `dev`, PR'd into `dev`, then **auto-deleted at
+  merge** by the repo (`delete_branch_on_merge: true`). Nothing to keep alive:
+  `refs/pull/<N>/head` is permanent and keeps the merged range recoverable, so
+  the old "keep an upstream candidate's branch alive" exception is gone —
+  candidate or not, you rely on `refs/pull`. **The date prefix is mandatory** —
+  an undated name like `video-cc` is wrong; see *Branch naming* below.
 
 **The tag that replaces permanent branches:** every commit carries an inline
 `#<slug>` hashtag (e.g. `#chatlock`). That — not a surviving branch — is how you
@@ -349,7 +353,9 @@ Branches (on `origin`):
 - **`base`** — the frozen mirror of the risin42-era fork at commit a6c7d0ae, no
   longer part of the sync, kept for historical reference only.
 - **`<YYYY-MM-DD>_<slug>`** — short-lived change branch. Cut from `dev`, PR'd in,
-  deleted after merge (kept only for upstream candidates).
+  **auto-deleted at merge** (`delete_branch_on_merge: true`); its range stays
+  recoverable via `refs/pull/<N>/head`, so nothing is kept alive, upstream
+  candidate or not.
 
 Upstream now flows from **`nagram`** through a snapshot into `dev`. The full sync
 topology (anchor, snapshot, the `nbase` chain, and the guarded merge strategy)

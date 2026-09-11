@@ -131,8 +131,9 @@ code are not.
    slug (both fine — tooling normalizes it), hyphens inside the slug. An undated
    name like `require-password` is
    wrong; fix it before the first push. One change per branch. You PR it into
-   `dev` and **delete it after merge**; keep it alive only if you'll propose
-   that feature upstream. Don't commit directly to `dev`. The full topology,
+   `dev`; the repo **auto-deletes the branch at merge** (`delete_branch_on_merge:
+   true`), and its range stays recoverable via `refs/pull/<N>/head` whether or
+   not it was ever an upstream candidate. Don't commit directly to `dev`. The full topology,
    branch-naming rules, the
    `#tag` every commit carries, sync, and the no-force-push rule live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
