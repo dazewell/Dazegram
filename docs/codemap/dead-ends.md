@@ -607,10 +607,10 @@ correcting a different mistake in the last:
    revision 4 had to go back and fix.
 4. The current design keeps revision 3's placement and purity exactly, and
    changes only *who decides an edge happened*. `onGhostSignalsChanged()`
-   (`GhostTypingReminderHelper.java:98-105`) is an **observer**, not a
+   (`GhostTypingReminderHelper.java:101-108`) is an **observer**, not a
    notification: it reads the pure predicate itself, compares against the last
    value it saw (`lastObservedGhostActive`,
-   `GhostTypingReminderHelper.java:82`, deliberately a nullable `Boolean` so
+   `GhostTypingReminderHelper.java:85`, deliberately a nullable `Boolean` so
    the first observation in a process is not mistaken for an activating edge),
    and bumps the epoch only on a real false→true. Callers therefore don't have
    to know whether they caused a transition, which is the whole point --
@@ -656,11 +656,11 @@ so whichever chats were already reminded stayed suppressed into what the user
 experienced as a new session. That was tolerable only while the worst case was
 a missed *reminder*: `GhostSendWarningHelper` checked
 `NekoConfig.isGhostModeActive()` fresh at send time
-(`GhostSendWarningHelper.java:198`) and carried no per-chat state, so a send
+(`GhostSendWarningHelper.java:203-205`) and carried no per-chat state, so a send
 was never left unsignaled.
 
 Making the send-time warning defer to the reminder
-(`GhostSendWarningHelper.java:227-230` asking
+(`GhostSendWarningHelper.java:237-239` asking
 `GhostTypingReminderHelper.wasRemindedThisGhostSession`) destroyed that
 independence: the two now share one piece of state, so a reset the epoch
 missed cost not just the early nudge but the send-time bulletin too, and a

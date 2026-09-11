@@ -204,14 +204,19 @@ public class GhostSendWarningHelper {
             return;
         }
 
-        // NagramX: resolved on this thread and captured into the runnable rather
-        // than re-derived inside it -- the request belongs to the caller and its
-        // resources are freed once the send completes, so it must not be read
-        // from a runnable that runs later.
+        // NagramX: resolved here, synchronously, and captured into the runnable as
+        // a primitive rather than re-derived inside it. By this point
+        // sendRequestInternal has already serialized the request and called
+        // object.freeResources() (ConnectionsManager.java:422-424), and the object
+        // belongs to its caller from here on, so a runnable that runs later must
+        // not hold on to it. Reading it now is fine: the peer fields this needs
+        // are plain TL fields, and freeResources() does not touch them -- the base
+        // implementation is empty (TLObject.java:82-84) and the overrides that do
+        // something release NativeByteBuffers.
         final long dialogId = resolveDialogId(account, request);
 
-        // NagramX: resolve the fragment on the UI thread, where sendRequestInternal
-        // does not run (it's on Utilities.stageQueue), and decide + show against
+        // NagramX: resolve the fragment on the UI thread, which is not the thread
+        // sendRequestInternal runs on, and decide + show against
         // that exact instance -- never test one fragment instance and show on a
         // different one. The whole runnable body is guarded: it runs on the UI
         // thread's own dispatch, on a call stack the caller-side guard around
