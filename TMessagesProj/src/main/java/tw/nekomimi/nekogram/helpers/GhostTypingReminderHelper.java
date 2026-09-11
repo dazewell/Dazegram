@@ -94,6 +94,12 @@ public class GhostTypingReminderHelper {
     // earned earlier in the same session.
     private static Boolean lastObservedGhostActive;
 
+    // NagramX: the two-line bulletin has more to read than DURATION_PROLONG
+    // (5000ms) was set for -- one second longer, on device feedback. No stock
+    // constant sits above DURATION_PROLONG, so this is a plain literal named
+    // here rather than left inline at the call site.
+    private static final int TYPING_REMINDER_DURATION_MS = 6000;
+
     // NagramX: call after anything that may have changed the config the Ghost
     // predicate is derived from. It is deliberately an *observer* rather than a
     // "Ghost was just switched on" notification, because the predicate has no
@@ -341,20 +347,22 @@ public class GhostTypingReminderHelper {
 
         // NagramX: createErrorBulletinSubtitle builds at Bulletin.DURATION_SHORT
         // (1.5s), which is too short to read two lines and still have a moment to
-        // act on them. DURATION_PROLONG (5s) is the codebase's existing long-form
-        // value, set the same way at e.g. DialogsActivity.java:6303 -- no custom
-        // timer. Note 5s is an upper bound, not a guarantee: the bulletin slot is
-        // global, so anything shown after this replaces it.
+        // act on them. TYPING_REMINDER_DURATION_MS (6s) is one second past
+        // DURATION_PROLONG (5s, the codebase's existing long-form value, set the
+        // same way at e.g. DialogsActivity.java:6303) -- on-device feedback found
+        // 5s tight for two lines of reading. No custom timer either way. Note
+        // this is an upper bound, not a guarantee: the bulletin slot is global,
+        // so anything shown after this replaces it.
         // Two-line rather than createErrorBulletin's single line: the honest
-        // combined sentence runs 104 characters, needing the full 5s just to
-        // read; the two-line layout (title = GhostTypingReminder, subtitle =
+        // combined sentence runs 104 characters, needing the full duration just
+        // to read; the two-line layout (title = GhostTypingReminder, subtitle =
         // GhostTypingReminderHoldHint) is the same stock surface already used at
         // e.g. ChatAttachAlertDocumentLayout.java:870 for a short label plus a
         // detail line, and backs Bulletin.TwoLineLottieLayout with the same
         // chats_infotip icon createErrorBulletin used.
         Bulletin bulletin = resolveBulletinFactory(fragment)
                 .createErrorBulletinSubtitle(getString(R.string.GhostTypingReminder), getString(R.string.GhostTypingReminderHoldHint), fragment.getResourceProvider())
-                .setDuration(Bulletin.DURATION_PROLONG);
+                .setDuration(TYPING_REMINDER_DURATION_MS);
         if (bulletin instanceof Bulletin.EmptyBulletin) {
             return false;
         }
