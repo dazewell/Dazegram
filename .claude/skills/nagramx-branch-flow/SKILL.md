@@ -118,7 +118,7 @@ gitGraph
   branch 2026-07-07_chatlock
   commit id: "add chat lock #chatlock"
   checkout main
-  merge 2026-07-07_chatlock tag: "PR merge -> staging build"
+  commit id: "land chat lock (squash) #chatlock" tag: "squash -> staging build"
   merge nbase tag: "guarded snapshot sync"
   commit id: "fix edge case #chatlock"
 ```
