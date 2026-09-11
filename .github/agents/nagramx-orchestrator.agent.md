@@ -1542,45 +1542,25 @@ coming — and has every review thread resolved.
 completeness.** It states plainly what it cannot see and asks him for what only
 he knows.
 
-### Deriving the order — three structural heuristics, and one authoritative override
+### Deriving the order and executing the batch — mechanics are normative in `nagramx-branch-flow`
 
-Read every candidate PR and derive a *suggested* order from these, in this
-priority:
-
-1. **Declared blockers outrank all heuristics.** Resolve each PR's linked issue
-   (`Closes #<n>` in the body) and read its `status:blocked` marker and the
-   `> Blocked until PR #<n> …` line branch-flow requires. A named blocker is a
-   human-authored statement of a semantic dependency no file diff can see, and it
-   is a **hard constraint**: the blocker lands first, full stop. Reuse this
-   channel; do not reinvent dependency detection when an authoritative one ships.
-2. **Stacked base refs.** A PR based on another PR's branch rather than on `dev`
-   lands after its base.
-3. **Behavioural overlap on a shared base file or hook point.** Two branches
-   editing the same upstream base file or hooking the same runtime chokepoint are
-   an ordering constraint — that is real coupling.
-4. **Slug kinship.** A feature lands before its own `*-fix`; adjacent-feature
-   slugs on the same surface are flagged for his attention, not auto-ordered.
-
-**Split the overlap report into two lists — never collapse them into one order.**
-
-- **Textual-conflict-risk list (imposes NO ordering).** Registry / append-only
-  files that nearly every feature branch touches: `FEATURES.md`,
-  `strings_nax.xml`, `NaConfig.kt`, `NekoConfig.java`, `docs/codemap/*`. An
-  intersection here means "both added a catalogue line", not "one depends on the
-  other". Listing these as a dependency graph produces a confident-looking total
-  order carrying almost no information — worse than none, because he asked for
-  this so he could *stop* re-deriving it and will trust the output. Report them
-  only as "these may conflict textually; resolve at merge", with no order implied.
-  **Classify by the changed hunk, not the filename** — `NaConfig.kt` and
-  `NekoConfig.java` are catalogues *and* live config/init code, so an isolated
-  declaration or registry-line addition is textual risk, but a change to shared
-  initialization, persistence or runtime behaviour in the same file is a
-  behavioural overlap and belongs in the ordering list below, not here.
-- **Behavioural-overlap list (imposes ordering).** Shared base file or shared
-  hook point per heuristic 3 — including a behavioural hunk in an otherwise
-  registry-like file per the note above. This is where a genuine "#336 and #338
-  both touch `MessagesController.java`" belongs, and it must not be given the same
-  visual weight as two `FEATURES.md` lines.
+The ordering heuristics (a declared blocker in a PR's linked issue is authoritative
+and outranks everything; then stacked base refs, shared-base-file/hook overlap, and
+slug kinship), the two-list split that keeps append-only registry overlap
+(`FEATURES.md`, `strings_nax.xml`, `NaConfig.kt`, `NekoConfig.java`,
+`docs/codemap/*`) out of the behavioural ordering, the hunk-not-filename
+classification, and the **entire merge-execution procedure** (the repo-settings
+preflight, the sync-in-flight and `sync-guard` snapshot checks, the
+`mergeStateStatus` poll, the declared-blocker re-check before each merge, the
+Phase-4 non-CI re-verify on the merged head, the `--match-head-commit` pin, the
+between-merges `dev`-CI serialization, back-to-back merging, and the post-batch
+staging confirmation) are **normative in
+`.claude/skills/nagramx-branch-flow/SKILL.md`** (*Land a change* -> *Landing
+several PRs*). Read and run them there. This file deliberately keeps **no** second
+copy of those mechanics — the two drifted the last time both existed, which is the
+exact failure this whole change exists to prevent. What this section owns is
+narrower and stated below: which PRs are *eligible* to enter a plan, what the plan
+must show dazewell so his approval is informed, and the approval *authority* itself.
 
 ### What the plan must print, per PR and once for the batch
 
@@ -1604,139 +1584,23 @@ priority:
   knows of.** Never imply completeness — an uncited "these are independent" is an
   asserted negative and reads as unverified.
 
-### Executing the batch (root orchestrator only, after named approval)
+### Executing the batch — authority lives here, mechanics live in `nagramx-branch-flow`
 
-Preconditions and gates, applied fresh for **each** merge — never cached:
-
-- **No sync in flight, re-checked before the first merge and again before each
-  later one.** Check that no `sync-upstream.yml` or `sync-land.yml` run is
-  `in_progress` **or** `queued` — but note `gh run list` takes a **single**
-  `--status`, and repeating the flag does not OR the values (the last one wins,
-  so `--status in_progress --status queued` silently checks only `queued`). Query
-  each status separately, or list recent runs for the workflow and filter
-  client-side, e.g. `gh run list --workflow sync-upstream.yml --json status,conclusion`
-  then reject any with `status` in `in_progress`/`queued`. Both must be empty,
-  **and** no open pins PR may exist. Between `sync-land`'s fast-forward and the pins PR merging,
-  `sync-guard-check` is red on every branch — merging through that window either
-  stalls or rationalises a red guard, and rationalising a red guard is the one
-  thing this repo's tooling exists to prevent. If either check is non-empty, stop
-  and report; do not wait it out silently. The empty-run check alone is **not
-  sufficient**: a `sync-land` run can fast-forward `origin/nbase` and then fail
-  before opening the pins PR, which leaves no in-progress run and no open pins PR
-  while the fork's pins are now stale. So also require the candidate PR's own
-  `sync-guard-check` to be a **completed `success`** pinned to the current
-  `headRefOid` — **not merely "not failing"**, since a missing or still-pending
-  run also reads as not-failing and `mergeStateStatus` won't catch it (the guard
-  is not a required check in the ruleset). Stop on missing, pending, or red. And
-  because `sync-guard-check` only re-runs on push/PR, a green result recorded
-  *before* an `nbase` advance is stale: confirm live `origin/nbase` still matches
-  the baseline the PR's `.github/sync/pins.env` was computed against before you
-  trust a green guard — a mismatch is stop-and-report. Be honest about what this
-  check is: a **snapshot, not a lock.** Nothing shares a mutual-exclusion lease
-  between sync execution and this landing procedure (the `sync-refs` group only
-  serialises the two sync workflows against each other), so a sync can queue
-  *after* you check and advance `nbase` before your merge lands. This procedure
-  does not close that race — building a sync/landing lease is separate infra, out
-  of scope here — so re-run the `origin/nbase`-vs-baseline check **immediately
-  before** the merge, not just at the top of the batch, and treat this whole gate
-  as necessary-but-not-sufficient: it narrows the window, it does not eliminate
-  it, and a guard that goes stale between the last check and the merge is a
-  stop-and-report you may only catch after the fact.
-- **Gate on `mergeStateStatus == CLEAN`** (not `mergeable: MERGEABLE`, which only
-  says it textually merges) **plus the head check green on the PR's *current*
-  `headRefOid`**, re-read every time — a `ci.yml` run whose `conclusion ==
-  success` for a code change, or, for a change `ci.yml` path-ignores, the required
-  `Every commit carries a` check green (there is no `ci.yml` run to wait for in
-  that case, so treat its absence as the expected path-ignored outcome, never as
-  pending). GitHub recomputes both `mergeable` and `mergeStateStatus`
-  asynchronously, so the instant a merge moves `dev` every remaining PR's
-  `mergeStateStatus` drops to `UNKNOWN`; **poll `mergeStateStatus` itself** until
-  it is no longer `UNKNOWN`, with a **declared wall-clock deadline**, and require
-  `CLEAN` — do not proceed on a settled `mergeable` while `mergeStateStatus` is
-  still `UNKNOWN`, they are different fields. `UNKNOWN`, `BEHIND`, `UNSTABLE`,
-  `BLOCKED` and `DIRTY` are each **stop and report**, never permission. Read the
-  gate field explicitly — the earlier `gh pr view` example in this file requests
-  `mergeable` only, which is the field this gate rejects — with a deadline-bounded
-  poll such as:
-
-  ```powershell
-  $pr = '<n>'; $approved = '<full headRefOid dazewell approved>'
-  $deadline = (Get-Date).AddMinutes(10)
-  do {
-    $v = gh pr view $pr --repo dazewell/Dazegram --json mergeStateStatus,headRefOid | ConvertFrom-Json
-    "$(Get-Date -Format HH:mm:ss)  $($v.mergeStateStatus)  $($v.headRefOid)"
-    if ($v.headRefOid -ne $approved) { throw "head moved off the approved SHA $approved — abort and re-ask" }
-    if ($v.mergeStateStatus -ne 'UNKNOWN') { break }
-    Start-Sleep 20
-  } while ((Get-Date) -lt $deadline)
-  # proceed only if $v.mergeStateStatus -eq 'CLEAN' AND $v.headRefOid -eq $approved
-  ```
-- **Bind the approval to the SHA it was given for, and re-check the head every
-  poll iteration.** Record the full `headRefOid` you presented when he approved
-  (`$approved` above). A poll that only *prints* the current head silently lets a
-  commit that landed after approval settle `CLEAN` on a head the approval never
-  covered, with the non-CI gates (the missing-`#slug` query, the attribution
-  greps, the `.github/sync/**` exclusion, the thread check) never run against that
-  head. So compare the live `headRefOid` to `$approved` on **every** iteration and
-  **abort-and-re-ask** the instant it differs — never merge the new head on the
-  old approval — then re-check it once more immediately before the merge call. The
-  `--match-head-commit <approved>` pin below is the mechanical backstop that makes
-  the merge itself *fail* rather than land a head you did not re-verify, but the
-  poll-time comparison is what turns a stale approval into a re-ask instead of a
-  late failure. An approval is bound to a **SHA as well as to a session** (comms
-  protocol Rule 11): a new commit invalidates it exactly as a new session does.
-- **Re-confirm the declared-blocker constraint at merge time, not just when the
-  order was drawn.** A PR whose linked issue carries `status:blocked` +
-  `> Blocked until PR #<n> …` is eligible to land only once that named PR has
-  actually merged — re-read it before *this* merge, because the ordering plan was
-  a snapshot and a blocker that was open then may still be open now (or a PR may
-  have gained a blocker after the plan was drawn). An open declared blocker is
-  **stop and report**, never a heuristic to weigh against the others.
-- **Re-verify the non-CI Phase 4 gates on the same current head**, so "every
-  Phase 4 gate re-verified" is honest and not just the sync/merge/CI subset: the
-  PR still targets `dev` and is not converted to draft; the two hard-line
-  attribution greps and the missing-`#slug` query still return nothing on the head
-  tree; every review thread is still resolved (paginate `reviewThreads` until
-  `pageInfo.hasNextPage` is false — the Phase 4 snippet's `first:100` silently
-  hides thread 101+ on a heavily-reviewed PR); and any required final-state or
-  whole-feature pass recorded in the handback still holds for this head. A PR that
-  became ineligible after the landing plan was drawn — a new commit, a reopened
-  thread, a draft toggle — is **stop and report**, not merge.
-- **Bind the merge to the SHA you verified.** Re-reading `headRefOid` closes the
-  staleness window only if the merge itself is pinned to it — a concurrent push
-  can advance the head between the last check and the merge call. Merge with
-  `gh pr merge <n> --merge --match-head-commit <headRefOid>` (never `--squash`,
-  never `--admin`/`--auto`), which **fails** rather than landing a head you did
-  not check. A plain `gh pr merge` on a green tagged PR would silently land the
-  newer head, so the flag is not optional.
-- **Merge back-to-back and deliberately un-spaced, and record that reason.**
-  `staging.yml`'s concurrency group resolves to `staging-dev` with
-  `cancel-in-progress: true`, so N back-to-back merges **best-effort** collapse to
-  one surviving build and one Telegram upload of the final `dev` state — the
-  mechanism only cancels a run still queued or in progress, so a fast first run
-  that reaches `Upload staging` before the next merge lands does upload, and a
-  batch can still produce more than one upload; back-to-back merging minimises
-  that, spacing merges out past a build's duration maximises it. Either way,
-  spacing is the wrong move: it is what reliably turns a single delivery into N
-  uploads and trips the bot's flood limit. Write the reason down so a later reader
-  does not "improve" it by adding delays. Intermediate **cancelled** `staging-dev`
-  runs are expected, not failures.
-- **Never resolve conflicts or update a branch on his behalf.** If a merge makes
-  a later PR conflict or go stale, stop and report it — that is a new decision,
-  not a mechanical step.
-- **After the batch**, confirm the staging outcome on `dev`'s **final** SHA. If
-  the batch contained any app-source merge, confirm exactly one green run with
-  `Upload staging` green pinned to that final SHA — or, if the last merge was
-  path-ignored by `staging.yml`, to the last SHA that was **not**. `staging.yml`'s
-  push `paths-ignore` is not identical to `ci.yml`'s — it ignores `**.md`,
-  `.github/**`, `docs/**`, `.githooks/**`, but **not** `.claude/**` except via
-  `**.md` — so decide "did a push build fire" by whether a `staging-dev` run
-  exists for that SHA, not by re-deriving the list here. Record "no staging run
-  expected" only when the push trigger fired nothing for the whole batch **and**
-  no publish was requested — its `pull_request: labeled` trigger has **no** path
-  filter, so a doc-only PR carrying `build-apk` (or a manual dispatch) still
-  produced a run; if one was requested, confirm that run's `Upload staging` result
-  instead of reporting none was expected.
+The batch's **execution mechanics** are normative in `nagramx-branch-flow`
+(*Landing several PRs*); execute from there and do not restate them here. This file
+adds only what is *authority* rather than mechanics, and it is stated once, in
+*Hard limits* below: a root orchestrator may run those mechanics only after a
+**named in-chat approval** that is bound to both this root session and the specific
+reviewed head SHA, is **non-transferable** (not inherited by a successor or
+fallback session — comms Rule 11), forbids `--admin`/`--auto`, and does **not**
+carry branch-deletion authority (a landed branch is deleted only when the approval
+names it *and* the PR body or linked issue records it is not an upstream
+candidate). Approval authorises the button, never the evidence: it does not waive
+review, the hard-line greps, the missing-`#slug` query, or the `.github/sync/**`
+exclusion, and every gate in the branch-flow procedure is re-verified fresh on the
+head being merged. Keep *Hard limits* and the branch-flow procedure as the single
+copy of their respective halves; this heading is only the seam between them, not a
+third copy.
 
 The platform backstop is narrow, and it matters that you know its edge: ruleset
 `22861936` (`dev required checks (no bypass)`) requires the status-check context
@@ -1815,7 +1679,7 @@ lighter touch.
   - The approval is **non-transferable** (comms protocol Rule 11): it is recorded
     as an authorization held by *this* session, closed **per PR** when the session
     ends — each named PR that this session actually merged as `landed` (citing the
-    merge commit), each it did not as `superseded` — **never** written into a
+    squash commit), each it did not as `superseded` — **never** written into a
     successor brief's `Outstanding authorizations (gG.vN)` field, and a
     replacement session must re-ask dazewell for any still-unmerged PR rather than
     inherit it.
@@ -1825,7 +1689,8 @@ lighter touch.
     whether it would defeat ruleset `22861936`'s empty-`bypass_actors` tag check
     is untested and beside the point: an agent must never reach for the override
     at all. `--auto` merges on a future state you have not verified. Merge only
-    with a plain merge commit (never squash) once the gates are green *now*.
+    with `gh pr merge <n> --squash --match-head-commit <sha>` once the gates are
+    green *now*.
   - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
     change flips `sync-guard-check` red on every other open branch, not just the
     merged one, so it is a human step regardless of approval — hand it back.
