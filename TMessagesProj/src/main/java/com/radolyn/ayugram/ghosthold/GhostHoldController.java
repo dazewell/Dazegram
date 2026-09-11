@@ -333,11 +333,27 @@ public final class GhostHoldController {
         // (only replies targeting another chat; ordinary same-chat replies stay
         // holdable). So refuse rather than degrade, the same disposition we take for
         // media, ephemeral and poll/todo replies: the message is sent now, exactly as
-        // composed, and the send-exposure warning speaks. A same-dialog cross-topic
-        // reply is NOT refused here -- its reply_to_peer_id would equal the send peer,
-        // so dropping it changes nothing, and the topic id is persisted.
+        // composed, and the send-exposure warning speaks.
         if (p.replyToMsg != null && p.replyToMsg.getDialogId() != peer) {
             return false;
+        }
+        // A same-dialog cross-topic forum reply is the other half of that trap. In a
+        // forum the funnel takes its anotherTopic path (SendMessagesHelper:5164-5180)
+        // and converts the reply into a quote just like the cross-chat case -- setting
+        // reply_to_peer_id and pulling in generated quote text/entities/media.
+        // persistHeld stores none of that and of(mo) has no replyToMsg to make the
+        // funnel repeat it, so a held cross-topic reply would flush without the
+        // conversion -- something other than what was held. Detect it with the funnel's
+        // own test (forum dialog, reply target is not the topic root and sits in a
+        // different topic), using the params it carries, and refuse with the same
+        // disposition as the cross-chat case.
+        if (p.replyToMsg != null && p.replyToTopMsg != null) {
+            TLRPC.Chat chat = MessagesController.getInstance(account).getChat(-peer);
+            if (ChatObject.isForum(chat)
+                    && p.replyToTopMsg.getId() != p.replyToMsg.getId()
+                    && MessageObject.getTopicId(account, p.replyToMsg.messageOwner, true) != p.replyToTopMsg.getId()) {
+                return false;
+            }
         }
         // Fail-closed backstop for the remaining fields no explicit guard above
         // covers: refuse unless each of them is at its default, and refuse if the
@@ -1488,6 +1504,16 @@ public final class GhostHoldController {
             return;
         }
         AndroidUtilities.runOnUIThread(() -> {
+            // If logout already ran before this UI turn (appDidLogout posts on the UI
+            // thread too, and this runnable may have been queued off-thread by maybeHold
+            // just before it), the slot is no longer ours. Claiming it here would warm-
+            // load the store and register observers against a logged-out account, and a
+            // same-user re-login could then serve the previous session's rows. Skip
+            // without claiming; a real login re-triggers init through maybeHold or
+            // checkOnProcessStart, both of which run only for an activated account.
+            if (!UserConfig.getInstance(account).isClientActivated()) {
+                return;
+            }
             // Claim the account and install the observer in the same UI turn. If the
             // flag were set before the observer were actually registered, a logout in
             // that gap would be missed (appDidLogout also posts on the UI thread): the

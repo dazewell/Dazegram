@@ -250,10 +250,17 @@ public final class GhostHoldStore {
             // to stop -- so purge before stamping. current != 0 here (early return
             // above), so stored == 0 lands in this branch. A fresh first open hits it
             // too, but ghost_held is empty then, so the delete is a no-op.
-            db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
+            //
+            // Drop the in-memory view first: if the DELETE below throws (a locked or
+            // corrupt db), the on-disk rows survive, but we must not keep serving them
+            // from master. Clearing and publishing an empty snapshot before the delete,
+            // and leaving snapshotOwner unset until the delete succeeds, means a thrown
+            // delete leaves an empty view and an un-bound owner, so the next access
+            // re-runs this gate rather than leaking the previous owner's rows.
             master.clear();
             loaded = false;
             publish();
+            db.executeFast("DELETE FROM ghost_held").stepThis().dispose();
             db.executeFast("REPLACE INTO ghost_meta(k, v) VALUES(1, " + current + ")").stepThis().dispose();
         }
         snapshotOwner = current;
@@ -399,10 +406,14 @@ public final class GhostHoldStore {
     public ArrayList<HeldRecord> selectAllOnQueue() {
         try {
             ensureLoaded();
+            return new ArrayList<>(master.values());
         } catch (Exception e) {
+            // Fail closed: if the ownership gate could not run (e.g. the purge DELETE
+            // threw), never return the in-memory view -- it may still hold the previous
+            // owner's rows. An empty snapshot is safe; a stale one leaks.
             FileLog.e(e);
+            return new ArrayList<>();
         }
-        return new ArrayList<>(master.values());
     }
 
     /** Rows in a given state; call on the queue. */
@@ -426,10 +437,13 @@ public final class GhostHoldStore {
     public HeldRecord selectOnQueue(int mid) {
         try {
             ensureLoaded();
+            return master.get(mid);
         } catch (Exception e) {
+            // Fail closed, as in selectAllOnQueue: a failed ownership gate must return
+            // null, not a row that may belong to the previous owner.
             FileLog.e(e);
+            return null;
         }
-        return master.get(mid);
     }
 
     /** Count of held rows for a dialog; safe to read off-queue (published snapshot). */
