@@ -446,6 +446,19 @@ public final class GhostHoldStore {
         }
     }
 
+    /**
+     * True if a row for {@code mid} is present; call on the queue. Unlike
+     * {@link #selectOnQueue}, this does not swallow a store/ownership error -- it lets
+     * {@link #ensureLoaded()} throw so the caller can tell a row that is genuinely
+     * absent from one it simply could not read. A caller that would take a destructive
+     * action on "absent" (cancelling a handed-off twin) must not treat a transient read
+     * failure as a deletion.
+     */
+    public boolean isPresentOnQueue(int mid) throws SQLiteException {
+        ensureLoaded();
+        return master.containsKey(mid);
+    }
+
     /** Count of held rows for a dialog; safe to read off-queue (published snapshot). */
     public int cachedCountForDialog(long dialogId) {
         List<HeldRecord> list = byDialog.get(dialogId);

@@ -1215,7 +1215,21 @@ public final class GhostHoldController {
                     // may already be gone), which is the correct direction under NOT LOST
                     // > NOT LEAKED > NOT DUPLICATED: a stray duplicate is the least-bad
                     // outcome.
-                    boolean rowGone = store.selectOnQueue(mid) == null;
+                    boolean rowGone;
+                    try {
+                        rowGone = !store.isPresentOnQueue(mid);
+                    } catch (Exception e) {
+                        // A transient fork-store read failure is not a proven deletion.
+                        // selectOnQueue would fold that error into a null (fail closed,
+                        // correct for the render and flush readers), but here "gone"
+                        // triggers cancelSendingMessage on a twin that was already handed
+                        // off -- so a read error would cancel a live send and lose the
+                        // message. NOT LOST outranks the stray-duplicate risk, so treat a
+                        // read failure as "still present": complete the handoff and let
+                        // reconciliation clean up rather than cancel on a false negative.
+                        FileLog.e(e);
+                        rowGone = false;
+                    }
                     if (rowGone && sentObj != null) {
                         AndroidUtilities.runOnUIThread(() ->
                                 SendMessagesHelper.getInstance(account).cancelSendingMessage(sentObj));
