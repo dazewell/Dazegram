@@ -58,11 +58,11 @@ import tw.nekomimi.nekogram.NekoConfig;
  * on-screen delivery would mean this feature owning presentation, which is out
  * of proportion for a warning.
  * <p>
- * NagramX: a future change should add a Hold-Messages-inactive condition here
- * (once the currently-unmerged Hold Messages setting lands) and update
- * {@code GhostTypingReminder}'s copy to mention it -- this build has no Hold
- * setting to check, so the reminder fires whenever Ghost Mode is active, full
- * stop.
+ * NagramX: Ghost Hold (PR #347) added a Hold Messages setting, but this
+ * reminder still fires whenever Ghost Mode is active. Gating it on
+ * Hold-Messages-inactive -- and updating {@code GhostTypingReminder}'s copy to
+ * mention it -- is a possible future refinement, deliberately left out here so
+ * this change adds no new behaviour.
  */
 public class GhostTypingReminderHelper {
 

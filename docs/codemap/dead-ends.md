@@ -613,7 +613,7 @@ was for, not silence.
 
 Unlike the deleted send-time state, this feature needed its own transition
 counter to know when a Ghost session actually restarted, and that counter
-went through three revisions before landing on its current shape, each one
+went through four revisions to reach its current shape, each one
 correcting a different mistake in the last:
 
 1. The first cut bumped a `ghostSessionEpoch` counter, owned by `NekoConfig`,
@@ -660,11 +660,11 @@ correcting a different mistake in the last:
    and bumps the epoch only on a real false→true. Callers therefore don't have
    to know whether they caused a transition, which is the whole point --
    the predicate has no single writer. It is called from
-   `NekoConfig#setGhostMode` (`NekoConfig.java:323-341`), from
-   `GhostModeActivity#updateGhostViews` (`GhostModeActivity.java:100`, the one
+   `NekoConfig#setGhostMode` (`NekoConfig.java:324-349`), from
+   `GhostModeActivity#updateGhostViews` (`GhostModeActivity.java:153`, the one
    point all five individual signal rows already route through after toggling),
    and from `GhostModeActivity#onItemLongClick`'s lock branch
-   (`GhostModeActivity.java:200`, since a locked signal is skipped by the
+   (`GhostModeActivity.java:255`, since a locked signal is skipped by the
    predicate and so locking one can flip it on its own). An extra call that
    changed nothing is a no-op, so density is free.
 

@@ -566,10 +566,10 @@ last active toggle turns Ghost off without that method ever running.
 `ChatActivityEnterView` is instantiated from five call sites, but only one of
 them gives it a real hosting fragment and a real chat to key state on:
 
-- `ChatActivity.java:8604` — passes `this` as the `fragment` constructor
+- `ChatActivity.java:8645` — passes `this` as the `fragment` constructor
   argument (stored in the `parentFragment` field, declared
   `ChatActivityEnterView.java:811` as `ChatActivity parentFragment`) and later
-  (`ChatActivity.java:8853`) calls `setDialogId(long, int)`
+  (`ChatActivity.java:8894`) calls `setDialogId(long, int)`
   (`ChatActivityEnterView.java:8237`) with the real chat's dialogId. This is
   the only call site where `parentFragment` is ever non-null and `dialog_id`
   (`ChatActivityEnterView.java:812`) is ever the actual open chat.
@@ -594,7 +594,7 @@ or the story reply box, none of which represent an actual open chat.
 
 The corollary matters just as much, and cost a design round to work out: those
 four surfaces send real messages. Only one of the five instantiations passes a
-fragment (`ChatActivity.java:8604`); the other four pass `null` —
+fragment (`ChatActivity.java:8645`); the other four pass `null` —
 `DialogsActivity.java:5075` (share/forward sheet comment),
 `Gifts/GiftMessageBottomSheet.java:179`, `Stories/PeerStoriesView.java:3202`
 (story reply) and `PopupNotificationActivity.java:317` (notification quick

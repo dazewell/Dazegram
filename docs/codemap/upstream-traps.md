@@ -1257,7 +1257,7 @@ discriminator is `media == null`, which is what the two branches above
 establish; but prefer not to classify user intent by request type at all,
 since the reverse case bites equally -- a typed message with a resolved link
 preview leaves as `TL_messages_sendMedia` carrying `TL_inputMediaWebPage`
-(`SendMessagesHelper.java:5338-5355`), not as `TL_messages_sendMessage`.
+(`SendMessagesHelper.java:5363-5380`), not as `TL_messages_sendMessage`.
 
 This is a warning for a future classifier, not a description of existing code.
 The fork's nearest thing to one, the Ghost Mode send warning
