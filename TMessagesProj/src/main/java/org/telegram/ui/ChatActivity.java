@@ -4340,9 +4340,19 @@ public class ChatActivity extends BaseFragment implements
                         } else {
                             Collections.sort(ids, Collections.reverseOrder());
                         }
+                        // NagramX: assemble this side's copyable rows in dispatch order, then run them
+                        // through the shared send boundary so a Ghost-held row is never folded into the
+                        // new combined send.
+                        ArrayList<MessageObject> sideMessages = new ArrayList<>();
                         for (int b = 0; b < ids.size(); b++) {
-                            Integer messageId = ids.get(b);
-                            MessageObject messageObject = selectedMessagesCanCopyIds[a].get(messageId);
+                            MessageObject messageObject = selectedMessagesCanCopyIds[a].get(ids.get(b));
+                            if (messageObject != null) {
+                                sideMessages.add(messageObject);
+                            }
+                        }
+                        sideMessages = naxExcludeHeldFromSend(sideMessages);
+                        for (int b = 0; b < sideMessages.size(); b++) {
+                            MessageObject messageObject = sideMessages.get(b);
                             if (b == 0 && NaConfig.INSTANCE.getCombineMessage().Int() == 0) {
                                 replyTo = messageObject.replyMessageObject;
                             }
@@ -4358,7 +4368,7 @@ public class ChatActivity extends BaseFragment implements
                             }
                             str.append(messageObject.messageText);
                             if (messageObject.getSenderId() == UserConfig.getInstance(currentAccount).getClientUserId()) {
-                                toDeleteMessagesIds.add(messageId);
+                                toDeleteMessagesIds.add(messageObject.getId());
                             }
                         }
                     }
@@ -13671,6 +13681,13 @@ public class ChatActivity extends BaseFragment implements
 
     public void openForward(boolean fromActionBar) {
         boolean hasSelectedAyuDeletedMessage = hasSelectedAyuDeletedMessage();
+        if (forwardingMessage == null && (selectedMessagesIds[0].size() + selectedMessagesIds[1].size()) > 0
+                && naxBuildForwardSpreadSelection().isEmpty()) {
+            // NagramX: an all-held multi-selection has nothing left to forward once the send boundary
+            // excludes held rows. Clear rather than open the picker onto an empty forward.
+            clearSelectionMode();
+            return;
+        }
         if (isPeerNoForwards() || hasSelectedNoforwardsMessage() || hasSelectedAyuDeletedMessage) {
             // We should update text if user changed locale without re-opening chat activity
             String str;
@@ -37135,10 +37152,35 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+    // NagramX: the one boundary that keeps a Ghost-held row out of every send-capable bulk action on
+    // the Scheduled list. A held row keeps a negative local id the server has never seen and must never
+    // be dispatched while it is held, yet it stays selectable so delete, edit-time and reschedule still
+    // act on it -- so the exclusion belongs where a selection turns into a send, not at selection time.
+    // Every send path routes its message list through here, so the rule lives in one place and a send
+    // action added later inherits it instead of having to remember it -- the same single-chokepoint
+    // shape as the store-ownership gate and the dispatch session token. Off the Scheduled list there are
+    // no held rows, so this is inert there.
+    private ArrayList<MessageObject> naxExcludeHeldFromSend(ArrayList<MessageObject> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return messages;
+        }
+        ArrayList<MessageObject> out = new ArrayList<>(messages.size());
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject m = messages.get(i);
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) {
+                continue;
+            }
+            out.add(m);
+        }
+        return out;
+    }
+
     // NagramX: #repost-spread. The exact set a forward dispatch will act on, in dispatch order: the
     // field-panel forward (single message or its album) when one is armed, otherwise the multi-select
     // in id order across both selection maps. didSelectDialogs and the spread gate both build the
     // selection from here, so the gate can never see a different count than the dispatch forwards.
+    // Held rows are dropped through the shared send boundary so a scheduled forward-as-copy never
+    // pushes held content to the server.
     private ArrayList<MessageObject> naxBuildForwardSpreadSelection() {
         ArrayList<MessageObject> fmessages = new ArrayList<>();
         if (forwardingMessage != null) {
@@ -37163,7 +37205,7 @@ public class ChatActivity extends BaseFragment implements
                 }
             }
         }
-        return fmessages;
+        return naxExcludeHeldFromSend(fmessages);
     }
 
     // NagramX: #repost-spread. The forward picker asks for this at gate time to decide whether to offer
@@ -37189,6 +37231,19 @@ public class ChatActivity extends BaseFragment implements
             return false;
         }
         ArrayList<MessageObject> fmessages = naxBuildForwardSpreadSelection();
+        if (fmessages.isEmpty()) {
+            // NagramX: the send boundary dropped every row (an all-held selection), so there is nothing
+            // to forward. Clear rather than dispatch an empty forward and strand the user in selection.
+            for (int a = 1; a >= 0; a--) {
+                selectedMessagesCanCopyIds[a].clear();
+                selectedMessagesCanStarIds[a].clear();
+                selectedMessagesIds[a].clear();
+            }
+            hideActionMode();
+            updatePinnedMessageView(true);
+            updateVisibleRows();
+            return false;
+        }
         for (int j = 0; j < dids.size(); j++) {
             TLRPC.Chat chat = getMessagesController().getChat(-dids.get(j).dialogId);
             if (chat != null) {
@@ -48982,10 +49037,17 @@ public class ChatActivity extends BaseFragment implements
         }
         final ArrayList<MessageObject> messages = new ArrayList<>();
         if (hasSelectedMessages()) {
-            messages.addAll(getSelectedMessages1());
+            messages.addAll(naxExcludeHeldFromSend(getSelectedMessages1()));
             selectedObject = null;
-        } else if (selectedObject != null) {
+        } else if (selectedObject != null && !com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(selectedObject)) {
             messages.add(selectedObject);
+        }
+        if (messages.isEmpty()) {
+            // NagramX: the shared send boundary excluded every candidate -- an all-held multi-selection,
+            // or a single held row from the context menu. Nothing to re-send; clear rather than run the
+            // copy dispatch on an empty list and strand the user in selection.
+            clearSelectionMode();
+            return;
         }
         if (!NekoConfig.repeatConfirm.Bool()) {
             doRepeatMessage(isLongClick, messages, isRepeatasCopy);

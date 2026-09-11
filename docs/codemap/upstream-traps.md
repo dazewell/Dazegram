@@ -1237,14 +1237,35 @@ scheduled gate, `ChatActivity.java:21001`; handler `:48162` ->
 `canSendMessagesAsCopy(getSelectedMessages1())` at
 `ChatActivity.java:21093-21097`). The lesson: guarding held rows action-by-action
 is the wrong shape, because the held row is admitted to the *selection* upstream
-of every action; the durable fix is to keep held rows out of the bulk selection
-(or out of the send-capable actions at that boundary), not to chase each new
-action. Recorded as an open presentation decision, not yet fixed.
+of every action; the durable fix is to keep held rows out of the send-capable
+selection at one boundary, not to chase each new action.
+
+**Fixed with one shared boundary.** `naxExcludeHeldFromSend`
+(`ChatActivity.java:37163`) is the single place the exclusion rule lives: given
+the message list an action is about to send, it drops every `isHeld` row. Held
+rows stay selectable, so delete / edit-time / reschedule still act on them --
+the filter is applied where a selection *turns into a send*, not at selection
+time. Each of the three reachable send-capable actions routes its assembly
+through it: `combine_message` per side (`ChatActivity.java:4353`),
+`repeatMessage`'s multi-select list and its single-object context-menu path
+(`ChatActivity.java:49040` and the `isHeld(selectedObject)` guard just below),
+and the scheduled `forward` at the one assembly chokepoint every forward
+sub-path shares, `naxBuildForwardSpreadSelection` (`ChatActivity.java:37208` --
+so `didSelectDialogs`, the spread gate, and the slot-count gate all see the
+filtered set). A selection that filters to empty (all held) clears selection
+rather than dispatching nothing or stranding the user: `openForward`
+(`ChatActivity.java:13674`) declines to open the picker, `didSelectDialogs`
+(`ChatActivity.java:37216`) aborts, and `repeatMessage` returns. The two
+pre-existing guards (Send-Now, reschedule spread) already enforce the same
+property at their own assembly loops and were left as-is. A send action added to
+the Scheduled action mode later inherits the exclusion by routing its send list
+through the same boundary.
 
 *(Established 2026-09-10, `#ghost-hold`, during the ghost-hold-audit branch
 superseding PR #336 -- the item-3 re-audit that asked, for every Scheduled-list
 action, both "can it act on a held row?" and "can a held row change what it does
-to other rows?".)*
+to other rows?". Boundary landed 2026-09-10 on the ghost-hold-selection branch,
+`#ghost-hold`.)*
 
 ## Ghost Hold: logout purge cannot run on a doubly-broken teardown
 
