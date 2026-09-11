@@ -7055,6 +7055,20 @@ public class ChatActivityEnterView extends FrameLayout implements
                         delegate.needSendTyping();
                     }
                 }
+                // NagramX: remind (not warn after the fact) that Ghost Mode doesn't cover sending,
+                // on the true empty-to-non-empty transition of the composer -- parentFragment is
+                // only non-null for the real chat composer (ChatActivity), not the other surfaces
+                // that share this widget, and edit modes send TL_messages_editMessage, which this
+                // reminder deliberately excludes just like the send-time warning's own allowlist does.
+                // The stashed-draft restore on leaving edit mode is also guarded against (it now sets
+                // ignoreTextChange around its own setText call, same as this file's other direct
+                // restores), so this can't misfire from that transition.
+                if (!ignoreTextChange && parentFragment != null && editingMessageObject == null && !isEditingBusinessLink()) {
+                    int previousLength = charSequence.length() - count + before;
+                    if (previousLength == 0 && count > 0) {
+                        tw.nekomimi.nekogram.helpers.GhostTypingReminderHelper.onComposerTypingObserved(currentAccount, dialog_id, parentFragment);
+                    }
+                }
                 updateSendButtonPaid();
             }
 
@@ -12508,8 +12522,16 @@ public class ChatActivityEnterView extends FrameLayout implements
             }
             createMessageEditText();
             if (messageEditText != null) {
+                // NagramX: guard this draft restore the same way every other direct
+                // setText call in this file already does, so it can't misfire the
+                // typing-time Ghost Mode reminder (or the existing needSendTyping
+                // logic) when leaving edit mode happens to land on an
+                // empty-to-non-empty transition (e.g. an empty caption was being
+                // edited while a non-empty pre-edit draft was stashed).
+                ignoreTextChange = true;
                 messageEditText.setText(draftMessage);
                 messageEditText.setSelection(messageEditText.length());
+                ignoreTextChange = false;
             }
             draftMessage = null;
             messageWebPageSearch = draftSearchWebpage;

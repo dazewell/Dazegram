@@ -82,10 +82,26 @@ re-run any of your gates; it is a pure supervisor. So:
   have done no work, and the parent recovers a never-reported, zero-diff child
   through the **same pre-`RUNNING` cleanup path** it uses for a pre-`RUNNING`
   `ABORTED` — mechanically confirm zero diff, run the lifecycle pre-archive
-  checklist, then archive (see the mis-dispatch / pre-`RUNNING` archive path and
+  checklist, discharge any outstanding-authorization list your brief carried
+  (zero git diff is not an empty ledger, and as a replacement you hold an
+  inherited list from the moment you start), then archive (see the mis-dispatch
+  / pre-`RUNNING` archive path and
   the idle-decision table below). The control messages are:
   - `RUNNING <unit-slug>` — sent once at startup, after your preflight, naming
-    your resolved agent identity and your `coord-<slug>` branch.
+    your resolved agent identity and your `coord-<slug>` branch, plus your
+    current `Outstanding authorizations (gG.vN): …` snapshot at startup —
+    **initialized from your brief's own `Outstanding authorizations (gG.vN)`
+    field, carrying its generation, its version and its list verbatim** — not
+    reset to empty, and **not incremented**. The brief is the single place `g`
+    is incremented (the coordinator writing it does so when it dispatches you);
+    bumping it again here would make you announce a generation that differs from
+    your own handoff token, so your parent's ordering would no longer line up
+    with the brief it wrote. A
+    replacement child inherits real outstanding work through that field, so
+    reporting `(g1.v0): <none>` because *this session* has authorized nothing
+    would drop the carried obligation at the first message your parent ever
+    sees. `(g1.v0): <none>` is correct only when the brief's field is itself
+    explicitly `<none>` on a genuinely new unit.
   - `WAITING_HUMAN <unit-slug>: <one-line question>` — sent **before** you call
     `ask_user`, so a lost or never-observed `ask_user` cannot stall you
     invisibly. Your own stall clock is considered paused while you wait.
@@ -99,8 +115,23 @@ re-run any of your gates; it is a pure supervisor. So:
     archive. **Carry your own process ledger in this message** (in the
     process-lifecycle ledger format, `Processes: <none>` when empty) plus your
     per-direct-child archive results, so the parent can re-verify — a bare
-    `CLOSED` with no ledger is rejected. Leaf-to-root only (see the
-    process-lifecycle skill).
+    `CLOSED` with no ledger is rejected. **You may not send `CLOSED` while you
+    still hold an open authorization toward one of your own dispatched
+    sessions** (comms protocol Rule 11, applied recursively to you as a
+    coordinator) — **close each one on the item's ledger first: landed,
+    declined, or superseded.** Transfer is not a move available to you here:
+    dispatching a successor to carry an item would leave an unarchived direct
+    child and break the precondition above, and a successor your parent owns is
+    one you can neither create nor verify before you must send this message.
+    Transfer belongs to whoever archives or replaces a session, not to a session
+    closing itself — and you are still alive at this point, so you can land,
+    decline or supersede anything you hold. If an item genuinely ought to carry
+    forward, either decline it explicitly with the reason, or send
+    `BLOCKED_PARENT` and let your parent, who owns the successor, transfer it on
+    the replacement path. Your
+    `coord-<slug>` branch is never committed, so this
+    precondition, not a git diff, is what closes the gap for your own subtree.
+    Leaf-to-root only (see the process-lifecycle skill).
   - `BLOCKED_ARCHIVE <unit-slug>: <evidence>` — you cannot cleanly close because
     a descendant is blocked or a process would not verify as stopped. Report
     this **instead of** `CLOSED`, never alongside it.
@@ -109,8 +140,48 @@ re-run any of your gates; it is a pure supervisor. So:
     pre-`RUNNING` failure** — a failed `coord-<slug>` rename or a failed
     preflight). Send it before you stop, with the exact reason, so the parent
     surfaces it upward without re-investigating and never mistakes a dead
-    session for a working one. The one case you cannot send it is a missing
-    parent address, above.
+    session for a working one. **Always include your current `Outstanding
+    authorizations (gG.vN): …` snapshot — on every `ABORTED`, pre-`RUNNING`
+    failures included** — it is the
+    only durable record your parent will ever have of what you had committed
+    to, since your branch carries none of it. "I had not started work" is not a
+    reason to omit it: a replacement child holds a non-empty inherited list from
+    its brief before it does anything at all, and an omitted or unversioned
+    snapshot is one the parent cannot order against what it already holds. When
+    you genuinely hold nothing, send the brief's own value, which is an explicit
+    `<none>` at its stated generation and version. **List every open
+    authorization, whether or not you have dispatched it** — an item already
+    sent to a descendant but not yet landed is still open and still yours to
+    report; narrowing the snapshot to undispatched work would drop exactly the
+    obligations a dead child had already set in motion. The one case you cannot
+    send it is a missing parent address, above.
+
+  **Every control message above carries your current `Outstanding
+  authorizations (gG.vN): …` snapshot, not only `RUNNING`, `CLOSED`, and
+  `ABORTED`** — it is cheap to restate and it is the only place this state
+  exists outside your own context. Increment `N` on **any** change to the
+  rendered list — an item added, an item closed, an item re-pointed at a
+  different session when you replace a stalled descendant of your own, one entry
+  leaving a multi-item list, or the list becoming
+  `<none>`; the test is simply whether the list differs from the one you last
+  sent, so never re-send changed content at an old version. Leave `N` alone on a
+  message that merely repeats it unchanged. Note that re-pointing an item at a
+  replacement descendant does **not** remove it from *your* list: transferring it
+  discharges the stalled descendant's ledger, while the item itself stays open
+  and stays yours until it lands, is declined, or is superseded. **The control
+  vocabulary can
+  arrive out of order** (comms protocol Rule 1's carve-out for recurring
+  messages), so your parent orders snapshots by **`g` first, then `N`** and
+  adopts one only if it orders strictly after the last it accepted — an equal or
+  earlier snapshot arriving late is discarded as stale, never used to overwrite
+  what the parent already holds. `g` is what stops a superseded predecessor's
+  delayed high-`N` snapshot from overwriting its replacement's live state; your
+  parent also stops accepting from a session the moment it dispatches that
+  session's replacement. A
+  child that goes dark between two control messages having authorized new
+  descendant work in that gap loses it exactly as a leaf session's uncommitted
+  edits are lost on a stall — restating it every message narrows that window,
+  it does not close it (comms protocol Rule 11).
 - **You forfeit the trivial-work commit exception entirely** (see *You do not
   implement*). A root orchestrator may make a one-line doc/CI commit itself; a
   child orchestrator never commits — its branch is `coord-<slug>`, which is not
@@ -507,12 +578,35 @@ that never reported one has no processes it recorded, so a clean worktree-
 filtered residual sweep *is* the evidence for an empty ledger (`Processes:
 <none>`), and that empty ledger is a valid checklist input, not a violation of
 it. Only when that checklist passes clean do you archive the session and report
-the dispatch failure. **The same path recovers a correctly-dispatched child that
+the dispatch failure.
+
+**Zero git diff is not an empty authorization ledger, and the two must not be
+collapsed.** The three git checks above prove the session produced no *code*;
+they say nothing about what it was *owed to do*. A **replacement** child holds a
+non-empty inherited list from its brief's `Outstanding authorizations (gG.vN)`
+field from the instant it starts, before it can touch a file — so a replacement
+that fails preflight is precisely the zero-diff session whose ledger is not
+empty, and archiving it on the strength of a clean `git status` would drop the
+carried obligation at the one moment it becomes unrecoverable. That is the
+failure Rule 11 exists to prevent, arriving through the archive path rather than
+the handoff. So before archiving any pre-`RUNNING` child, read its
+outstanding-authorization list — from its own brief, or from the snapshot on its
+`ABORTED` if it managed to send one — and apply the Rule 11 check to it: every
+item either closed (landed, declined, superseded) or **transferred** into the
+next replacement brief and verified present there. Transfer is available to you
+here, because you are the archiving coordinator and you own the successor. An
+explicit `<none>` on a genuinely new unit is the normal case and passes
+immediately; a non-empty list on a replacement is the case that must not be
+waved through.
+
+**The same path recovers a correctly-dispatched child that
 simply never reported** — for instance one whose kickoff was missing your
 `project_session_id`, so it stopped after preflight unable to send even
 `ABORTED`: confirm zero diff the same way — `git -C <path> status`,
 `git -C <path> diff HEAD`, **and** `git -C <path> log <base>..HEAD --oneline` all
-clean (including no commits ahead of base) — run the checklist, and archive. It is a no-work
+clean (including no commits ahead of base) — run the checklist, **discharge its
+outstanding-authorization list per the paragraph above**, and archive. It is a
+no-work
 session, not an orphan. **If it has already produced a diff** — a mis-dispatched
 generic agent can start work before any `RUNNING` — do **not** archive it: that
 would discard real work. Leave it intact, report the exact
@@ -536,10 +630,10 @@ exception to "no polling" is the suspected-stall probe path in the last row.
 | `WAITING_HUMAN` | Child is waiting on dazewell; its stall clock is paused | Do **not** nudge the child. Surface the one informational line upward (the `WAITING_HUMAN` exception in *Delegating a unit*). |
 | `CLOSED` (child orchestrators only — leaf implementers never send it) | Child's whole subtree is closed and it is safe to archive | Run the lifecycle / process-ledger pre-archive checklist against the ledger carried in the `CLOSED` message, then archive (see *clean up* in Phase 5 and the recursive rules in the process-lifecycle skill). A leaf implementer is instead archived off its normal handback. |
 | `BLOCKED_PARENT` | Child needs something above its authority | Surface the exact evidence upward, and unblock the session-infrastructure part if it is yours to unblock. Do not re-investigate or duplicate the child's recon. |
-| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` + `git -C <path> log <base>..HEAD --oneline` to confirm zero diff — all three clean, including no commits ahead of base (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
+| `ABORTED` **pre-`RUNNING`** (a failed `coord-<slug>` rename or preflight) **or a child that never reported at all** (e.g. its kickoff was missing your `project_session_id`, so it could not send even `ABORTED`) | Child stopped before doing any work; it has no PR and no `CLOSED` path of its own, so its stopped session/worktree would orphan if you only surfaced the reason or only kept probing | Surface the reason upward if you have one. Then **you own the cleanup**, because the child has no archival path: `get_session` for its worktree path, then `git -C <path> status` + `git -C <path> diff HEAD` + `git -C <path> log <base>..HEAD --oneline` to confirm zero diff — all three clean, including no commits ahead of base (`get_session` alone returns metadata, not git status), run the process-lifecycle pre-archive checklist — establishing the empty ledger yourself, exactly as for a mis-dispatch (a clean residual sweep *is* the `Processes: <none>` evidence; a pre-`RUNNING` child owes no `CLOSED` ledger), **then discharge its outstanding-authorization list before archiving — zero git diff is not an empty authorization ledger, and a replacement child holds a non-empty inherited list from its brief before it can touch a file** (read it from the brief or the `ABORTED` snapshot; close or transfer each item per Rule 11) — then archive the stopped session. If it unexpectedly shows a diff, treat it like a mis-dispatch — leave it intact for manual recovery. |
 | `ABORTED` **mid-work** (a contradiction it could not resolve after `RUNNING`) | Child stopped after producing work, possibly with a diff, a PR, or its own children | Surface the reason upward. Do **not** archive it — leave the subtree intact and hand recovery to dazewell. Do not re-investigate or duplicate the child's recon. |
 | `BLOCKED_ARCHIVE` | Child cannot close cleanly — a blocked descendant or an unverifiable process | Do not archive across it. Surface the evidence upward; the subtree stays intact for manual recovery. |
-| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status`, `git -C <path> diff HEAD`, and `git -C <path> log <base>..HEAD --oneline` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** (all three clean, no commits ahead of base) — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
+| **Ambiguous** — unexpected idle while it should be `RUNNING`, or silence after `HANDBACK_POSTED` with no control message | Cannot tell working from dead | Resolve **mechanically**: `get_session` first, then `git -C <path> status`, `git -C <path> diff HEAD`, and `git -C <path> log <base>..HEAD --oneline` on its worktree. **If it never sent `RUNNING` and sits at the handshake with zero diff** (all three clean, no commits ahead of base) — the missing-`project_session_id` case among others — it is a no-work session: route it into the pre-`RUNNING` cleanup path above (lifecycle checklist, then the outstanding-authorization discharge — zero git diff does not mean an empty ledger — then archive), do **not** keep probing a session that can never report. Otherwise, if it genuinely shows no progress, send **exactly one** status-probe message. If the next wake still shows no change, do a single `get_session` + session-tail/log read as a diagnostic (allowed for a *suspected* stall, unlike routine polling). If a **second** such wake still shows no change, **escalate upward** with `Id`/`Name`/`Path`/`StartTime` evidence. |
 
 Never take over a delegated unit yourself, and never archive a live-but-
 unresponsive child. The single-probe-then-escalate path above is the only time
@@ -770,6 +864,42 @@ Trade-off budget: <what may be spent for correctness — an extra query, an extr
                   you're deliberately overriding that with a costed migration
                   decision from the gate above.>
 Out of scope:   <explicit list>
+Outstanding authorizations (gG.vN): <every authorization owed on this unit that has
+                  not yet landed in a commit, or an explicit `<none>` — a blank
+                  field is not the same as a checked `<none>` and must not be left
+                  implicit. **Rendered on every brief, ordinary or replacement**,
+                  because the generation and version are what make the snapshot
+                  orderable later (comms protocol Rule 11). A genuinely new unit
+                  renders `Outstanding authorizations (g1.v0): <none>`. A
+                  replacement brief renders the **inherited** version and list —
+                  not `v0` — under an **incremented `g`**, so the successor's
+                  counter continues from the dead session's last value instead of
+                  restarting and comparing as stale, while any straggler message
+                  from the predecessor still orders strictly earlier. Never
+                  assume the new task this brief was written for supersedes an
+                  old authorization nobody did. Writing an item here is what
+                  makes it *transferred* — it discharges the old session for the
+                  archive gate, and leaves the item open against this brief.
+
+                  **Where you source the list depends on what kind of session
+                  died, because only one of them leaves a branch to read.**
+                  Replacing a **leaf implementer**: diff what was authorized
+                  against what its branch actually contains, and carry forward
+                  exactly what is missing — the branch is committed, so this is
+                  a mechanical check, not a judgement. Replacing a **child
+                  orchestrator**: there is no such diff available. Its
+                  `coord-<slug>` branch is deliberately never committed or
+                  pushed, so it holds none of the obligations the child had
+                  toward its own descendants. Populate the field instead from
+                  **the last control snapshot you accepted from that child** —
+                  the highest `gG.vN` you hold for it — and say in the brief that
+                  this is the source. Then carry the honest gap explicitly:
+                  anything the child authorized after its last control message is
+                  unrecoverable (Rule 11's stated limit), so the successor must
+                  treat this list as the best available record rather than a
+                  complete one, and re-derive descendant state from the session
+                  tree and its children's branches rather than trusting the list
+                  to be exhaustive.>
 
 ## What dazewell asked for, and why
 ## His answers at the gate
@@ -1279,7 +1409,36 @@ imply you have seen the app running.
 
 Then clean up: archive a child session once its pull request is verified and
 reported **and** the pre-archive checklist in
-`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes.
+`.claude/skills/nagramx-process-lifecycle/SKILL.md` passes. Before you archive,
+also discharge every outstanding authorization that session held (comms protocol
+Rule 11). **Where you read the outstanding list from depends on what you are
+archiving, because only one kind of child leaves a branch to diff.** Archiving a
+**leaf implementer**: diff what you authorized against what its branch actually
+contains. Archiving a **child orchestrator**: its `coord-<slug>` branch is never
+committed, so a diff there proves nothing — an empty coordinator branch is not
+evidence that nothing is outstanding, and blocking on an impossible diff would
+strand the archive. Read instead from the `CLOSED` ledger on an orderly exit, or
+from the last versioned snapshot you accepted from it when it died without one —
+and when it died **before `RUNNING`**, so it sent neither, read it from **the
+brief you wrote for it**, which is the copy you hold yourself. A replacement
+child's brief carries a non-empty inherited list from the instant it starts, so
+"it never reported, and its worktree is clean" is not evidence that it owed
+nothing; those are the sessions whose obligations are easiest to drop and least
+recoverable once archived.
+Then, for anything not landed, either
+cite the commit that covers it, record why it is
+being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
+— write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
+and verify it is actually there. **Transfer is yours to perform as the archiving
+coordinator** — you own the successor, so you can write the brief and verify the
+item reached it; the session being archived could do neither, which is why it is
+barred from transferring its way out of its own clean exit. Transfer discharges
+*that session* for the
+archive gate while leaving the *item* open against the new brief, which is the
+normal pass for work that was authorized and never started — the very case this
+rule exists for. Closing the item and transferring it are different acts; do not
+report a transfer as completion. Archiving is exactly the moment an un-discharged
+authorization becomes unrecoverable.
 
 **Sequencing note, orchestrator-facing:** `HANDBACK_POSTED` is not `CLOSED`. A
 child that has posted its handback is done *reporting* but not yet safe to
@@ -1437,6 +1596,28 @@ not repeat what that file states — they point at it:
   erodes. Name a mechanism only as an *example* of the property, never as the
   requirement; the day's most expensive misses were prescriptions the call site
   already knew were wrong (Rule 10).
+- **Carry the dead session's outstanding authorized work into the replacement
+  brief — an urgent new task does not retire an old authorization nobody did.**
+  Keep that list somewhere that survives the session dying, not only in its own
+  memory, and before you call a scope complete diff what was authorized against
+  what the branch actually contains rather than trusting the last report
+  (Rule 11). **As a root orchestrator your durable channel is your own session
+  transcript with dazewell** — the app preserves it independent of your process
+  being responsive, unlike conversational memory — so restate a versioned
+  `Outstanding authorizations (gG.vN): …` line **in the same turn that changes the
+  list**, not in a later reply, incrementing `N` on every change, so a
+  replacement (yours or dazewell's) can find the latest one without re-reading
+  the whole history. Deferring the line to your next reply reopens the exact
+  window the rule closes: authorize, stall, and nothing durable records it. The
+  counter belongs to the **unit**, so a replacement continues from the version
+  its brief carried rather than resetting to `v0` and being discarded as stale,
+  under an incremented `g` so a superseded predecessor's delayed snapshot can
+  never order above it. **The mirror duty when you are the recipient:** the
+  moment you dispatch a replacement for a session, stop accepting
+  outstanding-authorization snapshots from the session you replaced, whatever
+  version they claim. You created the replacement, so you know precisely when
+  the predecessor stopped being authoritative — and a straggler from it would
+  otherwise overwrite live state with a dead session's list.
 
 ## Reporting while you work
 

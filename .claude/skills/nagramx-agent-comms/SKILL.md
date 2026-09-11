@@ -1,6 +1,6 @@
 ---
 name: nagramx-agent-comms
-description: "Dazewell's protocol for how the NagramX agent sessions talk to each other — orchestrator to implementer, parent orchestrator to child orchestrator, and any coordinator watching any session it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator has to decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Binds nagramx-orchestrator (coordinator side) and nagramx-implementer (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of these same rules. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, standing authority so routine decisions don't cost a round trip, one-outstanding-instruction flow control with supersession, start-acks so a silent stall is caught in minutes not hours, terminal-review rules, mechanical liveness with restart-not-nudge, fresh-session handoff before degradation stalls a session, and self-contained instructions that survive context compaction. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug."
+description: "Dazewell's protocol for how the NagramX agent sessions talk to each other — orchestrator to implementer, parent orchestrator to child orchestrator, and any coordinator watching any session it dispatched. Trigger it whenever one session sends an instruction to or receives a report from another, whenever a coordinator has to decide whether a dispatched session is working / finished / blocked / dead, before concluding an automated review is clean, and before nursing a slow session instead of restarting it. Binds nagramx-orchestrator (coordinator side) and nagramx-implementer (worker side); the parent/child-orchestrator control vocabulary in the orchestrator agent file is the richer instance of these same rules. Covers: observable state as the single authority, state-stamping every message, re-reading your own tree before reporting, standing authority so routine decisions don't cost a round trip, one-outstanding-instruction flow control with supersession, start-acks so a silent stall is caught in minutes not hours, terminal-review rules, mechanical liveness with restart-not-nudge, fresh-session handoff before degradation stalls a session, self-contained instructions that survive context compaction, and carrying a stalled session's outstanding authorized work into its replacement rather than losing it. It exists because on a full day of multi-session work more time was lost to coordination failure than to any bug."
 ---
 
 # NagramX cross-session communication protocol
@@ -141,7 +141,7 @@ one idea in one direction or the other.
 
 ## The rules
 
-Ten rules. Each says which side it binds, how it is checked, and what it costs —
+Eleven rules. Each says which side it binds, how it is checked, and what it costs —
 because a rule that makes each exchange safe but triples the number of exchanges
 is a net loss, and one that can't be checked can't be enforced.
 
@@ -481,6 +481,206 @@ wrong prescription *first*.
   not built — the reference day's tally was at least five.
 - *Kills:* the coordinator's costliest recurring failure — prescribing a mechanism
   the call site already knew was wrong.
+
+### 11. Authorized work outlives the session that was authorized to do it
+
+Rules 1–10 protect **messages** — a stamp, an ack, a supersession, a restart.
+None of them protect the **set of open commitments** a session was carrying when
+it stalled. A session and the work it was told to do do not share a lifetime:
+the session can die mid-instruction while the obligation survives, and nothing
+above says who is responsible for remembering it.
+
+**Coordinator.** A stall, an archive, or a replacement session must never
+silently drop something you already authorized but the dead session had not yet
+started. Keep the outstanding-authorization list somewhere that survives the
+session dying, not only in that session's own conversational memory — the same
+distrust Rule 8 already applies to a degraded session's self-reports. When you
+write a replacement brief (Rule 9's self-contained template), the fixed block's
+**`Outstanding authorizations (gG.vN)` field** carries every authorization the dead
+session had not yet landed, or an explicit `<none>` — not only the branch state
+and whatever new task prompted the replacement — an urgent new task does not
+retire an old one nobody did. Before you call a scope complete, or
+before you archive the session that held it, **verify against the branch, not
+against the last report**: diff what was authorized against what the commits
+actually contain, the same own-tree re-read Rule 2 already requires, run here by
+the coordinator against a tree that is not its own. **That diff is available
+only when the dead session had a committed branch — a leaf implementer.** A
+child orchestrator's `coord-<slug>` branch is never committed, so there is
+nothing to diff; source its replacement's field from the last control snapshot
+its parent accepted, and carry the honest gap below rather than implying a diff
+happened. The two cases are spelled out in the brief template's field.
+
+**"Somewhere that survives the session dying" names a concrete channel, not a
+vague aspiration — and it differs by role, because a root and a child report to
+different recipients:**
+
+- **A root orchestrator's durable channel is its own session transcript with
+  dazewell.** The app preserves a session's history independent of its process
+  being responsive (`archive_session` explicitly "preserves the session history
+  so the user can restore it later"), so a transcript line is not lost the way a
+  conversational *memory* is — dazewell, or whoever picks up the replacement,
+  can read back through it even after the session stalls. Restate a versioned
+  `Outstanding authorizations (gG.vN): …` line (below) whenever the list changes,
+  so it stays findable without scrolling the whole history — **in the same turn
+  that changes it, not in a later reply.** Deferring it to the next reply leaves
+  open precisely the window this rule exists to close: authorize, stall, and no
+  snapshot of that authorization ever reaches the durable channel. Write the
+  line before you end the turn in which you issued or accepted the
+  authorization. (An authorization you *dispatched* has a second durable copy in
+  the child session's own kickoff prompt, which the app preserves; the snapshot
+  is the only record of one you accepted but have not dispatched yet, which is
+  why it cannot wait for a later turn.)
+- **A child orchestrator's durable channel is its structured control messages
+  to its parent** (below) — the parent does not read the child's transcript, it
+  reads control messages and git, so the transcript argument above does not
+  carry over to that channel.
+
+**Both channels need the same fix for the same reason: the recurring control
+vocabulary is explicitly exempt from Rule 1's SHA stamp and can arrive
+out of order (Rule 1), so a plain restated list is ambiguous about which
+version is newest if two arrive out of sequence.** Carry your own local,
+monotonically increasing counter on the list itself —
+`Outstanding authorizations (g1.v3): …`. **Increment `v` on any change to the
+rendered list, without exception**: an item added, an item closed, an item
+re-pointed at a replacement when you transfer it on behalf of a stalled
+descendant, one entry leaving a
+multi-item list, or the list becoming `<none>`. Read that as the general rule
+and the list as examples, not as an exhaustive set — the question is only
+whether the rendered list differs from the one you last sent, and a change that
+touches a single entry counts exactly as much as the list emptying. Send an
+unchanged list at the version you last used; never re-send changed content at an
+old version, which is the one move that makes the recipient discard a snapshot
+it needed. The recipient (dazewell reading back through a transcript, or a
+parent reading control messages) adopts a snapshot only if it orders strictly
+after the last one it accepted; an equal or earlier one arriving late is
+discarded as stale, never used to overwrite a newer state. This is cheap: the
+coordinator already knows how many times it has touched its own list, so the
+counter costs nothing to maintain and closes the reordering gap without
+reopening Rule 1's deliberate decision not to sequence-stamp the rest of the
+control vocabulary.
+
+**`v` alone is not enough across a replacement, which is why the token carries a
+generation `g` as well, compared first.** The counter is inherited by a
+successor (below), so predecessor and successor draw from the same number line —
+and the predecessor's last messages can still be in flight when the successor
+starts. A predecessor that reached `v7` before dying, whose `v7` was delayed past
+the replacement, would otherwise be *accepted over* a successor sitting at `v6`,
+overwriting live state with a dead session's list. Order snapshots by
+**`g` first, then `v`**: `g` is incremented exactly once per replacement, by the
+coordinator writing the replacement brief, and the successor then reports that
+brief's token verbatim rather than bumping it again — one increment point, so the
+generation a session announces always matches the handoff token it was given.
+Because the successor's `g` is thereby above the predecessor's while `v` is
+inherited, any message from a superseded session is strictly earlier no
+matter how high its `v` climbed, and no in-flight straggler can win. A parent
+additionally **fences the predecessor's channel**: from the moment it dispatches
+a replacement it accepts no further snapshot from the session it replaced,
+whatever that snapshot claims. The fence is the primary defence and costs
+nothing — the parent created the replacement, so it knows exactly when the
+predecessor stopped being authoritative — and `g` is the backstop that makes a
+stale snapshot self-evidently stale to a reader who is not the dispatcher,
+including a human reading it in a transcript.
+
+**The counter belongs to the unit, not to the session.** A replacement
+coordinator does not restart at `v0` — it inherits the version its brief's
+`Outstanding authorizations (gG.vN)` field carries and continues from there, so
+its first change to the list is `v(N+1)`, under the `g` its brief already
+carried.
+Restarting at zero would make every
+snapshot the replacement sends compare as stale against the dead session's last
+one and be discarded by exactly the recipient that needs it — including the
+`<none>` that says the work is finally done. A genuinely new unit, with no prior
+session, starts at `Outstanding authorizations (g1.v0): <none>`; that is the
+only place `v0` is correct.
+
+**This rule recurses onto a child orchestrator, which is a coordinator for its
+own dispatched sessions and binds the same way — with one honest limit.** A
+child orchestrator's `coord-<slug>` branch is deliberately never committed or
+pushed (see *Dispatching a child orchestrator* in the orchestrator file), so
+unlike a leaf implementer's branch there is no git state a parent can diff
+against to reconstruct a dead child's outstanding authorizations toward *its
+own* descendants. Two consequences, not one workaround:
+
+- **The clean-exit path is closed by a precondition, not a diff.** A child
+  orchestrator may not send `CLOSED` while it still holds an open authorization
+  toward one of its own descendants: every one must be **closed on the item's
+  ledger — landed, declined, or superseded — before `CLOSED` goes out**, exactly
+  as archiving a leaf session requires it above. **Transfer is deliberately not
+  available here**, because a session cannot transfer its way out of its own
+  clean exit: writing an item into a successor brief means either dispatching a
+  successor, which is then an unarchived direct child and breaks `CLOSED`'s other
+  precondition, or relying on a successor the parent owns, which this child can
+  neither create nor verify before it must send `CLOSED`. Transfer belongs to the
+  coordinator that **archives or replaces** a session, not to the session
+  discharging itself — and that is the path where it is actually needed, since a
+  session exiting cleanly is by definition still alive and able to land, decline
+  or supersede whatever it holds. A live child that believes an item genuinely
+  should carry forward has two honest moves and does not need a third: **decline
+  it explicitly**, with the reason, which is a real disposition rather than an
+  evasion; or **escalate with `BLOCKED_PARENT`**, since the parent owns the
+  successor and can perform the transfer on the replacement path. This covers
+  every orderly
+  shutdown; it does nothing for a child that never gets to send `CLOSED`.
+- **A child that dies before reporting is an honest gap, not a solved one** —
+  the same limit Rules 7–8 already state for liveness in general, applied here
+  to authorizations specifically. The mitigation is cheap and partial, not a
+  fix: a child orchestrator states its current **versioned**
+  outstanding-authorizations snapshot in **every** control message it sends,
+  not only `CLOSED`, so the parent's last-observed, highest-versioned message
+  is the freshest available record if the child goes dark before its next one.
+  A child that dies between two control messages having authorized new
+  descendant work in that gap loses it exactly as a leaf session's uncommitted
+  edits are lost on a stall (Rule 7) — state that loss plainly rather than
+  implying a durable ledger exists where none does.
+
+This is not hypothetical: a five-item safety bundle was authorized, the session
+that held it stalled without starting the work and was archived, the
+replacement's brief carried the new urgent task but not the bundle, and the
+coordinator then treated the frozen surface as complete. Two of the five items
+were later re-reported as Critical — recovered only because an unrelated
+automated review happened to re-find them hours later. Luck is not a
+verification step, and the next stall may not be caught by one.
+
+- *Checked:* two ledgers, not one — conflating them is what makes a naive
+  version of this rule unsatisfiable. **The item's ledger** closes when the
+  authorization reaches exactly one of **landed** (cite the commit),
+  **declined** (a stated reason), or **superseded** (an explicit
+  `supersedes my @X` per Rule 4 — the older instruction's own completion, not a
+  form of carrying it forward). **The session's ledger** closes when every
+  authorization it held is either closed on the item's ledger *or* **transferred**:
+  written into a named successor brief's `Outstanding authorizations (gG.vN)` field,
+  at a stated version, verified present there before the archive. **Transfer is
+  performed by the coordinator archiving or replacing that session, never by the
+  session discharging itself** — a session cannot hand its obligations to a
+  successor it does not have, and letting it try is what deadlocks a clean exit
+  (see the child-orchestrator `CLOSED` precondition above). A session closing
+  itself while still alive uses landed, declined or superseded, which are always
+  available to it; transfer is the *stalled*-session path, run by the parent.
+  Transfer
+  discharges the *session*; it does not close the *item*, which stays open and is
+  tracked against the successor brief until it lands, is declined, or is
+  superseded there. Both ledgers are required, and neither substitutes for the
+  other: archiving a session with an untransferred, unclosed authorization is the
+  failure this rule exists to stop, and calling a scope complete because the
+  session that held it was archived is the same failure wearing a different hat.
+  An unstarted item in a stalled session is exactly the item that must be
+  transferred, so "transferred"
+  is the archive gate's normal pass for it — not an exception to the gate. A
+  snapshot version number is present on every restatement, increases on **any**
+  change to the rendered list — including a change that touches one entry of
+  a multi-item list — and is inherited by a replacement under an incremented
+  generation rather than reset; a recipient that adopts an equal-or-earlier
+  snapshot over one it already saw, or accepts anything from a session it has
+  already replaced, has not satisfied this check.
+- *Cost:* one running list per unit, kept alongside the brief template the
+  coordinator already maintains, one integer counter incremented on change and
+  inherited across a replacement, plus one diff-against-branch check at each
+  handoff and each archive. Cheap next to a
+  Critical that shipped because an item was never written down anywhere the
+  replacement session could see.
+- *Kills:* authorized work lost silently across a stall/archive/replacement — the
+  seam none of Rules 1–10 cover, because they protect messages, not the
+  commitments a dead session was carrying.
 
 ## The honest limit, restated
 

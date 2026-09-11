@@ -504,3 +504,176 @@ segmented/pill control existed and that one would have to be hand-rolled.
 pill/segmented control with `setTabs(CharSequence...)` (`FilledTabsView.java:32`)
 and an `onTabSelected` hook (`:54`), already used at `PeerColorActivity.java:1591`
 and `PinnedReactionsActivity.java:192`. Reuse it rather than building a new one.
+
+## Per-chat "already warned" state is not categorically forbidden for Ghost Mode features
+
+The send-time Ghost warning (`#ghost-send-warning`) used to track "warned this
+chat already this session" with a stateful per-account set. It was introduced
+in `5f8e27ed0c` ("warn once per chat when a send while Ghost is on exposes
+online status"), and its reset edge was corrected twice: `80a5c0c57f` ("detect
+ghost session boundary from the live predicate, not one toggle path") and then
+`b696068599` ("observe ghost state at both toggle write paths, not only at
+send time"), which is the commit that gave `GhostModeActivity`/`NekoConfig`'s
+settings-UI toggle write path its own call into the helper alongside the
+send path's own observation — two call paths, on two different threads,
+sharing one mutable set with no synchronization yet. That race was fixed next,
+in `67042a6884` ("synchronize shared warned-dialogs state between send path
+and settings writes"), which added a `LOCK` around both paths' access to the
+shared fields — this did not remove the state, only make its two writers safe
+to interleave. `797a510074` ("gate the warning on an active UI, not just Ghost
+being on") is often mistaken for the removal too, but it only added a
+`LaunchActivity.isActive` gate on top of the same still-present, still-locked
+`warnedDialogsByAccount`/`wasGhostActive` state.
+
+The state was actually removed later and for an unrelated reason, in
+`b4664bfe11` ("re-hook ghost send warning at the tgnet dispatch chokepoint"):
+that commit moved the hook from a generic send-request dispatcher (which also
+carried non-send requests like `TL_messages_editMessage` and silently
+consumed the once-per-chat slot on them) to
+`ConnectionsManager#sendRequestInternal`, and paired that hook-point fix with
+a separate product decision to warn on every exposing send instead of only
+the first one per chat per session — a decision that made the per-chat state
+moot outright, not a decision driven by the earlier (already-fixed) race. Its
+commit message is explicit about this: "This also removes the once-per-chat
+warning entirely, per product decision... That deletes every piece of state
+the previous design needed a lock for... because there is no longer any
+session-scoped decision to protect from a race" (note "no longer" — the race
+itself was old news by then, already closed by `67042a6884`).
+
+This is **not** a blanket rule against any per-chat Ghost state — the typing-time
+reminder added under `#ghost-type-warning` keeps materially the same shape of
+state (an account-keyed set of already-reminded dialogIds, reset lazily on a
+Ghost off→on edge) and is fine, because the thing that made the old design's
+*state* need a lock — a background-thread writer (the send path) racing a
+UI-thread writer (the settings toggle) — doesn't apply here at all. Every read
+and write happens on the UI thread: `ChatActivityEnterView`'s own `TextWatcher`
+(`ChatActivityEnterView.java:7069` is the only call site of
+`GhostTypingReminderHelper.onComposerTypingObserved`) is the sole entry point,
+and the `AndroidUtilities.runOnUIThread` runnable it posts
+(`GhostTypingReminderHelper.java:141-174`) is a second UI-thread access path,
+not a background one -- nothing in the send path or the settings screen ever
+touches this state. If a future change makes this state reachable from
+anywhere but those two UI-thread paths, revisit this exemption rather than
+assuming it still holds.
+
+Unlike the deleted send-time state, this feature needed its own transition
+counter to know when a Ghost session actually restarted, and that counter
+went through three revisions before landing on its current shape, each one
+correcting a different mistake in the last:
+
+1. The first cut bumped a `ghostSessionEpoch` counter, owned by `NekoConfig`,
+   from inside `NekoConfig#setGhostMode`, i.e. only the master Ghost Mode
+   switch's write path. That missed any false→true transition produced by
+   flipping the individual per-signal toggle rows or their locks in
+   `GhostModeActivity` one at a time until the combined predicate happened to
+   read true again, since none of those paths call `setGhostMode`.
+2. The second cut moved the bump to the *read* side instead --
+   `NekoConfig#isGhostModeActive()` itself tracked the last value it returned
+   and bumped the epoch on every observed false→true edge, regardless of
+   which write path caused it, so it self-healed from any caller. That
+   self-healing came at a cost review caught in two parts: first, a genuine
+   cross-thread bug (`isGhostModeActive()` is called synchronously from
+   `GhostSendWarningHelper` on `Utilities.stageQueue`, not just the UI thread,
+   so the new read-modify-write needed a lock to be safe), and then, more
+   fundamentally, a contract break underneath that same fix -- `NekoConfig`'s
+   `isGhostModeActive()` is a shared predicate the unmerged Ghost Hold PR
+   (`#336`) also calls, from several places, on the assumption that it is
+   pure and side-effect-free and therefore safe to call from anywhere,
+   including background threads. Silently turning it into stateful,
+   synchronized read-modify-write to serve only this feature's own reset
+   bookkeeping was the wrong trade regardless of whether the immediate race
+   got fixed -- a shared function's threading contract isn't this feature's
+   to change out from under a sibling that depends on it.
+3. The current design reverts `isGhostModeActive()`
+   (`NekoConfig.java:307-320`) to exactly its pre-feature form: the original
+   loop over `ghostToggleItems`, nothing else, no state, safe to call from
+   any thread. All of this feature's own transition-tracking moved out of
+   `NekoConfig` entirely and into `GhostTypingReminderHelper`: a private
+   `ghostSessionEpoch` field (`GhostTypingReminderHelper.java:48`) is bumped
+   only by a new `onGhostModeMasterSwitchActivated()` method
+   (`GhostTypingReminderHelper.java:55-57`), called from
+   `NekoConfig#setGhostMode` (`NekoConfig.java:323-341`) on an observed
+   false→true transition captured via `wasActive = isGhostModeActive()`
+   (`NekoConfig.java:331`) before the loop mutates anything -- still just
+   *reading* the now-pure predicate, never writing through it. This
+   reintroduces revision 1's master-switch-only scope limitation (see the
+   residual-gap paragraph below), but that trade -- a narrower, well
+   understood reset scope versus silently changing a shared predicate's
+   threading contract for a sibling feature that depends on it staying pure
+   -- was judged clearly the right one.
+
+The helper's own state went through a separate correction of its own. An
+earlier cut paired the epoch with a raw `SparseArray<HashSet<Long>>` plus a
+separate `lastObservedGhostSessionEpoch` int, cleared with an explicit
+`clear()` call when the two didn't match. That had a gap: if Ghost Mode cycled
+off→on a *second* time with no composer callback in between to observe the
+first reset, the posted `runOnUIThread` runnable could still read back a set
+that belonged to an already-ended session, because nothing forced a re-check
+at the point of use — a raw `get()` doesn't know it's stale. The current shape
+(`GhostTypingReminderHelper.java`) closes that by giving every stored set its
+own epoch and only ever reaching it through one accessor: `PerAccountState`
+(`GhostTypingReminderHelper.java:84-91`) pairs a `HashSet<Long>` with the epoch
+it was created for, held in `stateByAccount`
+(`GhostTypingReminderHelper.java:79`), and `remindedSetForEpoch(account, epoch)`
+(`GhostTypingReminderHelper.java:101-108`) is the only way anything reads or
+creates one — it replaces a stale entry with a fresh one for the requested
+epoch on the spot. Both the synchronous check in
+`onComposerTypingObservedUnsafe` and the posted runnable call this same
+accessor with a freshly-read `ghostSessionEpoch` each time, rather than either
+caching a set reference or branching on "did the epoch move" — there is no
+separate reset step for a future change to forget to call, and no window
+where a set can be read before it's known to be current for its epoch.
+
+**Known residual gap, accepted for now but tracked, not dismissed as
+unusual:** because the epoch now lives in `GhostTypingReminderHelper` and is
+bumped only from `NekoConfig#setGhostMode`, it observes exactly one path back
+into an active Ghost session: the master Ghost Mode toggle
+(`GhostModeActivity`'s own top row, or any other UI that calls
+`NekoConfig#toggleGhostMode`/`setGhostMode` directly -- `DialogsActivity`,
+`MainTabsActivity`, the launcher-shortcut handler). An off→on transition
+produced entirely by flipping individual per-signal toggle rows or their
+locks in `GhostModeActivity` (`onItemClick`/`onItemLongClick`), one at a
+time, until the combined predicate happens to read true again, does **not**
+advance the epoch -- and unlike the read-side design in revision 2 above,
+nothing about calling `isGhostModeActive()` anywhere else in the app heals
+this either, since that method carries no state at all anymore. A user who
+composes a Ghost off→on cycle purely through the individual rows, without
+ever using the master toggle itself, keeps whichever chats were already
+reminded in the previous session suppressed until they do use the master
+toggle at least once.
+
+This is the same underlying mechanism gap Ghost Hold's own review (PR #336,
+unmerged) rated **Critical** for their feature: `GhostModeActivity.onItemClick`
+flipping the five per-signal toggles without ever calling
+`toggleGhostMode`/`setGhostMode` slips past their flush trigger too, and for
+them the consequence is a message held indefinitely rather than a merely
+missed nudge -- so this is not an unusual corner to wave off, it is a real,
+shared blind spot in how `GhostModeActivity`'s individual rows interact with
+anything that only observes the master-switch call. It is accepted here
+*for now*, not fixed further in this unit, for three reasons: first, the same
+two costs revision 2 ran into apply to any further fix here -- instrumenting
+`GhostModeActivity`'s individual mutation sites directly was ruled out in
+round 1 to stay conflict-free with the unmerged `#ghost-hold` PR that touches
+the same file, and making `isGhostModeActive()` stateful again to self-heal
+from any caller is exactly the mistake just reverted; second, the master
+toggle is still the normal, common way Ghost Mode is turned on and off, so
+this gap is not the typical path even though it is a real one; and third, as
+always, the worst case for *this* feature specifically is a missed
+*reminder* (this feature's own early nudge), never a missed *warning*:
+`GhostSendWarningHelper`'s send-time bulletin already checks
+`NekoConfig.isGhostModeActive()` fresh at send time (`GhostSendWarningHelper.java:99`)
+and carries no epoch or per-chat state of its own -- so while it is
+conditional on Ghost Mode being active, it never depends on a stale
+"already reminded" flag that could wrongly suppress it, unlike this
+feature's own reset. There is no configuration in which this gap leaves an
+actual Ghost-Mode-active send fully unsignaled for this feature, unlike the
+Critical severity it carries for Ghost Hold's held-message flush.
+
+The actual fix is tracked in
+[issue #339](https://github.com/dazewell/Dazegram/issues/339): once `#336`
+merges, generalize or reuse its `GhostHoldController#onGhostStateMaybeChanged`
+-- a derived-edge detector built to solve exactly this class of gap for their
+flush trigger -- rather than instrumenting `GhostModeActivity` directly or
+reviving a stateful `isGhostModeActive()`.
+
+*(Established 2026-09-10, #ghost-type-warning.)*
