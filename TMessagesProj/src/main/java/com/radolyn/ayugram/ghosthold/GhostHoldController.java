@@ -1624,6 +1624,17 @@ public final class GhostHoldController {
                     return;
                 }
                 storage.getStorageQueue().postRunnable(() -> {
+                    // NagramX: the insert side above is epoch-guarded; guard the paired
+                    // stock delete the same way. sessionAtStart is the session epoch
+                    // captured when this migration began; if a logout has bumped it since,
+                    // the reused account slot may now hold a different session whose own
+                    // scheduled rows can carry these same negative mids -- deleting by mid
+                    // alone would destroy the new session's message (P2 loss). Skipping is
+                    // loss-free for the same reason the insert-side guard is: the legacy
+                    // stock rows stay in place and the next init re-migrates them.
+                    if (sessionEpoch.get(account) != sessionAtStart) {
+                        return;
+                    }
                     // Delete a legacy stock row only once its fork insert is confirmed
                     // durable. A row whose insert failed stays in the stock table (still
                     // guarded) so it is retried on the next start rather than deleted
