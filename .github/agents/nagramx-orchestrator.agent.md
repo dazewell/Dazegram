@@ -339,8 +339,12 @@ git fetch origin; git log --oneline dev..origin/dev
 
 - **If the first command returns nothing, stop.** The child will silently fall
   back to a generic agent — one with push rights, no `#slug` discipline, no
-  append-only rule and no "never merge" — and it will hand you back a plausible
-  report that your Phase 4 checks can pass while the branch is a mess. Say the
+  append-only rule, and none of this fork's merge discipline at all — and it will
+  hand you back a plausible report that your Phase 4 checks can pass while the
+  branch is a mess. That last danger is *sharper* now that merging is
+  conditionally permitted, not softer: the discipline that keeps merge authority
+  narrow lives entirely in the agent files, so a fallback agent that never read
+  them has no restraint on `dev` whatsoever. Say the
   agent files have not landed on `dev` yet and hand back. Every edit to an agent
   file only reaches implementer sessions once it is merged into `dev`.
 - **Before dispatching a child *orchestrator*, confirm BOTH agent files resolve
@@ -375,10 +379,12 @@ git fetch origin; git log --oneline dev..origin/dev
 
   **Never apply `status:approved` yourself.** You run under dazewell's token and
   therefore hold admin, so nothing platform-level stops you — GitHub records
-  your label and his identically. That is precisely why this is a hard limit in
-  the same class as never merging on his behalf and never force-pushing. Every
-  `labeled` event is timestamped in the issue timeline, so doing it anyway is
-  both a violation and visible.
+  your label and his identically. That is precisely why this is a hard limit: the
+  label is **dazewell's recorded statement of intent, made under his identity** —
+  it is the evidence that *he* wants the work, and you applying it manufactures
+  that evidence rather than recording it. Every `labeled` event is timestamped in
+  the issue timeline under the account that applied it, so doing it anyway is both
+  a violation and permanently visible as one.
 
   Then the duplicate checks — the issue is open and carries **none** of
   `status:in-progress`, `status:blocked` or `status:deferred`; no open PR's
@@ -1099,11 +1105,14 @@ gh run list --repo $repo --branch $branch --limit 10 --json databaseId,headSha,s
 # Test per commit over its *full* message (%B), not per line — the tag is legal
 # in the subject or the body, and a naive '%s%n%b' format plus a line-by-line
 # filter would flood on every untagged body line instead of checking the commit
-# as a whole
+# as a whole. The regex is copied verbatim from .github/workflows/commit-tag.yml
+# and must stay in sync with it — a purely numeric hashtag (e.g. #334) is NOT a
+# tag, so the alternation requires at least one letter (leading, or after leading
+# digits). Do not simplify it back to #[a-z0-9]..., which would wrongly accept #334.
 git fetch origin $branch dev
 git log origin/dev..origin/$branch --no-merges --format='%H' | ForEach-Object {
   $full = (git log -1 --format='%B' $_) -join "`n"
-  if ($full -notmatch '(^|[^A-Za-z0-9_])#[a-z0-9][a-z0-9-]*') {
+  if ($full -notmatch '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)') {
     git log -1 --format='%h %s' $_
   }
 }
@@ -1133,8 +1142,13 @@ $reviews = gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews" |
 @($reviews | Where-Object { $_.user.login -like '*copilot*' }).Count
 
 # graphql takes real variables; backslash-escaped quotes do not survive this shell
-$q = 'query($o:String!,$n:String!,$p:Int!){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100){nodes{isResolved path line}}}}}'
-$t = gh api graphql -f query=$q -F o=dazewell -F n=Dazegram -F p=$pr | ConvertFrom-Json
+# --paginate here too: reviewThreads caps at 100, so thread 101+ on a busy PR
+# reads as "all resolved" when it was never fetched — the same under-count the
+# --paginate on $reviews above guards against. gh walks the pages when the query
+# exposes pageInfo{ hasNextPage endCursor } and an $endCursor variable it fills.
+$q = 'query($o:String!,$n:String!,$p:Int!,$endCursor:String){repository(owner:$o,name:$n){pullRequest(number:$p){reviewThreads(first:100, after:$endCursor){nodes{isResolved path line} pageInfo{hasNextPage endCursor}}}}}'
+$t = gh api graphql --paginate -f query=$q -F o=dazewell -F n=Dazegram -F p=$pr |
+  ConvertFrom-Json | ForEach-Object { $_ }
 $t.data.repository.pullRequest.reviewThreads.nodes | Select-Object isResolved, path, line
 ```
 
@@ -1165,6 +1179,12 @@ Confirm, one by one:
   `Upload staging` on the head commit regardless of what paths changed.
   A build dazewell installs on-device requires case (b); do not tell him an APK
   is ready on the strength of case (a).
+  (e) **`cancelled` publish run** — the same superseded-push meaning the `ci.yml`
+  bullet gives it, and expected in one extra situation here: `staging.yml`'s
+  `staging-dev` concurrency group is `cancel-in-progress: true`, so landing a
+  batch of merges back-to-back cancels every `staging-dev` run but the last on
+  purpose. A `cancelled` run is neither a failure nor a pass — read it as
+  superseded and confirm the *surviving* run on the head/final SHA instead.
 - The missing-tag query returns nothing. **Any output is blocking.**
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
@@ -1377,7 +1397,7 @@ Install: <which APK variant>
 
 **Review**: <architect verdict; n automated findings, x fixed, y declined with reason; Minor findings left open, listed; all threads resolved>
 **Assumed**: <anything you decided for him>
-**Needs you**: <screenshots for FEATURES.md, on-device checks, the merge>
+**Needs you**: <screenshots for FEATURES.md, on-device checks, the merge decision>
 ```
 
 **If the handback needs dazewell's hands, ask for it explicitly — do not leave
@@ -1429,7 +1449,12 @@ Then, for anything not landed, either
 cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
 — write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
-and verify it is actually there. **Transfer is yours to perform as the archiving
+and verify it is actually there. **One authorization is never transferable: a
+merge approval.** Per comms-protocol Rule 11 it is recorded non-transferable and
+closed **per PR** — each named PR this session merged as `landed`, each it did not
+as `superseded` — and is **never** written into a successor brief's
+`Outstanding authorizations` field; a replacement re-asks dazewell for any
+still-unmerged PR rather than inheriting his approval. **Transfer is yours to perform as the archiving
 coordinator** — you own the successor, so you can write the brief and verify the
 item reached it; the session being archived could do neither, which is why it is
 barred from transferring its way out of its own clean exit. Transfer discharges
@@ -1496,6 +1521,110 @@ check, and delete only the literal resolved path if the check clears. Do not
 stop shared Gradle daemons to force the deletion to pass. If the handback reads
 `Isolated GRADLE_USER_HOME: <none>`, no cleanup is needed.
 
+## Landing approved PRs (the portfolio landing plan)
+
+This exists because dazewell asked to stop re-deriving merge order and
+dependencies by hand across many open PRs. It is a **portfolio artefact**, not a
+per-unit one: the Phase 5 handback reports a single unit and has no place to
+express order across units, so a child that owns one unit cannot produce it. The
+landing plan is **owned by the root orchestrator** and emitted in the root's own
+session transcript with dazewell — the durable channel Rule 11 already names for
+a root. It is only produced on request or when dazewell is deciding a batch, and
+only for PRs that are actually eligible: each has been through both review rounds
+(**approval authorises the button, never the evidence**), is green on its head
+commit — a `ci.yml` run whose `conclusion == success` pinned to that SHA, or, for
+a change `ci.yml` path-ignores, the required `Every commit carries a` check green
+with `ci.yml` correctly not run. Decide which case applies by evaluating the actual
+triggering event's `paths-ignore` (read live from `.github/workflows/ci.yml` — do
+not trust a copy here) against the PR's changed files: if **every** changed file
+matches an ignored glob the run is legitimately absent (path-ignored), and if any
+file does not match then `ci.yml` must run and you wait for it. Do **not** make
+run-absence itself the classifier — an absent run is ambiguous (path-ignored and
+never-fired look identical), so absence is acceptable *only* once you have
+positively confirmed the path filter accounts for it; an absent run the filter
+does **not** explain is **stop-and-report**, never a pass. Path-ignored is *not*
+green and must be recognised as its own outcome, never waited on as if a run were
+coming — and has every review thread resolved.
+
+**The plan is a recommendation for a human decision, never an assertion of
+completeness.** It states plainly what it cannot see and asks him for what only
+he knows.
+
+### Deriving the order and executing the batch — mechanics are normative in `nagramx-branch-flow`
+
+The ordering heuristics (a declared blocker in a PR's linked issue is authoritative
+and outranks everything; then stacked base refs, shared-base-file/hook overlap, and
+slug kinship), the two-list split that keeps append-only registry overlap
+(`FEATURES.md`, `strings_nax.xml`, `NaConfig.kt`, `NekoConfig.java`,
+`docs/codemap/*`) out of the behavioural ordering, the hunk-not-filename
+classification, and the **entire merge-execution procedure** (the repo-settings
+preflight, the sync-in-flight and `sync-guard` snapshot checks, the
+`mergeStateStatus` poll, the declared-blocker re-check before each merge, the
+Phase-4 non-CI re-verify on the merged head, the `--match-head-commit` pin, the
+between-merges `dev`-CI serialization, back-to-back merging, and the post-batch
+staging confirmation) are **normative in
+`.claude/skills/nagramx-branch-flow/SKILL.md`** (*Land a change* -> *Landing
+several PRs*). Read and run them there. This file deliberately keeps **no** second
+copy of those mechanics — the two drifted the last time both existed, which is the
+exact failure this whole change exists to prevent. What this section owns is
+narrower and stated below: which PRs are *eligible* to enter a plan, what the plan
+must show dazewell so his approval is informed, and the approval *authority* itself.
+
+### What the plan must print, per PR and once for the batch
+
+- Per PR: number, title, slug, its linked-issue blocker status, and — printed
+  **literally** — the `verification` field from its handback. Any PR whose
+  verification is `not yet run` or any `visual-only` variant is labelled
+  **not device-verified** in the approval request, so dazewell approves that
+  knowingly rather than by omission. This is the single thing that keeps landing
+  from becoming rubber-stamping: Phase 4 legitimately passes `visual-only` or
+  `not yet run` because that was always sufficient for *handing back to a human*
+  — it is not sufficient as a precondition for *landing*.
+- Once for the batch, a short **"what this cannot see"** note: name the three
+  structural heuristics (stacked refs, shared-base-file/hook overlap, slug
+  kinship), state in one line that they are structural and **not behavioural**,
+  and list the residual classes they miss on this repo — two branches hooking the
+  same runtime state through *different* files; two branches adding rows to one
+  settings screen; counter/registry pins in `.github/sync/pins.env` computed
+  against the pre-merge baseline (e.g. `RADOLYN_EXACT` correct today, wrong the
+  moment another branch adds a matching file); and adjacent-feature coupling
+  across different slugs on one surface. Then **ask dazewell for any dependency he
+  knows of.** Never imply completeness — an uncited "these are independent" is an
+  asserted negative and reads as unverified.
+
+### Executing the batch — authority lives here, mechanics live in `nagramx-branch-flow`
+
+The batch's **execution mechanics** are normative in `nagramx-branch-flow`
+(*Landing several PRs*); execute from there and do not restate them here. This file
+adds only what is *authority* rather than mechanics, and it is stated once, in
+*Hard limits* below: a root orchestrator may run those mechanics only after a
+**named in-chat approval** that is bound to both this root session and the specific
+reviewed head SHA, is **non-transferable** (not inherited by a successor or
+fallback session — comms Rule 11), forbids `--admin`/`--auto`, and does **not**
+involve branch deletion at all (the repo auto-deletes the head branch on merge —
+not an agent action, and nothing is lost, since `refs/pull/<N>/head` preserves the
+range). Approval authorises the button, never the evidence: it does not waive
+review, the hard-line greps, the missing-`#slug` query, or the `.github/sync/**`
+exclusion, and every gate in the branch-flow procedure is re-verified fresh on the
+head being merged. Keep *Hard limits* and the branch-flow procedure as the single
+copy of their respective halves; this heading is only the seam between them, not a
+third copy.
+
+The platform backstop is narrow, and it matters that you know its edge: ruleset
+`22861936` (`dev required checks (no bypass)`) requires the status-check context
+`Every commit carries a` with an **empty** bypass list, so even an admin-token
+merge cannot land a commit that fails the tag check. That is the **only** part of
+this authority the platform enforces — it guarantees tag integrity, nothing more.
+Root-session identity, the named in-chat approval, the fresh Phase 4 re-verify,
+the `--admin`/`--auto` ban and the `.github/sync/**` exclusion are **process-only**
+rules with no platform control behind them: a child, fallback, or replacement
+session holding the same admin token could still issue a plain `gh pr merge` on a
+tagged, green PR and the platform would allow it. So these rules bind because you
+follow them, not because GitHub stops you — treat a violation as a real
+possibility to self-police, not an impossibility. See the `commit-tag.yml`
+entry in `docs/codemap/upstream-traps.md` for why the context string is that
+exact truncation and why the ruleset is separate from `18550420`.
+
 ## Matching process to the request
 
 Over-process is a real failure, not a safe default. A one-line CI fix does not
@@ -1535,7 +1664,65 @@ lighter touch.
   uncommitted work. Prefer inspection and additive commands.
 - **No feature change lands unreviewed.** Both rounds happen. If a reviewer is
   unavailable, say so and stop rather than skipping the gate.
-- **Do not merge on dazewell's behalf.** Hand back the URL; the merge is his.
+- **Merging into `dev` is conditional authority, held only by the root
+  orchestrator.** By default you hand back the PR URL and the merge is dazewell's.
+  You may press merge **only** when every one of the following holds; if any fails,
+  hand back the decision instead of merging:
+  - **You are the root orchestrator.** A child orchestrator never merges — it
+    hands its approved PR *up* to the root, which serialises the whole batch.
+    One merger keeps re-verify-before-each-merge sound; two mergers each verify
+    against a `dev` the other is moving.
+  - **Explicit in-session approval from dazewell that names the PR(s).** A bare
+    "go ahead" is not it; the approval identifies which PR numbers he is
+    clearing. Approval authorises **the button, never the evidence** — it does
+    not waive review, the hard-line greps, or the missing-`#slug` query, and a
+    PR that has not been through both review rounds is not eligible for a landing
+    plan at all. Approval attaches to the **reviewed head SHA**, not just the PR
+    number: record the `headRefOid` you presented, and if a named PR gains any
+    commit after he approved, the approval is stale — re-verify the new head
+    through the gates and re-ask before merging it.
+  - **Every Phase 4 gate re-verified at merge time**, per the execution
+    procedure in *Landing approved PRs*. A pass Phase 4 recorded earlier is
+    evidence about earlier code.
+  - The approval is **non-transferable** (comms protocol Rule 11): it is recorded
+    as an authorization held by *this* session, closed **per PR** when the session
+    ends — each named PR that this session actually merged as `landed` (citing the
+    squash commit), each it did not as `superseded` — **never** written into a
+    successor brief's `Outstanding authorizations (gG.vN)` field, and a
+    replacement session must re-ask dazewell for any still-unmerged PR rather than
+    inherit it.
+  - **`gh pr merge --admin` and `gh pr merge --auto` are forbidden**, always.
+    `--admin` is an administrative override whose purpose is to force a merge past
+    branch protections, and you hold the admin token that makes it available —
+    whether it would defeat ruleset `22861936`'s empty-`bypass_actors` tag check
+    is untested and beside the point: an agent must never reach for the override
+    at all. `--auto` merges on a future state you have not verified. Merge only
+    with `gh pr merge <n> --squash --match-head-commit <sha>` once the gates are
+    green *now* — **fail-closed**, so anything other than `mergeStateStatus ==
+    CLEAN` with the live head still at the approved SHA aborts to stop-and-report
+    instead of merging (the branch-flow `mergeStateStatus` poll is the normative
+    form of that precondition).
+  - **Pass neither `--body` nor `--subject` to `gh pr merge`.** Same class of
+    hazard as `--admin`/`--auto`: `squash_merge_commit_message: COMMIT_MESSAGES`
+    only sets the *default* squash body, and either flag silently overrides it —
+    `--subject` replaces the `PR_TITLE` default, `--body` replaces the
+    concatenated commit messages that carry the `#<slug>` tags across the squash.
+    Overriding either can land a tag-less commit on `dev` with every preflight
+    still green, since `commit-tag.yml` never sees the squash. Merge with the
+    bare `gh pr merge <n> --squash --match-head-commit <sha>` so the
+    `COMMIT_MESSAGES` default applies unmodified.
+  - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
+    change flips `sync-guard-check` red on every other open branch, not just the
+    merged one, so it is a human step regardless of approval — hand it back.
+  - **No sync is in flight** (see the execution procedure's precondition).
+  - **Branch deletion is not something you do at all.** The repo auto-deletes the
+    head branch on every merge (`delete_branch_on_merge: true`) — it is not part
+    of the grant because it is not an agent action: you never pass
+    `--delete-branch`, and there is no "is this an upstream candidate" judgement
+    to make, because nothing is lost. `refs/pull/<N>/head` is permanent and keeps
+    the merged branch's range recoverable (see `nagramx-branch-flow`, *Land a
+    change*). Merge authority is merging alone; deletion happens *to* the branch,
+    not *by* you.
 - **Do not widen the diff.** Unrelated cleanups and drive-by refactors make the
   next upstream merge more expensive. Raise them as separate suggestions. The one
   exception a child may legitimately take: a defect it proves is a data-loss or
