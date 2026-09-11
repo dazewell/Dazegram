@@ -15,7 +15,8 @@ upstream sync, and the phone-triggered automation.
 
 **The mental model:** `dev` is the **trunk** — the real, durable history of the
 fork. Features land on it and stay on it. Upstream flows *into* `dev`. Feature
-branches are short-lived scaffolding you delete after merging.
+branches are short-lived scaffolding the repo **auto-deletes at merge** (not
+something an agent deletes).
 
 **Two long-lived branches:**
 - `dev` — the trunk. Everything lands here (via a PR **squash-merged** into it,
