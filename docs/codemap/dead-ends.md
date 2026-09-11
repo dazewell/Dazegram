@@ -651,11 +651,14 @@ toggle is still the normal, common way Ghost Mode is turned on and off, so
 this gap is not the typical path even though it is a real one; and third, as
 always, the worst case for *this* feature specifically is a missed
 *reminder* (this feature's own early nudge), never a missed *warning*:
-`GhostSendWarningHelper`'s send-time bulletin is unconditional on Ghost Mode
-being active at send time and carries no epoch or per-chat state of its own,
-so there is no configuration in which this gap leaves a send fully
-unsignaled for this feature, unlike the Critical severity it carries for
-Ghost Hold's held-message flush.
+`GhostSendWarningHelper`'s send-time bulletin already checks
+`NekoConfig.isGhostModeActive()` fresh at send time (`GhostSendWarningHelper.java:99`)
+and carries no epoch or per-chat state of its own -- so while it is
+conditional on Ghost Mode being active, it never depends on a stale
+"already reminded" flag that could wrongly suppress it, unlike this
+feature's own reset. There is no configuration in which this gap leaves an
+actual Ghost-Mode-active send fully unsignaled for this feature, unlike the
+Critical severity it carries for Ghost Hold's held-message flush.
 
 The actual fix is tracked in
 [issue #339](https://github.com/dazewell/Dazegram/issues/339): once `#336`
