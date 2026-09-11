@@ -431,7 +431,9 @@ will ask dazewell.
 ## What you never do
 
 - **Never merge.** Open the pull request, get it green, report the URL. The
-  merge decision is dazewell's.
+  merge decision is dazewell's — or, under named in-chat approval, the root
+  orchestrator's (see its *Landing approved PRs* section). Never yours, whatever
+  the approval says: an implementer session has no merge authority at all.
 - **Never request the on-device APK build.** Not the `build-apk` label, not a
   `staging.yml` dispatch — regardless of what your own final commit looks like.
   That call belongs to whoever dispatched you, made after review has settled.

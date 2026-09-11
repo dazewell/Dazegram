@@ -131,8 +131,9 @@ code are not.
    slug (both fine — tooling normalizes it), hyphens inside the slug. An undated
    name like `require-password` is
    wrong; fix it before the first push. One change per branch. You PR it into
-   `dev` and **delete it after merge**; keep it alive only if you'll propose
-   that feature upstream. Don't commit directly to `dev`. The full topology,
+   `dev`; the repo **auto-deletes the branch at merge** (`delete_branch_on_merge:
+   true`), and its range stays recoverable via `refs/pull/<N>/head` whether or
+   not it was ever an upstream candidate. Don't commit directly to `dev`. The full topology,
    branch-naming rules, the
    `#tag` every commit carries, sync, and the no-force-push rule live in
    the `nagramx-branch-flow` skill — read it for where commits live and how
@@ -449,24 +450,25 @@ code are not.
      `.githooks/commit-msg` hook and `commit-tag.yml` enforce this. See the
      `nagramx-branch-flow` skill.
    - **One change = one short-lived branch, append-only.** A change's commits
-     accumulate on its `<YYYY-MM-DD>_<slug>` branch, then land into `dev` by a
-     merge commit and the branch is deleted. Each iteration — a review fix, a
-     bug caught on-device, a later improvement — is a **new commit** describing
-     that specific fix, not an amend of an earlier one; the branch history is
-     the record of how the change evolved. Squashing to one clean commit
-     happens only when you propose the feature to the base fork, on a throwaway
-     `-pr` copy. See the `nagramx-branch-flow` skill.
+     accumulate on its `<YYYY-MM-DD>_<slug>` branch, then land into `dev` as a
+     **squash merge** — GitHub composes one `dev` commit from the concatenated
+     branch-commit messages — and the branch is auto-deleted. Each iteration — a
+     review fix, a bug caught on-device, a later improvement — is a **new commit**
+     describing that specific fix, not an amend of an earlier one; you never
+     squash the branch yourself (GitHub does that at the merge), so the branch
+     history stays the record of how the change evolved. See the
+     `nagramx-branch-flow` skill.
 
 8. **Merge-forward, don't rebase in the loop.** `dev` is the trunk and holds
    unique history, so it is never rebuilt or force-pushed. `base`
    fast-forwards from the base fork and is *merged forward* into `dev`;
-   changes land by merge commits. Feature branches are **append-only too**: a
-   review fix or a follow-up improvement is a **new commit**, not an amend +
-   force-push (step 9), so the history shows how the change evolved. The one
-   place rewriting happens is the throwaway `-pr` copy, rebased and squashed
-   when proposing upstream. Syncing onto the base fork, resolving an upstream
-   conflict in the `dev` merge, and the phone-triggered automation are covered
-   in the `nagramx-branch-flow` skill.
+   feature changes land by squash merge. Feature branches are **append-only
+   too**: a review fix or a follow-up improvement is a **new commit**, not an
+   amend + force-push (step 9), so the history shows how the change evolved. The
+   one place *you* rewrite anything is the throwaway `-pr` copy, rebased and
+   squashed by hand when proposing upstream. Syncing onto the base fork,
+   resolving an upstream conflict in the `dev` merge, and the phone-triggered
+   automation are covered in the `nagramx-branch-flow` skill.
 
 9. **Open a PR into `dev` — that *is* the preview build (the default for a
    feature).** For a user-visible feature this is a standing step, not
@@ -892,16 +894,30 @@ code are not.
    dazewell to infer whether a comment was seen.
 
 10. **Land it / propose it.** Landing a finished change into `dev` is a
-    **merge** — mark the PR from step 9 ready and merge it with a **merge
-    commit, never a squash-merge** (or, if you skipped the PR, a local
-    `git merge --no-edit <YYYY-MM-DD>_<slug>`) — so the change's commits and their
-    `#tags` stay whole and `dev` never needs a force-push. The merge into `dev`
-    triggers `staging.yml` (the signed dual-package build + Telegram upload).
-    Then **delete the branch** unless it's an upstream candidate. A squashed
-    single commit is reserved for the separate act of **proposing the feature
-    to the base fork** (`risin42/NagramX`), on a throwaway `-pr` copy that also
-    drops the `FEATURES.md` hunk. The no-AI-in-the-log rule applies to every PR
-    title/body. See the `nagramx-branch-flow` skill for both flows.
+    **squash merge** — mark the PR from step 9 ready and merge it with
+    `gh pr merge <n> --squash --match-head-commit <sha>` (the
+    `--match-head-commit` pin binds the merge to the reviewed head so a
+    concurrent push can't land an unreviewed commit — see the
+    `nagramx-branch-flow` skill for the full precondition), or, if you skipped
+    the PR, a local `git merge --squash` collapsed to one tagged commit — so
+    `dev` gets one
+    clean commit per change and never needs a force-push; GitHub preserves the
+    `#tags` by concatenating the branch commit messages into the squash body
+    (the `COMMIT_MESSAGES` setting — see the `nagramx-branch-flow` skill and the
+    codemap trap). **Who may press that button, and when, is gated:** an agent
+    merges into `dev` only under the conditional authority in
+    `nagramx-orchestrator.agent.md`'s *Landing approved PRs* —
+    root-orchestrator-only, on a named in-session approval, gates re-verified at
+    merge time — and an implementer never merges at all. The merge into `dev`
+    triggers `staging.yml` (the signed dual-package build + Telegram upload). The
+    branch is **auto-deleted** by the repo on merge — not an agent's choice and
+    nothing is lost, since `refs/pull/<N>/head` keeps the range recoverable. A
+    separate by-hand `rebase -i` squash is still used only when **proposing the
+    feature upstream** on a throwaway `-pr` copy that also drops the `FEATURES.md`
+    hunk. The no-AI-in-the-log rule applies with full force to every PR
+    title/body — `squash_merge_commit_title: PR_TITLE` makes the PR title the
+    permanent `dev` commit subject. See the `nagramx-branch-flow` skill for both
+    flows.
 
 ### Commit/PR by default vs. ask first
 
@@ -961,7 +977,7 @@ Two checks on the pair, in this order:
 
 - **Are they at different layers?** Topology, text, process, time, external
   observation. Layers are enumerable; failure modes are not, which is why this
-  check is safe to rely on. "CI is green" and "the merge commit exists" are
+  check is safe to rely on. "CI is green" and "the merge landed on `dev`" are
   both *did the pipeline do its thing* — same layer, shared failures by
   construction.
 - **Can you name a single failure that defeats both?** If yes, they are not
