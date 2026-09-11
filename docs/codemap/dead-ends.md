@@ -837,9 +837,10 @@ last digit of `versionCode` as a distribution marker, so `...3` is "not a valid
 next value" and every `% 10` / `/ 10` consumer would have to be updated with it.
 The cited code is real, but the conclusion does not hold here, on three counts.
 
-**There is no invalid low digit.** Both switch sites give `default:` and
+**There is no invalid low digit.** All four switch sites give `default:` and
 `case 9:` the same branch body (`ApplicationLoader.java:357-365`,
-`AndroidUtilities.java:6722-6730`). Any low digit other than `1` or `2` takes the
+`AndroidUtilities.java:6722-6730`, `LoginActivity.java:4180-4198`,
+`LoginActivity.java:10273-10291`). Any low digit other than `1` or `2` takes the
 identical path, so `3` is handled exactly as `9` is — not unhandled.
 
 **The lineage abandoned the convention long ago.** Release tags in this repo:
@@ -848,20 +849,27 @@ identical path, so `3` is handled exactly as `9` is — not unhandled.
 1/2/9 scheme is a Telegram-official-distribution artifact; 1261 and 1262 landing
 on "store bundled" was the anomaly, not the baseline.
 
-**The consumers are diagnostic strings, not behaviour.** The `ApplicationLoader`
-site is inside `if (BuildVars.LOGS_ENABLED)` and only composes a `FileLog.d`
-line. `AndroidUtilities.getBuildVersionInfo()` (`AndroidUtilities.java:6712`) is
-called only from the debug-report builder (`LaunchActivity.java:7881,7887,7918`).
-Decisively, `ApplicationLoader.isStandaloneBuild()` (`ApplicationLoader.java:160`)
-does **not** read `versionCode` — the low digit selects a label appended to a log
-string and nothing else. No install-identity, update or billing path consumes it.
-The fork's own about screen uses `AndroidUtil.getVersionText()`
-(`AndroidUtil.java:194`), which prints `BuildConfig.VERSION_CODE` whole rather
-than divided by 10.
+**The consumers are diagnostic strings, not behaviour.** There are four, in two
+classes. The `ApplicationLoader` site is inside `if (BuildVars.LOGS_ENABLED)` and
+only composes a `FileLog.d` line. `AndroidUtilities.getBuildVersionInfo()`
+(`AndroidUtilities.java:6712`) is called only from the debug-report builder
+(`LaunchActivity.java:7881,7887,7918`). The two `LoginActivity` sites
+(`LoginActivity.java:4180-4198`, `LoginActivity.java:10273-10291`) append an
+`App version: <version> <versionType>` line to the support-report bodies for the
+no-OTP and billing-issue flows; their default branch is richer than the other
+two, resolving to `direct`/`beta`/`huawei`/`universal` rather than just the first
+and last. Decisively, `ApplicationLoader.isStandaloneBuild()`
+(`ApplicationLoader.java:160`) does **not** read `versionCode` — the low digit
+selects a label appended to a string and nothing else. No install-identity,
+update or billing *behaviour* path consumes it; the billing-issue site reports a
+label, it does not gate anything. The fork's own about screen uses
+`AndroidUtil.getVersionText()` (`AndroidUtil.java:194`), which prints
+`BuildConfig.VERSION_CODE` whole rather than divided by 10.
 
-Net effect of a low-digit change: one debug log line and the copy-debug-info
-string read "direct"/"universal" instead of "store bundled". Do not edit the
-`% 10` / `/ 10` consumers to "fix" this — they are upstream base files and the
-change would buy a diagnostic string at the cost of merge surface.
+Net effect of a low-digit change: the debug log line, the copy-debug-info string,
+and the `App version:` line in a support report read `direct`/`universal` instead
+of `store`. Do not edit the `% 10` / `/ 10` consumers to "fix" this — they are
+upstream base files and the change would buy a diagnostic string at the cost of
+merge surface.
 
 *(Established 2026-09-11, #release.)*
