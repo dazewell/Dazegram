@@ -1441,7 +1441,12 @@ Then, for anything not landed, either
 cite the commit that covers it, record why it is
 being explicitly declined, supersede it explicitly per Rule 4, **or transfer it**
 — write it into a named successor brief's `Outstanding authorizations (gG.vN)` field
-and verify it is actually there. **Transfer is yours to perform as the archiving
+and verify it is actually there. **One authorization is never transferable: a
+merge approval.** Per comms-protocol Rule 11 it is recorded non-transferable and
+closed **per PR** — each named PR this session merged as `landed`, each it did not
+as `superseded` — and is **never** written into a successor brief's
+`Outstanding authorizations` field; a replacement re-asks dazewell for any
+still-unmerged PR rather than inheriting his approval. **Transfer is yours to perform as the archiving
 coordinator** — you own the successor, so you can write the brief and verify the
 item reached it; the session being archived could do neither, which is why it is
 barred from transferring its way out of its own clean exit. Transfer discharges
@@ -1697,10 +1702,18 @@ Preconditions and gates, applied fresh for **each** merge — never cached:
   produced a run; if one was requested, confirm that run's `Upload staging` result
   instead of reporting none was expected.
 
-The live backstop that makes all of this safe: ruleset `22861936`
-(`dev required checks (no bypass)`) requires the status-check context
+The platform backstop is narrow, and it matters that you know its edge: ruleset
+`22861936` (`dev required checks (no bypass)`) requires the status-check context
 `Every commit carries a` with an **empty** bypass list, so even an admin-token
-merge cannot land a commit that fails the tag check. See the `commit-tag.yml`
+merge cannot land a commit that fails the tag check. That is the **only** part of
+this authority the platform enforces — it guarantees tag integrity, nothing more.
+Root-session identity, the named in-chat approval, the fresh Phase 4 re-verify,
+the `--admin`/`--auto` ban and the `.github/sync/**` exclusion are **process-only**
+rules with no platform control behind them: a child, fallback, or replacement
+session holding the same admin token could still issue a plain `gh pr merge` on a
+tagged, green PR and the platform would allow it. So these rules bind because you
+follow them, not because GitHub stops you — treat a violation as a real
+possibility to self-police, not an impossibility. See the `commit-tag.yml`
 entry in `docs/codemap/upstream-traps.md` for why the context string is that
 exact truncation and why the ruleset is separate from `18550420`.
 
