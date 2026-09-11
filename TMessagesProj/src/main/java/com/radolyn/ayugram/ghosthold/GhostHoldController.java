@@ -1475,6 +1475,15 @@ public final class GhostHoldController {
             m.id = rec.mid;
             m.dialog_id = rec.dialogId;
             m.date = rec.date;
+            // NagramX: send_state is client-only and never part of the serialized blob,
+            // so a decoded row comes back as NONE, not the SENDING a fresh hold carries
+            // (see the sentinel-build path). Stock restores send_state from its own
+            // column the same way (MessagesStorage scheduled read). Without this a
+            // reloaded held row reads as not-sending: getMessageType classifies it
+            // invalid and the single-row cancel/delete affordance is never populated,
+            // leaving it un-actionable until flush. Membership stays governed by
+            // STATE_HELD; this only restores presentation.
+            m.send_state = MessageObject.MESSAGE_SEND_STATE_SENDING;
             MessageObject mo = new MessageObject(account, m, true, true);
             mo.scheduled = true;
             objects.add(mo);
