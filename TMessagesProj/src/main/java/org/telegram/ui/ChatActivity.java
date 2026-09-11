@@ -37707,7 +37707,12 @@ public class ChatActivity extends BaseFragment implements
         }
 
         final ArrayList<MessageObject> preview = resolveRescheduleItems(selectedIds);
-        if (preview.isEmpty()) return;
+        if (preview.isEmpty()) {
+            // NagramX: a selection of only held rows resolves to nothing reschedulable.
+            // Clear selection rather than strand the user in it after they tapped Reschedule.
+            clearSelectionMode();
+            return;
+        }
         final int count = preview.size();
         final long currentDate = preview.get(0).messageOwner.date;
         // NagramX: readiness for the shared trigger chip and the overwrite heads-up count are decided once,
@@ -37780,6 +37785,12 @@ public class ChatActivity extends BaseFragment implements
         for (int i = 0; i < ids.size(); i++) {
             MessageObject m = messagesDict[0].get(ids.get(i));
             if (m == null) continue;
+            // NagramX: a held Ghost Hold row has a negative local id the server has no
+            // record of, so it can never be rescheduled server-side. Drop it here, the
+            // one chokepoint both the preview and the apply-time spread resolve through,
+            // so a co-selected held row never occupies a spread slot and every real
+            // message lands exactly where it would with the held row unselected.
+            if (com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(m)) continue;
             long gid = m.getGroupId();
             if (gid != 0) {
                 if (!seenGroups.add(gid)) continue;
