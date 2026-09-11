@@ -14,6 +14,7 @@ import org.telegram.tgnet.NativeByteBuffer;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -172,7 +173,10 @@ public final class GhostHoldStore {
      */
     @Nullable
     public List<HeldRecord> cachedForDialog(long dialogId) {
-        return byDialog.get(dialogId);
+        List<HeldRecord> list = byDialog.get(dialogId);
+        // NagramX: hand back a read-only view so the never-mutated-after-publication
+        // guarantee is enforced at the boundary, not just by caller convention.
+        return list == null ? null : Collections.unmodifiableList(list);
     }
 
     /**
