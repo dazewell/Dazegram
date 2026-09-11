@@ -797,17 +797,24 @@ group collapses the batch into one upload, and a gap of one fast `ci.yml` run is
 far shorter than a staging build, so the collapse still happens — the batch simply
 serialises on the fast gate, which is the accepted cost. Do not "fix" either rule
 by breaking the other.
-After the batch, confirm the staging outcome on `dev`'s final SHA: if the batch
-had any merge that `staging.yml` did **not** path-ignore, confirm one green run
-with `Upload staging` green on that final SHA (or, if the last merge was
-path-ignored, on the last SHA that fired a run); record "no staging run expected"
-only when the push trigger fired nothing for the whole batch. `staging.yml`'s push
-`paths-ignore` is not identical to `ci.yml`'s — it ignores `**.md`, `.github/**`,
-`docs/**`, `.githooks/**` but not `.claude/**` except via `**.md` — so decide by
-whether a `staging-dev` run exists for the SHA, not by re-deriving the list. Even
-an all-ignored batch can have a run **if** a publish was requested via
-`build-apk`/dispatch (its `labeled` trigger has no path filter), in which case
-confirm that run instead.
+After the batch, confirm the staging outcome on `dev`'s final SHA. **Classify each
+merged commit against the live `staging.yml` push `paths-ignore` first** — read it
+from `.github/workflows/staging.yml`, not the list here, which is only
+illustrative: it ignores `**.md`, `.github/**`, `docs/**`, `.githooks/**` but not
+`.claude/**` except via `**.md`, and is **not** identical to `ci.yml`'s. If any
+merged commit in the batch touches a **non-ignored** path, a successful
+`staging-dev` run with `Upload staging` green is **required** — on `dev`'s final
+SHA, or, if the final merge was itself all-ignored, on the last SHA whose commit
+was not — and if no such run appears, **stop and report**. Do not decide by
+whether a run exists: run-absence is never itself the classifier, exactly as for
+`ci.yml` earlier in this section — an absent-but-expected run is indistinguishable
+from a legitimately path-ignored push only if you read run-presence instead of the
+path filter, and a `staging.yml` that fails to fire would otherwise let you record
+"no run expected" with the APK never built. Record **"no staging run expected"
+only after proving every merged commit in the batch was path-ignored**.
+Independently of paths, an explicit publish requested via `build-apk`/dispatch
+(its `labeled`/`workflow_dispatch` trigger has no path filter) **requires** a
+matching successful run regardless — confirm that run too.
 
 Landing locally instead of via PR (rare — chores, when you skip the PR). This is
 a manual/chore path, **not** the conditional-approval merge path: an agent merging
