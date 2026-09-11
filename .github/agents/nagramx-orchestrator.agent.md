@@ -339,8 +339,12 @@ git fetch origin; git log --oneline dev..origin/dev
 
 - **If the first command returns nothing, stop.** The child will silently fall
   back to a generic agent — one with push rights, no `#slug` discipline, no
-  append-only rule and no "never merge" — and it will hand you back a plausible
-  report that your Phase 4 checks can pass while the branch is a mess. Say the
+  append-only rule, and none of this fork's merge discipline at all — and it will
+  hand you back a plausible report that your Phase 4 checks can pass while the
+  branch is a mess. That last danger is *sharper* now that merging is
+  conditionally permitted, not softer: the discipline that keeps merge authority
+  narrow lives entirely in the agent files, so a fallback agent that never read
+  them has no restraint on `dev` whatsoever. Say the
   agent files have not landed on `dev` yet and hand back. Every edit to an agent
   file only reaches implementer sessions once it is merged into `dev`.
 - **Before dispatching a child *orchestrator*, confirm BOTH agent files resolve
@@ -375,10 +379,12 @@ git fetch origin; git log --oneline dev..origin/dev
 
   **Never apply `status:approved` yourself.** You run under dazewell's token and
   therefore hold admin, so nothing platform-level stops you — GitHub records
-  your label and his identically. That is precisely why this is a hard limit in
-  the same class as never merging on his behalf and never force-pushing. Every
-  `labeled` event is timestamped in the issue timeline, so doing it anyway is
-  both a violation and visible.
+  your label and his identically. That is precisely why this is a hard limit: the
+  label is **dazewell's recorded statement of intent, made under his identity** —
+  it is the evidence that *he* wants the work, and you applying it manufactures
+  that evidence rather than recording it. Every `labeled` event is timestamped in
+  the issue timeline under the account that applied it, so doing it anyway is both
+  a violation and permanently visible as one.
 
   Then the duplicate checks — the issue is open and carries **none** of
   `status:in-progress`, `status:blocked` or `status:deferred`; no open PR's
@@ -1165,6 +1171,12 @@ Confirm, one by one:
   `Upload staging` on the head commit regardless of what paths changed.
   A build dazewell installs on-device requires case (b); do not tell him an APK
   is ready on the strength of case (a).
+  (e) **`cancelled` publish run** — the same superseded-push meaning the `ci.yml`
+  bullet gives it, and expected in one extra situation here: `staging.yml`'s
+  `staging-dev` concurrency group is `cancel-in-progress: true`, so landing a
+  batch of merges back-to-back cancels every `staging-dev` run but the last on
+  purpose. A `cancelled` run is neither a failure nor a pass — read it as
+  superseded and confirm the *surviving* run on the head/final SHA instead.
 - The missing-tag query returns nothing. **Any output is blocking.**
 - The two hard-line greps return nothing. **Any hit is blocking**, and it is the
   most valuable thing you can mechanically catch.
@@ -1377,7 +1389,7 @@ Install: <which APK variant>
 
 **Review**: <architect verdict; n automated findings, x fixed, y declined with reason; Minor findings left open, listed; all threads resolved>
 **Assumed**: <anything you decided for him>
-**Needs you**: <screenshots for FEATURES.md, on-device checks, the merge>
+**Needs you**: <screenshots for FEATURES.md, on-device checks, the merge decision>
 ```
 
 **If the handback needs dazewell's hands, ask for it explicitly — do not leave
@@ -1496,6 +1508,121 @@ check, and delete only the literal resolved path if the check clears. Do not
 stop shared Gradle daemons to force the deletion to pass. If the handback reads
 `Isolated GRADLE_USER_HOME: <none>`, no cleanup is needed.
 
+## Landing approved PRs (the portfolio landing plan)
+
+This exists because dazewell asked to stop re-deriving merge order and
+dependencies by hand across many open PRs. It is a **portfolio artefact**, not a
+per-unit one: the Phase 5 handback reports a single unit and has no place to
+express order across units, so a child that owns one unit cannot produce it. The
+landing plan is **owned by the root orchestrator** and emitted in the root's own
+session transcript with dazewell — the durable channel Rule 11 already names for
+a root. It is only produced on request or when dazewell is deciding a batch, and
+only for PRs that are actually eligible: each has been through both review rounds
+(**approval authorises the button, never the evidence**), is CI-green on its head
+commit, and has every review thread resolved.
+
+**The plan is a recommendation for a human decision, never an assertion of
+completeness.** It states plainly what it cannot see and asks him for what only
+he knows.
+
+### Deriving the order — three structural heuristics, and one authoritative override
+
+Read every candidate PR and derive a *suggested* order from these, in this
+priority:
+
+1. **Declared blockers outrank all heuristics.** Resolve each PR's linked issue
+   (`Closes #<n>` in the body) and read its `status:blocked` marker and the
+   `> Blocked until PR #<n> …` line branch-flow requires. A named blocker is a
+   human-authored statement of a semantic dependency no file diff can see, and it
+   is a **hard constraint**: the blocker lands first, full stop. Reuse this
+   channel; do not reinvent dependency detection when an authoritative one ships.
+2. **Stacked base refs.** A PR based on another PR's branch rather than on `dev`
+   lands after its base.
+3. **Behavioural overlap on a shared base file or hook point.** Two branches
+   editing the same upstream base file or hooking the same runtime chokepoint are
+   an ordering constraint — that is real coupling.
+4. **Slug kinship.** A feature lands before its own `*-fix`; adjacent-feature
+   slugs on the same surface are flagged for his attention, not auto-ordered.
+
+**Split the overlap report into two lists — never collapse them into one order.**
+
+- **Textual-conflict-risk list (imposes NO ordering).** Registry / append-only
+  files that nearly every feature branch touches: `FEATURES.md`,
+  `strings_nax.xml`, `NaConfig.kt`, `NekoConfig.java`, `docs/codemap/*`. An
+  intersection here means "both added a catalogue line", not "one depends on the
+  other". Listing these as a dependency graph produces a confident-looking total
+  order carrying almost no information — worse than none, because he asked for
+  this so he could *stop* re-deriving it and will trust the output. Report them
+  only as "these may conflict textually; resolve at merge", with no order implied.
+- **Behavioural-overlap list (imposes ordering).** Shared base file or shared
+  hook point per heuristic 3. This is where a genuine "#336 and #338 both touch
+  `MessagesController.java`" belongs, and it must not be given the same visual
+  weight as two `FEATURES.md` lines.
+
+### What the plan must print, per PR and once for the batch
+
+- Per PR: number, title, slug, its linked-issue blocker status, and — printed
+  **literally** — the `verification` field from its handback. Any PR whose
+  verification is `not yet run` or any `visual-only` variant is labelled
+  **not device-verified** in the approval request, so dazewell approves that
+  knowingly rather than by omission. This is the single thing that keeps landing
+  from becoming rubber-stamping: Phase 4 legitimately passes `visual-only` or
+  `not yet run` because that was always sufficient for *handing back to a human*
+  — it is not sufficient as a precondition for *landing*.
+- Once for the batch, a short **"what this cannot see"** note: name the three
+  structural heuristics (stacked refs, shared-base-file/hook overlap, slug
+  kinship), state in one line that they are structural and **not behavioural**,
+  and list the residual classes they miss on this repo — two branches hooking the
+  same runtime state through *different* files; two branches adding rows to one
+  settings screen; counter/registry pins in `.github/sync/pins.env` computed
+  against the pre-merge baseline (e.g. `RADOLYN_EXACT` correct today, wrong the
+  moment another branch adds a matching file); and adjacent-feature coupling
+  across different slugs on one surface. Then **ask dazewell for any dependency he
+  knows of.** Never imply completeness — an uncited "these are independent" is an
+  asserted negative and reads as unverified.
+
+### Executing the batch (root orchestrator only, after named approval)
+
+Preconditions and gates, applied fresh for **each** merge — never cached:
+
+- **No sync in flight, re-checked before the first merge and again before each
+  later one.** `gh run list` for `sync-upstream.yml` and `sync-land.yml` with
+  `--status in_progress --status queued` must be empty, **and** no open pins PR
+  may exist. Between `sync-land`'s fast-forward and the pins PR merging,
+  `sync-guard-check` is red on every branch — merging through that window either
+  stalls or rationalises a red guard, and rationalising a red guard is the one
+  thing this repo's tooling exists to prevent. If either check is non-empty, stop
+  and report; do not wait it out silently.
+- **Gate on `mergeStateStatus == CLEAN`** (not `mergeable: MERGEABLE`, which only
+  says it textually merges) **plus a `ci.yml` run whose `conclusion == success`
+  pinned to the PR's *current* `headRefOid`**, re-read every time. GitHub
+  recomputes mergeability asynchronously, so the instant a merge moves `dev`
+  every remaining PR drops to `UNKNOWN`; poll until `mergeable != UNKNOWN` with a
+  **declared wall-clock deadline**. `UNKNOWN`, `BEHIND`, `UNSTABLE`, `BLOCKED` and
+  `DIRTY` are each **stop and report**, never permission.
+- **Merge back-to-back and deliberately un-spaced, and record that reason.**
+  `staging.yml`'s concurrency group resolves to `staging-dev` with
+  `cancel-in-progress: true`, so N back-to-back merges collapse to **one**
+  surviving build and one Telegram upload of the final `dev` state — spacing
+  merges past a build's duration is the one action that turns a single delivery
+  into N uploads and trips the bot's flood limit. Write the reason down so a later
+  reader does not "improve" it by adding delays. Intermediate **cancelled**
+  `staging-dev` runs are expected, not failures.
+- **Never resolve conflicts or update a branch on his behalf.** If a merge makes
+  a later PR conflict or go stale, stop and report it — that is a new decision,
+  not a mechanical step.
+- **After the batch**, confirm exactly one green staging run with `Upload
+  staging` green pinned to `dev`'s **final** SHA. Note the doc-only caveat: if the
+  last merge is doc-only it triggers nothing (`paths-ignore`), so the run to
+  confirm is the last **app-source** merge's.
+
+The live backstop that makes all of this safe: ruleset `22861936`
+(`dev required checks (no bypass)`) requires the status-check context
+`Every commit carries a` with an **empty** bypass list, so even an admin-token
+merge cannot land a commit that fails the tag check. See the `commit-tag.yml`
+entry in `docs/codemap/upstream-traps.md` for why the context string is that
+exact truncation and why the ruleset is separate from `18550420`.
+
 ## Matching process to the request
 
 Over-process is a real failure, not a safe default. A one-line CI fix does not
@@ -1535,7 +1662,43 @@ lighter touch.
   uncommitted work. Prefer inspection and additive commands.
 - **No feature change lands unreviewed.** Both rounds happen. If a reviewer is
   unavailable, say so and stop rather than skipping the gate.
-- **Do not merge on dazewell's behalf.** Hand back the URL; the merge is his.
+- **Merging into `dev` is conditional authority, held only by the root
+  orchestrator.** By default you hand back the PR URL and the merge is dazewell's.
+  You may press merge **only** when every one of the following holds; if any fails,
+  hand back the decision instead of merging:
+  - **You are the root orchestrator.** A child orchestrator never merges — it
+    hands its approved PR *up* to the root, which serialises the whole batch.
+    One merger keeps re-verify-before-each-merge sound; two mergers each verify
+    against a `dev` the other is moving.
+  - **Explicit in-session approval from dazewell that names the PR(s).** A bare
+    "go ahead" is not it; the approval identifies which PR numbers he is
+    clearing. Approval authorises **the button, never the evidence** — it does
+    not waive review, the hard-line greps, or the missing-`#slug` query, and a
+    PR that has not been through both review rounds is not eligible for a landing
+    plan at all.
+  - **Every Phase 4 gate re-verified at merge time**, per the execution
+    procedure in *Landing approved PRs*. A pass Phase 4 recorded earlier is
+    evidence about earlier code.
+  - The approval is **non-transferable** (comms protocol Rule 11): it is recorded
+    as an authorization held by *this* session, closed as `superseded` when the
+    session ends, **never** written into a successor brief's
+    `Outstanding authorizations (gG.vN)` field, and a replacement session must
+    re-ask dazewell rather than inherit it.
+  - **`gh pr merge --admin` and `gh pr merge --auto` are forbidden**, always.
+    `--admin` bypasses ruleset `22861936` — the one no-bypass gate on `dev` — and
+    you hold the admin token that makes it available; `--auto` merges on a future
+    state you have not verified. Merge only with a plain merge commit (never
+    squash) once the gates are green *now*.
+  - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
+    change flips `sync-guard-check` red on every other open branch, not just the
+    merged one, so it is a human step regardless of approval — hand it back.
+  - **No sync is in flight** (see the execution procedure's precondition).
+  - **Branch deletion is not part of the grant.** Delete a landed branch only
+    when the approval explicitly names it *and* the PR body or its linked issue
+    records that the branch is not an upstream candidate — never by default,
+    since whether a branch is an upstream candidate is a fact that lives with
+    dazewell, not in the diff. This keeps merge authority to merging alone and
+    stays inside the destructive-git limit above.
 - **Do not widen the diff.** Unrelated cleanups and drive-by refactors make the
   next upstream merge more expensive. Raise them as separate suggestions. The one
   exception a child may legitimately take: a defect it proves is a data-loss or

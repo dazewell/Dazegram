@@ -682,6 +682,26 @@ verification step, and the next stall may not be caught by one.
   seam none of Rules 1–10 cover, because they protect messages, not the
   commitments a dead session was carrying.
 
+**One authorization is deliberately non-transferable: a merge approval.** When
+dazewell approves merging one or more named PRs (the conditional authority in the
+orchestrator file), that approval is an authorization held by the session he gave
+it to, and the default carry semantics above — where an unstarted authorization
+is *transferred* into a replacement's `Outstanding authorizations (gG.vN)` field
+so it survives the session dying — is exactly the wrong behaviour for it. An
+approval is dazewell's judgement about specific PRs at a specific moment; those
+PRs can change, land, or go stale in the hours between the approving session
+stalling and a replacement starting, and a replacement that *inherited* the
+approval would merge on his say-so given to a session that no longer exists. So a
+merge approval is recorded on the item's ledger as **non-transferable**, is
+**closed as `superseded` when its session ends** (an orderly `CLOSED`, an archive,
+or a replacement), and is **never written into a successor brief's
+`Outstanding authorizations (gG.vN)` field**. A replacement session holds no merge
+authority until it **re-asks dazewell and he re-approves against the current
+PRs** — which is a fresh authorization at the new generation, not a carried one.
+This is the single exception to "authorized work outlives the session"; it exists
+because for this one authorization, outliving the session is the hazard rather
+than the protection.
+
 ## The honest limit, restated
 
 Rules 1–6, 9 and 10 make each exchange *safe and cheap*. They do not, and cannot,

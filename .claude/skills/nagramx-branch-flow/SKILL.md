@@ -638,6 +638,45 @@ the branch** (unless it's an upstream candidate). Doc-only / `.github`-only
 pushes don't build (staging's `paths-ignore`), so a `FEATURES.md`-only follow-up
 won't trigger a redundant build.
 
+**Who may press merge is defined in the orchestrator file, not here.** By default
+the merge is dazewell's; a root orchestrator may do it only under the conditional
+authority in `.github/agents/nagramx-orchestrator.agent.md` (*Hard limits* and
+*Landing approved PRs*) — named in-session approval, all gates re-verified,
+non-transferable, no `--admin`/`--auto`, `.github/sync/**` excluded. This section
+is the **mechanics** those rules invoke; it does not grant anyone authority.
+
+**The merge-time gate (whoever lands).** Gate on `mergeStateStatus == CLEAN` —
+not `mergeable: MERGEABLE`, which only says it textually merges — plus a `ci.yml`
+run that is green on the PR's **current** `headRefOid`, re-read each time. GitHub
+recomputes mergeability asynchronously, so the moment a merge moves `dev` every
+other open PR reads `UNKNOWN` until a background job catches up; poll until it
+settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` / `UNSTABLE`
+/ `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or update a
+branch on someone's behalf as part of landing — that is a fresh decision.
+
+**Landing several PRs in one sitting — the ordering procedure.** Derive a
+*suggested* order, in this priority: (1) a **declared blocker** in a PR's linked
+issue (`status:blocked` + `> Blocked until PR #<n> …`) is a hard constraint that
+outranks everything below; (2) a **stacked** PR lands after the branch it is
+based on; (3) two PRs touching the **same base file or hook point** are an
+ordering constraint; (4) a feature lands before its own `*-fix`. Keep two
+**separate** lists: append-only registry files (`FEATURES.md`, `strings_nax.xml`,
+`NaConfig.kt`, `NekoConfig.java`, `docs/codemap/*`) are a *textual-conflict-risk*
+note that imposes **no** order — nearly every branch touches them — while shared
+base files / hook points are the *behavioural* list that does. Do not collapse
+the two into one total order; the registry overlap is near-complete and would
+drown the one constraint that matters. Before the first merge and again before
+each later one, confirm **no sync is in flight** (`sync-upstream.yml` /
+`sync-land.yml` not `in_progress`/`queued`, and no open pins PR) — landing
+through the red-guard window between a `sync-land` fast-forward and its pins PR is
+exactly the mistake to avoid. Merge the batch **back-to-back**: `staging.yml`'s
+`staging-dev` group is `cancel-in-progress: true`, so consecutive merges collapse
+to one surviving build and one upload of the final state — spacing them out is
+what produces N uploads and trips the flood limit. Intermediate `cancelled`
+`staging-dev` runs are expected; after the batch, confirm one green run with
+`Upload staging` green on `dev`'s final SHA (or, if the last merge was doc-only
+and path-ignored, on the last app-source merge's SHA).
+
 Landing locally instead of via PR:
 ```powershell
 git switch dev
