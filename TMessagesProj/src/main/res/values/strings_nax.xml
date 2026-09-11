@@ -733,5 +733,5 @@
     <string name="GhostSendExposedWarning">Ghost Mode doesn\'t cover sending — your online status was just shown</string>
     <string name="GhostSendExposedWarningNotHeld">Hold Messages didn\'t catch this one — your online status was just shown</string>
     <string name="GhostTypingReminder">Ghost Mode doesn\'t cover sending — this will go out and show you\'re online.</string>
-    <string name="GhostTypingReminderHoldHint">Turn on Hold Messages to keep it here instead.</string>
+    <string name="GhostTypingReminderHoldHint">Turn on Hold Messages to keep it on this device.</string>
 </resources>
