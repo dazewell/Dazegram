@@ -711,8 +711,14 @@ outcome, not green and not pending — do not wait for a run that will never fir
 moment a merge moves `dev` every other open PR's `mergeStateStatus` reads
 `UNKNOWN` until a background job catches up; **poll `mergeStateStatus` itself**
 until it settles, with a wall-clock deadline, and treat `UNKNOWN` / `BEHIND` /
-`UNSTABLE` / `BLOCKED` / `DIRTY` as stop-and-report. Never resolve a conflict or
-update a branch on someone's behalf as part of landing — that is a fresh decision.
+`UNSTABLE` / `BLOCKED` / `DIRTY` as stop-and-report. The merge step is
+**fail-closed**: proceed **only** when `mergeStateStatus == CLEAN` *and* the live
+`headRefOid` still equals the approved SHA — every other outcome aborts to
+stop-and-report rather than falling through to the merge, including the deadline
+expiring before it settles, and any status value not in the list above (the
+enumeration is illustrative, not an allow-list of the only things that block).
+Never resolve a conflict or update a branch on someone's behalf as part of
+landing — that is a fresh decision.
 When landing under approval, the SHA you verify is also the one the approval was
 given for — record it, compare the live `headRefOid` to it on **every** poll
 iteration, and abort-and-re-ask the instant it differs, since an approval binds to

@@ -1690,7 +1690,10 @@ lighter touch.
     is untested and beside the point: an agent must never reach for the override
     at all. `--auto` merges on a future state you have not verified. Merge only
     with `gh pr merge <n> --squash --match-head-commit <sha>` once the gates are
-    green *now*.
+    green *now* — **fail-closed**, so anything other than `mergeStateStatus ==
+    CLEAN` with the live head still at the approved SHA aborts to stop-and-report
+    instead of merging (the branch-flow `mergeStateStatus` poll is the normative
+    form of that precondition).
   - The PR does **not** touch `.github/sync/**`. Merging a pins/protected-path
     change flips `sync-guard-check` red on every other open branch, not just the
     merged one, so it is a human step regardless of approval — hand it back.
