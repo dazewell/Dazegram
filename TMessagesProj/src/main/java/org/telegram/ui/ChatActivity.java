@@ -16829,7 +16829,16 @@ public class ChatActivity extends BaseFragment implements
                 }
                 updateBottomOverlay();
             } else if (messageObjectsToForward != null) {
-                if (messageObjectsToForward.isEmpty()) {
+                // NagramX: #ghost-hold. Seal the forward-preview container at its entrance. The preview
+                // keeps its own selected-id set (MessagePreviewParams.forwardMessages.selectedIds) that
+                // beforeMessageSend reads directly via getSelectedMessages, separate from
+                // selectedMessagesIds -- so keeping held rows out of the main selection model is not
+                // enough, the row must not reach this set either. Every showFieldPanelForForward caller
+                // funnels the forward list through here, so filtering once at this door keeps held
+                // content out of the preview payload by construction rather than at each caller. Reuses
+                // the shared send boundary so the rule stays in one place.
+                messageObjectsToForward = naxExcludeHeldFromSend(messageObjectsToForward);
+                if (messageObjectsToForward == null || messageObjectsToForward.isEmpty()) {
                     return;
                 }
                 fieldPanelShown = 3;
