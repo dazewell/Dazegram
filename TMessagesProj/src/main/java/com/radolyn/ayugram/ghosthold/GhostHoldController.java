@@ -998,6 +998,22 @@ public final class GhostHoldController {
             }
         }
         countHeld(stillHeld -> {
+            // Re-validate the pinned sessions here too, not only before the countHeld
+            // hop above. countHeld does a per-account storage round-trip, and a
+            // logout/relogin during it advances sessionEpoch; without this second check
+            // the callback would still combine this flush's sent count with the new
+            // owner's held count and publish it against the new session's fragment. The
+            // countHeld callback is delivered on the UI thread (collectHeld posts it via
+            // runOnUIThread), the same thread logout bumps sessionEpoch on, so this
+            // compare is race-free -- the same guard postScheduledCount applies after
+            // its own async hop.
+            if (pinned != null) {
+                for (java.util.Map.Entry<Integer, Integer> e : pinned.entrySet()) {
+                    if (sessionEpoch.get(e.getKey()) != e.getValue()) {
+                        return;
+                    }
+                }
+            }
             // Report even when nothing was sent, as long as rows remain held. A held
             // row the flush declined to send -- its dialog became paid, or Ghost came
             // back on -- stays held and must be reported as not sent, never silently
