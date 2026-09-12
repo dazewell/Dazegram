@@ -2762,8 +2762,12 @@ public class DialogCell extends BaseCell implements StoriesListPlaceProvider.Ava
 
         try {
             CharSequence messageStringFinal;
-            // NagramX: hide last message preview in the chat list (keeps sender name, drops media thumbs)
-            if (com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
+            // NagramX: hide last message preview in the chat list (keeps sender name, drops media thumbs).
+            // Skip when this cell renders a message-search match (message.highlightedWords is only populated
+            // by MessageObject.setQuery(), used by the search adapters), so search results keep showing the
+            // real matched text instead of the disguised placeholder.
+            boolean isSearchResultMatch = message != null && message.hasHighlightedWords();
+            if (!isSearchResultMatch && com.radolyn.ayugram.hidelastmessage.HideLastMessageController.isHidden(currentAccount, getDialogId())) {
                 messageString = com.radolyn.ayugram.hidelastmessage.HideLastMessageController.getPlaceholder(currentAccount, getDialogId());
                 thumbsCount = 0;
                 // force the normal message color so the placeholder doesn't inherit the accent paint used for media/action previews
