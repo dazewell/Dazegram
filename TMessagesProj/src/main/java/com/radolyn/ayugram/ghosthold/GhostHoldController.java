@@ -1634,15 +1634,19 @@ public final class GhostHoldController {
      *
      * A row's {@code mid} is used ONLY to look its rank up; the numeric value of the mid never
      * takes part in a comparison (held mids are negative local ids and are not ordered by
-     * magnitude). Both adapters treat {@code rankOf(mid) >= 0} as the one authoritative test of
-     * "is this a held row"; a mid that is not a currently-HELD member returns -1 and is never
-     * ordered as held, and its id is never compared to fabricate held order. What each adapter
-     * then does with a -1 row differs -- neither is "leave every -1 row untouched": the live
-     * adapter returns stock placement for the arriving row (it is not ours), while the load
-     * comparator treats a -1 row as the genuine (non-held) side of a pair, so a held sibling
-     * (rank >= 0) still sorts above it, but it never reorders two -1 rows by held rank. The
-     * distinctness this rests on -- a genuine row's negative local id never equals a held mid --
-     * holds because both are drawn from one per-account counter handed out once each and then
+     * magnitude). {@code rankOf(mid) >= 0} is the authoritative test of ORDER -- "does this row
+     * have a place in the held sequence" -- not of held membership itself; a mid that is not a
+     * currently-HELD member returns -1 and is never ordered by held rank, and its id is never
+     * compared to fabricate held order. A -1 does not mean "not held", though: a row can carry the
+     * held marker yet be unranked (transiently FLUSHING, already-removed but still on an open list,
+     * or unmigrated), and the live adapter recognises that marker via {@code isHeld} and treats
+     * such a row as an older sibling -- see placeLiveHeldRow. What each adapter does with a -1 row
+     * otherwise differs -- neither is "leave every -1 row untouched": the live adapter returns
+     * stock placement for the ARRIVING row (it is not ours), while the load comparator treats a -1
+     * row as the genuine (non-held) side of a pair, so a held sibling (rank >= 0) still sorts above
+     * it, but it never reorders two -1 rows by held rank. The distinctness this rests on -- a
+     * genuine row's negative local id never equals a held mid -- holds because both are drawn from
+     * one per-account counter handed out once each and then
      * decremented ({@code UserConfig.getNewMessageId}, UserConfig.java:130-135, over the
      * persisted {@code lastSendMessageId}); see docs/codemap/upstream-traps.md.
      */
@@ -1795,14 +1799,16 @@ public final class GhostHoldController {
                 continue;
             }
             int mmRank = view.rankOf(mm.getId());
-            // A held row with no rank is one the flush has just marked FLUSHING (heldOrderView
-            // ranks STATE_HELD rows only). Treat it as an OLDER sibling, not a genuine row: the
+            // A held-marked row with no rank is one heldOrderView does not rank (it ranks
+            // STATE_HELD members only). That covers three cases, not just one: a row the flush
+            // has just marked FLUSHING, an already-removed row a send-now handoff dropped from the
+            // store but an open Scheduled list still shows (see the removeStaleScheduledItem hop
+            // around :1340), and an unmigrated legacy row. In every case it is OLDER than obj: the
             // flush claims items oldest-first and flushItem returns early once Ghost is re-enabled,
-            // so a hold arriving now can only post-date every row already handed to the flush --
-            // every rankless held row on screen is therefore older than obj and belongs above it.
-            // Classing it as genuine would drop obj below it and reintroduce newest-on-top until
-            // reload. (obj itself being rankless is the not-ours case handled above, which still
-            // fails closed to stock placement.)
+            // so a hold arriving now can only post-date every such row. Treat it as an OLDER
+            // sibling, not a genuine row -- classing it as genuine would drop obj below it and
+            // reintroduce newest-on-top until reload. (obj itself being rankless is the not-ours
+            // case handled above, which still fails closed to stock placement.)
             boolean above = mmRank >= 0 ? mmRank < rank : isHeld(mm);
             if (above) {
                 if (firstAbove < 0) {

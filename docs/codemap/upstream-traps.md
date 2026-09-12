@@ -1567,15 +1567,15 @@ scheduled-order fix routes both through **one ordering contract** — a held row
 rank is its position in the flush snapshot (`cachedForDialog()`, oldest-first), and
 because the list is reverse-stacked a higher rank (newer hold) must land at a lower
 array index (screen bottom = oldest-at-top). Rank is exposed by an immutable
-`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1663`, built by
-`heldOrderView`, `:1689`), applied per tying-date group so the plain (`0x7FFFFFFD`)
+`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1653`, built by
+`heldOrderView`, `:1675`), applied per tying-date group so the plain (`0x7FFFFFFD`)
 and online (`0x7FFFFFFE`) buckets order independently and a genuinely-distinct-dated
 row is left to the stock date sort. The two adapters differ only in substrate:
 - **Load** (`GhostHoldController.injectHeldScheduled`, `:1500`) appends the whole
   snapshot to the pre-sort `objects` list newest-first (descending rank) and lets the
   overridden comparator settle the ties (see the override above) — held sorts above a
   genuine same-date row.
-- **Live** (`GhostHoldController.placeLiveHeldRow`, declared `:1749`, called once from
+- **Live** (`GhostHoldController.placeLiveHeldRow`, declared `:1731`, called once from
   `ChatActivity.java:28122`) computes the arriving row's insertion index directly from
   its rank relative to the rows already on screen: below any older held sibling, above
   any newer held sibling, and on the message side of the day header. It self-gates on
