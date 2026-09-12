@@ -1505,16 +1505,22 @@ if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId(
 return o2.messageOwner.date - o1.messageOwner.date;
 ```
 
-Two traps live here for Ghost Hold's **plain (undated)** held rows, which all
-carry the single shared `GHOST_HELD_DATE_SENTINEL` date (`GhostHoldController.java:76`,
-applied at `:532`) and negative local ids. (A *timed* hold, where the user picked
-a time, carries a real distinct date and re-sorts by date like any scheduled row,
-so neither trap applies to it.)
+Two traps live here for Ghost Hold's held rows. Any group of held rows that
+**share an identical date** trips them, because held rows carry negative local
+ids. That covers three cases: the **plain-hold sentinel** `GHOST_HELD_DATE_SENTINEL`
+= `0x7FFFFFFD` (`GhostHoldController.java:76`, applied at `:532`); the
+**send-when-online sentinel** `0x7FFFFFFE`, which `persistHeld` stores verbatim
+(`GhostHoldController.java:532`) for a held "send when online" and which is likewise
+a shared literal, not a real timestamp; and **two timed holds that fall in the same
+wall-clock second**. A held row whose date is genuinely distinct from every other
+row's re-sorts to its own date position and neither trap touches it — the traps are
+about the *tie*, not about any one sentinel value.
 
-1. **The tie-break never fires between plain held rows.** The `getId() >= 0` guard
-   excludes negative local ids, so for any two plain held rows the comparator falls
-   through to `o2.date - o1.date`, which is `0` — every held pair ties. `Collections.sort`
-   is a documented-stable sort, so the on-screen order of the held block is
+1. **The tie-break never fires between same-date held rows.** The `getId() >= 0` guard
+   excludes negative local ids, so for any two held rows on the same date the comparator
+   falls
+   through to `o2.date - o1.date`, which is `0` — they tie. `Collections.sort`
+   is a documented-stable sort, so the on-screen order of each tied run is
    decided entirely by the order they were fed in, i.e. the append order in
    `GhostHoldController.injectHeldScheduled`. That is the lever the fix uses; it
    rests on the comparator staying tie-free for held rows, which an upstream bump
@@ -1548,12 +1554,43 @@ pieces of code — a fix to one does nothing to the other:
 
 Both mechanisms produce the identical reversed block by different means, so any
 change to held-row display order must account for both. The `#ghost-hold`
-scheduled-order fix reverses only the sentinel bucket's injection order (load path,
-`GhostHoldController.injectHeldScheduled`) and, on the live path
-(`ChatActivity.java:28114-28150`), inserts the new hold at the bottom of the
-existing held block — at the lowest-index existing sentinel-held row, not
-unconditionally index 0, because a "Send When Online" row (date `0x7FFFFFFE` >
-the sentinel `0x7FFFFFFD`) sorts below the held cluster and index 0 would split
-the block.
+scheduled-order fix injects the held snapshot newest-first (load path,
+`GhostHoldController.injectHeldScheduled`) so that within every tied-date run the
+newest row lands at the lowest index (screen bottom = oldest-at-top); a row with a
+distinct date is re-sorted by the stock date sort, so the reversal only ever decides
+the tie-break. On the live path (`ChatActivity.java:28114-28160`) it inserts the new
+hold at the bottom of the run of existing held rows sharing its **exact date** — the
+lowest such index — matching on the date rather than on one sentinel so the plain
+(`0x7FFFFFFD`) and online (`0x7FFFFFFE`) groups never merge or split, and gated on
+`chatMode == MODE_SCHEDULED` so a hold published into the Saved-messages timeline
+(see the MODE_SAVED fallthrough trap below) is not reordered.
 
-*(Established 2026-09-11, #ghost-hold.)*
+*(Established 2026-09-11, #ghost-hold. Generalised 2026-09-12 from the plain
+sentinel to any tied-date held group.)*
+
+## didReceiveNewMessages routes a mode-1 (scheduled) publish to processNewMessages while the fragment is the Saved-messages timeline
+
+`ChatActivity.didReceiveNewMessages` (`ChatActivity.java:24096-24115`) guards the
+mode-mismatch case with:
+
+```java
+if (mode != chatMode && chatMode != MODE_SAVED && chatMode != MODE_SUGGESTIONS) {
+    ...
+    return;
+}
+...
+processNewMessages(arr);
+```
+
+The `return` is **skipped when `chatMode == MODE_SAVED`** (or `MODE_SUGGESTIONS`),
+so an event published with `mode == MODE_SCHEDULED` (`1`) still falls through to
+`processNewMessages` while the open fragment is the Saved-messages timeline. Ghost
+Hold publishes a successful hold via `updateInterfaceWithMessages(peer, obj, 1)`
+(`GhostHoldController.java:667`), and a hold sent from Saved Messages is holdable, so
+its live row reaches `processNewMessages` there. Any hook added inside
+`processNewMessages` that keys only on the message (a held row, a sentinel date)
+without also checking `chatMode` will therefore fire on the ordinary Saved timeline,
+not just the Scheduled list. The `#ghost-hold` live placement hook gates on
+`chatMode == MODE_SCHEDULED` for exactly this reason.
+
+*(Established 2026-09-12, #ghost-hold.)*

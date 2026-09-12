@@ -1529,30 +1529,38 @@ public final class GhostHoldController {
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
         }
-        // NagramX: order the held cluster oldest-at-top. cachedForDialog is oldest-first
-        // (master's insertion order live, ORDER BY mid DESC cold -- see GhostHoldStore).
-        // Every PLAIN (undated) held row carries the one shared GHOST_HELD_DATE_SENTINEL
-        // date, so the stock MODE_SCHEDULED sort right after this
-        // (MessagesController.processLoadedMessages) can't tell those rows apart: they all
-        // tie on date and their negative local ids are excluded by that sort's id >= 0
-        // guard. That sort is stable, so the tie-break among them is whatever order we
-        // append in. The scheduled list is reverse-stacked (index 0 renders at the screen
-        // bottom), so appending the plain holds newest-first puts the newest at the lowest
-        // index (screen bottom) and the block reads oldest-at-top, matching the send order.
-        // This tie-break rests entirely on the stock sort staying stable and every plain
-        // hold sharing the sentinel; if an upstream bump adds a tie-break to that comparator
-        // this silently reverts to reversed order, with no compile error and no visible
-        // symptom without a device -- see the codemap.
+        // NagramX: order every held cluster oldest-at-top. cachedForDialog is oldest-first
+        // (master's insertion order live, ORDER BY mid DESC cold -- see GhostHoldStore), and
+        // any held rows that share one date collapse the stock MODE_SCHEDULED sort's
+        // tie-break. That sort (MessagesController.processLoadedMessages, run right after
+        // this) compares date, then id only when BOTH ids are >= 0; held rows carry negative
+        // local ids, so any two held rows on the same date tie at 0. Collections.sort is
+        // stable, so their on-screen order is whatever order we appended them in. The list is
+        // reverse-stacked (index 0 renders at the screen bottom), so to read oldest-at-top the
+        // newest of each tied run must be appended FIRST (lowest index == screen bottom).
         //
-        // A TIMED hold (user picked a time) carries a real distinct date and re-sorts by
-        // date, so its position is decided by the stock sort, not us -- we must NOT reverse
-        // those. Two timed holds in the same wall-clock second tie on date and the stable
-        // sort keeps their appended order, so appending them oldest-first (as received)
-        // keeps them in send order, and matches the live path, whose override below is
-        // sentinel-only and so never reorders timed holds. So append timed holds in original
-        // order and defer only the sentinel holds for a newest-first append.
-        java.util.ArrayList<MessageObject> naxSentinelHeld = new java.util.ArrayList<>();
-        for (int idx = 0; idx < records.size(); idx++) {
+        // We get that for every tying date at once by injecting the whole snapshot
+        // newest-first (iterate records in reverse): that makes each equal-date run
+        // newest-first, which is the only thing the stable sort preserves. A row with a
+        // genuinely DISTINCT date is re-sorted to its date position regardless of the order
+        // we inject it in, so reversing it here is harmless -- injection order only ever
+        // decides the tie-break among rows that share one date. So one reverse loop covers
+        // all three tying cases with no magic-number branch: the plain-hold sentinel
+        // (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the send-when-online sentinel (0x7FFFFFFE,
+        // which persistHeld stores verbatim for a held "send when online" -- also a shared
+        // literal, not a real timestamp), and two timed holds that fall in the same
+        // wall-clock second. Note this deliberately reorders same-second timed holds into
+        // send order too: that is the intended behaviour, one ordering rule for every held
+        // row that ties, not an oversight (an earlier review flagged it as a regression before
+        // the rule was generalised). The live path (ChatActivity.processNewMessages) matches
+        // this by inserting a live hold at the bottom of the run of existing held rows that
+        // share its exact date.
+        //
+        // This rests entirely on the stock sort staying stable and its id >= 0 guard
+        // excluding negative ids; if an upstream bump adds a tie-break to that comparator this
+        // silently reverts to reversed order, with no compile error and no symptom visible
+        // without a device -- see the codemap.
+        for (int idx = records.size() - 1; idx >= 0; idx--) {
             GhostHoldStore.HeldRecord rec = records.get(idx);
             // Inject only HELD rows. A FLUSHING row has been handed to the send
             // funnel: once the funnel writes its stock row the message is an ordinary
@@ -1590,27 +1598,11 @@ public final class GhostHoldController {
             m.send_state = MessageObject.MESSAGE_SEND_STATE_SENDING;
             MessageObject mo = new MessageObject(account, m, true, true);
             mo.scheduled = true;
-            present.add(rec.mid);
-            if (rec.date == GHOST_HELD_DATE_SENTINEL) {
-                // Plain hold: defer for the newest-first append below.
-                naxSentinelHeld.add(mo);
-            } else {
-                // Timed hold: keep received (oldest-first) order; the stock date sort places it.
-                objects.add(mo);
-                // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-                android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load-timed acc=" + account
-                        + " mid=" + rec.mid + " date=" + rec.date + " injectRank=" + naxInjected);
-                naxInjected++;
-            }
-        }
-        // NagramX: append the plain holds newest-first (see the block comment above) so the
-        // newest lands at the lowest index (screen bottom) and the block reads oldest-at-top.
-        for (int i = naxSentinelHeld.size() - 1; i >= 0; i--) {
-            MessageObject mo = naxSentinelHeld.get(i);
             objects.add(mo);
+            present.add(rec.mid);
             // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load-held acc=" + account
-                    + " mid=" + mo.getId() + " injectRank=" + naxInjected);
+            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load acc=" + account
+                    + " mid=" + rec.mid + " date=" + rec.date + " injectRank=" + naxInjected);
             naxInjected++;
         }
         // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
