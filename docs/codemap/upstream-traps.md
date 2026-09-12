@@ -1659,6 +1659,41 @@ pre-existing, rarely-hit case, not the reported bug.
 
 *(Established 2026-09-12, #ghost-hold.)*
 
+## `isDateObject` does not mean "day header" — a video-conversion row wears the same flag and can share an online-held row's exact date
+
+Header-detection that keys only on `isDateObject` is a trap, because in the Scheduled
+`messages` list that flag has **two** producers, not one. Enumerating every
+`isDateObject = true` assignment that can reach this list:
+
+- **Day header, load path** — `ChatActivity.java:23266` (`type = TYPE_DATE`).
+- **Day header, live path** — `ChatActivity.java:28231` (`type = TYPE_DATE`).
+- **Video-conversion "processing" row** — `ChatActivity.java:23384`, which also sets
+  `isVideoConversionObject = true` and, for a `video_processing_pending` send-when-online
+  video, `dateMsg.date = 0x7FFFFFFE` (`:23370-23371`) — the **exact date and `dateKey`**
+  of an online-bucket held row. It is a content-side marker, not a boundary.
+
+The other `isDateObject` producers never reach a Scheduled list: the discussion-thread
+header (`ChatActivity.java:22966`) is thread-mode only, the filtered-search header
+(`:10368`) targets `chatAdapter.filteredMessages`, the channel-admin-log header
+(`MessageObject.java:2092`) is the admin-log screen, and `SharedMediaLayout.java:9239`
+is the shared-media grid. So **`isVideoConversionObject` is the sole non-day-header
+`isDateObject` producer in this list** — excluding it is the complete rule, not a
+patch over one instance.
+
+Consequence for anything positioning a row against "the header": a walk that treats
+every `isDateObject` row as the boundary will, for a send-when-online video, both miss
+the conversion row in a same-date content scan and — if it keeps the last matching
+`dateKey` — anchor a boundary clamp to the conversion row instead of the real header,
+which can push a row somewhere neither cold nor live would put it. `placeLiveHeldRow`
+guards with `isDateObject && !isVideoConversionObject` so only a true day boundary is a
+boundary; the conversion row falls through as an ordinary (id-`0`, `rankOf` -1)
+below-row, matching where cold load leaves it (beside its video, below the held run).
+The load comparator is unaffected: date headers and conversion rows are added by
+`ChatActivity` *after* `MessagesController.java:12385` runs, so the comparator never
+walks them.
+
+*(Established 2026-09-12, #ghost-hold.)*
+
 ## didReceiveNewMessages routes a mode-1 (scheduled) publish to processNewMessages while the fragment is the Saved-messages timeline
 
 `ChatActivity.didReceiveNewMessages` (`ChatActivity.java:24096-24115`) guards the

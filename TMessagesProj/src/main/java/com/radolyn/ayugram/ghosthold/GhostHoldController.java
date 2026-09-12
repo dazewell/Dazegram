@@ -1758,6 +1758,10 @@ public final class GhostHoldController {
         if (!isHeld(obj)) {
             return stockPlaceToPaste;
         }
+        // Built fresh per call by design: the helper retains no UI state (it never holds the
+        // messages list, a view or a context across calls), and one dialog's held snapshot is
+        // small -- a handful of manual holds -- so rebuilding the rank map per arrival is
+        // cheaper than the invalidation a shared cache would need.
         HeldOrderView view = heldOrderView(account, dialogId);
         final int rank = view.rankOf(obj.getId());
         if (rank < 0) {
@@ -1781,7 +1785,18 @@ public final class GhostHoldController {
             if (mm == null || mm.messageOwner == null) {
                 continue;
             }
-            if (mm.isDateObject) {
+            // Only a TRUE day header is a boundary. A video-conversion "processing" row also
+            // carries isDateObject (ChatActivity.java:23384) and, for a send-when-online video,
+            // the same 0x7FFFFFFE date and dateKey as an online-bucket held row -- but it is a
+            // content-side marker, not a boundary. In this list isVideoConversionObject is the
+            // only non-header isDateObject producer (the load and live day headers are the rest
+            // -- enumerated, not assumed), so excluding it is the complete rule. Left as a
+            // header it would both hide from the below-row scan and, because the loop keeps the
+            // LAST dateKey match, become the anchor for the property-6 clamp below -- a guard
+            // fed a non-boundary index, which can misplace the row worse than no guard at all.
+            // Falling through, it has id 0 (rankOf -1) so it counts as a genuine below-row,
+            // which is where cold load places it: adjacent to its video, below the held cluster.
+            if (mm.isDateObject && !mm.isVideoConversionObject) {
                 if (dateKey != null && dateKey.equals(mm.dateKey)) {
                     headerIndex = i;
                 }
