@@ -1782,6 +1782,15 @@ public final class GhostHoldController {
             target = messages.size();
         }
 
+        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
+                + " mid=" + obj.getId() + " date=" + exactDate
+                + " bucket=" + (exactDate == GHOST_HELD_DATE_SENTINEL ? "plain" : (exactDate == 0x7FFFFFFE ? "online" : "timed"))
+                + " chatMode=" + chatMode + " rank=" + rank
+                + " stock=" + stockPlaceToPaste + " placeToPaste=" + target
+                + " header=" + headerIndex + " msgs=" + messages.size());
+
         return target;
     }
 
