@@ -28114,18 +28114,37 @@ public class ChatActivity extends BaseFragment implements
                 // NagramX: a plain held row (Ghost Hold with no explicit time) carries the
                 // shared GHOST_HELD_DATE_SENTINEL date, so the placement loop above can't order
                 // it against its held siblings -- every held pair ties on date and their negative
-                // local ids are ignored by the loop's id > 0 checks, so a live-arriving hold lands
-                // at messages.size(), the top of this reverse-stacked list, and the block renders
-                // newest-first. Force it to index 0 (the screen bottom) so the newest hold sits at
-                // the bottom of the block, matching both the send order and the load-time order set
-                // in GhostHoldController.injectHeldScheduled. Gated on the exact sentinel so timed
-                // holds and genuine scheduled rows keep their date-based placement untouched.
+                // local ids are ignored by the loop's id > 0 checks, so the loop can't tie-break
+                // held siblings and a live-arriving hold is placed by the fallthrough, rendering
+                // the block newest-first. Put it at the BOTTOM of the existing held block so the
+                // newest hold sits at the bottom, matching both the send order and the load-time
+                // order set in GhostHoldController.injectHeldScheduled. Index 0 is the block
+                // bottom only when nothing sorts below the held cluster, but a "Send When Online"
+                // row carries date 0x7FFFFFFE > the Ghost sentinel 0x7FFFFFFD and so sorts to a
+                // lower index (screen bottom) than the held rows; forcing index 0 would drop the
+                // new hold beneath it and split the block. So find the lowest-index existing
+                // plain-held row and insert there, making the new hold the new bottom of the
+                // cluster above any such row. With no existing held row, keep the date boundary
+                // the loop above computed. Gated on the exact sentinel so timed holds and genuine
+                // scheduled rows keep their date-based placement untouched.
                 if (obj.messageOwner != null && obj.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL
                         && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(obj)) {
-                    placeToPaste = 0;
+                    int naxHeldBottom = -1;
+                    for (int b = 0; b < messages.size(); b++) {
+                        final MessageObject mm = messages.get(b);
+                        if (mm.messageOwner != null && mm.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL
+                                && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(mm)) {
+                            naxHeldBottom = b;
+                            break;
+                        }
+                    }
+                    if (naxHeldBottom >= 0) {
+                        placeToPaste = naxHeldBottom;
+                    }
                     // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
                     android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live acc=" + currentAccount
-                            + " mid=" + obj.getId() + " chatMode=" + chatMode + " placeToPaste=0 msgs=" + messages.size());
+                            + " mid=" + obj.getId() + " chatMode=" + chatMode + " placeToPaste=" + placeToPaste
+                            + " heldBottom=" + naxHeldBottom + " msgs=" + messages.size());
                 }
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();
