@@ -1497,8 +1497,9 @@ logout/session-teardown-race family with #343 and #346.
 
 ## The MODE_SCHEDULED sort collapses to input order for held rows — and its id tie-break is inverted for local ids
 
-The stock scheduled-list sort in `MessagesController.processLoadedMessages`
-(`MessagesController.java:12386-12392`) is:
+The stock scheduled-list sort in `MessagesController.processLoadedMessages` — the
+upstream original that the `#ghost-hold` load override (below, `:12401-12415`)
+replaced — was:
 
 ```java
 if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId() >= 0) return o2.getId() - o1.getId();
@@ -1548,8 +1549,8 @@ A held row reaches the Scheduled list two different ways, ordered by two differe
 pieces of code — a fix to one does nothing to the other:
 
 - **Load path:** open the Scheduled list → `MessagesController.processLoadedMessages`
-  calls `GhostHoldController.injectHeldScheduled` then the stable sort above
-  (`MessagesController.java:12379-12391`).
+  calls `GhostHoldController.injectHeldScheduled` (`MessagesController.java:12385`)
+  then the fork-overridden scheduled comparator (`:12401-12415`).
 - **Live path:** a successful hold publishes the row via
   `updateInterfaceWithMessages(peer, obj, 1)` (`GhostHoldController.java:667`) →
   `didReceiveNewMessages` → `ChatActivity.processNewMessages`'s own placement loop

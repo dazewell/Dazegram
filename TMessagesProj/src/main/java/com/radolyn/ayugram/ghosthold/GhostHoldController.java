@@ -1540,11 +1540,14 @@ public final class GhostHoldController {
         // HeldOrderView below for the full rule; in short, held rows that share one exact date
         // tie under the stock scheduled sort (negative local ids skip its id tie-break), and a
         // higher rank (newer hold) must land at a lower array index because the list is
-        // reverse-stacked. On this path there is nothing to compute: the pre-sort `objects`
-        // list is about to be stable-sorted by MessagesController.java:12386, and a stable sort
-        // preserves append order within a date tie, so appending the whole snapshot NEWEST-FIRST
-        // (iterate records in reverse -- descending rank) makes every tying-date run come out
-        // oldest-at-top in one loop, with no per-bucket special case. A row with a genuinely
+        // reverse-stacked. On this path there is nothing to compute here: the pre-sort `objects`
+        // list is about to be sorted by the fork-overridden scheduled comparator
+        // (MessagesController.java:12401-12415), which resolves a same-date tie that involves a
+        // held row by HeldOrderView rank. This loop appends the whole snapshot NEWEST-FIRST
+        // (iterate records in reverse -- descending rank); that append order already lands every
+        // tying-date run oldest-at-top even under a plain stable sort, but the override no longer
+        // leaves it to that accident -- it orders the run by rank explicitly, so an
+        // already-present held member re-shown on reload is ranked too. A row with a genuinely
         // distinct date is re-sorted to its date position regardless of append order, so
         // reversing it here is inert. The live path (placeLiveHeldRow) reproduces the identical
         // ordering for a single row arriving into the already-sorted rendered list.
@@ -1613,22 +1616,25 @@ public final class GhostHoldController {
     // array index. The oldest hold ends up at the top of its run, the newest at the bottom,
     // which is send order top-to-bottom.
     //
-    // Held rows tie under the stock scheduled comparator (MessagesController.java:12386):
-    // it orders by date DESC and only breaks a date tie with id when BOTH ids are >= 0, but
-    // held rows carry negative local ids, so ANY group of held rows that share one exact
-    // date collapses to a 0-tie. That is not limited to one sentinel: it covers the plain
-    // hold date (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the send-when-online date (0x7FFFFFFE,
-    // stored verbatim by persistHeld -- also a shared literal, not a real timestamp), and two
-    // timed holds that land in the same wall-clock second. Rank ordering is applied per
-    // tying-date GROUP. A row with a genuinely DISTINCT date is placed by the stock date sort
-    // and is never touched here (property 4). The whole scheme rests on that stock comparator
-    // staying a stable sort with an id >= 0 guard; an upstream bump that adds a tie-break to
-    // it would silently revert this with no compile error -- see docs/codemap/upstream-traps.md.
+    // Held rows tie under the UPSTREAM scheduled comparator (date DESC, breaking a date tie
+    // with id only when BOTH ids are >= 0): held rows carry negative local ids, so ANY group
+    // of held rows that share one exact date collapses to a 0-tie. That is not limited to one
+    // sentinel: it covers the plain hold date (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the
+    // send-when-online date (0x7FFFFFFE, stored verbatim by persistHeld -- also a shared
+    // literal, not a real timestamp), and two timed holds that land in the same wall-clock
+    // second. The fork replaces that comparator with an override
+    // (MessagesController.java:12401-12415) that resolves a held-involved tie by rank; rank
+    // ordering is applied per tying-date GROUP. A row with a genuinely DISTINCT date is placed
+    // by the stock date sort (the override defers to it, id >= 0 guard included, for any pair
+    // with no held row) and is never touched here (property 4). The override still leans on the
+    // stock comparator's shape for non-held pairs, so an upstream bump to it must be re-checked
+    // against this override -- see docs/codemap/upstream-traps.md.
     //
     // Two adapters, one contract, because the two paths act on different substrates:
     //   - LOAD (injectHeldScheduled, above): appends the whole snapshot to the pre-sort
-    //     `objects` list newest-first, then lets the stock stable sort settle the ties. That
-    //     append order IS descending rank, so every tying-date run comes out oldest-at-top.
+    //     `objects` list newest-first, then lets the overridden comparator settle the ties by
+    //     rank. That append order IS descending rank, so every tying-date run comes out
+    //     oldest-at-top even under a plain stable sort; the override makes it explicit.
     //   - LIVE (placeLiveHeldRow, below): a single row arriving into the already-ordered
     //     rendered list; there is no re-sort to lean on, so it computes the row's insertion
     //     index directly from its rank relative to the rows already on screen.
@@ -1709,12 +1715,16 @@ public final class GhostHoldController {
      * placement (property 4 / property 10).
      *
      * Ordering follows THE ORDERING CONTRACT above: obj is placed within the run of rows sharing
-     * its EXACT date, ordered by rank (higher rank -> lower index), with any genuine same-date
-     * row kept below the held run and the day's date header kept above it. The header is matched
-     * STRUCTURALLY by dateKey, never by numeric date: the stock live header build stamps an
-     * "until online" header with a midnight date (ChatActivity.java:28247-28264) while the load
-     * build stamps the same header 0x7FFFFFFE (ChatActivity.java:23242-23262); the two dates
-     * differ but the day-granular dateKey is identical -- see docs/codemap/upstream-traps.md.
+     * its EXACT date, ordered by rank (higher rank -> lower index), with the day's date header
+     * kept above it. A genuine same-date row is left in stock placement -- it is never moved --
+     * so on the live path a genuine row that arrived before this hold can sit on the opposite
+     * side of the held block until the next reload (the accepted online/timed residual in
+     * docs/codemap/upstream-traps.md); the plain bucket has no genuine peer and is exact. The
+     * header is matched STRUCTURALLY by dateKey, never by numeric date: the stock live header
+     * build stamps an "until online" header with a midnight date (ChatActivity.java:28210-28228)
+     * while the load build stamps the same header 0x7FFFFFFE (ChatActivity.java:23241-23262);
+     * the two dates differ but the day-granular dateKey is identical -- see
+     * docs/codemap/upstream-traps.md.
      *
      * Placement is a function of rank and the rows currently on screen, not of arrival order, so
      * processing a batch of holds in any order converges to the same list (property 8).
