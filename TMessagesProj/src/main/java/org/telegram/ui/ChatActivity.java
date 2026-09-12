@@ -28111,6 +28111,19 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
+                // NagramX: a plain held row (Ghost Hold with no explicit time) carries the
+                // shared GHOST_HELD_DATE_SENTINEL date, so the placement loop above can't order
+                // it against its held siblings -- every held pair ties on date and their negative
+                // local ids are ignored by the loop's id > 0 checks, so a live-arriving hold lands
+                // at messages.size(), the top of this reverse-stacked list, and the block renders
+                // newest-first. Force it to index 0 (the screen bottom) so the newest hold sits at
+                // the bottom of the block, matching both the send order and the load-time order set
+                // in GhostHoldController.injectHeldScheduled. Gated on the exact sentinel so timed
+                // holds and genuine scheduled rows keep their date-based placement untouched.
+                if (obj.messageOwner != null && obj.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL
+                        && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(obj)) {
+                    placeToPaste = 0;
+                }
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();
                     if (placeToPaste < 0 || placeToPaste > messages.size()) {

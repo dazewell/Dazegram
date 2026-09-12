@@ -1524,7 +1524,22 @@ public final class GhostHoldController {
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
         }
-        for (GhostHoldStore.HeldRecord rec : records) {
+        // NagramX: append newest-held first. cachedForDialog is oldest-first (master's
+        // insertion order live, ORDER BY mid DESC cold -- see GhostHoldStore), and every
+        // plain held row carries the one shared GHOST_HELD_DATE_SENTINEL date, so the
+        // stock MODE_SCHEDULED sort right after this (MessagesController.processLoadedMessages)
+        // can't tell held rows apart: they all tie on date and their negative local ids are
+        // excluded by that sort's id >= 0 guard. That sort is stable, so the tie-break is
+        // whatever order we appended in. The scheduled list is reverse-stacked (index 0 renders
+        // at the screen bottom), so appending newest-first puts the newest hold at index 0 and
+        // the block reads oldest-at-top, matching the send order. This tie-break rests entirely
+        // on the stock sort staying stable and every plain hold sharing the sentinel; if an
+        // upstream bump adds a tie-break to that comparator this silently reverts to reversed
+        // order, with no compile error and no visible symptom without a device -- see the
+        // codemap. Rows with a real distinct date (genuine scheduled sends, and timed holds)
+        // re-sort by date regardless of this order, so they are unaffected.
+        for (int idx = records.size() - 1; idx >= 0; idx--) {
+            GhostHoldStore.HeldRecord rec = records.get(idx);
             // Inject only HELD rows. A FLUSHING row has been handed to the send
             // funnel: once the funnel writes its stock row the message is an ordinary
             // sending message and already renders in the timeline, so continuing to
