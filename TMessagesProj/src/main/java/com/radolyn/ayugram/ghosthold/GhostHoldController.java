@@ -1712,7 +1712,8 @@ public final class GhostHoldController {
     /**
      * Live-path adapter. Computes where a live-arriving scheduled row belongs in the already
      * ordered {@code messages} list so the rendered order matches what a cold reload
-     * (injectHeldScheduled + the stock date sort) would produce, and returns that index for the
+     * (injectHeldScheduled + the fork's overridden scheduled sort, not the stock date sort --
+     * see MessagesController.java:12399-12415) would produce, and returns that index for the
      * caller to use as its {@code placeToPaste}.
      *
      * Self-gating: returns {@code stockPlaceToPaste} unchanged unless {@code chatMode} is
