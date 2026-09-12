@@ -1575,7 +1575,7 @@ row is left to the stock date sort. The two adapters differ only in substrate:
   snapshot to the pre-sort `objects` list newest-first (descending rank) and lets the
   overridden comparator settle the ties (see the override above) — held sorts above a
   genuine same-date row.
-- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1745`, called once from
+- **Live** (`GhostHoldController.placeLiveHeldRow`, declared `:1749`, called once from
   `ChatActivity.java:28122`) computes the arriving row's insertion index directly from
   its rank relative to the rows already on screen: below any older held sibling, above
   any newer held sibling, and on the message side of the day header. It self-gates on
@@ -1665,8 +1665,10 @@ Header-detection that keys only on `isDateObject` is a trap, because in the Sche
 `messages` list that flag has **two** producers, not one. Enumerating every
 `isDateObject = true` assignment that can reach this list:
 
-- **Day header, load path** — `ChatActivity.java:23266` (`type = TYPE_DATE`).
-- **Day header, live path** — `ChatActivity.java:28231` (`type = TYPE_DATE`).
+- **Day header, load path** — `ChatActivity.java:23266` (`isDateObject = true`; the
+  paired `type = TYPE_DATE` is at `:23264`).
+- **Day header, live path** — `ChatActivity.java:28231` (`isDateObject = true`; the
+  paired `type = TYPE_DATE` is at `:28229`).
 - **Video-conversion "processing" row** — `ChatActivity.java:23384`, which also sets
   `isVideoConversionObject = true` and, for a `video_processing_pending` send-when-online
   video, `dateMsg.date = 0x7FFFFFFE` (`:23370-23371`) — the **exact date and `dateKey`**
