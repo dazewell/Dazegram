@@ -3,6 +3,12 @@ name: Commit tag check
 # Fail a PR if any authored (non-merge) commit lacks a #<slug> change tag, the
 # same tag the local .githooks/commit-msg hook enforces. Keeps every commit for
 # a change greppable by one token (git log --grep '#chatlock').
+#
+# "Initial plan" (exact match, no wildcard) is exempt: it's the fixed
+# placeholder subject the Copilot coding agent seeds as the first commit of
+# every PR it opens, before any of the agent's own tagged work exists to
+# amend it onto -- and the branch's append-only convention means an agent
+# session cannot safely reword/amend it away once pushed.
 
 on:
   pull_request:
@@ -31,7 +37,7 @@ jobs:
           for sha in $(git rev-list --no-merges "$BASE_SHA".."$HEAD_SHA"); do
             subject=$(git log -1 --format=%s "$sha")
             case "$subject" in
-              "Revert "*|"fixup! "*|"squash! "*|"amend! "*) continue ;;
+              "Revert "*|"fixup! "*|"squash! "*|"amend! "*|"Initial plan") continue ;;
             esac
             if git log -1 --format=%B "$sha" | grep -Eq '(^|[^A-Za-z0-9_])#([a-z][a-z0-9-]*|[0-9][a-z0-9-]*[a-z][a-z0-9-]*)'; then
               continue
