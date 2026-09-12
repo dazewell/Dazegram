@@ -1648,9 +1648,17 @@ public final class GhostHoldController {
      *
      * A row's {@code mid} is used ONLY to look its rank up; the numeric value of the mid never
      * takes part in a comparison (held mids are negative local ids and are not ordered by
-     * magnitude). A mid that is not a currently-HELD member returns -1, and every caller treats
-     * that as "not ours" and leaves stock placement alone -- fail closed, never fall back to
-     * comparing ids.
+     * magnitude). Both adapters treat {@code rankOf(mid) >= 0} as the one authoritative test of
+     * "is this a held row"; a mid that is not a currently-HELD member returns -1 and is never
+     * ordered as held, and its id is never compared to fabricate held order. What each adapter
+     * then does with a -1 row differs -- neither is "leave every -1 row untouched": the live
+     * adapter returns stock placement for the arriving row (it is not ours), while the load
+     * comparator treats a -1 row as the genuine (non-held) side of a pair, so a held sibling
+     * (rank >= 0) still sorts above it, but it never reorders two -1 rows by held rank. The
+     * distinctness this rests on -- a genuine row's negative local id never equals a held mid --
+     * holds because both are drawn from one per-account counter handed out once each and then
+     * decremented ({@code UserConfig.getNewMessageId}, UserConfig.java:130-135, over the
+     * persisted {@code lastSendMessageId}); see docs/codemap/upstream-traps.md.
      */
     public static final class HeldOrderView {
         private final java.util.HashMap<Integer, Integer> rankByMid;
@@ -1708,12 +1716,16 @@ public final class GhostHoldController {
      * caller to use as its {@code placeToPaste}.
      *
      * Self-gating: returns {@code stockPlaceToPaste} unchanged unless {@code chatMode} is
-     * MODE_SCHEDULED (a mode-1 publish still reaches processNewMessages while the fragment is
-     * the Saved-messages timeline -- the guard at ChatActivity.java:24102 does not return for
-     * MODE_SAVED -- and a hold sent to Saved Messages must not have its ordinary timeline
-     * reordered by this scheduled-list fix) AND {@code obj} is a held member of this dialog's
-     * snapshot. A held row on a genuinely distinct date, and every non-held row, keep stock
-     * placement (property 4 / property 10).
+     * MODE_SCHEDULED AND {@code obj} is a held member of this dialog's snapshot. The
+     * MODE_SCHEDULED check is defence in depth, not the real boundary: the stock scheduled
+     * filter at ChatActivity.java:27958 ({@code obj.scheduled != (chatMode == MODE_SCHEDULED)})
+     * already drops a held row -- published with {@code scheduled = true}
+     * (GhostHoldController.java:664) -- on any non-Scheduled timeline before this helper is
+     * reached, so a Saved-messages hold cannot arrive here today even though the guard at
+     * ChatActivity.java:24102 lets a mode-1 publish fall through to processNewMessages in
+     * MODE_SAVED. The gate exists so a future caller added on a path that bypasses that filter
+     * still cannot reorder another timeline. A held row on a genuinely distinct date, and every
+     * non-held row, keep stock placement (property 4 / property 10).
      *
      * Ordering follows THE ORDERING CONTRACT above: obj is placed within the run of rows sharing
      * its EXACT date, ordered by rank (higher rank -> lower index), with the day's date header
@@ -1734,18 +1746,6 @@ public final class GhostHoldController {
                                        ArrayList<MessageObject> messages, MessageObject obj, int stockPlaceToPaste) {
         if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
                 || messages == null || obj == null || obj.messageOwner == null) {
-            // NAX_SMOKE_ghost-hold competing-path marker (reverted after the smoke build): a held
-            // row published into a non-Scheduled timeline (e.g. Saved Messages, MODE_SAVED, via
-            // the ChatActivity.java:24102 fallthrough) must keep stock placement. Logging the
-            // rejected-by-gate case proves the MODE_SCHEDULED gate held, distinct from the helper
-            // never being reached at all (which emits nothing). Non-sensitive operands only.
-            if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
-                    && obj != null && obj.messageOwner != null && isHeld(obj)) {
-                android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE-REJECT path=live gate=mode chatMode=" + chatMode
-                        + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
-                        + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
-                        + " dialog=" + dialogId + " mid=" + obj.getId());
-            }
             return stockPlaceToPaste;
         }
         // Cheap membership pre-gate. Only a held row can be reordered, and isHeld reads the

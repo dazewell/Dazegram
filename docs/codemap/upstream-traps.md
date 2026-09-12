@@ -1567,24 +1567,24 @@ scheduled-order fix routes both through **one ordering contract** — a held row
 rank is its position in the flush snapshot (`cachedForDialog()`, oldest-first), and
 because the list is reverse-stacked a higher rank (newer hold) must land at a lower
 array index (screen bottom = oldest-at-top). Rank is exposed by an immutable
-`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1648`, built by
-`heldOrderView`, `:1674`), applied per tying-date group so the plain (`0x7FFFFFFD`)
+`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1655`, built by
+`heldOrderView`, `:1681`), applied per tying-date group so the plain (`0x7FFFFFFD`)
 and online (`0x7FFFFFFE`) buckets order independently and a genuinely-distinct-dated
 row is left to the stock date sort. The two adapters differ only in substrate:
 - **Load** (`GhostHoldController.injectHeldScheduled`, `:1500`) appends the whole
   snapshot to the pre-sort `objects` list newest-first (descending rank) and lets the
   overridden comparator settle the ties (see the override above) — held sorts above a
   genuine same-date row.
-- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1722`, called once from
+- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1733`, called once from
   `ChatActivity.java:28122`) computes the arriving row's insertion index directly from
   its rank relative to the rows already on screen: below any older held sibling, above
   any newer held sibling, and on the message side of the day header. It self-gates on
-  `chatMode == MODE_SCHEDULED` so a hold published into the Saved-messages timeline
-  (see the MODE_SAVED fallthrough trap below) is not reordered, and on the row being a
-  held member of the snapshot (a missing member fails closed to stock placement, never
-  to comparing ids). It orders held rows only; it does **not** move a genuine
-  same-date row, so a genuine "send when online" row can render on a different side of
-  the held block live vs cold — an accepted residual, documented below.
+  `chatMode == MODE_SCHEDULED` (defence in depth behind the stock scheduled filter; see
+  the MODE_SAVED trap below) and on the row being a held member of the snapshot (a
+  missing member fails closed to stock placement, never to comparing ids). It orders
+  held rows only; it does **not** move a genuine same-date row, so a genuine same-date
+  row can render on a different side of the held block live vs cold — an accepted
+  residual, documented below.
 
 *(Established 2026-09-11, #ghost-hold. Generalised 2026-09-12 from the plain
 sentinel to any tied-date held group; live path rebuilt onto the shared
@@ -1628,11 +1628,17 @@ ids `> 0`. Ghost Hold's held rows carry negative local ids, so they are invisibl
 that tie-break — the live-path twin of the load comparator trap at the top of this
 file. This has a consequence the `#ghost-hold` fix deliberately does **not** remove:
 
-A genuine "send when online" message (a real, positive-id row the user scheduled,
-date `0x7FFFFFFE`) meets the same-date held run and satisfies **neither** the loop's
-id tie-break (the held rows' ids are negative) **nor** a lower-date break (the held
-rows share its `0x7FFFFFFE`), so it skips the entire held run and — via the header
-id-`0` skip above — can skip the day header too, landing **above** the held block.
+A genuine same-date row the user scheduled — most obviously a "send when online"
+message on date `0x7FFFFFFE` — meets the same-date held run and satisfies **neither**
+the loop's id tie-break **nor** a lower-date break (the held rows share its date), so
+it skips the entire held run and — via the header id-`0` skip above — can skip the day
+header too, landing **above** the held block. This is **not** limited to positive-id
+genuine rows: `SendMessagesHelper` assigns a fresh local **negative** id before
+applying `scheduleDate`, and a user-scheduled local media or unsupported-text send is a
+genuine row that keeps that negative id, so it too fails the loop's `> 0` tie-break and
+hits the same split. (A positive-id genuine row finds the held rows' ids negative; a
+negative-id genuine row fails the `> 0` test itself. rankOf still returns -1 for it —
+it is not a held mid — so `placeLiveHeldRow` leaves it in stock placement either way.)
 The cold-load override (`MessagesController.java:12401`) instead sorts a genuine
 same-date row **below** the held run. So one genuine send-when-online row can sit on
 **opposite sides** of the held block live vs cold.
@@ -1672,10 +1678,19 @@ so an event published with `mode == MODE_SCHEDULED` (`1`) still falls through to
 `processNewMessages` while the open fragment is the Saved-messages timeline. Ghost
 Hold publishes a successful hold via `updateInterfaceWithMessages(peer, obj, 1)`
 (`GhostHoldController.java:667`), and a hold sent from Saved Messages is holdable, so
-its live row reaches `processNewMessages` there. Any hook added inside
-`processNewMessages` that keys only on the message (a held row, a sentinel date)
-without also checking `chatMode` will therefore fire on the ordinary Saved timeline,
-not just the Scheduled list. The `#ghost-hold` live placement hook gates on
-`chatMode == MODE_SCHEDULED` for exactly this reason.
+its live row does reach `processNewMessages` there. But the real boundary that keeps a
+Saved-Messages hold out of the Scheduled placement is one level lower: the per-message
+scheduled filter at `ChatActivity.java:27958`
+(`if (obj.scheduled != (chatMode == MODE_SCHEDULED)) continue;`) drops a held row —
+published with `scheduled = true` (`GhostHoldController.java:664`) — on any
+non-Scheduled timeline **before** the `#ghost-hold` `placeLiveHeldRow` hook (called at
+`ChatActivity.java:28122`, downstream of that filter) is reached. So a held row cannot
+in fact arrive at that hook in `MODE_SAVED` today. The hook still gates on
+`chatMode == MODE_SCHEDULED`, but as **defence in depth**, not as the boundary: it
+guards a *future* hook added inside `processNewMessages` on a path that keys only on
+the message (a held row, a sentinel date) and bypasses the `:27958` filter — that one
+*would* fire on the ordinary Saved timeline. The trap for the next person is that
+reaching `processNewMessages` in `MODE_SAVED` is real, but reaching this PR's hook with
+a held row is not; do not conflate the two.
 
 *(Established 2026-09-12, #ghost-hold.)*
