@@ -1710,11 +1710,14 @@ public final class GhostHoldController {
     }
 
     /**
-     * Live-path adapter. Computes where a live-arriving scheduled row belongs in the already
-     * ordered {@code messages} list so the rendered order matches what a cold reload
+     * Live-path adapter. Computes where a live-arriving HELD row belongs in the already
+     * ordered {@code messages} list so held rows render in the order a cold reload
      * (injectHeldScheduled + the fork's overridden scheduled sort, not the stock date sort --
      * see MessagesController.java:12399-12415) would produce, and returns that index for the
-     * caller to use as its {@code placeToPaste}.
+     * caller to use as its {@code placeToPaste}. It orders held rows only: a genuine same-date
+     * row is left in stock placement, so it can sit on the opposite side of the held block from
+     * where cold load puts it until the next reload -- the accepted online / timed-bucket
+     * residual in docs/codemap/upstream-traps.md.
      *
      * Self-gating: returns {@code stockPlaceToPaste} unchanged unless {@code chatMode} is
      * MODE_SCHEDULED AND {@code obj} is a held member of this dialog's snapshot. The

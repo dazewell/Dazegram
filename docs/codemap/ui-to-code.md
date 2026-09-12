@@ -616,10 +616,12 @@ The in-chat message list (Scheduled list included) is laid out by a
 `GridLayoutManagerFixed` built with `reverseLayout = !reversed`, and `reversed`
 defaults `false` (`ChatActivity.java:7303`, field default `ChatActivity.java:2976`),
 so the effective `reverseLayout` is `true`: the item at `messages` index 0 draws
-at the **bottom** of the screen and higher indices climb upward. Loaded objects
-are appended into `messages` in array order after the load-time sort
-(`ChatActivity.java:23353-23361`), so the first element of the sorted list is the
-bottom-most row on screen.
+at the **bottom** of the screen and higher indices climb upward. On a normal
+(append) load, loaded objects are appended into `messages` in array order after the
+load-time sort (`ChatActivity.java:23353-23361`), so the first element of the sorted
+list is the bottom-most row on screen. (A forward load -- `load_type == 1` -- instead
+prepends each object at index 0 in that same block, reversing the append order; the
+index-0-is-bottom orientation still holds either way.)
 
 This is the orientation fact behind the Ghost Hold held-row ordering: to make a
 block read oldest-at-top / newest-at-bottom, the newest row must sit at the
