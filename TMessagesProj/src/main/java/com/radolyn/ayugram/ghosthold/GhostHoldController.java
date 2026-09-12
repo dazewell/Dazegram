@@ -1611,10 +1611,16 @@ public final class GhostHoldController {
     //
     // A held row's RANK is its position in this dialog's flush snapshot -- cachedForDialog(),
     // which is oldest-first (master insertion order live, ORDER BY mid DESC cold), i.e. the
-    // exact order the flush sends in. Oldest hold == rank 0. The Scheduled list is
-    // reverse-stacked (message array index 0 renders at the SCREEN BOTTOM), so to read a
-    // held run oldest-at-top the mapping is: a HIGHER rank (newer hold) sorts to a LOWER
-    // array index. The oldest hold ends up at the top of its run, the newest at the bottom,
+    // exact order the flush sends in. Oldest hold == rank 0. One caveat on "oldest-first":
+    // legacy migration (migrateAccount) seeds master in the order it scans the old stock tables,
+    // which is not intrinsically oldest-first, so it sorts the merged batch mid DESC before
+    // inserting. That explicit sort -- not an accident of scan order -- is what makes the claim
+    // hold for a migrated backlog; ordinary live holds and any post-restart cold load are
+    // oldest-first without it.
+    //
+    // The Scheduled list is reverse-stacked (message array index 0 renders at the SCREEN BOTTOM),
+    // so to read a held run oldest-at-top the mapping is: a HIGHER rank (newer hold) sorts to a
+    // LOWER array index. The oldest hold ends up at the top of its run, the newest at the bottom,
     // which is send order top-to-bottom.
     //
     // Held rows tie under the UPSTREAM scheduled comparator (date DESC, breaking a date tie
@@ -1627,7 +1633,7 @@ public final class GhostHoldController {
     // (MessagesController.java:12401-12415) that resolves a held-involved tie by rank; rank
     // ordering is applied per tying-date GROUP. A row with a genuinely DISTINCT date is placed
     // by the stock date sort (the override defers to it, id >= 0 guard included, for any pair
-    // with no held row) and is never touched here (property 4). The override still leans on the
+    // with no held row) and is never touched here. The override still leans on the
     // stock comparator's shape for non-held pairs, so an upstream bump to it must be re-checked
     // against this override -- see docs/codemap/upstream-traps.md.
     //
@@ -1644,7 +1650,8 @@ public final class GhostHoldController {
      * Immutable, per-operation ordering view over one dialog's held rows. It exposes the
      * ordering RELATION only -- a held row's rank in the flush snapshot -- and retains no
      * reference to any UI object, list, view, context or observer, so a caller may build it,
-     * use it for the length of one placement operation and drop it (property 11).
+     * use it for the length of one placement operation and drop it (it retains no reference to
+     * any UI object, list, view, context or observer across calls).
      *
      * A row's {@code mid} is used ONLY to look its rank up; the numeric value of the mid never
      * takes part in a comparison (held mids are negative local ids and are not ordered by
@@ -1671,10 +1678,6 @@ public final class GhostHoldController {
         public int rankOf(int mid) {
             Integer r = rankByMid.get(mid);
             return r == null ? -1 : r;
-        }
-
-        public boolean isEmpty() {
-            return rankByMid.isEmpty();
         }
     }
 
@@ -1729,7 +1732,7 @@ public final class GhostHoldController {
      * ChatActivity.java:24102 lets a mode-1 publish fall through to processNewMessages in
      * MODE_SAVED. The gate exists so a future caller added on a path that bypasses that filter
      * still cannot reorder another timeline. A held row on a genuinely distinct date, and every
-     * non-held row, keep stock placement (property 4 / property 10).
+     * non-held row, keep stock placement.
      *
      * Ordering follows THE ORDERING CONTRACT above: obj is placed within the run of rows sharing
      * its EXACT date, ordered by rank (higher rank -> lower index), with the day's date header
@@ -1738,13 +1741,13 @@ public final class GhostHoldController {
      * side of the held block until the next reload (the accepted online/timed residual in
      * docs/codemap/upstream-traps.md); the plain bucket has no genuine peer and is exact. The
      * header is matched STRUCTURALLY by dateKey, never by numeric date: the stock live header
-     * build stamps an "until online" header with a midnight date (ChatActivity.java:28210-28228)
+     * build stamps an "until online" header with a midnight date (ChatActivity.java:28210-28227)
      * while the load build stamps the same header 0x7FFFFFFE (ChatActivity.java:23241-23262);
      * the two dates differ but the day-granular dateKey is identical -- see
      * docs/codemap/upstream-traps.md.
      *
      * Placement is a function of rank and the rows currently on screen, not of arrival order, so
-     * processing a batch of holds in any order converges to the same list (property 8).
+     * processing a batch of holds in any order converges to the same list.
      */
     public static int placeLiveHeldRow(int account, int chatMode, long dialogId,
                                        ArrayList<MessageObject> messages, MessageObject obj, int stockPlaceToPaste) {
@@ -1777,9 +1780,13 @@ public final class GhostHoldController {
 
         // Walk the rendered list once. Within obj's EXACT-date run, a held sibling that is OLDER
         // (lower rank) must stay ABOVE obj (higher index); a held sibling that is NEWER (higher
-        // rank) and any genuine same-date row must stay BELOW obj (lower index). The list is
-        // already in cold-load order, so the below-rows sit at a contiguous block of lower
-        // indices and the above-rows at higher indices.
+        // rank) and any genuine same-date row must stay BELOW obj (lower index). We do NOT assume
+        // the run is contiguous or that the list is exactly in cold-load order: the accepted
+        // online/timed residual can leave a genuine same-date row on the far side of the held
+        // block until reload. So rather than trust position we scan the whole list and keep two
+        // anchors -- the lowest index that must stay above obj (firstAbove) and the highest that
+        // must stay below (lastBelow) -- then insert at that boundary. obj lands adjacent to its
+        // held siblings; a stray genuine row that is already out of place is left where it is.
         int headerIndex = -1;
         int firstAbove = -1; // lowest index of a same-date row that must stay ABOVE obj
         int lastBelow = -1;  // highest index of a same-date row that must stay BELOW obj
@@ -1795,7 +1802,7 @@ public final class GhostHoldController {
             // only non-header isDateObject producer (the load and live day headers are the rest
             // -- enumerated, not assumed), so excluding it is the complete rule. Left as a
             // header it would both hide from the below-row scan and, because the loop keeps the
-            // LAST dateKey match, become the anchor for the property-6 clamp below -- a guard
+            // LAST dateKey match, become the anchor for the header clamp below -- a guard
             // fed a non-boundary index, which can misplace the row worse than no guard at all.
             // Falling through, it has id 0 (rankOf -1) so it counts as a genuine below-row,
             // which is where cold load places it: adjacent to its video, below the held cluster.
@@ -1809,7 +1816,16 @@ public final class GhostHoldController {
                 continue;
             }
             int mmRank = view.rankOf(mm.getId());
-            if (mmRank >= 0 && mmRank < rank) {
+            // A held row with no rank is one the flush has just marked FLUSHING (heldOrderView
+            // ranks STATE_HELD rows only). Treat it as an OLDER sibling, not a genuine row: the
+            // flush claims items oldest-first and flushItem returns early once Ghost is re-enabled,
+            // so a hold arriving now can only post-date every row already handed to the flush --
+            // every rankless held row on screen is therefore older than obj and belongs above it.
+            // Classing it as genuine would drop obj below it and reintroduce newest-on-top until
+            // reload. (obj itself being rankless is the not-ours case handled above, which still
+            // fails closed to stock placement.)
+            boolean above = mmRank >= 0 ? mmRank < rank : isHeld(mm);
+            if (above) {
                 if (firstAbove < 0) {
                     firstAbove = i; // list is ordered, so the first older sibling wins
                 }
@@ -1828,7 +1844,7 @@ public final class GhostHoldController {
         } else {
             target = lastBelow + 1; // above every newer sibling / genuine row of this date
         }
-        // A real row never crosses to the far side of its own day header (property 6). By the
+        // A real row never crosses to the far side of its own day header. By the
         // ordering above this already holds, but clamp defensively so a future change can't
         // silently push a held row above its header.
         if (headerIndex >= 0 && target > headerIndex) {
@@ -2012,6 +2028,19 @@ public final class GhostHoldController {
             SQLiteDatabase db = storage.getDatabase();
             collectLegacy(db, "scheduled_messages_v2", account, selfId, toInsert, schedDelete, dialogs);
             collectLegacy(db, "messages_v2", account, selfId, toInsert, mainDelete, dialogs);
+            // NagramX: collectLegacy scans each stock table with no ORDER BY and appends into one
+            // merged list, so the batch is in scan order, not hold order. insertOnQueue appends
+            // into master in list order and heldOrderView ranks by that position -- and
+            // selectByStateOnQueue flushes in that same order -- so an unsorted batch would seed
+            // both the Scheduled render order AND the send order from an accident of the scan.
+            // Sort the MERGED list oldest-first (mid DESC, the store's own canonical order; held
+            // mids are handed out by a decrementing counter, so a larger / less-negative mid is
+            // the older hold) once here, before the insert loop, so a migrated backlog gets a
+            // deterministic hold order. Sorting the merged list, not per query, is what gives a
+            // mid duplicated across both tables one well-defined position. retainConfirmed pairs
+            // the stock delete by set membership, not by position, so reordering here cannot
+            // desynchronise the paired delete.
+            java.util.Collections.sort(toInsert, (a, b) -> Integer.compare(b.mid, a.mid));
             if (toInsert.isEmpty()) {
                 return;
             }
