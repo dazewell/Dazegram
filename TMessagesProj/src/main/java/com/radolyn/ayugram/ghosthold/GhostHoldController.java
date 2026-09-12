@@ -1602,7 +1602,9 @@ public final class GhostHoldController {
             present.add(rec.mid);
             // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
             android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load acc=" + account
-                    + " mid=" + rec.mid + " date=" + rec.date + " injectRank=" + naxInjected);
+                    + " mid=" + rec.mid + " date=" + rec.date
+                    + " bucket=" + (rec.date == GHOST_HELD_DATE_SENTINEL ? "plain" : (rec.date == 0x7FFFFFFE ? "online" : "timed"))
+                    + " injectRank=" + naxInjected);
             naxInjected++;
         }
         // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).

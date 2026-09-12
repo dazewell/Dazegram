@@ -28152,7 +28152,9 @@ public class ChatActivity extends BaseFragment implements
                     }
                     // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
                     android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live acc=" + currentAccount
-                            + " mid=" + obj.getId() + " chatMode=" + chatMode + " placeToPaste=" + placeToPaste
+                            + " mid=" + obj.getId() + " date=" + naxHeldDate
+                            + " bucket=" + (naxHeldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL ? "plain" : (naxHeldDate == 0x7FFFFFFE ? "online" : "timed"))
+                            + " chatMode=" + chatMode + " placeToPaste=" + placeToPaste
                             + " heldBottom=" + naxHeldBottom + " msgs=" + messages.size());
                 }
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
