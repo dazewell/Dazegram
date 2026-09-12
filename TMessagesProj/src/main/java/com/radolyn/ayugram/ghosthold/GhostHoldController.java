@@ -1507,24 +1507,25 @@ public final class GhostHoldController {
         initAccount(account);
         long selfId = UserConfig.getInstance(account).getClientUserId();
         GhostHoldStore store = GhostHoldStore.getInstance(account);
+        boolean naxOwns = store.ownsUser(selfId);
+        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+        // Emitted at the unconditionally-reached entry, BEFORE the ownership gate, with
+        // ownership as an operand: a load that reaches this helper but bails the gate
+        // (a warming store on cold relaunch, or a reused slot) still leaves a BEGIN, so
+        // an absent marker means the path was never reached rather than gated out.
+        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
+                + " dialog=" + dialogId + " owns=" + naxOwns);
         // The published snapshot is read off-queue for speed, so it can momentarily
         // still hold a previous slot owner's rows in the window between a re-login and
         // the queue re-opening the file under the new owner. ownsUser refuses that
         // window: it returns true only once an activated open has stamped this user,
         // so a stale snapshot is never rendered. Fails toward showing nothing until
         // the store is confirmed, never toward showing another user's held messages.
-        if (!store.ownsUser(selfId)) {
+        if (!naxOwns) {
             return;
         }
         List<GhostHoldStore.HeldRecord> records = store.cachedForDialog(dialogId);
-        int naxCachedHeld = records == null ? 0 : records.size();
-        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-        // Emitted on unconditional owner entry, BEFORE the empty-snapshot return, so a
-        // reached-but-empty scheduled load still proves reachability instead of looking
-        // identical to a load path that was never reached.
-        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
-                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
-                + " dialog=" + dialogId + " cachedHeld=" + naxCachedHeld);
         if (records == null || records.isEmpty()) {
             // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
             android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
@@ -1741,6 +1742,7 @@ public final class GhostHoldController {
             if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
                     && obj != null && obj.messageOwner != null && isHeld(obj)) {
                 android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE-REJECT path=live gate=mode chatMode=" + chatMode
+                        + " build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
                         + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
                         + " dialog=" + dialogId + " mid=" + obj.getId());
             }
