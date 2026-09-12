@@ -1498,7 +1498,7 @@ logout/session-teardown-race family with #343 and #346.
 ## The MODE_SCHEDULED sort collapses to input order for held rows — and its id tie-break is inverted for local ids
 
 The stock scheduled-list sort in `MessagesController.processLoadedMessages`
-(`MessagesController.java:12385-12391`) is:
+(`MessagesController.java:12386-12392`) is:
 
 ```java
 if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId() >= 0) return o2.getId() - o1.getId();
@@ -1546,7 +1546,7 @@ pieces of code — a fix to one does nothing to the other:
   `updateInterfaceWithMessages(peer, obj, 1)` (`GhostHoldController.java:667`) →
   `didReceiveNewMessages` → `ChatActivity.processNewMessages`'s own placement loop
   (`ChatActivity.java:27981-28112`). That loop breaks on `lastMessage.date < obj.date`
-  or `date ==` with both ids `> 0`; for sentinel-tied negative-id held rows neither
+  or `date ==` with both ids `> 0`; for same-date-tied negative-id held rows neither
   branch can fire *between held siblings*, so the loop cannot order a live-arriving
   hold against the existing held rows — it stops at the first lower-dated row (a real
   scheduled row or date header) or falls through to `messages.size()`, and either way
@@ -1554,19 +1554,51 @@ pieces of code — a fix to one does nothing to the other:
 
 Both mechanisms produce the identical reversed block by different means, so any
 change to held-row display order must account for both. The `#ghost-hold`
-scheduled-order fix injects the held snapshot newest-first (load path,
-`GhostHoldController.injectHeldScheduled`) so that within every tied-date run the
-newest row lands at the lowest index (screen bottom = oldest-at-top); a row with a
-distinct date is re-sorted by the stock date sort, so the reversal only ever decides
-the tie-break. On the live path (`ChatActivity.java:28114-28160`) it inserts the new
-hold at the bottom of the run of existing held rows sharing its **exact date** — the
-lowest such index — matching on the date rather than on one sentinel so the plain
-(`0x7FFFFFFD`) and online (`0x7FFFFFFE`) groups never merge or split, and gated on
-`chatMode == MODE_SCHEDULED` so a hold published into the Saved-messages timeline
-(see the MODE_SAVED fallthrough trap below) is not reordered.
+scheduled-order fix routes both through **one ordering contract** — a held row's
+rank is its position in the flush snapshot (`cachedForDialog()`, oldest-first), and
+because the list is reverse-stacked a higher rank (newer hold) must land at a lower
+array index (screen bottom = oldest-at-top). Rank is exposed by an immutable
+`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1641`, built by
+`heldOrderView`, `:1667`), applied per tying-date group so the plain (`0x7FFFFFFD`)
+and online (`0x7FFFFFFE`) buckets order independently and a genuinely-distinct-dated
+row is left to the stock date sort. The two adapters differ only in substrate:
+- **Load** (`GhostHoldController.injectHeldScheduled`, `:1500`) appends the whole
+  snapshot to the pre-sort `objects` list newest-first (descending rank) and lets the
+  stable sort settle the ties — that append order *is* the contract.
+- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1715`, called once from
+  `ChatActivity.java:28122`) computes the arriving row's insertion index directly from
+  its rank relative to the rows already on screen: below any older held sibling, above
+  any newer sibling and any genuine same-date row, and on the message side of the day
+  header. It self-gates on `chatMode == MODE_SCHEDULED` so a hold published into the
+  Saved-messages timeline (see the MODE_SAVED fallthrough trap below) is not reordered,
+  and on the row being a held member of the snapshot (a missing member fails closed to
+  stock placement, never to comparing ids).
 
 *(Established 2026-09-11, #ghost-hold. Generalised 2026-09-12 from the plain
-sentinel to any tied-date held group.)*
+sentinel to any tied-date held group; live path rebuilt onto the shared
+HeldOrderView oracle the same day.)*
+
+## The Scheduled "until online" date header carries different dates on the load and live paths — match it by dateKey, never by numeric date
+
+The Scheduled list builds its per-day date header in two places, and they disagree
+on the header's `date` for a send-when-online day:
+
+- **Load path** (`ChatActivity.java:23241-23262`): for `MODE_SCHEDULED` with
+  `obj.messageOwner.date == 0x7ffffffe` it stamps the header `dateMsg.date = 0x7ffffffe`
+  (`:23253`); otherwise it computes Calendar midnight of the row's day.
+- **Live path** (`ChatActivity.java:28210-28228`): it sets the "until online" *label*
+  for `0x7ffffffe` (`:28212`) but has **no** matching date branch — it unconditionally
+  runs the Calendar midnight computation (`:28228`).
+
+So the same "until online" header carries `0x7ffffffe` when cold-loaded and a midnight
+timestamp when created live. Any code that pairs a message with its header by
+`header.messageOwner.date` will therefore pass on cold load and silently fail live.
+Match the header structurally instead — `isDateObject` plus the day-granular `dateKey`
+(`MessageObject.java:1964`, computed from `Calendar.DAY_OF_YEAR`, so `0x7FFFFFFD`,
+`0x7FFFFFFE` and that day's midnight all share one `dateKey`). `placeLiveHeldRow`
+does exactly this to keep a held row on the message side of its header.
+
+*(Established 2026-09-12, #ghost-hold.)*
 
 ## didReceiveNewMessages routes a mode-1 (scheduled) publish to processNewMessages while the fragment is the Saved-messages timeline
 

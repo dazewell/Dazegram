@@ -28111,52 +28111,16 @@ public class ChatActivity extends BaseFragment implements
                         }
                     }
                 }
-                // NagramX: a held row can tie under the scheduled placement loop above and be
-                // ordered newest-first, the same defect the load path fixes. Held rows carry
-                // negative local ids and one of a few shared dates -- the plain-hold sentinel
-                // (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the send-when-online sentinel
-                // (0x7FFFFFFE), or, for two timed holds, an identical real second -- and the
-                // loop only tie-breaks with id > 0 checks, so it can't order a live-arriving
-                // hold against a held sibling on the same date; it lands by the fallthrough,
-                // rendering that date's run newest-first. Put the new hold at the BOTTOM of the
-                // run of EXISTING held rows sharing its EXACT date (the lowest such index), so
-                // the newest hold sits at the bottom of its group, matching the send order and
-                // the load-time order set in GhostHoldController.injectHeldScheduled. Matching
-                // on the exact date, not on one sentinel, keeps the plain and online groups
-                // apart: a plain hold never jumps ahead of an online-held group and vice versa,
-                // and it never splits a date block. With no existing same-date held row, keep
-                // the date boundary the loop above computed. Gated on isHeld so genuine
-                // scheduled rows (incl. a real send-when-online message and a timed hold on its
-                // own distinct second) keep their stock date placement untouched. Gated on
-                // MODE_SCHEDULED because didReceiveNewMessages still routes a mode-1 publish to
-                // this method while the fragment is the Saved-messages timeline (the guard at
-                // ~:24102 does not return for chatMode == MODE_SAVED), and a hold sent to Saved
-                // Messages must not have its ordinary timeline reordered by this scheduled-list
-                // fix. As with the load path this rests on the stock scheduled sort staying
-                // stable and its id >= 0 guard excluding negative ids; an upstream tie-break
-                // change would revert this silently -- see the codemap.
-                if (chatMode == MODE_SCHEDULED && obj.messageOwner != null
-                        && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(obj)) {
-                    final int naxHeldDate = obj.messageOwner.date;
-                    int naxHeldBottom = -1;
-                    for (int b = 0; b < messages.size(); b++) {
-                        final MessageObject mm = messages.get(b);
-                        if (mm.messageOwner != null && mm.messageOwner.date == naxHeldDate
-                                && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(mm)) {
-                            naxHeldBottom = b;
-                            break;
-                        }
-                    }
-                    if (naxHeldBottom >= 0) {
-                        placeToPaste = naxHeldBottom;
-                    }
-                    // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-                    android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live acc=" + currentAccount
-                            + " mid=" + obj.getId() + " date=" + naxHeldDate
-                            + " bucket=" + (naxHeldDate == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL ? "plain" : (naxHeldDate == 0x7FFFFFFE ? "online" : "timed"))
-                            + " chatMode=" + chatMode + " placeToPaste=" + placeToPaste
-                            + " heldBottom=" + naxHeldBottom + " msgs=" + messages.size());
-                }
+                // NagramX: the stock placement loop above only tie-breaks with id > 0 checks, so
+                // it cannot order a live-arriving held row against a held sibling (held rows carry
+                // negative local ids) -- it lands the row by the fallthrough, rendering that date's
+                // run newest-first, the same defect the load path fixes. Hand placement to the
+                // fork's ordering oracle, which reproduces the cold-load order. The helper self-gates
+                // on MODE_SCHEDULED and on this row being a held member, and returns placeToPaste
+                // untouched for everything else, so genuine scheduled rows and other timelines are
+                // unaffected. See GhostHoldController.placeLiveHeldRow / HeldOrderView.
+                placeToPaste = com.radolyn.ayugram.ghosthold.GhostHoldController.placeLiveHeldRow(
+                        currentAccount, chatMode, dialog_id, messages, obj, placeToPaste);
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();
                     if (placeToPaste < 0 || placeToPaste > messages.size()) {

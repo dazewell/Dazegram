@@ -1529,37 +1529,18 @@ public final class GhostHoldController {
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
         }
-        // NagramX: order every held cluster oldest-at-top. cachedForDialog is oldest-first
-        // (master's insertion order live, ORDER BY mid DESC cold -- see GhostHoldStore), and
-        // any held rows that share one date collapse the stock MODE_SCHEDULED sort's
-        // tie-break. That sort (MessagesController.processLoadedMessages, run right after
-        // this) compares date, then id only when BOTH ids are >= 0; held rows carry negative
-        // local ids, so any two held rows on the same date tie at 0. Collections.sort is
-        // stable, so their on-screen order is whatever order we appended them in. The list is
-        // reverse-stacked (index 0 renders at the screen bottom), so to read oldest-at-top the
-        // newest of each tied run must be appended FIRST (lowest index == screen bottom).
-        //
-        // We get that for every tying date at once by injecting the whole snapshot
-        // newest-first (iterate records in reverse): that makes each equal-date run
-        // newest-first, which is the only thing the stable sort preserves. A row with a
-        // genuinely DISTINCT date is re-sorted to its date position regardless of the order
-        // we inject it in, so reversing it here is harmless -- injection order only ever
-        // decides the tie-break among rows that share one date. So one reverse loop covers
-        // all three tying cases with no magic-number branch: the plain-hold sentinel
-        // (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the send-when-online sentinel (0x7FFFFFFE,
-        // which persistHeld stores verbatim for a held "send when online" -- also a shared
-        // literal, not a real timestamp), and two timed holds that fall in the same
-        // wall-clock second. Note this deliberately reorders same-second timed holds into
-        // send order too: that is the intended behaviour, one ordering rule for every held
-        // row that ties, not an oversight (an earlier review flagged it as a regression before
-        // the rule was generalised). The live path (ChatActivity.processNewMessages) matches
-        // this by inserting a live hold at the bottom of the run of existing held rows that
-        // share its exact date.
-        //
-        // This rests entirely on the stock sort staying stable and its id >= 0 guard
-        // excluding negative ids; if an upstream bump adds a tie-break to that comparator this
-        // silently reverts to reversed order, with no compile error and no symptom visible
-        // without a device -- see the codemap.
+        // NagramX: LOAD adapter for the held-row ordering. See THE ORDERING CONTRACT on
+        // HeldOrderView below for the full rule; in short, held rows that share one exact date
+        // tie under the stock scheduled sort (negative local ids skip its id tie-break), and a
+        // higher rank (newer hold) must land at a lower array index because the list is
+        // reverse-stacked. On this path there is nothing to compute: the pre-sort `objects`
+        // list is about to be stable-sorted by MessagesController.java:12386, and a stable sort
+        // preserves append order within a date tie, so appending the whole snapshot NEWEST-FIRST
+        // (iterate records in reverse -- descending rank) makes every tying-date run come out
+        // oldest-at-top in one loop, with no per-bucket special case. A row with a genuinely
+        // distinct date is re-sorted to its date position regardless of append order, so
+        // reversing it here is inert. The live path (placeLiveHeldRow) reproduces the identical
+        // ordering for a single row arriving into the already-sorted rendered list.
         for (int idx = records.size() - 1; idx >= 0; idx--) {
             GhostHoldStore.HeldRecord rec = records.get(idx);
             // Inject only HELD rows. A FLUSHING row has been handed to the send
@@ -1610,6 +1591,198 @@ public final class GhostHoldController {
         // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
         android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
                 + " dialog=" + dialogId + " injected=" + naxInjected);
+    }
+
+    // ==== Held-row ordering: one oracle, two adapters ================================
+    //
+    // THE ORDERING CONTRACT (the single source of truth for both the load and the live
+    // path; if you change it, change it here and nowhere else).
+    //
+    // A held row's RANK is its position in this dialog's flush snapshot -- cachedForDialog(),
+    // which is oldest-first (master insertion order live, ORDER BY mid DESC cold), i.e. the
+    // exact order the flush sends in. Oldest hold == rank 0. The Scheduled list is
+    // reverse-stacked (message array index 0 renders at the SCREEN BOTTOM), so to read a
+    // held run oldest-at-top the mapping is: a HIGHER rank (newer hold) sorts to a LOWER
+    // array index. The oldest hold ends up at the top of its run, the newest at the bottom,
+    // which is send order top-to-bottom.
+    //
+    // Held rows tie under the stock scheduled comparator (MessagesController.java:12386):
+    // it orders by date DESC and only breaks a date tie with id when BOTH ids are >= 0, but
+    // held rows carry negative local ids, so ANY group of held rows that share one exact
+    // date collapses to a 0-tie. That is not limited to one sentinel: it covers the plain
+    // hold date (GHOST_HELD_DATE_SENTINEL, 0x7FFFFFFD), the send-when-online date (0x7FFFFFFE,
+    // stored verbatim by persistHeld -- also a shared literal, not a real timestamp), and two
+    // timed holds that land in the same wall-clock second. Rank ordering is applied per
+    // tying-date GROUP. A row with a genuinely DISTINCT date is placed by the stock date sort
+    // and is never touched here (property 4). The whole scheme rests on that stock comparator
+    // staying a stable sort with an id >= 0 guard; an upstream bump that adds a tie-break to
+    // it would silently revert this with no compile error -- see docs/codemap/upstream-traps.md.
+    //
+    // Two adapters, one contract, because the two paths act on different substrates:
+    //   - LOAD (injectHeldScheduled, above): appends the whole snapshot to the pre-sort
+    //     `objects` list newest-first, then lets the stock stable sort settle the ties. That
+    //     append order IS descending rank, so every tying-date run comes out oldest-at-top.
+    //   - LIVE (placeLiveHeldRow, below): a single row arriving into the already-ordered
+    //     rendered list; there is no re-sort to lean on, so it computes the row's insertion
+    //     index directly from its rank relative to the rows already on screen.
+
+    /**
+     * Immutable, per-operation ordering view over one dialog's held rows. It exposes the
+     * ordering RELATION only -- a held row's rank in the flush snapshot -- and retains no
+     * reference to any UI object, list, view, context or observer, so a caller may build it,
+     * use it for the length of one placement operation and drop it (property 11).
+     *
+     * A row's {@code mid} is used ONLY to look its rank up; the numeric value of the mid never
+     * takes part in a comparison (held mids are negative local ids and are not ordered by
+     * magnitude). A mid that is not a currently-HELD member returns -1, and every caller treats
+     * that as "not ours" and leaves stock placement alone -- fail closed, never fall back to
+     * comparing ids.
+     */
+    public static final class HeldOrderView {
+        private final java.util.HashMap<Integer, Integer> rankByMid;
+
+        private HeldOrderView(java.util.HashMap<Integer, Integer> rankByMid) {
+            this.rankByMid = rankByMid;
+        }
+
+        /** Flush-order rank of {@code mid} (0 == oldest held), or -1 if it is not a held member. */
+        public int rankOf(int mid) {
+            Integer r = rankByMid.get(mid);
+            return r == null ? -1 : r;
+        }
+
+        public boolean isEmpty() {
+            return rankByMid.isEmpty();
+        }
+    }
+
+    /**
+     * Builds the {@link HeldOrderView} for {@code dialogId} from this account's published
+     * snapshot, applying the SAME ownsUser gate as the load injection so a reused account slot
+     * can never order against a stale snapshot (a re-login can leave the off-queue snapshot
+     * briefly holding a previous owner's rows). Returns an empty view -- never null -- when the
+     * store is not yet owned or the dialog has no held rows, so callers need no null check.
+     * Only STATE_HELD rows get a rank, matching exactly what injectHeldScheduled renders.
+     */
+    public static HeldOrderView heldOrderView(int account, long dialogId) {
+        java.util.HashMap<Integer, Integer> rankByMid = new java.util.HashMap<>();
+        initAccount(account);
+        long selfId = UserConfig.getInstance(account).getClientUserId();
+        GhostHoldStore store = GhostHoldStore.getInstance(account);
+        if (!store.ownsUser(selfId)) {
+            return new HeldOrderView(rankByMid);
+        }
+        List<GhostHoldStore.HeldRecord> records = store.cachedForDialog(dialogId);
+        if (records != null) {
+            int rank = 0;
+            for (int i = 0; i < records.size(); i++) {
+                GhostHoldStore.HeldRecord rec = records.get(i);
+                if (rec.state != GhostHoldStore.STATE_HELD) {
+                    continue;
+                }
+                rankByMid.put(rec.mid, rank);
+                rank++;
+            }
+        }
+        return new HeldOrderView(rankByMid);
+    }
+
+    /**
+     * Live-path adapter. Computes where a live-arriving scheduled row belongs in the already
+     * ordered {@code messages} list so the rendered order matches what a cold reload
+     * (injectHeldScheduled + the stock date sort) would produce, and returns that index for the
+     * caller to use as its {@code placeToPaste}.
+     *
+     * Self-gating: returns {@code stockPlaceToPaste} unchanged unless {@code chatMode} is
+     * MODE_SCHEDULED (a mode-1 publish still reaches processNewMessages while the fragment is
+     * the Saved-messages timeline -- the guard at ChatActivity.java:24102 does not return for
+     * MODE_SAVED -- and a hold sent to Saved Messages must not have its ordinary timeline
+     * reordered by this scheduled-list fix) AND {@code obj} is a held member of this dialog's
+     * snapshot. A held row on a genuinely distinct date, and every non-held row, keep stock
+     * placement (property 4 / property 10).
+     *
+     * Ordering follows THE ORDERING CONTRACT above: obj is placed within the run of rows sharing
+     * its EXACT date, ordered by rank (higher rank -> lower index), with any genuine same-date
+     * row kept below the held run and the day's date header kept above it. The header is matched
+     * STRUCTURALLY by dateKey, never by numeric date: the stock live header build stamps an
+     * "until online" header with a midnight date (ChatActivity.java:28247-28264) while the load
+     * build stamps the same header 0x7FFFFFFE (ChatActivity.java:23242-23262); the two dates
+     * differ but the day-granular dateKey is identical -- see docs/codemap/upstream-traps.md.
+     *
+     * Placement is a function of rank and the rows currently on screen, not of arrival order, so
+     * processing a batch of holds in any order converges to the same list (property 8).
+     */
+    public static int placeLiveHeldRow(int account, int chatMode, long dialogId,
+                                       ArrayList<MessageObject> messages, MessageObject obj, int stockPlaceToPaste) {
+        if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
+                || messages == null || obj == null || obj.messageOwner == null) {
+            return stockPlaceToPaste;
+        }
+        HeldOrderView view = heldOrderView(account, dialogId);
+        final int rank = view.rankOf(obj.getId());
+        if (rank < 0) {
+            // Not a held member of this dialog's snapshot -> not ours; leave stock placement.
+            // Fail closed: never fall back to comparing ids for a missing member.
+            return stockPlaceToPaste;
+        }
+        final int exactDate = obj.messageOwner.date;
+        final String dateKey = obj.dateKey;
+
+        // Walk the rendered list once. Within obj's EXACT-date run, a held sibling that is OLDER
+        // (lower rank) must stay ABOVE obj (higher index); a held sibling that is NEWER (higher
+        // rank) and any genuine same-date row must stay BELOW obj (lower index). The list is
+        // already in cold-load order, so the below-rows sit at a contiguous block of lower
+        // indices and the above-rows at higher indices.
+        int headerIndex = -1;
+        int firstAbove = -1; // lowest index of a same-date row that must stay ABOVE obj
+        int lastBelow = -1;  // highest index of a same-date row that must stay BELOW obj
+        for (int i = 0; i < messages.size(); i++) {
+            MessageObject mm = messages.get(i);
+            if (mm == null || mm.messageOwner == null) {
+                continue;
+            }
+            if (mm.isDateObject) {
+                if (dateKey != null && dateKey.equals(mm.dateKey)) {
+                    headerIndex = i;
+                }
+                continue;
+            }
+            if (mm.messageOwner.date != exactDate) {
+                continue;
+            }
+            int mmRank = view.rankOf(mm.getId());
+            if (mmRank >= 0 && mmRank < rank) {
+                if (firstAbove < 0) {
+                    firstAbove = i; // list is ordered, so the first older sibling wins
+                }
+            } else {
+                lastBelow = i; // newer held sibling or a genuine same-date row
+            }
+        }
+
+        int target;
+        if (firstAbove < 0 && lastBelow < 0) {
+            // Nothing of obj's exact date is on screen: its date is distinct from every rendered
+            // row, so the stock date placement is already correct and cold-load consistent.
+            target = stockPlaceToPaste;
+        } else if (firstAbove >= 0) {
+            target = firstAbove;    // just below the first (lowest-index) older held sibling
+        } else {
+            target = lastBelow + 1; // above every newer sibling / genuine row of this date
+        }
+        // A real row never crosses to the far side of its own day header (property 6). By the
+        // ordering above this already holds, but clamp defensively so a future change can't
+        // silently push a held row above its header.
+        if (headerIndex >= 0 && target > headerIndex) {
+            target = headerIndex;
+        }
+        if (target < 0) {
+            target = stockPlaceToPaste;
+        } else if (target > messages.size()) {
+            target = messages.size();
+        }
+
+        return target;
     }
 
     /**

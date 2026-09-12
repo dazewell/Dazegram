@@ -884,15 +884,16 @@ because **held rows never enter the selection model at all.** The guard sits at
 the entrance, not on the forward path: `addToSelectedMessages`, the reply/quote
 preview loop, and `canSelect` each refuse a held row, and a held row's only
 action is delete through the single-row cancel menu, which does not go through
-the selection model (design documented at `ChatActivity.java:37254-37264`, with
-`naxExcludeHeldFromSend` at `:37263` as a second line of defence on the
-send-assembly paths, and `isHeld` guards at the entrances `:1992` (`canSelect`),
-`:3997` (reply/quote preview) and `:20914` (`addToSelectedMessages`), plus the
-send-assembly guards `:37270`, `:37823` and `:37948` (`resolveRescheduleItems`)).
+the selection model (the `isHeld` guards sit at the selection entrances —
+`canSelect` at `:1985` (guard `:1992`), the reply/quote preview at `:3997`, and
+`addToSelectedMessages` at `:20906` (guard `:20914`) — and `naxExcludeHeldFromSend`
+(`:37238`, its own guard at `:37245`) strips any held row from the send-assembly
+paths as a second line of defence, called from `:4384`, `:16865`, `:37283` and
+`:49115`; `resolveRescheduleItems` (`:37912`) likewise skips held rows at `:37923`).
 With no held row ever selected, `:3918` never sees
 one, so the `#ghost-hold` scheduled-order fix deliberately leaves it untouched.
 
 The next reader will look at `:3918`, see the same apparent inversion, and be
 tempted to "fix" it for held rows. Don't — the path is unreachable for them.
 
-*(Established 2026-09-11, #ghost-hold.)*
+*(Established 2026-09-11, #ghost-hold. Citations re-verified 2026-09-12.)*
