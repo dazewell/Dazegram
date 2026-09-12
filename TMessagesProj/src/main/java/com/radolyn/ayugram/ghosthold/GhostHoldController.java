@@ -1595,7 +1595,7 @@ public final class GhostHoldController {
             android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load acc=" + account
                     + " mid=" + rec.mid + " date=" + rec.date
                     + " bucket=" + (rec.date == GHOST_HELD_DATE_SENTINEL ? "plain" : (rec.date == 0x7FFFFFFE ? "online" : "timed"))
-                    + " injectRank=" + naxInjected);
+                    + " appendIdx=" + naxInjected);
             naxInjected++;
         }
         // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
@@ -1733,6 +1733,17 @@ public final class GhostHoldController {
                                        ArrayList<MessageObject> messages, MessageObject obj, int stockPlaceToPaste) {
         if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
                 || messages == null || obj == null || obj.messageOwner == null) {
+            // NAX_SMOKE_ghost-hold competing-path marker (reverted after the smoke build): a held
+            // row published into a non-Scheduled timeline (e.g. Saved Messages, MODE_SAVED, via
+            // the ChatActivity.java:24102 fallthrough) must keep stock placement. Logging the
+            // rejected-by-gate case proves the MODE_SCHEDULED gate held, distinct from the helper
+            // never being reached at all (which emits nothing). Non-sensitive operands only.
+            if (chatMode != org.telegram.ui.ChatActivity.MODE_SCHEDULED
+                    && obj != null && obj.messageOwner != null && isHeld(obj)) {
+                android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE-REJECT path=live gate=mode chatMode=" + chatMode
+                        + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
+                        + " dialog=" + dialogId + " mid=" + obj.getId());
+            }
             return stockPlaceToPaste;
         }
         // Cheap membership pre-gate. Only a held row can be reordered, and isHeld reads the
