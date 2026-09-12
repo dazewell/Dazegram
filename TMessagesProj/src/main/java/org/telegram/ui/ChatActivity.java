@@ -28123,6 +28123,9 @@ public class ChatActivity extends BaseFragment implements
                 if (obj.messageOwner != null && obj.messageOwner.date == com.radolyn.ayugram.ghosthold.GhostHoldController.GHOST_HELD_DATE_SENTINEL
                         && com.radolyn.ayugram.ghosthold.GhostHoldController.isHeld(obj)) {
                     placeToPaste = 0;
+                    // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+                    android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live acc=" + currentAccount
+                            + " mid=" + obj.getId() + " chatMode=" + chatMode + " placeToPaste=0 msgs=" + messages.size());
                 }
                 if (isAd && sponsoredMessagesPostsBetween > 0) {
                     placeToPaste = findAdPlace();

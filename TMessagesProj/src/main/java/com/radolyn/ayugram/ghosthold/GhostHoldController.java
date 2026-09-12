@@ -1520,6 +1520,11 @@ public final class GhostHoldController {
         if (records == null || records.isEmpty()) {
             return;
         }
+        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
+                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
+                + " dialog=" + dialogId + " cachedHeld=" + records.size());
+        int naxInjected = 0;
         java.util.HashSet<Integer> present = new java.util.HashSet<>();
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
@@ -1578,7 +1583,14 @@ public final class GhostHoldController {
             mo.scheduled = true;
             objects.add(mo);
             present.add(rec.mid);
+            // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load acc=" + account
+                    + " mid=" + rec.mid + " date=" + rec.date + " injectRank=" + naxInjected);
+            naxInjected++;
         }
+        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
+                + " dialog=" + dialogId + " injected=" + naxInjected);
     }
 
     /**
