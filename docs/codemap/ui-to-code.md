@@ -151,6 +151,26 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197
 
 *(Updated 2026-09-07.)*
 
+## Hide last message must not mask message-search result previews
+
+`DialogCell` renders both normal chat-list rows (`setDialog(TLRPC.Dialog, ...)`,
+`isDialogCell = true`) and message-search match rows (`setDialog(dialogId,
+MessageObject, ...)`, `isDialogCell = false`), the latter used by
+`MessagesSearchAdapter`, `DialogsSearchAdapter`, and `FilteredSearchView`. The
+`HideLastMessageController.isHidden(...)` placeholder substitution must only
+apply to the former — otherwise a hidden dialog's search matches render the
+disguised placeholder instead of the real matched text. The reliable signal is
+`message.hasHighlightedWords()` (set only by `MessageObject.setQuery(...)`,
+which the search adapters call to highlight matched text), not `isDialogCell`,
+since other non-search callers (e.g. `TopicsFragment`) also use the
+message-based `setDialog` overload
+(`org/telegram/ui/Cells/DialogCell.java:2763-2770`,
+`org/telegram/ui/Adapters/MessagesSearchAdapter.java:259`,
+`org/telegram/ui/Adapters/DialogsSearchAdapter.java:2150`,
+`org/telegram/messenger/MessageObject.java:12107-12248`).
+
+*(Updated 2026-09-12.)*
+
 ## Chat privacy card membership and stock bulletin placement
 
 `ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it
