@@ -1522,10 +1522,18 @@ about the *tie*, not about any one sentinel value.
    through to `o2.date - o1.date`, which is `0` — they tie. `Collections.sort`
    is a documented-stable sort, so the on-screen order of each tied run is
    decided entirely by the order they were fed in, i.e. the append order in
-   `GhostHoldController.injectHeldScheduled`. That is the lever the fix uses; it
-   rests on the comparator staying tie-free for held rows, which an upstream bump
-   could silently change with no compile error and no symptom visible without a
-   device.
+   `GhostHoldController.injectHeldScheduled`. The fork no longer leaves that to
+   stable-sort accident: the `#ghost-hold` load fix **overrides this comparator**
+   (`MessagesController.java:12401-12415`, using an immutable `HeldOrderView`
+   snapshot rank built once at `:12400` — never per comparison, which would make
+   the sort O(n²log n)) so a tie that *involves* a held row is resolved by
+   flush-snapshot rank instead of append order, and an already-present held member
+   re-shown on reload (e.g. an `0x7FFFFFFE` "until online" hold) is ranked too
+   rather than left to a stable-sort accident. The stock trap still bites anyone
+   who removes that override — an upstream bump that made the comparator start
+   tie-breaking held rows would silently revert the load ordering with no compile
+   error and no symptom visible without a device — so the override, not the stable
+   sort, is now what makes the load order deterministic.
 
 2. **Dropping the `getId() >= 0` guard does NOT fix it — it inverts it.** Local
    send ids *decrement* (`UserConfig.getNewMessageId`), so a later hold has a more
@@ -1558,21 +1566,24 @@ scheduled-order fix routes both through **one ordering contract** — a held row
 rank is its position in the flush snapshot (`cachedForDialog()`, oldest-first), and
 because the list is reverse-stacked a higher rank (newer hold) must land at a lower
 array index (screen bottom = oldest-at-top). Rank is exposed by an immutable
-`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1641`, built by
-`heldOrderView`, `:1667`), applied per tying-date group so the plain (`0x7FFFFFFD`)
+`GhostHoldController.HeldOrderView` (`GhostHoldController.java:1648`, built by
+`heldOrderView`, `:1674`), applied per tying-date group so the plain (`0x7FFFFFFD`)
 and online (`0x7FFFFFFE`) buckets order independently and a genuinely-distinct-dated
 row is left to the stock date sort. The two adapters differ only in substrate:
 - **Load** (`GhostHoldController.injectHeldScheduled`, `:1500`) appends the whole
   snapshot to the pre-sort `objects` list newest-first (descending rank) and lets the
-  stable sort settle the ties — that append order *is* the contract.
-- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1715`, called once from
+  overridden comparator settle the ties (see the override above) — held sorts above a
+  genuine same-date row.
+- **Live** (`GhostHoldController.placeLiveHeldRow`, `:1722`, called once from
   `ChatActivity.java:28122`) computes the arriving row's insertion index directly from
   its rank relative to the rows already on screen: below any older held sibling, above
-  any newer sibling and any genuine same-date row, and on the message side of the day
-  header. It self-gates on `chatMode == MODE_SCHEDULED` so a hold published into the
-  Saved-messages timeline (see the MODE_SAVED fallthrough trap below) is not reordered,
-  and on the row being a held member of the snapshot (a missing member fails closed to
-  stock placement, never to comparing ids).
+  any newer held sibling, and on the message side of the day header. It self-gates on
+  `chatMode == MODE_SCHEDULED` so a hold published into the Saved-messages timeline
+  (see the MODE_SAVED fallthrough trap below) is not reordered, and on the row being a
+  held member of the snapshot (a missing member fails closed to stock placement, never
+  to comparing ids). It orders held rows only; it does **not** move a genuine
+  same-date row, so a genuine "send when online" row can render on a different side of
+  the held block live vs cold — an accepted residual, documented below.
 
 *(Established 2026-09-11, #ghost-hold. Generalised 2026-09-12 from the plain
 sentinel to any tied-date held group; live path rebuilt onto the shared
@@ -1597,6 +1608,47 @@ Match the header structurally instead — `isDateObject` plus the day-granular `
 (`MessageObject.java:1964`, computed from `Calendar.DAY_OF_YEAR`, so `0x7FFFFFFD`,
 `0x7FFFFFFE` and that day's midnight all share one `dateKey`). `placeLiveHeldRow`
 does exactly this to keep a held row on the message side of its header.
+
+The asymmetry also feeds the live insertion loop's id tie-break (next entry): a date
+header is a `MessageObject` with id `0`, which fails that loop's `> 0` test, so a
+same-date row can *skip the header itself*. How far it skips differs by which build
+path made the header — a load-built "until online" header carries `0x7ffffffe` and
+ties the row's date (the row skips it and travels further up), while a live-built one
+carries midnight (lower, so the row stops just past it). So header-relative live
+placement of a genuine row is not even uniform across cold-load vs live-arrival.
+
+*(Established 2026-09-12, #ghost-hold.)*
+
+## The live Scheduled insertion loop is blind to negative-id rows — an accepted genuine-vs-held residual in the online bucket
+
+The stock live insertion loop in `ChatActivity.processNewMessages`
+(`ChatActivity.java:28090`) only tie-breaks two equal-date rows when **both** carry
+ids `> 0`. Ghost Hold's held rows carry negative local ids, so they are invisible to
+that tie-break — the live-path twin of the load comparator trap at the top of this
+file. This has a consequence the `#ghost-hold` fix deliberately does **not** remove:
+
+A genuine "send when online" message (a real, positive-id row the user scheduled,
+date `0x7FFFFFFE`) meets the same-date held run and satisfies **neither** the loop's
+id tie-break (the held rows' ids are negative) **nor** a lower-date break (the held
+rows share its `0x7FFFFFFE`), so it skips the entire held run and — via the header
+id-`0` skip above — can skip the day header too, landing **above** the held block.
+The cold-load override (`MessagesController.java:12401`) instead sorts a genuine
+same-date row **below** the held run. So one genuine send-when-online row can sit on
+**opposite sides** of the held block live vs cold.
+
+The live adapter (`placeLiveHeldRow`) places held rows only and must not move a
+user-scheduled row, so this divergence is **accepted**, not fixed: reaching parity
+would require moving a genuine row the user scheduled, which is out of scope. It is
+cosmetic — no send-order, data, or crash impact — affects only the `0x7FFFFFFE` and
+same-second timed-hold buckets (the only ones that can share a date with a genuine
+row), and **self-corrects on the next reload**, which runs the deterministic
+override.
+
+Crucially, the **plain-hold bucket** (`0x7FFFFFFD`) has **no** genuine counterpart —
+a user cannot schedule a message onto the plain-hold sentinel date — so its held run
+is correct on **both** paths. That is the bug dazewell reported (holding 1, 2, 3
+rendered 3, 2, 1) and it is **fully fixed**; the residual above is a different,
+pre-existing, rarely-hit case, not the reported bug.
 
 *(Established 2026-09-12, #ghost-hold.)*
 
