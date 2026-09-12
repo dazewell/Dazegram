@@ -1494,3 +1494,59 @@ Filed as #349, scoped alongside the #346 "store ready" work; part of the
 logout/session-teardown-race family with #343 and #346.
 
 *(Established 2026-09-11, #ghost-hold.)*
+
+## The MODE_SCHEDULED sort collapses to input order for held rows — and its id tie-break is inverted for local ids
+
+The stock scheduled-list sort in `MessagesController.processLoadedMessages`
+(`MessagesController.java:12385-12391`) is:
+
+```java
+if (o1.date == o2.date && o1.getId() >= 0 && o2.getId() >= 0) return o2.getId() - o1.getId();
+return o2.date - o1.date;
+```
+
+Two traps live here for Ghost Hold's held rows, which all carry the single shared
+`GHOST_HELD_DATE_SENTINEL` date (`GhostHoldController.java:76`, applied at
+`:532` and re-applied on injection at `injectHeldScheduled`) and negative local
+ids:
+
+1. **The tie-break never fires between held rows.** The `getId() >= 0` guard
+   excludes negative local ids, so for any two held rows the comparator falls
+   through to `o2.date - o1.date`, which is `0` — every held pair ties. `Collections.sort`
+   is a documented-stable sort, so the on-screen order of the held block is
+   decided entirely by the order they were fed in, i.e. the append order in
+   `GhostHoldController.injectHeldScheduled`. That is the lever the fix uses; it
+   rests on the comparator staying tie-free for held rows, which an upstream bump
+   could silently change with no compile error and no symptom visible without a
+   device.
+
+2. **Dropping the `getId() >= 0` guard does NOT fix it — it inverts it.** Local
+   send ids *decrement* (`UserConfig.getNewMessageId`), so a later hold has a more
+   negative id. `o2.getId() - o1.getId()` is descending id, which for decrementing
+   ids puts the **oldest** hold first (index 0 = screen bottom) — reproducing the
+   exact reversed order, now baked into one of the hottest base files. The
+   tempting one-line comparator "fix" is wrong, not merely fragile.
+
+## MessagesController's load sort and ChatActivity.processNewMessages are two independent orderings of the same scheduled list
+
+A held row reaches the Scheduled list two different ways, ordered by two different
+pieces of code — a fix to one does nothing to the other:
+
+- **Load path:** open the Scheduled list → `MessagesController.processLoadedMessages`
+  calls `GhostHoldController.injectHeldScheduled` then the stable sort above
+  (`MessagesController.java:12379-12391`).
+- **Live path:** a successful hold publishes the row via
+  `updateInterfaceWithMessages(peer, obj, 1)` (`GhostHoldController.java:667`) →
+  `didReceiveNewMessages` → `ChatActivity.processNewMessages`'s own placement loop
+  (`ChatActivity.java:27981-28112`). That loop breaks on `lastMessage.date < obj.date`
+  or `date ==` with both ids `> 0`; for sentinel-tied negative-id held rows neither
+  fires, so a live-arriving hold lands at `messages.size()` (the top of the
+  reverse-stacked list) unless a hook forces otherwise.
+
+Both mechanisms produce the identical reversed block by different means, so any
+change to held-row display order must account for both. The `#ghost-hold`
+scheduled-order fix reverses the injection order (load path) and forces
+`placeToPaste = 0` for sentinel-dated held rows (live path,
+`ChatActivity.java:~28112`).
+
+*(Established 2026-09-11, #ghost-hold.)*
