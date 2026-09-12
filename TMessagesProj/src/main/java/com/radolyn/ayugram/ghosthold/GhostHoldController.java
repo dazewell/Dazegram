@@ -1508,14 +1508,6 @@ public final class GhostHoldController {
         long selfId = UserConfig.getInstance(account).getClientUserId();
         GhostHoldStore store = GhostHoldStore.getInstance(account);
         boolean naxOwns = store.ownsUser(selfId);
-        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-        // Emitted at the unconditionally-reached entry, BEFORE the ownership gate, with
-        // ownership as an operand: a load that reaches this helper but bails the gate
-        // (a warming store on cold relaunch, or a reused slot) still leaves a BEGIN, so
-        // an absent marker means the path was never reached rather than gated out.
-        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
-                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
-                + " dialog=" + dialogId + " owns=" + naxOwns);
         // The published snapshot is read off-queue for speed, so it can momentarily
         // still hold a previous slot owner's rows in the window between a re-login and
         // the queue re-opening the file under the new owner. ownsUser refuses that
@@ -1527,12 +1519,8 @@ public final class GhostHoldController {
         }
         List<GhostHoldStore.HeldRecord> records = store.cachedForDialog(dialogId);
         if (records == null || records.isEmpty()) {
-            // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
-                    + " dialog=" + dialogId + " injected=0");
             return;
         }
-        int naxInjected = 0;
         java.util.HashSet<Integer> present = new java.util.HashSet<>();
         for (int i = 0; i < objects.size(); i++) {
             present.add(objects.get(i).getId());
@@ -1592,16 +1580,7 @@ public final class GhostHoldController {
             mo.scheduled = true;
             objects.add(mo);
             present.add(rec.mid);
-            // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LOAD path=load acc=" + account
-                    + " mid=" + rec.mid + " date=" + rec.date
-                    + " bucket=" + (rec.date == GHOST_HELD_DATE_SENTINEL ? "plain" : (rec.date == 0x7FFFFFFE ? "online" : "timed"))
-                    + " appendIdx=" + naxInjected);
-            naxInjected++;
         }
-        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
-                + " dialog=" + dialogId + " injected=" + naxInjected);
     }
 
     // ==== Held-row ordering: one oracle, two adapters ================================
@@ -1855,15 +1834,6 @@ public final class GhostHoldController {
         } else if (target > messages.size()) {
             target = messages.size();
         }
-
-        // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
-        android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold LIVE path=live build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
-                + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
-                + " mid=" + obj.getId() + " date=" + exactDate
-                + " bucket=" + (exactDate == GHOST_HELD_DATE_SENTINEL ? "plain" : (exactDate == 0x7FFFFFFE ? "online" : "timed"))
-                + " chatMode=" + chatMode + " rank=" + rank
-                + " stock=" + stockPlaceToPaste + " placeToPaste=" + target
-                + " header=" + headerIndex + " msgs=" + messages.size());
 
         return target;
     }
