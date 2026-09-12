@@ -1501,8 +1501,8 @@ The stock scheduled-list sort in `MessagesController.processLoadedMessages`
 (`MessagesController.java:12385-12391`) is:
 
 ```java
-if (o1.date == o2.date && o1.getId() >= 0 && o2.getId() >= 0) return o2.getId() - o1.getId();
-return o2.date - o1.date;
+if (o1.messageOwner.date == o2.messageOwner.date && o1.getId() >= 0 && o2.getId() >= 0) return o2.getId() - o1.getId();
+return o2.messageOwner.date - o1.messageOwner.date;
 ```
 
 Two traps live here for Ghost Hold's **plain (undated)** held rows, which all
