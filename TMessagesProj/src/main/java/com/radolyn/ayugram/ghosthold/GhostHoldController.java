@@ -1517,13 +1517,20 @@ public final class GhostHoldController {
             return;
         }
         List<GhostHoldStore.HeldRecord> records = store.cachedForDialog(dialogId);
-        if (records == null || records.isEmpty()) {
-            return;
-        }
+        int naxCachedHeld = records == null ? 0 : records.size();
         // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+        // Emitted on unconditional owner entry, BEFORE the empty-snapshot return, so a
+        // reached-but-empty scheduled load still proves reachability instead of looking
+        // identical to a load path that was never reached.
         android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold BEGIN build=" + org.telegram.messenger.BuildConfig.BUILD_VERSION_STRING
                 + " app=" + org.telegram.messenger.BuildConfig.APPLICATION_ID + " acc=" + account
-                + " dialog=" + dialogId + " cachedHeld=" + records.size());
+                + " dialog=" + dialogId + " cachedHeld=" + naxCachedHeld);
+        if (records == null || records.isEmpty()) {
+            // NAX_SMOKE_ghost-hold temporary diagnostics (reverted after the smoke build).
+            android.util.Log.i("NAXSmoke", "NAX_SMOKE_ghost-hold END path=load acc=" + account
+                    + " dialog=" + dialogId + " injected=0");
+            return;
+        }
         int naxInjected = 0;
         java.util.HashSet<Integer> present = new java.util.HashSet<>();
         for (int i = 0; i < objects.size(); i++) {
