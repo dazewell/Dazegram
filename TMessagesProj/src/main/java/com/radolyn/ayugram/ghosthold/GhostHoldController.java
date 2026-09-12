@@ -1718,6 +1718,15 @@ public final class GhostHoldController {
                 || messages == null || obj == null || obj.messageOwner == null) {
             return stockPlaceToPaste;
         }
+        // Cheap membership pre-gate. Only a held row can be reordered, and isHeld reads the
+        // fork's param marker (not the date), so it recognises every held bucket -- plain,
+        // online and timed alike -- without allocating anything. Skipping the view build for
+        // the far more common ordinary scheduled row stops a live batch of non-held arrivals
+        // each building a rank map on the UI thread. rankOf below stays the authoritative
+        // membership test; this only avoids the work when obj plainly is not ours.
+        if (!isHeld(obj)) {
+            return stockPlaceToPaste;
+        }
         HeldOrderView view = heldOrderView(account, dialogId);
         final int rank = view.rankOf(obj.getId());
         if (rank < 0) {
