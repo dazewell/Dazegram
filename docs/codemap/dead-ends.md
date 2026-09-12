@@ -885,7 +885,8 @@ the entrance, not on the forward path: `addToSelectedMessages`, the reply/quote
 preview loop, and `canSelect` each refuse a held row, and a held row's only
 action is delete through the single-row cancel menu, which does not go through
 the selection model (the `isHeld` guards sit at the selection entrances —
-`canSelect` at `:1985` (guard `:1992`), the reply/quote preview at `:3997`, and
+`canSelect` at `:1985` (guard `:1992`), the reply/quote preview loop at `:12379`
+(the `continue` before its selection-map write at `:12392`), and
 `addToSelectedMessages` at `:20906` (guard `:20914`) — and `naxExcludeHeldFromSend`
 (`:37238`, its own guard at `:37245`) strips any held row from the send-assembly
 paths as a second line of defence, called from `:4384`, `:16865`, `:37283` and

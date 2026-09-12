@@ -1598,14 +1598,16 @@ on the header's `date` for a send-when-online day:
 - **Load path** (`ChatActivity.java:23241-23262`): for `MODE_SCHEDULED` with
   `obj.messageOwner.date == 0x7ffffffe` it stamps the header `dateMsg.date = 0x7ffffffe`
   (`:23253`); otherwise it computes Calendar midnight of the row's day.
-- **Live path** (`ChatActivity.java:28210-28228`): it sets the "until online" *label*
+- **Live path** (`ChatActivity.java:28210-28227`): it sets the "until online" *label*
   for `0x7ffffffe` (`:28212`) but has **no** matching date branch — it unconditionally
-  runs the Calendar midnight computation (`:28228`).
+  runs the Calendar midnight computation (`:28227`).
 
 So the same "until online" header carries `0x7ffffffe` when cold-loaded and a midnight
 timestamp when created live. Any code that pairs a message with its header by
 `header.messageOwner.date` will therefore pass on cold load and silently fail live.
-Match the header structurally instead — `isDateObject` plus the day-granular `dateKey`
+Match the header structurally instead — `isDateObject` AND NOT `isVideoConversionObject`
+(a video-conversion "processing" row also sets `isDateObject`; see the `isDateObject` entry
+below for why it must be excluded here) plus the day-granular `dateKey`
 (`MessageObject.java:1964`, computed from `Calendar.DAY_OF_YEAR`, so `0x7FFFFFFD`,
 `0x7FFFFFFE` and that day's midnight all share one `dateKey`). `placeLiveHeldRow`
 does exactly this to keep a held row on the message side of its header.
@@ -1696,7 +1698,40 @@ walks them.
 
 *(Established 2026-09-12, #ghost-hold.)*
 
-## didReceiveNewMessages routes a mode-1 (scheduled) publish to processNewMessages while the fragment is the Saved-messages timeline
+## Ghost Hold: `updateStateOnQueue` re-puts an existing key so its `master` position survives a state change, while `insertOnQueue` remove-then-puts so it appends
+
+`GhostHoldStore.master` is a `LinkedHashMap<Integer, HeldRecord>`
+(`GhostHoldStore.java:78`), and its **iteration order is the one source of both orderings
+that matter** for Ghost Hold: the flush/send order (`selectByStateOnQueue` iterates
+`master.values()`, `GhostHoldStore.java:424-428`) and the Scheduled-list rank (`publish()`
+rebuilds the per-dialog snapshot by iterating `master.values()`,
+`GhostHoldStore.java:307-317`, which `cachedForDialog` hands to `heldOrderView` — rank is
+snapshot position). So anything that changes `master`'s iteration order silently changes
+both what the user sees and what order the messages send in.
+
+The two mutators touch that order differently, and the difference is load-bearing:
+
+- `insertOnQueue` (`:320`) does `master.remove(rec.mid)` **then** `master.put(rec.mid, rec)`
+  (`:339-340`). On a `LinkedHashMap` a remove-then-put moves the key to the **end** of
+  iteration order — a new hold appends, which is what makes a freshly held message the
+  newest (highest rank).
+- `updateStateOnQueue` (`:350`) does a bare `master.put(mid, old.withState(newState))`
+  (`:357`) with **no** preceding remove. A `LinkedHashMap` in its default (insertion-order,
+  not access-order) mode does **not** reorder on a re-put of an existing key, so the record
+  keeps its position.
+
+Why it matters here: a HELD→FLUSHING→HELD round trip (flush claims a row, then reverts it —
+`revertToHeld` / `completeHandoff` / startup reconcile) goes through `updateStateOnQueue`
+both ways, so the reverted row lands back in its **original** flush position, not at the end.
+Had the revert gone through an insert-style remove-then-put, a row that briefly flipped to
+FLUSHING and back would jump to newest and both invert its send order and reorder its
+Scheduled-list rank. The live-adapter fix that classifies a rankless (transiently-FLUSHING)
+held row as an older sibling (`GhostHoldController.placeLiveHeldRow`) leans on this: it is
+only safe to assume such a row is older because its position — and therefore its rank once it
+reverts — is preserved across the state flip. If a future change ever routes a state update
+through a remove-then-put, or flips `master` to access-order, that assumption breaks silently.
+
+*(Established 2026-09-12, #ghost-hold.)*
 
 `ChatActivity.didReceiveNewMessages` (`ChatActivity.java:24096-24115`) guards the
 mode-mismatch case with:
