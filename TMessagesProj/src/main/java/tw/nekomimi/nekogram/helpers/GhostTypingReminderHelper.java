@@ -59,14 +59,14 @@ import tw.nekomimi.nekogram.NekoConfig;
  * <p>
  * NagramX: Ghost Hold (PR #347) added a Hold Messages setting. This reminder
  * goes silent whenever Hold Messages is on, regardless of whether the message
- * the user is about to type will actually be one Hold holds -- most
- * plain-text sends are (diverted upstream in SendMessagesHelper before they
- * ever reach a request, so there is nothing to warn about, with the Scheduled
- * list's "Held" caption as the in-place feedback), but Hold's own allowlist
- * excludes attachments, paid and disappearing-message chats and a few other
- * cases (see {@code GhostHoldSwitchNotice}), which reach the send-time
- * warning below unaffected by this reminder's silence. No bulletin, and no
- * reminded-state recorded for that chat, either way. That means a chat's
+ * the user is about to type will actually be one Hold holds. Most plain text,
+ * contacts and static locations are diverted upstream in SendMessagesHelper
+ * before they reach a request, with the Scheduled list's "Held" caption as
+ * feedback. Hold's allowlist excludes file-backed and unsupported attachments,
+ * paid and disappearing-message chats and a few other cases (see
+ * {@code GhostHoldSwitchNotice}); those reach the send-time warning below
+ * unaffected by this reminder's silence. No bulletin, and no reminded-state
+ * recorded for that chat, either way. That means a chat's
  * reminder is still owed once Hold is later turned off again in the same
  * Ghost session; see the live read of {@code holdMessagesWhileGhost} in
  * {@link #onComposerTypingObservedUnsafe} for why this cannot be decided once
@@ -242,11 +242,11 @@ public class GhostTypingReminderHelper {
         // can be toggled at any point during a Ghost session, and a chat must be
         // reminded (and recorded reminded) the first time it's typed into after
         // Hold goes back off, exactly as if that were the first qualifying
-        // keystroke of a fresh session. While Hold is on, most plain-text sends
-        // from this composer are diverted upstream in SendMessagesHelper before
-        // reaching a request, so there is usually nothing to remind about here.
+        // keystroke of a fresh session. While Hold is on, supported sends are
+        // diverted upstream in SendMessagesHelper before reaching a request, so
+        // there is usually nothing to remind about here.
         // The ones GhostHoldController.maybeHold still lets through -- a chat
-        // isHoldableTextSend rejects, or a persistHeld failure -- get the
+        // isHoldableSend rejects, or a persistHeld failure -- get the
         // send-time warning instead, and recording a reminder that was never
         // shown here would wrongly suppress that warning too.
         if (NekoConfig.holdMessagesWhileGhost.Bool()) {
