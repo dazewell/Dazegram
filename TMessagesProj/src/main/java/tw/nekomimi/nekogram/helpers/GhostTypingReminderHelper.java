@@ -242,11 +242,11 @@ public class GhostTypingReminderHelper {
         // can be toggled at any point during a Ghost session, and a chat must be
         // reminded (and recorded reminded) the first time it's typed into after
         // Hold goes back off, exactly as if that were the first qualifying
-        // keystroke of a fresh session. While Hold is on, most plain-text sends
-        // from this composer are diverted upstream in SendMessagesHelper before
-        // reaching a request, so there is usually nothing to remind about here.
+        // keystroke of a fresh session. While Hold is on, supported sends are
+        // diverted upstream in SendMessagesHelper before reaching a request, so
+        // there is usually nothing to remind about here.
         // The ones GhostHoldController.maybeHold still lets through -- a chat
-        // isHoldableTextSend rejects, or a persistHeld failure -- get the
+        // isHoldableSend rejects, or a persistHeld failure -- get the
         // send-time warning instead, and recording a reminder that was never
         // shown here would wrongly suppress that warning too.
         if (NekoConfig.holdMessagesWhileGhost.Bool()) {

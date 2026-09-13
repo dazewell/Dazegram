@@ -43,7 +43,7 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 ### Hold messages while Ghost Mode is on <!-- #ghost-hold -->
 
-Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and most plain text messages, contacts, and static locations you send or schedule while Ghost Mode is active stay on this device. They appear in the chat's Scheduled list marked "Held — not sent" and remain delete-only until you turn Ghost Mode off and confirm sending; future-scheduled items keep their schedule. Photos, videos, files, live locations, paid or disappearing messages, and other unsupported sends still go out right away. Held messages live only in the database, so uninstalling the app discards them.
+Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and most plain text messages, contacts, and static locations you send or schedule while Ghost Mode is active stay on this device. They appear in the chat's Scheduled list marked "Held — not sent" and remain delete-only until you turn Ghost Mode off and confirm sending; future-scheduled items keep their schedule. Photos, videos, files, live locations, paid or disappearing messages, and other unsupported sends bypass Hold Messages and follow Telegram's normal send or schedule path. Held messages live only in the database, so uninstalling the app discards them.
 
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
