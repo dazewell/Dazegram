@@ -151,6 +151,34 @@ placeholder, and shows the existing enabled bulletin (`ChatPrivacySheet.java:197
 
 *(Updated 2026-09-07.)*
 
+## Hide last message is a chat-list override, not a search-result override
+
+`DialogCell` renders both dialog previews and individual message results.
+`DialogsAdapter.java:1023` binds the normal chat list through
+`DialogCell.setDialog(TLRPC.Dialog, ...)`, which sets `isDialogCell = true`
+(`org/telegram/ui/Cells/DialogCell.java:751-768`). The hide override gates the
+whole placeholder/thumbnail/paint block on that flag (`DialogCell.java:2765-2771`).
+
+Search binds message objects through overloads that set the flag to false
+(`DialogCell.java:862-894`; `org/telegram/ui/Adapters/DialogsSearchAdapter.java:2140-2150`;
+`org/telegram/ui/FilteredSearchView.java:1088-1094`). The same overload serves
+in-chat search, including Saved Messages (`org/telegram/ui/Adapters/MessagesSearchAdapter.java:232-259`),
+universal search rows (`org/telegram/ui/Components/UniversalAdapter.java:1002-1013`),
+and Saved Messages search results (`org/telegram/ui/Components/SharedMediaLayout.java:10162-10169`).
+Topic search uses
+`setForumTopic`, which also clears the flag (`org/telegram/ui/TopicsFragment.java:3861`;
+`DialogCell.java:281-293`). Do not infer search context from highlighted words:
+media-only results need the same separation without a text match.
+
+This boundary also leaves topic-list previews inside an opened forum,
+profile-channel message previews, and the Saved Messages dialog list
+undisguised: those are message-object bindings,
+not normal chat-list rows (`TopicsFragment.java:3032-3036`;
+`org/telegram/ui/Cells/ProfileChannelCell.java:217`;
+`org/telegram/ui/Components/SharedMediaLayout.java:9933-9938`).
+
+*(Established 2026-09-13.)*
+
 ## Chat privacy card membership and stock bulletin placement
 
 `ChatPrivacySheet` now builds content on `SectionsLinearLayout` and wraps it

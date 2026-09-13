@@ -20,7 +20,7 @@ import java.util.Map;
  * <p>When a dialog id is flagged here, {@link org.telegram.ui.Cells.DialogCell}
  * replaces the last-message preview text in the chat list with a user-chosen
  * placeholder, so a person glancing at the screen cannot read the content. The
- * real message is still shown once the chat is opened.
+ * real message is still shown in search results and once the chat is opened.
  *
  * <p>The setting is purely local -- it is never synced to Telegram -- and is
  * keyed by dialog id, so it covers users, groups and channels alike. Storage is
