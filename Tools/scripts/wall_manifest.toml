@@ -414,3 +414,68 @@ crop = [0, 1300, 1070, 1795]
 # The Presets card: one saved preset listed by name with a summary of its
 # conditions, above the "Save current as preset" row. Right edge stops at
 # 1070 to drop a teal sliver of the chat visible behind the sheet.
+
+[[figure]]
+output = "chat-privacy-sheet.png"
+source = "chat-privacy-sheet-both-switches-on.png"
+crop = [0, 636, 1070, 1500]
+# The Chat privacy sheet with Hide last message and Require password both on,
+# the custom placeholder text beside them, and the Disguise notifications card
+# below. Staged throwaway chat, no sensitive content. Right edge stops at 1070
+# to drop a teal sliver of the chat visible behind the sheet.
+
+[[figure]]
+output = "composer-toolbar-live.png"
+source = "composer-toolbar-live-in-chat-text-selected.png"
+crop = [0, 937, 1080, 1327]
+# The live composer with a phrase selected, so the action bubbles render
+# enabled rather than greyed, under the system selection popup.
+
+[[figure]]
+output = "composer-layout-zones.png"
+source = "composer-layout-editor-drag-list.png"
+crop = [0, 548, 1070, 1540]
+# The layout editor's draggable button list: the two-slot Leading zone, the
+# drop hint, and the start of the Scrolling zone, each row with a drag handle.
+# Right edge stops at 1070 to drop a teal sliver of the chat behind the screen;
+# bottom stops on a row divider rather than through a half-row.
+
+[[figure]]
+output = "composer-toolbar-sliders.png"
+source = "composer-layout-editor-sliders.png"
+crop = [0, 548, 1070, 1440]
+# Toolbar size and Icon spacing, both at off-centre values so they read as
+# adjustable rather than factory default. Right edge stops at 1070 to drop a
+# teal sliver of the chat behind the screen.
+
+[[figure]]
+output = "composer-transparency-sliders.png"
+source = "composer-layout-editor-sliders.png"
+crop = [0, 1425, 1080, 2070]
+# The per-theme composer glass transparency sliders, light and dark. Bottom
+# stops at the card edge: the explanatory paragraph below it runs off the
+# bottom of the capture itself, so there is no crop that ends it cleanly.
+
+[[figure]]
+output = "fullscreen-input-on.png"
+source = "fullscreen-input-expanded.png"
+crop = [0, 175, 1080, 1327]
+# The input expanded between the chat header and the keyboard, with the
+# formatting row it makes room for. Shown alone rather than as a before/after
+# pair: FEATURES.md renders figures at a fixed height, which would normalise
+# away the height difference that is the whole point of the comparison.
+
+[[figure]]
+output = "video-cc-playback.png"
+source = "video-message-closed-captions-playback.png"
+crop = [0, 702, 1080, 1941]
+# A round video mid-playback with the caption line rendered over it and
+# repeated below. Staged playback of a public lesson video.
+
+[[figure]]
+output = "video-scrub-preview.png"
+source = "video-message-preview-scrub-midpoint.png"
+crop = [0, 2030, 1080, 2192]
+# The post-record preview strip: discard on the left, the filmstrip with the
+# playback cursor dragged to the middle, send on the right. Cropped to the
+# strip alone — the rest of that capture is wallpaper behind a paused bubble.
