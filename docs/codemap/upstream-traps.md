@@ -1510,13 +1510,17 @@ prevented an empty manifest from reaching `-SelfTestOnly`, real-candidate, or
 
 The transition order is load-bearing. First land the two-policy guard while
 `WORKFLOW_POLICY=manifest` remains pinned (`.github/sync/pins.env:23-30`).
-After reviewed reconciliation makes the workflow-free Telegram snapshot the
-live `nbase`, the follow-up pins PR may switch to `none` and empty the manifest.
-The policy validator now makes an empty manifest legal only under `none`, while
-`none` rejects every observed workflow path
-(`.github/sync/sync-guard.ps1:185-221,975-986`). The always-on fixture exercises
+Later, `sync-land.yml` fast-forwards the workflow-free Telegram snapshot to
+live `nbase` and auto-opens a pins PR containing only the three anchor pins
+(`.github/workflows/sync-land.yml:368-374,397`). That same PR must receive a
+manual follow-up commit before its required check can pass: set
+`WORKFLOW_POLICY=none`, truncate `workflow-manifest.tsv` to its header row, and
+correct the generated body's "only three anchor pins" claim. The policy
+validator makes an empty manifest legal only under `none`, while `none` rejects
+every observed workflow path
+(`.github/sync/sync-guard.ps1:185-220,983-987`). The always-on fixture exercises
 the workflow-free real candidate and land-check paths, plus the forbidden
-single-workflow case (`.github/workflows/sync-guard-check.yml:248-312`).
+single-workflow case (`.github/workflows/sync-guard-check.yml:248-314`).
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*

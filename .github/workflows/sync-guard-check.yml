@@ -248,7 +248,9 @@ jobs:
           # Future Telegram steady state: old nbase and its successor snapshot both
           # have no .github tree. Build that topology entirely from synthetic commits
           # and use the existing fixture-only AnchorOverride; production gets no
-          # bootstrap mode or runtime policy selector.
+          # bootstrap mode or runtime policy selector. This is intentionally a
+          # zero-delta fixture for policy startup + guard 5; the manifest fixture
+          # above keeps the non-empty parent-delta coverage.
           $noneIdx = Join-Path $env:RUNNER_TEMP 'gc-none.idx'
           Remove-Item -LiteralPath $noneIdx -ErrorAction SilentlyContinue
           $env:GIT_INDEX_FILE = $noneIdx

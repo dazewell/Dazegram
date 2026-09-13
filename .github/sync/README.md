@@ -257,7 +257,7 @@ these three repository permissions:
 | Permission | Why |
 | --- | --- |
 | Contents: write | push `dev` (steady-state sync) and `nbase` (both workflows fast-forward or merge onto it). |
-| Workflows: write | the snapshot tree carries `.github/workflows/`, so any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
+| Workflows: write | `manifest` snapshots carry `.github/workflows/`, and a parent transition may remove them. Any push whose diff touches a workflow file needs this even when the ref itself is `dev`/`nbase`. |
 | Pull requests: write | `sync-land.yml` opens the pins PR with `SYNC_TOKEN` rather than `GITHUB_TOKEN`, so `sync-guard-check` actually runs on it (see above) — a PR opened by the default token would arrive with that check missing. |
 
 Missing any one of these fails a run, but not all three are provable up front.
@@ -280,10 +280,15 @@ surfacing only a generic auth error after a ref has already moved.
 - **`none`** requires an empty manifest and zero `.github/workflows/*` paths in the
   snapshot. Any workflow path blocks.
 
-The parent transition keeps `manifest` while this capability lands. A later
-reconciliation first makes the Telegram snapshot the live `nbase`; only its
-follow-up pins PR switches the policy to `none`. Flipping the policy while the
-current Nagram workflow tree is still live would fail closed.
+The parent transition keeps `manifest` while this capability lands. Later,
+`sync-land.yml` first makes the workflow-free Telegram snapshot the live
+`nbase`, then opens its pins PR with only the three anchor pins. Before that PR
+can pass `sync-guard-check`, add a manual follow-up commit on the same PR that
+sets `WORKFLOW_POLICY=none` and truncates `workflow-manifest.tsv` to its
+`path<TAB>blob` header row. Also correct the generated PR body, whose normal
+"only three anchor pins change" claim does not describe this one transition.
+The final pins-PR head must contain all five changes; flipping the policy in an
+earlier PR while the Nagram workflow tree is still live would fail closed.
 
 ## Files
 
@@ -291,7 +296,7 @@ current Nagram workflow tree is still live would fail closed.
 | --- | --- |
 | `pins.env` | Scalar invariants — parent and workflow policy, anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
-| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy (Nagram's `debug`/`pr`/`release`). It is empty only under `none`. |
+| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy (Nagram's `debug`/`pr`/`release`). Under `none`, keep the file and its header row but remove every data row. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. Also runs the pre-land snapshot check for `sync-land.yml` (`-LandCheckOnly`). |
 
 ## What the guard checks per sync — and what it cannot
