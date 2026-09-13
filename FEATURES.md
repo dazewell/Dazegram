@@ -60,7 +60,7 @@ With Ghost Mode on, the ghost indicator next to the chat list title stays visibl
 
 ### Ghost send warning <!-- #ghost-send-warning --> <!-- #ghost-type-warning -->
 
-Ghost Mode hides read receipts, typing and online status, but never holds a send back. With Hold Messages off, the first time you type into an empty message box in a chat each Ghost session you get a heads-up pointing you at Hold Messages, and that chat then stays quiet for the rest of the session. Sends that still reach the network keep warning.
+Ghost Mode hides read receipts, typing and online status, but never holds a send back. With Hold Messages off, the first time you type into an empty message box in a chat each Ghost session you get a heads-up pointing you at Hold Messages, and that chat then stays quiet for the rest of the session. A chat that hasn't shown the heads-up yet still warns on each send.
 
 ### Clear Message Database removes only this install's media <!-- #clear-db-own-media -->
 
