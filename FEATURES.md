@@ -43,6 +43,10 @@ A launcher shortcut (long-press the app icon, or pin it to your home screen) tha
 
 Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, while Ghost Mode is active, most plain text messages you send or schedule stay on your device instead of going to the server, so they can't reveal that you're online. Held messages land in that chat's Scheduled list marked "Held — not sent", and a bulletin reminds you each time. When you turn Ghost Mode off you're asked to confirm, then everything held sends, spaced out over a few seconds; a message you scheduled for a future time is handed to the server as a normal scheduled message instead. Attachments and a few special sends — paid chats, disappearing messages — never hold and go out right away; and if a held message is in a chat that now charges to send, it stays held rather than paying on your behalf, so turn-off reports it as not sent and you send it by hand at the price shown. Held messages live only in the database — uninstalling the app discards them.
 
+<img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
+<img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
+<img height="260" alt="the Send held messages? confirmation shown when Ghost Mode is switched off with messages still held" src="docs/images/features/ghost-hold-turn-off.png" />
+
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 
 With Ghost Mode on, the ghost indicator next to the chat list title stays visible even when contacts' stories collapse the header.
@@ -152,6 +156,7 @@ Armed triggers are managed from Chats nav ⋯ → *Message Triggers*. A disguise
 <img height="260" alt="bulk Reschedule sheet with a base time, per-message interval, and a delay slider" src="docs/images/features/reschedule.png" />
 <img height="260" alt="Send on event trigger editor with By message type and Or by text collapsible sections" src="docs/images/features/trigger-editor.png" />
 <img height="260" alt="Message Triggers list showing armed triggers with their message-type and text conditions" src="docs/images/features/message-triggers-list.png" />
+<img height="260" alt="the Presets card listing one saved preset by name with a summary of its conditions, above a Save current as preset row" src="docs/images/features/trigger-presets-card.png" />
 
 ### Remember the schedule offset <!-- #schedule-remember -->
 

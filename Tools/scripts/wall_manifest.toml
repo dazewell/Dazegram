@@ -188,8 +188,13 @@ caption = "Switch in one tap"
 output = "scheduling.png"
 
 [[wall.panel]]
-source = "new/screenshot_2026-09-08_17-32-33.png"
-crop = [0, 623, 1080, 2192]
+# dazewell's 2026-09-11 capture of the same trigger editor the original
+# panel showed, reshot after presets landed -- so this panel now carries
+# the pattern rows, their remove controls, and the Presets card.
+source = "trigger-presets-sheet.png"
+# Right edge trimmed to 1070: a teal sliver of the chat behind the sheet
+# intrudes at x >= ~1074. The card itself ends near x = 1048.
+crop = [0, 0, 1070, 1795]
 caption = "Not just a clock"
 
 [[wall.panel]]
@@ -214,6 +219,43 @@ caption = "Extera Light"
 source = "new/screenshot_2026-09-08_16-15-40.png"
 crop = [0, 1500, 1080, 2192]
 caption = "Extera Dark"
+
+[[wall]]
+output = "ghost-hold.png"
+
+[[wall.panel]]
+source = "ghost-hold-settings-toggle.png"
+# Right edge stops at 1070: the same teal sliver of the chat behind the
+# settings screen that the trigger-sheet crops avoid (x >= 1075, y 738-1072).
+crop = [0, 690, 1070, 1265]
+caption = "Hold them on the device"
+
+[[wall.panel]]
+# The held run reads oldest-top here, matching the order they will send in
+# (the ordering corrected in #352). Shot on a build carrying that fix.
+source = "ghost-hold-scheduled-list.png"
+crop = [0, 1090, 1080, 1900]
+caption = "They wait in Scheduled"
+
+[[wall.panel]]
+source = "ghost-hold-turn-off-dialog.png"
+crop = [0, 840, 1080, 1345]
+caption = "Out when you're done"
+
+[[wall]]
+output = "trigger-presets.png"
+
+[[wall.panel]]
+source = "trigger-presets-sheet.png"
+crop = [0, 360, 1070, 900]
+# Two rows are showing, so the trailing icon is remove-mode -- it announces
+# "Remove pattern N". Clear-mode ("Clear pattern") only applies at one row.
+caption = "Stack up the patterns"
+
+[[wall.panel]]
+source = "trigger-presets-sheet.png"
+crop = [0, 1330, 1070, 1795]
+caption = "Save the whole setup"
 
 # --- FEATURES.md figures ------------------------------------------------
 #
@@ -341,3 +383,34 @@ crop = [0, 240, 1080, 570]
 # (distinct from the large bulk-numbering digits used in bulk-actions.png)
 # going from 1 to 2. Blurred: the one reply-quote author name in this crop.
 blur = [[40, 370, 340, 430]]
+
+[[figure]]
+output = "ghost-hold-setting.png"
+source = "ghost-hold-settings-toggle.png"
+crop = [0, 690, 1070, 1265]
+# The Hold Messages row in its Ghost Mode section, with the explanatory
+# footer beneath it. Generic settings text, no sensitive content. Right
+# edge stops at 1070 to drop a teal sliver of the chat behind the screen.
+
+[[figure]]
+output = "ghost-hold-scheduled.png"
+source = "ghost-hold-scheduled-list.png"
+crop = [0, 1090, 1080, 1900]
+# A held run in a chat's Scheduled list, each row captioned "Held -- not
+# sent". Shot on a build carrying #352, so the run reads oldest-top in
+# send order. "DazeTest" is a fake demo persona, not a real name.
+
+[[figure]]
+output = "ghost-hold-turn-off.png"
+source = "ghost-hold-turn-off-dialog.png"
+crop = [0, 840, 1080, 1345]
+# The confirmation asked when Ghost Mode is switched off with messages
+# still held. Generic dialog text, no sensitive content.
+
+[[figure]]
+output = "trigger-presets-card.png"
+source = "trigger-presets-sheet.png"
+crop = [0, 1300, 1070, 1795]
+# The Presets card: one saved preset listed by name with a summary of its
+# conditions, above the "Save current as preset" row. Right edge stops at
+# 1070 to drop a teal sliver of the chat visible behind the sheet.

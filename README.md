@@ -20,10 +20,10 @@ This README covers the highlights. The full list, with what each one does, is in
 <img src="docs/images/composer.png" alt="Four views of Dazegram's composer toolbar: the glass action row live in a chat with text selected, the drag list for reordering leading and scrolling buttons, the toolbar size and icon spacing sliders, and the message field expanded to full screen.">
 </p>
 
-**Scheduled messages:** A schedule is usually just a clock: pick a time, wait for it. Arm a trigger instead and a message sends early the moment a reply matches a message type or a bit of text, keeping its original time as a fallback if it never does. Bulk-reschedule a whole batch at once, spread by an interval, instead of dragging each one by hand.
+**Scheduled messages:** A schedule is usually just a clock: pick a time, wait for it. Arm a trigger instead and a message sends early the moment a reply matches a message type or a bit of text, keeping its original time as a fallback if it never does. Save a set of conditions you reach for often as a named preset and put it back in two taps. Bulk-reschedule a whole batch at once, spread by an interval, instead of dragging each one by hand.
 
 <p align="center">
-<img src="docs/images/scheduling.png" alt="Three views of Dazegram's scheduled message triggers: the Schedule Message sheet with a collapsed Send early on event card offering By message type and Or by text conditions above a delay slider, the bulk Reschedule sheet with a date/time grid, an interval and delay slider, and a Send on event toggle, and the Message Triggers list showing armed triggers for two test contacts with their message-type and text conditions.">
+<img src="docs/images/scheduling.png" alt="Three views of Dazegram's scheduled message triggers: the Send early on event card offering By message type and Or by text conditions, with two saved text patterns each carrying its own remove control and a Presets card holding a saved setup below them, the bulk Reschedule sheet with a date/time grid, an interval and delay slider, and a Send on event toggle, and the Message Triggers list showing armed triggers for two test contacts with their message-type and text conditions.">
 </p>
 
 **Privacy profiles:** Your auto-lock shouldn't be the same at home as it is on a train. Save named timeouts and switch to one temporarily — for now, for a set stretch of time, or until a given moment. Long-press the Settings tab in the chat list to swap between them.
