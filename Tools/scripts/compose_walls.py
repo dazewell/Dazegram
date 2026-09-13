@@ -28,8 +28,12 @@ with:
 is installed by staging.yml on every publish build for upload.py, which has
 no use for an imaging library.)
 
-Source screenshots live in docs/screenshots/ (gitignored, populated by hand)
-and are never modified or committed by this script. Raw device captures are
+Source screenshots live in docs/screenshots/, populated by hand and gitignored
+-- with one exception: docs/screenshots/composed/ is tracked. A composed source
+is one assembled out of other captures rather than photographed, so it cannot
+be re-shot if it is lost, and committing it is the only thing that keeps its
+wall regenerable. Either way this script only ever reads a source; it never
+modifies or commits one. Raw device captures are
 full-screen 1080x2354 JPGs; each panel's (or figure's) `crop` rectangle in
 the manifest selects the sub-region to composite, in that screenshot's own
 native pixel coordinates. A `[[figure]]` table is a single crop with no
@@ -518,6 +522,14 @@ def load_panel_image(
         panel["source"], screenshots_dir, panel_context=f"panel {panel['source']!r}"
     )
     if not src_path.exists():
+        if src_path.parent.name == "composed":
+            raise SystemExit(
+                f"source screenshot not found: {src_path}\n"
+                "docs/screenshots/composed/ is tracked, so this file should "
+                "have arrived with the checkout -- restore it from git. It "
+                "was assembled from other captures, not photographed, so "
+                "re-shooting it is not an option."
+            )
         raise SystemExit(
             f"source screenshot not found: {src_path}\n"
             "docs/screenshots/ is gitignored and populated by hand -- copy "

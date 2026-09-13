@@ -43,7 +43,7 @@ caption_color = "#7AB2FF"
 caption_font_size = 34
 caption_gap = 18            # gap between card bottom and top of caption text
 stagger_amplitude = 35      # +/- vertical offset alternated across panels
-screenshots_dir = "docs/screenshots"   # gitignored, local-only raw captures
+screenshots_dir = "docs/screenshots"   # local raw captures, gitignored except composed/
 output_dir = "docs/images"             # committed composited wall output
 figures_dir = "docs/images/features"   # committed plain-crop figure output
 
@@ -152,14 +152,23 @@ caption = "Scrub the preview"
 output = "video-watching.png"
 
 [[wall.panel]]
-source = "video-message-player-panel-mute-and-loop.png"
+source = "composed/video-player-panel-mute-loop-states.png"
 crop = [0, 0, 1080, 500]
 caption = "Mute and playback modes"
-# Cropped above the real face rather than blurred through it: this includes
-# the chat header and the player panel and stops right before the hair
-# begins (verified against the source -- no column has hair/skin above
-# y=506), so no blur or redaction is needed. The player-panel controls are
-# the subject of this panel; the video content underneath isn't.
+# Composed, not captured: two real player panels stacked to show the same row
+# in both states -- playing/unmuted/play-next on top, paused/muted/loop below.
+# One state cannot show a toggle, and the two states were never on screen at
+# once, so no single capture could say this.
+#
+# The muted/loop row is the ONLY surviving copy of a capture that was lost:
+# it was recovered out of the committed wall itself (panel 0 sits at 846x392,
+# a 0.783 downscale of this crop) and upscaled back, which is why that row is
+# slightly softer than the sharp one above it. Every one of the 29 surviving
+# raws was tried as a source and none reproduced the wall byte-for-byte.
+#
+# This file therefore lives in composed/ and is committed, unlike every other
+# source here: a raw capture can be re-shot, but this one cannot be rebuilt
+# from anything that still exists.
 
 [[wall.panel]]
 source = "video-message-closed-captions-playback.png"
@@ -261,9 +270,15 @@ caption = "Save the whole setup"
 #
 # Plain cropped screenshots (no canvas/caption/shadow), replacing the two
 # GitHub user-attachments CDN images previously on the #timezones entry so
-# every FEATURES.md figure is versioned in the repo instead. Raw sources
-# are the gitignored captures staged under docs/screenshots/new/ for this
-# change; see that directory's shot list for what each one depicts.
+# every FEATURES.md figure is versioned in the repo instead.
+#
+# Raw sources are gitignored and resolve under `screenshots_dir`
+# (docs/screenshots). Earlier entries point at the raw capture filenames
+# under new/; later ones point at descriptively renamed copies sitting
+# directly in that directory. Both are local-only, so a committed figure is
+# the repository's only copy of what its crop shows: a figure is a plain
+# crop downscaled to a 1000px longest side, so figure plus crop rectangle
+# is enough to rebuild that region of a lost source.
 
 [[figure]]
 output = "timezones-1.png"
@@ -414,3 +429,76 @@ crop = [0, 1300, 1070, 1795]
 # The Presets card: one saved preset listed by name with a summary of its
 # conditions, above the "Save current as preset" row. Right edge stops at
 # 1070 to drop a teal sliver of the chat visible behind the sheet.
+
+[[figure]]
+output = "chat-privacy-sheet.png"
+source = "chat-privacy-sheet-both-switches-on.png"
+crop = [0, 636, 1070, 1500]
+# The Chat privacy sheet with Hide last message and Require password both on,
+# the custom placeholder text beside them, and the Disguise notifications card
+# below. Staged throwaway chat, no sensitive content. Right edge stops at 1070
+# to drop a teal sliver of the chat visible behind the sheet.
+
+[[figure]]
+output = "composer-toolbar-live.png"
+source = "composer-toolbar-live-in-chat-text-selected.png"
+crop = [0, 937, 1080, 1327]
+# The live composer with a phrase selected, so the action bubbles render
+# enabled rather than greyed, under the system selection popup.
+
+[[figure]]
+output = "composer-layout-zones.png"
+source = "composer-layout-editor-drag-list.png"
+crop = [0, 548, 1070, 1540]
+# The layout editor's draggable button list: the two-slot Leading zone, the
+# drop hint, and the start of the Scrolling zone, each row with a drag handle.
+# Right edge stops at 1070 to drop a teal sliver of the chat behind the screen;
+# bottom stops on a row divider rather than through a half-row.
+
+[[figure]]
+output = "composer-toolbar-sliders.png"
+source = "composer-layout-editor-sliders.png"
+crop = [0, 548, 1070, 1440]
+# Toolbar size and Icon spacing, both at off-centre values so they read as
+# adjustable rather than factory default. Right edge stops at 1070 to drop a
+# teal sliver of the chat behind the screen.
+
+[[figure]]
+output = "composer-transparency-sliders.png"
+source = "composer-layout-editor-sliders.png"
+crop = [0, 1425, 1080, 2070]
+# The per-theme composer glass transparency sliders, light and dark. Bottom
+# stops at the card edge: the explanatory paragraph below it runs off the
+# bottom of the capture itself, so there is no crop that ends it cleanly.
+
+[[figure]]
+output = "fullscreen-input-on.png"
+source = "fullscreen-input-expanded.png"
+crop = [0, 175, 1080, 1327]
+# The input expanded between the chat header and the keyboard, with the
+# formatting row it makes room for. Shown alone rather than as a before/after
+# pair: FEATURES.md renders figures at a fixed height, which would normalise
+# away the height difference that is the whole point of the comparison.
+
+[[figure]]
+output = "video-cc-playback.png"
+source = "video-message-closed-captions-playback.png"
+crop = [0, 702, 1080, 1941]
+# A round video mid-playback with the caption line rendered over it and
+# repeated below. Staged playback of a public lesson video.
+
+[[figure]]
+output = "video-scrub-preview.png"
+source = "video-message-preview-scrub-midpoint.png"
+crop = [0, 2030, 1080, 2192]
+# The post-record preview strip: discard on the left, the filmstrip with the
+# playback cursor dragged to the middle, send on the right. Cropped to the
+# strip alone — the rest of that capture is wallpaper behind a paused bubble.
+
+[[figure]]
+output = "ghost-hold-bulletin.png"
+source = "ghost-hold-bulletin-held.png"
+crop = [0, 1758, 1080, 2175]
+# The "Held — won't send until Ghost Mode is off" bulletin sitting above the
+# composer, right after a send was held. The entry's prose promises a bulletin
+# each time; no other figure showed it.

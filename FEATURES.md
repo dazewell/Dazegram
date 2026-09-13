@@ -17,6 +17,8 @@ Each chat has one `Chat privacy` item in its ⋯ menu, opening one sheet with `H
 
 The same sheet has `Disguise notifications` with cover persona selection and `Preview notification`. The old per-chat `Alert normally` row is gone: covered notifications now follow Telegram's own silent-vs-alert signal per event, and can alert only when that covered dialog has newly represented members since its last posted cover. Mute/per-chat sound/channel/watch tuning stays in Telegram/Android settings. The sheet uses compact section cards (privacy card, notifications card, collapsed `How covers work` footer disclosure), and its bulletins use Telegram's stock bottom placement.
 
+<img height="260" alt="Chat privacy sheet with Hide last message and Require password switched on, a custom placeholder text row between them, and the Disguise notifications card below" src="docs/images/features/chat-privacy-sheet.png" />
+
 ### Privacy profiles <!-- #privacy-profiles -->
 
 Save a set of auto-lock timeouts under Nagram Settings > Passcode and switch between them. Activate a profile for now, for a stretch of time, or until a specific moment. Long-press the Settings tab for the "Auto-lock profile" list to quickly switch. Each profile gets its own icon and colour. Changing the auto-lock timeout through the regular picker, restoring a backup, or clearing your passcode will drop whatever profile was active and adopt the new baseline value.
@@ -46,6 +48,7 @@ Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, wh
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
 <img height="260" alt="the Send held messages? confirmation shown when Ghost Mode is switched off with messages still held" src="docs/images/features/ghost-hold-turn-off.png" />
+<img height="260" alt="a bulletin reading Held — won't send until Ghost Mode is off, shown above the composer straight after a send was held" src="docs/images/features/ghost-hold-bulletin.png" />
 
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 
@@ -71,6 +74,8 @@ The compose field sits in a glass text pill with Send or mic at its trailing end
 
 Bold, Italic, Monospace, Strikethrough, Underline, Spoiler, Quote, and Code now toggle off if you re-apply them to already-styled text, from this toolbar, the platform's own selection popup, or the chat header's formatting menu — instead of stacking or doing nothing.
 
+<img height="180" alt="compose field with a phrase selected, so the action bubbles in the row below render enabled rather than greyed out" src="docs/images/features/composer-toolbar-live.png" />
+
 ### Send and mic inside the input <!-- #composer-input -->
 
 Send and the mic sit inside the text pill, drawn slightly in from its rounded end so a thin ring of glass shows around them.
@@ -81,7 +86,9 @@ If your chat wallpaper has a pattern on it, it now reads through the glass compo
 
 ### Composer toolbar layout editor <!-- #composer-layout --> <!-- #composer-layout-tap-toggle --> <!-- #composer-leading-2slot -->
 
-The button row under the compose box is yours to arrange via chat settings. You can place any action in any zone (Leading, Middle, Trailing, Hidden). The Leading zone is capped at two slots. Tapping a row in Hidden or Middle toggles it straight to the other section without dragging. Hold any button on the live toolbar for about one second to open this editor directly.
+The button row under the compose box is yours to arrange via chat settings. You can place any action in any zone (Leading, Scrolling, Trailing, Hidden). The Leading zone is capped at two slots. Tapping a row in Hidden or Scrolling toggles it straight to the other section without dragging. Hold any button on the live toolbar for about one second to open this editor directly.
+
+<img height="260" alt="layout editor listing draggable toolbar buttons under a Leading zone capped at two slots, a drop hint, and the start of the Scrolling zone" src="docs/images/features/composer-layout-zones.png" />
 
 ### Attach button stays visible while typing <!-- #composer-attach-pinned -->
 
@@ -95,9 +102,13 @@ Cut, Copy, and Paste are available as composer toolbar buttons, added through th
 
 The toolbar row can be scaled from 75% to 125% in 5% steps. A second slider sets icon spacing, packing buttons closer without shrinking them. At small toolbar sizes the tightest spacing steps grey out so icons can't overlap.
 
+<img height="260" alt="Toolbar size slider set to 90 percent above an Icon spacing slider set to 87 percent, each with its explanation below" src="docs/images/features/composer-toolbar-sliders.png" />
+
 ### Composer glass transparency <!-- #composer-transparency -->
 
 Light and dark theme each get their own slider (0–50%, default 25%) in the layout editor for how much wallpaper shows through the composer's glass — the message field, its icon row, the floating buttons over the message list, and a channel's bottom bar. Takes effect when you leave the editor; nothing changes while chat blur is off.
+
+<img height="220" alt="separate transparency sliders for light and dark theme, set to 35 and 15 percent, both on a 0 to 50 percent scale" src="docs/images/features/composer-transparency-sliders.png" />
 
 ### Quick schedule button <!-- #quick-schedule -->
 
@@ -190,6 +201,8 @@ Select messages to *Pin all* (applies your pin choice to the whole selection) or
 
 Tap the expand button to grow the input between the chat header and the keyboard. Tap it again to return to normal height.
 
+<img height="260" alt="message input expanded to fill the space between the chat header and the keyboard, with a text formatting row along the bottom" src="docs/images/features/fullscreen-input-on.png" />
+
 ### Don't lose typed text on an accidental back <!-- #discard-guard -->
 
 A swipe-back gesture while composing a scheduled or edited message will hold and prompt for confirmation so you don't accidentally discard it. Unsaved text in these states also survives an app-lock or if you minimize and return to the app.
@@ -212,6 +225,8 @@ A mute button next to the playback-mode toggle silences round video messages.
 
 A CC button above the transcribe button provides live, line-by-line captioning over the video. Providers that return timings (Groq, Cloudflare) get captions that line up exactly with the speech; others get evenly-paced text. Captions only ever come from a transcription you explicitly ask for, so they never trigger unasked transcriptions or use surprise API credit.
 
+<img height="260" alt="round video message playing with its caption line rendered in a bubble below it" src="docs/images/features/video-cc-playback.png" />
+
 ### External microphone toggle in video message popup <!-- #external-mic -->
 
 When camera mode is set to Ask, the camera choice popup has an External Microphone toggle to record through a headset instead of the built-in mic.
@@ -231,6 +246,8 @@ The zoom control under the round video camera was rebuilt with a full-range slid
 ### Scrub the video message preview <!-- #video-scrub -->
 
 The preview you get after recording a round video message has a playback cursor you can drag to scrub through the video.
+
+<img height="90" alt="post-recording preview strip with a discard button, a filmstrip carrying a draggable playback cursor at its midpoint, and a send button" src="docs/images/features/video-scrub-preview.png" />
 
 ### Bigger recorder pause and once buttons <!-- #recorder-controls -->
 

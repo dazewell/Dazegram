@@ -661,3 +661,61 @@ block read oldest-at-top / newest-at-bottom, the newest row must sit at the
 looks right in the code and is still reversed on the device.
 
 *(Established 2026-09-11, #ghost-hold.)*
+
+## Composer zone constants do not match their on-screen labels
+
+The composer toolbar layout editor has four zones. **Only one of the four
+constants is named for the label it produces.** Do not infer a zone's label
+from its constant, or the reverse.
+
+| Constant | On-screen label | Same? |
+|---|---|---|
+| `ZONE_START` (`ComposerButtons.java:20`) | "Leading — up to 2" | no |
+| `ZONE_MIDDLE` (`ComposerButtons.java:21`) | "Scrolling" | no |
+| `ZONE_END` (`ComposerButtons.java:22`) | "Trailing" | no |
+| `ZONE_HIDDEN` (`ComposerButtons.java:23`) | "Hidden" | yes |
+
+`ZONE_MIDDLE` is the dangerous one. `START`/`END` are obviously positional and
+nobody mistakes them for user-facing words, but "Middle" reads like a label —
+so it is the one that gets written down as if it were.
+
+The header mapping is made in `headerTitle(int zone)`
+(`ComposerLayoutActivity.java:766-777`), which resolves `ZONE_MIDDLE` to
+`R.string.ComposerZoneScrolling` (`:771`) = "Scrolling"
+(`strings_nax.xml:657`).
+
+Footers do **not** map one-to-one the way headers do. `footerText(int zone)`
+gives explicit cases only to the three visible zones —
+`ComposerZoneLeadingInfo`/`ScrollingInfo`/`TrailingInfo` at
+`ComposerLayoutActivity.java:788-793`. `ZONE_HIDDEN` has no case of its own and
+falls through to `default:`, returning the screen-level
+`R.string.ComposerLayoutInfo` (`:794-795`), so the Hidden zone shows the
+generic screen description rather than anything about itself. The same switch
+also answers non-zone group ids (`GROUP_GLASS_LIGHT`/`DARK`, `:785-787`), so it
+is not a pure zone lookup and must not be read as one.
+
+**Neither switch ever names `ZONE_HIDDEN`.** Both reach it through `default:` —
+`:774-775` for the header, `:794-795` for the footer. The header's default
+happens to return the Hidden string, so the mapping is right today by
+coincidence of ordering rather than by a case that states it. The consequence
+is that a fifth zone constant would silently title itself "Hidden" and take the
+generic footer, with nothing failing to compile and no case to update; the two
+switches would need editing before `ZONE_COUNT` (`ComposerButtons.java:24`)
+were raised.
+
+The "up to 2" in the Leading label comes from `START_CAPACITY = 2`, declared in
+`ComposerButtons.java:36`, and is enforced at
+`ComposerLayoutActivity.java:645-646`. Nothing about `ZONE_START` carries the
+cap, so it is not readable from the zone constant alone.
+
+The trap is that the source's own comments use the internal vocabulary — see
+"Only Middle/Trailing/Hidden ever produce this row"
+(`ComposerLayoutActivity.java:649`) — so reading the code leaves you fluent in
+names no user ever sees. That is how `FEATURES.md` came to document the zones
+as "Leading, Middle, Trailing, Hidden": the internal name leaked into a
+user-facing catalog and sat there uncorrected, because the catalog carried no
+figure of that screen to contradict it — raw captures of it exist, but nothing
+put the screen and the prose side by side until one was committed. Writing
+about this screen, use the labels; reading the code, expect the constants.
+
+*(Established 2026-09-13, #docs.)*
