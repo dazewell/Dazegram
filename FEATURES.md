@@ -48,6 +48,7 @@ Turn on **Hold Messages** under Settings → Ghost Mode (off by default) and, wh
 <img height="260" alt="the Hold Messages toggle in its Ghost Mode section with the explanatory footer beneath it" src="docs/images/features/ghost-hold-setting.png" />
 <img height="260" alt="a chat's Scheduled list with three held messages, each captioned Held — not sent" src="docs/images/features/ghost-hold-scheduled.png" />
 <img height="260" alt="the Send held messages? confirmation shown when Ghost Mode is switched off with messages still held" src="docs/images/features/ghost-hold-turn-off.png" />
+<img height="260" alt="a bulletin reading Held — won't send until Ghost Mode is off, shown above the composer straight after a send was held" src="docs/images/features/ghost-hold-bulletin.png" />
 
 ### Ghost icon stays put under stories <!-- #ghost-icon -->
 

@@ -479,3 +479,11 @@ crop = [0, 2030, 1080, 2192]
 # The post-record preview strip: discard on the left, the filmstrip with the
 # playback cursor dragged to the middle, send on the right. Cropped to the
 # strip alone — the rest of that capture is wallpaper behind a paused bubble.
+
+[[figure]]
+output = "ghost-hold-bulletin.png"
+source = "ghost-hold-bulletin-held.png"
+crop = [0, 1758, 1080, 2175]
+# The "Held — won't send until Ghost Mode is off" bulletin sitting above the
+# composer, right after a send was held. The entry's prose promises a bulletin
+# each time; no other figure showed it.
