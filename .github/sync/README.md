@@ -271,13 +271,27 @@ push later in the run, which fails explicitly (not silently) if the token lacks 
 Where a permission is proven up front, the failure names it precisely rather than
 surfacing only a generic auth error after a ref has already moved.
 
+## Snapshot workflow policy
+
+`WORKFLOW_POLICY` in `pins.env` is a reviewed, trusted pin with two allowed values:
+
+- **`manifest`** requires the snapshot's `.github/workflows/*` paths and blobs to
+  match every row in `workflow-manifest.tsv` exactly. The manifest must be non-empty.
+- **`none`** requires an empty manifest and zero `.github/workflows/*` paths in the
+  snapshot. Any workflow path blocks.
+
+The parent transition keeps `manifest` while this capability lands. A later
+reconciliation first makes the Telegram snapshot the live `nbase`; only its
+follow-up pins PR switches the policy to `none`. Flipping the policy while the
+current Nagram workflow tree is still live would fail closed.
+
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `pins.env` | Scalar invariants — anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
+| `pins.env` | Scalar invariants — parent and workflow policy, anchor, keystore blob + cert, gitmodules blob, the vendored-native table (boringssl/libyuv/openh264/tlottie_lib/tlottie), layer floors, Ayu schema. Read from PRE, never from a candidate. |
 | `protected-paths.tsv` | The 49 fork-owned paths that must stay byte-identical to `dev` (signing key, Firebase config, branding, README, `.gitmodules`). |
-| `workflow-manifest.tsv` | The approved `.github/workflows` set the snapshot may carry (Nagram's `debug`/`pr`/`release`). Any addition or change blocks. |
+| `workflow-manifest.tsv` | The approved `.github/workflows` set under `manifest` policy (Nagram's `debug`/`pr`/`release`). It is empty only under `none`. |
 | `sync-guard.ps1` | The gate. Self-tests, then classifies every tree delta. Also runs the pre-land snapshot check for `sync-land.yml` (`-LandCheckOnly`). |
 
 ## What the guard checks per sync — and what it cannot
@@ -288,7 +302,8 @@ surfacing only a generic auth error after a ref has already moved.
   modification of a pre-existing shared file, or it blocks.
 - The 49 protected blobs byte-identical in PRE and candidate.
 - The guard and its workflows unchanged by the candidate.
-- `.github/workflows` in the snapshot matches the approved manifest exactly.
+- `.github/workflows` in the snapshot obeys the pinned policy: exact approved
+  path/blob rows under `manifest`, or no workflow paths under `none`.
 - `.gitmodules` blob unchanged; every vendored native keeps its pinned git object
   shape — boringssl, libyuv, openh264 and tlottie_lib stay `040000 tree`, and the
   tlottie gitlink keeps its pinned `160000 commit`. The table is data in `pins.env`

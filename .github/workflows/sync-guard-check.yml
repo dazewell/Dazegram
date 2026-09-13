@@ -44,6 +44,45 @@ jobs:
           ./.github/sync/sync-guard.ps1 -SelfTestOnly -CheckPinsAgainst HEAD
           if ($LASTEXITCODE -ne 0) { Write-Host "::error::guard self-test / pin check failed (exit $LASTEXITCODE)"; exit 1 }
 
+      - name: Workflow policy startup modes fail closed
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $basePins = Get-Content .github/sync/pins.env -Raw
+          $emptyManifest = Join-Path $env:RUNNER_TEMP 'workflow-manifest-empty.tsv'
+          Set-Content -LiteralPath $emptyManifest -Value "path`tblob" -Encoding utf8
+
+          function Write-Pins([string]$name, [string]$policyLine) {
+            $path = Join-Path $env:RUNNER_TEMP $name
+            $content = $basePins -replace '(?m)^WORKFLOW_POLICY=.*$', $policyLine
+            Set-Content -LiteralPath $path -Value $content -NoNewline -Encoding utf8
+            return $path
+          }
+          function Assert-FailsWith([string]$name, [hashtable]$arguments, [string]$pattern) {
+            $out = (& ./.github/sync/sync-guard.ps1 @arguments *>&1 | Out-String -Width 8192)
+            $code = $LASTEXITCODE
+            Write-Host $out
+            if ($code -eq 0) { Write-Host "::error::$name unexpectedly passed"; exit 1 }
+            if ($out -notmatch $pattern) { Write-Host "::error::$name failed for the wrong reason (expected '$pattern')"; exit 1 }
+          }
+
+          $nonePins = Write-Pins 'pins-none.env' 'WORKFLOW_POLICY=none'
+          ./.github/sync/sync-guard.ps1 -SelfTestOnly -CheckPinsAgainst HEAD -PinsFile $nonePins -WorkflowManifest $emptyManifest
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::none policy failed to initialize with an empty manifest'; exit 1 }
+
+          Assert-FailsWith 'manifest with empty manifest' @{
+            SelfTestOnly = $true; PinsFile = '.github/sync/pins.env'; WorkflowManifest = $emptyManifest
+          } 'manifest requires a non-empty'
+          $unknownPins = Write-Pins 'pins-unknown.env' 'WORKFLOW_POLICY=unknown'
+          Assert-FailsWith 'unknown workflow policy' @{
+            SelfTestOnly = $true; PinsFile = $unknownPins; WorkflowManifest = $emptyManifest
+          } 'unknown or malformed'
+          $missingPins = Join-Path $env:RUNNER_TEMP 'pins-missing-policy.env'
+          Set-Content -LiteralPath $missingPins -Value ($basePins -replace '(?m)^WORKFLOW_POLICY=.*\r?\n?', '') -NoNewline -Encoding utf8
+          Assert-FailsWith 'missing workflow policy' @{
+            SelfTestOnly = $true; PinsFile = $missingPins; WorkflowManifest = $emptyManifest
+          } 'missing/empty: WORKFLOW_POLICY'
+
       - name: sync-upstream.yml invokes the guard, uncommented, before the push
         shell: pwsh
         run: |
@@ -69,10 +108,12 @@ jobs:
           }
           if ($active -notmatch 'workflow_dispatch:\s*\{\s*\}') { Write-Host '::error::workflow_dispatch is no longer input-less'; exit 1 }
           if ($active -match '(?m)^\s*inputs:') { Write-Host '::error::sync-upstream.yml declares workflow inputs; none are allowed'; exit 1 }
-          # -AnchorOverride is the fixture-only escape hatch; the production sync must
-          # never use it, or it would prove ancestry against an attacker-chosen anchor.
-          if ($active -match '-AnchorOverride') { Write-Host '::error::sync-upstream.yml passes -AnchorOverride; that is fixture-only and must not appear in the real sync'; exit 1 }
-          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch, no anchor override.'
+          # Fixture/config overrides must never enter the production sync. The guard
+          # reads the reviewed policy and manifests from the trusted PRE checkout.
+          foreach ($override in '-AnchorOverride', '-PinsFile', '-ProtectedFile', '-WorkflowManifest') {
+            if ($active -match [regex]::Escape($override)) { Write-Host "::error::sync-upstream.yml passes $override; test/config overrides must not appear in the real sync"; exit 1 }
+          }
+          Write-Host 'guard wiring intact: active invocation, before the push, input-less dispatch, trusted PRE policy/config only.'
 
       - name: Full real-candidate fixture (clean passes, tampered/double-modified block)
         shell: pwsh
@@ -203,6 +244,70 @@ jobs:
           if ($dblOut -notmatch 'DOUBLE-MODIFIED') { Write-Host '::error::guard blocked the double-modified candidate for the WRONG reason (no DOUBLE-MODIFIED)'; exit 1 }
           if ($dblOut -notmatch [regex]::Escape($F)) { Write-Host "::error::DOUBLE-MODIFIED did not name the expected file $F"; exit 1 }
 
-          Write-Host 'fixture OK: clean passed; tampered and double-modified blocked (the latter as DOUBLE-MODIFIED on a non-empty upstream delta), self-contained from origin/nbase with the nagram remote unreachable.'
+          # Future Telegram steady state: old nbase and its successor snapshot both
+          # have no .github tree. Build that topology entirely from synthetic commits
+          # and use the existing fixture-only AnchorOverride; production gets no
+          # bootstrap mode or runtime policy selector.
+          $noneIdx = Join-Path $env:RUNNER_TEMP 'gc-none.idx'
+          Remove-Item -LiteralPath $noneIdx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $noneIdx
+          git read-tree $oldNbase
+          git ls-tree -r --name-only $oldNbase -- .github |
+            ForEach-Object { git update-index --force-remove -- $_ }
+          $noneTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+
+          $noneAnchor = (git commit-tree $noneTree -p $oldNbase -m "guard-check none anchor #infra").Trim()
+          $noneOld = (git commit-tree $noneTree -p $oldNbase -m "guard-check none old nbase #infra").Trim()
+          $noneSrc = (git commit-tree $noneTree -p $noneAnchor -m "guard-check none source #infra").Trim()
+          $noneSnap = (git commit-tree $noneTree -p $noneOld -m "guard-check none snapshot #infra").Trim()
+          $headTree = (git rev-parse "$head^{tree}").Trim()
+          $nonePre = (git commit-tree $headTree -p $noneOld -m "guard-check none pre #infra").Trim()
+          $noneCandidate = (git commit-tree $headTree -p $nonePre -p $noneSnap -m "guard-check none candidate #infra").Trim()
+
+          $noneManifest = Join-Path $env:RUNNER_TEMP 'gc-none-manifest.tsv'
+          Set-Content -LiteralPath $noneManifest -Value "path`tblob" -Encoding utf8
+          $nonePins = Join-Path $env:RUNNER_TEMP 'gc-none-pins.env'
+          $nonePinText = Get-Content .github/sync/pins.env -Raw
+          $nonePinText = $nonePinText -replace '(?m)^WORKFLOW_POLICY=.*$', 'WORKFLOW_POLICY=none'
+          $nonePinText = $nonePinText -replace '(?m)^ANCHOR_SRC=.*$', "ANCHOR_SRC=$noneAnchor"
+          $nonePinText = $nonePinText -replace '(?m)^OLD_NBASE=.*$', "OLD_NBASE=$noneOld"
+          $nonePinText = $nonePinText -replace '(?m)^OLD_NBASE_TREE=.*$', "OLD_NBASE_TREE=$noneTree"
+          $nonePinText = $nonePinText -replace '(?m)^SYNC_IDENTITY_NAME=.*$', 'SYNC_IDENTITY_NAME=guard-check'
+          $nonePinText = $nonePinText -replace '(?m)^SYNC_IDENTITY_EMAIL=.*$', 'SYNC_IDENTITY_EMAIL=guard-check@dazegram.local'
+          Set-Content -LiteralPath $nonePins -Value $nonePinText -NoNewline -Encoding utf8
+
+          Write-Host '--- running guard on NONE-POLICY candidate with no .github tree (expect exit 0) ---'
+          ./.github/sync/sync-guard.ps1 -PreRef $nonePre -OldNbase $noneOld -NewSnapshot $noneSnap -NewSrc $noneSrc -NewDev $noneCandidate -AnchorOverride $noneAnchor -PinsFile $nonePins -WorkflowManifest $noneManifest
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::guard blocked a none-policy candidate with zero workflows'; exit 1 }
+
+          # Land-check shares the same startup path. Point the synthetic nagram/dev
+          # remote-tracking ref at the matching source commit so the full land
+          # assertions run after none-mode initialization.
+          git update-ref refs/remotes/nagram/dev $noneSrc
+          Write-Host '--- running LAND CHECK on NONE-POLICY snapshot (expect exit 0) ---'
+          ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $noneOld -NewSnapshot $noneSnap -NewDev $noneCandidate -PinsFile $nonePins -WorkflowManifest $noneManifest
+          if ($LASTEXITCODE -ne 0) { Write-Host '::error::none-policy land check failed'; exit 1 }
+
+          # A single workflow path must fail under none, even when every other
+          # fixture fact remains valid.
+          $wfBlob = (git rev-parse "${head}:.github/workflows/ci.yml").Trim()
+          $badNoneIdx = Join-Path $env:RUNNER_TEMP 'gc-none-bad.idx'
+          Remove-Item -LiteralPath $badNoneIdx -ErrorAction SilentlyContinue
+          $env:GIT_INDEX_FILE = $badNoneIdx
+          git read-tree $noneTree
+          git update-index --add --cacheinfo "100644,$wfBlob,.github/workflows/ci.yml"
+          $badNoneTree = (git write-tree).Trim()
+          Remove-Item Env:\GIT_INDEX_FILE
+          $badNoneSrc = (git commit-tree $badNoneTree -p $noneAnchor -m "guard-check none bad source #infra").Trim()
+          $badNoneSnap = (git commit-tree $badNoneTree -p $noneOld -m "guard-check none bad snapshot #infra").Trim()
+          $badNoneCandidate = (git commit-tree $headTree -p $nonePre -p $badNoneSnap -m "guard-check none bad candidate #infra").Trim()
+          $noneBadOut = (& ./.github/sync/sync-guard.ps1 -PreRef $nonePre -OldNbase $noneOld -NewSnapshot $badNoneSnap -NewSrc $badNoneSrc -NewDev $badNoneCandidate -AnchorOverride $noneAnchor -PinsFile $nonePins -WorkflowManifest $noneManifest *>&1 | Out-String -Width 8192)
+          $noneBadExit = $LASTEXITCODE
+          Write-Host $noneBadOut
+          if ($noneBadExit -eq 0) { Write-Host '::error::none policy passed a snapshot containing a workflow'; exit 1 }
+          if ($noneBadOut -notmatch 'workflow present under none policy') { Write-Host '::error::none policy blocked for the wrong reason'; exit 1 }
+
+          Write-Host 'fixture OK: manifest clean passed; tampered and double-modified blocked; none-policy zero-workflow real candidate and land check passed; none-policy workflow path blocked.'
           # The blocking runs intentionally left $LASTEXITCODE=1; end the step green.
           exit 0
