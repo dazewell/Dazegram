@@ -29,13 +29,26 @@ public class InputAnimationStrengthSeekBar extends FrameLayout {
         bar = new SeekBarView(context);
         bar.setSeparatorsCount(5);
         bar.setReportChanges(true);
-        bar.setDelegate((stop, progress) -> {
-            int level = Math.max(0, Math.min(4, Math.round(progress * 4)));
-            if (level != level())
-                NaConfig.INSTANCE.getInputAnimationStrength().setConfigInt(level);
-            if (stop) bar.setProgress(level / 4f);
-            updateDescription();
-            invalidate();
+        bar.setDelegate(new SeekBarView.SeekBarViewDelegate() {
+            @Override
+            public void onSeekBarDrag(boolean stop, float progress) {
+                int level = Math.max(0, Math.min(4, Math.round(progress * 4)));
+                if (level != level())
+                    NaConfig.INSTANCE.getInputAnimationStrength().setConfigInt(level);
+                if (stop) bar.setProgress(level / 4f);
+                updateDescription();
+                invalidate();
+            }
+
+            @Override
+            public CharSequence getContentDescription() {
+                return bar.getContentDescription();
+            }
+
+            @Override
+            public int getStepsCount() {
+                return 4;
+            }
         });
         addView(bar, LayoutHelper.createFrame(LayoutHelper.MATCH_PARENT, 38, Gravity.TOP, 12, 23, 12, 0));
         updateDescription();
