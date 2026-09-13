@@ -17,8 +17,10 @@ TMessagesProj/afat/
 TMessagesProj/jni/ffmpeg/build_android
 
 # Raw README marketing screenshots stay local; only the composited docs/images/
-# outputs get committed.
-docs/screenshots/
+# outputs get committed. The one exception is composed/: hand-built panel
+# sources that exist nowhere else, so losing them loses the wall for good.
+docs/screenshots/*
+!docs/screenshots/composed/
 
 # Compiled bytecode cache left behind by running Tools/scripts/*.py.
 __pycache__/

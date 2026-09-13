@@ -152,14 +152,23 @@ caption = "Scrub the preview"
 output = "video-watching.png"
 
 [[wall.panel]]
-source = "video-message-player-panel-mute-and-loop.png"
+source = "composed/video-player-panel-mute-loop-states.png"
 crop = [0, 0, 1080, 500]
 caption = "Mute and playback modes"
-# Cropped above the real face rather than blurred through it: this includes
-# the chat header and the player panel and stops right before the hair
-# begins (verified against the source -- no column has hair/skin above
-# y=506), so no blur or redaction is needed. The player-panel controls are
-# the subject of this panel; the video content underneath isn't.
+# Composed, not captured: two real player panels stacked to show the same row
+# in both states -- playing/unmuted/play-next on top, paused/muted/loop below.
+# One state cannot show a toggle, and the two states were never on screen at
+# once, so no single capture could say this.
+#
+# The muted/loop row is the ONLY surviving copy of a capture that was lost:
+# it was recovered out of the committed wall itself (panel 0 sits at 846x392,
+# a 0.783 downscale of this crop) and upscaled back, which is why that row is
+# slightly softer than the sharp one above it. Every one of the 29 surviving
+# raws was tried as a source and none reproduced the wall byte-for-byte.
+#
+# This file therefore lives in composed/ and is committed, unlike every other
+# source here: a raw capture can be re-shot, but this one cannot be rebuilt
+# from anything that still exists.
 
 [[wall.panel]]
 source = "video-message-closed-captions-playback.png"
