@@ -498,7 +498,8 @@ public final class GhostHoldController {
         if (p == null || p.photo == null || p.path != null || p.photo.access_hash != 0
                 || p.isLivePhoto || p.ttl != 0 || p.parentObject != null
                 || p.photo.sizes == null || p.photo.sizes.isEmpty()
-                || p.photo.video_sizes != null && !p.photo.video_sizes.isEmpty()) {
+                || p.photo.video_sizes != null && !p.photo.video_sizes.isEmpty()
+                || hasRemoteOriginalPath(p.params)) {
             return null;
         }
         TLRPC.PhotoSize largest = p.photo.sizes.get(p.photo.sizes.size() - 1);
@@ -513,6 +514,18 @@ public final class GhostHoldController {
             return null;
         }
         return new LocalPhotoSource(source, length);
+    }
+
+    private static boolean hasRemoteOriginalPath(@Nullable HashMap<String, String> params) {
+        if (params == null) {
+            return false;
+        }
+        String originalPath = params.get("originalPath");
+        if (originalPath == null) {
+            return false;
+        }
+        String lower = originalPath.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
     private static int countInstanceFields(Class<?> cls) {
