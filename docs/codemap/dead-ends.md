@@ -831,7 +831,7 @@ stock. No code change was made.
 The same generic blob also round-trips media-bearing held messages. The full
 `TLRPC.Message`, including its `media`, is serialized and deserialized at
 `GhostHoldStore.java:602-640`; Wave A assigns the exact contact or static
-geo/venue media object before encoding (`GhostHoldController.java:538-558`).
+geo/venue media object before encoding (`GhostHoldController.java:547-563`).
 No media-specific store column or second serialization path is needed.
 
 *(Established 2026-09-11, #ghost-hold. Media-bearing round-trip re-verified
