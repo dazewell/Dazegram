@@ -224,6 +224,11 @@ function Test-FastPathWorkflows([string]$decision, [string]$policy, [hashtable]$
     return @(Test-Workflows $policy $liveNbaseWf $manifestRows)
 }
 
+function Test-LandCheckWorkflows([string]$policy, [hashtable]$snapWf, $manifestRows) {
+    if ($policy -ne 'none') { return @() }
+    return @(Test-Workflows $policy $snapWf $manifestRows)
+}
+
 # Guard 9 + 11 + "every tree delta must be partitioned; unclassified means BLOCK".
 # Additions and deletions always block. For in-place modifications the only safe
 # class is upstream-only (upstream changed the path, the fork did not): a clean
@@ -631,6 +636,10 @@ function Invoke-SelfTest([hashtable]$pins) {
     $ok = (Assert-Passes 'Test-FastPathWorkflows(none)'         (Test-FastPathWorkflows 'uptodate' 'none' @{} @()) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-FastPathWorkflows(manifest)'     (Test-FastPathWorkflows 'uptodate' 'manifest' $wfGood $man) ([ref]$log)) -and $ok
     $ok = (Assert-Passes 'Test-FastPathWorkflows(proceed)'      (Test-FastPathWorkflows 'proceed' 'none' $wfGood @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Fails  'Test-LandCheckWorkflows(none-present)' (Test-LandCheckWorkflows 'none' $wfGood @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LandCheckWorkflows(none-empty)'   (Test-LandCheckWorkflows 'none' @{} @()) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LandCheckWorkflows(manifest)'     (Test-LandCheckWorkflows 'manifest' $wfGood $man) ([ref]$log)) -and $ok
+    $ok = (Assert-Passes 'Test-LandCheckWorkflows(cutover)'      (Test-LandCheckWorkflows 'manifest' @{} $man) ([ref]$log)) -and $ok
 
     # Guard 9 / 11 partition (fork ∩ upstream)
     $pre = @{ 'a' = '1'; 'b' = '2' }
@@ -1189,6 +1198,7 @@ if ($LandCheckOnly) {
     if (-not $anchorSrcNew) {
         $failures += "land: the snapshot tree $snapTree matches no commit in nagram/$branch — it is not a faithful copy of any upstream commit"
     }
+    $failures += Test-LandCheckWorkflows $pins['WORKFLOW_POLICY'] (Get-WorkflowBlobs $snap) $manifestRows
     $failures += Test-LandCheck $snapParents $expectedOldNbase $revMinusOld $snap $snapTree $srcTree $srcDescends `
         $expectedOldNbaseTree $pinnedAnchorTree $pins['OLD_NBASE'] $pins['OLD_NBASE_TREE'] $snapDescendsDev
     $failures += Test-SnapshotIdentity $an $ae $cn $ce $pins['SYNC_IDENTITY_NAME'] $pins['SYNC_IDENTITY_EMAIL']

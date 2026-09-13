@@ -334,6 +334,13 @@ jobs:
           if ($noneBadExit -eq 0) { Write-Host '::error::none policy passed a snapshot containing a workflow'; exit 1 }
           if ($noneBadOut -notmatch 'workflow forbidden under none policy') { Write-Host '::error::none policy blocked for the wrong reason'; exit 1 }
 
-          Write-Host 'fixture OK: manifest clean passed; tampered and double-modified blocked; none-policy fast path failed closed on workflows and passed on an empty tree; zero-workflow real candidate and land initialization passed; workflow-bearing real candidate blocked.'
+          git update-ref refs/remotes/nagram/dev $badNoneSrc
+          $noneBadLandOut = (& ./.github/sync/sync-guard.ps1 -LandCheckOnly -OldNbase $noneOld -NewSnapshot $badNoneSnap -NewDev $badNoneCandidate -PinsFile $nonePins -WorkflowManifest $noneManifest *>&1 | Out-String -Width 8192)
+          $noneBadLandExit = $LASTEXITCODE
+          Write-Host $noneBadLandOut
+          if ($noneBadLandExit -eq 0) { Write-Host '::error::none policy land check passed a snapshot containing a workflow'; exit 1 }
+          if ($noneBadLandOut -notmatch 'workflow forbidden under none policy') { Write-Host '::error::none policy land check blocked for the wrong reason'; exit 1 }
+
+          Write-Host 'fixture OK: manifest clean passed; tampered and double-modified blocked; none-policy fast path failed closed on workflows and passed on an empty tree; zero-workflow real candidate and land initialization passed; workflow-bearing real candidate and land check blocked.'
           # The blocking runs intentionally left $LASTEXITCODE=1; end the step green.
           exit 0

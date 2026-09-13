@@ -1518,12 +1518,15 @@ manual follow-up commit before its required check can pass: set
 correct the generated body's "only three anchor pins" claim. The policy
 validator makes a header-only manifest legal only under `none`, while `none`
 rejects every observed workflow path
-(`.github/sync/sync-guard.ps1:185-220,979-1000`). The no-op fast path also
+(`.github/sync/sync-guard.ps1:185-220,988-1009`). The no-op fast path also
 checks live `nbase` before returning up-to-date, so a premature `none` flip
 cannot bless the current workflow-bearing tree
-(`.github/sync/sync-guard.ps1:1066-1072`). The always-on fixture exercises the
-workflow-free fast, real-candidate, and land-initialization paths, plus the
-forbidden-workflow cases (`.github/workflows/sync-guard-check.yml:254-337`).
+(`.github/sync/sync-guard.ps1:1075-1081`). Land checks enforce the workflow
+tree only after the trusted PRE policy is already `none`; `manifest` deliberately
+keeps the one-time workflow-free cutover valid
+(`.github/sync/sync-guard.ps1:227-230,1201`). The always-on fixture exercises
+the workflow-free fast, real-candidate, and land paths, plus the
+forbidden-workflow cases (`.github/workflows/sync-guard-check.yml:254-344`).
 
 *(Established 2026-09-13, `#infra`; Telegram root tree verified through the
 GitHub tree object for the commit above.)*
